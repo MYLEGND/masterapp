@@ -728,6 +728,1261 @@ jobs:
             exit 1
           fi
 
+          changed="$(
+            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs
+          bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
+          test -x "$bundle"
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+
+          python3 - <<'PYMIGRATE'
+          import json, os, pathlib, subprocess
+          def az(*args):
+              return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
+          resource_group=os.environ['RELEASE_RESOURCE_GROUP']
+          authority=os.environ['DATABASE_AUTHORITY']
+          rows=az('webapp','config','connection-string','list','-g',resource_group,'-n',authority)
+          connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
+          if not connection:
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g',resource_group,'-n',authority)}
+              connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
+          if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
+              raise SystemExit('Production SQL connection unavailable; no restart authorized.')
+          print('::add-mask::'+connection,flush=True)
+          bundle=pathlib.Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
+          subprocess.run(
+              [str(bundle),'--connection',connection],
+              check=True,
+              env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
+          )
+          print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
+          PYMIGRATE
+      - name: Load preserved rollback packages for transactional publication
+        id: rollbackpackages
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: diagnostics-rollback-*-${{ env.RELEASE_SHA }}
+          path: /tmp/rollback-packages
+          merge-multiple: false
+      - name: Refresh Azure OIDC before transactional publication
+        id: azuredeploy
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Publish selected head as one transaction
+        id: transaction
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --package-root /tmp/diagnostics-packages \
+            --rollback-root /tmp/rollback-packages
+      - name: Deploy and activate LEGEND Founder Cloudflare baseline
+        id: foundercloud
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Central Cloudflare Workers authority is not configured."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Central Cloudflare account authority is not configured."; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          mkdir -p /tmp/translation-results
+          python3 scripts/deploy-founder-cloudflare.py deploy \
+            --state /tmp/legend-founder-cloudflare-state.json \
+            --receipt /tmp/translation-results/legend-founder-cloudflare.json
+
+      - name: Reconcile public custom-hostname Cloudflare policy
+        id: routingpolicy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py reconcile-bot-fight
+          python3 scripts/cloudflare-routing-authority.py reconcile-bic
+
+      - name: Deploy shared Cloudflare business website router
+        id: routingdeploy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Legend-Cloudflare
+
+          deployments_file=/tmp/legend-router-deployments.json
+          deployments_status="$(curl --silent --show-error \
+            -o "$deployments_file" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments?per_page=1")"
+          case "$deployments_status" in
+            200)
+              previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
+              ;;
+            404)
+              previous_version=""
+              echo "No existing LEGEND website-router deployment is present; first deployment will proceed."
+              ;;
+            *)
+              echo "::error::Cloudflare Worker deployment history lookup failed with HTTP $deployments_status."
+              exit 1
+              ;;
+          esac
+          if [ -n "$previous_version" ]; then
+            echo "::add-mask::$previous_version"
+          fi
+          printf 'LEGEND_ROUTING_PREVIOUS_VERSION=%s\n' "$previous_version" >> "$GITHUB_ENV"
+
+          restore_router() {
+            set +e
+            if [ -n "$previous_version" ]; then
+              payload="$(jq -cn --arg version "$previous_version" '{strategy:"percentage",versions:[{version_id:$version,percentage:100}],annotations:{"workers/message":"Automatic LEGEND website-router rollback"}}')"
+              response="$(curl --silent --show-error -X POST \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "$payload" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
+              if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
+                echo "Restored previous Cloudflare Worker version."
+                return 0
+              fi
+            fi
+
+            routes="$(curl --silent --show-error \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
+              [ -z "$route_id" ] && continue
+              curl --silent --show-error -X DELETE \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes/$route_id" >/dev/null
+            done
+            echo "::warning::Previous Worker version was unavailable; removed the LEGEND Worker route to restore provider DNS behavior."
+          }
+
+          npx wrangler deploy --config wrangler.website-routing.jsonc
+          printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
+
+          if ! python3 - <<'PYFIRSTPARTY'
+          import http.client, json, os, ssl, time
+          hosts=tuple(json.loads(os.environ['ROUTING_PASS_THROUGH_HOSTS']))
+          context=ssl.create_default_context()
+          failures=[]
+          for host in hosts:
+              last=None
+              for attempt in range(1,7):
+                  conn=http.client.HTTPSConnection(host,443,timeout=15,context=context)
+                  try:
+                      conn.request('GET','/',headers={'User-Agent':'LEGEND-worker-release-smoke/1.0','Cache-Control':'no-cache'})
+                      response=conn.getresponse()
+                      body=response.read(1025)
+                      last=f'HTTP {response.status}'
+                      print(host,attempt,response.status,len(body))
+                      if 200 <= response.status < 400:
+                          break
+                  except Exception as error:
+                      last=type(error).__name__
+                      print(host,attempt,last)
+                  finally:
+                      conn.close()
+                  time.sleep(5)
+              else:
+                  failures.append(f'{host}: {last}')
+          if failures:
+              raise SystemExit('LEGEND-owned host smoke failed after bounded retries: '+'; '.join(failures))
+          PYFIRSTPARTY
+          then
+            restore_router
+            exit 1
+          fi
+          echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
+      - name: Verify custom-domain bridge end to end
+        id: routinglive
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          restore_router() {
+            set +e
+            if [ -n "${LEGEND_ROUTING_PREVIOUS_VERSION:-}" ]; then
+              payload="$(jq -cn --arg version "$LEGEND_ROUTING_PREVIOUS_VERSION" '{strategy:"percentage",versions:[{version_id:$version,percentage:100}],annotations:{"workers/message":"Automatic LEGEND custom-domain proof rollback"}}')"
+              response="$(curl --silent --show-error -X POST \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "$payload" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
+              if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
+                echo "Restored previous Cloudflare Worker version."
+                return 0
+              fi
+            fi
+            routes="$(curl --silent --show-error \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
+              [ -z "$route_id" ] && continue
+              curl --silent --show-error -X DELETE \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes/$route_id" >/dev/null
+            done
+          }
+
+          db_connection="$(az webapp config connection-string list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ]; then
+            db_connection="$(az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          fi
+          routing_settings=/tmp/routing-domain-refresh.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$routing_settings"
+          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$routing_settings" | head -n 1)"
+          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$routing_settings" | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ] ||
+             [ -z "$domain_token" ] || [ "$domain_token" = null ] ||
+             [ -z "$cname_target" ] || [ "$cname_target" = null ]; then
+            echo "::error::Shared domain authority configuration is unavailable."
+            restore_router
+            exit 1
+          fi
+          echo "::add-mask::$db_connection"
+          echo "::add-mask::$domain_token"
+          if ! LEGEND_RELEASE_DOMAIN="$WEBSITE_ROUTING_CANARY" \
+               LEGEND_RELEASE_DB_CONNECTION="$db_connection" \
+               LEGEND_RELEASE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+               LEGEND_RELEASE_DOMAIN_TOKEN="$domain_token" \
+               LEGEND_RELEASE_CNAME_TARGET="$cname_target" \
+               dotnet run --project "$DOMAIN_REFRESH_PROJECT" -c Release --no-restore; then
+            restore_router
+            exit 1
+          fi
+
+          if ! python3 - <<'PYCUSTOM'
+          import http.client, json, os, ssl, time
+          host=os.environ['WEBSITE_ROUTING_CANARY']
+          context=ssl.create_default_context()
+
+          def request(path, accept=None):
+              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+              try:
+                  headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'}
+                  if accept: headers['Accept']=accept
+                  conn.request('GET',path,headers=headers)
+                  response=conn.getresponse()
+                  body=response.read(8193)
+                  edge_headers={key.lower(): value for key,value in response.getheaders()}
+                  if response.status >= 400:
+                      print('edge-diagnostic', json.dumps({
+                          'path': path,
+                          'status': response.status,
+                          'bytes': len(body),
+                          'server': edge_headers.get('server'),
+                          'cf-ray': edge_headers.get('cf-ray'),
+                          'cf-cache-status': edge_headers.get('cf-cache-status'),
+                          'x-azure-ref': edge_headers.get('x-azure-ref'),
+                          'x-ms-forbidden-ip': edge_headers.get('x-ms-forbidden-ip'),
+                          'content-type': edge_headers.get('content-type'),
+                          'bodyPrefix': body[:768].decode('utf-8','replace').replace('\\r',' ').replace('\\n',' ')
+                      }))
+                  return response.status, body, response.getheader('Location')
+              finally:
+                  conn.close()
+
+          binding_ok=False
+          store_ok=False
+          home_ok=False
+          last_binding=None
+          last_store=None
+          last_home=None
+          for attempt in range(1,9):
+              try:
+                  status,body,location=request('/.well-known/legend-website','application/json')
+                  last_binding=(status,len(body),location)
+                  print(host,'binding',attempt,status,len(body),location or '')
+                  if status==200 and len(body)<=4096 and not location:
+                      receipt=json.loads(body)
+                      if all(isinstance(receipt.get(key),str) and len(receipt.get(key))>=32 for key in ('businessId','bindingId')):
+                          binding_ok=True
+              except Exception as error:
+                  last_binding=(type(error).__name__,0,None)
+                  print(host,'binding',attempt,type(error).__name__)
+
+              try:
+                  status,body,location=request('/')
+                  last_home=(status,len(body),location)
+                  print(host,'/',attempt,status,len(body),location or '')
+                  home_ok=status==200 and len(body)>0 and not location
+              except Exception as error:
+                  last_home=(type(error).__name__,0,None)
+                  print(host,'/',attempt,type(error).__name__)
+                  home_ok=False
+
+              try:
+                  status,body,location=request('/store')
+                  last_store=(status,len(body),location)
+                  print(host,'/store',attempt,status,len(body),location or '')
+                  store_ok=status==200 and not location
+              except Exception as error:
+                  last_store=(type(error).__name__,0,None)
+                  print(host,'/store',attempt,type(error).__name__)
+                  store_ok=False
+
+              if binding_ok and home_ok and store_ok:
+                  break
+              time.sleep(5)
+
+          if not binding_ok:
+              raise SystemExit(f'Custom-domain routing proof did not stabilize: {last_binding}')
+          if not home_ok:
+              raise SystemExit(f'Custom-domain homepage did not stabilize: {last_home}')
+          if not store_ok:
+              raise SystemExit(f'Custom-domain store proof did not stabilize: {last_store}')
+          PYCUSTOM
+          then
+            restore_router
+            exit 1
+          fi
+          echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
+
+      - name: Capture exact Cloudflare challenge event after failed live proof
+        id: routingchallenge
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome == 'failure' && steps.routingauthority.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py challenge-events --host "$WEBSITE_ROUTING_CANARY"
+
+      - name: Verify every deployed target and collect all failures
+        id: live
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/translation-results
+          python3 scripts/validation-resume.py verify-live \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output /tmp/translation-results/live.json
+
+      - name: Restore Founder Cloudflare baseline after downstream release failure
+        id: foundercloudrollback
+        if: ${{ always() && env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome == 'success' && steps.live.outcome != 'success' }}
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          python3 scripts/deploy-founder-cloudflare.py rollback \
+            --state /tmp/legend-founder-cloudflare-state.json
+
+      - name: Restore complete application baseline after downstream release failure
+        id: transactionrollback
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success') || (env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome != 'success')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --rollback-root /tmp/rollback-packages \
+            --rollback-only
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: translation-direct-release-${{ env.RELEASE_SHA }}
+          path: /tmp/translation-results/
+          if-no-files-found: warn
+      - name: Enforce complete direct deployment outcome
+        if: always()
+        env:
+          BASE: ${{ steps.base.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          AZURE: ${{ steps.azure.outcome }}
+          TRANSACTION: ${{ steps.transaction.outcome }}
+          TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
+          LIVE: ${{ steps.live.outcome }}
+          ROUTING_LIVE: ${{ steps.routinglive.outcome }}
+          FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
+          FOUNDER_CLOUD_ROLLBACK: ${{ steps.foundercloudrollback.outcome }}
+          VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
+          WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
+          FOUNDER_CLOUDFLARE: ${{ env.FOUNDER_CLOUDFLARE }}
+          PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
+          EXACT_LIVE: ${{ env.EXACT_LIVE }}
+        run: |
+          python3 - <<'PYRESULT'
+          import json,os
+          selected=json.loads(os.environ['SELECTED_TARGETS'])
+          assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
+          validate_only=os.environ.get('VALIDATE_ONLY')=='true'
+          website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
+          founder_cloudflare=os.environ.get('FOUNDER_CLOUDFLARE')=='true'
+          preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
+          exact_live=os.environ.get('EXACT_LIVE')=='true'
+          base=os.environ['BASE']
+          package=os.environ['PACKAGE']
+          azure=os.environ['AZURE']
+          transaction=os.environ['TRANSACTION']
+          rollback=os.environ['TRANSACTION_ROLLBACK']
+          live=os.environ['LIVE']
+          routing_live=os.environ['ROUTING_LIVE']
+          founder_cloud=os.environ['FOUNDER_CLOUD']
+          founder_cloud_rollback=os.environ['FOUNDER_CLOUD_ROLLBACK']
+
+          if validate_only:
+              assert not preserve_live and not exact_live
+              assert base=='success' and package=='success'
+              assert transaction=='skipped' and live=='skipped'
+              mode='validate-only'
+          elif exact_live:
+              assert not preserve_live and not website_routing and not founder_cloudflare
+              assert base=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='exact-live-noop'
+          elif preserve_live:
+              assert website_routing
+              assert base=='success' and azure=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='preserve-live-routing-recovery'
+          else:
+              assert base=='success' and package=='success' and azure=='success'
+              assert transaction=='success'
+              assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
+              assert live=='success'
+              if founder_cloudflare:
+                  assert founder_cloud=='success'
+                  assert founder_cloud_rollback=='skipped'
+              mode='approved-transaction'
+
+          if website_routing and not validate_only:
+              assert routing_live=='success'
+
+          receipt={
+              'schemaVersion':2,
+              'mode':mode,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'releaseHeadSha':os.environ['RELEASE_SHA'],
+              'selectedTargets':selected,
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'founderCloudflare':founder_cloudflare,
+              'transaction':'committed' if transaction=='success' else 'preserved',
+          }
+          with open('/tmp/approved-release-receipt.json','w') as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
+          PYRESULT
+      - name: Retain exact approved release receipt
+        if: success() && env.VALIDATE_ONLY != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}
+          path: /tmp/approved-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
+  target-release-receipts:
+    name: target-release-receipts (${{ matrix.app }})
+    needs: [discover-live, release]
+    if: needs.release.result == 'success' && needs.discover-live.outputs.validate_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
+    steps:
+      - name: Bind successful transaction receipt to canonical target
+        shell: bash
+        env:
+          APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+          SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+          TARGET_NAME: ${{ matrix.releaseName }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTARGETRECEIPT'
+          import json,os,pathlib
+          names=json.loads(os.environ['SELECTED_TARGETS'])
+          release_name=os.environ['TARGET_NAME']
+          if release_name not in names:
+              raise SystemExit('Target receipt is not part of the canonical selected release set')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'target':release_name,
+              'transaction':'committed-or-preserved',
+          }
+          pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          PYTARGETRECEIPT
+      - name: Preserve target-specific successful release receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
+          path: /tmp/target-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
+  release-state-receipt:
+    name: release-state-receipt
+    needs: [discover-live, release]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
+      SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+    steps:
+      - name: Capture exact release step-state receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")"
+          printf '%s' "$jobs" > "$RUNNER_TEMP/release-jobs.json"
+          python3 - "$RUNNER_TEMP/release-jobs.json" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
+          import json,sys
+          jobs_path,run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
+          with open(jobs_path) as source:
+              payload=json.load(source)
+          release_jobs=[row for row in payload.get('jobs',[]) if row.get('name')=='release']
+          if len(release_jobs)!=1:
+              raise SystemExit('Expected exactly one terminal release job')
+          job=release_jobs[0]
+          if job.get('status')!='completed':
+              raise SystemExit('Release job is not terminal; refusing partial state receipt')
+          steps=[
+              {
+                  'number':step.get('number'),
+                  'name':step.get('name'),
+                  'status':step.get('status'),
+                  'conclusion':step.get('conclusion'),
+              }
+              for step in job.get('steps',[])
+          ]
+          if any(not row['name'] for row in steps):
+              raise SystemExit('Release step inventory malformed')
+          if not steps and job.get('conclusion')!='skipped':
+              raise SystemExit('Terminal non-skipped release job has no step inventory')
+          state={
+              'schemaVersion':2,
+              'runId':int(run_id),
+              'runAttempt':int(attempt),
+              'releaseHeadSha':release_sha,
+              'applicationReleaseSha':application_sha or None,
+              'packageIdentity':package_identity or None,
+              'selectedTargets':json.loads(targets) if targets else [],
+              'releaseJobConclusion':job.get('conclusion'),
+              'steps':steps,
+          }
+          with open('/tmp/legend-release-step-state.json','w') as output:
+              json.dump(state,output,sort_keys=True,indent=2)
+          print(json.dumps({
+              'releaseJobConclusion':state['releaseJobConclusion'],
+              'applicationReleaseSha':state['applicationReleaseSha'],
+              'stepOutcomes':{row['name']:row['conclusion'] for row in steps},
+          },sort_keys=True))
+          PYSTATE
+
+      - name: Preserve exact release step-state receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-step-state-${{ needs.discover-live.outputs.application_release_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/legend-release-step-state.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Bind successful release to canonical validated package
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPACKAGELINK'
+          import json,os,pathlib,re
+          revision=os.environ['APPLICATION_RELEASE_SHA']
+          identity=os.environ['PACKAGE_IDENTITY']
+          if not re.fullmatch(r'[0-9a-f]{40}',revision):
+              raise SystemExit('Package-link release revision is malformed')
+          if not re.fullmatch(r'[0-9a-f]{64}',identity):
+              raise SystemExit('Package-link identity is malformed')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':revision,
+              'packageIdentity':identity,
+              'source':'canonical-validated-package',
+          }
+          pathlib.Path('/tmp/legend-approved-package-link.json').write_text(
+              json.dumps(payload,sort_keys=True,indent=2)+'\n'
+          )
+          PYPACKAGELINK
+
+      - name: Preserve validated package release binding
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}
+          path: /tmp/legend-approved-package-link.json
+          retention-days: 90
+          if-no-files-found: error
+ |
+            grep -v '\.Designer\.cs
+          bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
+          test -x "$bundle"
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+
+          python3 - <<'PYMIGRATE'
+          import json, os, pathlib, subprocess
+          def az(*args):
+              return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
+          resource_group=os.environ['RELEASE_RESOURCE_GROUP']
+          authority=os.environ['DATABASE_AUTHORITY']
+          rows=az('webapp','config','connection-string','list','-g',resource_group,'-n',authority)
+          connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
+          if not connection:
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g',resource_group,'-n',authority)}
+              connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
+          if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
+              raise SystemExit('Production SQL connection unavailable; no restart authorized.')
+          print('::add-mask::'+connection,flush=True)
+          bundle=pathlib.Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
+          subprocess.run(
+              [str(bundle),'--connection',connection],
+              check=True,
+              env=os.environ | {'DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'},
+          )
+          print('Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
+          PYMIGRATE
+      - name: Load preserved rollback packages for transactional publication
+        id: rollbackpackages
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: diagnostics-rollback-*-${{ env.RELEASE_SHA }}
+          path: /tmp/rollback-packages
+          merge-multiple: false
+      - name: Refresh Azure OIDC before transactional publication
+        id: azuredeploy
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Publish selected head as one transaction
+        id: transaction
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.azuredeploy.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --package-root /tmp/diagnostics-packages \
+            --rollback-root /tmp/rollback-packages
+      - name: Deploy and activate LEGEND Founder Cloudflare baseline
+        id: foundercloud
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Central Cloudflare Workers authority is not configured."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Central Cloudflare account authority is not configured."; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          mkdir -p /tmp/translation-results
+          python3 scripts/deploy-founder-cloudflare.py deploy \
+            --state /tmp/legend-founder-cloudflare-state.json \
+            --receipt /tmp/translation-results/legend-founder-cloudflare.json
+
+      - name: Reconcile public custom-hostname Cloudflare policy
+        id: routingpolicy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py reconcile-bot-fight
+          python3 scripts/cloudflare-routing-authority.py reconcile-bic
+
+      - name: Deploy shared Cloudflare business website router
+        id: routingdeploy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Legend-Cloudflare
+
+          deployments_file=/tmp/legend-router-deployments.json
+          deployments_status="$(curl --silent --show-error \
+            -o "$deployments_file" -w '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments?per_page=1")"
+          case "$deployments_status" in
+            200)
+              previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
+              ;;
+            404)
+              previous_version=""
+              echo "No existing LEGEND website-router deployment is present; first deployment will proceed."
+              ;;
+            *)
+              echo "::error::Cloudflare Worker deployment history lookup failed with HTTP $deployments_status."
+              exit 1
+              ;;
+          esac
+          if [ -n "$previous_version" ]; then
+            echo "::add-mask::$previous_version"
+          fi
+          printf 'LEGEND_ROUTING_PREVIOUS_VERSION=%s\n' "$previous_version" >> "$GITHUB_ENV"
+
+          restore_router() {
+            set +e
+            if [ -n "$previous_version" ]; then
+              payload="$(jq -cn --arg version "$previous_version" '{strategy:"percentage",versions:[{version_id:$version,percentage:100}],annotations:{"workers/message":"Automatic LEGEND website-router rollback"}}')"
+              response="$(curl --silent --show-error -X POST \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "$payload" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
+              if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
+                echo "Restored previous Cloudflare Worker version."
+                return 0
+              fi
+            fi
+
+            routes="$(curl --silent --show-error \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
+              [ -z "$route_id" ] && continue
+              curl --silent --show-error -X DELETE \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes/$route_id" >/dev/null
+            done
+            echo "::warning::Previous Worker version was unavailable; removed the LEGEND Worker route to restore provider DNS behavior."
+          }
+
+          npx wrangler deploy --config wrangler.website-routing.jsonc
+          printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
+
+          if ! python3 - <<'PYFIRSTPARTY'
+          import http.client, json, os, ssl, time
+          hosts=tuple(json.loads(os.environ['ROUTING_PASS_THROUGH_HOSTS']))
+          context=ssl.create_default_context()
+          failures=[]
+          for host in hosts:
+              last=None
+              for attempt in range(1,7):
+                  conn=http.client.HTTPSConnection(host,443,timeout=15,context=context)
+                  try:
+                      conn.request('GET','/',headers={'User-Agent':'LEGEND-worker-release-smoke/1.0','Cache-Control':'no-cache'})
+                      response=conn.getresponse()
+                      body=response.read(1025)
+                      last=f'HTTP {response.status}'
+                      print(host,attempt,response.status,len(body))
+                      if 200 <= response.status < 400:
+                          break
+                  except Exception as error:
+                      last=type(error).__name__
+                      print(host,attempt,last)
+                  finally:
+                      conn.close()
+                  time.sleep(5)
+              else:
+                  failures.append(f'{host}: {last}')
+          if failures:
+              raise SystemExit('LEGEND-owned host smoke failed after bounded retries: '+'; '.join(failures))
+          PYFIRSTPARTY
+          then
+            restore_router
+            exit 1
+          fi
+          echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
+      - name: Verify custom-domain bridge end to end
+        id: routinglive
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          restore_router() {
+            set +e
+            if [ -n "${LEGEND_ROUTING_PREVIOUS_VERSION:-}" ]; then
+              payload="$(jq -cn --arg version "$LEGEND_ROUTING_PREVIOUS_VERSION" '{strategy:"percentage",versions:[{version_id:$version,percentage:100}],annotations:{"workers/message":"Automatic LEGEND custom-domain proof rollback"}}')"
+              response="$(curl --silent --show-error -X POST \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                --data "$payload" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$ROUTING_WORKER/deployments")"
+              if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
+                echo "Restored previous Cloudflare Worker version."
+                return 0
+              fi
+            fi
+            routes="$(curl --silent --show-error \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes")"
+            printf '%s' "$routes" | jq -r --arg worker "$ROUTING_WORKER" '.result[]? | select(.script==$worker) | .id' | while read -r route_id; do
+              [ -z "$route_id" ] && continue
+              curl --silent --show-error -X DELETE \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes/$route_id" >/dev/null
+            done
+          }
+
+          db_connection="$(az webapp config connection-string list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ]; then
+            db_connection="$(az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          fi
+          routing_settings=/tmp/routing-domain-refresh.json
+          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$routing_settings"
+          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$routing_settings" | head -n 1)"
+          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$routing_settings" | head -n 1)"
+          if [ -z "$db_connection" ] || [ "$db_connection" = null ] ||
+             [ -z "$domain_token" ] || [ "$domain_token" = null ] ||
+             [ -z "$cname_target" ] || [ "$cname_target" = null ]; then
+            echo "::error::Shared domain authority configuration is unavailable."
+            restore_router
+            exit 1
+          fi
+          echo "::add-mask::$db_connection"
+          echo "::add-mask::$domain_token"
+          if ! LEGEND_RELEASE_DOMAIN="$WEBSITE_ROUTING_CANARY" \
+               LEGEND_RELEASE_DB_CONNECTION="$db_connection" \
+               LEGEND_RELEASE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+               LEGEND_RELEASE_DOMAIN_TOKEN="$domain_token" \
+               LEGEND_RELEASE_CNAME_TARGET="$cname_target" \
+               dotnet run --project "$DOMAIN_REFRESH_PROJECT" -c Release --no-restore; then
+            restore_router
+            exit 1
+          fi
+
+          if ! python3 - <<'PYCUSTOM'
+          import http.client, json, os, ssl, time
+          host=os.environ['WEBSITE_ROUTING_CANARY']
+          context=ssl.create_default_context()
+
+          def request(path, accept=None):
+              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+              try:
+                  headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'}
+                  if accept: headers['Accept']=accept
+                  conn.request('GET',path,headers=headers)
+                  response=conn.getresponse()
+                  body=response.read(8193)
+                  edge_headers={key.lower(): value for key,value in response.getheaders()}
+                  if response.status >= 400:
+                      print('edge-diagnostic', json.dumps({
+                          'path': path,
+                          'status': response.status,
+                          'bytes': len(body),
+                          'server': edge_headers.get('server'),
+                          'cf-ray': edge_headers.get('cf-ray'),
+                          'cf-cache-status': edge_headers.get('cf-cache-status'),
+                          'x-azure-ref': edge_headers.get('x-azure-ref'),
+                          'x-ms-forbidden-ip': edge_headers.get('x-ms-forbidden-ip'),
+                          'content-type': edge_headers.get('content-type'),
+                          'bodyPrefix': body[:768].decode('utf-8','replace').replace('\\r',' ').replace('\\n',' ')
+                      }))
+                  return response.status, body, response.getheader('Location')
+              finally:
+                  conn.close()
+
+          binding_ok=False
+          store_ok=False
+          home_ok=False
+          last_binding=None
+          last_store=None
+          last_home=None
+          for attempt in range(1,9):
+              try:
+                  status,body,location=request('/.well-known/legend-website','application/json')
+                  last_binding=(status,len(body),location)
+                  print(host,'binding',attempt,status,len(body),location or '')
+                  if status==200 and len(body)<=4096 and not location:
+                      receipt=json.loads(body)
+                      if all(isinstance(receipt.get(key),str) and len(receipt.get(key))>=32 for key in ('businessId','bindingId')):
+                          binding_ok=True
+              except Exception as error:
+                  last_binding=(type(error).__name__,0,None)
+                  print(host,'binding',attempt,type(error).__name__)
+
+              try:
+                  status,body,location=request('/')
+                  last_home=(status,len(body),location)
+                  print(host,'/',attempt,status,len(body),location or '')
+                  home_ok=status==200 and len(body)>0 and not location
+              except Exception as error:
+                  last_home=(type(error).__name__,0,None)
+                  print(host,'/',attempt,type(error).__name__)
+                  home_ok=False
+
+              try:
+                  status,body,location=request('/store')
+                  last_store=(status,len(body),location)
+                  print(host,'/store',attempt,status,len(body),location or '')
+                  store_ok=status==200 and not location
+              except Exception as error:
+                  last_store=(type(error).__name__,0,None)
+                  print(host,'/store',attempt,type(error).__name__)
+                  store_ok=False
+
+              if binding_ok and home_ok and store_ok:
+                  break
+              time.sleep(5)
+
+          if not binding_ok:
+              raise SystemExit(f'Custom-domain routing proof did not stabilize: {last_binding}')
+          if not home_ok:
+              raise SystemExit(f'Custom-domain homepage did not stabilize: {last_home}')
+          if not store_ok:
+              raise SystemExit(f'Custom-domain store proof did not stabilize: {last_store}')
+          PYCUSTOM
+          then
+            restore_router
+            exit 1
+          fi
+          echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
+
+      - name: Capture exact Cloudflare challenge event after failed live proof
+        id: routingchallenge
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome == 'failure' && steps.routingauthority.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/cloudflare-routing-authority.py challenge-events --host "$WEBSITE_ROUTING_CANARY"
+
+      - name: Verify every deployed target and collect all failures
+        id: live
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/translation-results
+          python3 scripts/validation-resume.py verify-live \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --selected-targets "$SELECTED_TARGETS" \
+            --output /tmp/translation-results/live.json
+
+      - name: Restore Founder Cloudflare baseline after downstream release failure
+        id: foundercloudrollback
+        if: ${{ always() && env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome == 'success' && steps.live.outcome != 'success' }}
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
+          python3 scripts/deploy-founder-cloudflare.py rollback \
+            --state /tmp/legend-founder-cloudflare-state.json
+
+      - name: Restore complete application baseline after downstream release failure
+        id: transactionrollback
+        if: ${{ always() && steps.transaction.outcome == 'success' && (steps.live.outcome != 'success' || (env.WEBSITE_ROUTING == 'true' && steps.routinglive.outcome != 'success') || (env.FOUNDER_CLOUDFLARE == 'true' && steps.foundercloud.outcome != 'success')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$SELECTED_TARGETS" \
+            --baselines-json "$LIVE_BASELINES" \
+            --rollback-root /tmp/rollback-packages \
+            --rollback-only
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: translation-direct-release-${{ env.RELEASE_SHA }}
+          path: /tmp/translation-results/
+          if-no-files-found: warn
+      - name: Enforce complete direct deployment outcome
+        if: always()
+        env:
+          BASE: ${{ steps.base.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          AZURE: ${{ steps.azure.outcome }}
+          TRANSACTION: ${{ steps.transaction.outcome }}
+          TRANSACTION_ROLLBACK: ${{ steps.transactionrollback.outcome }}
+          LIVE: ${{ steps.live.outcome }}
+          ROUTING_LIVE: ${{ steps.routinglive.outcome }}
+          FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
+          FOUNDER_CLOUD_ROLLBACK: ${{ steps.foundercloudrollback.outcome }}
+          VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
+          WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
+          FOUNDER_CLOUDFLARE: ${{ env.FOUNDER_CLOUDFLARE }}
+          PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
+          EXACT_LIVE: ${{ env.EXACT_LIVE }}
+        run: |
+          python3 - <<'PYRESULT'
+          import json,os
+          selected=json.loads(os.environ['SELECTED_TARGETS'])
+          assert isinstance(selected,list) and selected and len(selected)==len(set(selected))
+          validate_only=os.environ.get('VALIDATE_ONLY')=='true'
+          website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
+          founder_cloudflare=os.environ.get('FOUNDER_CLOUDFLARE')=='true'
+          preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
+          exact_live=os.environ.get('EXACT_LIVE')=='true'
+          base=os.environ['BASE']
+          package=os.environ['PACKAGE']
+          azure=os.environ['AZURE']
+          transaction=os.environ['TRANSACTION']
+          rollback=os.environ['TRANSACTION_ROLLBACK']
+          live=os.environ['LIVE']
+          routing_live=os.environ['ROUTING_LIVE']
+          founder_cloud=os.environ['FOUNDER_CLOUD']
+          founder_cloud_rollback=os.environ['FOUNDER_CLOUD_ROLLBACK']
+
+          if validate_only:
+              assert not preserve_live and not exact_live
+              assert base=='success' and package=='success'
+              assert transaction=='skipped' and live=='skipped'
+              mode='validate-only'
+          elif exact_live:
+              assert not preserve_live and not website_routing and not founder_cloudflare
+              assert base=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='exact-live-noop'
+          elif preserve_live:
+              assert website_routing
+              assert base=='success' and azure=='success' and live=='success'
+              assert transaction=='skipped' and rollback=='skipped'
+              mode='preserve-live-routing-recovery'
+          else:
+              assert base=='success' and package=='success' and azure=='success'
+              assert transaction=='success'
+              assert rollback=='skipped', 'Downstream release failure forced complete application rollback'
+              assert live=='success'
+              if founder_cloudflare:
+                  assert founder_cloud=='success'
+                  assert founder_cloud_rollback=='skipped'
+              mode='approved-transaction'
+
+          if website_routing and not validate_only:
+              assert routing_live=='success'
+
+          receipt={
+              'schemaVersion':2,
+              'mode':mode,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'releaseHeadSha':os.environ['RELEASE_SHA'],
+              'selectedTargets':selected,
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+              'founderCloudflare':founder_cloudflare,
+              'transaction':'committed' if transaction=='success' else 'preserved',
+          }
+          with open('/tmp/approved-release-receipt.json','w') as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
+          PYRESULT
+      - name: Retain exact approved release receipt
+        if: success() && env.VALIDATE_ONLY != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}
+          path: /tmp/approved-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
+  target-release-receipts:
+    name: target-release-receipts (${{ matrix.app }})
+    needs: [discover-live, release]
+    if: needs.release.result == 'success' && needs.discover-live.outputs.validate_only != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
+    steps:
+      - name: Bind successful transaction receipt to canonical target
+        shell: bash
+        env:
+          APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+          SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+          TARGET_NAME: ${{ matrix.releaseName }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTARGETRECEIPT'
+          import json,os,pathlib
+          names=json.loads(os.environ['SELECTED_TARGETS'])
+          release_name=os.environ['TARGET_NAME']
+          if release_name not in names:
+              raise SystemExit('Target receipt is not part of the canonical selected release set')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
+              'target':release_name,
+              'transaction':'committed-or-preserved',
+          }
+          pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          PYTARGETRECEIPT
+      - name: Preserve target-specific successful release receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
+          path: /tmp/target-release-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
+  release-state-receipt:
+    name: release-state-receipt
+    needs: [discover-live, release]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
+      SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
+    steps:
+      - name: Capture exact release step-state receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")"
+          printf '%s' "$jobs" > "$RUNNER_TEMP/release-jobs.json"
+          python3 - "$RUNNER_TEMP/release-jobs.json" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
+          import json,sys
+          jobs_path,run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
+          with open(jobs_path) as source:
+              payload=json.load(source)
+          release_jobs=[row for row in payload.get('jobs',[]) if row.get('name')=='release']
+          if len(release_jobs)!=1:
+              raise SystemExit('Expected exactly one terminal release job')
+          job=release_jobs[0]
+          if job.get('status')!='completed':
+              raise SystemExit('Release job is not terminal; refusing partial state receipt')
+          steps=[
+              {
+                  'number':step.get('number'),
+                  'name':step.get('name'),
+                  'status':step.get('status'),
+                  'conclusion':step.get('conclusion'),
+              }
+              for step in job.get('steps',[])
+          ]
+          if any(not row['name'] for row in steps):
+              raise SystemExit('Release step inventory malformed')
+          if not steps and job.get('conclusion')!='skipped':
+              raise SystemExit('Terminal non-skipped release job has no step inventory')
+          state={
+              'schemaVersion':2,
+              'runId':int(run_id),
+              'runAttempt':int(attempt),
+              'releaseHeadSha':release_sha,
+              'applicationReleaseSha':application_sha or None,
+              'packageIdentity':package_identity or None,
+              'selectedTargets':json.loads(targets) if targets else [],
+              'releaseJobConclusion':job.get('conclusion'),
+              'steps':steps,
+          }
+          with open('/tmp/legend-release-step-state.json','w') as output:
+              json.dump(state,output,sort_keys=True,indent=2)
+          print(json.dumps({
+              'releaseJobConclusion':state['releaseJobConclusion'],
+              'applicationReleaseSha':state['applicationReleaseSha'],
+              'stepOutcomes':{row['name']:row['conclusion'] for row in steps},
+          },sort_keys=True))
+          PYSTATE
+
+      - name: Preserve exact release step-state receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-step-state-${{ needs.discover-live.outputs.application_release_sha || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/legend-release-step-state.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Bind successful release to canonical validated package
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPACKAGELINK'
+          import json,os,pathlib,re
+          revision=os.environ['APPLICATION_RELEASE_SHA']
+          identity=os.environ['PACKAGE_IDENTITY']
+          if not re.fullmatch(r'[0-9a-f]{40}',revision):
+              raise SystemExit('Package-link release revision is malformed')
+          if not re.fullmatch(r'[0-9a-f]{64}',identity):
+              raise SystemExit('Package-link identity is malformed')
+          payload={
+              'schemaVersion':1,
+              'applicationReleaseSha':revision,
+              'packageIdentity':identity,
+              'source':'canonical-validated-package',
+          }
+          pathlib.Path('/tmp/legend-approved-package-link.json').write_text(
+              json.dumps(payload,sort_keys=True,indent=2)+'\n'
+          )
+          PYPACKAGELINK
+
+      - name: Preserve validated package release binding
+        if: >-
+          needs.release.result == 'success' &&
+          needs.discover-live.outputs.validate_only != 'true' &&
+          needs.discover-live.outputs.exact_live != 'true' &&
+          needs.discover-live.outputs.preserve_live_targets != 'true' &&
+          needs.discover-live.outputs.package_identity != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}
+          path: /tmp/legend-approved-package-link.json
+          retention-days: 90
+          if-no-files-found: error
+ || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the database baseline; migration receipt gate is not applicable."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          # A prior successful database release receipt is required only when this
+          # candidate actually changes migration source and is about to mutate SQL.
+          # No-op/schema-neutral releases must not be blocked by unrelated receipt
+          # history because no database write is being authorized.
           python3 - <<'PYBASELINE'
           import importlib.util, os, sys
           from pathlib import Path
@@ -743,17 +1998,6 @@ jobs:
               raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
           print('Database baseline release receipt verified:',base)
           PYBASELINE
-
-          changed="$(
-            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
-            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
-            grep -v '\.Designer\.cs$' || true
-          )"
-          if [ -z "$changed" ]; then
-            echo "No candidate migration source changed from the proven database baseline."
-            exit 0
-          fi
-          printf '%s\n' "$changed"
 
           bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
           test -x "$bundle"
