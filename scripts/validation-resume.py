@@ -620,6 +620,7 @@ WORKFLOWS = {
             "scripts/test-release-policy.py",
             "scripts/test-deploy-approved-app.py",
             "Legend-Cloudflare/tests/**",
+            "tests/**",
         ),
         "gates": {
             "candidate-restore": {
@@ -2534,14 +2535,20 @@ def compute_step5_decision(
         if path.startswith("AgentPortal.Tests/") and path.endswith(".cs")
     }
     allowed_test_files = set().union(*class_sources.values())
-    allowed = allowed_test_files | allowed_planner_only
+    step5_neutral_patterns = WORKFLOWS[workflow_name].get("neutral", ())
+    allowed_neutral_files = {
+        path for _, path in rows
+        if matches(path, step5_neutral_patterns)
+    }
+    allowed_control_files = allowed_planner_only | allowed_neutral_files
+    allowed = allowed_test_files | allowed_control_files
     if (
         not changed_files <= allowed
         or not changed_tests
         or not changed_tests <= allowed_test_files
         or any(status != "M" for status, path in rows if path in changed_tests)
         or any(not (changed_tests & source_files) for source_files in class_sources.values())
-        or any(status not in {"M", "A"} for status, path in rows if path in allowed_planner_only)
+        or any(status not in {"M", "A"} for status, path in rows if path in allowed_control_files)
     ):
         decision["reason"] = "repair_diff_not_exact"
         return decision

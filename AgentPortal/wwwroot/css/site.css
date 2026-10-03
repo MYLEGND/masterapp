@@ -21,7 +21,7 @@
     max-width: 90%;
     padding: 0.6rem 2.5rem 0.6rem 1rem;
     border-radius: 50px;
-    border: 2px solid #a68023;
+    border: 2px solid var(--legend-app-accent);
     font-size: 1rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
@@ -123,4 +123,3 @@
     margin: 0;
     max-width: 340px;
 }
-

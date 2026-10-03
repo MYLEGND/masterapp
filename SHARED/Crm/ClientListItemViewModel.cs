@@ -37,6 +37,7 @@ public sealed class ClientListItemViewModel
     public string? ContactStatus { get; set; }
     public string PipelineStage { get; set; } = ClientCrmMeta.DefaultPipelineStage;
     public double PipelineOrder { get; set; }
+    public bool IsStarred { get; set; }
     public string? MeetingLocation { get; set; }
     public string? ZoomJoinUrl { get; set; }
     public bool UsePersonalZoomLink { get; set; }

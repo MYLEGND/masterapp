@@ -1831,6 +1831,7 @@ namespace AgentPortal.Controllers;
             agentNotes = profile.AgentNotes ?? "",
             pipelineStage,
             pipelineOrder = meta.PipelineOrder,
+            isStarred = meta.IsStarred,
             pipelineStageLabel = StageLabel(pipelineStage),
             waitingOn = meta.WaitingOn,
             waitingOnLabel = WaitingOnLabel(meta.WaitingOn),
@@ -2227,6 +2228,7 @@ namespace AgentPortal.Controllers;
                         x.ClientUserId,
                         x.CrmNotes),
                     PipelineOrder = meta.PipelineOrder,
+                    IsStarred = meta.IsStarred,
                     MeetingLocation = meta.MeetingLocation,
                     ZoomJoinUrl = meta.ZoomJoinUrl,
                     UsePersonalZoomLink = meta.UsePersonalZoomLink,
@@ -4060,6 +4062,12 @@ namespace AgentPortal.Controllers;
     {
         public string? Bucket { get; set; }
         public List<string> Ids { get; set; } = new();
+    }
+
+    public sealed class SetStarredRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public bool IsStarred { get; set; }
     }
 
     public sealed class GrantClientAccessRequest
@@ -6082,6 +6090,29 @@ namespace AgentPortal.Controllers;
 
         await _db.SaveChangesAsync();
         return Json(new { ok = true, updated = profiles.Count });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetStarred([FromBody] SetStarredRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.ClientUserId))
+            return BadRequest("Client id required.");
+
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+        if (profile == null) return Forbid();
+
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+        meta.IsStarred = request.IsStarred;
+        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+        profile.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        return Json(new { ok = true, isStarred = meta.IsStarred });
     }
 
     [HttpPost]

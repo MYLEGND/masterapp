@@ -6,10 +6,10 @@
     place-items: center;
     padding: 0;
     margin: 0 4px;
-    border: 1px solid rgba(217, 169, 61, .66);
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 14px;
     overflow: hidden;
-    background: #0b1830;
+    background: var(--legend-app-surface);
     box-shadow:
         inset 0 0 0 1px rgba(255,255,255,.035),
         0 10px 24px rgba(0,0,0,.20);
@@ -20,7 +20,7 @@
 .legend-founder-ai-nav-button:hover,
 .legend-founder-ai-nav-button:focus-visible {
     transform: translateY(-1px);
-    border-color: #f0c768;
+    border-color: var(--legend-app-accent-bright);
     box-shadow:
         inset 0 0 0 1px rgba(255,255,255,.07),
         0 14px 30px rgba(0,0,0,.26),
@@ -43,38 +43,32 @@
     /* Filled at runtime from /design/legend-design.tokens.json, the same
        versioned resource bundled by iOS. The values after each var are only
        first-paint fallbacks when the static token resource is unavailable. */
-    --legend-ai-ink: var(--legend-design-midnight, #0a162e);
-    --legend-ai-navy-975: var(--legend-design-midnight, #0a162e);
-    --legend-ai-navy-950: var(--legend-design-midnight, #0a162e);
-    --legend-ai-navy-925: var(--legend-design-navy, #10254c);
-    --legend-ai-navy-900: var(--legend-design-navy, #10254c);
+    --legend-ai-ink: var(--legend-app-surface);
+    --legend-ai-navy-975: var(--legend-app-surface);
+    --legend-ai-navy-950: var(--legend-app-surface);
+    --legend-ai-navy-925: var(--legend-app-surface-elevated);
+    --legend-ai-navy-900: var(--legend-app-surface-elevated);
     --legend-ai-navy-850: var(--legend-design-navyElevated, #3159bf);
     --legend-ai-response: var(--legend-design-aiResponseRoyal, var(--legend-ai-navy-850));
     --legend-ai-on-response: var(--legend-design-onNavy, #fff);
-    --legend-ai-gold-800: var(--legend-design-gold, #a68023);
-    --legend-ai-gold-700: var(--legend-design-gold, #a68023);
-    --legend-ai-gold-600: var(--legend-design-goldBright, #e0b853);
-    --legend-ai-gold-500: var(--legend-design-goldBright, #e0b853);
-    --legend-ai-gold-400: var(--legend-design-goldBright, #e0b853);
+    --legend-ai-gold-800: var(--legend-app-accent);
+    --legend-ai-gold-700: var(--legend-app-accent);
+    --legend-ai-gold-600: var(--legend-app-accent-bright);
+    --legend-ai-gold-500: var(--legend-app-accent-bright);
+    --legend-ai-gold-400: var(--legend-app-accent-bright);
     --legend-ai-gold-300: var(--legend-design-goldSoft, #f6e8bf);
-    --legend-ai-ivory: var(--legend-design-canvasSecondary, #f6f9ff);
-    --legend-ai-paper: var(--legend-design-canvas, #ffffff);
-    --legend-ai-text: var(--legend-design-textPrimary, #0a162e);
-    --legend-ai-muted: var(--legend-design-textSecondary, #475569);
+    --legend-ai-ivory: var(--legend-app-panel-soft);
+    --legend-ai-paper: var(--legend-app-panel);
+    --legend-ai-text: var(--web-ink);
+    --legend-ai-muted: var(--web-muted);
     --legend-ai-native: var(--legend-design-contactConnected, #4ae28b);
     --legend-ai-provider: var(--legend-design-royal, #234284);
     --legend-ai-provider-surface: var(--legend-design-brandBlueSurface, #e0ebff);
-    --legend-ai-compact-control: var(--legend-design-compactControlHeight, 36px);
-    --legend-ai-control: var(--legend-design-controlHeight, 46px);
+    --legend-ai-compact-control: var(--legend-desktop-control-height);
+    --legend-ai-control: var(--legend-desktop-control-height);
     --legend-ai-line: color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
     --legend-ai-danger: #ff3b30;
     --legend-ai-viewport-height: 100vh;
-}
-
-.legend-founder-ai-modal .modal-dialog {
-    width: min(1480px, calc(100vw - 34px));
-    max-width: 1480px;
-    margin: 17px auto;
 }
 
 .legend-founder-ai-modal .modal-content {
@@ -84,8 +78,7 @@
 
 .legend-founder-ai-shell {
     position: relative;
-    height: min(900px, calc(100vh - 34px));
-    min-height: 680px;
+    min-height: 0;
     overflow: hidden;
     display: grid;
     grid-template-rows: 80px minmax(0, 1fr);
