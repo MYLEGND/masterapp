@@ -5964,7 +5964,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     --crm-qv-text:#f7fbff;
     --crm-qv-muted:rgba(213,225,247,.74);
     --crm-qv-gold:#ecd184;
-    max-height:min(90vh, calc(var(--legend-modal-safe-height, 100vh) - 16px));
     background:
         radial-gradient(circle at top right, rgba(95,138,231,.16), transparent 34%),
         linear-gradient(180deg, var(--crm-qv-shell-soft) 0%, var(--crm-qv-shell) 34%, var(--crm-qv-shell-deep) 100%);
