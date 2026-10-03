@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -20,6 +21,75 @@ class ValidationResumePlannerTests(unittest.TestCase):
 
     def prior(self, sha="a" * 40):
         return {"id": 17, "head_sha": sha, "run_attempt": 1}
+
+    def write_trx(self, rows):
+        with tempfile.NamedTemporaryFile("w", suffix=".trx", delete=False) as handle:
+            failed = sum(outcome == "Failed" for _, outcome in rows)
+            passed = sum(outcome == "Passed" for _, outcome in rows)
+            not_executed = sum(outcome == "NotExecuted" for _, outcome in rows)
+            handle.write(
+                '<TestRun><Results>' +
+                ''.join(f'<UnitTestResult testName="{name}" outcome="{outcome}" />' for name, outcome in rows) +
+                '</Results><ResultSummary outcome="Completed"><Counters ' +
+                f'total="{len(rows)}" executed="{passed + failed}" passed="{passed}" failed="{failed}" ' +
+                f'notExecuted="{not_executed}" error="0" timeout="0" aborted="0" disconnected="0" ' +
+                'inProgress="0" pending="0" /></ResultSummary></TestRun>'
+            )
+            return Path(handle.name)
+
+    def test_step5_trx_concordant_duplicate_identity_collapses_safely(self):
+        path = self.write_trx([
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+        ])
+        self.addCleanup(path.unlink, missing_ok=True)
+        self.assertEqual(
+            {"AgentPortal.Tests.ExampleTests.Case": "Passed"},
+            m.read_step5_results(path),
+        )
+
+    def test_step5_trx_conflicting_duplicate_identity_fails_closed(self):
+        path = self.write_trx([
+            ("AgentPortal.Tests.ExampleTests.Case", "Passed"),
+            ("AgentPortal.Tests.ExampleTests.Case", "Failed"),
+        ])
+        self.addCleanup(path.unlink, missing_ok=True)
+        with self.assertRaisesRegex(ValueError, "Ambiguous duplicate test identity"):
+            m.read_step5_results(path)
+
+    def test_record_evidence_defers_current_run_403_without_fabricating_success(self):
+        plan = {
+            "workflow": "approved-release-security-validation.yml",
+            "gates": {
+                "diff-check": {
+                    "step": "Verify patch whitespace integrity",
+                    "run": True,
+                    "reason": "gate_inputs_changed",
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "plan.json"
+            output_path = Path(directory) / "out.json"
+            plan_path.write_text(__import__("json").dumps(plan))
+            error = m.urllib.error.HTTPError(
+                "https://api.github.com/example", 403, "Forbidden", {}, None
+            )
+            args = SimpleNamespace(
+                plan=str(plan_path),
+                output=str(output_path),
+                repository="MYLEGND/masterapp",
+                run_id=123,
+            )
+            with patch.object(m, "api_get", side_effect=error), \
+                 patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+                m.cmd_record_evidence(args)
+            recorded = __import__("json").loads(output_path.read_text())
+        self.assertEqual(
+            "current_run_actions_observation_forbidden",
+            recorded["receiptRecordingDeferred"],
+        )
+        self.assertNotIn("receipt", recorded["gates"]["diff-check"])
 
     def test_effective_steps_keeps_latest_executed_failure_and_backfills_only_skips(self):
         effective = m._effective_steps([
@@ -194,13 +264,11 @@ jobs:
         run: echo same
 """
         current = prior.replace("echo old", "echo new")
-        changed, structure = m.workflow_gate_change_scope(prior, current, {"Gate A", "Gate B"})
-        self.assertEqual({"Gate A"}, changed)
-        self.assertFalse(structure)
-
-        structure_edit = current.replace("name: X", "name: Y")
-        _, structure = m.workflow_gate_change_scope(prior, structure_edit, {"Gate A", "Gate B"})
-        self.assertTrue(structure)
+        config = {"gates": {"a": {"step": "Gate A"}, "b": {"step": "Gate B"}}}
+        self.assertNotEqual(m._gate_execution_contract(prior, config, "a"), m._gate_execution_contract(current, config, "a"))
+        self.assertEqual(m._gate_execution_contract(prior, config, "b"), m._gate_execution_contract(current, config, "b"))
+        environment_edit = "env:\n  MODE: changed\n" + current
+        self.assertNotEqual(m._gate_execution_contract(prior, config, "b"), m._gate_execution_contract(environment_edit, config, "b"))
 
     def test_job_definition_comparison_is_exact_and_bounded(self):
         text = """jobs:
@@ -341,9 +409,10 @@ jobs:
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         self.assertIn("scripts/validation-resume.py live-state", release)
         self.assertIn("scripts/validation-resume.py verify-live", release)
-        self.assertIn("Publish selected head as one transaction", release)
+        self.assertIn("Reconcile complete immutable release transaction", release)
+        import subprocess
+        subprocess.run(["python3", str(ROOT / "scripts/release-workflow.py"), "--check"], check=True, capture_output=True)
         for row in m.RELEASE_TARGETS.values():
-            self.assertNotIn(row["releaseName"], release)
             self.assertNotIn(row["azureHost"], release)
         self.assertNotIn(m.RELEASE_RESOURCE_GROUP, release)
         self.assertNotIn(m.MIGRATION_BUNDLE_NAME, release)
@@ -404,6 +473,15 @@ jobs:
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
 
+    def test_validation_resume_test_change_requires_architecture_only(self):
+        topology = m.required_validation_topology([
+            "scripts/test-validation-resume.py",
+        ])
+        self.assertEqual(
+            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            set(topology["required"]),
+        )
+
     def test_lifecycle_only_change_requires_architecture_only(self):
         topology = m.required_validation_topology([
             "scripts/release-lifecycle.py",
@@ -445,86 +523,115 @@ jobs:
             set(topology["required"]),
         )
 
-    def test_package_canary_preserves_prior_child_proof_for_control_only_change(self):
-        proof = {
-            "id": 91,
-            "head_sha": "a" * 40,
-            "updated_at": "2026-10-02T00:00:00Z",
+    def test_compatible_package_producer_uses_trusted_run_artifacts_not_repository_artifact_listing(self):
+        producer = "a" * 40
+        revision = "b" * 40
+        run = {
+            "id": 77,
+            "head_sha": producer,
+            "updated_at": "2026-10-03T00:00:00Z",
         }
-        identity = "c" * 64
-        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
-             patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
-             patch.object(m, "package_identity_for_revision", return_value=identity), \
-             patch.object(m, "compute_validated_package_evidence", return_value={
-                 "reusable": True,
-                 "runId": 90,
-                 "artifact": "founder-diagnostics-packages-" + identity,
-             }), \
-             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
-            plan = m.compute_package_canary_plan(
-                "MYLEGND/masterapp",
-                "b" * 40,
-                "0" * 40,
-                100,
-                "hardening/example",
-            )
-        self.assertFalse(plan["needed"])
-        self.assertEqual(91, plan["evidenceRunId"])
-        self.assertEqual(90, plan["exactPackageRunId"])
-        self.assertEqual(identity, plan["packageIdentity"])
-        self.assertEqual("preserved_prior_package_canary", plan["reason"])
+        package_identity = "c" * 64
+        artifact = "founder-diagnostics-packages-" + package_identity
+        seen = []
+        def api_get(_repository, path, _token):
+            seen.append(path)
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+        with patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "package_inputs_compatible", return_value=True), \
+             patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            result = m.compatible_package_producer("MYLEGND/masterapp", revision, "token")
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        self.assertEqual(package_identity, result["packageIdentity"])
+        self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
 
-    def test_package_canary_builds_exact_current_revision_when_preserved_inputs_lack_artifact(self):
-        proof = {
-            "id": 93,
-            "head_sha": "a" * 40,
-            "updated_at": "2026-10-02T00:00:00Z",
+    def test_migration_probe_evidence_uses_trusted_run_artifacts_not_repository_artifact_listing(self):
+        identity = {
+            "schemaVersion": 1,
+            "runtimeIdentity": "a" * 64,
+            "toolIdentity": "b" * 64,
+            "executionIdentity": "c" * 64,
+            "identity": "d" * 64,
+            "artifact": "legend-migration-probe-" + "d" * 64,
         }
-        identity = "d" * 64
-        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
-             patch.object(m, "git_changed", return_value=["scripts/test-release-policy.py"]), \
-             patch.object(m, "package_identity_for_revision", return_value=identity), \
-             patch.object(m, "compute_validated_package_evidence", return_value={
-                 "reusable": False,
-                 "runId": None,
-                 "artifact": "founder-diagnostics-packages-" + identity,
-                 "reason": "exact_validated_package_missing",
-             }), \
+        run = {"id": 88, "head_sha": "e" * 40, "updated_at": "2026-10-03T00:00:00Z"}
+        seen = []
+        def api_get(_repository, path, _token):
+            seen.append(path)
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+        with patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", return_value=identity), \
+             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
-            plan = m.compute_package_canary_plan(
-                "MYLEGND/masterapp",
-                "b" * 40,
-                "0" * 40,
-                102,
-                "hardening/example",
-            )
-        self.assertTrue(plan["needed"])
-        self.assertEqual(identity, plan["packageIdentity"])
-        self.assertEqual(
-            "exact_revision_package_missing_despite_preserved_inputs",
-            plan["reason"],
-        )
-        self.assertEqual([], plan["changedInputs"])
+            result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
+        self.assertTrue(result["reusable"])
+        self.assertEqual(88, result["runId"])
+        self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
+        self.assertFalse(any("/jobs?" in path for path in seen))
 
-    def test_package_canary_invalidates_only_for_package_or_application_inputs(self):
-        proof = {
-            "id": 92,
+    def test_trusted_lineage_run_requires_same_repo_workflow_and_ancestor(self):
+        run = {
+            "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+            "event": "pull_request",
+            "status": "completed",
             "head_sha": "a" * 40,
-            "updated_at": "2026-10-02T00:00:00Z",
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
         }
-        with patch.object(m, "_package_canary_proof_runs", return_value=[proof]), \
-             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]), \
-             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
-            plan = m.compute_package_canary_plan(
-                "MYLEGND/masterapp",
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            self.assertTrue(m._trusted_lineage_run(
+                "MYLEGND/masterapp", run,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
                 "b" * 40,
-                "0" * 40,
-                101,
-                "hardening/example",
-            )
-        self.assertTrue(plan["needed"])
-        self.assertEqual(["AgentPortal/Program.cs"], plan["changedInputs"])
-        self.assertEqual("package_or_application_inputs_changed_since_proof", plan["reason"])
+            ))
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=1)):
+            self.assertFalse(m._trusted_lineage_run(
+                "MYLEGND/masterapp", run,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+                "b" * 40,
+            ))
+        foreign = dict(run, head_repository={"full_name": "outsider/fork"})
+        with patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            self.assertFalse(m._trusted_lineage_run(
+                "MYLEGND/masterapp", foreign,
+                ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
+                "b" * 40,
+            ))
+
+    def test_package_canary_preserves_original_producer_for_control_only_change(self):
+        producer = {'runId': 91, 'revision': 'a' * 40, 'packageIdentity': 'c' * 64,
+                    'artifact': 'original-package', 'reason': 'dependency_equivalent_immutable_package_producer'}
+        with patch.object(m, 'compatible_package_producer', return_value=producer), \
+             patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
+            plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
+        self.assertFalse(plan['needed'])
+        self.assertEqual('a' * 40, plan['evidenceHeadSha'])
+        self.assertEqual('c' * 64, plan['packageIdentity'])
+        self.assertEqual('original-package', plan['exactPackageArtifact'])
+
+    def test_package_canary_requires_build_when_no_compatible_artifact_exists(self):
+        with patch.object(m, 'compatible_package_producer', return_value=None), \
+             patch.object(m, 'git_changed', return_value=['scripts/test-release-policy.py']), \
+             patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
+            plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
+        self.assertTrue(plan['needed'])
+        self.assertEqual('compatible_immutable_package_missing', plan['reason'])
+        self.assertEqual([], plan['changedInputs'])
+
+    def test_package_canary_reports_application_inputs_when_no_compatible_package(self):
+        with patch.object(m, 'compatible_package_producer', return_value=None), \
+             patch.object(m, 'git_changed', return_value=['AgentPortal/Program.cs']), \
+             patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
+            plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
+        self.assertTrue(plan['needed'])
+        self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
 
     def test_package_backfill_requires_green_exact_revision_and_control_only_descendants(self):
         revision = "a" * 40
@@ -620,7 +727,9 @@ jobs:
                 return validation_run
             raise AssertionError(path)
 
-        with patch.object(m, "_artifact_rows", side_effect=artifacts), \
+        with patch.object(m, "_successful_package_child", return_value=True), \
+             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "_artifact_rows", side_effect=artifacts), \
              patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_run_artifact_names", return_value={package_link}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
@@ -654,7 +763,8 @@ jobs:
             "head_branch": m.TRUSTED_PR_BASE,
             "head_repository": {"full_name": "MYLEGND/masterapp"},
         }
-        with patch.object(m, "_artifact_rows", return_value=[{"workflow_run": {"id": 77}}]), \
+        with patch.object(m, "_successful_package_child", return_value=True), \
+             patch.object(m, "_artifact_rows", return_value=[{"workflow_run": {"id": 77}}]), \
              patch.object(m, "api_get", return_value=run), \
              patch.object(m, "_run_artifact_names", return_value={artifact, receipt}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
@@ -669,6 +779,20 @@ jobs:
             evidence["reason"],
         )
 
+    def test_inline_execution_environment_and_defaults_invalidate_proof(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        for field, first, second in (
+            ("env", "{TEST_OVERRIDE: a}", "{TEST_OVERRIDE: b}"),
+            ("defaults", "{run: {shell: bash}}", "{run: {shell: sh}}"),
+        ):
+            before = f"{field}: {first}\n" + text
+            after = f"{field}: {second}\n" + text
+            self.assertNotEqual(m._step5_execution_contract(before), m._step5_execution_contract(after))
+            self.assertNotEqual(
+                m._gate_execution_contract(before, m.WORKFLOWS[workflow], "candidate-restore"),
+                m._gate_execution_contract(after, m.WORKFLOWS[workflow], "candidate-restore"))
+
     def test_founder_cloudflare_release_trigger_is_canonical_and_narrow(self):
         self.assertTrue(m.founder_cloudflare_release_required([
             "Legend-Cloudflare/src/runtime/registry.mjs",
@@ -676,7 +800,7 @@ jobs:
         self.assertTrue(m.founder_cloudflare_release_required([
             "Legend-Cloudflare/wrangler.founder-baseline.jsonc",
         ]))
-        self.assertTrue(m.founder_cloudflare_release_required([
+        self.assertFalse(m.founder_cloudflare_release_required([
             "scripts/deploy-founder-cloudflare.py",
         ]))
         self.assertFalse(m.founder_cloudflare_release_required([
@@ -687,7 +811,7 @@ jobs:
 
     def test_founder_cloudflare_release_scope_is_portal_only(self):
         self.assertEqual(
-            ("masterapp-portal",),
+            (),
             m.release_targets_for_paths(["scripts/deploy-founder-cloudflare.py"]),
         )
         self.assertEqual(
@@ -695,7 +819,7 @@ jobs:
             m.release_targets_for_paths(["Legend-Cloudflare/src/runtime/registry.mjs"]),
         )
         self.assertEqual(
-            ("masterapp-portal", "masterapp-client"),
+            ("masterapp-client",),
             m.release_targets_for_paths([
                 "scripts/deploy-founder-cloudflare.py",
                 "ClientApp/Program.cs",
@@ -937,7 +1061,9 @@ jobs:
                     "workflow_runs": [{
                         "id": 88,
                         "event": "pull_request",
-                        "conclusion": "success",
+                        "conclusion": "failure",
+                        "status": "completed",
+                        "path": m.WORKFLOW_PATHS[args.workflow],
                         "head_repository": {"full_name": args.repository},
                         "pull_requests": [],
                         "head_sha": head,
@@ -948,7 +1074,7 @@ jobs:
                 return [{
                     "base": {"ref": m.TRUSTED_PR_BASE},
                     "head": {
-                        "sha": head,
+                        "sha": "d" * 40,
                         "repo": {"full_name": args.repository},
                     },
                 }]
@@ -986,7 +1112,9 @@ jobs:
              patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
              patch.object(m, "_step5_jobs_unchanged", return_value=True), \
-             patch.object(m, "git_changed", return_value=["scripts/release-lifecycle.py"]):
+             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "_step5_artifact_complete", return_value=True), \
+             patch.object(m, "step5_dependency_change", return_value=[]):
             result = m.compute_step5_baseline_evidence("MYLEGND/masterapp", current_base)
 
         self.assertTrue(result["reusable"])
@@ -1021,7 +1149,9 @@ jobs:
              patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
              patch.object(m, "_step5_jobs_unchanged", return_value=True), \
-             patch.object(m, "git_changed", return_value=["AgentPortal/Program.cs"]):
+             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "_step5_artifact_complete", return_value=True), \
+             patch.object(m, "step5_dependency_change", return_value=None):
             result = m.compute_step5_baseline_evidence("MYLEGND/masterapp", current_base)
 
         self.assertFalse(result["reusable"])
@@ -1057,19 +1187,6 @@ jobs:
         )
         self.assertEqual("incremental", plan["mode"])
         self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
-
-    def test_step5_partial_class_source_mapping_covers_split_fixture_files(self):
-        files = m._step5_class_source_files(
-            "AgentPortal.Tests.LegendFounderAiModeIsolationTests"
-        )
-        self.assertIn(
-            "AgentPortal.Tests/LegendFounderAiModeIsolationTests.cs",
-            files,
-        )
-        self.assertIn(
-            "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs",
-            files,
-        )
 
     def test_step5_repair_uses_independent_candidate_and_baseline_evidence(self):
         prior_head = "a" * 40
@@ -1112,13 +1229,7 @@ jobs:
              patch.object(m, "_step5_jobs_unchanged", return_value=True), \
              patch.object(m, "git_changed", return_value=changed), \
              patch.object(m, "_download_run_artifact", side_effect=download), \
-             patch.object(m, "_trx_failed", side_effect=failures), \
-             patch.object(m, "_step5_class_source_files", return_value={
-                 "AgentPortal.Tests/LegendFounderPretrainedAcceptanceTests.cs"
-             }), \
-             patch.object(m, "_git_name_status", return_value=[
-                 ("M", path) for path in changed
-             ]):
+             patch.object(m, "step5_dependency_change", return_value=[failing_class]):
             decision = m.compute_step5_decision(
                 "MYLEGND/masterapp",
                 current_head,
@@ -1133,7 +1244,7 @@ jobs:
         self.assertEqual(baseline["evidenceArtifact"], decision["baselineEvidenceArtifact"])
         self.assertEqual([failing_class], decision["repairClasses"])
         self.assertEqual(
-            "replace_only_previously_failing_classes",
+            "replace_only_dependency_invalidated_classes",
             decision["reason"],
         )
 
@@ -1207,6 +1318,218 @@ jobs:
         run = {"id": 89, "head_sha": "d" * 40}
         self.assertFalse(m.merge_content_equivalent_evidence(current, candidate, run))
         self.assertTrue(all(gate["run"] for gate in current["gates"].values()))
+
+
+class Step5DependencyBehaviorTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        import os
+        self.temp = tempfile.TemporaryDirectory()
+        self.old = os.getcwd()
+        os.chdir(self.temp.name)
+        self.git("init", "-q")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        self.write("AgentPortal.Tests/AgentPortal.Tests.csproj", '<Project><ItemGroup><None Include="../.github/workflows/all-intentional-direct-release-20260918.yml" Link="release.yml" CopyToOutputDirectory="PreserveNewest" /></ItemGroup></Project>')
+        self.write("AgentPortal.Tests/One.cs", 'namespace AgentPortal.Tests; public class One { [Fact] public void Case() { Shared.Value(); } }')
+        self.write("AgentPortal.Tests/Two.cs", 'namespace AgentPortal.Tests; public class Two { [Fact] public void Case() {} }')
+        self.write("AgentPortal.Tests/Shared.cs", 'namespace AgentPortal.Tests; public class Shared { public void Value() {} }')
+        self.write("AgentPortal.Tests/Release.cs", 'namespace AgentPortal.Tests; public class Release { [Fact] public void Case() { File.ReadAllText("release.yml"); } }')
+        self.write("AgentPortal.Tests/Direct.cs", 'namespace AgentPortal.Tests; public class Direct { [Fact] public void Case() { File.ReadAllText("direct-release-request.json"); } }')
+        self.write(".github/workflows/all-intentional-direct-release-20260918.yml", "initial")
+        self.write("Docs/releases/direct-release-request.json", "initial")
+        self.write("scripts/release-lifecycle.py", "initial")
+        self.write("scripts/validation-resume.py", (ROOT / "scripts/validation-resume.py").read_text())
+        self.write(m.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"],
+                   (ROOT / m.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]).read_text())
+        self.base = self.commit()
+
+    def tearDown(self):
+        import os
+        os.chdir(self.old)
+        self.temp.cleanup()
+
+    def git(self, *args):
+        import subprocess
+        return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout.strip()
+
+    def write(self, path, content):
+        file = Path(path)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(content)
+
+    def commit(self):
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture", "--allow-empty")
+        return self.git("rev-parse", "HEAD")
+
+    def test_only_changed_test_class_invalidates_its_proof(self):
+        path = "AgentPortal.Tests/One.cs"
+        self.write(path, Path(path).read_text().replace("Shared.Value();", "Shared.Value(); Shared.Value();"))
+        self.assertEqual(["AgentPortal.Tests.One"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_shared_fixture_change_requires_full_proof(self):
+        path = "AgentPortal.Tests/Shared.cs"
+        self.write(path, Path(path).read_text().replace("Value() {}", "Value() { return; }"))
+        self.assertIsNone(m.step5_dependency_change(self.base, self.commit()))
+
+    def test_release_workflow_only_reruns_its_control_consumers(self):
+        self.write(".github/workflows/all-intentional-direct-release-20260918.yml", "changed")
+        self.assertEqual(["AgentPortal.Tests.Release"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_direct_repository_read_is_not_neutral_documentation(self):
+        self.write("Docs/releases/direct-release-request.json", "changed")
+        self.assertEqual(["AgentPortal.Tests.Direct"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_unconsumed_control_change_and_equivalent_base_preserve_suite(self):
+        self.write("scripts/release-lifecycle.py", "changed")
+        head = self.commit()
+        self.assertEqual([], m.step5_dependency_change(self.base, head))
+        self.assertTrue(m._step5_baseline_inputs_equivalent(self.base, head))
+        self.assertEqual([], m.step5_dependency_change(head, self.commit()))
+
+    def test_manifest_content_identity_survives_unrelated_commit(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        prior = m.gate_dependency_manifests(workflow, self.base)
+        self.write("scripts/release-lifecycle.py", "control-only")
+        current = m.gate_dependency_manifests(workflow, self.commit())
+        self.assertEqual(prior["candidate-full"]["contentIdentity"], current["candidate-full"]["contentIdentity"])
+        self.write(".github/workflows/all-intentional-direct-release-20260918.yml", "new-control")
+        changed = m.gate_dependency_manifests(workflow, self.commit())
+        self.assertNotEqual(prior["candidate-full"]["sourceIdentity"], changed["candidate-full"]["sourceIdentity"])
+
+    def test_real_gate_planner_invalidates_newly_derived_control_input(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        self.write(".github/workflows/all-intentional-direct-release-20260918.yml", "changed contract")
+        current = self.commit()
+        steps = {gate["step"]: "success" for gate in m.WORKFLOWS[workflow]["gates"].values()}
+        plan = m._plan_against_prior(workflow, current, {"id": 71, "head_sha": self.base}, steps, "fixture")
+        self.assertTrue(plan["gates"]["candidate-full"]["run"])
+        self.assertEqual("dependency_identity_changed", plan["gates"]["candidate-full"]["reason"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+        self.assertFalse(plan["gates"]["candidate-focused"]["run"])
+
+    def test_post_gate_receipt_change_does_not_invalidate_suite_execution(self):
+        workflow = "step5-isolated-conversion-mapping-validation.yml"
+        path = m.WORKFLOW_PATHS[workflow]
+        # A validation-job-only change must not replace the candidate job proof.
+        self.write(path, Path(path).read_text().replace("      - name: Preserve effective Step 5 baseline evidence", "      - name: Preserve effective Step 5 baseline evidence (receipt metadata)"))
+        current = self.commit()
+        steps = {gate["step"]: "success" for gate in m.WORKFLOWS[workflow]["gates"].values()}
+        plan = m._plan_against_prior(workflow, current, {"id": 71, "head_sha": self.base}, steps, "fixture")
+        self.assertFalse(plan["gates"]["candidate-full"]["run"])
+        self.assertTrue(plan["gates"]["comparison"]["run"])
+
+    def test_execution_contract_rejects_unknown_mutation_step(self):
+        text = Path(m.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]).read_text()
+        mutated = text.replace("      - name: Run full AgentPortal candidate suite", "      - name: Unknown mutation\n        run: touch AgentPortal/Program.cs\n\n      - name: Run full AgentPortal candidate suite")
+        self.assertNotEqual(m._step5_execution_contract(text), m._step5_execution_contract(mutated))
+        rescheduled = text.replace("if: needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'", "if: false")
+        self.assertEqual(m._step5_execution_contract(text), m._step5_execution_contract(rescheduled))
+
+    def test_assembly_global_and_application_inputs_fail_closed(self):
+        path = "AgentPortal.Tests/One.cs"
+        self.write(path, '[assembly: CollectionBehavior(DisableTestParallelization = true)]' + Path(path).read_text())
+        self.assertIsNone(m.step5_dependency_change(self.base, self.commit()))
+        self.git("reset", "--hard", self.base)
+        self.write("Domain/Entity.cs", "changed")
+        self.assertIsNone(m.step5_dependency_change(self.base, self.commit()))
+
+
+class Step5ChildEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def trx(outcomes, summary="Completed"):
+        rows = ''.join(f'<UnitTestResult testName="{name}" outcome="{outcome}" />' for name, outcome in outcomes.items())
+        return f'<TestRun><Results>{rows}</Results><ResultSummary outcome="{summary}"><Counters total="{len(outcomes)}" /></ResultSummary></TestRun>'
+
+    def test_receipt_preserves_producer_and_records_only_observed_runtime(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "receipt.json"
+            path.write_text(json.dumps({"priorRunId": 71, "gates": {
+                "green": {"step": "Green child", "run": False, "evidenceRunId": 71,
+                          "producerReceipt": {"result": "success", "jobId": 700, "runId": 71, "stepNumber": 5}},
+                "failed": {"step": "Failed child", "run": True},
+            }}))
+            jobs = {"jobs": [{"id": 901, "steps": [
+                {"name": "Green child", "conclusion": "success", "number": 2},
+                {"name": "Failed child", "conclusion": "failure", "number": 3},
+            ]}]}
+            with patch.dict(m.os.environ, {"GITHUB_TOKEN": "fixture"}), \
+                 patch.object(m, "api_get", return_value=jobs), \
+                 patch.object(m.subprocess, "run", side_effect=FileNotFoundError):
+                m.cmd_record_evidence(SimpleNamespace(plan=str(path), output=str(path), repository="MYLEGND/masterapp", run_id=99))
+            evidence = json.loads(path.read_text())["gates"]
+            self.assertEqual(71, evidence["green"]["receipt"]["producingRunId"])
+            self.assertEqual(700, evidence["green"]["receipt"]["producerJobId"])
+            self.assertEqual("success", evidence["green"]["receipt"]["result"])
+            self.assertIsNone(evidence["green"]["receipt"]["actualToolchain"])
+            self.assertEqual("failure", evidence["failed"]["receipt"]["result"])
+            self.assertNotIn("dotnet", evidence["failed"]["receipt"]["actualToolchain"])
+
+    def test_partial_aborted_and_empty_trx_are_rejected(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "candidate.trx"
+            for content in (self.trx({"Suite.Case": "Passed"}, "Aborted"), "<TestRun />", self.trx({})):
+                path.write_text(content)
+                with self.assertRaises(ValueError):
+                    m.read_step5_results(path)
+
+    def test_cross_branch_search_skips_incompatible_and_untrusted_parent(self):
+        repository = "MYLEGND/masterapp"
+        def run(number, branch, conclusion="failure", trusted=True):
+            sha = str(number) * 40
+            return {"id": number, "head_sha": sha, "head_branch": branch,
+                "path": m.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"],
+                "event": "pull_request", "status": "completed", "conclusion": conclusion,
+                "head_repository": {"full_name": repository if trusted else "outsider/fork"},
+                "pull_requests": [{"base": {"ref": m.TRUSTED_PR_BASE}, "head": {"sha": sha, "repo": {"full_name": repository}}}]}
+        runs = [run(3, "fork", trusted=False), run(2, "new-incompatible"), run(1, "older-compatible")]
+        def api(repo, path, token):
+            if "workflows/" in path:
+                self.assertNotIn("branch=", path)
+                return {"workflow_runs": runs}
+            if "jobs?" in path:
+                return {"jobs": [{"steps": [{"name": "Preserve completed candidate results", "conclusion": "success"}]}]}
+            raise AssertionError(path)
+        def download(repo, number, artifact, directory):
+            (directory / "candidate.trx").write_text(self.trx({"AgentPortal.Tests.One.Case": "Passed"}))
+        with patch.object(m, "api_get", side_effect=api), \
+             patch.object(m, "step5_dependency_change", side_effect=lambda prior, current: [] if prior == "1" * 40 else None), \
+             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_run_artifact_names", side_effect=lambda repo, number, token: {"step5-candidate-" + str(number) * 40}), \
+             patch.object(m, "_download_run_artifact", side_effect=download):
+            result = m._step5_prior_candidate_evidence(repository, 99, "current", "token", "a" * 40)
+        self.assertEqual(1, result["runId"])
+
+    def test_green_repaired_child_survives_failed_sibling_comparison(self):
+        import tempfile
+        import subprocess
+        import os
+        workflow = (ROOT / ".github/workflows/step5-isolated-conversion-mapping-validation.yml").read_text()
+        block = workflow.split("      - name: Prove Step 5 adds no full-suite failures", 1)[1]
+        body = block.split("          python3 - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
+        body = "\n".join(line[10:] for line in body.splitlines())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for directory, filename, outcomes in (
+                ("step5-prior-candidate", "candidate.trx", {"AgentPortal.Tests.One.Case": "Failed", "AgentPortal.Tests.Two.Case": "Failed"}),
+                ("step5-prior-baseline", "baseline.trx", {"AgentPortal.Tests.One.Case": "Passed", "AgentPortal.Tests.Two.Case": "Passed"}),
+                ("step5-repair", "repair.trx", {"AgentPortal.Tests.One.Case": "Passed"}),
+            ):
+                target = root / directory
+                target.mkdir()
+                (target / filename).write_text(self.trx(outcomes))
+            body = body.replace("/tmp/step5-", str(root / "step5-"))
+            result = subprocess.run(["python3", "-c", body], cwd=ROOT, capture_output=True, text=True,
+                env={**os.environ, "VALIDATION_MODE": "repair", "REPAIR_CLASSES": "AgentPortal.Tests.One", "GITHUB_OUTPUT": str(root / "outputs")})
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            effective = m.read_step5_results(root / "step5-effective/candidate.trx")
+            self.assertEqual("Passed", effective["AgentPortal.Tests.One.Case"])
+            self.assertEqual("Failed", effective["AgentPortal.Tests.Two.Case"])
+            self.assertIn("effective_evidence=true", (root / "outputs").read_text())
 
 
 if __name__ == "__main__":

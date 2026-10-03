@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deploy/rollback the validated LEGEND Founder Cloudflare baseline inside the canonical release job."""
 from __future__ import annotations
-import argparse, base64, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
+import argparse, base64, hashlib, hmac, importlib.util, json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,9 +108,20 @@ def worker_name():
 def current_worker_version(account, worker):
     result = cloudflare(f"/accounts/{account}/workers/scripts/{worker}/deployments?per_page=1", allow_404=True)
     if result is None: return ""
-    deployments = result.get("deployments") or []
-    versions = deployments[0].get("versions") if deployments else []
-    return str(versions[0].get("version_id") or "") if versions else ""
+    deployments = result.get("deployments")
+    if not isinstance(deployments, list):
+        raise RuntimeError("founder_worker_deployment_state_invalid")
+    if not deployments:
+        return ""
+    versions = deployments[0].get("versions")
+    # A traffic split is a third live state, not an exact immutable baseline.
+    # Never turn its first entry into an apparently safe rollback/reuse identity.
+    if (not isinstance(versions, list) or len(versions) != 1 or
+            versions[0].get("percentage") != 100 or
+            not isinstance(versions[0].get("version_id"), str) or
+            not versions[0]["version_id"]):
+        raise RuntimeError("founder_worker_deployment_not_exact")
+    return versions[0]["version_id"]
 
 def worker_subdomain_enabled(account, worker):
     result = cloudflare(f"/accounts/{account}/workers/scripts/{worker}/subdomain", allow_404=True)
@@ -158,6 +169,84 @@ def restore_settings(group, app, previous):
 def write_state(path, data):
     path.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
     path.chmod(0o600)
+
+def verify_callback_equivalence(endpoint, account, tenant, founder, service_key_id, service_key,
+                                callback_key_id, callback_key, callback_url):
+    proof_nonce = secrets.token_urlsafe(24)
+    now = int(time.time() * 1000)
+    envelope = {
+        "version": "legend-cloudflare.v1",
+        "requestId": str(uuid.uuid4()),
+        "issuedAt": now,
+        "expiresAt": now + 30_000,
+        "scope": {
+            "accountId": account,
+            "tenantId": tenant,
+            "userId": founder,
+            "sessionId": str(uuid.uuid4()),
+            "conversationId": str(uuid.uuid4()),
+            "roles": ["Founder"],
+            "authorizationVersion": "release-callback-proof-v1",
+        },
+        "task": {
+            "kind": "general",
+            "messages": [{"role": "user", "content": "Founder callback equivalence proof."}],
+            "tools": [],
+            "requiredCapabilities": ["text"],
+        },
+        "limits": {
+            "deadlineUnixMs": now + 25_000,
+            "maxOutputTokens": 1,
+            "maxIterations": 1,
+            "maxModelCalls": 1,
+            "maxToolCalls": 0,
+            "maxCostMicrousd": 1,
+        },
+        "stream": False,
+        "callbackProofNonce": proof_nonce,
+    }
+    raw = json.dumps(envelope, separators=(",", ":")).encode()
+    request_nonce = secrets.token_urlsafe(24)
+    status_url = endpoint.rsplit("/", 1)[0] + "/status"
+    body_digest = hashlib.sha256(raw).hexdigest()
+    signing = "\n".join((
+        "legend-service.v1", "POST", "/v1/legend/status", service_key_id,
+        str(now), request_nonce, body_digest,
+    ))
+    signature = hmac.new(base64.b64decode(service_key, validate=True),
+                         signing.encode(), hashlib.sha256).hexdigest()
+    request = urllib.request.Request(
+        status_url,
+        data=raw,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Legend-Key-Id": service_key_id,
+            "X-Legend-Timestamp": str(now),
+            "X-Legend-Nonce": request_nonce,
+            "X-Legend-Signature": signature,
+            "User-Agent": "LEGEND-founder-callback-equivalence/1.0",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = json.load(response)
+    proof = payload.get("callbackProof") if isinstance(payload, dict) else None
+    if not isinstance(proof, dict):
+        raise RuntimeError("founder_callback_equivalence_proof_missing")
+    if (proof.get("version") != "legend-callback-equivalence.v1" or
+            proof.get("keyId") != callback_key_id or
+            proof.get("url") != callback_url or
+            proof.get("nonce") != proof_nonce):
+        raise RuntimeError("founder_callback_equivalence_proof_scope_mismatch")
+    proof_signature = proof.get("signature")
+    message = "\n".join((
+        "legend-callback-equivalence.v1", callback_key_id, callback_url, proof_nonce,
+    ))
+    expected = hmac.new(base64.b64decode(callback_key, validate=True),
+                        message.encode(), hashlib.sha256).hexdigest()
+    if not isinstance(proof_signature, str) or not hmac.compare_digest(proof_signature, expected):
+        raise RuntimeError("founder_callback_equivalence_proof_invalid")
+    return True
 
 def wait_for_worker_route(endpoint, attempts=8, delay_seconds=2):
     status_url = endpoint.rsplit("/", 1)[0] + "/status"
@@ -211,6 +300,53 @@ def deploy(state_path, receipt_path):
     service_keys = {service_key_id: service_key}
     worker = worker_name()
     previous_version = current_worker_version(account, worker)
+    spec = importlib.util.spec_from_file_location("release_journal", ROOT / "scripts/release-operation-evidence.py")
+    journal_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(journal_module)
+    material = hashlib.sha256(json.dumps({"account": account, "worker": worker, "portal": app}, sort_keys=True).encode()).hexdigest()
+    journal = journal_module.ChildJournal("founder-cloudflare", material)
+    if journal.success is not None:
+        observed = journal.success.get("observation", {}).get("providerVersion")
+        if not observed or previous_version != observed:
+            raise RuntimeError("founder_cloudflare_provider_version_drift_preserve_no_replay")
+        if not worker_subdomain_enabled(account, worker):
+            raise RuntimeError("founder_worker_subdomain_not_enabled_preserve_no_replay")
+        subdomain = cloudflare(f"/accounts/{account}/workers/subdomain").get("subdomain")
+        if not isinstance(subdomain, str) or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", subdomain):
+            raise RuntimeError("workers_subdomain_unavailable")
+        endpoint = f"https://{worker}.{subdomain}.workers.dev/v1/legend/respond"
+        callback_url = f"https://{app}.azurewebsites.net{CALLBACK_PATH}"
+        verify_callback_equivalence(
+            endpoint, account, tenant, founder,
+            service_key_id, service_key,
+            callback_key_id, callback_key, callback_url,
+        )
+        receipt = {
+            "schemaVersion": 2,
+            "provider": "Cloudflare Workers AI",
+            "foundationHosting": "CloudflareHosted",
+            "billing": "Cloudflare Workers AI",
+            "openAiApiUsed": False,
+            "worker": worker,
+            "endpointHost": endpoint.split("/")[2],
+            "portal": app,
+            "mutationsEnabled": False,
+            "releaseSha": os.environ.get("APPLICATION_RELEASE_SHA", ""),
+            "preserved": True,
+            "callbackEquivalenceVerified": True,
+        }
+        receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
+        print(json.dumps({
+            "provider": receipt["provider"],
+            "foundationHosting": receipt["foundationHosting"],
+            "billing": receipt["billing"],
+            "openAiApiUsed": receipt["openAiApiUsed"],
+            "preserved": True,
+            "callbackEquivalenceVerified": True,
+        }, sort_keys=True))
+        return
+    if journal.intent is not None:
+        raise RuntimeError("founder_cloudflare_write_outcome_requires_readonly_reconciliation_no_replay")
     previous_subdomain_enabled = worker_subdomain_enabled(account, worker) if previous_version else False
     state = {
         "schemaVersion": 1, "resourceGroup": group, "app": app, "accountId": account,
@@ -234,6 +370,7 @@ def deploy(state_path, receipt_path):
     release_config.write_text(json.dumps(config, indent=2) + "\n")
     try:
         run("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund", cwd=CF)
+        journal.before_mutation({"providerVersion": previous_version or "absent"})
         run("npx", "wrangler", "deploy", "--config", release_config.name, cwd=CF)
         state["workerModified"] = True; write_state(state_path, state)
         for name, secret_value in (
@@ -292,13 +429,15 @@ def deploy(state_path, receipt_path):
             "releaseSha": os.environ.get("APPLICATION_RELEASE_SHA", ""),
         })
         receipt_path.write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
+        deployed_version = current_worker_version(account, worker)
+        if not deployed_version:
+            raise RuntimeError("founder_cloudflare_exact_deployment_identity_missing")
+        journal.record_success({"providerVersion": deployed_version})
         print(json.dumps({k: receipt[k] for k in ("provider","foundationHosting","foundationModel","billing","openAiApiUsed","modelCount")}, sort_keys=True))
     except Exception:
-        try:
-            if state.get("portalModified"): restore_settings(group, app, state["previousSettings"])
-        finally:
-            if state.get("workerModified"):
-                restore_worker(account, worker, previous_version, previous_subdomain_enabled)
+        # A provider call may have completed despite a client timeout. Automatic
+        # rollback is another write and could overwrite a concurrent version.
+        # Preserve the intent and exact provider state for governed reconciliation.
         raise
     finally:
         release_config.unlink(missing_ok=True)

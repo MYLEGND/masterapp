@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -28,7 +29,13 @@ public sealed class ClientAppDeploymentWorkflowTests
     public void SelectedTargetsPublishThroughOneCanonicalTransaction()
     {
         var workflow = DirectRelease();
-        Assert.Contains("Publish selected head as one transaction", workflow, StringComparison.Ordinal);
+        var prepare = workflow.IndexOf("Prepare complete immutable release transaction", StringComparison.Ordinal);
+        var publication = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
+        var finalize = workflow.IndexOf("Reconcile complete immutable release transaction", StringComparison.Ordinal);
+        Assert.True(prepare >= 0 && publication > prepare && finalize > publication);
+        Assert.Contains("needs.admission.outputs.admitted == 'true'", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/release-workflow.py --check", workflow, StringComparison.Ordinal);
+        Assert.Contains("--verify-outcomes --selected-targets", workflow, StringComparison.Ordinal);
         Assert.Contains("--targets-json \"$SELECTED_TARGETS\"", workflow, StringComparison.Ordinal);
         Assert.Contains("--baselines-json \"$LIVE_BASELINES\"", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("Direct deploy AgentPortal", workflow, StringComparison.Ordinal);
@@ -58,7 +65,7 @@ public sealed class ClientAppDeploymentWorkflowTests
     {
         var workflow = DirectRelease();
         var migration = workflow.IndexOf("Apply additive diagnostics migrations before restarting apps", StringComparison.Ordinal);
-        var transaction = workflow.IndexOf("Publish selected head as one transaction", StringComparison.Ordinal);
+        var transaction = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
         Assert.True(migration >= 0);
         Assert.True(transaction > migration);
         Assert.Contains("steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped'", workflow, StringComparison.Ordinal);
@@ -84,9 +91,23 @@ public sealed class ClientAppDeploymentWorkflowTests
         var workflow = DirectRelease();
         Assert.Contains("python3 scripts/deploy-approved-app.py", workflow, StringComparison.Ordinal);
         Assert.Contains("--rollback-root /tmp/rollback-packages", workflow, StringComparison.Ordinal);
-        Assert.Contains("Restore complete application baseline after downstream release failure", workflow, StringComparison.Ordinal);
-        Assert.Contains("--rollback-only", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("python3 scripts/deploy-approved-app.py --target", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("--rollback-only", workflow, StringComparison.Ordinal);
+        Assert.Contains("--prepare-only --transaction-plan", workflow, StringComparison.Ordinal);
+        Assert.Contains("--finalize-only --transaction-plan", workflow, StringComparison.Ordinal);
+        var start = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
+        var end = workflow.IndexOf("# END GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var targetSteps = Regex.Matches(workflow[start..end],
+            @"      - name: Publish canonical target \(([^)]+)\)\n(?<body>.*?)(?=\n      - name:|\z)",
+            RegexOptions.Singleline);
+        Assert.NotEmpty(targetSteps);
+        foreach (Match step in targetSteps)
+        {
+            var body = step.Groups["body"].Value;
+            Assert.Contains("--target " + step.Groups[1].Value, body, StringComparison.Ordinal);
+            Assert.Contains("--transaction-plan /tmp/release-transaction.json", body, StringComparison.Ordinal);
+            Assert.Contains("steps.transactionprepare.outcome == 'success'", body, StringComparison.Ordinal);
+        }
         Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 

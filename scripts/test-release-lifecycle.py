@@ -329,7 +329,7 @@ class PendingUpdateFairness(unittest.TestCase):
 
 class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_green_merge_dispatches_release_without_second_command(self, _):
+    def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _):
         api = Api()
         target = canonical_name("portal")
         pr = {"number": 77, "head": {"sha": "b" * 40}}
@@ -343,18 +343,14 @@ class AutomaticMergeRelease(unittest.TestCase):
 
         self.assertTrue(result["automaticRelease"])
         self.assertEqual([target], result["targets"])
+        self.assertEqual('MERGED', result['state'])
+        self.assertFalse(result['releaseDispatched'])
+        self.assertEqual([], api.dispatched)
+        admitted = m.admit_automatic_release(api, pr, 'c' * 40, [target], runs=[])
+        m.admit_automatic_release(api, pr, 'c' * 40, [target], runs=[])
+        self.assertEqual('RELEASE_DISPATCHED', admitted['state'])
         self.assertEqual(1, len(api.dispatched))
-        workflow, inputs = api.dispatched[0]
-        self.assertEqual(m.DIRECT, workflow)
-        self.assertEqual("true", inputs["automatic"])
-        self.assertEqual("77", inputs["source_pr"])
-        self.assertEqual("b" * 40, inputs["validated_sha"])
-        self.assertEqual("c" * 40, inputs["source_merge_sha"])
-        self.assertEqual("c" * 40, inputs["merge_sha"])
-        self.assertEqual([target], json.loads(inputs["targets_json"]))
-
-
-
+        self.assertEqual('77', api.dispatched[0][1]['source_pr'])
 
     @patch.object(m, "candidate_validation", return_value=None)
     def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _):
@@ -529,18 +525,302 @@ class AutomaticReleaseRecovery(unittest.TestCase):
             "head": {"sha": older_revision},
         }]
         api.pages_map["pulls/385/files"] = [
-            {"filename": "scripts/deploy-founder-cloudflare.py"},
+            {"filename": "Legend-Cloudflare/src/runtime/registry.mjs"},
         ]
         package.side_effect = lambda _api, revision: {
             "reusable": revision == older_revision,
             "runId": 77 if revision == older_revision else None,
         }
 
-        result = m.pending_automatic_release(api, approved)
+        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = (
+            api.pages_map["commits/" + newest_merge + "/pulls"] +
+            api.pages_map["commits/" + older_merge + "/pulls"])
+        result = m.pending_automatic_releases(api, approved)[0]
 
         self.assertEqual(385, result["sourcePr"])
         self.assertEqual(older_revision, result["applicationRevision"])
         self.assertEqual([canonical_name("portal")], result["targets"])
+
+
+class DurableCandidateQueue(unittest.TestCase):
+    closed_path = "pulls?state=closed&base=legend%2Fapproved-changes"
+    runs_path = "actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"
+
+    def setUp(self):
+        self.api = Api()
+        self.approved = "a" * 40
+        for name, value in (("staging_only", False), ("candidate_validation", None),
+                            ("release_proven", False), ("_validated_package_evidence", {"reusable": True})):
+            fixture = patch.object(m, name, return_value=value)
+            fixture.start()
+            self.addCleanup(fixture.stop)
+        history = patch.object(m, "git", return_value=SimpleNamespace(
+            returncode=0, stdout="c" * 40 + "\n" + "b" * 40 + "\n", stderr=""))
+        history.start()
+        self.addCleanup(history.stop)
+
+    def candidate(self, number, merge, revision, paths):
+        pr = {"number": number, "merged_at": "2026-10-03T10:00:00Z",
+              "merge_commit_sha": merge, "base": {"ref": m.APPROVED},
+              "head": {"sha": revision}}
+        self.api.pages_map.setdefault(self.closed_path, []).append(pr)
+        self.api.pages_map[f"pulls/{number}/files"] = [{"filename": path} for path in paths]
+        self.api.api_map[f"pulls/{number}"] = pr
+        return pr
+
+    def release_run(self, pr, status="completed", conclusion="failure", run_id=99):
+        return {"id": run_id, "path": ".github/workflows/" + m.DIRECT,
+                "head_branch": m.APPROVED, "head_sha": self.approved,
+                "status": status, "conclusion": conclusion,
+                "display_title": m.release_dispatch_identity(pr["number"], pr["head"]["sha"], self.approved)}
+
+    def test_completed_newer_target_does_not_hide_disjoint_pending_target(self):
+        self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        with patch.object(m, "release_proven", side_effect=lambda api, revision, app: revision == "e" * 40):
+            queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([1], [row["sourcePr"] for row in queue])
+
+    def test_independent_candidates_are_queued_in_deterministic_history_order(self):
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([1, 2], [row["sourcePr"] for row in queue])
+
+    def test_partial_atomic_overlap_is_retained_not_silently_dropped(self):
+        self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs", "ClientApp/Program.cs"])
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([1, 2], [row["sourcePr"] for row in queue])
+        self.assertIn("combined successor", queue[0]["retained"])
+        self.assertIn(canonical_name("protect"), queue[0]["targets"])
+
+    def test_fully_superseded_candidate_cannot_downgrade_newer_target(self):
+        self.candidate(1, "b" * 40, "d" * 40, ["ClientApp/Program.cs"])
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        self.assertEqual([2], [row["sourcePr"] for row in m.pending_automatic_releases(self.api, self.approved)])
+
+    def test_active_legacy_run_blocks_without_canceling_or_dispatching_pending(self):
+        pr = self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        active = self.release_run(pr, status="in_progress", conclusion=None)
+        active.pop("display_title")
+        self.api.pages_map[self.runs_path] = [active]
+        result = m.reconcile(self.api)
+        self.assertEqual([99], result["blockingRuns"])
+        self.assertEqual([], self.api.dispatched)
+
+    def test_failed_completion_wakes_other_candidate_without_replaying_failed_head(self):
+        first = self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        failed = self.release_run(first)
+        self.api.pages_map[self.runs_path] = [failed]
+        self.api.api_map["actions/runs/99"] = failed
+        result = m.reconcile(self.api, 99)
+        self.assertEqual(2, result["sourcePr"])
+        self.assertEqual(1, len(self.api.dispatched))
+        self.assertEqual("2", self.api.dispatched[0][1]["source_pr"])
+
+    def test_successful_completion_wakes_other_candidate_without_revalidation_dispatch(self):
+        first = self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
+        completed = self.release_run(first, conclusion="success")
+        self.api.pages_map[self.runs_path] = [completed]
+        with patch.object(m, "release_proven", side_effect=lambda api, revision, app: revision == "d" * 40):
+            result = m.reconcile(self.api, 99)
+        self.assertEqual(2, result["sourcePr"])
+        self.assertEqual([m.DIRECT], [workflow for workflow, _ in self.api.dispatched])
+
+    def test_changed_source_pr_identity_is_retained_after_queue_discovery(self):
+        self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
+        self.api.api_map["pulls/1"] = {"number": 1, "head": {"sha": "f" * 40}}
+        result = m.reconcile(self.api)
+        self.assertIn("changed", result["pendingCandidates"][0]["retained"])
+        self.assertEqual([], self.api.dispatched)
+
+
+class GeneratedPublicationStages(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('workflow_generation', Path(__file__).with_name('release-workflow.py'))
+        self.generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.generator)
+
+    def test_workflow_target_steps_and_outcome_checks_are_derived_from_inventory(self):
+        text = self.generator.WORKFLOW.read_text()
+        self.assertEqual(text, self.generator.render(text, m.VALIDATION_AUTHORITY.RELEASE_TARGETS))
+
+    def test_new_inventory_target_generates_its_own_durable_step_and_gate(self):
+        text = self.generator.WORKFLOW.read_text()
+        targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,
+                   'extra': {'releaseName': 'isolated-extra-app'}}
+        rendered = self.generator.render(text, targets)
+        self.assertIn('name: Publish canonical target (extra)', rendered)
+        self.assertIn('TARGET_OUTCOME_EXTRA: ${{ steps.publish_extra.outcome }}', rendered)
+        self.assertIn("contains(fromJSON(env.SELECTED_TARGETS), 'isolated-extra-app')", rendered)
+
+    def test_selected_failure_cannot_be_hidden_by_continue_on_error(self):
+        import subprocess
+        path = Path(__file__).with_name('release-workflow.py')
+        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'failure'}, clear=False):
+            result = subprocess.run(['python3', str(path), '--verify-outcomes',
+                                     '--selected-targets', json.dumps([canonical_name('client')])],
+                                    capture_output=True, text=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('did not succeed: client', result.stderr)
+
+    def test_unselected_failure_does_not_invalidate_selected_success(self):
+        import subprocess
+        path = Path(__file__).with_name('release-workflow.py')
+        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'success', 'TARGET_OUTCOME_PORTAL': 'failure'}, clear=False):
+            result = subprocess.run(['python3', str(path), '--verify-outcomes',
+                                     '--selected-targets', json.dumps([canonical_name('client')])],
+                                    capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+
+class ResourceAdmission(unittest.TestCase):
+    def resources(self, paths):
+        authority = m.VALIDATION_AUTHORITY
+        return authority.release_admission_resources(paths, list(authority.release_targets_for_paths(paths)))
+
+    def setUp(self):
+        self.api = Api()
+        self.run = {'id': 98, 'run_attempt': 1, 'status': 'in_progress', 'conclusion': None,
+                    'path': '.github/workflows/' + m.DIRECT, 'head_branch': m.APPROVED}
+        self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run]
+        self.candidate = {'applicationRevision': 'b' * 40, 'selectedTargets': [canonical_name('client')],
+                          'resources': self.resources(['ClientApp/Program.cs'])}
+        self.prior = {'applicationRevision': 'c' * 40, 'selectedTargets': [canonical_name('protect')],
+                      'resources': self.resources(['Protect-Website/Program.cs']),
+                      'admissionId': 'e' * 64, 'producingAttempt': 1}
+
+    def test_disjoint_apps_read_schema_concurrently_without_conflicting_writes(self):
+        self.assertFalse(m.VALIDATION_AUTHORITY.release_resources_overlap(
+            self.candidate['resources'], self.prior['resources']))
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_client_database_consumption_conflicts_with_shared_schema_writer(self):
+        self.assertIn('read/schema/masterapp', self.candidate['resources'])
+        self.assertTrue(m.VALIDATION_AUTHORITY.release_resources_overlap(
+            self.candidate['resources'], ['write/schema/masterapp']))
+
+    def test_settings_source_reader_conflicts_with_source_application_writer(self):
+        portal = self.resources(['AgentPortal/Program.cs'])
+        self.assertTrue(m.VALIDATION_AUTHORITY.release_resources_overlap(portal, self.prior['resources']))
+
+    def test_overlapping_active_lease_blocks(self):
+        self.prior['resources'] = self.candidate['resources']
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual(98, blocked[0]['runId'])
+
+    def test_failed_parent_does_not_release_unsettled_resources(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior['resources'] = self.candidate['resources']
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False):
+            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_failed_but_positively_settled_provider_wakes_conflicting_candidate(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior['resources'] = self.candidate['resources']
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=True):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_same_immutable_transaction_can_continue_without_releasing_other_resources(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(self.candidate)
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_skipped_latest_attempt_does_not_erase_earlier_mutation(self):
+        self.run.update(run_attempt=2, status='completed', conclusion='success')
+        skipped = [{'name': 'admission', 'conclusion': 'success'},
+                   {'name': 'discover-live', 'conclusion': 'skipped'},
+                   {'name': 'release', 'conclusion': 'skipped'}]
+        self.api.pages_map['actions/runs/98/attempts/2/jobs'] = skipped
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'admission', 'conclusion': 'success'},
+            {'name': 'discover-live', 'conclusion': 'success'},
+            {'name': 'release', 'conclusion': 'failure'}]
+        self.assertFalse(m._never_admitted(self.api, self.run))
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = skipped
+        self.assertTrue(m._never_admitted(self.api, self.run))
+
+    def test_own_prior_attempt_cannot_silently_change_resource_scope(self):
+        self.run.update(run_attempt=2)
+        self.prior.update(applicationRevision=self.candidate['applicationRevision'],
+                          resources=self.candidate['resources'])
+        # Same app revision alone cannot authorize replacing the prior selection.
+        with patch.dict(os.environ, {'GITHUB_RUN_ATTEMPT': '2'}), \
+             patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False):
+            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=98))
+
+    def test_expired_lease_is_not_absence_proof(self):
+        self.api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-admission-' + 'e' * 64, 'expired': True}]
+        with self.assertRaisesRegex(RuntimeError, 'expired'):
+            m._admission_records(self.api, self.run)
+
+    def test_valid_hash_cannot_hide_empty_resource_ownership(self):
+        revision = 'b' * 40
+        record = {'schemaVersion': 1, 'phase': 'admission', 'authorizationMode': 'automatic',
+                  'sourcePr': 1, 'authorizedSourceRevision': revision,
+                  'applicationRevision': revision, 'packageIdentity': 'f' * 64,
+                  'executionAuthority': 'a' * 40, 'sourceMergeSha': 'c' * 40,
+                  'selectedTargets': [canonical_name('client')], 'resources': [],
+                  'producingRun': 98, 'producingAttempt': 1}
+        record['admissionId'] = m._admission_identity(record)
+        self.run.update(event='workflow_dispatch', head_repository={'full_name': self.api.repo})
+        self.api.api_map['pulls/1'] = {'number': 1, 'merged_at': '2026-10-03',
+                                    'base': {'ref': m.APPROVED}, 'head': {'sha': revision},
+                                    'merge_commit_sha': 'c' * 40}
+        self.api.pages_map['pulls/1/files'] = [{'filename': 'ClientApp/Program.cs'}]
+        self.api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-admission-' + record['admissionId'], 'expired': False}]
+        def download(repo, run, name, directory):
+            (directory / 'operation.json').write_text(json.dumps(record))
+        with patch.object(m.VALIDATION_AUTHORITY, '_download_run_artifact', side_effect=download), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m.PACKAGE_AUTHORITY, 'package_identity', return_value='f' * 64), \
+             patch.object(m.VALIDATION_AUTHORITY, 'compute_validated_package_evidence', return_value={
+                 'reusable': True, 'revision': revision, 'packageIdentity': 'f' * 64}):
+            with self.assertRaisesRegex(RuntimeError, 'resource ownership'):
+                m._admission_records(self.api, self.run)
+
+
+class WorkerAdmissionPackageIdentity(unittest.TestCase):
+    def test_lease_binds_authorized_source_and_preserved_package_producer_separately(self):
+        api = Api()
+        authority, source, merge, producer = ('a' * 40, 'b' * 40, 'c' * 40, 'd' * 40)
+        target = canonical_name('client')
+        pr = {'number': 7, 'merged_at': '2026-10-03', 'base': {'ref': m.APPROVED},
+              'head': {'sha': source}, 'merge_commit_sha': merge}
+        api.api_map['pulls/7'] = pr
+        api.pages_map['pulls/7/files'] = [{'filename': 'ClientApp/Program.cs'}]
+        env = {'RELEASE_SHA': authority, 'AUTOMATIC_RELEASE': 'true', 'AUTOMATIC_SOURCE_PR': '7',
+               'AUTOMATIC_VALIDATED_SHA': source, 'AUTOMATIC_SOURCE_MERGE_SHA': merge,
+               'AUTOMATIC_TARGETS_JSON': json.dumps([target]), 'GITHUB_RUN_ID': '99', 'GITHUB_RUN_ATTEMPT': '1'}
+        with patch.dict(os.environ, env), patch.object(m, 'staging_only', return_value=False), \
+             patch.object(m, 'git', return_value=SimpleNamespace(stdout=authority)), \
+             patch.object(m, 'ancestor', return_value=True), patch.object(m, 'candidate_validation', return_value=None), \
+             patch.object(m, '_validated_package_evidence', return_value={
+                 'reusable': True, 'revision': producer, 'packageIdentity': 'e' * 64}), \
+             patch.object(m, 'admission_conflicts', return_value=[]), \
+             patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='LEGEND_OPERATION_RESULT={"artifactId":1}')) as publish:
+            result = m.admit_worker(api)
+        self.assertTrue(result['admitted'])
+        self.assertEqual(source, result['admission']['authorizedSourceRevision'])
+        self.assertEqual(producer, result['admission']['applicationRevision'])
+        self.assertEqual('e' * 64, result['admission']['packageIdentity'])
+        self.assertEqual(result['admission']['admissionId'], m._admission_identity(result['admission']))
+        published = json.loads(publish.call_args.kwargs['input'])
+        self.assertEqual(result['admission'], published['record'])
 
 
 class HistoricalReleaseRecovery(unittest.TestCase):
@@ -636,15 +916,15 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
     @patch.object(m, "_package_backfill_running", return_value=False)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
-    @patch.object(m, "pending_automatic_release")
+    @patch.object(m, "pending_automatic_releases")
     def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __):
         api = Api()
-        pending.return_value = {
+        pending.return_value = [{
             "authorizationSha": "b" * 40,
             "applicationRevision": "c" * 40,
             "targets": [canonical_name("portal")],
             "sourcePr": 385,
-        }
+        }]
 
         result = m.dispatch_pending_automatic_release(api, "a" * 40)
 
@@ -659,19 +939,19 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
     @patch.object(m, "_package_backfill_running", return_value=True)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
-    @patch.object(m, "pending_automatic_release")
+    @patch.object(m, "pending_automatic_releases")
     def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __):
         api = Api()
-        pending.return_value = {
+        pending.return_value = [{
             "authorizationSha": "b" * 40,
             "applicationRevision": "c" * 40,
             "targets": [canonical_name("portal")],
             "sourcePr": 385,
-        }
+        }]
 
         result = m.dispatch_pending_automatic_release(api, "a" * 40)
 
-        self.assertEqual("already queued or running", result["packageBackfill"])
+        self.assertEqual("already queued or running", result["pendingCandidates"][0]["packageBackfill"])
         self.assertEqual([], api.dispatched)
 
     @patch.object(m, "_package_backfill_running", return_value=False)
@@ -714,13 +994,18 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
 
 class ReconcileSafety(unittest.TestCase):
+    def setUp(self):
+        queue = patch.object(m, "pending_automatic_releases", return_value=[])
+        queue.start()
+        self.addCleanup(queue.stop)
+
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "dispatch_pending_legacy_release", return_value=None)
     @patch.object(m, "dispatch_pending_automatic_release", return_value=None)
     def test_no_pending_release_means_no_release(self, _, __, ___):
         api = Api()
         self.assertEqual(
-            {"release": "no application publication required for exact approved head"},
+            {"state": "READY", "release": "no application publication required for exact approved head"},
             m.reconcile(api),
         )
         self.assertEqual([], api.dispatched)
@@ -766,8 +1051,9 @@ class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "direct_only_request", return_value=True)
     def test_failed_exact_release_is_not_auto_replayed(self, _, __):
         api = Api()
-        api.pages_map["actions/runs?head_sha=" + "a" * 40] = [{
+        api.pages_map["actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"] = [{
             "id": 8,
+            "head_sha": "a" * 40,
             "status": "completed",
             "conclusion": "failure",
             "path": ".github/workflows/" + m.DIRECT,

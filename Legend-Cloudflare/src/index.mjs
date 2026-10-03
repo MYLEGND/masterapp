@@ -1,4 +1,5 @@
 import { createSecuritySession } from './security/session.mjs';
+import { hmacSign } from './security/crypto.mjs';
 import { authenticateRequest, CONTROL_PATH, RESPOND_PATH, STATUS_PATH } from './security/authenticate.mjs';
 import { createGovernanceClient } from './security/governance.mjs';
 import { requireSecurity, SecurityError, securityErrorResponse } from './security/errors.mjs';
@@ -8,12 +9,12 @@ export { LegendGovernance } from './security/governance.mjs';
 
 const headers = { 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' };
 
-function founderStatusPayload(envelope, policy, budget) {
+async function founderStatusPayload(envelope, policy, budget, env) {
   const models = MODEL_REGISTRY.filter(model => policy.modelIds?.includes(model.id)).map(model => ({
     id: model.id, role: model.role, contextTokens: model.contextTokens,
     inputUsdPerMillion: model.inputUsdPerMillion, outputUsdPerMillion: model.outputUsdPerMillion,
   }));
-  return {
+  const result = {
     version: 'legend-cloudflare.v1', requestId: envelope.requestId, status: 'ready',
     provider: { name: 'cloudflare-workers-ai', hosting: 'cloudflare' },
     billing: 'Cloudflare Workers AI',
@@ -24,6 +25,31 @@ function founderStatusPayload(envelope, policy, budget) {
     models,
     budget,
   };
+  if (envelope.callbackProofNonce !== undefined) {
+    requireSecurity(typeof envelope.callbackProofNonce === 'string' &&
+      /^[A-Za-z0-9_-]{22,128}$/.test(envelope.callbackProofNonce),
+    'callback_proof_nonce_invalid', 400);
+    requireSecurity(typeof env.LEGEND_TOOL_CALLBACK_KEY_ID === 'string' &&
+      /^[A-Za-z0-9_.:@-]{1,128}$/.test(env.LEGEND_TOOL_CALLBACK_KEY_ID) &&
+      typeof env.LEGEND_AZURE_TOOL_CALLBACK_URL === 'string' &&
+      env.LEGEND_AZURE_TOOL_CALLBACK_URL.startsWith('https://') &&
+      typeof env.LEGEND_TOOL_CALLBACK_SECRET === 'string',
+    'callback_proof_configuration_missing', 503);
+    const message = [
+      'legend-callback-equivalence.v1',
+      env.LEGEND_TOOL_CALLBACK_KEY_ID,
+      env.LEGEND_AZURE_TOOL_CALLBACK_URL,
+      envelope.callbackProofNonce,
+    ].join('\n');
+    result.callbackProof = {
+      version: 'legend-callback-equivalence.v1',
+      keyId: env.LEGEND_TOOL_CALLBACK_KEY_ID,
+      url: env.LEGEND_AZURE_TOOL_CALLBACK_URL,
+      nonce: envelope.callbackProofNonce,
+      signature: await hmacSign(env.LEGEND_TOOL_CALLBACK_SECRET, message),
+    };
+  }
+  return result;
 }
 
 async function founderControlContext(request, env, targetPath) {
@@ -52,7 +78,8 @@ export default {
     if (url.pathname === STATUS_PATH) {
       try {
         const session = await founderControlContext(request, env, STATUS_PATH);
-        return Response.json(founderStatusPayload(session.envelope, session.policy, await session.governance.status()),
+        return Response.json(await founderStatusPayload(
+          session.envelope, session.policy, await session.governance.status(), env),
           { headers });
       } catch (error) { return securityErrorResponse(error); }
     }
@@ -72,7 +99,8 @@ export default {
           'founder_control_invalid', 400);
         } else requireSecurity(false, 'founder_control_invalid', 400);
         const budget = await session.governance.control(control);
-        return Response.json({ ...founderStatusPayload(session.envelope, session.policy, budget), controlApplied: control.action },
+        return Response.json({ ...await founderStatusPayload(
+          session.envelope, session.policy, budget, env), controlApplied: control.action },
           { headers });
       } catch (error) { return securityErrorResponse(error); }
     }

@@ -22,7 +22,6 @@ on:
       - '**/*.targets'
       - 'scripts/db.sh'
       - 'scripts/validation-resume.py'
-      - 'scripts/test-validation-resume.py'
       - '.github/workflows/approved-release-security-validation.yml'
 
 concurrency:
@@ -200,6 +199,17 @@ jobs:
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
           git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+      - name: Record canonical child execution evidence
+        if: always() && steps.plan.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py record-evidence \
+            --plan "$RUNNER_TEMP/validation-resume.json" \
+            --output "$RUNNER_TEMP/validation-resume.json" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}"
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'

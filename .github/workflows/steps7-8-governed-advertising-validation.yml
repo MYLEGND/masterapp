@@ -26,7 +26,6 @@ on:
       - 'AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs'
       - '.github/workflows/steps7-8-governed-advertising-validation.yml'
       - 'scripts/validation-resume.py'
-      - 'scripts/test-validation-resume.py'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -112,6 +111,17 @@ jobs:
           cd tests/website
           npm ci
           npm test
+
+      - name: Record canonical child execution evidence
+        if: always() && steps.plan.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py record-evidence \
+            --plan "$RUNNER_TEMP/validation-resume.json" \
+            --output "$RUNNER_TEMP/validation-resume.json" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}"
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
