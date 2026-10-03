@@ -377,6 +377,12 @@ test('desktop modal geometry is owned by the shared authenticated authority',()=
     ['AgentPortal/wwwroot/css/website-analytics.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.wa-standalone-modal > \.wa-modal-dialog/],
     ['AgentPortal/wwwroot/css/clients-index.css',/@media\s*\(\s*min-width\s*:\s*901px\s*\)\s*\{[\s\S]*?\.actions-hub-modal \.modal-dialog/]
   ];
+
+  const crmFeature=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+  assert.doesNotMatch(crmFeature,/\.modal\.crm-command-modal\s*\{[^}]*width:/);
+  assert.doesNotMatch(crmFeature,/\.modal\.crm-command-modal\s*\{[^}]*background:/);
+  assert.doesNotMatch(crmFeature,/\.crm-command-modal-queues\s*\{[^}]*width:/);
+  assert.match(shared,/\.clients-crm,\.leads-crm\)[\s\S]*\.modal\.open\[data-legend-modal-surface\][\s\S]*width:\s*var\(--legend-desktop-modal-width\)/);
   for(const [file,pattern] of featureChecks){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
     assert.doesNotMatch(source,pattern,file);
