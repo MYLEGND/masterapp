@@ -51,8 +51,15 @@ class FakeAzure:
     def sleep(self, seconds):
         self.now += seconds
 
-    def run(self):
-        return deploy.reconcile(self, clock=lambda: self.now, sleep=self.sleep, interval=1, timeout=10)
+    def run(self, **kwargs):
+        return deploy.reconcile(
+            self,
+            clock=lambda: self.now,
+            sleep=self.sleep,
+            interval=1,
+            timeout=10,
+            **kwargs,
+        )
 
 
 class ReconciliationTests(unittest.TestCase):
@@ -112,11 +119,20 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(0, azure.uploads)
 
-    def test_status_unavailable_is_fail_closed(self):
+    def test_status_unavailable_is_bounded_and_fail_closed(self):
         azure = FakeAzure([RuntimeError('gateway unavailable')], [False])
-        with self.assertRaisesRegex(RuntimeError, 'deadline'):
+        with self.assertRaisesRegex(deploy.DeploymentStatusUnavailable, '3 consecutive reads'):
             azure.run()
+        self.assertEqual(2, azure.now)
         self.assertEqual(0, azure.uploads)
+
+    def test_transient_status_outage_recovers_without_upload_replay(self):
+        azure = FakeAzure(
+            [[], RuntimeError('gateway unavailable'), RuntimeError('gateway unavailable'), [row('new', 4)]],
+            [False, True, True],
+            accepted=False)
+        self.assertEqual('deployed', azure.run())
+        self.assertEqual(1, azure.uploads)
 
     def test_live_revision_alone_cannot_override_active_deployment(self):
         azure = FakeAzure([[row('still-running', 2)]], [True])
@@ -255,6 +271,25 @@ class TransactionTests(unittest.TestCase):
                 revision,
             )
         self.assertEqual(len(keys), recheck.call_count)
+
+    def test_control_plane_blindness_never_authorizes_rollback_writes(self):
+        key = next(iter(deploy.TARGETS))
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"]]
+        baselines = json.dumps([{"app": key, "revision": "b" * 40}])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
+             patch.object(deploy, "deploy_one", side_effect=deploy.DeploymentStatusUnavailable("blind")), \
+             patch.object(deploy, "rollback_transaction") as rollback:
+            with self.assertRaises(deploy.DeploymentStatusUnavailable):
+                deploy.deploy_transaction(
+                    names,
+                    baselines,
+                    Path("/tmp/candidate"),
+                    Path("/tmp/rollback"),
+                    revision,
+                )
+        rollback.assert_not_called()
 
     def test_transaction_scope_comes_only_from_canonical_inventory(self):
         names = [row["releaseName"] for row in deploy.TARGETS.values()]

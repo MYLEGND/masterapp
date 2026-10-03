@@ -65,6 +65,10 @@ def verify_package(package, revision, static=False):
     return actual
 
 
+class DeploymentStatusUnavailable(RuntimeError):
+    """Azure deployment state could not be read within the bounded outage budget."""
+
+
 class Azure:
     def __init__(self, app, package, url, revision, static=False):
         self.app, self.package, self.url, self.revision = app, package, url, revision
@@ -74,7 +78,7 @@ class Azure:
         # Uses the existing OIDC session; no publishing credentials or new authority.
         result = subprocess.run(
             ['az', 'webapp', 'log', 'deployment', 'list', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
-             '--only-show-errors', '-o', 'json'], capture_output=True, text=True, timeout=45)
+             '--only-show-errors', '-o', 'json'], capture_output=True, text=True, timeout=20)
         if result.returncode:
             raise RuntimeError('Azure deployment status unavailable')
         rows = json.loads(result.stdout)
@@ -138,21 +142,33 @@ class Azure:
             return False
 
 
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3):
     started = clock()
     submitted = False
     static_recovery_submitted = False
     baseline_ids = set()
     stable = 0
     previous = None
+    consecutive_status_failures = 0
     while clock() - started < timeout:
         try:
             rows = azure.deployments()
-        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired):
+        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
             stable = 0
-            print('Deployment status temporarily unavailable; read-only retry.', flush=True)
+            consecutive_status_failures += 1
+            if consecutive_status_failures >= max_status_failures:
+                phase = 'after immutable upload' if submitted else 'before any upload'
+                raise DeploymentStatusUnavailable(
+                    f'Azure deployment status remained unavailable for {consecutive_status_failures} consecutive reads '
+                    f'({phase}). No deployment or rollback write was replayed; resume by reconciling the exact revision.'
+                ) from exc
+            print(
+                f'Deployment status temporarily unavailable; bounded read-only retry '
+                f'{consecutive_status_failures}/{max_status_failures}.',
+                flush=True)
             sleep(interval)
             continue
+        consecutive_status_failures = 0
         active = [row for row in rows if row['status'] in (0, 1, 2)]
         new = [row for row in rows if row['id'] not in baseline_ids] if submitted else []
         state = (submitted, tuple(sorted((row['id'], row['status']) for row in (new if submitted else active))))
@@ -291,6 +307,11 @@ def deploy_transaction(target_names, baselines_raw: str, package_root: Path, rol
                 )
                 if result not in {"preserved", "deployed"}:
                     raise RuntimeError("Unrecognized deployment reconciliation result")
+    except DeploymentStatusUnavailable:
+        # Never issue compensation writes while Azure's deployment control plane is
+        # unreadable. The immutable upload is never replayed; a later run resumes by
+        # reconciling exact live provenance and terminal deployment state.
+        raise
     except Exception as release_error:
         rollback_keys = [key for key in keys if baselines[key] != revision]
         try:
