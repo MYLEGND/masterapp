@@ -555,7 +555,7 @@
 .home-clients-recent-grid {
     margin-top: 0.75rem;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.62rem;
 }
 
