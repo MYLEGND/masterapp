@@ -3288,13 +3288,25 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     application = receipt['applicationReleaseSha'] if receipt else None
     translations = {row['name'].removeprefix('translation-direct-release-') for row in artifacts
                     if not row.get('expired') and re.fullmatch('translation-direct-release-[a-f0-9]{40}', row.get('name', ''))}
-    if len(translations) != 1:
-        raise ReleaseOperationHistoryUnproven('No authenticated legacy package checkout/producer revision')
-    checkout = translations.pop()
+    rollbacks = set()
+    for artifact in artifacts:
+        match = re.fullmatch(r'diagnostics-rollback-([a-z]+)-([a-f0-9]{40})', artifact.get('name', ''))
+        if match and not artifact.get('expired') and match.group(1) in RELEASE_TARGETS:
+            rollbacks.add(match.group(2))
+    checkouts = translations | rollbacks
+    if len(checkouts) != 1:
+        raise ReleaseOperationHistoryUnproven('No authenticated legacy package checkout/producer revision (missing or ambiguous)')
+    checkout = checkouts.pop()
     workflow = _release_history_source(repository, run['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+    # Both existing artifact families bind the execution authority, not the
+    # rollback package's embedded revision. Package proof below remains required.
+    rollback_job = _job_blocks(workflow).get('preserve-rollback', '')
+    producer_binding = (
+        (bool(translations) and 'name: translation-direct-release-${{ env.RELEASE_SHA }}' in workflow) or
+        (bool(rollbacks) and 'name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}' in
+         rollback_job and not re.search(r'(?m)^\s+RELEASE_SHA:', rollback_job)))
     if ('RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}' not in workflow or
-            'name: translation-direct-release-${{ env.RELEASE_SHA }}' not in workflow or
-            re.search(r'(?<![A-Z_])RELEASE_SHA\s*=', workflow)):
+            not producer_binding or re.search(r'(?<![A-Z_])RELEASE_SHA\s*=', workflow)):
         raise ReleaseOperationHistoryUnproven('Historical checkout receipt has no recognized producer binding')
     release = _job_blocks(workflow).get('release', '')
     if 'APPLICATION_RELEASE_SHA' in release:

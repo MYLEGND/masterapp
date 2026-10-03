@@ -191,6 +191,32 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.legacy_fixture()
         self.assertIsNone(self.legacy_history())
 
+    def test_retained_rollback_identity_binds_checkout_without_translation(self):
+        self.legacy_fixture()
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        self.assertIsNone(self.legacy_history())
+
+    def test_rollback_checkout_proof_still_blocks_same_package_replay(self):
+        self.legacy_fixture('a' * 40)
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
+            self.legacy_history()
+
+    def test_rollback_checkout_proof_requires_original_workflow_binding(self):
+        self.legacy_fixture()
+        self.legacy_artifacts[1]['name'] = 'diagnostics-rollback-portal-' + 'd' * 40
+        self.old_workflow = self.old_workflow.replace(
+            'name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}',
+            'name: unrelated-artifact')
+        with self.assertRaisesRegex(RuntimeError, 'recognized producer binding'):
+            self.legacy_history()
+
+    def test_conflicting_checkout_artifacts_do_not_authorize_exclusion(self):
+        self.legacy_fixture()
+        self.legacy_artifacts.append(dict(name='diagnostics-rollback-portal-' + 'c' * 40, expired=False))
+        with self.assertRaisesRegex(RuntimeError, 'checkout/producer revision'):
+            self.legacy_history()
+
     def test_authenticated_legacy_same_package_missing_intent_blocks_replay(self):
         self.legacy_fixture('a' * 40)
         with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
