@@ -5,11 +5,13 @@ namespace Shared.PortalShell;
 
 public sealed record PortalShellIdentity(
     string DisplayName,
+    string FirstName,
     string Initials,
     string RoleLabel,
     string AvatarUrl,
     string StoreUrl,
-    string ProfileUrl);
+    string ProfileUrl,
+    string Phone);
 
 public interface IPortalShellIdentityResolver
 {
