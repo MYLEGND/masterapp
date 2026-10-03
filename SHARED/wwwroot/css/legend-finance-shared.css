@@ -2138,7 +2138,6 @@ body {
 .finance-support-modal--dense {
     display: flex;
     flex-direction: column;
-    max-height: calc(100dvh - 2rem);
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -10373,7 +10372,6 @@ body {
     }
 
     .finance-support-modal--dense {
-        max-height: calc(100dvh - 1.5rem);
         padding: 10px;
     }
 
@@ -10404,7 +10402,6 @@ body {
     }
 
     .finance-support-modal--dense {
-        max-height: calc(100dvh - 1rem);
         padding: 8px;
     }
 
