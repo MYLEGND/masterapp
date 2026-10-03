@@ -9205,6 +9205,100 @@ header .legend-global-nav .container-fluid {
 }
 
 /*
+ * Canonical premium modal interiors.
+ * CRM custom modals and conversational workspaces consume the same graphite,
+ * grey, and dark-gold authority instead of retaining feature-owned navy chrome.
+ */
+@media (min-width: 901px) {
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open[data-legend-modal-surface] {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: var(--legend-desktop-modal-width);
+        max-width: var(--legend-desktop-modal-width);
+        max-height: var(--legend-desktop-modal-height);
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        transform: translate(-50%,-50%);
+        overflow: hidden;
+        border: 1px solid var(--legend-modal-line-strong);
+        border-radius: var(--legend-app-radius);
+        background: linear-gradient(180deg,var(--legend-modal-surface),var(--legend-modal-surface-raised));
+        color: var(--legend-modal-ink);
+        box-shadow: var(--legend-modal-shadow);
+        z-index: var(--legend-modal-surface-z);
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open > .modal-head {
+        flex: 0 0 auto;
+        padding: .82rem 1rem;
+        border-bottom: 1px solid var(--legend-modal-line-strong);
+        background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
+        color: #fff;
+    }
+
+    html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open > .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+        padding: .9rem 1rem 1rem;
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-command-center-grid {
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-command-center-sidebar {
+        border-right-color: var(--legend-modal-line);
+        background: var(--legend-modal-surface-subtle);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-conversation-item {
+        border-color: var(--legend-modal-line);
+        background: rgba(255,255,255,.48);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app .messaging-conversation-item:is(:hover,.is-active) {
+        background: var(--legend-modal-gold-soft);
+        box-shadow: inset 3px 0 0 var(--legend-modal-gold-strong);
+    }
+
+    body.legend-app :is(
+        .messaging-command-center-thread,
+        .messaging-thread-header,
+        .messaging-thread-empty,
+        .messaging-send-form
+    ) {
+        background: var(--legend-modal-surface);
+        color: var(--legend-modal-ink);
+    }
+
+    body.legend-app :is(
+        .messaging-command-center-header h2,
+        .messaging-thread-header h3,
+        .messaging-thread-empty h3
+    ) {
+        color: #fff;
+    }
+
+    body.legend-app :is(
+        .messaging-search-result small,
+        .messaging-search-empty,
+        .messaging-list-empty,
+        .messaging-attachment-note
+    ) {
+        color: var(--legend-modal-muted);
+    }
+}
+
+/*
  * Premium desktop density contract.
  * Generic authenticated chrome lives here; feature CSS must not re-own these
  * measurements unless the component is semantically unique.
