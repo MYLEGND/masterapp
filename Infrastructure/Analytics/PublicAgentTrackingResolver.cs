@@ -1,4 +1,5 @@
 using Domain.Entities;
+using System.Diagnostics.CodeAnalysis;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,21 @@ public sealed class AgentTrackingResolver
     {
         _db = db;
         _logger = logger;
+    }
+
+    // Resolve an explicitly selected owner without falling through to another identity.
+    public async Task<ResolveResult> ResolveAsync(string? slug, Guid? profileId, CancellationToken ct = default)
+    {
+        if (profileId.HasValue)
+        {
+            var byId = await ResolveByIdAsync(profileId.Value, ct);
+            if (!byId.Found || string.IsNullOrWhiteSpace(slug)) return byId;
+            var bySlug = await ResolveBySlugAsync(slug, ct);
+            return bySlug.Found && bySlug.Profile?.Id == byId.Profile?.Id
+                ? bySlug : ResolveResult.NotFound;
+        }
+        return string.IsNullOrWhiteSpace(slug)
+            ? ResolveResult.NotFound : await ResolveBySlugAsync(slug, ct);
     }
 
     public async Task<ResolveResult> ResolveBySlugAsync(string slug, CancellationToken ct = default)
@@ -33,7 +49,7 @@ public sealed class AgentTrackingResolver
                         .FirstOrDefaultAsync(ct) ?? alias.Slug;
 
                 var profile = alias.Profile ?? await _db.AgentTrackingProfiles.FindAsync(new object[] { alias.AgentTrackingProfileId }, ct);
-                return new ResolveResult(profile, alias.Slug, canonical, alias.IsCanonical, Found: true);
+                return profile is null ? ResolveResult.NotFound : new ResolveResult(profile, alias.Slug, canonical, alias.IsCanonical, Found: true);
             }
 
             var profileOnly = await _db.AgentTrackingProfiles.FirstOrDefaultAsync(p => p.Slug == slug, ct);
@@ -107,7 +123,7 @@ public sealed record ResolveResult(
     string? RequestedSlug,
     string? CanonicalSlug,
     bool IsCanonical,
-    bool Found)
+    [property: MemberNotNullWhen(true, "Profile")] bool Found)
 {
     public static ResolveResult NotFound => new(null, null, null, false, false);
 }

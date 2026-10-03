@@ -24,4 +24,39 @@ class HomeActivityProjectionTest {
         assertEquals("post", entries.first().postId)
         assertEquals(1, LegendInAppActivityProjection.unreadCount(entries, "2026-09-09T18:30:00Z"))
     }
+
+
+    @Test fun `raw engineering activity is not duplicated beside Founder action cards`() {
+        val engineering = MessagingActivityNotification(
+            "engineering-id",
+            "Engineering",
+            "LEGEND Engineering release approval required",
+            "machine detail",
+            "2026-10-02T20:00:00Z",
+        )
+        val account = MessagingActivityNotification(
+            "account-id",
+            "Account",
+            "Account updated",
+            "Details",
+            "2026-10-02T19:00:00Z",
+        )
+
+        val entries = LegendInAppActivityProjection.make(emptyList(), listOf(engineering, account))
+
+        assertEquals(1, entries.size)
+        assertEquals("account:account-id", entries.single().id)
+    }
+
+    @Test fun `Founder engineering action contract carries explicit approve and deny steps`() {
+        val item = Json { ignoreUnknownKeys = true }.decodeFromString<FounderEngineeringActionItem>(
+            """{"workItemId":"00000000-0000-0000-0000-000000000001","attentionKind":"action_required","title":"Release decision needed","summary":"Validation passed.","actionStep":"Approve or deny this release.","requiresFounderAction":true,"primaryAction":"approve_release","primaryActionLabel":"Approve release","secondaryAction":"deny_release","secondaryActionLabel":"Deny release","technicalSummary":"Work item details","updatedUtc":"2026-10-02T20:00:00Z"}"""
+        )
+
+        assertTrue(item.requiresFounderAction)
+        assertEquals("approve_release", item.primaryAction)
+        assertEquals("deny_release", item.secondaryAction)
+        assertEquals("Approve release", item.primaryActionLabel)
+        assertEquals("Deny release", item.secondaryActionLabel)
+    }
 }

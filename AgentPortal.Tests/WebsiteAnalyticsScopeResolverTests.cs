@@ -37,12 +37,62 @@ public class WebsiteAnalyticsScopeResolverTests : IDisposable
 
         var result = await resolver.ResolveAsync(http, null, team);
 
-        Assert.Equal(team ? ScopeType.Global : ScopeType.Agent, result.ScopeType);
+        Assert.Equal(team ? ScopeType.Global : ScopeType.Founder, result.ScopeType);
         Assert.Equal(team ? (Guid?)null : profile.Id, result.AgentTrackingProfileId);
     }
 
     [Fact]
-    public async Task MissingImpersonatedProfileNeverFallsBackToFounder()
+    public async Task FounderExplicitOwnProfileRemainsFounderScope()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile { Id = Guid.NewGuid(), AgentUserId = Founder };
+        var tracking = new Mock<IAgentTrackingService>();
+        tracking.Setup(x => x.GetByUserIdAsync(Founder, It.IsAny<CancellationToken>())).ReturnsAsync(profile);
+        var http = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("oid", Founder) }, "Test")) };
+        var effective = new EffectiveAgentContext(new HttpContextAccessor { HttpContext = http }, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
+        var resolver = new WebsiteAnalyticsScopeResolver(effective, tracking.Object, db, NullLogger.Instance);
+
+        var result = await resolver.ResolveAsync(http, profile.Id, team: false);
+
+        Assert.Equal(ScopeType.Founder, result.ScopeType);
+        Assert.Equal(profile.Id, result.AgentTrackingProfileId);
+        Assert.Equal("founder", result.ReportingOwner);
+    }
+
+    [Fact]
+    public async Task FounderExplicitOtherProfileRemainsAgentScope()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var founderProfile = new AgentTrackingProfile { Id = Guid.NewGuid(), AgentUserId = Founder };
+        var otherProfileId = Guid.NewGuid();
+        var tracking = new Mock<IAgentTrackingService>();
+        tracking.Setup(x => x.GetByUserIdAsync(Founder, It.IsAny<CancellationToken>())).ReturnsAsync(founderProfile);
+        var http = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("oid", Founder) }, "Test")) };
+        var effective = new EffectiveAgentContext(new HttpContextAccessor { HttpContext = http }, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
+        var resolver = new WebsiteAnalyticsScopeResolver(effective, tracking.Object, db, NullLogger.Instance);
+
+        var result = await resolver.ResolveAsync(http, otherProfileId, team: false);
+
+        Assert.Equal(ScopeType.Agent, result.ScopeType);
+        Assert.Equal(otherProfileId, result.AgentTrackingProfileId);
+    }
+
+    [Fact]
+    public async Task MissingFounderProfileFailsInsteadOfElevatingToGlobal()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var tracking = new Mock<IAgentTrackingService>();
+        var http = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("oid", Founder) }, "Test")) };
+        var effective = new EffectiveAgentContext(new HttpContextAccessor { HttpContext = http }, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
+        var resolver = new WebsiteAnalyticsScopeResolver(effective, tracking.Object, db, NullLogger.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => resolver.ResolveAsync(http, null));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingImpersonatedProfileNeverFallsBackToFounder(bool team)
     {
         using var db = ControllerTestHelpers.BuildDb();
         var tracking = new Mock<IAgentTrackingService>();
@@ -51,7 +101,7 @@ public class WebsiteAnalyticsScopeResolverTests : IDisposable
         var effective = new EffectiveAgentContext(new HttpContextAccessor { HttpContext = http }, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
         var resolver = new WebsiteAnalyticsScopeResolver(effective, tracking.Object, db, NullLogger.Instance);
 
-        var result = await resolver.ResolveAsync(http, null);
+        var result = await resolver.ResolveAsync(http, null, team);
 
         Assert.Equal(ScopeType.Agent, result.ScopeType);
         Assert.Equal(Guid.Empty, result.AgentTrackingProfileId);

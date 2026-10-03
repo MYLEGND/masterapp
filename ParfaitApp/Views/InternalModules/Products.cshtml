@@ -3,6 +3,20 @@
 @{
     ViewData["Title"] = "Products";
     Layout = "_InternalLayout";
+    var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    string CommerceAction(string internalPath, string scopedPath) =>
+        isScopedCommerceManager
+            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            : internalPath;
+    var commerceSettingsAction = CommerceAction("/internal/commerce/products/settings", "/commerce/manage/settings/commerce");
+    var productSaveAction = CommerceAction("/internal/commerce/products", "/commerce/manage/product");
+    var productReorderAction = CommerceAction("/internal/commerce/products/reorder", "/commerce/manage/products/reorder");
+    var imageUploadAction = CommerceAction("/internal/commerce/products/images/upload", "/commerce/manage/product/images/upload");
+    var imageReorderAction = CommerceAction("/internal/commerce/products/images/reorder", "/commerce/manage/product/images/reorder");
+    var productDeleteAction = CommerceAction("/internal/commerce/products/delete", "/commerce/manage/product/delete");
+    var imageDisplayAction = CommerceAction("/internal/commerce/products/images/display", "/commerce/manage/product/images/display");
+    var imageDeleteAction = CommerceAction("/internal/commerce/products/images/delete", "/commerce/manage/product/images/delete");
 
     var newProduct = Model.NewProduct ?? new ParfaitProductEditorViewModel();
     var settings = Model.CommerceSettings ?? new ParfaitCommerceSettingsViewModel();
@@ -131,7 +145,7 @@
 
         <section class="pf-commerce-settings-strip">
             <form method="post"
-                  action="/internal/commerce/products/settings"
+                  action="@commerceSettingsAction"
                   class="pf-commerce-settings-form"
                   data-pf-commerce-settings-form>
                 @Html.AntiForgeryToken()
@@ -209,7 +223,7 @@
         <details class="pf-add-product">
             <summary>Add Product</summary>
 
-            <form method="post" action="/internal/commerce/products" class="pf-product-create-form" data-pf-product-form>
+            <form method="post" action="@productSaveAction" class="pf-product-create-form" data-pf-product-form>
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="Id" value="@newProduct.Id" />
                 <input type="hidden" name="PriceLabel" value="Auto" />
@@ -330,7 +344,7 @@
 
         <div class="pf-product-summary-list mt-3"
              data-pf-product-list
-             data-pf-sort-url="/internal/commerce/products/reorder">
+             data-pf-sort-url="@productReorderAction">
             @for (var productIndex = 0; productIndex < Model.Products.Count; productIndex++)
             {
                 var product = Model.Products[productIndex];
@@ -454,7 +468,7 @@
                                 </div>
 
                                 <form method="post"
-                                      action="/internal/commerce/products/images/upload"
+                                      action="@imageUploadAction"
                                       enctype="multipart/form-data"
                                       class="pf-upload-box"
                                       data-pf-upload-form
@@ -470,7 +484,7 @@
                                 <div class="pf-photo-grid"
                                      data-pf-photo-grid
                                      data-pf-product-id="@product.Id"
-                                     data-pf-sort-url="/internal/commerce/products/images/reorder">
+                                     data-pf-sort-url="@imageReorderAction">
                                     @foreach (var image in orderedImages)
                                     {
                                         var editorId = $"imageEditor{image.Id}";
@@ -504,7 +518,7 @@
 
                             <section class="pf-editor-panel">
                                 <form method="post"
-                                      action="/internal/commerce/products"
+                                      action="@productSaveAction"
                                       class="pf-product-edit-form"
                                       data-pf-product-form
                                       data-pf-product-edit-form
@@ -626,7 +640,7 @@
                                     <button type="submit" class="pf-action">Save Product</button>
                                 </form>
 
-                                <form method="post" action="/internal/commerce/products/delete" class="pf-danger-zone">
+                                <form method="post" action="@productDeleteAction" class="pf-danger-zone">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@product.Id" />
                                     <button type="submit">Delete Product</button>
@@ -644,7 +658,7 @@
             <div class="pf-image-editor-modal" id="@editorId" aria-hidden="true">
                 <div class="pf-modal-dialog pf-modal-lg">
                     <form method="post"
-                          action="/internal/commerce/products/images/display"
+                          action="@imageDisplayAction"
                           class="modal-content pf-image-editor-form"
                           data-pf-adjust-panel
                           data-pf-image-editor-form

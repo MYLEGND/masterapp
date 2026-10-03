@@ -2,6 +2,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Shared.Analytics;
@@ -11,15 +12,28 @@ namespace Infrastructure.Analytics;
 public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCredentialProtector protector)
 {
     public Task<bool> ExistsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
-        db.MarketingConnections.AnyAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        ExistsAsync(owner, MarketingDestinationKeys.Meta, ct);
+
+    public Task<bool> ExistsAsync(MarketingOwnerScope owner, string provider, CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        return db.MarketingConnections.AnyAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+    }
 
     public Task<MarketingConnection?> GetStatusAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
-        db.MarketingConnections.AsNoTracking().SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        GetStatusAsync(owner, MarketingDestinationKeys.Meta, ct);
+
+    public Task<MarketingConnection?> GetStatusAsync(MarketingOwnerScope owner, string provider, CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        return db.MarketingConnections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+    }
 
     public async Task<MetaAdsConnectionRecord?> GetAdsAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
         var row = await GetStatusAsync(owner, ct);
-        if (row is null || row.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)) return null;
+        if (row is null || row.DisconnectedUtc.HasValue || row.AccessTokenExpiresUtc <= DateTime.UtcNow || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext)) return null;
         return new MetaAdsConnectionRecord
         {
             AgentTrackingProfileId = owner.AgentTrackingProfileId ?? Guid.Empty,
@@ -35,7 +49,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task ImportAsync(MarketingOwnerScope owner, MetaAdsConnectionRecord? record,
         string? pixelId = null, string? capiToken = null, string? testEventCode = null, CancellationToken ct = default)
     {
-        var row = await db.MarketingConnections.SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
         if (row?.LegacyAdsImportedUtc is not null || row?.DisconnectedUtc is not null) return;
         var isNew = row is null;
         row ??= New(owner);
@@ -61,7 +76,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task ImportProfileAsync(MarketingOwnerScope owner, string? pixelId, string? capiToken,
         string? testCode, CancellationToken ct = default)
     {
-        var row = await db.MarketingConnections.SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
         if (row?.LegacyProfileImportedUtc is not null || row?.DisconnectedUtc is not null) return;
         if (row is null) { row = New(owner); db.MarketingConnections.Add(row); }
         row.PixelId = pixelId;
@@ -113,8 +129,10 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     public async Task<string?> GetCapiTokenAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
         var row = await GetStatusAsync(owner, ct);
-        return row is null || row.DisconnectedUtc.HasValue ? null : protector.Unprotect(owner,
-            row.CapiAccessTokenCiphertext ?? row.AdsAccessTokenCiphertext);
+        if (row is null || row.DisconnectedUtc.HasValue) return null;
+        if (!string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
+            return protector.Unprotect(owner, row.CapiAccessTokenCiphertext);
+        return row.AccessTokenExpiresUtc <= DateTime.UtcNow ? null : protector.Unprotect(owner, row.AdsAccessTokenCiphertext);
     }
 
     public async Task DisconnectAsync(MarketingOwnerScope owner, CancellationToken ct = default)
@@ -132,12 +150,14 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
     }
 
     private Task<MarketingConnection> LoadAsync(MarketingOwnerScope owner, CancellationToken ct) =>
-        db.MarketingConnections.SingleAsync(x => x.OwnerKey == owner.Key && x.Provider == "meta", ct);
+        db.MarketingConnections.SingleAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
 
     private static MarketingConnection New(MarketingOwnerScope owner) => new()
     {
         OwnerKey = owner.Key, OwnerType = owner.OwnerType,
-        AgentTrackingProfileId = owner.AgentTrackingProfileId, CommerceBusinessId = owner.CommerceBusinessId
+        AgentTrackingProfileId = owner.AgentTrackingProfileId, CommerceBusinessId = owner.CommerceBusinessId,
+        Provider = MarketingDestinationKeys.Meta
     };
 
     private void SetAds(MarketingConnection row, MarketingOwnerScope owner, MetaAdsConnectionRecord record)
@@ -166,8 +186,71 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.TryAddSingleton<MetaCapiCredentialProtector>();
+        services.TryAddScoped<AgentTrackingResolver>();
+        services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+        services.TryAddScoped<MarketingBrowserConfigurationService>();
+        services.TryAddScoped<MarketingMeasurementEvidenceService>();
+        services.TryAddScoped<MarketingProviderSetupProjection>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
+        services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
+        services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
+        services.AddScoped<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority, Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority>();
+        services.AddHttpClient<IOpenAiAdsDirectConnectionService, OpenAiAdsDirectConnectionService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+        services.AddHttpClient<IOpenAiAdsExecutionService, OpenAiAdsExecutionService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IAdvertisingActionAuthorizationService, AdvertisingActionAuthorizationService>();
+        services.AddScoped<Infrastructure.WebsiteEditing.IPromotionOrchestrationService, Infrastructure.WebsiteEditing.PromotionOrchestrationService>();
+        services.AddScoped<IAdvertisingCommandCenterService, AdvertisingCommandCenterService>();
+        services.AddScoped<Infrastructure.WebsiteEditing.IBusinessPublicUrlResolver, Infrastructure.WebsiteEditing.BusinessPublicUrlResolver>();
+        services.AddScoped<IUnifiedMarketingPerformanceService, UnifiedMarketingPerformanceService>();
+        services.AddScoped<IMarketingManagerService, MarketingManagerService>();
+        services.AddScoped<WebsiteAnalyticsAiDataBuilder>();
+        services.TryAddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+        services.TryAddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
+        services.AddScoped<IBlendedGrowthEconomicsService, BlendedGrowthEconomicsService>();
+        services.AddScoped<IOpenAiProductFeedService, OpenAiProductFeedService>();
+        services.AddScoped<IOpenAiAdsOnboardingService, OpenAiAdsOnboardingService>();
+        services.AddHttpClient<IOpenAiConversionsApiService, OpenAiConversionsApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHttpClient<IOpenAiMeasurementHealthService, OpenAiMeasurementHealthService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<MarketingMetaAdsOAuthService>();
+        services.TryAddScoped<IMetaAdsConnectionStore, CanonicalMetaAdsConnectionStore>();
+        services.TryAddScoped<IMetaAdsService, MetaAdsService>();
         services.AddScoped<AgentMarketingProfileService>();
         services.AddScoped<Infrastructure.Leads.WebsiteIntakeRecipientResolver>();
+        return services;
+    }
+
+    /// <summary>
+    /// Runs durable marketing projection/delivery from the platform control-plane
+    /// host. Public website hosts must not register these workers.
+    /// </summary>
+    public static IServiceCollection AddMarketingBackgroundWorkers(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.TryAddScoped<IMetaSendAuthority, MetaSendAuthority>();
+        services.Configure<MetaOptions>(configuration.GetSection("Meta"));
+        services.Configure<MetaSignalIntelligenceOptions>(configuration.GetSection("MetaSignalIntelligence"));
+        services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHostedService<MetaSignalAnalyticsBridge>();
+        services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
+        services.AddHostedService<OpenAiConversionDispatcherHostedService>();
         return services;
     }
 }

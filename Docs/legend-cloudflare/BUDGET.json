@@ -30,7 +30,7 @@
     "maximumModelAndToolSpend": 20,
     "observedBaselineTestingModelCost": 0.000729
   },
-  "activation": "temporary_founder_manual_test_baseline_live_multimodel_qualification_pending_billing_and_evidence",
+  "activation": "persistent_founder_baseline_five_model_cloudflare_workers_ai_release_candidate",
   "providerInvoiceHardCap": false,
   "accounting": "Qualification spend in the activation month must also count toward the production monthly authorization. Unused reserves cannot be reassigned automatically. Platform request, storage and abuse-related charges are not bounded by an inference ledger alone.",
   "provisioned": true,
@@ -41,11 +41,19 @@
     "requiredForAcceptance": false,
     "resourcesProvisioned": false
   },
-  "manualBaseline": {
-    "model": "@cf/openai/gpt-oss-120b",
-    "maximumPolicyDurationHours": 24,
+  "founderBaseline": {
+    "modelIds": [
+      "@cf/qwen/qwen3-30b-a3b-fp8",
+      "@cf/openai/gpt-oss-120b",
+      "@cf/zai-org/glm-5.3-flash",
+      "@cf/zai-org/glm-5.3",
+      "@cf/deepseek-ai/deepseek-v4-pro-0813"
+    ],
+    "primaryModel": "@cf/openai/gpt-oss-120b",
+    "policyPersistence": "persistent",
     "sharedLifetimeModelLedgerCap": 3,
+    "requestConcurrency": 1,
     "retainsQualificationDebits": true,
-    "invoiceVerification": "Current unbilled platform charges unavailable; no claim of verified total remaining invoice allowance."
+    "invoiceVerification": "Cloudflare provider billing remains separate from the internal lifetime inference ledger; no claim of provider invoice hard-cap enforcement."
   }
 }

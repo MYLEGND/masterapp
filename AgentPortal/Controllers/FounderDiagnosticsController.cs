@@ -1,11 +1,16 @@
 using System.Text.Json;
 using AgentPortal.Services;
+using AgentPortal.Services.Engineering;
 using AgentPortal.Security;
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Controllers;
 
@@ -160,4 +165,207 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         return Json(await repairs.GetCandidateValidationAsync(runId, headSha, cancellationToken));
     }
 
+    [HttpGet("~/api/legend-site-tools/catalog")]
+    public IActionResult SiteToolCatalog(
+        [FromServices] FounderLegendConnectService legend,
+        [FromServices] IFounderSoftwareRemediationService remediation,
+        [FromServices] AgencyCommandService agencyCommand,
+        [FromServices] IServiceScopeFactory scopes)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
+        var tools = new List<object>
+        {
+            LegendSiteToolDisclosureAuthority.CurrentPageTool,
+            LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairTool
+        };
+        tools.AddRange(authority.GetAvailableFounderSiteTools());
+        var toolPolicies = tools
+            .Select(tool => JsonSerializer.SerializeToElement(tool))
+            .Where(tool => tool.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+            .ToDictionary(
+                tool => tool.GetProperty("name").GetString()!,
+                tool =>
+                {
+                    var name = tool.GetProperty("name").GetString()!;
+                    var workflowMutation = authority.IsFounderSiteWorkflowMutation(name);
+                    return new
+                    {
+                        readOnly = !workflowMutation,
+                        consequential = workflowMutation ||
+                            string.Equals(name, LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairToolName, StringComparison.Ordinal)
+                    };
+                },
+                StringComparer.Ordinal);
+
+        return Json(new
+        {
+            schemaVersion = 1,
+            authority = nameof(LegendFounderToolAuthority),
+            disclosureAuthority = nameof(LegendSiteToolDisclosureAuthority),
+            authentication = "server_session_founder",
+            mutationToolsExposed = true,
+            mutationAuthority = "bounded_founder_engineering_workflow_only",
+            toolPolicies,
+            tools
+        });
+    }
+
+    [HttpPost("~/api/legend-site-tools/execute")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(64 * 1024)]
+    public async Task<IActionResult> ExecuteSiteTool(
+        [FromBody] LegendSiteToolExecutionRequest request,
+        [FromServices] FounderLegendConnectService legend,
+        [FromServices] IFounderSoftwareRemediationService remediation,
+        [FromServices] AgencyCommandService agencyCommand,
+        [FromServices] IServiceScopeFactory scopes,
+        [FromServices] IHostEnvironment environment,
+        [FromServices] IEnumerable<EndpointDataSource> endpointSources,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (request is null || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 96)
+            return BadRequest(new { error = "legend_site_tool_request_invalid" });
+
+        if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.CurrentPageToolName, StringComparison.Ordinal))
+        {
+            var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
+            return Json(LegendSiteToolDisclosureAuthority.SanitizePage(
+                request.Page,
+                environment.ApplicationName,
+                "founder_system",
+                LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+                route));
+        }
+
+        if (string.Equals(request.Name, LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepairToolName, StringComparison.Ordinal))
+        {
+            if (request.Arguments.ValueKind != JsonValueKind.Object)
+                return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
+            var root = request.Arguments;
+            static string? ReadString(JsonElement value, string name) =>
+                value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            static bool TryReadArray(JsonElement value, string name, int maximumItems, out string[] result)
+            {
+                result = Array.Empty<string>();
+                if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.Array ||
+                    item.GetArrayLength() > maximumItems)
+                    return false;
+
+                var values = new List<string>();
+                foreach (var entry in item.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.String || entry.GetString() is not { } text ||
+                        string.IsNullOrWhiteSpace(text))
+                        return false;
+                    values.Add(text);
+                }
+                result = values.ToArray();
+                return true;
+            }
+
+            if (!Guid.TryParse(ReadString(root, "engineering_work_item_id"), out var engineeringWorkItemId) ||
+                !TryReadArray(root, "required_component_ids", 24, out var requiredComponents) ||
+                !TryReadArray(root, "required_action_keys", 24, out var requiredActions) ||
+                !TryReadArray(root, "required_composition_ids", 24, out var requiredCompositions) ||
+                !TryReadArray(root, "required_modal_ids", 16, out var requiredModals) ||
+                !TryReadArray(root, "forbidden_error_names", 12, out var forbiddenErrors))
+                return BadRequest(new { error = "live_repair_proof_arguments_invalid" });
+
+            var route = LegendSiteToolDisclosureAuthority.ResolveRouteAuthority(request.Page?.Path, endpointSources);
+            var expectedRevision = ReadString(root, "expected_revision");
+            var expectedRoute = ReadString(root, "expected_route");
+            var proof = LegendSiteToolDisclosureAuthority.VerifyCurrentPageRepair(
+                request.Page,
+                environment.ApplicationName,
+                "founder_system",
+                LegendSiteToolDisclosureAuthority.EntryAssemblyRevision(),
+                route,
+                expectedRevision,
+                expectedRoute,
+                requiredComponents,
+                requiredActions,
+                requiredCompositions,
+                requiredModals,
+                forbiddenErrors);
+            var proofJson = JsonSerializer.SerializeToElement(proof);
+            var verified = proofJson.TryGetProperty("repairVerified", out var repairVerified) &&
+                           repairVerified.ValueKind == JsonValueKind.True;
+            if (verified && expectedRevision is not null && expectedRoute is not null)
+            {
+                await using var engineeringScope = scopes.CreateAsyncScope();
+                var orchestrator = engineeringScope.ServiceProvider.GetRequiredService<ILegendEngineeringOrchestrator>();
+                try
+                {
+                    await orchestrator.RecordBrowserFunctionalProofAsync(
+                        engineeringWorkItemId,
+                        environment.ApplicationName,
+                        expectedRevision,
+                        expectedRoute,
+                        requiredComponents,
+                        requiredActions,
+                        requiredCompositions,
+                        requiredModals,
+                        forbiddenErrors,
+                        cancellationToken);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Conflict(new { error = exception.Message });
+                }
+            }
+            return Json(proof);
+        }
+
+        var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
+        var allowed = authority
+            .GetAvailableFounderSiteTools()
+            .Any(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool);
+                return element.TryGetProperty("name", out var name) &&
+                    string.Equals(name.GetString(), request.Name, StringComparison.Ordinal);
+            });
+        if (!allowed)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "legend_site_tool_not_exposed" });
+
+        var arguments = request.Arguments.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}"
+            : request.Arguments.GetRawText();
+        if (System.Text.Encoding.UTF8.GetByteCount(arguments) > 32 * 1024)
+            return BadRequest(new { error = "legend_site_tool_arguments_too_large" });
+
+        var workflowMutation = authority.IsFounderSiteWorkflowMutation(request.Name);
+        var actorMode = workflowMutation ? "founder_work" : "legend";
+        var mutationAuthorization = workflowMutation
+            ? new FounderAiMutationAuthorization(Guid.NewGuid().ToString("N"))
+            : null;
+        var output = await authority.ExecuteAsync(
+            User,
+            new FounderAiToolCall(
+                Guid.NewGuid().ToString("N"),
+                request.Name,
+                arguments,
+                mutationAuthorization),
+            actorMode,
+            cancellationToken,
+            LegendConnectExternalProviderPolicy.CloudflareFoundation);
+
+        try
+        {
+            using var document = JsonDocument.Parse(output, new JsonDocumentOptions { MaxDepth = 64 });
+            return Json(document.RootElement.Clone());
+        }
+        catch (JsonException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "legend_site_tool_output_invalid" });
+        }
+    }
+
 }
+
+public sealed record LegendSiteToolExecutionRequest(
+    string? Name,
+    JsonElement Arguments,
+    LegendSitePageSnapshot? Page);

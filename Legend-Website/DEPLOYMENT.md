@@ -23,7 +23,7 @@ The build consumes the repository-wide LEGEND design tokens from `Legend-Design/
 
 ## Azure authority
 
-Production deployment is isolated to the dedicated Azure Static Web App `legend-public-mylegnd` in resource group `masterapp-rg` through `.github/workflows/legend-website-production-deploy.yml`.
+Production deployment is selected explicitly as `masterapp-website` through the sole approved release authority, `.github/workflows/all-intentional-direct-release-20260918.yml`. The website package is built from the exact approved application revision and verified through `_deployment-provenance.txt`.
 
 The workflow does not deploy, restart, alter, or reconfigure `masterapp-portal`, `masterapp-client`, `masterapp-protect`, mobile applications, databases, LEGEND AI, or unrelated Azure resources.
 

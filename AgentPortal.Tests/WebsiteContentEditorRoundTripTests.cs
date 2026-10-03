@@ -32,6 +32,54 @@ public sealed class WebsiteContentEditorRoundTripTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string ElementId = "home.h1.title";
 
+    private static WebsiteContentDocument CanonicalDocument(string text = "Heading")
+    {
+        return new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Title = "Home",
+                    Description = "Home",
+                    Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true, Order = 0 },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = ElementId,
+                            Type = "heading",
+                            Tag = "h1",
+                            Text = text
+                        }
+                    ]
+                }
+            }
+        };
+    }
+
+    private static WebsiteCompositionNode Node(WebsiteContentDocument document, string id = ElementId)
+    {
+        WebsiteCompositionNode? Find(IEnumerable<WebsiteCompositionNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                if (node.Id == id) return node;
+                var child = Find(node.Children);
+                if (child is not null) return child;
+            }
+            return null;
+        }
+
+        foreach (var page in document.Pages.Values)
+        {
+            var found = Find(page.Composition);
+            if (found is not null) return found;
+        }
+        throw new InvalidOperationException("Expected website node was not found.");
+    }
+
+
     [Theory]
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]
@@ -40,26 +88,30 @@ public sealed class WebsiteContentEditorRoundTripTests
     {
         using var fixture = new Fixture(siteKey);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var document = new WebsiteContentDocument();
-        document.Elements[ElementId] = new() { Text = "Black variation" };
+        var document = CanonicalDocument("Black variation");
+
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0, null, "Black")));
         var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         var draft = Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
         Assert.Null(state.PublishedVersionId);
-        document.Elements[ElementId].Text = "Second variation";
+
+        Node(document).Text = "Second variation";
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 1, null, "Second")));
         Assert.Equal(2, JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!.Count);
+
         Assert.IsType<ConflictObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 1, draft.Id)));
         Assert.IsType<OkObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 2, draft.Id)));
-        Assert.Equal("Black variation", ReadDocument(await fixture.Controller.Manage(ticket)).Elements[ElementId].Text);
-        document.Elements[ElementId].Text = "Updated black";
+        Assert.Equal("Black variation", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
+
+        Node(document).Text = "Updated black";
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 3, draft.Id, "Black")));
         Assert.IsType<NotFoundResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, Guid.NewGuid())));
         Assert.IsType<OkObjectResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, draft.Id)));
         Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
-        Assert.Equal("Updated black", ReadDocument(await fixture.Controller.Manage(ticket)).Elements[ElementId].Text);
+        Assert.Equal("Updated black", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
         Assert.Null(state.PublishedVersionId);
     }
+
 
     [Theory]
     [InlineData(WebsiteEditorSiteKeys.Legend)]
@@ -68,25 +120,44 @@ public sealed class WebsiteContentEditorRoundTripTests
     public async Task RouteKeyedEditorPage_PreservesContentAndMetadataAcrossSaveAndReload(string siteKey)
     {
         using var fixture = new Fixture(siteKey);
-        var document = JsonSerializer.Deserialize<WebsiteContentDocument>("""
-            {"pages":{"/":{"title":"Our business","description":"Our services",
-              "elements":{"home.h1.title":{"text":"Saved page content"}},
-              "extras":[{"id":"new-section","type":"section","sectionId":"home.root"}]},
-              "/about":{"title":"About us","elements":{}}}}
-            """, JsonOptions)!;
-        document.FaviconImageDataUrl = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111";
+        var document = new WebsiteContentDocument
+        {
+            FaviconImageDataUrl = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111",
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Title = "Our business",
+                    Description = "Our services",
+                    Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true, Order = 0 },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode { Id = ElementId, Type = "heading", Tag = "h1", Text = "Saved page content" },
+                        new WebsiteCompositionNode { Id = "new-section", Type = "section", Tag = "section" }
+                    ]
+                },
+                ["/about"] = new WebsitePageDocument
+                {
+                    Title = "About us",
+                    Navigation = new WebsitePageNavigation { Label = "About", ShowInNavigation = true, Order = 10 }
+                }
+            }
+        };
+
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
-        Assert.Equal("Saved page content", saved.Pages["/"].Elements[ElementId].Text);
+        Assert.Equal("Saved page content", Node(saved).Text);
         Assert.Equal(document.FaviconImageDataUrl, saved.FaviconImageDataUrl);
+
         fixture.Db.ChangeTracker.Clear();
         var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket));
         Assert.Equal("Our business", reloaded.Pages["/"].Title);
         Assert.Equal("Our services", reloaded.Pages["/"].Description);
         Assert.Equal("About us", reloaded.Pages["/about"].Title);
         Assert.Equal(document.FaviconImageDataUrl, reloaded.FaviconImageDataUrl);
-        Assert.Single(reloaded.Pages["/"].Extras);
+        Assert.Equal(2, reloaded.Pages["/"].Composition.Count);
     }
+
 
     [Theory]
     [InlineData(WebsiteEditorSiteKeys.Legend)]
@@ -95,43 +166,54 @@ public sealed class WebsiteContentEditorRoundTripTests
     public async Task LargeFractionalAdjustments_SurviveSaveAndReloadThroughBothReadPaths(string siteKey)
     {
         using var fixture = new Fixture(siteKey);
-        // Deserialize the actual camel-case payload shape; old integer contract
-        // properties would reject the fractional dimensions at this boundary.
-        var document = JsonSerializer.Deserialize<WebsiteContentDocument>("""
-            {"elements":{"home.h1.title":{"text":"Updated title","style":{
-              "fontScale":12.75,"widthPercent":250.25,
-              "paddingTop":500.5,"paddingBottom":800.125,"textAlign":"start"}}}}
-            """, JsonOptions)!;
+        var document = CanonicalDocument("Updated title");
+        Node(document).Style = new WebsiteVisualStyle
+        {
+            FontScale = 12.75m,
+            WidthPercent = 250.25m,
+            PaddingTop = 500.5m,
+            PaddingBottom = 800.125m,
+            TextAlign = "start"
+        };
+
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
-        AssertLargeStyle(saved.Elements[ElementId].Style);
+        AssertLargeStyle(Node(saved).Style);
 
         fixture.Db.ChangeTracker.Clear();
-        // A fresh controller and database reads prevent tracked entity state
-        // from standing in for a persisted JSON round trip.
         var reloaded = fixture.CreateController();
-        AssertLargeStyle(ReadDocument(await reloaded.Manage(ticket)).Elements[ElementId].Style);
-        var unpublished = await reloaded.Public(siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId);
-        if (siteKey == WebsiteEditorSiteKeys.Business) Assert.IsType<NotFoundObjectResult>(unpublished);
-        else Assert.IsType<OkObjectResult>(unpublished);
-        Assert.IsType<OkObjectResult>(await reloaded.Publish(new(ticket, 1)));
-        fixture.Db.ChangeTracker.Clear();
-        AssertLargeStyle(ReadDocument(await fixture.CreateController().Public(
+        AssertLargeStyle(Node(ReadDocument(await reloaded.Manage(ticket))).Style);
+
+        var unpublished = await reloaded.Public(
             siteKey,
             siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null,
-            fixture.BusinessId)).Elements[ElementId].Style);
+            fixture.BusinessId);
+        if (siteKey == WebsiteEditorSiteKeys.Business) Assert.IsType<NotFoundObjectResult>(unpublished);
+        else Assert.IsType<OkObjectResult>(unpublished);
+
+        Assert.IsType<OkObjectResult>(await reloaded.Publish(new(ticket, 1)));
+        fixture.Db.ChangeTracker.Clear();
+        AssertLargeStyle(Node(ReadDocument(await fixture.CreateController().Public(
+            siteKey,
+            siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null,
+            fixture.BusinessId))).Style);
+
         var row = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Equal(siteKey, row.SiteKey);
         Assert.NotNull(row.PublishedVersionId);
         Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().ToListAsync());
         Assert.Empty(await fixture.Db.AgentFinanceToolStates.ToListAsync());
-        document.Elements[ElementId].Text = "Unpublished revision";
+
+        Node(document).Text = "Unpublished revision";
         ReadDocument(await fixture.CreateController().Save(new(ticket, document, 2)));
         Assert.IsType<ConflictObjectResult>(await fixture.CreateController().Save(new(ticket, new WebsiteContentDocument(), 2)));
+
         fixture.Db.ChangeTracker.Clear();
-        Assert.Equal("Updated title", ReadDocument(await fixture.CreateController().Public(
-            siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId)).Elements[ElementId].Text);
-        Assert.Equal("Unpublished revision", ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Text);
+        Assert.Equal("Updated title", Node(ReadDocument(await fixture.CreateController().Public(
+            siteKey,
+            siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null,
+            fixture.BusinessId))).Text);
+        Assert.Equal("Unpublished revision", Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Text);
     }
 
     [Fact]
@@ -185,47 +267,51 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(first, stillPublished.Url);
     }
 
+
     [Fact]
     public async Task InvalidNumericDomains_AreDiscardedWithoutInventingReplacementStyles()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
-        var document = new WebsiteContentDocument();
-        document.Elements[ElementId] = new WebsiteElementOverride
+        var document = CanonicalDocument();
+        Node(document).Style = new WebsiteVisualStyle
         {
-            Style = new WebsiteStyleOverride
-            {
-                FontScale = 0, WidthPercent = -1, PaddingTop = -2, PaddingBottom = -3
-            }
+            FontScale = 0,
+            WidthPercent = -1,
+            PaddingTop = -2,
+            PaddingBottom = -3
         };
+
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
-        AssertNoAdjustments(ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Style);
+        AssertNoAdjustments(Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Style);
 
-        // Zero spacing remains legitimate; small positive scales/widths are
-        // permitted instead of the former artificial minimums.
-        document.Elements[ElementId].Style = new WebsiteStyleOverride
+        Node(document).Style = new WebsiteVisualStyle
         {
-            FontScale = 0.05m, WidthPercent = 0.25m, PaddingTop = 0, PaddingBottom = 0
+            FontScale = 0.05m,
+            WidthPercent = 0.25m,
+            PaddingTop = 0,
+            PaddingBottom = 0
         };
-        var accepted = ReadDocument(await fixture.Controller.Save(new(ticket, document, 1))).Elements[ElementId].Style;
+        var accepted = Node(ReadDocument(await fixture.Controller.Save(new(ticket, document, 1)))).Style;
         Assert.Equal(0.05m, accepted.FontScale);
         Assert.Equal(0.25m, accepted.WidthPercent);
         Assert.Equal(0m, accepted.PaddingTop);
         Assert.Equal(0m, accepted.PaddingBottom);
     }
 
+
     [Fact]
     public async Task TextOnlyEdit_LeavesEveryStyleUnsetAfterPersistence()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
-        var document = JsonSerializer.Deserialize<WebsiteContentDocument>("""
-            {"elements":{"home.h1.title":{"text":"New heading without resizing"}}}
-            """, JsonOptions)!;
+        var document = CanonicalDocument("New heading without resizing");
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
         ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
-        var element = ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId];
+
+        var element = Node(ReadDocument(await fixture.CreateController().Manage(ticket)));
         Assert.Equal("New heading without resizing", element.Text);
         Assert.Null(element.Hidden);
         AssertNoAdjustments(element.Style);
@@ -233,22 +319,27 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Null(element.Style.ObjectPosition);
     }
 
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task InvalidOrExpiredTicket_CannotReadOrMutateSavedContent(bool expired)
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
-        var initial = new WebsiteContentDocument();
-        initial.Elements[ElementId] = new WebsiteElementOverride { Text = "Preserved content" };
+        var initial = CanonicalDocument("Preserved content");
         var validTicket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
         ReadDocument(await fixture.Controller.Save(new(validTicket, initial, 0)));
         var originalJson = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
-        initial.Elements[ElementId].Text = "Unauthorized replacement";
-        var rejectedTicket = expired ? fixture.Ticket(DateTime.UtcNow.AddMinutes(-1)) : "not-a-protected-ticket";
+        Node(initial).Text = "Unauthorized replacement";
+
+        var rejectedTicket = expired
+            ? fixture.Ticket(DateTime.UtcNow.AddMinutes(-1))
+            : "not-a-protected-ticket";
 
         Assert.IsType<UnauthorizedResult>(await fixture.Controller.Manage(rejectedTicket));
         Assert.IsType<UnauthorizedResult>(await fixture.Controller.Save(new(rejectedTicket, initial, 1)));
+
         fixture.Db.ChangeTracker.Clear();
         var row = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Equal(originalJson, row.DraftJson);
@@ -422,76 +513,31 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<UnauthorizedResult>(await fixture.Controller.MediaLibrary("invalid-ticket", null, "all", CancellationToken.None));
     }
 
+
     [Fact]
-    public async Task WebsiteStudioAiProposal_IsRevisionLockedAndNeverPersistsUntilUserSaves()
+    public async Task Manage_AdvertisesBrowserAgentWorkspaceWithoutExternalAiApi_AndDoesNotMutateDraft()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var document = new WebsiteContentDocument();
-        document.Pages["/"] = new WebsitePageDocument
-        {
-            Title = "Home",
-            Elements = new(StringComparer.Ordinal)
-            {
-                [ElementId] = new WebsiteElementOverride { Text = "Original heading" }
-            }
-        };
+        var document = CanonicalDocument("Original heading");
+
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
+
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
-        var beforeJson = before.DraftJson;
-        var beforeRevision = before.Revision;
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
+        var json = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
 
-        var response = Assert.IsType<OkObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsitePlatformController.WebsiteStudioAiRequest(
-                ticket,
-                beforeRevision,
-                "create",
-                "Improve the heading.",
-                "/",
-                ElementId,
-                "home.section.1",
-                "Original heading"),
-            CancellationToken.None));
-
-        var envelope = JsonSerializer.SerializeToElement(response.Value, JsonOptions);
-        Assert.Equal("ai_proposal_preview", envelope.GetProperty("source").GetString());
-        Assert.False(envelope.GetProperty("persisted").GetBoolean());
-        Assert.False(envelope.GetProperty("published").GetBoolean());
-        Assert.Equal(beforeRevision, envelope.GetProperty("baseRevision").GetInt64());
-        var proposed = envelope.GetProperty("proposedDocument")
-            .Deserialize<WebsiteContentDocument>(JsonOptions)!;
-        Assert.Equal("AI proposed heading", proposed.Pages["/"].Elements[ElementId].Text);
+        Assert.True(json.GetProperty("capabilities").GetProperty("browserAgentWorkspace").GetBoolean());
+        Assert.False(json.GetProperty("capabilities").GetProperty("externalAiApi").GetBoolean());
 
         fixture.Db.ChangeTracker.Clear();
         var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
-        Assert.Equal(beforeRevision, after.Revision);
-        Assert.Equal(beforeJson, after.DraftJson);
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(before.DraftJson, after.DraftJson);
         Assert.Null(after.PublishedVersionId);
-
-        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsitePlatformController.WebsiteStudioAiRequest(
-                ticket,
-                beforeRevision - 1,
-                "create",
-                "Stale request",
-                "/",
-                ElementId,
-                "home.section.1",
-                "Original heading"),
-            CancellationToken.None));
-        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().WebsiteStudioAiProposal(
-            new WebsitePlatformController.WebsiteStudioAiRequest(
-                "invalid-ticket",
-                beforeRevision,
-                "create",
-                "Unauthorized request",
-                "/",
-                ElementId,
-                "home.section.1",
-                "Original heading"),
-            CancellationToken.None));
     }
+
 
     [Fact]
     public async Task SignalDryRun_ValidatesMappingWithoutPersistingAnalyticsMetaOrDraftChanges()
@@ -500,36 +546,19 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var browserBindingId = Guid.NewGuid().ToString("N");
         var serverBindingId = Guid.NewGuid().ToString("N");
-        var document = new WebsiteContentDocument();
-        document.Pages["/"] = new WebsitePageDocument
-        {
-            Elements = new(StringComparer.Ordinal)
+        var document = CanonicalDocument("CTA");
+        Node(document).Signals =
+        [
+            new WebsiteSignalBinding
             {
-                [ElementId] = new WebsiteElementOverride
-                {
-                    Text = "CTA",
-                    Signals =
-                    [
-                        new WebsiteSignalBinding
-                        {
-                            Id = browserBindingId,
-                            Trigger = "click",
-                            EventName = "LeadFormStart",
-                            DeliveryMode = "meta",
-                            OncePerSession = true
-                        },
-                        new WebsiteSignalBinding
-                        {
-                            Id = serverBindingId,
-                            Trigger = "submission_saved",
-                            EventName = "Lead",
-                            DeliveryMode = "meta",
-                            OncePerSession = true
-                        }
-                    ]
-                }
+                Id = browserBindingId,
+                Trigger = "click",
+                EventName = "LeadFormStart",
+                DeliveryMode = "meta",
+                OncePerSession = true
             }
-        };
+        ];
+
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
@@ -539,6 +568,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, browserBindingId),
             CancellationToken.None));
         var browserJson = JsonSerializer.SerializeToElement(browser.Value, JsonOptions);
+
         Assert.Equal("website_signal_private_dry_run", browserJson.GetProperty("source").GetString());
         Assert.True(browserJson.GetProperty("dryRun").GetBoolean());
         Assert.False(browserJson.GetProperty("persisted").GetBoolean());
@@ -548,13 +578,16 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.True(browserJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
         Assert.False(browserJson.GetProperty("stages").GetProperty("browserPixelWouldInvoke").GetBoolean());
 
-        var server = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
-            new WebsitePlatformController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
-            CancellationToken.None));
-        var serverJson = JsonSerializer.SerializeToElement(server.Value, JsonOptions);
-        Assert.True(serverJson.GetProperty("stages").GetProperty("serverOutcomeRequired").GetBoolean());
-        Assert.False(serverJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
-        Assert.False(serverJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+        Assert.Throws<ArgumentException>(() => WebsiteSignalBindingPolicy.Validate(
+        [
+            new WebsiteSignalBinding
+            {
+                Id = serverBindingId,
+                Trigger = "submission_saved",
+                EventName = "Lead",
+                DeliveryMode = "destinations"
+            }
+        ]));
 
         fixture.Db.ChangeTracker.Clear();
         var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
@@ -571,6 +604,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             CancellationToken.None));
     }
 
+
     [Fact]
     public async Task SignalHealth_ReadsOnlyCurrentWebsiteVersionAndBindingHistoryWithoutSecrets()
     {
@@ -578,30 +612,23 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var bindingId = Guid.NewGuid().ToString("N");
         var otherBindingId = Guid.NewGuid().ToString("N");
-        var document = new WebsiteContentDocument();
-        document.Pages["/"] = new WebsitePageDocument
-        {
-            Elements = new(StringComparer.Ordinal)
+        var document = CanonicalDocument("CTA");
+        Node(document).Signals =
+        [
+            new WebsiteSignalBinding
             {
-                [ElementId] = new WebsiteElementOverride
-                {
-                    Signals =
-                    [
-                        new WebsiteSignalBinding
-                        {
-                            Id = bindingId,
-                            Trigger = "click",
-                            EventName = "LeadFormStart",
-                            DeliveryMode = "analytics"
-                        }
-                    ]
-                }
+                Id = bindingId,
+                Trigger = "click",
+                EventName = "LeadFormStart",
+                DeliveryMode = "analytics"
             }
-        };
+        ];
+
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
         var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         var versionId = Guid.NewGuid();
         state.PublishedVersionId = versionId;
+
         fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
@@ -639,11 +666,13 @@ public sealed class WebsiteContentEditorRoundTripTests
         fixture.Db.ChangeTracker.Clear();
 
         var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalHealth(
-            ticket, "/", ElementId, bindingId, CancellationToken.None));
+            ticket, "/", ElementId, bindingId, null, CancellationToken.None));
         var json = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+
         Assert.Equal("website_signal_existing_authorities", json.GetProperty("source").GetString());
         Assert.Equal(versionId, json.GetProperty("publishedVersionId").GetGuid());
         Assert.Single(json.GetProperty("analytics").EnumerateArray());
+
         var meta = Assert.Single(json.GetProperty("meta").EnumerateArray());
         Assert.Equal("retry_scheduled", meta.GetProperty("dispatch").GetProperty("status").GetString());
         Assert.Equal(2, meta.GetProperty("dispatch").GetProperty("attemptCount").GetInt32());
@@ -654,23 +683,19 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.DoesNotContain("AccessToken", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Ciphertext", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(otherBindingId, serialized, StringComparison.Ordinal);
+
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalHealth(
-            "invalid-ticket", "/", ElementId, bindingId, CancellationToken.None));
+            "invalid-ticket", "/", ElementId, bindingId, null, CancellationToken.None));
     }
+
 
     [Fact]
     public async Task Collaboration_UsesExistingBusinessMembershipRolesAndNeverMutatesWebsiteDraft()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var document = new WebsiteContentDocument();
-        document.Pages["/"] = new WebsitePageDocument
-        {
-            Elements = new(StringComparer.Ordinal)
-            {
-                [ElementId] = new WebsiteElementOverride { Text = "Collaborative heading" }
-            }
-        };
+        var document = CanonicalDocument("Collaborative heading");
+
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
@@ -678,9 +703,11 @@ public sealed class WebsiteContentEditorRoundTripTests
         var collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
             ticket, "/", ElementId, CancellationToken.None));
         var collaborationJson = JsonSerializer.SerializeToElement(collaboration.Value, JsonOptions);
+
         Assert.Equal("website_studio_collaboration", collaborationJson.GetProperty("source").GetString());
         Assert.Equal("owner", collaborationJson.GetProperty("role").GetProperty("roleKey").GetString());
         Assert.True(collaborationJson.GetProperty("role").GetProperty("canPublish").GetBoolean());
+
         var collaborator = Assert.Single(collaborationJson.GetProperty("collaborators").EnumerateArray());
         Assert.Equal("owner", collaborator.GetProperty("roleKey").GetString());
         Assert.True(collaborator.GetProperty("canManageStorefront").GetBoolean());
@@ -775,6 +802,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<BadRequestObjectResult>(nested);
     }
 
+
     [Fact]
     public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
     {
@@ -785,34 +813,41 @@ public sealed class WebsiteContentEditorRoundTripTests
         {
             Navigation = new WebsitePageNavigation { ShowInNavigation = true },
             DynamicBinding = new WebsiteDynamicPageBinding { CollectionId = "missing", ItemKeyField = "id" },
-            Extras =
+            Composition =
             [
-                new WebsiteExtraComponent
+                new WebsiteCompositionNode
                 {
                     Id = "photo",
                     Type = "image",
-                    SectionId = "home.section.1",
-                    ImageDataUrl = "https://images.example/photo.png"
+                    Tag = "img",
+                    MediaUrl = "/assets/photo.png"
                 }
             ]
         };
 
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
 
-        var quality = Assert.IsType<OkObjectResult>(await fixture.CreateController().DraftQuality(ticket, CancellationToken.None));
+        var quality = Assert.IsType<OkObjectResult>(await fixture.CreateController().DraftQuality(
+            ticket,
+            CancellationToken.None));
         var json = JsonSerializer.SerializeToElement(quality.Value, JsonOptions);
+
         Assert.Equal("saved_draft_server", json.GetProperty("source").GetString());
         Assert.Equal(1, json.GetProperty("revision").GetInt64());
+
         var codes = json.GetProperty("checks").EnumerateArray()
             .Select(value => value.GetProperty("code").GetString())
             .Where(value => value is not null)
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Contains("page_title_missing", codes);
-        Assert.Contains("navigation_label_missing", codes);
-        Assert.Contains("dynamic_collection_missing", codes);
-        Assert.Contains("image_alt_missing", codes);
 
-        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality("invalid-ticket", CancellationToken.None));
+        Assert.Contains("page_title_missing", codes);
+        Assert.Contains("dynamic_collection_missing", codes);
+        Assert.DoesNotContain("navigation_label_missing", codes);
+        Assert.DoesNotContain("image_alt_missing", codes);
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality(
+            "invalid-ticket",
+            CancellationToken.None));
     }
 
     private static WebsiteContentDocument ReadDocument(IActionResult result)
@@ -822,7 +857,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         return envelope.GetProperty("document").Deserialize<WebsiteContentDocument>(JsonOptions)!;
     }
 
-    private static void AssertLargeStyle(WebsiteStyleOverride style)
+    private static void AssertLargeStyle(WebsiteVisualStyle style)
     {
         Assert.Equal(12.75m, style.FontScale);
         Assert.Equal(250.25m, style.WidthPercent);
@@ -831,7 +866,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("start", style.TextAlign);
     }
 
-    private static void AssertNoAdjustments(WebsiteStyleOverride style)
+    private static void AssertNoAdjustments(WebsiteVisualStyle style)
     {
         Assert.Null(style.FontScale);
         Assert.Null(style.WidthPercent);
@@ -896,21 +931,14 @@ public sealed class WebsiteContentEditorRoundTripTests
                 Db.SaveChanges();
             }
             var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
+            var meta = new Mock<Infrastructure.Analytics.IMetaPixelResolutionService>();
+            meta.Setup(service => service.ResolveForOwnerAsync(It.IsAny<Shared.Analytics.MarketingOwnerScope>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Infrastructure.Analytics.ResolvedMetaPixelContext());
             _services = new ServiceCollection()
+                .AddSingleton(meta.Object)
                 .AddSingleton(new WebsitePageCompiler(environment, _configuration))
-                .AddSingleton<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService>(new FixtureWebsiteStudioAi())
                 .BuildServiceProvider();
             Controller = CreateController();
-        }
-
-        private sealed class FixtureWebsiteStudioAi : Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService
-        {
-            public Task<Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal> ProposeAsync(
-                Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest request,
-                System.Threading.CancellationToken cancellationToken = default) =>
-                Task.FromResult(new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal(
-                    "Improve the selected heading.",
-                    [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
         }
 
         public WebsitePlatformController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };

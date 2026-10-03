@@ -11,8 +11,7 @@ internal sealed class ExpenseLensSynchronizationService : IExpenseLensSynchroniz
 {
     private static readonly HashSet<string> SupportedExpenseLensToolIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ExpenseLens",
-        "BusinessExpenseLens"
+        "ExpenseLens"
     };
 
     private readonly MasterAppDbContext _db;

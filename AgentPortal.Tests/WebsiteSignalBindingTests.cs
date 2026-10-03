@@ -32,19 +32,47 @@ public sealed class WebsiteSignalBindingTests
     }
 
     [Fact]
-    public void DraftRoundTripRetainsBindingsOnElementsAndExtraComponents()
+    public void DraftRoundTripRetainsBindingsOnCanonicalCompositionNodes()
     {
-        var binding = new WebsiteSignalBinding { EventName = "LeadFormStart", Trigger = "click", DeliveryMode = "analytics" };
+        var first = new WebsiteSignalBinding { EventName = "LeadFormStart", Trigger = "click", DeliveryMode = "analytics" };
+        var second = new WebsiteSignalBinding { EventName = "LeadFormStart", Trigger = "click", DeliveryMode = "analytics" };
         var input = new WebsiteContentDocument
         {
-            Pages = new() { ["/contact"] = new() {
-                Elements = new() { ["contact-button"] = new() { Signals = [binding] } },
-                Extras = [new() { Id = "extra-button", SectionId = "contact", Type = "button", Signals = [binding] }]
-            } }
+            Pages = new()
+            {
+                ["/contact"] = new()
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact-button",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Contact",
+                            Href = "/contact",
+                            Signals = [first]
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "secondary-button",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Contact again",
+                            Href = "/contact",
+                            Signals = [second]
+                        }
+                    ]
+                }
+            }
         };
+
         var clean = WebsiteContentSanitizer.Sanitize(input);
-        Assert.Equal(binding.Id, clean.Pages["/contact"].Elements["contact-button"].Signals.Single().Id);
-        Assert.Equal("analytics", clean.Pages["/contact"].Extras.Single().Signals.Single().DeliveryMode);
+        var nodes = clean.Pages["/contact"].Composition;
+
+        Assert.Equal(first.Id, nodes.Single(node => node.Id == "contact-button").Signals.Single().Id);
+        Assert.Equal("analytics", nodes.Single(node => node.Id == "secondary-button").Signals.Single().DeliveryMode);
+        Assert.All(nodes, node => Assert.NotEmpty(node.Signals));
     }
 
     [Fact]
@@ -52,9 +80,11 @@ public sealed class WebsiteSignalBindingTests
     {
         foreach (var option in WebsiteSignalBindingPolicy.Options)
         {
-            Assert.True(MetaSignalEventCatalog.TryGet(option.Name, out var definition));
-            Assert.Equal(definition.AllowBrowserPixel || definition.AllowServerForward, option.MetaEligible);
-            Assert.Equal(MetaSignalEventCatalog.IsServerAuthorityEvent(option.Name), option.RequiresServerOutcome);
+            Assert.True(AnalyticsEventCatalog.TryGetBehavior(option.Name, out var behavior));
+            Assert.Equal(behavior.Key, option.ActionKey);
+            Assert.Equal(behavior.RequiresServerAuthority, option.RequiresServerOutcome);
+            Assert.Equal(behavior.EditorTriggers, option.Triggers);
+            if (option.RequiresServerOutcome) Assert.Empty(option.Triggers);
         }
     }
 }

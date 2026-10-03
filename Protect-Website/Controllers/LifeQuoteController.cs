@@ -19,13 +19,12 @@ using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using Shared.Meta;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 
+using Shared.Analytics;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
@@ -41,10 +40,10 @@ namespace Protect_Website.Controllers
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
-        private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly string trackingApiBase;
         private readonly AgentTrackingResolver _resolver;
+        private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLifeLeadCapture;
@@ -52,19 +51,19 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<LifeQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
-        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
+        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IWebsiteInquiryEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
-            recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _resolver = resolver;
+            _intakeRecipients = intakeRecipients;
             _db = db;
             _metaPixelResolution = metaPixelResolution;
             _websiteLifeLeadCapture = websiteLifeLeadCapture;
@@ -112,16 +111,22 @@ namespace Protect_Website.Controllers
 
         // ===================== POST =====================
         [HttpPost("Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, model.OfferKey ?? "life");
         [HttpPost("Term-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitTermLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "term");
         [HttpPost("Whole-Life")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitWholeLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "wholelife");
         [HttpPost("Final-Expense")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitFinalExpenseQuote(LifeQuoteFormModel model) => SubmitInternal(model, "finalexpense");
         [HttpPost("Mortgage-Protection")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitMortgageQuote(LifeQuoteFormModel model) => SubmitInternal(model, "mortgage");
         [HttpPost("IUL")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Infrastructure.Security.PlatformRateLimiting.PublicFormPolicy)]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
         [HttpPost("Life/estimate-preview")]
         public IActionResult EstimatePreview(LifeQuoteFormModel model)
@@ -281,14 +286,15 @@ if (!ModelState.IsValid)
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    Oppref        = OpenAiClickReference.Normalize(model.Oppref),
                     ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
                         ? Request!.Headers["CF-Connecting-IP"].ToString()
                         : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
                             ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
                             : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
-                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
+                    Fbp = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbp"),
+                    Fbc = UnifiedEventContextBuilder.ResolveMarketingCookie(Request, "_fbc"),
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.MarketingEmailConsent,
@@ -319,6 +325,8 @@ if (!ModelState.IsValid)
                         AgeRange       = model.AgeRange,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
+                        Oppref         = OpenAiClickReference.Normalize(model.Oppref),
+                        Obref          = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request),
                         UtmTerm        = model.UtmTerm,
                         UtmContent     = model.UtmContent,
                         MetaCampaignId = model.MetaCampaignId,
@@ -388,16 +396,6 @@ if (!ModelState.IsValid)
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
                 UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
-                var persistedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "lead_persisted",
-                    eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
-                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
                 await _db.SaveChangesAsync();
 
                         }))
@@ -410,7 +408,7 @@ if (!ModelState.IsValid)
                 pageMode.EffectivePageKey,
                 cfg.OfferKey,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
-                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), booking = replayBookingHint });
                     return RedirectToAction("Index", "ThankYou");
                 }
                 _logger.LogInformation(
@@ -555,7 +553,7 @@ if (!ModelState.IsValid)
                     });
             }
 
-            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
+            var metaLeadEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead);
             await TryPersistMetaTrackingAsync(
                 lead,
                 correlationId,
@@ -574,25 +572,27 @@ if (!ModelState.IsValid)
                 });
 
             // ── 2. Send agent/founder notification email ───────────────────────────
-            string? primary = null;
-            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                primary = leadRecipientEmail.Trim();
-            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                primary = recipientEmail.Trim();
-            else if (!string.IsNullOrWhiteSpace(senderEmail))
-                primary = senderEmail.Trim();
+            // The permanent website-owner authority has already resolved the
+            // scoped account's primary email. Do not fall back to global/sender config.
+            string? primary = string.IsNullOrWhiteSpace(leadRecipientEmail)
+                ? null
+                : leadRecipientEmail.Trim();
 
             if (!string.IsNullOrWhiteSpace(primary))
             {
-                var agentEmailSent = await _emailSender.TrySendAsync(
+                var notification = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    _db,
+                    lead,
                     primary,
-                    $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    BuildEmailBody(model, cfg),
-                    replyToEmail: model.Email,
-                    saveToSentItems: true,
-                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+                    token => _emailSender.TrySendAsync(
+                        primary,
+                        $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                        BuildEmailBody(model, cfg),
+                        replyToEmail: model.Email,
+                        saveToSentItems: true,
+                        cancellationToken: token),
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var agentEmailSent = notification.Sent;
 
                 if (agentEmailSent)
                 {
@@ -874,32 +874,13 @@ if (!ModelState.IsValid)
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
-            var slug = ResolveExplicitAgentSlugFromRequest();
-
-            if (!string.IsNullOrWhiteSpace(slug))
-            {
-                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
-                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
-            }
-
-            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
-            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile)
-            {
-                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
-                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
-                    ? trackingProfile.AgentUpn.Trim()
-                    : recipientEmail;
-
-                return (
-                    isFounderPath ? recipientEmail : trackingRecipient,
-                    trackingProfile.Id,
-                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
-                    isFounderPath);
-            }
-
-            return (recipientEmail, null, null, isFounderPath);
+            var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
+                HttpContext,
+                _resolver,
+                _intakeRecipients,
+                ResolveExplicitAgentSlugFromRequest(),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
         private async Task<LeadAppointment?> UpsertRequestedPublicAppointmentAsync(
@@ -948,6 +929,7 @@ if (!ModelState.IsValid)
                     WorkstationLeadId = intakeLink.WorkstationLeadId,
                     OwnerAgentUserId = intakeLink.AgentUserId,
                     WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    Oppref = OpenAiClickReference.Normalize(intakeLink.Oppref),
                     BookingSource = bookingSource,
                     RequestedBookingSource = bookingSource,
                     CreatedUtc = nowUtc,
@@ -962,6 +944,7 @@ if (!ModelState.IsValid)
                 appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
                 appointment.OwnerAgentUserId = intakeLink.AgentUserId;
                 appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink.Oppref);
                 appointment.BookingSource = bookingSource;
                 appointment.RequestedBookingSource = bookingSource;
                 appointment.ConfirmationSource = null;
@@ -2157,6 +2140,8 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
         {
             return UnifiedEventContextBuilder.Build(
                 httpContext: HttpContext,
+                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
+                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
                 eventName: eventType,
                 eventUtc: eventUtc,
                 sessionId: lead.SessionId,
@@ -2169,10 +2154,13 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                 utmMedium: lead.UtmMedium,
                 utmCampaign: lead.UtmCampaign,
                 utmId: lead.UtmId,
+                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
+                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
                 metaCampaignId: lead.MetaCampaignId,
                 metaAdSetId: lead.MetaAdSetId,
                 metaAdId: lead.MetaAdId,
                 fbclid: lead.Fbclid,
+                oppref: lead.Oppref,
                 agentSlug: lead.AgentSlug,
                 agentTrackingProfileId: lead.AgentTrackingProfileId,
                 isInternal: lead.IsInternal,

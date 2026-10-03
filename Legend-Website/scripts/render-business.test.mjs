@@ -19,6 +19,77 @@ test('publication compiler process consumes stdin and returns compiled pages',()
   assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/services']);
 });
 
+test('canonical v3 business publication renders only the composition graph and keeps platform semantics',async()=>{
+  const baseNode=(id,type,tag,extra={})=>({
+    id,type,tag,signals:[],style:{},breakpointStyles:{},
+    layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[],...extra
+  });
+  const canonical={
+    version:3,
+    faviconImageDataUrl:null,
+    breakpoints:[],
+    theme:{},
+    store:{enabled:false,navigationLabel:'Store',cartIcon:'cart',cartIconSizePx:28},
+    collections:{},
+    reusableComponents:{},
+    shell:{
+      header:[baseNode('shell.header','container','header',{className:'site-header',children:[
+        baseNode('shell.brand','container','div',{className:'brand',children:[
+          baseNode('shell.brand.name','text','strong',{text:'Placeholder',systemBinding:'business_name'})
+        ]}),
+        baseNode('shell.nav','container','nav',{className:'nav',systemKey:'primary_navigation'})
+      ]})],
+      footer:[baseNode('shell.footer','container','footer',{className:'site-footer',children:[
+        baseNode('shell.footer.name','text','strong',{text:'Placeholder',systemBinding:'business_name'})
+      ]})]
+    },
+    pages:{
+      '/':{
+        title:'Home',description:'Canonical home',
+        navigation:{label:'Start',showInNavigation:true,order:10,isDeleted:false},
+        dynamicBinding:null,
+        composition:[
+          baseNode('home.hero','section','section',{className:'hero',children:[
+            baseNode('home.title','heading','h1',{text:'Canonical v3 headline'}),
+            baseNode('home.cta','cta','a',{text:'Contact us',actionKey:'business_contact',href:'/contact',target:'_self'})
+          ]})
+        ]
+      },
+      '/contact':{
+        title:'Contact',description:'Contact us',
+        navigation:{label:'Contact',showInNavigation:true,order:20,isDeleted:false},
+        dynamicBinding:null,
+        composition:[
+          baseNode('contact.section','section','section',{className:'section',children:[
+            baseNode('contact.form','form','form',{text:'Send inquiry',title:'Contact us',systemKey:'canonical_inquiry'})
+          ]})
+        ]
+      }
+    }
+  };
+
+  const result=await compileBusiness({business,document:canonical});
+  assert.deepEqual(Object.keys(result.pages),['/','/contact']);
+  assert.ok(result.pages['/']);
+  assert.ok(result.pages['/contact']);
+  const home=parseHTML(result.pages['/'].html).document;
+  assert.equal(home.querySelector('.brand strong').textContent,business.displayName);
+  assert.equal(home.querySelector('h1').textContent,'Canonical v3 headline');
+  assert.deepEqual([...home.querySelectorAll('.nav a')].map(link=>link.textContent),['Start','Contact']);
+  const cta=home.querySelector('[data-website-action-key="business_contact"]');
+  assert.ok(cta);
+  assert.equal(cta.getAttribute('href'),'/contact');
+  const contact=parseHTML(result.pages['/contact'].html).document;
+  assert.ok(contact.querySelector('form[data-website-inquiry]'));
+  const contactEmbedded=JSON.parse(contact.querySelector('#legend-cms-published-document').textContent);
+  assert.equal(contactEmbedded.pageKey,'contact');
+  const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent);
+  assert.equal(embedded.document.version,3);
+  assert.equal(embedded.legacyMigration,null);
+  assert.deepEqual(embedded.document.pages['/'].composition.map(node=>node.id),['home.hero']);
+});
+
+
 
 test('all normal business pages use canonical components, actual scoped name and public navigation without LEGEND facts',async()=>{
   const result=await compileBusiness({business,document:document()});
@@ -34,10 +105,14 @@ test('all normal business pages use canonical components, actual scoped name and
     for(const link of dom.querySelectorAll('.nav a'))assert.match(link.getAttribute('href'),/^\/(?:about|contact|services)?\/?$/);
     const published=dom.querySelector('#legend-cms-published-document');
     assert.ok(published);
-    const runtime=JSON.parse(published.textContent).runtime;
+    const publishedPayload=JSON.parse(published.textContent);
+    assert.deepEqual(publishedPayload.pageCatalog.map(item=>item.route),['/','/about','/contact','/services']);
+    assert.ok(publishedPayload.pageCatalog.every(item=>item.showInNavigation===true));
+    const runtime=publishedPayload.runtime;
     assert.equal(runtime.apiBase,'https://masterapp-protect.azurewebsites.net');
     assert.equal(runtime.trackingAsset,'/legend-public-tracking.js');
     assert.equal(runtime.metaSignalAsset,'/legend-public-meta-signal-intelligence.js');
+    assert.equal(runtime.openAiMeasurementAsset,'/legend-public-openai-measurement.js');
     assert.equal(dom.querySelector('script[data-cms-context]'),null);
     assert.ok(dom.querySelector('script[src^="/legend-public-cms.js"]'));
   }
@@ -55,12 +130,13 @@ test('published text, URLs, section color and imported page are rendered before 
   const link=dom.querySelector('.hero .actions a').dataset.cmsId;
   const value=document();
   value.faviconImageDataUrl='https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111';
-  value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Actual business headline'},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
+  value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Attempted name override',style:{fontScale:1.2,fontFamily:'Georgia'}},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
   value.pages['/team/history']={title:'Our history',description:'Our actual story',elements:{},sectionOrder:{},extras:[{id:'imported-section',type:'section',sectionId:'',style:{}},{id:'imported-text',type:'text',sectionId:'extra:imported-section',text:'Verified imported information',style:{}}]};
   const result=await compileBusiness({business,document:value});
   const page=parseHTML(result.pages['/'].html).document;
   assert.equal(page.title,'Custom title');
-  assert.equal(page.querySelector('h1').textContent,'Actual business headline');
+  assert.equal(page.querySelector('h1').textContent,business.displayName);
+  assert.equal(page.querySelector('h1').style.fontFamily,'Georgia');
   assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
   assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
   assert.equal(page.querySelector('.hero').style.backgroundImage,'none');
@@ -87,8 +163,17 @@ test('route manifest honors navigation order visibility nesting deletion and cus
   assert.equal(result.manifest.some(page=>page.route==='/services'),false);
   const home=parseHTML(result.pages['/'].html).document;
   const links=[...home.querySelectorAll('.nav a')];
-  assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
-  assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
+  // Nested pages remain in the canonical page catalog but are not promoted to
+  // top-level navigation links by the shared CMS.
+  assert.deepEqual(links.map(link=>link.textContent),['Contact','Start']);
+  const embeddedCatalog=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).pageCatalog;
+  assert.deepEqual(embeddedCatalog.map(item=>[item.route,item.showInNavigation,item.parentPath,item.order]),[
+    ['/contact',true,null,0],
+    ['/about',false,null,10],
+    ['/team',true,'/about',15],
+    ['/',true,null,20]
+  ]);
+  assert.equal(links.some(link=>link.textContent==='Team'),false);
   assert.equal(links.some(link=>link.textContent==='About us'),false);
   assert.equal(result.pages['/services'],undefined);
   assert.match(result.pages['/team'].html,/Our team/);

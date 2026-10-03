@@ -144,8 +144,14 @@
   }
 
   const surfaces = new WeakSet();
+  const surfaceList = new Set();
   const mobileSheets = new WeakSet();
+  let modalSurfaceSequence = 0;
   const pageScrollLockOwners = new Set();
+  const surfaceLayerState = new WeakMap();
+  const surfaceOpenState = new WeakMap();
+  const MODAL_LAYER_BASE = 5200;
+  const MODAL_LAYER_STEP = 20;
   let pageScrollState = null;
   let header;
   let footer;
@@ -157,9 +163,260 @@
     if (style.getPropertyValue(name) !== value) style.setProperty(name, value);
   }
 
+  function isMobileModalViewport(){
+    return window.matchMedia?.("(max-width: 900px)")?.matches === true;
+  }
+
+  function modalOwner(surface){
+    if (!surface.dataset.legendModalOwner) {
+      modalSurfaceSequence += 1;
+      surface.dataset.legendModalOwner = `legend-modal-surface-${modalSurfaceSequence}`;
+    }
+    return surface.dataset.legendModalOwner;
+  }
+
+  function hasHiddenAncestor(surface){
+    for (let node = surface; node && node.nodeType === 1; node = node.parentElement){
+      if (node.hidden || node.hasAttribute("hidden") || node.getAttribute("aria-hidden") === "true") return true;
+      const style = window.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") return true;
+      if (node === document.body) break;
+    }
+    return false;
+  }
+
+  function surfaceOpen(surface){
+    if (!surface || !surface.isConnected || hasHiddenAncestor(surface)) return false;
+
+    if (surface.classList.contains("show") || surface.classList.contains("open")) return true;
+    if (surface.getAttribute("aria-hidden") === "false") return true;
+
+    const style = window.getComputedStyle(surface);
+    const opacity = Number.parseFloat(style.opacity || "1");
+    if (style.pointerEvents === "none" || opacity <= 0.01) return false;
+
+    // Bootstrap modals are open only with their explicit state class. Custom
+    // fixed dialog surfaces may use visible geometry without Bootstrap classes.
+    if (surface.matches(".modal")) return false;
+    return style.position === "fixed";
+  }
+
+  function captureSurfaceLayer(surface){
+    if (!surface || surfaceLayerState.has(surface)) return;
+    surfaceLayerState.set(surface, surface.style.zIndex);
+  }
+
+  function promoteSurfaceLayer(surface){
+    if (!surface) return;
+    captureSurfaceLayer(surface);
+
+    let highest = MODAL_LAYER_BASE - MODAL_LAYER_STEP;
+    surfaceList.forEach(other => {
+      if (other === surface || !other.isConnected || !surfaceOpen(other)) return;
+      const value = Number.parseInt(window.getComputedStyle(other).zIndex || "", 10);
+      if (Number.isFinite(value)) highest = Math.max(highest, value);
+    });
+
+    const current = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
+    if (Number.isFinite(current)) highest = Math.max(highest, current - MODAL_LAYER_STEP);
+    surface.style.zIndex = String(Math.max(MODAL_LAYER_BASE, highest + MODAL_LAYER_STEP));
+  }
+
+  function ensureSurfaceLayer(surface){
+    if (!surface) return;
+    captureSurfaceLayer(surface);
+    const computed = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
+    if (!Number.isFinite(computed) || computed < MODAL_LAYER_BASE)
+      surface.style.zIndex = String(MODAL_LAYER_BASE);
+  }
+
+  function restoreSurfaceLayer(surface){
+    if (!surface || !surfaceLayerState.has(surface)) return;
+    const previous = surfaceLayerState.get(surface);
+    surfaceLayerState.delete(surface);
+    surfaceOpenState.delete(surface);
+    if (previous) surface.style.zIndex = previous;
+    else surface.style.removeProperty("z-index");
+  }
+
+  function markLocalBackdrops(surface){
+    if (!surface?.children) return;
+    Array.from(surface.children).forEach(node => {
+      if (node.nodeType !== 1) return;
+      const name = String(node.className || "");
+      if (
+        /(?:^|[-_\\s])backdrop(?:$|[-_\\s])/i.test(name) ||
+        node.hasAttribute("data-modal-backdrop") ||
+        node.hasAttribute("data-legend-modal-backdrop")
+      ) {
+        node.setAttribute("data-legend-modal-backdrop", "");
+      }
+    });
+  }
+
+  function syncCanonicalBackdrop(){
+    const body = document.body;
+    if (!body) return;
+
+    let openCount = 0;
+    surfaceList.forEach(surface => {
+      if (!surface.isConnected) {
+        restoreSurfaceLayer(surface);
+        surfaceList.delete(surface);
+        return;
+      }
+
+      markLocalBackdrops(surface);
+      if (surfaceOpen(surface)) {
+        openCount += 1;
+        ensureSurfaceLayer(surface);
+      } else {
+        restoreSurfaceLayer(surface);
+      }
+    });
+
+    body.classList.toggle("legend-modal-active", openCount > 0);
+  }
+
+  function closeSurfaceFallback(surface){
+    if (!surface) return;
+    if (surface.matches(".modal") && window.bootstrap?.Modal) {
+      window.bootstrap.Modal.getOrCreateInstance(surface).hide();
+      return;
+    }
+    surface.dispatchEvent(new CustomEvent("legend:modal-close", { bubbles: true }));
+    surface.classList.remove("open", "show");
+    surface.setAttribute("aria-hidden", "true");
+    if (!surface.matches("[data-legend-mobile-sheet]")) surface.hidden = true;
+    syncModalSurfaceState(surface);
+  }
+
+  function requestSurfaceClose(surface, sourceControl = null){
+    if (!surface) return;
+    const closeSelectors = [
+      '[data-bs-dismiss="modal"]',
+      'button[data-legend-sheet-close]',
+      'button[data-legend-modal-close]',
+      'button[data-close-rev]',
+      'button[data-note-self-close]',
+      'button[data-close-subscriber-actions]',
+      'button[data-uw-close]',
+      'button[data-proposal-close]',
+      '.btn-close',
+      '.modal-close',
+      '.qv-booking-close',
+      '.finance-support-close',
+      '.uw-close',
+      '.hp-dialog-close',
+      '.ws-client-picker-close',
+      '.ai-drawer-close',
+      '.home-clients-close',
+      '.home-zoom-close',
+      '.home-focus-close',
+      '.note-self-close',
+      '.founder-subscriber-action-modal-close'
+    ].join(',');
+    const existing = Array.from(surface.querySelectorAll(closeSelectors))
+      .find(control => control !== sourceControl && !control.disabled);
+    if (existing) {
+      existing.click();
+      window.setTimeout(() => {
+        if (surfaceOpen(surface)) closeSurfaceFallback(surface);
+      }, 0);
+      return;
+    }
+    closeSurfaceFallback(surface);
+  }
+
+  function normalizeCloseControl(surface){
+    const selectors = [
+      '[aria-label="Close"]',
+      '[data-bs-dismiss="modal"]',
+      'button[data-legend-modal-close]',
+      'button[data-close-rev]',
+      'button[data-note-self-close]',
+      'button[data-close-subscriber-actions]',
+      'button[data-uw-close]',
+      'button[data-proposal-close]',
+      'button[data-legend-sheet-close]',
+      '.btn-close',
+      '.modal-close',
+      '.qv-booking-close',
+      '.finance-support-close',
+      '.uw-close',
+      '.hp-dialog-close',
+      '.ws-client-picker-close',
+      '.ai-drawer-close',
+      '.home-clients-close',
+      '.home-zoom-close',
+      '.home-focus-close',
+      '.note-self-close',
+      '.founder-subscriber-action-modal-close'
+    ].join(',');
+    const controls = Array.from(surface.querySelectorAll(selectors));
+    controls.forEach(control => {
+      control.classList.add("legend-modal-close-control");
+      if (!control.getAttribute("aria-label")) control.setAttribute("aria-label", "Close");
+      if (control.dataset.legendModalCloseNormalized === "1") return;
+      control.dataset.legendModalCloseNormalized = "1";
+      control.addEventListener("click", () => {
+        window.setTimeout(() => {
+          if (surfaceOpen(surface)) closeSurfaceFallback(surface);
+        }, 0);
+      });
+    });
+
+    if (controls.length) return;
+
+    const panel = surface.querySelector("[data-legend-modal-panel], .modal-content, .modal-dialog") || surface;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "legend-modal-close-control legend-modal-generated-close";
+    button.setAttribute("aria-label", "Close");
+    button.setAttribute("data-legend-generated-modal-close", "1");
+    if (surface.matches(".modal")) button.setAttribute("data-bs-dismiss", "modal");
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      requestSurfaceClose(surface, button);
+    });
+    panel.prepend(button);
+  }
+
+  function syncModalSurfaceState(surface){
+    if (!surface || !surfaces.has(surface)) return;
+    const owner = modalOwner(surface);
+    const open = surfaceOpen(surface);
+    const wasOpen = surfaceOpenState.get(surface) === true;
+    surface.dataset.legendModalOpen = open ? "true" : "false";
+
+    if (open && !wasOpen) promoteSurfaceLayer(surface);
+    else if (!open && wasOpen) restoreSurfaceLayer(surface);
+    else if (open) ensureSurfaceLayer(surface);
+
+    surfaceOpenState.set(surface, open);
+    if (isMobileModalViewport() && open) lockPageScroll(owner);
+    else unlockPageScroll(owner);
+    syncCanonicalBackdrop();
+  }
+
+  function syncAllModalSurfaces(){
+    surfaceList.forEach(surface => {
+      if (!surface.isConnected) {
+        unlockPageScroll(surface.dataset.legendModalOwner || "");
+        restoreSurfaceLayer(surface);
+        surfaceList.delete(surface);
+        return;
+      }
+      syncModalSurfaceState(surface);
+    });
+    syncCanonicalBackdrop();
+  }
+
   function registerDialog(dialog){
     if (!dialog || dialog.nodeType !== 1) return;
-    let surface = dialog.matches('.modal') ? dialog : null;
+    let surface = (dialog.matches('.modal') || dialog.matches('[data-legend-modal-surface]'))
+      ? dialog
+      : dialog.closest?.('[data-legend-modal-surface]') || null;
     if (!surface){
       for (let node = dialog; node && node !== document.body; node = node.parentElement){
         if (window.getComputedStyle(node).position === 'fixed'){ surface = node; break; }
@@ -168,13 +425,18 @@
     if (!surface) return;
     if (!surfaces.has(surface)){
       surfaces.add(surface);
+      surfaceList.add(surface);
       surface.setAttribute('data-legend-modal-surface', '');
+      modalOwner(surface);
     }
     if (dialog !== surface) dialog.setAttribute('data-legend-modal-panel', '');
     surface.querySelectorAll(':scope > .modal-dialog, :scope > [class*="-panel"], :scope > [class*="-dialog"], :scope > [class*="-card"], :scope > [class*="-window"]').forEach(panel => {
       panel.setAttribute('data-legend-modal-panel', '');
     });
     surface.querySelectorAll('.modal-content').forEach(panel => panel.setAttribute('data-legend-modal-panel', ''));
+    markLocalBackdrops(surface);
+    normalizeCloseControl(surface);
+    syncModalSurfaceState(surface);
   }
 
   function registerDialogs(node){
@@ -379,16 +641,44 @@
           if (surfaces.has(record.target)) registerDialog(record.target);
           changed = changed || record.addedNodes.length > 0 || record.removedNodes.length > 0;
         } else {
-          if (surfaces.has(record.target)) changed = true;
+          if (surfaces.has(record.target)) {
+            syncModalSurfaceState(record.target);
+            changed = true;
+          } else {
+            const surface = record.target?.closest?.("[data-legend-modal-surface]");
+            if (surface) syncModalSurfaceState(surface);
+          }
           if (record.target?.matches?.("[data-legend-mobile-sheet]")) syncMobileSheetState(record.target);
         }
       }
       if (changed) scheduleViewportOffsets();
     });
-    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden', 'aria-hidden', 'style'] });
     document.addEventListener('show.bs.modal', event => {
       registerDialogs(event.target);
       syncViewportOffsets();
+      syncModalSurfaceState(event.target);
+    });
+    document.addEventListener('shown.bs.modal', event => {
+      registerDialogs(event.target);
+      promoteSurfaceLayer(event.target);
+      surfaceOpenState.set(event.target, true);
+      syncModalSurfaceState(event.target);
+    });
+    document.addEventListener('hidden.bs.modal', event => syncModalSurfaceState(event.target));
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      const open = Array.from(surfaceList)
+        .filter(surface => surface.isConnected && surfaceOpen(surface))
+        .sort((a, b) => {
+          const az = Number.parseInt(window.getComputedStyle(a).zIndex || '0', 10) || 0;
+          const bz = Number.parseInt(window.getComputedStyle(b).zIndex || '0', 10) || 0;
+          return az - bz;
+        });
+      const top = open[open.length - 1];
+      if (!top) return;
+      event.preventDefault();
+      requestSurfaceClose(top);
     });
   }
 
@@ -410,11 +700,15 @@
   }
 
   function reconcile(){
-    if (document.querySelector(".modal.show")) return;
+    if (document.querySelector(".modal.show")) {
+      syncCanonicalBackdrop();
+      return;
+    }
     document.body.classList.remove("legend-bootstrap-modal-open");
     document.body.classList.remove("modal-open");
     document.body.style.removeProperty("padding-right");
     managedBackdrops().forEach((node) => node.remove());
+    syncAllModalSurfaces();
   }
 
   function bind(modalId, options = {}){
@@ -465,10 +759,12 @@
   api.lockPageScroll = lockPageScroll;
   api.unlockPageScroll = unlockPageScroll;
   api.registerMobileSheet = registerMobileSheet;
+  api.syncModalSurfaces = syncAllModalSurfaces;
   api.bind = bind;
   api.refreshViewportOffsets = syncViewportOffsets;
   api.reconcile = reconcile;
   api.hide = hide;
+  api.requestClose = requestSurfaceClose;
   api.closeLegacyExecutionOverlays = closeLegacyExecutionOverlays;
 
   installBootstrapModalShim();
@@ -482,7 +778,11 @@
   }
   window.visualViewport?.addEventListener("resize", scheduleViewportOffsets, { passive: true });
   window.visualViewport?.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
-  window.addEventListener("resize", scheduleViewportOffsets, { passive: true });
+  window.addEventListener("resize", () => {
+    scheduleViewportOffsets();
+    syncAllModalSurfaces();
+  }, { passive: true });
+  window.visualViewport?.addEventListener("resize", syncAllModalSurfaces, { passive: true });
   window.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
 
   window.LegendModal = api;

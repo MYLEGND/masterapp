@@ -2,11 +2,40 @@ using System.Collections.ObjectModel;
 
 namespace Shared.Analytics;
 
+/// <summary>Immutable behavior semantics. Display labels and aliases never select event identity.</summary>
+public sealed record AnalyticsBehaviorContract(
+    string Key, string EventName, string DisplayLabel, IReadOnlyList<string> Aliases,
+    bool BrowserAllowed, bool RequiresServerAuthority, string AutomaticTrigger,
+    IReadOnlyList<string> EditorTriggers, string? ConversionEventName = null);
+
 public static class AnalyticsEventCatalog
 {
     public const string ClientTrackingErrorEventName = "client_tracking_error";
     private static readonly string[] AllQuotes = ["all"];
     private static readonly string[] LifeQuotes = ["life", "term", "wholelife", "finalexpense", "mortgage", "iul"];
+
+    // This is the semantic layer of the existing catalog, not a provider event list.
+    // Persisted event names remain stable; industry/provider names are translation only.
+    private static readonly IReadOnlyList<AnalyticsBehaviorContract> CoreBehaviors =
+    [
+        new("page_view", "page_view", "Page viewed", ["ViewContent"], true, false, "page_load", ["viewed"]),
+        new("cta_click", "cta_click", "Action clicked", ["quote_click", "quote_cta_click", "cta_clicked"], true, false, "managed_action_click", ["click"]),
+        new("form_start", "form_start", "Form started", ["LeadFormStart", "lead_form_start"], true, false, "first_form_interaction", ["click", "form_started"]),
+        new("contact_input_started", "form_field_focus", "Contact input started", ["ContactInputStarted"], true, false, "contact_field_focus", ["field_started"]),
+        new("meaningful_scroll", "scroll_depth_50", "Meaningful scroll", ["MeaningfulScroll", "scroll_depth_75", "scroll_depth_90", "scroll_depth_100"], true, false, "scroll_threshold", ["scroll_threshold"]),
+        new("submit_attempt", "form_submit_attempt", "Submit attempted", ["SubmitAttempt", "lead_form_submit_attempt", "form_submit"], true, false, "form_submit", ["submit_attempt"]),
+        new("lead_created", "website_lead_submitted", "Inquiry received", ["Lead", "lead_persisted"], false, true, "inquiry_persisted", [], "Lead"),
+        new("qualified_lead", "QualifiedLead", "Inquiry qualified", ["qualified_lead"], false, true, "crm_qualification", [], "QualifiedLead"),
+        new("appointment_booked", "appointment_booked", "Appointment booked", ["AppointmentBooked"], false, true, "booking_persisted", [], "AppointmentBooked"),
+        new("appointment_completed", "appointment_completed", "Appointment completed", ["AppointmentCompleted"], false, true, "booking_completed", [], "AppointmentCompleted"),
+        new("application_submitted", "ApplicationSubmitted", "Request submitted", ["application_submitted"], false, true, "crm_submission", [], "ApplicationSubmitted"),
+        new("outcome_completed", "PolicyIssued", "Business outcome completed", ["policy_issued"], false, true, "crm_outcome_completed", [], "PolicyIssued"),
+        new("payment_completed", "PolicyPaid", "Payment completed", ["policy_paid"], false, true, "payment_confirmed", [], "PolicyPaid"),
+        new("product_viewed", "ProductViewed", "Product viewed", [], true, false, "product_page_load", ["viewed"]),
+        new("add_to_cart", "AddToCart", "Item added to cart", [], false, true, "cart_command_accepted", [], "AddToCart"),
+        new("checkout_started", "InitiateCheckout", "Checkout started", ["CheckoutStarted"], false, true, "checkout_created", [], "InitiateCheckout"),
+        new("purchase_completed", "Purchase", "Purchase completed", [], false, true, "order_payment_confirmed", [], "Purchase")
+    ];
 
     private static readonly IReadOnlyList<AnalyticsEventDefinition> DefinitionsInternal =
     [
@@ -55,8 +84,8 @@ public static class AnalyticsEventCatalog
         Define("form_submit", "submit", AllQuotes, "submit", submitAttempt: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt", "form_submit"]),
         Define("submit_failure", "submit", AllQuotes, "submit", critical: true, allowBrowser: true, dashboardMetrics: ["submit_failure"]),
         Define("form_abandon", "abandon", AllQuotes, "abandon", critical: true, allowBrowser: true, dashboardMetrics: ["form_abandon"]),
-        Define("form_submit_success", "submit", AllQuotes, "submit", confirmedLead: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success", "confirmed_lead"]),
-        Define("lead_form_submit_success", "submit", AllQuotes, "submit", confirmedLead: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success", "confirmed_lead"]),
+        Define("form_submit_success", "submit", AllQuotes, "submit", critical: true, allowBrowser: true, dashboardMetrics: ["submit_success"]),
+        Define("lead_form_submit_success", "submit", AllQuotes, "submit", critical: true, allowBrowser: true, dashboardMetrics: ["submit_success"]),
         Define("lead_form_submit_failure", "submit", AllQuotes, "submit", critical: true, allowBrowser: true, dashboardMetrics: ["submit_failure"]),
         Define("website_lead_submitted", "lead", AllQuotes, "confirmation", confirmedLead: true, critical: true, allowServer: true, dashboardMetrics: ["submit_success", "confirmed_lead", "lead_persisted"]),
         Define("lead_persisted", "lead", AllQuotes, "confirmation", confirmedLead: true, critical: true, allowServer: true, dashboardMetrics: ["lead_persisted", "confirmed_lead"]),
@@ -65,11 +94,14 @@ public static class AnalyticsEventCatalog
         Define("workstation_capture_failure", "pipeline", AllQuotes, "pipeline", critical: true, allowServer: true, dashboardMetrics: ["workstation_capture_failure"]),
         Define(AppointmentAnalyticsEventCatalog.EmbedViewed, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_embed_viewed"]),
         Define(AppointmentAnalyticsEventCatalog.SlotSelected, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_slot_selected"]),
-        Define(AppointmentAnalyticsEventCatalog.Booked, "appointment", AllQuotes, "appointment", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["appointment_booked"]),
+        Define(AppointmentAnalyticsEventCatalog.Booked, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_booked"]),
+        Define("appointment_confirmation_viewed", "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_confirmation_viewed"]),
         Define(AppointmentAnalyticsEventCatalog.Abandoned, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_abandoned"]),
         Define(AppointmentAnalyticsEventCatalog.BookingFallbackClicked, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_booking_fallback_clicked"]),
         Define(AppointmentAnalyticsEventCatalog.Completed, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_completed"]),
         Define(AppointmentAnalyticsEventCatalog.NoShow, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_no_show"]),
+        Define(AppointmentAnalyticsEventCatalog.Cancelled, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_cancelled"]),
+        Define(AppointmentAnalyticsEventCatalog.Rescheduled, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_rescheduled"]),
         Define("meta_browser_event_attempt", "meta", AllQuotes, "meta", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["meta_browser_event_attempt"]),
         Define("meta_browser_event_success", "meta", AllQuotes, "meta", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["meta_browser_event_success"]),
         Define("capi_event_attempt", "meta", AllQuotes, "meta", critical: true, allowServer: true, dashboardMetrics: ["capi_event_attempt"]),
@@ -130,16 +162,44 @@ public static class AnalyticsEventCatalog
         Define("life_step2_view", "quote", LifeQuotes, "contact", contactStep: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["contact_step_view", "quote_contact_step_view"]),
         Define("life_step2_back", "quote", LifeQuotes, "contact", meta: true, allowBrowser: true, dashboardMetrics: ["backtrack"]),
         Define("life_step2_submit_attempt", "quote", LifeQuotes, "submit", submitAttempt: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
-        Define("life_step2_submit_success", "quote", LifeQuotes, "submit", confirmedLead: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success", "confirmed_lead"]),
-        Define("results_contact_submit", "quote", LifeQuotes, "submit", confirmedLead: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success", "confirmed_lead"]),
+        Define("life_step2_submit_success", "quote", LifeQuotes, "submit", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success"]),
+        Define("results_contact_submit", "quote", LifeQuotes, "submit", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success"]),
         Define("life_contact_first_view", "quote", LifeQuotes, "landing", funnelStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["life_contact_first_view", "landing_view"]),
         Define("life_contact_first_start", "quote", LifeQuotes, "discovery", funnelStart: true, formStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["life_contact_first_start", "funnel_start"]),
         Define("life_contact_first_submit_attempt", "quote", LifeQuotes, "submit", submitAttempt: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
-        Define("life_contact_first_submit_success", "quote", LifeQuotes, "submit", confirmedLead: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success", "confirmed_lead"]),
-        Define("life_contact_first_complete", "quote", LifeQuotes, "submit", confirmedLead: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["life_contact_first_complete", "submit_success", "confirmed_lead"]),
+        Define("life_contact_first_submit_success", "quote", LifeQuotes, "submit", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_success"]),
+        Define("life_contact_first_complete", "quote", LifeQuotes, "submit", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["life_contact_first_complete", "submit_success"]),
 
         Define("rage_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["rage_click"]),
-        Define("dead_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["dead_click"])
+        Define("dead_click", "diagnostic", AllQuotes, "diagnostic", meta: true, allowBrowser: true, dashboardMetrics: ["dead_click"]),
+        // Shared confirmed outcomes are canonical source events, not provider-created copies.
+        ..CoreBehaviors.Where(behavior => behavior.ConversionEventName is not null).Select(behavior =>
+            Define(behavior.ConversionEventName!, "conversion", AllQuotes, "confirmation",
+                confirmedLead: behavior.ConversionEventName == "Lead", meta: true,
+                allowServer: true, dashboardMetrics: [behavior.ConversionEventName!])),
+        Define("ViewContent", "page", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ViewContent"]),
+        Define("RapidBounce", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RapidBounce"]),
+        Define("SessionEngaged5s", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SessionEngaged5s"]),
+        Define("SessionEngaged15s", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SessionEngaged15s"]),
+        Define("MeaningfulScroll", "engagement", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["MeaningfulScroll"]),
+        Define("LeadFormStart", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["LeadFormStart"]),
+        Define("DiscoveryComplete", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["DiscoveryComplete"]),
+        Define("FunnelStepComplete", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["FunnelStepComplete"]),
+        Define("RecommendationViewed", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RecommendationViewed"]),
+        Define("ContactStepReached", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ContactStepReached"]),
+        Define("ContactInputStarted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["ContactInputStarted"]),
+        Define("PhoneFieldCompleted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["PhoneFieldCompleted"]),
+        Define("RequiredContactFieldsCompleted", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RequiredContactFieldsCompleted"]),
+        Define("FieldError", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["FieldError"]),
+        Define("SubmitAttempt", "funnel", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["SubmitAttempt"]),
+        Define("HighIntentLeadSignal", "threshold", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["HighIntentLeadSignal"]),
+        Define("LeadReadySignal", "threshold", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["LeadReadySignal"]),
+        Define("Backtrack", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["Backtrack"]),
+        Define("DeadClick", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["DeadClick"]),
+        Define("RageClick", "friction", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["RageClick"]),
+        Define("AbandonedHighIntentLead", "abandon", AllQuotes, "signal", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["AbandonedHighIntentLead"]),
+        Define("ProductViewed", "commerce", AllQuotes, "commerce", meta: true,
+            allowBrowser: true, dashboardMetrics: ["product_view"]),
     ];
 
     private static readonly ReadOnlyDictionary<string, AnalyticsEventDefinition> DefinitionsByNameInternal =
@@ -169,6 +229,45 @@ public static class AnalyticsEventCatalog
     public static IReadOnlyDictionary<string, AnalyticsEventDefinition> DefinitionsByName => DefinitionsByNameInternal;
     public static IReadOnlyCollection<string> BrowserAllowedEventNames => BrowserAllowedEventNamesInternal;
     public static IReadOnlyCollection<string> CriticalBrowserEventNames => CriticalBrowserEventNamesInternal;
+
+    public static IReadOnlyList<AnalyticsBehaviorContract> Behaviors => CoreBehaviors;
+
+    public static bool TryGetBehavior(string? eventNameOrKey, out AnalyticsBehaviorContract behavior)
+    {
+        behavior = null!;
+        if (string.IsNullOrWhiteSpace(eventNameOrKey)) return false;
+        var key = eventNameOrKey.Trim();
+        var core = CoreBehaviors.FirstOrDefault(x =>
+            string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.EventName, key, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.ConversionEventName, key, StringComparison.OrdinalIgnoreCase) ||
+            x.Aliases.Contains(key, StringComparer.OrdinalIgnoreCase));
+        if (core is not null) { behavior = core; return true; }
+        if (!TryGet(key, out var definition)) return false;
+        // Existing instrumented variants retain their recorded name but share the
+        // canonical behavioral meaning; never inspect presentation text.
+        var parent = definition.CountsAsFormStart ? "form_start"
+            : definition.CountsAsCtaClick ? "cta_click"
+            : definition.CountsAsSubmitAttempt ? "submit_attempt"
+            : definition.CountsAsConfirmedLead && definition.AllowServer ? "lead_created" : null;
+        if (parent is not null) { behavior = CoreBehaviors.Single(x => x.Key == parent); return true; }
+        var triggers = definition.Name switch
+        {
+            "PhoneFieldCompleted" or "form_field_complete" => new[] { "field_completed" },
+            "FieldError" or "form_field_error" => new[] { "validation_failed" },
+            _ => Array.Empty<string>()
+        };
+        var semanticKey = System.Text.RegularExpressions.Regex.Replace(definition.Name, "([a-z0-9])([A-Z])", "$1_$2").ToLowerInvariant();
+        behavior = new(semanticKey, definition.Name, semanticKey.Replace('_', ' '), [], definition.AllowBrowser,
+            definition.AllowServer && !definition.AllowBrowser, "instrumented_runtime", triggers);
+        return true;
+    }
+
+    public static string? ResolveConversionEventName(string? eventName) =>
+        TryGetBehavior(eventName, out var behavior) ? behavior.ConversionEventName : null;
+
+    public static bool RequiresServerAuthority(string? eventName) =>
+        TryGetBehavior(eventName, out var behavior) && behavior.RequiresServerAuthority;
 
     public static bool IsKnown(string? eventName) => TryGet(eventName, out _);
 

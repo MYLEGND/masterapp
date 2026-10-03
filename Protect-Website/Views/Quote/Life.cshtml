@@ -870,7 +870,7 @@
         debugMode = metaSignalOptions.DebugMode,
         highIntentThreshold = metaSignalOptions.HighIntentThreshold,
         leadReadyThreshold = metaSignalOptions.LeadReadyThreshold,
-        endpoint = Url.Content("~/analytics/meta-signal"),
+        endpoint = Url.Content("~/api/tracking/ingest"),
         quoteType = cfg.OfferKey,
         pageKey,
         effectivePageKey = pageKey,
@@ -6142,6 +6142,7 @@ input:checked + .lq-answer-card {
         <input type="hidden" name="MetaAdSetId" id="MetaAdSetId" />
         <input type="hidden" name="MetaAdId" id="MetaAdId" />
         <input type="hidden" name="Fbclid" id="Fbclid" />
+        <input type="hidden" name="Oppref" id="Oppref" />
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
         <input type="hidden" name="RecommendationPrimaryKey" id="RecommendationPrimaryKey" value="@form.RecommendationPrimaryKey" />
@@ -11258,6 +11259,7 @@ const contactFieldProgress = new Map();
     set('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
     set('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
     set('Fbclid',       attr.fbclid || p.get('fbclid') || '');
+    set('Oppref',       attr.oppref || p.get('oppref') || '');
     set('ReferrerUrl',  document.referrer || '');
     set('LandingPageUrl', window.location.href || '');
   }

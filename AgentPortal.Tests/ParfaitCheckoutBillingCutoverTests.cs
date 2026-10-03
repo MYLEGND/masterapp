@@ -9,6 +9,7 @@ using Domain.Entities;
 using Infrastructure.Billing;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
+using Infrastructure.Commerce;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -255,44 +256,6 @@ public sealed class ParfaitCheckoutBillingCutoverTests
         harness.Mail.Verify(x => x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
-    public async Task Pay_WhenAnalyticsFails_StillReturnsSuccess_AndKeepsOrderPaid()
-    {
-        using var harness = new CheckoutHarness(
-            configureGateway: gateway =>
-            {
-                gateway
-                    .Setup(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(new BillingOneTimePaymentResult(
-                        true,
-                        "pay_analytics",
-                        "COMPLETED",
-                        null,
-                        "Payment completed.",
-                        "req_analytics",
-                        false));
-            },
-            configureAnalytics: analytics =>
-            {
-                analytics
-                    .Setup(x => x.TrackPurchaseAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()))
-                    .ThrowsAsync(new InvalidOperationException("analytics unavailable"));
-            },
-            shippingFeeCents: 500,
-            stockQuantity: 3);
-
-        var result = await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None);
-
-        var response = ReadResponse(result, StatusCodes.Status200OK);
-        var order = Assert.Single(harness.Db.CommerceOrders);
-        var inventory = Assert.Single(harness.Db.CommerceProductInventoryItems);
-
-        Assert.True(response.Success);
-        Assert.Equal("Paid", order.PaymentStatus);
-        Assert.Equal("pay_analytics", order.SquarePaymentId);
-        Assert.Equal(2, inventory.StockQuantity);
-        harness.Analytics.Verify(x => x.TrackPurchaseAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()), Times.Once);
-    }
 
     private static ParfaitCheckoutPayResponse ReadResponse(IActionResult result, int expectedStatusCode)
     {
@@ -311,8 +274,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             Action<Mock<IBillingGateway>> configureGateway,
             int shippingFeeCents,
             int stockQuantity,
-            Action<Mock<IGraphMailService>>? configureMail = null,
-            Action<Mock<IParfaitAnalyticsService>>? configureAnalytics = null)
+            Action<Mock<IGraphMailService>>? configureMail = null)
         {
             Db = ControllerTestHelpers.BuildDb();
             _tempRoot = Path.Combine(Path.GetTempPath(), "masterapp-parfait-checkout-tests", Guid.NewGuid().ToString("N"));
@@ -337,7 +299,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             Products = new ParfaitProductService(StoragePaths, Db);
             Orders = new ParfaitOrderService(Db);
             Automations = new ParfaitCustomerAutomationService(StoragePaths, Configuration, Orders, Products);
-            MetaSignalBridge = new ParfaitMetaSignalBridgeService(Db, NullLogger<ParfaitMetaSignalBridgeService>.Instance);
+            CommerceSignals = new CommerceSignalService(Db);
 
             Gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
             Gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
@@ -350,11 +312,6 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             Mail.Setup(x => x.SendOrderNotificationAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
             configureMail?.Invoke(Mail);
-
-            Analytics = new Mock<IParfaitAnalyticsService>(MockBehavior.Strict);
-            Analytics.Setup(x => x.TrackPurchaseAsync(It.IsAny<ParfaitOrderRecord>(), It.IsAny<HttpContext>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
-            configureAnalytics?.Invoke(Analytics);
 
             var services = new ServiceCollection();
             services.AddLogging();
@@ -376,8 +333,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
                 Automations,
                 BillingOrchestrator,
                 Mail.Object,
-                Analytics.Object,
-                MetaSignalBridge)
+                CommerceSignals)
             {
                 ControllerContext = new ControllerContext
                 {
@@ -394,10 +350,9 @@ public sealed class ParfaitCheckoutBillingCutoverTests
         public ParfaitProductService Products { get; }
         public ParfaitOrderService Orders { get; }
         public ParfaitCustomerAutomationService Automations { get; }
-        public ParfaitMetaSignalBridgeService MetaSignalBridge { get; }
+        public CommerceSignalService CommerceSignals { get; }
         public Mock<IBillingGateway> Gateway { get; }
         public Mock<IGraphMailService> Mail { get; }
-        public Mock<IParfaitAnalyticsService> Analytics { get; }
         public IBillingOrchestrator BillingOrchestrator { get; }
         public StoreCheckoutController Controller { get; }
 

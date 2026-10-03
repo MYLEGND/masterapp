@@ -1,0 +1,499 @@
+@model AgentPortal.Models.FounderEngineeringCommandCenterViewModel
+@{
+    ViewData["Title"] = "Engineering Command Center";
+    string StateClass(bool value) => value ? "is-good" : "is-warn";
+    string Short(string value) => string.IsNullOrWhiteSpace(value) ? "—" : value.Length <= 10 ? value : value[..10];
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/founder-engineering-command-center.css" asp-append-version="true" />
+}
+
+<main class="eng-command" data-engineering-command-center>
+    <header class="eng-hero">
+        <div class="eng-hero-copy">
+            <div class="eng-kicker">LEGEND® · FOUNDER ENGINEERING</div>
+            <h1>Engineering Command Center</h1>
+            <p>
+                One live operating contract for Head GPT, Codex, and independent review.
+                Security, privacy, risk, leases, CI, and release authority remain protected in code.
+            </p>
+        </div>
+        <div class="eng-hero-revision">
+            <span>LIVE CONTRACT</span>
+            <strong>v@Model.Version</strong>
+            <code>@Short(Model.Revision)</code>
+        </div>
+    </header>
+
+    @if (TempData["FounderEngineeringSuccess"] is string success)
+    {
+        <div class="eng-alert is-success" role="status">@success</div>
+    }
+    @if (TempData["FounderEngineeringError"] is string error)
+    {
+        <div class="eng-alert is-error" role="alert">@error</div>
+    }
+
+    <section class="eng-action-center" aria-label="Founder engineering action center">
+        <div class="eng-action-head">
+            <div>
+                <div class="eng-section-kicker">FOUNDER ACTION CENTER</div>
+                <h2>What needs your attention — in plain language.</h2>
+                <p>LEGEND keeps the machine diagnostics underneath. This surface tells you what happened, what LEGEND is doing, and exactly what you need to do next.</p>
+            </div>
+            <span class="eng-action-count">@Model.ActionItems.Count active</span>
+        </div>
+
+        @if (Model.ActionItems.Count == 0)
+        {
+            <div class="eng-action-empty">
+                <strong>No engineering decision is waiting on you.</strong>
+                <span>LEGEND will surface the next required action here and in your mobile Notifications center.</span>
+            </div>
+        }
+        else
+        {
+            <div class="eng-action-list">
+                @foreach (var item in Model.ActionItems)
+                {
+                    <article class="eng-action-card is-@item.AttentionKind.Replace("_", "-")">
+                        <div class="eng-action-copy">
+                            <div class="eng-action-meta">
+                                <span>@(item.RequiresFounderAction ? "YOUR ACTION" : "LEGEND STATUS")</span>
+                                <time datetime="@item.UpdatedUtc.ToString("O")">@item.UpdatedUtc.ToLocalTime().ToString("MMM d · h:mm tt")</time>
+                            </div>
+                            <h3>@item.Title</h3>
+                            <p>@item.Summary</p>
+                            <div class="eng-next-step">
+                                <strong>Next step</strong>
+                                <span>@item.ActionStep</span>
+                            </div>
+                            <details class="eng-technical">
+                                <summary>Technical details</summary>
+                                <code>@item.TechnicalSummary</code>
+                            </details>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.PrimaryAction) || !string.IsNullOrWhiteSpace(item.SecondaryAction))
+                        {
+                            <div class="eng-action-buttons">
+                                @if (!string.IsNullOrWhiteSpace(item.PrimaryAction))
+                                {
+                                    <form asp-action="DecideWorkItem" asp-route-workItemId="@item.WorkItemId" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="decision" value="@item.PrimaryAction" />
+                                        <button type="submit" class="eng-button is-primary">@item.PrimaryActionLabel</button>
+                                    </form>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(item.SecondaryAction))
+                                {
+                                    <form asp-action="DecideWorkItem" asp-route-workItemId="@item.WorkItemId" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="decision" value="@item.SecondaryAction" />
+                                        <button type="submit" class="eng-button is-danger">@item.SecondaryActionLabel</button>
+                                    </form>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="eng-status-grid" aria-label="Engineering runtime status">
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">ChatGPT Plan</span>
+                <span class="eng-dot @StateClass(Model.ChatGptPlanReady)"></span>
+            </div>
+            <strong>@(Model.ChatGptPlanReady ? "Connected" : "Needs attention")</strong>
+            <p>@Model.ChatGptPlanCode</p>
+            <div class="eng-mini-row"><span>Client registered</span><b>@(Model.ChatGptPlanClientConfigured ? "Yes" : "No")</b></div>
+            <div class="eng-mini-row"><span>Client verified</span><b>@(Model.ChatGptPlanApprovedClient ? "Yes" : "No")</b></div>
+            <div class="eng-mini-row"><span>Plan scope</span><b>@(Model.ChatGptPlanScopeGranted ? "Granted" : "Missing")</b></div>
+            <div class="eng-mini-row"><span>Expires</span><b>@(Model.ChatGptPlanExpiresUtc?.ToLocalTime().ToString("MMM d · h:mm tt") ?? "—")</b></div>
+        </article>
+
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">Model Runtime</span>
+                <span class="eng-dot @StateClass(Model.ModelRuntimeReady)"></span>
+            </div>
+            <strong>@Model.ModelRuntimeLabel</strong>
+            <p>@Model.ModelRuntimeCode · ChatGPT-plan Responses only. No API-key fallback.</p>
+            <div class="eng-mini-row"><span>Head GPT</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedHeadGptModel) ? Model.HeadGptModel : Model.ResolvedHeadGptModel)</b></div>
+            <div class="eng-mini-row"><span>Codex</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedCodexModel) ? Model.CodexModel : Model.ResolvedCodexModel)</b></div>
+            <div class="eng-mini-row"><span>Reviewer</span><b>@(string.IsNullOrWhiteSpace(Model.ResolvedReviewerModel) ? Model.ReviewerModel : Model.ResolvedReviewerModel)</b></div>
+            <div class="eng-mini-row"><span>Readiness proof</span><b>@(Model.ReadinessState == "READY" ? "Completed inference" : Model.ReadinessState)</b></div>
+            @if (!Model.ShowManageUsage && Model.ProviderRetryNotBeforeUtc is { } retryUtc)
+            {
+                <div class="eng-mini-row"><span>Provider retry</span><b>@retryUtc.ToLocalTime().ToString("MMM d · h:mm tt")</b></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ProviderRequestId))
+            {
+                <div class="eng-mini-row"><span>Provider request</span><b>@Model.ProviderRequestId</b></div>
+            }
+            @if (Model.ShowManageUsage || Model.ShowRetryRuntime || Model.ShowReconnectChatGpt)
+            {
+                <div class="eng-connect-actions">
+                    @if (Model.ShowManageUsage)
+                    {
+                        <a class="eng-button is-primary" href="https://chatgpt.com/#settings/Usage" target="_blank" rel="noopener">Manage usage</a>
+                    }
+                    @if (Model.ShowRetryRuntime)
+                    {
+                        <form asp-action="RetryChatGptRuntime" method="post">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-secondary">Retry readiness</button>
+                        </form>
+                    }
+                    @if (Model.ShowReconnectChatGpt && Model.ChatGptPlanClientConfigured)
+                    {
+                        <form asp-action="ConnectChatGpt" method="post">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-secondary">Reconnect ChatGPT</button>
+                        </form>
+                    }
+                </div>
+            }
+        </article>
+
+        <article class="eng-status-card">
+            <div class="eng-status-top">
+                <span class="eng-status-label">Autonomous Engineering</span>
+                <span class="eng-dot @StateClass(Model.AutonomousRuntimeActive)"></span>
+            </div>
+            <strong>@(Model.AutonomousRuntimeActive ? "Enabled" : "Paused")</strong>
+            <p>Deterministic monitoring and release reconciliation continue even when model execution is paused.</p>
+            <div class="eng-mini-row"><span>Open work</span><b>@Model.OpenWorkItems</b></div>
+            <div class="eng-mini-row"><span>Leased</span><b>@Model.LeasedWorkItems</b></div>
+            <div class="eng-mini-row"><span>Browser proof</span><b>@Model.PendingBrowserProofItems pending</b></div>
+            <div class="eng-mini-row"><span>Tier C review</span><b>@Model.SecurityReviewItems</b></div>
+            @if (Model.PendingBrowserProofItems > 0)
+            {
+                <p class="eng-connect-note">
+                    Browser-visible repairs stay open until the existing registered live-page verifier proves the exact deployed revision and preserved structural reproducer. Model execution never substitutes for that proof.
+                </p>
+            }
+        </article>
+    </section>
+
+    <section class="eng-protected">
+        <div>
+            <div class="eng-section-kicker">PROTECTED CORE CONTRACT</div>
+            <h2>These boundaries cannot be edited from this page.</h2>
+            <p>
+                The live directive guides execution, but it cannot grant tools, reveal protected source,
+                change risk tier, bypass leases, merge code, deploy production, or weaken validation.
+            </p>
+        </div>
+        <div class="eng-protected-pills" aria-label="Protected engineering invariants">
+            <span>Founder-only authority</span>
+            <span>SAFE_SOURCE only</span>
+            <span>Tier C opaque</span>
+            <span>Atomic leases</span>
+            <span>No API fallback</span>
+            <span>Exact-head CI</span>
+            <span>Governed release</span>
+            <span>Live proof required</span>
+        </div>
+    </section>
+
+    <form class="eng-contract-form" asp-action="SaveContract" method="post" data-contract-form>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ExpectedRevision" value="@Model.Revision" />
+
+        <section class="eng-editor-header">
+            <div>
+                <div class="eng-section-kicker">LIVE OPERATIONAL CONTRACT</div>
+                <h2>Edit once. Every new engineering context receives this revision.</h2>
+                <p>Saving creates a new immutable revision. In-flight stale model actions are rejected before they can mutate source.</p>
+            </div>
+            <div class="eng-toggle-stack">
+                <label class="eng-toggle">
+                    @if (Model.ModelExecutionEnabled)
+                    {
+                        <input type="checkbox" name="ModelExecutionEnabled" value="true" checked />
+                    }
+                    else
+                    {
+                        <input type="checkbox" name="ModelExecutionEnabled" value="true" />
+                    }
+                    <span class="eng-toggle-track" aria-hidden="true"></span>
+                    <span class="eng-toggle-copy">
+                        <strong>Model execution</strong>
+                        <small>Immediate Founder kill switch for all new model work.</small>
+                    </span>
+                </label>
+                <label class="eng-toggle">
+                    @if (Model.AutonomousEngineeringEnabled)
+                    {
+                        <input type="checkbox" name="AutonomousEngineeringEnabled" value="true" checked />
+                    }
+                    else
+                    {
+                        <input type="checkbox" name="AutonomousEngineeringEnabled" value="true" />
+                    }
+                    <span class="eng-toggle-track" aria-hidden="true"></span>
+                    <span class="eng-toggle-copy">
+                        <strong>Autonomous engineering</strong>
+                        <small>Start eligible Head GPT, Codex, and review work automatically.</small>
+                    </span>
+                </label>
+            </div>
+        </section>
+
+        <section class="eng-model-bindings" aria-label="Engineering model bindings">
+            <div class="eng-model-binding">
+                <label for="HeadGptModel">Head GPT model</label>
+                <select id="HeadGptModel" name="HeadGptModel">
+                    <option value="auto" selected="@(Model.HeadGptModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
+                    @if (Model.HeadGptModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.HeadGptModel))
+                    {
+                        <option value="@Model.HeadGptModel" selected>@Model.HeadGptModel · currently unavailable</option>
+                    }
+                    @foreach (var option in Model.AvailableModels)
+                    {
+                        <option value="@option.Slug" selected="@(option.Slug == Model.HeadGptModel ? "selected" : null)">@option.DisplayName · @option.Slug</option>
+                    }
+                </select>
+            </div>
+            <div class="eng-model-binding">
+                <label for="CodexModel">Codex model</label>
+                <select id="CodexModel" name="CodexModel">
+                    <option value="auto" selected="@(Model.CodexModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
+                    @if (Model.CodexModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.CodexModel))
+                    {
+                        <option value="@Model.CodexModel" selected>@Model.CodexModel · currently unavailable</option>
+                    }
+                    @foreach (var option in Model.AvailableModels)
+                    {
+                        <option value="@option.Slug" selected="@(option.Slug == Model.CodexModel ? "selected" : null)">@option.DisplayName · @option.Slug</option>
+                    }
+                </select>
+            </div>
+            <div class="eng-model-binding">
+                <label for="ReviewerModel">Reviewer model</label>
+                <select id="ReviewerModel" name="ReviewerModel">
+                    <option value="auto" selected="@(Model.ReviewerModel == "auto" ? "selected" : null)">Auto · compatible plan model</option>
+                    @if (Model.ReviewerModel != "auto" && !Model.AvailableModels.Any(item => item.Slug == Model.ReviewerModel))
+                    {
+                        <option value="@Model.ReviewerModel" selected>@Model.ReviewerModel · currently unavailable</option>
+                    }
+                    @foreach (var option in Model.AvailableModels)
+                    {
+                        <option value="@option.Slug" selected="@(option.Slug == Model.ReviewerModel ? "selected" : null)">@option.DisplayName · @option.Slug</option>
+                    }
+                </select>
+            </div>
+            <p class="eng-model-note">
+                Auto deterministically selects a model only after the exact LEGEND role payload completes the non-mutating Responses compatibility canary. Explicit missing models stay paused until you choose another model.
+            </p>
+        </section>
+
+        <div class="eng-quick-command">
+            <label for="engQuickCommand">Quick command</label>
+            <div class="eng-quick-row">
+                <input id="engQuickCommand" type="text" maxlength="500"
+                       placeholder="Add one operating instruction to the shared contract…" autocomplete="off" />
+                <button type="button" class="eng-button is-secondary" data-add-command>Add to contract</button>
+            </div>
+        </div>
+
+        <div class="eng-editor-grid">
+            <article class="eng-editor-card is-shared">
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Shared directive</span>
+                        <small>Applied to every model role.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="SharedDirective"></span>
+                </div>
+                <textarea id="SharedDirective" name="SharedDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.SharedDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">HEAD GPT</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Supervisor contract</span>
+                        <small>Diagnosis, decomposition, escalation, evidence sufficiency.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="HeadGptDirective"></span>
+                </div>
+                <textarea id="HeadGptDirective" name="HeadGptDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.HeadGptDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">CODEX</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Implementation contract</span>
+                        <small>Canonical source repair, focused proof, no release authority.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="CodexDirective"></span>
+                </div>
+                <textarea id="CodexDirective" name="CodexDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.CodexDirective</textarea>
+            </article>
+
+            <article class="eng-editor-card">
+                <div class="eng-role-badge">REVIEWER</div>
+                <div class="eng-editor-title">
+                    <div>
+                        <span>Independent review contract</span>
+                        <small>Challenge the root cause, scope, safety, and proof.</small>
+                    </div>
+                    <span class="eng-count" data-count-for="ReviewerDirective"></span>
+                </div>
+                <textarea id="ReviewerDirective" name="ReviewerDirective" maxlength="12000" rows="11"
+                          spellcheck="true">@Model.ReviewerDirective</textarea>
+            </article>
+        </div>
+
+        <div class="eng-save-bar">
+            <div class="eng-save-meta">
+                <span data-dirty-state>Saved revision @Short(Model.Revision)</span>
+                <small>
+                    @(Model.Version == 0
+                        ? "System defaults are active."
+                        : $"Last changed {Model.UpdatedUtc.ToLocalTime():MMM d, yyyy · h:mm tt}.")
+                </small>
+            </div>
+            <button type="submit" class="eng-button is-primary">Publish Contract Revision</button>
+        </div>
+    </form>
+
+    <section class="eng-history">
+        <div class="eng-history-head">
+            <div>
+                <div class="eng-section-kicker">REVISION HISTORY</div>
+                <h2>Restore safely without rewriting history.</h2>
+            </div>
+            <span>@Model.History.Count recent revision@(Model.History.Count == 1 ? "" : "s")</span>
+        </div>
+
+        @if (Model.History.Count == 0)
+        {
+            <div class="eng-empty">
+                No Founder-authored revisions yet. The protected system defaults are active.
+            </div>
+        }
+        else
+        {
+            <div class="eng-history-list">
+                @foreach (var revision in Model.History)
+                {
+                    <div class="eng-history-row">
+                        <div class="eng-history-version">
+                            <strong>v@revision.Version</strong>
+                            <code>@Short(revision.Revision)</code>
+                        </div>
+                        <div class="eng-history-detail">
+                            <span>@revision.UpdatedUtc.ToLocalTime().ToString("MMM d, yyyy · h:mm tt")</span>
+                            <small>
+                                @(revision.ModelExecutionEnabled ? "Model execution enabled" : "Model execution paused")
+                                · @(revision.AutonomousEngineeringEnabled ? "autonomy enabled" : "autonomy paused")
+                            </small>
+                        </div>
+                        @if (!string.Equals(revision.Revision, Model.Revision, StringComparison.Ordinal))
+                        {
+                            <form asp-action="RestoreContract" method="post" data-restore-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ExpectedRevision" value="@Model.Revision" />
+                                <input type="hidden" name="Revision" value="@revision.Revision" />
+                                <button type="submit" class="eng-button is-quiet">Restore as new revision</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="eng-live-badge">LIVE</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="eng-activation">
+        <div class="eng-activation-head">
+            <div>
+                <div class="eng-section-kicker">CHATGPT PLAN ACTIVATION</div>
+                <h2>Connect the Founder plan from this page.</h2>
+                <p>
+                    Enter only the OpenAI-issued application registration. Client secrets and OAuth tokens are encrypted server-side and never rendered back to the browser.
+                    The registered callback is <code>https://portal.mylegnd.com/founder/engineering/chatgpt/callback</code>.
+                </p>
+            </div>
+            <div class="eng-activation-state">
+                <span class="eng-dot @StateClass(Model.ChatGptPlanReady)"></span>
+                <strong>@(Model.ChatGptPlanReady ? "CONNECTED" : "SETUP REQUIRED")</strong>
+            </div>
+        </div>
+
+        <div class="eng-activation-grid">
+            <form asp-action="SaveChatGptClient" method="post" class="eng-client-form" data-client-auth-form>
+                @Html.AntiForgeryToken()
+                <div class="eng-field">
+                    <label for="ClientId">OpenAI-issued client ID</label>
+                    <input id="ClientId" name="ClientId" value="@Model.ChatGptPlanClientId"
+                           maxlength="200" autocomplete="off" required />
+                </div>
+                <div class="eng-field">
+                    <label for="AuthenticationMethod">Client authentication</label>
+                    <select id="AuthenticationMethod" name="AuthenticationMethod" data-client-auth-method>
+                        <option value="none" selected="@(Model.ChatGptPlanClientAuthenticationMethod == "none" ? "selected" : null)">Public / PKCE · no client secret</option>
+                        <option value="client_secret_basic" selected="@(Model.ChatGptPlanClientAuthenticationMethod == "client_secret_basic" ? "selected" : null)">Confidential · client_secret_basic</option>
+                    </select>
+                </div>
+                <div class="eng-field" data-client-secret-field>
+                    <label for="ClientSecret">OpenAI-issued client secret</label>
+                    <input id="ClientSecret" name="ClientSecret" type="password" maxlength="4096"
+                           autocomplete="new-password"
+                           placeholder="@(Model.ChatGptPlanClientSecretConfigured ? "Stored securely · leave blank to keep" : "Required for confidential clients")" />
+                    <small>The existing secret is never displayed. Leaving this blank preserves a stored confidential-client secret.</small>
+                </div>
+                <button type="submit" class="eng-button is-secondary">Save Client Registration</button>
+            </form>
+
+            <div class="eng-connect-panel">
+                <div class="eng-mini-row"><span>Client</span><b>@(Model.ChatGptPlanClientConfigured ? "Configured" : "Missing")</b></div>
+                <div class="eng-mini-row"><span>OAuth verification</span><b>@(Model.ChatGptPlanApprovedClient ? "Verified" : "Not verified")</b></div>
+                <div class="eng-mini-row"><span>Required plan scopes</span><b>@(Model.ChatGptPlanScopeGranted ? "Granted" : "Missing")</b></div>
+                <div class="eng-connect-actions">
+                    @if (Model.ChatGptPlanClientConfigured)
+                    {
+                        <form asp-action="ConnectChatGpt" method="post">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-primary" data-connect-chatgpt>
+                                @(Model.ChatGptPlanReady ? "Reconnect ChatGPT Plan" : "Connect ChatGPT Plan")
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <span class="eng-button is-primary is-disabled" aria-disabled="true">Save Client Registration First</span>
+                    }
+
+                    @if (Model.ChatGptPlanReady || Model.ChatGptPlanApprovedClient)
+                    {
+                        <form asp-action="DisconnectChatGpt" method="post" data-disconnect-form>
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="eng-button is-danger">Disconnect ChatGPT Plan</button>
+                        </form>
+                    }
+                </div>
+                <p class="eng-connect-note">
+                    Connect opens OpenAI authorization with Authorization Code + PKCE. A successful callback verifies the client, required plan scopes, nonce, issuer, and signed ID token before LEGEND marks the plan ready.
+                </p>
+            </div>
+        </div>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/founder-engineering-command-center.js" asp-append-version="true"></script>
+}

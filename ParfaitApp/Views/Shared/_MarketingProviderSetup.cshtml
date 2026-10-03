@@ -1,0 +1,28 @@
+@{
+    var ticket = ViewData["CommerceManagerTicket"] as string;
+    var controller = string.IsNullOrWhiteSpace(ticket) ? "InternalModules" : "CommerceManagement";
+    string? Endpoint(string action) => Url.Action(action, controller, new { ticket });
+}
+<section class="card my-4" id="marketing-provider-setup"
+         data-status-url="@Endpoint("MarketingSetup")" data-connect-url="@Endpoint("ConnectOpenAi")"
+         data-refresh-url="@Endpoint("RefreshOpenAi")" data-disconnect-url="@Endpoint("DisconnectOpenAi")">
+    <div class="card-body">
+        <h2 class="h5">Scoped provider setup</h2>
+        <p data-setup-owner>Loading owner…</p>
+        <p>Connection and configuration do not prove event acceptance or campaign attribution. Delivery evidence covers the last 30 days.</p>
+        <div class="table-responsive"><table class="table table-sm">
+            <thead><tr><th>Provider</th><th>Account</th><th>Pixel / data source</th><th>Configuration</th><th>Delivery evidence</th></tr></thead>
+            <tbody><tr><th>Meta</th><td data-meta-account>—</td><td data-meta-pixel>—</td><td data-meta-config>—</td><td data-meta-evidence>—</td></tr>
+            <tr><th>ChatGPT Ads</th><td data-openai-account>—</td><td data-openai-pixel>—</td><td data-openai-config>—</td><td data-openai-evidence>—</td></tr></tbody>
+        </table></div>
+        <p data-provider-readiness>—</p>
+        <form data-openai-connect-form>
+            @Html.AntiForgeryToken()
+            <label class="form-label">OpenAI advertiser API key<input class="form-control" data-openai-key type="password" maxlength="4096" autocomplete="new-password" required /></label>
+            <button class="btn btn-primary" type="submit">Verify and connect ChatGPT Ads</button>
+            <button class="btn btn-outline-secondary" type="button" data-openai-refresh>Verify / refresh</button>
+            <button class="btn btn-outline-danger" type="button" data-openai-disconnect>Disconnect ChatGPT Ads</button>
+        </form>
+        <p class="mt-2" role="status" aria-live="polite" data-setup-status></p>
+    </div>
+</section>

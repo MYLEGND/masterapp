@@ -37,6 +37,9 @@ public static class MetaSignalSingleTruthPolicy
         root["eventKey"] = MetaSignalEventCatalog.BuildEventKey(normalizedEventName, resolvedLeadId, normalizedSessionId);
         root["serverAuthorityWinsConflictResolution"] = true;
         root["browserPayloadCanOverrideServer"] = false;
+        // Confirmation is first-party event truth, independent of either provider's
+        // configuration, connection, dispatch result, or availability.
+        root["measurementServerAuthorityEligible"] = isServerAuthority && !isBrowserSignal;
         root["metaServerAuthorityEligible"] = metaServerAuthorityEligible;
         root["metaSingleTruthDispatchEligible"] = metaSingleTruthDispatchEligible;
         root["metaDispatchOwner"] = DispatchOwner;

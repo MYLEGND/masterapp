@@ -53,14 +53,43 @@ public static class PlatformDataProtection
         }
         else
         {
-            // Local/dev fallback: persistent file-system keys.
-            var keysDirectory = string.IsNullOrWhiteSpace(developmentKeysDirectory)
-                ? Path.Combine(environment.ContentRootPath, "App_Data", "keys")
-                : developmentKeysDirectory;
+            // Shared file-system fallback authority. On Azure App Service in Production,
+            // persist below HOME/data so keys survive package swaps and restarts. Local/dev
+            // keeps the existing app-local App_Data behavior unless a caller explicitly
+            // supplies a directory (for intentional shared-development scenarios).
+            var keysDirectory = ResolveFileSystemKeysDirectory(
+                environment,
+                applicationName,
+                developmentKeysDirectory,
+                Environment.GetEnvironmentVariable("HOME"));
             Directory.CreateDirectory(keysDirectory);
             builder.PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
         }
 
         return builder;
+    }
+
+    public static string ResolveFileSystemKeysDirectory(
+        IHostEnvironment environment,
+        string applicationName,
+        string? explicitKeysDirectory = null,
+        string? appServiceHome = null)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitKeysDirectory))
+            return explicitKeysDirectory;
+
+        if (environment.IsProduction() && !string.IsNullOrWhiteSpace(appServiceHome))
+        {
+            var safeApplicationName = string.Concat(applicationName.Select(character =>
+                char.IsLetterOrDigit(character) || character is '-' or '_' or '.'
+                    ? character
+                    : '_'));
+            if (string.IsNullOrWhiteSpace(safeApplicationName))
+                safeApplicationName = "Application";
+
+            return Path.Combine(appServiceHome, "data", "DataProtection", safeApplicationName);
+        }
+
+        return Path.Combine(environment.ContentRootPath, "App_Data", "keys");
     }
 }

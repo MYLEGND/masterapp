@@ -30,6 +30,14 @@ public sealed class ParfaitStoragePaths
     public string TeamAccessPath => Path.Combine(DataRoot, TeamAccessFileName);
     public string CustomerAutomationsPath => Path.Combine(DataRoot, CustomerAutomationsFileName);
 
+    public string GetCustomerAutomationsPath(string businessKey)
+    {
+        var key = NormalizeScopeKey(businessKey);
+        return string.Equals(key, "parfait", StringComparison.OrdinalIgnoreCase)
+            ? CustomerAutomationsPath
+            : Path.Combine(DataRoot, "commerce", key, CustomerAutomationsFileName);
+    }
+
     public IFileProvider BuildUploadFileProvider()
     {
         EnsureInitialized();

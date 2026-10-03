@@ -1963,10 +1963,26 @@ function ensureStageOrder(stageKey, ids){
   return pipelineOrder[stageKey];
 }
 
-function orderedStageRows(stageKey, rows){
-  const ids = rows.map(r => r.dataset.clientId).filter(Boolean);
-  const orderIds = ensureStageOrder(stageKey, ids);
-  const map = new Map(rows.map(r => [r.dataset.clientId, r]));
+function rowIsStarred(row){
+  return (row?.dataset?.crmStarred || row?.dataset?.sStarred || "false") === "true";
+}
+
+function normalizeStarredOrderIds(ids){
+  const unique = Array.from(new Set((ids || []).filter(Boolean)));
+  const byId = new Map(rows.map(r => [r.dataset.clientId, r]));
+  const starred = [];
+  const regular = [];
+  unique.forEach(id => {
+    const row = byId.get(id);
+    (rowIsStarred(row) ? starred : regular).push(id);
+  });
+  return starred.concat(regular);
+}
+
+function orderedStageRows(stageKey, stageRows){
+  const ids = stageRows.map(r => r.dataset.clientId).filter(Boolean);
+  const orderIds = normalizeStarredOrderIds(ensureStageOrder(stageKey, ids));
+  const map = new Map(stageRows.map(r => [r.dataset.clientId, r]));
   const ordered = [];
   orderIds.forEach(id => {
     const row = map.get(id);
@@ -1976,14 +1992,14 @@ function orderedStageRows(stageKey, rows){
     }
   });
   map.forEach(row => ordered.push(row));
-  return ordered;
+  return ordered.filter(rowIsStarred).concat(ordered.filter(row => !rowIsStarred(row)));
 }
 
 function laneOrderFromDom(stageKey){
   const zone = pipelineBoard?.querySelector(`[data-dropzone="${stageKey}"]`);
   if (!zone) return ensureStageOrder(stageKey, []);
   const ids = Array.from(zone.querySelectorAll(".client-card")).map(c => c.dataset.cardid).filter(Boolean);
-  return ensureStageOrder(stageKey, ids);
+  return normalizeStarredOrderIds(ensureStageOrder(stageKey, ids));
 }
 
 function pipelineLabel(stage){
@@ -2738,6 +2754,7 @@ function hydrateRow(row){
   const pipeline  = row.dataset.sPipeline  || "NewLead";
   const waitingOn = row.dataset.sWaiting   || "WaitingOnAgent";
   const pinnedBrief = row.dataset.sPinnedbrief || "";
+  const isStarred = (row.dataset.sStarred || "false") === "true";
   const stageEntered = row.dataset.sStageentered || todayISO();
   const attemptsToday = row.dataset.sAttemptstoday || "0";
   const attemptsWeek = row.dataset.sAttemptsweek || "0";
@@ -2764,6 +2781,7 @@ function hydrateRow(row){
   row.dataset.crmPipeline  = pipeline;
   row.dataset.crmWaitingOn = waitingOn;
   row.dataset.crmPinnedBrief = pinnedBrief;
+  row.dataset.crmStarred = isStarred ? "true" : "false";
   row.dataset.crmStageEntered = stageEntered;
   row.dataset.crmAttemptsToday = attemptsToday;
   row.dataset.crmAttemptsWeek = attemptsWeek;
@@ -3104,7 +3122,7 @@ document.addEventListener("click", (e) => {
   if (e.target === drawerBackdrop) closeDrawer();
   if (e.target === modalBackdrop) closeModal();
 
-  const openDrawerEl = e.target.closest(".open-drawer");
+  const openDrawerEl = e.target.closest("[data-open-drawer]");
   if (openDrawerEl){
     const row = openDrawerEl.closest(".client-row");
     openQuickViewForRow(row);
@@ -3825,19 +3843,47 @@ async function openDrawerForRow(row){
     if (dLender) dLender.value = row.dataset.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
 
-    btnMail.href = email ? ("mailto:" + email) : "#";
-    btnCall.href = phone ? ("tel:" + phone) : "#";
+    if (email) {
+      btnMail.href = "mailto:" + email;
+      btnMail.removeAttribute("aria-disabled");
+      btnMail.removeAttribute("tabindex");
+    } else {
+      btnMail.removeAttribute("href");
+      btnMail.setAttribute("aria-disabled", "true");
+      btnMail.setAttribute("tabindex", "-1");
+    }
+    if (phone) {
+      btnCall.href = "tel:" + phone;
+      btnCall.removeAttribute("aria-disabled");
+      btnCall.removeAttribute("tabindex");
+    } else {
+      btnCall.removeAttribute("href");
+      btnCall.setAttribute("aria-disabled", "true");
+      btnCall.setAttribute("tabindex", "-1");
+    }
     const ts = Date.now();
     if (btnOpenProfile){
       const isSelfManaged = norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
       btnOpenProfile.hidden = isSelfManaged;
       btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
       if (isSelfManaged) {
-        btnOpenProfile.href = "#";
+        btnOpenProfile.removeAttribute("href");
+        btnOpenProfile.setAttribute("aria-disabled", "true");
+        btnOpenProfile.setAttribute("tabindex", "-1");
       } else if (row.dataset.isguid === "true" && row.dataset.clientId){
         btnOpenProfile.href = `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`;
+        btnOpenProfile.removeAttribute("aria-disabled");
+        btnOpenProfile.removeAttribute("tabindex");
       }else{
-        btnOpenProfile.href = row.dataset.clientId ? crmRoute(`/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`) : "#";
+        if (row.dataset.clientId) {
+          btnOpenProfile.href = crmRoute(`/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`);
+          btnOpenProfile.removeAttribute("aria-disabled");
+          btnOpenProfile.removeAttribute("tabindex");
+        } else {
+          btnOpenProfile.removeAttribute("href");
+          btnOpenProfile.setAttribute("aria-disabled", "true");
+          btnOpenProfile.setAttribute("tabindex", "-1");
+        }
       }
       btnOpenProfile.textContent = "View / Edit Profile";
     }
@@ -3930,7 +3976,9 @@ async function openDrawerForRow(row){
         norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
       btnOpenProfile.hidden = isSelfManaged;
       btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
-      if (isSelfManaged) btnOpenProfile.href = "#";
+      if (isSelfManaged) btnOpenProfile.removeAttribute("href");
+        btnOpenProfile.setAttribute("aria-disabled", "true");
+        btnOpenProfile.setAttribute("tabindex", "-1");
     }
     storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
@@ -4562,7 +4610,7 @@ async function noteSave(){
 async function openNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = false;
-  document.body.classList.add("note-self-open");
+  
   noteSyncLeadField();
   const ctx = noteCurrentLeadContext();
   if (!ctx.leadId){
@@ -4596,7 +4644,7 @@ async function openNoteModal(){
 function closeNoteModal(){
   if (!noteOverlay) return;
   noteOverlay.hidden = true;
-  document.body.classList.remove("note-self-open");
+  
 }
 
 noteOpenBtn?.addEventListener("click", openNoteModal);
@@ -5488,6 +5536,7 @@ function renderLaneCards(rowsForStage){
 
   return rowsForStage.map(r => {
     const name = fullName(r);
+    const isStarred = rowIsStarred(r);
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
@@ -5513,7 +5562,7 @@ function renderLaneCards(rowsForStage){
     const appointmentFooter = renderPipelineAppointmentFooter(r, safeHtml, phoneActions);
 
     return `
-      <article class="client-card ${pipelineBadgeClass(stage)}"
+      <article class="client-card ${pipelineBadgeClass(stage)} ${isStarred ? "is-starred" : ""}"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}"
                data-open-card="${safeHtml(r.dataset.clientId)}"
@@ -5526,6 +5575,13 @@ function renderLaneCards(rowsForStage){
             <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" href=\"tel:${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
             <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
           </div>
+          <button type="button"
+                  class="crm-star-toggle ${isStarred ? "is-starred" : ""}"
+                  data-star-contact="${safeHtml(r.dataset.clientId)}"
+                  draggable="false"
+                  aria-pressed="${isStarred ? "true" : "false"}"
+                  aria-label="${isStarred ? "Unstar" : "Star"} ${safeHtml(displayName)}"
+                  title="${isStarred ? "Unstar contact" : "Keep contact at top"}">★</button>
           ${prodBadge}
         </div>
         ${appointmentFooter}
@@ -5643,6 +5699,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.advancedMarketsEligible = ((data.advancedMarketsEligible ?? isAdvancedMarketsEligible(data.recordType || row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible)) ? "true" : "false");
   row.dataset.sPipeline = data.pipelineStage || "NewLead";
   row.dataset.sPipelineorder = String(data.pipelineOrder ?? row.dataset.sPipelineorder ?? 0);
+  row.dataset.sStarred = (data.isStarred ?? ((row.dataset.sStarred || "false") === "true")) ? "true" : "false";
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
   row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
@@ -5788,6 +5845,7 @@ pipelineStageNav?.addEventListener("click", (e) => {
 });
 
 pipelineBoard?.addEventListener("click", (e) => {
+  if (e.target.closest("[data-star-contact]")) return;
   const stageBtn = e.target.closest("[data-pipeline-nav]")?.getAttribute("data-pipeline-nav");
   if (stageBtn){
     pipelineFocusStage = stageBtn;
@@ -5823,6 +5881,68 @@ pipelineBoard?.addEventListener("keydown", (e) => {
   openQuickViewByClientId(openId);
 });
 
+pipelineBoard?.addEventListener("click", async (e) => {
+  const star = e.target.closest("[data-star-contact]");
+  if (!star) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+  const id = star.getAttribute("data-star-contact");
+  const row = rows.find(r => r.dataset.clientId === id);
+  if (!row) return;
+  const next = !rowIsStarred(row);
+  star.disabled = true;
+  try{
+    await setContactStarred(row, next);
+    toast(next ? "Starred — pinned to top" : "Star removed");
+  }catch(err){
+    console.error(err);
+    toast(err?.message || "Could not update star.");
+    star.disabled = false;
+  }
+});
+
+function autoScrollPipelineDrag(e, lane){
+  const zone = lane?.querySelector("[data-dropzone]");
+  if (zone){
+    const rect = zone.getBoundingClientRect();
+    const edge = Math.min(90, Math.max(44, rect.height * 0.16));
+    const topDistance = e.clientY - rect.top;
+    const bottomDistance = rect.bottom - e.clientY;
+    let delta = 0;
+    if (topDistance >= 0 && topDistance < edge){
+      delta = -Math.ceil(8 + (edge - topDistance) / edge * 22);
+    } else if (bottomDistance >= 0 && bottomDistance < edge){
+      delta = Math.ceil(8 + (edge - bottomDistance) / edge * 22);
+    }
+    if (delta) zone.scrollBy({ top: delta, behavior: "auto" });
+  }
+
+  const viewportEdge = 72;
+  if (e.clientY < viewportEdge){
+    window.scrollBy({ top: -18, behavior: "auto" });
+  } else if (e.clientY > window.innerHeight - viewportEdge){
+    window.scrollBy({ top: 18, behavior: "auto" });
+  }
+}
+
+async function setContactStarred(row, isStarred){
+  if (!row?.dataset?.clientId) return;
+  const url = crmRoute("/Clients/SetStarred");
+  const payload = { clientUserId: row.dataset.clientId, isStarred };
+  await postJson(url, payload);
+  row.dataset.sStarred = isStarred ? "true" : "false";
+  row.dataset.crmStarred = row.dataset.sStarred;
+
+  const stage = norm(row.dataset.crmPipeline);
+  if (stage){
+    const ids = normalizeStarredOrderIds(laneOrderFromDom(stage));
+    savePipelineOrder({ ...pipelineOrder, [stage]: ids });
+    await persistOrder(stage, ids);
+  }
+  renderAll();
+}
+
 pipelineBoard?.addEventListener("dragstart", (e) => {
   const card = e.target.closest(".client-card");
   if (!card) return;
@@ -5845,6 +5965,7 @@ pipelineBoard?.addEventListener("dragover", (e) => {
   e.dataTransfer.dropEffect = "move";
   $$(".pipeline-lane.drag-over", pipelineBoard).forEach(el => { if (el !== lane) el.classList.remove("drag-over"); });
   lane.classList.add("drag-over");
+  autoScrollPipelineDrag(e, lane);
 });
 
 pipelineBoard?.addEventListener("dragleave", (e) => {
@@ -5868,9 +5989,15 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 
   const sourceStage = norm(row.dataset.crmPipeline);
   const zone = lane.querySelector("[data-dropzone]");
-  const cards = zone ? Array.from(zone.querySelectorAll(".client-card")) : [];
-  const beforeCard = cards.find(c => {
-    const rect = c.getBoundingClientRect();
+  const movingStarred = rowIsStarred(row);
+  const cards = zone ? Array.from(zone.querySelectorAll(".client-card"))
+    .filter(card => card.dataset.cardid !== clientId)
+    .filter(card => {
+      const cardRow = rows.find(r => r.dataset.clientId === card.dataset.cardid);
+      return rowIsStarred(cardRow) === movingStarred;
+    }) : [];
+  const beforeCard = cards.find(card => {
+    const rect = card.getBoundingClientRect();
     return e.clientY < rect.top + rect.height / 2;
   });
   const beforeId = (beforeCard && beforeCard.dataset.cardid !== clientId) ? beforeCard.dataset.cardid : "";
@@ -5883,12 +6010,14 @@ pipelineBoard?.addEventListener("drop", async (e) => {
   if (insertIdx >= 0) targetOrder.splice(insertIdx, 0, clientId);
   else targetOrder.push(clientId);
 
-  db[sourceStage] = sourceOrder;
-  db[targetStage] = targetOrder;
+  const normalizedSourceOrder = normalizeStarredOrderIds(sourceOrder);
+  const normalizedTargetOrder = normalizeStarredOrderIds(targetOrder);
+  db[sourceStage] = normalizedSourceOrder;
+  db[targetStage] = normalizedTargetOrder;
   savePipelineOrder(db);
 
   if (sourceStage === targetStage){
-    await persistOrder(targetStage, targetOrder);
+    await persistOrder(targetStage, normalizedTargetOrder);
     toast("Priority reordered");
     renderAll();
     return;
@@ -5896,8 +6025,8 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 
   try{
     await saveQuickViewForRow(row, { pipelineStage: targetStage }, `Moved to ${pipelineLabel(targetStage)} ✔`);
-    await persistOrder(targetStage, targetOrder);
-    await persistOrder(sourceStage, sourceOrder);
+    await persistOrder(targetStage, normalizedTargetOrder);
+    await persistOrder(sourceStage, normalizedSourceOrder);
     toast(`Moved to ${pipelineLabel(targetStage)}`);
   }catch(err){
     console.error(err);
@@ -5908,15 +6037,15 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 /* ========= Columns Modal ========= */
 function openModal(el){
   if (!el || !modalBackdrop) return;
-  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
+  modalBackdrop.setAttribute("aria-hidden", "false");
   el.classList.add("open");
 }
 function closeModal(){
   clearAdvancedMarketsAutosaveTimer();
   activeAdvancedMarketsLoadSeq += 1;
-  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
+  modalBackdrop.setAttribute("aria-hidden", "true");
   [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 

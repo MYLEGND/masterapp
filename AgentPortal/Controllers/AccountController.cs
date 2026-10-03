@@ -174,8 +174,6 @@ public class AccountController : Controller
                 ?? "Agent";
         }
 
-        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
-        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
         var vm = new ManageAgentProfileViewModel
         {
             FullName = profile.FullName ?? displayName,
@@ -184,15 +182,7 @@ public class AccountController : Controller
             Phone = profile.Phone,
             ShortBio = profile.ShortBio,
             Npn = profile.Npn,
-            MetaPixelId = marketing?.PixelId,
-            MarketingRevision = marketing?.Revision,
-            BookingEnabled = profile.BookingEnabled ?? false,
-            MicrosoftBookingsEmbedUrl = profile.MicrosoftBookingsEmbedUrl,
-            FallbackBookingUrl = profile.FallbackBookingUrl,
-            BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
-            CalendarEmail = profile.CalendarEmail,
-            PreferModalOnMobile = false,
-            HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null
+            PreferModalOnMobile = false
         };
 
         ViewBag.AccountLifecycle = await _accountLifecycle.GetAsync(
@@ -215,22 +205,10 @@ public class AccountController : Controller
         var directoryUpn = AgentProfileAccessResolver.GetDirectoryEmail(User) ?? vm.Email ?? "";
         var normalizedUpn = NormalizeEmail(directoryUpn);
 
-        vm.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
-        vm.MicrosoftBookingsEmbedUrl = string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ? null : vm.MicrosoftBookingsEmbedUrl.Trim();
-        vm.FallbackBookingUrl = string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ? null : vm.FallbackBookingUrl.Trim();
-        vm.BookingPageIdOrMailbox = string.IsNullOrWhiteSpace(vm.BookingPageIdOrMailbox) ? null : vm.BookingPageIdOrMailbox.Trim();
-        vm.CalendarEmail = string.IsNullOrWhiteSpace(vm.CalendarEmail) ? null : vm.CalendarEmail.Trim();
         var existingProfile = await _profileAccessResolver.ResolveCurrentAsync(
             User,
             requireActive: false,
             HttpContext.RequestAborted);
-        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
-        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
-        vm.HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null;
-        if (marketingTracking is null && !string.IsNullOrWhiteSpace(vm.MetaPixelId))
-            ModelState.AddModelError(nameof(vm.MetaPixelId), "Set up your Protect website before connecting its marketing destination.");
-        if (marketing is not null && vm.MarketingRevision != marketing.Revision)
-            ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
 
         if (!ModelState.IsValid)
         {
@@ -256,16 +234,10 @@ public class AccountController : Controller
         profile.Npn = vm.Npn?.Trim();
         profile.Phone = vm.Phone?.Trim();
         profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
-        var hasBookingFieldValues =
-            !string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ||
-            !string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ||
-            !string.IsNullOrWhiteSpace(vm.BookingPageIdOrMailbox) ||
-            !string.IsNullOrWhiteSpace(vm.CalendarEmail);
-        profile.BookingEnabled = vm.BookingEnabled ? true : hasBookingFieldValues ? false : null;
-        profile.MicrosoftBookingsEmbedUrl = vm.MicrosoftBookingsEmbedUrl;
-        profile.FallbackBookingUrl = vm.FallbackBookingUrl;
-        profile.BookingPageIdOrMailbox = vm.BookingPageIdOrMailbox;
-        profile.CalendarEmail = vm.CalendarEmail;
+        // Marketing destination and booking configuration are intentionally not
+        // mutated by the profile form. Website Analytics > Marketing Setup owns
+        // that configuration surface while these existing fields remain the
+        // canonical runtime storage consumed by booking/public quote flows.
         profile.PreferModalOnMobile = false;
         // Email (UPN) remains authoritative from directory; do not allow editing here.
         // Only write it when Azure AD gives us a clean value.
@@ -277,17 +249,7 @@ public class AccountController : Controller
 
         profile.UpdatedUtc = DateTime.UtcNow;
 
-        if (marketingTracking is not null)
-        {
-            try { await _marketing.SavePixelAsync(marketingTracking, vm.MetaPixelId, vm.MarketingRevision!.Value, HttpContext.RequestAborted); }
-            catch (DbUpdateConcurrencyException)
-            {
-                ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
-                await PopulateProtectWebsiteAsync(userId);
-                return View(vm);
-            }
-        }
-        else await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
         TempData["ProfileSaved"] = "Agent profile updated.";
         return RedirectToAction(nameof(ManageProfile));
     }

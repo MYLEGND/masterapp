@@ -2,6 +2,7 @@
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using AgentPortal.Models;
 
@@ -298,7 +299,7 @@ public class ProductionService
             : static p => p.ClientUserId);
     }
 
-    public async Task UpsertAsync(string actorUserId, string targetAgentUserId, ProductionSide side, ProductionStatus status, decimal amount, decimal personalAmount, string? leadId, string? clientUserId, string? notes, CancellationToken ct = default)
+    public async Task<ProductionRecord> UpsertAsync(string actorUserId, string targetAgentUserId, ProductionSide side, ProductionStatus status, decimal amount, decimal personalAmount, string? leadId, string? clientUserId, string? notes, CancellationToken ct = default)
     {
         if (amount < 0) throw new ArgumentException("Amount cannot be negative.", nameof(amount));
         if (personalAmount < 0) personalAmount = 0;
@@ -310,6 +311,8 @@ public class ProductionService
 
         var normAgent = Norm(targetAgentUserId);
         var now = DateTime.UtcNow;
+        var oppref = await new OpenAiAttributionLineageResolver(_db)
+            .ResolveForProductionAsync(side, leadId, clientUserId, ct);
 
         // Add operation should always create a new production row.
         // Editing/deleting specific rows is handled via UpdateAsync/DeleteAsync using record Id.
@@ -323,6 +326,7 @@ public class ProductionService
             Amount = amount,
             PersonalAmount = personalAmount,
             Notes = notes?.Trim(),
+            Oppref = oppref,
             CreatedUtc = now,
             UpdatedUtc = now
         };
@@ -330,6 +334,7 @@ public class ProductionService
         _db.ProductionRecords.Add(record);
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Production add by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
+        return record;
     }
 
     public async Task<List<ProductionRecord>> GetForContactAsync(string agentUserId, ProductionSide side, string contactId, CancellationToken ct = default)

@@ -28,7 +28,7 @@ public sealed class BusinessAnalyticsDetailTests
         analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(),
             It.Is<ScopeContext>(s => s.ScopeType == ScopeType.Business && s.CommerceBusinessId == business), TrafficType.All))
             .ReturnsAsync(new SummaryKpiDto { Sessions = 7 });
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         var result = Assert.IsType<AgentPortal.Models.Analytics.KpiDetailDto>(await service.AnalyticsDataAsync(business,
             "kpi-detail", new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-7), ToUtc = DateTime.UtcNow }, TrafficType.All, metric: "sessions"));
         Assert.Equal(7, result.Totals.Total);
@@ -41,7 +41,7 @@ public sealed class BusinessAnalyticsDetailTests
     public async Task BusinessAnalyticsEventMapReadsAutomaticActionsFromTheCanonicalWebsiteContract()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var business = new CommerceBusiness { Id = Guid.NewGuid(), Key = "business", DisplayName = "Business" };
+        var business = new CommerceBusiness { Id = Guid.NewGuid(), Key = "business", DisplayName = "Business", IsActive = true, Status = "Active" };
         var settings = new CommerceBusinessStorefrontSettings
         {
             CommerceBusinessId = business.Id,
@@ -57,13 +57,13 @@ public sealed class BusinessAnalyticsDetailTests
             {
                 ["/"] = new WebsitePageDocument
                 {
-                    Extras =
+                    Composition =
                     [
-                        new WebsiteExtraComponent
+                        new WebsiteCompositionNode
                         {
                             Id = "call",
-                            SectionId = "home.section",
-                            Type = "button",
+                            Type = "cta",
+                            Tag = "a",
                             Text = "Talk to us",
                             ActionKey = "business_call",
                             Href = "tel:6025550199"
@@ -76,6 +76,7 @@ public sealed class BusinessAnalyticsDetailTests
         {
             OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),
             SiteKey = WebsiteEditorSiteKeys.Business,
+            CommerceBusinessId = business.Id,
             DraftJson = System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             Revision = 4
         };
@@ -85,6 +86,17 @@ public sealed class BusinessAnalyticsDetailTests
             Revision = 3,
             DocumentJson = state.DraftJson
         };
+        // Unpublished edits must not appear as live behavior or rewrite publication history.
+        document.Pages["/"].Composition[0].Text = "Unpublished call label";
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "draft-only",
+            Type = "cta",
+            Tag = "a",
+            ActionKey = "business_email",
+            Text = "Draft email"
+        });
+        state.DraftJson = System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         state.PublishedVersionId = version.Id;
         db.AddRange(business, settings, state, version);
         await db.SaveChangesAsync();
@@ -97,13 +109,24 @@ public sealed class BusinessAnalyticsDetailTests
             It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == business.Id)))
             .ReturnsAsync(new MarketingHealthDto());
 
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         var model = await service.AnalyticsAsync(business, 30, CancellationToken.None);
 
-        Assert.Contains(model.EventMap, row => row.Element == "page" && row.Event == "ViewContent" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "page" && row.Event == "MeaningfulScroll" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "extra:call" && row.Event == "cta_click" && row.Mode == "automatic");
-        Assert.Contains(model.EventMap, row => row.Element == "extra:call" && row.Event == "ContactStepReached" && row.Mode == "automatic_meta");
+        Assert.Contains(model.EventMap, row => row.Element == "automatic:page_view" && row.Event == "page_view" && row.Mode == "automatic");
+        Assert.Contains(model.EventMap, row => row.Element == "automatic:meaningful_scroll" && row.Event == "scroll_depth_50" && row.Mode == "automatic");
+        var call = Assert.Single(model.EventMap.Where(row => row.Element == "call"));
+        Assert.Equal("business_call", call.ActionKey);
+        Assert.Equal("cta_click", call.Event);
+        Assert.Equal("Talk to us", call.VisibleLabel);
+        Assert.DoesNotContain(model.EventMap, row => row.Element == "draft-only" || row.VisibleLabel == "Unpublished call label");
+        Assert.Equal("browser", call.Authority);
+        Assert.Equal(version.Id, call.PublishedVersion);
+        Assert.Equal(3, call.Revision);
+        Assert.DoesNotContain(model.EventMap, row => row.Mode == "automatic_meta" || !row.Published);
+        Assert.Contains(model.EventMap, row => row.BehaviorKey == "appointment_booked" && row.Locked && row.Authority == "verified_server");
+        var canonical = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadAsync(ScopeContext.ForBusiness(business.Id));
+        Assert.Equal(canonical.Select(row => (row.Element, row.CanonicalEvent, row.MetaMapping, row.OpenAiMapping)),
+            model.EventMap.Select(row => (row.Element, row.Event, row.MetaMapping, row.OpenAiMapping)));
         analytics.VerifyAll();
     }
 
@@ -121,7 +144,7 @@ public sealed class BusinessAnalyticsDetailTests
             It.Is<ScopeContext>(s => s.CommerceBusinessId == business),
             It.Is<IReadOnlyCollection<AnalyticsEvent>>(events => events.Count == 1 && events.Contains(selected)), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<MetaSignalEvent>());
-        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        var service = new BusinessWorkspaceService(db, analytics.Object);
         Assert.NotNull(await service.AnalyticsDataAsync(business, "visitor-timeline", new(), TrafficType.All,
             visitorId: "visitor", sessionId: "session"));
         analytics.VerifyAll();

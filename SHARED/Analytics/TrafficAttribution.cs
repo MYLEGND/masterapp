@@ -56,7 +56,6 @@ namespace Shared.Analytics
         };
         private static readonly string[] InternalDomains =
         {
-            "mylegnd.com",
             "localhost",
             "127.0.0.1"
         };
@@ -181,7 +180,8 @@ namespace Shared.Analytics
             string? metaAdId = null,
             bool isInternal = false,
             string? environment = null,
-            string? host = null)
+            string? host = null,
+            string? oppref = null)
         {
             utmSource = Normalize(utmSource);
             utmMedium = Normalize(utmMedium);
@@ -193,6 +193,7 @@ namespace Shared.Analytics
             metaAdId = Normalize(metaAdId);
             environment = Normalize(environment);
             host = NormalizeHost(host);
+            oppref = Normalize(oppref);
 
             var specialTraffic = ClassifySpecialTraffic(
                 isInternal,
@@ -205,12 +206,14 @@ namespace Shared.Analytics
                 fbclid,
                 metaCampaignId,
                 metaAdSetId,
-                metaAdId);
+                metaAdId,
+                oppref);
 
             if (specialTraffic.HasValue)
                 return specialTraffic.Value;
 
-            if (!string.IsNullOrWhiteSpace(fbclid) ||
+            if (!string.IsNullOrWhiteSpace(oppref) ||
+                !string.IsNullOrWhiteSpace(fbclid) ||
                 !string.IsNullOrWhiteSpace(metaCampaignId) ||
                 !string.IsNullOrWhiteSpace(metaAdSetId) ||
                 !string.IsNullOrWhiteSpace(metaAdId))

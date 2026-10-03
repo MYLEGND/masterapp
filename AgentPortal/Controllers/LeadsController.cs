@@ -240,6 +240,12 @@ public class LeadsController : Controller
         public List<string>? Ids { get; set; }
     }
 
+    public sealed class SetStarredRequest
+    {
+        public string LeadId { get; set; } = "";
+        public bool IsStarred { get; set; }
+    }
+
     public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, MetaSignalCrmOutcomeService metaSignalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
     {
         _db = db;
@@ -450,6 +456,7 @@ public class LeadsController : Controller
                     ContactStatus = contactStatus,
                     PipelineStage = stage,
                     PipelineOrder = lead.CrmOrder,
+                    IsStarred = crmMeta.IsStarred,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
@@ -1506,6 +1513,7 @@ public class LeadsController : Controller
                     ContactStatus = contactStatus,
                     PipelineStage = ResolveEffectivePipelineStage(l, "Contacted"),
                     PipelineOrder = l.CrmOrder,
+                    IsStarred = crmMeta.IsStarred,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
@@ -1902,6 +1910,7 @@ public class LeadsController : Controller
             meetingTime = crmMeta.MeetingTime ?? "",
             meetingDurationMinutes = crmMeta.MeetingDurationMinutes <= 0 ? 30 : crmMeta.MeetingDurationMinutes,
             pinnedBrief = crmMeta.PinnedBrief ?? "",
+            isStarred = crmMeta.IsStarred,
             docChecklist = new
             {
                 idReceived = crmMeta.DocChecklist?.IdReceived ?? false,
@@ -2418,10 +2427,9 @@ public class LeadsController : Controller
         }
         appointment.ApplyStatus(nextStatus, nowUtc);
 
-        if (nextStatus == LeadAppointmentStatus.Completed)
-        {
-            await _metaSignalOutcomes.RecordAppointmentCompletedAsync(appointment);
-        }
+        await _metaSignalOutcomes.RecordAppointmentOutcomeAsync(
+            appointment,
+            HttpContext.RequestAborted);
 
         var meta = ReadLeadMeta(lead);
         meta.Activities ??= new List<ClientCrmActivity>();
@@ -2650,6 +2658,29 @@ public class LeadsController : Controller
 
         await _db.SaveChangesAsync();
         return Json(new { ok = true, updated = leads.Count });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetStarred([FromBody] SetStarredRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.LeadId))
+            return BadRequest("Lead id required.");
+
+        string agentId;
+        try { agentId = GetAgentIdOrChallenge(); }
+        catch { return Challenge(); }
+
+        var lead = await LoadCanonicalLeadAsync(agentId, request.LeadId, "Set starred");
+        if (lead == null) return NotFound();
+
+        var meta = ReadLeadMeta(lead);
+        meta.IsStarred = request.IsStarred;
+        lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+        lead.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        return Json(new { ok = true, isStarred = meta.IsStarred });
     }
 
     [HttpPost]

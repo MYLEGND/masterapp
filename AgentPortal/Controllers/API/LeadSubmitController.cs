@@ -3,6 +3,7 @@ using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -23,13 +24,13 @@ public class LeadSubmitController : ControllerBase
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IEmailSender _emailSender;
-    private readonly Services.Tracking.AgentTrackingResolver _resolver;
+    private readonly Infrastructure.Analytics.AgentTrackingResolver _resolver;
     private readonly ILogger<LeadSubmitController> _logger;
     private readonly string _founderUpn;
     private readonly AgentPortal.Models.AppFeatureFlags _flags;
     private readonly IngestSignatureValidator _signatureValidator;
 
-    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Services.Tracking.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
+    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Infrastructure.Analytics.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
     {
         _db = db;
         _config = config;
@@ -67,6 +68,12 @@ public class LeadSubmitController : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Oppref { get; set; }
+        public string? Obref { get; set; }
+        public string? Fbp { get; set; }
+        public string? Fbc { get; set; }
+        public string? ClientIpAddress { get; set; }
+        public string? ClientUserAgent { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -177,6 +184,11 @@ public class LeadSubmitController : ControllerBase
             MetaAdSetId = string.IsNullOrWhiteSpace(req.MetaAdSetId) ? null : req.MetaAdSetId.Trim(),
             MetaAdId = string.IsNullOrWhiteSpace(req.MetaAdId) ? null : req.MetaAdId.Trim(),
             Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
+            Oppref = OpenAiClickReference.Normalize(req.Oppref),
+            Fbp = string.IsNullOrWhiteSpace(req.Fbp) ? null : req.Fbp.Trim(),
+            Fbc = string.IsNullOrWhiteSpace(req.Fbc) ? null : req.Fbc.Trim(),
+            ClientIpAddress = string.IsNullOrWhiteSpace(req.ClientIpAddress) ? null : req.ClientIpAddress.Trim(),
+            ClientUserAgent = string.IsNullOrWhiteSpace(req.ClientUserAgent) ? null : req.ClientUserAgent.Trim(),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
             MarketingEmailConsent = req.MarketingEmailConsent,
@@ -189,54 +201,71 @@ public class LeadSubmitController : ControllerBase
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson.Trim()
+            MetadataJson = OpenAiAttributionMetadata.WithBrowserReference(req.MetadataJson, req.Obref)
         };
 
         if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
         {
-            var evt = new AnalyticsEvent
+            var evt = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
             {
-                EventId    = Guid.NewGuid(),
-                EventType  = "website_lead_submitted",
-                PageKey    = lead.SourcePageKey,
-                FormKey    = lead.SourcePageKey,
-                QuoteType  = lead.InterestType,
-                SessionId  = lead.SessionId,
-                VisitorId  = lead.VisitorId,
-                UtmSource  = lead.UtmSource,
-                UtmMedium  = lead.UtmMedium,
-                UtmCampaign= lead.UtmCampaign,
-                UtmId      = lead.UtmId,
-                Fbclid     = lead.Fbclid,
+                EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    EventName = "website_lead_submitted",
+                EventCategory = "lead",
+                EventUtc = now,
+                PageKey = lead.SourcePageKey,
+                FormKey = lead.SourcePageKey,
+                QuoteType = lead.InterestType,
+                SessionId = lead.SessionId,
+                VisitorId = lead.VisitorId,
+                UtmSource = lead.UtmSource,
+                UtmMedium = lead.UtmMedium,
+                UtmCampaign = lead.UtmCampaign,
+                UtmId = lead.UtmId,
+                UtmTerm = req.UtmTerm,
+                UtmContent = req.UtmContent,
+                Fbclid = lead.Fbclid,
+                Oppref = lead.Oppref,
+                Obref = OpenAiBrowserReference.Normalize(req.Obref),
+                Fbp = lead.Fbp,
+                Fbc = lead.Fbc,
+                UserAgent = lead.ClientUserAgent,
+                IpAddress = lead.ClientIpAddress,
                 MetaCampaignId = lead.MetaCampaignId,
                 MetaAdSetId = lead.MetaAdSetId,
                 MetaAdId = lead.MetaAdId,
                 AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                AgentSlug  = lead.AgentSlug,
-                Environment= lead.Environment,
-                Host       = lead.Host,
-                EventUtc   = now,
-                ReceivedUtc= now,
-                MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                    eventName: "website_lead_submitted",
-                    leadId: lead.LeadId,
-                    sessionId: lead.SessionId,
-                    payload: new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId
-                    },
-                    isBrowserSignal: false,
-                    isServerAuthority: false,
-                    metaServerAuthorityEligible: true,
-                    metaSingleTruthDispatchEligible: false,
-                    metaPipelineOrigin: "lead_submit_controller")
-            };
-            _db.AnalyticsEvents.Add(evt);
+                AgentSlug = lead.AgentSlug,
+                Environment = lead.Environment,
+                Host = lead.Host,
+                IsInternal = lead.IsInternal,
+                IsBrowserSignal = false,
+                IsServerAuthority = true,
+                MetaServerAuthorityEligible = true,
+                Metadata = new { LeadId = lead.LeadId, CorrelationId = correlationId }
+            });
+            evt.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: "website_lead_submitted",
+                leadId: lead.LeadId,
+                sessionId: lead.SessionId,
+                payload: new
+                {
+                    LeadId = lead.LeadId,
+                    canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                    obref = OpenAiBrowserReference.Normalize(req.Obref),
+                    fbp = lead.Fbp,
+                    fbc = lead.Fbc,
+                    CorrelationId = correlationId
+                },
+                isBrowserSignal: false,
+                isServerAuthority: true,
+                metaServerAuthorityEligible: true,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "lead_submit_controller");
+            UnifiedAnalyticsWriter.Write(_db, evt);
             await _db.SaveChangesAsync();
         }))
             lead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, HttpContext.RequestAborted);
-        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, HttpContext.RequestAborted))
+        if (!await WebsiteLeadNotificationAuthority.TryClaimAsync(_db, lead, HttpContext.RequestAborted))
             return Ok(new { status = "already_captured", captured = true, leadId = lead.LeadId,
                 notificationSent = lead.NotificationSentUtc != null, emailSent = lead.NotificationSentUtc != null });
         _logger.LogInformation(
@@ -350,7 +379,7 @@ Notes: {lead.Notes}";
             }
         }
 
-        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, HttpContext.RequestAborted);
+        await WebsiteLeadNotificationAuthority.CompleteAsync(_db, lead, emailSent, HttpContext.RequestAborted);
         if (!emailSent)
         {
 

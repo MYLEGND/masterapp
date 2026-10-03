@@ -20,7 +20,9 @@ public class AnalyticsEventCatalogTests
         "discovery_steps_completed",
         "funnel_start",
         "form_first_focus",
+        "form_interaction", // Internal form state transition reason; never emitted as an analytics event.
         "form_started",
+        "field_completed", // Website signal binding trigger; canonical analytics event is form_field_complete.
         "lead_confirmed",
         "page_load",
         "processing_viewed",
@@ -172,7 +174,9 @@ public class AnalyticsEventCatalogTests
         }
 
         Assert.True(AnalyticsEventCatalog.TryGet(AppointmentAnalyticsEventCatalog.Booked, out var bookedDefinition));
-        Assert.True(bookedDefinition.AllowBrowser);
+        Assert.False(bookedDefinition.AllowBrowser);
+        Assert.True(AnalyticsEventCatalog.TryGet("appointment_confirmation_viewed", out var confirmation));
+        Assert.True(confirmation.AllowBrowser);
         Assert.True(bookedDefinition.AllowServer);
     }
 
@@ -187,7 +191,7 @@ public class AnalyticsEventCatalogTests
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Commercial.cshtml"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Disability.cshtml"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "DentalVisionHearing.cshtml"),
-            Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "tracking.js"),
+            Path.Combine(GetRepoRoot(), "SHARED", "WebsitePlatform", "tracking.js"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "AutoQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "HomeQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "DentalVisionHearingQuoteController.cs"),
@@ -223,9 +227,9 @@ public class AnalyticsEventCatalogTests
     }
 
     [Fact]
-    public void MetaSignalEventCatalog_CoversBrowserPixelAndServerForwardEvents()
+    public void MetaSignalEventCatalog_SeparatesRichAnalyticsSignalsFromLowNoiseOptimizationDelivery()
     {
-        var requiredBrowserEvents = new[]
+        var internalBrowserSignals = new[]
         {
             "ViewContent",
             "LeadFormStart",
@@ -237,13 +241,15 @@ public class AnalyticsEventCatalogTests
             "AbandonedHighIntentLead"
         };
 
-        foreach (var eventName in requiredBrowserEvents)
+        foreach (var eventName in internalBrowserSignals)
         {
             Assert.True(MetaSignalEventCatalog.TryGet(eventName, out var definition), $"Meta signal catalog missing '{eventName}'.");
-            Assert.True(definition.AllowBrowserPixel, $"Meta signal browser event '{eventName}' must remain browser-enabled.");
-            Assert.False(definition.AllowServerForward, $"Meta signal browser event '{eventName}' must not be server-forwarded.");
-            Assert.True(MetaSignalEventCatalog.IsBrowserSignalEvent(eventName), $"Meta signal browser event '{eventName}' must remain browser-classified.");
+            Assert.False(definition.AllowServerForward, $"Browser analytics signal '{eventName}' must not be server-forwarded.");
+            Assert.True(MetaSignalEventCatalog.IsBrowserSignalEvent(eventName), $"Browser analytics signal '{eventName}' must remain available to internal analytics.");
+            Assert.Equal(eventName == "ViewContent", definition.AllowBrowserPixel);
         }
+
+        Assert.Equal(new[] { "ViewContent" }, MetaSignalEventCatalog.BrowserPixelEventNames.OrderBy(x => x).ToArray());
 
         Assert.True(MetaSignalEventCatalog.TryGet("QualifiedLead", out var qualifiedLead));
         Assert.True(qualifiedLead.AllowServerForward);

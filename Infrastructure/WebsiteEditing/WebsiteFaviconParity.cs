@@ -8,11 +8,15 @@ namespace Infrastructure.WebsiteEditing;
 /// </summary>
 public static class WebsiteFaviconParity
 {
-    public static string PublicUrl(IConfiguration configuration, string siteKey)
+    public static string PublicUrl(IConfiguration configuration, string siteKey, string? agentSlug = null)
     {
         if (siteKey is not (WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect))
             throw new ArgumentOutOfRangeException(nameof(siteKey), siteKey, "Only LEGEND and Protect app-shell favicon sources are supported.");
-        return ApiBase(configuration) + "/api/website-content/public/" + siteKey + "/favicon";
+
+        var url = ApiBase(configuration) + "/api/website-content/public/" + siteKey + "/favicon";
+        if (siteKey == WebsiteEditorSiteKeys.Protect && !string.IsNullOrWhiteSpace(agentSlug))
+            url += "?agentSlug=" + Uri.EscapeDataString(agentSlug.Trim());
+        return url;
     }
 
     public static string FallbackUrl(IConfiguration configuration) =>

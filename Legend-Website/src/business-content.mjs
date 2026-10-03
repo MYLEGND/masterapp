@@ -9,8 +9,8 @@ export const businessHome = {
     tagline: 'Add your business headline',
     text: 'Describe your business and the customers you serve.',
     actions: [
-      { style: 'primary', href: '#services', label: 'Explore services' },
-      { style: 'ghost', href: '#contact', label: 'Contact us' }
+      { style: 'primary', href: '#services', actionKey:'business_services', label: 'Explore services' },
+      { style: 'ghost', href: '#contact', actionKey:'business_contact', label: 'Contact us' }
     ],
     image: '',
     imageCaption: ''

@@ -150,6 +150,7 @@ public class ProductionController : Controller
         if (existingProduction != null)
         {
             await _metaSignalOutcomes.RecordProductionOutcomeAsync(
+                existingProduction.Id,
                 agent,
                 existingProduction.Side,
                 status,
@@ -173,8 +174,8 @@ public class ProductionController : Controller
     public async Task<IActionResult> AddLead(string leadId, decimal amount, decimal personalAmount, ProductionStatus status, string? notes, string? returnUrl = null)
     {
         var agent = GetEffectiveAgent();
-        await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Lead, status, amount, personalAmount, leadId, null, notes);
-        await _metaSignalOutcomes.RecordProductionOutcomeAsync(agent, ProductionSide.Lead, status, leadId, null, amount, personalAmount, notes);
+        var record = await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Lead, status, amount, personalAmount, leadId, null, notes);
+        await _metaSignalOutcomes.RecordProductionOutcomeAsync(record.Id, agent, ProductionSide.Lead, status, leadId, null, amount, personalAmount, notes);
         if (Request.Headers["Accept"].ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return Ok(new { ok = true });
         return Redirect(string.IsNullOrWhiteSpace(returnUrl) ? Url.Action("Index", "Leads")! : returnUrl);
@@ -185,8 +186,8 @@ public class ProductionController : Controller
     public async Task<IActionResult> AddClient(string clientUserId, decimal amount, decimal personalAmount, ProductionStatus status, string? notes, string? returnUrl = null)
     {
         var agent = GetEffectiveAgent();
-        await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Client, status, amount, personalAmount, null, clientUserId, notes);
-        await _metaSignalOutcomes.RecordProductionOutcomeAsync(agent, ProductionSide.Client, status, null, clientUserId, amount, personalAmount, notes);
+        var record = await _production.UpsertAsync(User?.Identity?.Name ?? agent, agent, ProductionSide.Client, status, amount, personalAmount, null, clientUserId, notes);
+        await _metaSignalOutcomes.RecordProductionOutcomeAsync(record.Id, agent, ProductionSide.Client, status, null, clientUserId, amount, personalAmount, notes);
         if (Request.Headers["Accept"].ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return Ok(new { ok = true });
         return Redirect(string.IsNullOrWhiteSpace(returnUrl) ? Url.Action("Index", "Clients")! : returnUrl);

@@ -3,6 +3,17 @@
     ViewData["Title"] = "Command Center";
     Layout = "_InternalLayout";
 
+    var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var scopedManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    string CommerceUrl(string internalPath, string scopedPath) => scopedManager
+        ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+        : internalPath;
+    var storeUrl = scopedStore?.StoreRootPath ?? "/store";
+    var productsUrl = CommerceUrl("/internal/commerce/products", "/commerce/manage/products");
+    var ordersUrl = CommerceUrl("/internal/commerce/orders", "/commerce/manage/orders");
+    var automationsUrl = CommerceUrl("/internal/automations", "/commerce/manage/automations");
+    var analyticsUrl = CommerceUrl("/internal/analytics", "/commerce/manage/analytics");
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 
     var storeReady = Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
@@ -12,14 +23,21 @@
 <section class="pf-command-page pf-dashboard-command">
     <header class="pf-dashboard-head">
         <div class="pf-dashboard-head-copy">
-            <p class="pf-dashboard-eyebrow">Parfait Internal</p>
+            <p class="pf-dashboard-eyebrow">@(scopedManager ? Model.StoreName + " Commerce" : "Parfait Internal")</p>
             <h1>Command Center</h1>
             <p class="pf-dashboard-intro">Store operations, order execution, and growth intelligence in one focused workspace.</p>
         </div>
         <div class="pf-dashboard-head-actions">
-            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
-            <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
-            <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
+            <a class="pf-secondary-action" href="@storeUrl" target="_blank" rel="noopener">View Store</a>
+            <a class="pf-secondary-action" href="@analyticsUrl">Analytics</a>
+            @if (scopedManager)
+            {
+                <a class="pf-secondary-action" href="@analyticsUrl">Marketing + Meta</a>
+            }
+            else
+            {
+                <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
+            }
         </div>
     </header>
 
@@ -59,7 +77,7 @@
                     <b>@Model.FeaturedProductCount</b>
                     <span>Featured products</span>
                 </div>
-                <a class="pf-action" href="/internal/commerce/products">Manage Products</a>
+                <a class="pf-action" href="@productsUrl">Manage Products</a>
             </article>
 
             <article class="pf-dashboard-primary-card">
@@ -73,7 +91,7 @@
                     <b>@Model.PaidOrderCount</b>
                     <span>Paid orders</span>
                 </div>
-                <a class="pf-action" href="/internal/commerce/orders">Manage Orders</a>
+                <a class="pf-action" href="@ordersUrl">Manage Orders</a>
             </article>
         </div>
 
@@ -84,7 +102,7 @@
                     <h3>@Model.Sessions sessions</h3>
                     <p>@Model.CheckoutStarts checkout starts · @Model.Purchases purchases</p>
                 </div>
-                <a class="pf-secondary-action" href="/internal/analytics">Open</a>
+                <a class="pf-secondary-action" href="@analyticsUrl">Open</a>
             </article>
 
             <article class="pf-dashboard-operation">
@@ -93,26 +111,29 @@
                     <h3>@Model.CustomerCount customers</h3>
                     <p>@Model.RepeatCustomerCount repeat buyers</p>
                 </div>
-                <a class="pf-secondary-action" href="/internal/automations">Open</a>
+                <a class="pf-secondary-action" href="@automationsUrl">Open</a>
             </article>
 
             <article class="pf-dashboard-operation">
                 <div>
-                    <span>Business profile</span>
+                    <span>@(scopedManager ? "Marketing + Meta" : "Business profile")</span>
                     <h3>@(Model.HasMetaConnection ? "Connected" : "Needs review")</h3>
-                    <p>Checkout @(Model.HasCheckoutUrl ? "saved" : "missing") · Meta @(Model.HasMetaPixel ? "configured" : "missing")</p>
+                    <p>Checkout @(Model.HasCheckoutUrl ? "ready" : "missing") · Pixel @(Model.HasMetaPixel ? "configured" : "missing") · Meta @(Model.HasMetaConnection ? "connected" : "pending")</p>
                 </div>
-                <a class="pf-secondary-action" href="/internal/settings/business-profile">Open</a>
+                <a class="pf-secondary-action" href="@(scopedManager ? analyticsUrl : "/internal/settings/business-profile")">Open</a>
             </article>
 
-            <article class="pf-dashboard-operation">
-                <div>
-                    <span>Team</span>
-                    <h3>Protected access</h3>
-                    <p>Internal roles, approvals, and access governance.</p>
-                </div>
-                <a class="pf-secondary-action" href="/internal/settings/team">Open</a>
-            </article>
+            @if (!scopedManager)
+            {
+                <article class="pf-dashboard-operation">
+                    <div>
+                        <span>Team</span>
+                        <h3>Protected access</h3>
+                        <p>Internal roles, approvals, and access governance.</p>
+                    </div>
+                    <a class="pf-secondary-action" href="/internal/settings/team">Open</a>
+                </article>
+            }
         </aside>
     </section>
 

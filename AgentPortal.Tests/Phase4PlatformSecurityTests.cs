@@ -119,6 +119,49 @@ public class Phase4PlatformSecurityTests
             services.AddPlatformDataProtection(Config(), new TestHostEnvironment(), applicationName: ""));
     }
 
+    [Fact]
+    public void DataProtection_ProductionFallback_UsesPersistentAppServiceHome()
+    {
+        var environment = new TestHostEnvironment
+        {
+            EnvironmentName = Environments.Production,
+            ContentRootPath = Path.Combine(Path.GetTempPath(), "content-root")
+        };
+        var home = Path.Combine(Path.GetTempPath(), "app-service-home");
+
+        var path = PlatformDataProtection.ResolveFileSystemKeysDirectory(
+            environment,
+            "ParfaitApp",
+            appServiceHome: home);
+
+        Assert.Equal(
+            Path.Combine(home, "data", "DataProtection", "ParfaitApp"),
+            path);
+    }
+
+    [Fact]
+    public void DataProtection_FileSystemFallback_IsSharedButApplicationIsolated()
+    {
+        var environment = new TestHostEnvironment
+        {
+            EnvironmentName = Environments.Production
+        };
+        var home = Path.Combine(Path.GetTempPath(), "app-service-home");
+
+        var parfait = PlatformDataProtection.ResolveFileSystemKeysDirectory(
+            environment,
+            "ParfaitApp",
+            appServiceHome: home);
+        var client = PlatformDataProtection.ResolveFileSystemKeysDirectory(
+            environment,
+            "MasterApp.ClientApp",
+            appServiceHome: home);
+
+        Assert.NotEqual(parfait, client);
+        Assert.StartsWith(Path.Combine(home, "data", "DataProtection"), parfait);
+        Assert.StartsWith(Path.Combine(home, "data", "DataProtection"), client);
+    }
+
     private static ServiceProvider BuildProvider(string applicationName, string keysDir)
     {
         var services = new ServiceCollection();

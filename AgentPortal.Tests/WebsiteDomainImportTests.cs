@@ -84,8 +84,10 @@ public sealed class WebsiteDomainImportTests
     [Fact]
     public void DomainNormalizesCaseAndTrailingDot() => Assert.Equal("example.com", WebsiteDomainService.NormalizeHostname(" EXAMPLE.COM. "));
 
-    [Fact]
-    public async Task PendingDomainProofBypassesActiveRoutingGate()
+    [Theory]
+    [InlineData("/.well-known/legend-website")]
+    [InlineData("/.well-known/legend-website/")]
+    public async Task PendingDomainProofBypassesActiveRoutingGate(string proofPath)
     {
         await using var db = new MasterAppDbContext(
             new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -106,7 +108,7 @@ public sealed class WebsiteDomainImportTests
             configuration);
         var context = new DefaultHttpContext();
         context.Request.Host = new HostString("example.com");
-        context.Request.Path = "/.well-known/legend-website";
+        context.Request.Path = proofPath;
         var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), configuration);
 
         await middleware.InvokeAsync(context, db, domains);
@@ -364,15 +366,50 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
-    public async Task ExportDoesNotOverwriteExistingPage()
+    public async Task CanonicalV3ExportDoesNotOverwriteExistingPage()
     {
         var service = new WebsiteImportService(null!); // No media operations in this document.
         var existing = new WebsiteContentDocument();
-        existing.Pages["/about"] = new WebsitePageDocument { Title = "Client edited title" };
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"pages\":{\"/about\":{\"title\":\"Old imported title\"},\"/contact\":{\"title\":\"Contact\"}}}"));
-        var result = await service.PrepareExportAsync(stream, false, existing, true, "business:test", "https://protect.mylegnd.com");
+        existing.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "Client edited title",
+            Navigation = new WebsitePageNavigation { Label = "About", ShowInNavigation = true }
+        };
+
+        var imported = new WebsiteContentDocument
+        {
+            Pages = new()
+            {
+                ["/about"] = new WebsitePageDocument
+                {
+                    Title = "Old imported title",
+                    Navigation = new WebsitePageNavigation { Label = "About", ShowInNavigation = true }
+                },
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Title = "Contact",
+                    Navigation = new WebsitePageNavigation { Label = "Contact", ShowInNavigation = true },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact-section",
+                            Type = "section",
+                            Tag = "section"
+                        }
+                    ]
+                }
+            }
+        };
+        var json = JsonSerializer.Serialize(imported, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await service.PrepareExportAsync(
+            stream, false, existing, true, "business:test", "https://protect.mylegnd.com");
+
         Assert.Equal("Client edited title", result.Document.Pages["/about"].Title);
         Assert.Equal("Contact", result.Document.Pages["/contact"].Title);
+        Assert.Equal("contact-section", Assert.Single(result.Document.Pages["/contact"].Composition).Id);
         Assert.Equal(1, result.Report.PreservedComponents);
         Assert.Single(existing.Pages);
     }
@@ -404,20 +441,47 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
-    public async Task FreshExportImportsThemeAndOrder()
+    public async Task FreshExportImportsThemeAndCanonicalCompositionOrder()
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"theme\":{\"gold\":\"#123456\"},\"sectionOrder\":{\"section\":2}}"));
-        var result = await new WebsiteImportService(null!).PrepareExportAsync(stream, false, new(), true, "owner", "https://example.com");
+        var document = new WebsiteContentDocument
+        {
+            Theme = new WebsiteDesignTheme { Gold = "#123456" },
+            Pages = new()
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Title = "Home",
+                    Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode { Id = "section-first", Type = "section", Tag = "section" },
+                        new WebsiteCompositionNode { Id = "section-second", Type = "section", Tag = "section" }
+                    ]
+                }
+            }
+        };
+        var json = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var result = await new WebsiteImportService(null!).PrepareExportAsync(
+            stream, false, new(), true, "owner", "https://example.com");
+
         Assert.Equal("#123456", result.Document.Theme.Gold);
-        Assert.Equal(2, result.Document.SectionOrder["section"]);
+        Assert.Equal("section-first", result.Document.Pages["/"].Composition[0].Id);
+        Assert.Equal("section-second", result.Document.Pages["/"].Composition[1].Id);
     }
 
     [Fact]
-    public async Task LegacyExportWrapperCanBeImported()
+    public async Task LegacyExportWrapperIsRejectedUntilMaterializedToCanonicalV3()
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"format\":\"legend-website-v1\",\"draft\":{\"pages\":{\"/contact\":{\"title\":\"Contact\"}}}}"));
-        var result = await new WebsiteImportService(null!).PrepareExportAsync(stream, false, new(), true, "owner", "https://example.com");
-        Assert.Equal("Contact", result.Document.Pages["/contact"].Title);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"format\":\"legend-website-v1\",\"draft\":{\"pages\":{\"/contact\":{\"title\":\"Contact\"}}}}"));
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            new WebsiteImportService(null!).PrepareExportAsync(
+                stream, false, new(), true, "owner", "https://example.com"));
+
+        Assert.Contains("canonical v3", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class SequenceHttpMessageHandler : HttpMessageHandler

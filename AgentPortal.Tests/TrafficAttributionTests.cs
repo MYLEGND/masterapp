@@ -5,6 +5,20 @@ namespace AgentPortal.Tests;
 
 public class TrafficAttributionTests
 {
+    [Theory]
+    [InlineData("mylegnd.com")]
+    [InlineData("www.mylegnd.com")]
+    [InlineData("protect.mylegnd.com")]
+    public void PublicReferrerDoesNotMarkRealVisitorsInternal(string referrer)
+    {
+        Assert.Equal(TrafficType.Referral, TrafficAttribution.Classify(null, null, null, null,
+            referrerHost: referrer, environment: "production", host: "client.example.com"));
+        Assert.Equal(TrafficType.PaidAds, TrafficAttribution.Classify("facebook", "cpc", "spring", "click",
+            referrerHost: referrer, environment: "production", host: "client.example.com"));
+        Assert.True(TrafficAttribution.IsMetaAttributedPaid("facebook", "cpc", "spring", "click",
+            referrerHost: referrer, environment: "production", host: "client.example.com"));
+    }
+
     [Fact]
     public void Classify_NoSignals_UsesDirectForCleanHumanTraffic()
     {

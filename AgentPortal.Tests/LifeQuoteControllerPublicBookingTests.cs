@@ -24,8 +24,6 @@ using Moq;
 using Protect_Website.Controllers;
 using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
-using ProtectWebsite.Services.Meta;
 using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
@@ -440,20 +438,22 @@ public class LifeQuoteControllerPublicBookingTests
         IWebsiteLifeLeadCaptureService? websiteLifeLeadCaptureService = null,
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
-        IPublicBookingContextProtector? publicBookingContextProtector = null)
+        IPublicBookingContextProtector? publicBookingContextProtector = null,
+        IWebsiteInquiryEmailSender? emailSender = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
 
         return new LifeQuoteController(
             BuildConfig(),
             resolver,
+            new WebsiteIntakeRecipientResolver(db, BuildConfig()),
             db,
             metaPixelResolutionService ?? Mock.Of<IMetaPixelResolutionService>(),
             websiteLifeLeadCaptureService ?? Mock.Of<IWebsiteLifeLeadCaptureService>(),
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
             publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),
             publicBookingContextProtector ?? BuildBookingProtector(),
-            Mock.Of<IProtectEmailSender>(),
+            emailSender ?? BuildSuccessfulEmailSender(),
             NullLogger<LifeQuoteController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -472,10 +472,26 @@ public class LifeQuoteControllerPublicBookingTests
                 ["AzureAd:ClientId"] = "client",
                 ["AzureAd:ClientSecret"] = "secret",
                 ["Contact:SenderEmail"] = "",
-                ["Contact:RecipientEmail"] = "",
+                ["Founder:Upn"] = "founder@example.test",
                 ["Tracking:ApiBase"] = "https://portal.example.test"
             })
             .Build();
+    }
+
+    private static IWebsiteInquiryEmailSender BuildSuccessfulEmailSender()
+    {
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
+        sender
+            .Setup(service => service.TrySendAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        return sender.Object;
     }
 
     private static IPublicBookingContextProtector BuildBookingProtector()
