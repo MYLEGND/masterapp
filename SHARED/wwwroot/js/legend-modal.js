@@ -414,7 +414,7 @@
 
   function registerDialog(dialog){
     if (!dialog || dialog.nodeType !== 1) return;
-    let surface = dialog.matches('[data-legend-modal-surface], .modal')
+    let surface = (dialog.matches('.modal') || dialog.matches('[data-legend-modal-surface]'))
       ? dialog
       : dialog.closest?.('[data-legend-modal-surface]') || null;
     if (!surface){
