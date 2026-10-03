@@ -19,7 +19,6 @@
   const editUrl = hub.dataset.editUrl || "/Clients/Edit";
   const crmUrl = hub.dataset.crmUrl || "/Clients";
   const homeReturnUrl = "/Home?clientHub=1";
-  const recentKey = "legend.homeClientsHub.recent";
 
   let isOpen = false;
   let defaultItems = [];
@@ -30,43 +29,7 @@
     return (value || "").toString().trim();
   }
 
-    function loadRecent() {
-    try {
-      const raw = window.localStorage.getItem(recentKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function saveRecent(items) {
-    try {
-      window.localStorage.setItem(recentKey, JSON.stringify(items.slice(0, 12)));
-    } catch {
-      // ignore storage failures
-    }
-  }
-
-  function rememberClient(item) {
-    if (!item || !item.clientUserId) return;
-    const entry = {
-      clientUserId: item.clientUserId,
-      displayName: item.displayName,
-      email: item.email,
-      phone: item.phone,
-      recordType: item.recordType,
-      agentWorkspaceAccessEnabled: item.agentWorkspaceAccessEnabled === true,
-      profileUrl: item.profileUrl,
-      openedAt: new Date().toISOString()
-    };
-
-    const next = [entry].concat(loadRecent().filter(x => x.clientUserId !== entry.clientUserId));
-    saveRecent(next);
-    renderRecent(defaultItems);
-  }
-
-  function buildCreateHref() {
+    function buildCreateHref() {
     const url = new URL(createUrl, window.location.origin);
     url.searchParams.set("returnUrl", homeReturnUrl);
     return `${url.pathname}${url.search}`;
@@ -82,14 +45,12 @@
 
   function openProfile(item) {
     if (!item || !item.clientUserId || item.agentWorkspaceAccessEnabled !== true) return;
-    rememberClient(item);
     const href = norm(item.profileUrl) || `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(item.clientUserId)}`;
     window.open(href, "_blank", "noopener,noreferrer");
   }
 
   function openEdit(item) {
     if (!item || !item.clientUserId) return;
-    rememberClient(item);
     window.location.href = buildEditHref(item.clientUserId);
   }
 
@@ -184,17 +145,14 @@
     if (!recentGrid) return;
     recentGrid.innerHTML = "";
 
-    const recentItems = loadRecent();
-    const items = recentItems.length ? recentItems.slice(0, 12) : fallbackItems.slice(0, 12);
+    const items = fallbackItems.slice(0, 12);
 
     if (recentHeading) {
-      recentHeading.textContent = recentItems.length ? "Recently Viewed Clients" : "Quick Access Clients";
+      recentHeading.textContent = "Recent Clients";
     }
 
     if (recentSub) {
-      recentSub.textContent = recentItems.length
-        ? "Your 12 most recently opened clients, kept compact for fast repeat access."
-        : "";
+      recentSub.textContent = "Your 12 most recently updated client records.";
     }
 
     if (!items.length) {
