@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services.Engineering;
@@ -14,8 +13,7 @@ namespace AgentPortal.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
 [Route("founder/engineering")]
 public sealed class FounderEngineeringController(
-    IFounderEngineeringCommandCenterService commandCenter,
-    ILegendEngineeringOrchestrator orchestrator) : Controller
+    IFounderEngineeringCommandCenterService commandCenter) : Controller
 {
     private const string ChatGptStateCookie = "__Host-legend-engineering-chatgpt-state";
     [HttpGet("")]
@@ -33,20 +31,13 @@ public sealed class FounderEngineeringController(
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(User);
-        object result;
-        if (string.Equals(decision, "approve_release", StringComparison.Ordinal))
-            result = await orchestrator.ApproveReleaseAsync(User, workItemId, cancellationToken);
-        else if (string.Equals(decision, "deny_release", StringComparison.Ordinal))
-            result = await orchestrator.DeclineReleaseAsync(User, workItemId, cancellationToken);
-        else
-        {
-            TempData["FounderEngineeringError"] = "That engineering action is not available for this work item.";
-            return RedirectToAction(nameof(Index));
-        }
+        var result = await commandCenter.DecideWorkItemAsync(
+            User,
+            workItemId,
+            decision,
+            cancellationToken);
 
-        var payload = JsonSerializer.SerializeToElement(result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        var ok = payload.TryGetProperty("ok", out var okValue) && okValue.ValueKind == JsonValueKind.True;
-        if (ok)
+        if (result.Succeeded)
         {
             TempData["FounderEngineeringSuccess"] = decision == "approve_release"
                 ? "Release approved. LEGEND will continue through the existing governed release gates."
@@ -54,11 +45,7 @@ public sealed class FounderEngineeringController(
         }
         else
         {
-            var error = payload.TryGetProperty("error", out var errorValue) &&
-                        errorValue.ValueKind == JsonValueKind.String
-                ? errorValue.GetString()
-                : null;
-            TempData["FounderEngineeringError"] = EngineeringDecisionError(error);
+            TempData["FounderEngineeringError"] = EngineeringDecisionError(result.ErrorCode);
         }
 
         return RedirectToAction(nameof(Index));
