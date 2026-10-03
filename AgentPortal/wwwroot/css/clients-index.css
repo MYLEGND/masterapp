@@ -3765,42 +3765,6 @@
         background:#fff;
     }
 
-    .modal.crm-command-modal{
-        top:50%;
-        transform:translate(-50%, -50%);
-        width:min(1040px, 94vw);
-        max-height:min(84vh, 920px);
-        border:1px solid rgba(147,181,255,.22);
-        border-radius:28px;
-        background:
-            radial-gradient(circle at top right, rgba(99,142,232,.16), transparent 34%),
-            linear-gradient(180deg, rgba(19,39,79,.99), rgba(9,21,44,.99));
-        box-shadow:0 32px 80px rgba(2, 8, 24, .5);
-        color:#eef4ff;
-    }
-
-    .modal.crm-command-modal .modal-head{
-        padding:18px 20px 16px;
-        border-bottom:1px solid rgba(255,255,255,.08);
-        background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
-    }
-
-    .modal.crm-command-modal .modal-title{
-        color:#ffffff;
-        font-size:1.28rem;
-        font-weight:950;
-        letter-spacing:.01em;
-    }
-
-    .modal.crm-command-modal .modal-body{
-        max-height:calc(84vh - 94px);
-        overflow:auto;
-        padding:18px 20px 22px;
-        background:transparent;
-        color:#eef4ff;
-        font-weight:850;
-    }
-
     .crm-command-modal-copy{
         display:grid;
         gap:6px;
@@ -3808,7 +3772,7 @@
     }
 
     .crm-command-modal-kicker{
-        color:#f0ce70;
+        color:var(--legend-modal-gold);
         font-size:.72rem;
         font-weight:950;
         letter-spacing:.11em;
@@ -3817,7 +3781,7 @@
 
     .crm-command-modal-sub{
         margin:0;
-        color:rgba(221,232,252,.76);
+        color:var(--legend-modal-muted);
         font-size:.9rem;
         line-height:1.45;
         font-weight:700;
@@ -3830,15 +3794,16 @@
 
     .crm-command-modal-section{
         padding:16px;
-        border:1px solid rgba(147,181,255,.16);
-        border-radius:22px;
-        background:linear-gradient(180deg, rgba(14,32,65,.9), rgba(8,19,40,.94));
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+        border:1px solid var(--legend-modal-line);
+        border-radius:var(--legend-app-radius);
+        background:rgba(255,255,255,.72);
+        color:var(--legend-modal-ink);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.72);
     }
 
     .crm-command-modal-section-kicker{
         margin-bottom:12px;
-        color:#f0ce70;
+        color:var(--legend-modal-gold);
         font-size:.72rem;
         font-weight:950;
         letter-spacing:.11em;
@@ -3858,23 +3823,10 @@
     }
 
     .crm-command-modal .btn.btn-ghost{
-        background:linear-gradient(180deg, rgba(46, 63, 98, .95), rgba(28, 40, 70, .98));
-        border-color:rgba(147,181,255,.2);
-        color:#eef4ff;
-    }
-
-    .crm-command-modal-queues{
-        width:min(980px, 94vw);
-        max-height:min(82vh, 860px);
-    }
-
-    .crm-command-modal-queues .modal-head{
-        padding:18px 22px 14px;
-    }
-
-    .crm-command-modal-queues .modal-body{
-        max-height:calc(82vh - 92px);
-        padding:18px 22px 22px;
+        background:linear-gradient(180deg,#727a86,#575f6a);
+        border-color:var(--legend-modal-line-strong);
+        color:#fff;
+        box-shadow:none;
     }
 
     .crm-command-modal-queues .crm-command-modal-grid{
@@ -3882,10 +3834,10 @@
     }
 
     .crm-command-modal-queues .crm-command-modal-section{
-        border-radius:24px;
-        background:linear-gradient(180deg, rgba(13,30,62,.88), rgba(8,18,39,.9));
-        border:1px solid rgba(147,181,255,.12);
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+        border-radius:var(--legend-app-radius);
+        background:rgba(255,255,255,.72);
+        border:1px solid var(--legend-modal-line);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.72);
     }
 
     .crm-command-modal-queues .crm-command-modal-section-launcher,
@@ -3911,17 +3863,17 @@
     }
 
     .crm-command-modal-queues .saved-views .preset-chip{
-        border-color:rgba(147,181,255,.22);
-        background:linear-gradient(180deg, rgba(20,42,82,.92), rgba(11,24,47,.96));
-        color:#eaf1ff;
+        border-color:var(--legend-modal-line);
+        background:var(--legend-modal-surface-raised);
+        color:var(--legend-modal-ink);
         box-shadow:none;
     }
 
     .crm-command-modal-queues .saved-views .preset-chip:hover{
-        border-color:rgba(240,206,112,.55);
-        background:linear-gradient(180deg, rgba(28,52,97,.94), rgba(13,27,52,.98));
-        color:#ffffff;
-        box-shadow:0 12px 24px rgba(4,11,28,.18);
+        border-color:var(--legend-modal-gold-strong);
+        background:var(--legend-modal-gold-soft);
+        color:var(--legend-modal-ink);
+        box-shadow:none;
     }
 
     .crm-command-modal-queues #btnMyDayBack{
@@ -3930,9 +3882,9 @@
     }
 
     .crm-command-modal-queues .myday-focus .pill{
-        background:rgba(255,255,255,.06);
-        border-color:rgba(147,181,255,.22);
-        color:#eef4ff;
+        background:var(--legend-modal-gold-soft);
+        border-color:var(--legend-modal-line-strong);
+        color:var(--legend-modal-ink);
         box-shadow:none;
     }
 
