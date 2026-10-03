@@ -336,12 +336,18 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         if (System.Text.Encoding.UTF8.GetByteCount(arguments) > 32 * 1024)
             return BadRequest(new { error = "legend_site_tool_arguments_too_large" });
 
-        var actorMode = authority.IsFounderSiteWorkflowMutation(request.Name)
-            ? "founder_work"
-            : "legend";
+        var workflowMutation = authority.IsFounderSiteWorkflowMutation(request.Name);
+        var actorMode = workflowMutation ? "founder_work" : "legend";
+        var mutationAuthorization = workflowMutation
+            ? new FounderAiMutationAuthorization(Guid.NewGuid().ToString("N"))
+            : null;
         var output = await authority.ExecuteAsync(
             User,
-            new FounderAiToolCall(Guid.NewGuid().ToString("N"), request.Name, arguments),
+            new FounderAiToolCall(
+                Guid.NewGuid().ToString("N"),
+                request.Name,
+                arguments,
+                mutationAuthorization),
             actorMode,
             cancellationToken,
             LegendConnectExternalProviderPolicy.CloudflareFoundation);
