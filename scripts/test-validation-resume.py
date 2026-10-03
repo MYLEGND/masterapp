@@ -542,7 +542,6 @@ jobs:
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "package_inputs_compatible", return_value=True), \
-             patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
              patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
             result = m.compatible_package_producer("MYLEGND/masterapp", revision, "token")
@@ -561,20 +560,11 @@ jobs:
             "artifact": "legend-migration-probe-" + "d" * 64,
         }
         run = {"id": 88, "head_sha": "e" * 40, "updated_at": "2026-10-03T00:00:00Z"}
-        jobs = {"jobs": [{
-            "name": "validated-migration-probe",
-            "steps": [
-                {"name": "Build immutable migration probe", "conclusion": "success"},
-                {"name": "Preserve validated migration probe", "conclusion": "success"},
-            ],
-        }]}
         seen = []
         def api_get(_repository, path, _token):
             seen.append(path)
             if path.startswith("actions/workflows/"):
                 return {"workflow_runs": [run]}
-            if path == "actions/runs/88/jobs?filter=latest&per_page=100":
-                return jobs
             raise AssertionError(path)
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
@@ -585,6 +575,7 @@ jobs:
         self.assertTrue(result["reusable"])
         self.assertEqual(88, result["runId"])
         self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
+        self.assertFalse(any("/jobs?" in path for path in seen))
 
     def test_trusted_lineage_run_requires_same_repo_workflow_and_ancestor(self):
         run = {
