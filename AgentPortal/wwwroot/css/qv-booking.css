@@ -210,13 +210,13 @@
     min-height:52px;
     padding:0 42px 0 16px;
     border-radius:14px;
-    color:#08111f;
+    color:var(--legend-app-on-dark);
     font-size:14px;
     font-weight:900;
-    background:linear-gradient(180deg, #fff, #f7f7f4);
-    border:1px solid rgba(246,195,67,.62);
+    background:var(--legend-app-surface-elevated);
+    border:1px solid var(--legend-app-control-line);
     outline:none;
-    box-shadow:0 10px 24px rgba(0,0,0,.16);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
 }
 
 .qv-booking-field select:focus{
