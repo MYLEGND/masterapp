@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import base64
+import hashlib
+import hmac
 import importlib.util
 import json
 from pathlib import Path
@@ -98,6 +101,52 @@ class ReleaseChildTests(unittest.TestCase):
         with patch.object(cloud, 'cloudflare', return_value={'deployments': [{'versions': [
                 {'version_id': 'one', 'percentage': 100}]}]}):
             self.assertEqual(cloud.current_worker_version('account', 'worker'), 'one')
+
+    def callback_proof_response(self, callback_key, key_id, url):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        def open_request(request, timeout=30):
+            body = json.loads(request.data)
+            nonce = body['callbackProofNonce']
+            message = '\n'.join(('legend-callback-equivalence.v1', key_id, url, nonce))
+            signature = hmac.new(base64.b64decode(callback_key), message.encode(), hashlib.sha256).hexdigest()
+            response = Response()
+            response.read = lambda: json.dumps({'callbackProof': {
+                'version': 'legend-callback-equivalence.v1',
+                'keyId': key_id,
+                'url': url,
+                'nonce': nonce,
+                'signature': signature,
+            }}).encode()
+            return response
+        return open_request
+
+    def test_founder_callback_equivalence_proof_verifies_without_persisting_secret(self):
+        service_key = base64.b64encode(b's' * 32).decode()
+        callback_key = base64.b64encode(b'c' * 32).decode()
+        callback_url = 'https://portal.example.test/api/founder/legend-ai/cloudflare-tools'
+        with patch.object(cloud.urllib.request, 'urlopen',
+                          side_effect=self.callback_proof_response(callback_key, 'callback-v1', callback_url)):
+            self.assertTrue(cloud.verify_callback_equivalence(
+                'https://worker.example.workers.dev/v1/legend/respond',
+                'account-1', 'tenant-1', 'founder-1',
+                'service-v1', service_key,
+                'callback-v1', callback_key, callback_url))
+
+    def test_founder_callback_equivalence_rejects_forged_worker_proof(self):
+        service_key = base64.b64encode(b's' * 32).decode()
+        callback_key = base64.b64encode(b'c' * 32).decode()
+        wrong_key = base64.b64encode(b'x' * 32).decode()
+        callback_url = 'https://portal.example.test/api/founder/legend-ai/cloudflare-tools'
+        with patch.object(cloud.urllib.request, 'urlopen',
+                          side_effect=self.callback_proof_response(wrong_key, 'callback-v1', callback_url)):
+            with self.assertRaisesRegex(RuntimeError, 'proof_invalid'):
+                cloud.verify_callback_equivalence(
+                    'https://worker.example.workers.dev/v1/legend/respond',
+                    'account-1', 'tenant-1', 'founder-1',
+                    'service-v1', service_key,
+                    'callback-v1', callback_key, callback_url)
 
     def test_router_sibling_live_failure_preserves_exact_publication(self):
         first = self.journal('routing-cloudflare', 'e' * 64)
