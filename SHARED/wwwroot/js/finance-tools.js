@@ -71,9 +71,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
-        "BusinessSavingsAccelerator",
         "ExpenseLens",
-        "BusinessExpenseLens",
         "NetWorth",
         "CashFlow",
         "DebtClarity",
@@ -84,56 +82,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     ]);
     const rawStateFirstToolIds = new Set([
         "SavingsAccelerator",
-        "BusinessSavingsAccelerator",
         "ExpenseLens",
-        "BusinessExpenseLens"
     ]);
-    const removeDualToolPopout = () => {
-        document.getElementById("financeDualToolPopout")?.remove();
-    };
-    const setDualToolMode = (enabled) => {
-        if (!enabled) removeDualToolPopout();
-        financeShell?.classList.toggle("finance-shell--dual-tools", !!enabled);
-        financeToolsRow?.classList.toggle("finance-tools-row--dual-tools", !!enabled);
-        document.body.classList.toggle("finance-dual-tools-open", !!enabled);
-    };
-    const closeDualToolPopout = () => {
-        removeDualToolPopout();
-        setDualToolMode(false);
-        embedContainer.innerHTML = "";
-        embedContainer.classList.remove("finance-main--dual");
-        if (dropdown) {
-            requestToolSelection(DEFAULT_TOOL_ID);
-        }
-    };
-    const createDualToolPopout = (title, subtitle) => {
-        removeDualToolPopout();
-        setDualToolMode(true);
-        embedContainer.innerHTML = "";
-        embedContainer.classList.add("finance-main--dual");
-
-        const popout = document.createElement("section");
-        popout.id = "financeDualToolPopout";
-        popout.className = "finance-dual-popout";
-        popout.setAttribute("role", "dialog");
-        popout.setAttribute("aria-modal", "true");
-        popout.setAttribute("aria-label", title);
-        popout.innerHTML = `
-            <div class="finance-dual-popout__header">
-                <div>
-                    <div class="finance-dual-popout__eyebrow">Business client workspace</div>
-                    <h2 class="finance-dual-popout__title">${title}</h2>
-                    <p class="finance-dual-popout__sub">${subtitle}</p>
-                </div>
-                <button type="button" class="finance-dual-popout__close" data-dual-popout-close>Close</button>
-            </div>
-            <div class="finance-dual-popout__body"></div>
-        `;
-        popout.querySelector("[data-dual-popout-close]")?.addEventListener("click", closeDualToolPopout);
-        document.body.appendChild(popout);
-        return popout.querySelector(".finance-dual-popout__body");
-    };
-
     const fitSingleLineControlText = (control, options = {}) => {
         if (!control) return;
         const minSize = options.minSize || 10;
@@ -339,7 +289,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             }
         }
 
-        if ((key === "ExpenseLens" || key === "BusinessExpenseLens") && expenseLensProjectionApi?.normalizeState) {
+        if ((key === "ExpenseLens") && expenseLensProjectionApi?.normalizeState) {
             try {
                 return expenseLensProjectionApi.normalizeState(value ?? {});
             } catch (_) {
@@ -6500,21 +6450,16 @@ markGold(savingsTipsOut);
 // ==========================================================
 if (t.id === "SavingsAccelerator") {
     try {
-    const renderSavingsAcceleratorInstance = async (renderToolId, hostElement) => {
-    const isBusinessSA = renderToolId === "BusinessSavingsAccelerator";
-    const isDualPanel = hostElement.classList.contains('expense-lens-dual-panel');
-    const prefix = isBusinessSA ? 'bsa' : 'sa';
-    const pid = (name) => `${prefix}${name}`;
-    const saStateId = isBusinessSA ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
-    const savingsToolStateId = saStateId; // alias
-    const linkedELStateId = isBusinessSA ? "BusinessExpenseLens" : "ExpenseLens";
+    const renderSavingsAcceleratorInstance = async (hostElement) => {
+    const isBusinessSA = isBusinessClient;
+    const pid = (name) => `sa${name}`;
+    const savingsToolStateId = "SavingsAccelerator";
+    const linkedELStateId = "ExpenseLens";
     const linkedELEvent = `${linkedELStateId}:updated`;
     const savingsAcceleratorUpdatedEvent = `${savingsToolStateId}:updated`;
-    const saTitle = isBusinessSA
-        ? "Business Savings Accelerator"
-        : (isBusinessClient ? "Personal Savings Accelerator" : "Savings Accelerator");
+    const saTitle = isBusinessSA ? "Business Savings Accelerator" : "Savings Accelerator";
     const savingsSubtitle = isBusinessSA
-        ? "Pull the business remaining balance from Expense Lens and allocate operating surplus with clarity."
+        ? "Allocate business operating surplus using the canonical Savings Accelerator engine."
         : "Pull the remaining balance from Expense Lens and optimize how you allocate it for maximum wealth building.";
     const DEFAULT_SAVINGS_HELPER_TEXT = "Default buckets intentionally start at 60% of available savings allocation so 40% remains open for lifestyle flexibility, and every percentage can be customized.";
     const DEFAULT_SAVINGS_TEMPLATE_TOTAL_PERCENT = 60;
@@ -7715,22 +7660,7 @@ if (t.id === "SavingsAccelerator") {
 
     }; // end renderSavingsAcceleratorInstance
 
-    if (isBusinessClient) {
-        const popoutBody = createDualToolPopout(
-            "Savings Accelerator",
-            "Personal and business savings allocation side by side, outside the normal tool container."
-        );
-        popoutBody.innerHTML = `
-            <div class="expense-lens-dual-shell">
-                <div class="expense-lens-dual-panel" id="savingsPersonalHost"></div>
-                <div class="expense-lens-dual-panel" id="savingsBusinessHost"></div>
-            </div>
-        `;
-        await renderSavingsAcceleratorInstance("SavingsAccelerator", document.getElementById('savingsPersonalHost'));
-        await renderSavingsAcceleratorInstance("BusinessSavingsAccelerator", document.getElementById('savingsBusinessHost'));
-    } else {
-        await renderSavingsAcceleratorInstance("SavingsAccelerator", embedContainer);
-    }
+    await renderSavingsAcceleratorInstance(embedContainer);
     } catch(e) { console.error('SavingsAccelerator error:', e); }
 }
 
@@ -7738,21 +7668,17 @@ if (t.id === "SavingsAccelerator") {
 /* -------------------------------
     3️⃣ EXPENSE LENS (ELEVATED)
 --------------------------------*/
-if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
+if (t.id === "ExpenseLens") {
     try {
-        const renderExpenseLensInstance = async (renderToolId, hostElement) => {
-        const isBusinessExpenseLens = renderToolId === "BusinessExpenseLens";
-        const isDualPanel = hostElement.classList.contains('expense-lens-dual-panel');
-        const expenseLensToolStateId = isBusinessExpenseLens ? "BusinessExpenseLens" : "ExpenseLens";
-        const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
-        const expenseLensIdPrefix = isBusinessExpenseLens ? "elBusiness" : "elPersonal";
-        const expenseLensTitle = isBusinessExpenseLens
-            ? "Business Expenses"
-            : "Personal Expenses";
+        const renderExpenseLensInstance = async (hostElement) => {
+        const isBusinessExpenseLens = isBusinessClient;
+        const expenseLensToolStateId = "ExpenseLens";
+        const expenseLensUpdatedEvent = "ExpenseLens:updated";
+        const expenseLensIdPrefix = "el";
         const elId = (name) => `${expenseLensIdPrefix}${name}`;
         const elById = (name) => document.getElementById(elId(name));
         const expenseLensSubtitle = isBusinessExpenseLens
-            ? "Separate business operating income and recurring business bills from personal expenses."
+            ? "Track business operating income and recurring business expenses using the canonical Expense Lens."
             : "Break down your income into categories and visualize spending percentages for better budgeting.";
         const expenseLensDefaultTip = isBusinessExpenseLens
             ? "Monitor business categories to identify operating costs, savings opportunities, and reinvestment capacity."
@@ -10737,24 +10663,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         });
         };
 
-        if (isBusinessClient && t.id === "ExpenseLens") {
-            const popoutBody = createDualToolPopout(
-                "Expenses",
-                "Personal and business expense forms side by side, outside the normal tool container."
-            );
-            popoutBody.innerHTML = `
-                <div class="expense-lens-dual-shell">
-                    <div class="expense-lens-dual-panel" id="expenseLensPersonalHost"></div>
-                    <div class="expense-lens-dual-panel" id="expenseLensBusinessHost"></div>
-                </div>
-            `;
-            const personalHost = document.getElementById("expenseLensPersonalHost");
-            const businessHost = document.getElementById("expenseLensBusinessHost");
-            await renderExpenseLensInstance("ExpenseLens", personalHost);
-            await renderExpenseLensInstance("BusinessExpenseLens", businessHost);
-        } else {
-            await renderExpenseLensInstance(t.id, embedContainer);
-        }
+        await renderExpenseLensInstance(embedContainer);
 
     } catch (e) {
         console.error('ExpenseLens initialization error:', e);
