@@ -602,6 +602,33 @@ jobs:
             set(topology["required"]),
         )
 
+    def test_control_only_descendant_reuses_package_without_builder_equivalence_recheck(self):
+        producer = "a" * 40
+        revision = "b" * 40
+        run = {
+            "id": 77,
+            "head_sha": producer,
+            "updated_at": "2026-10-03T00:00:00Z",
+        }
+        package_identity = "c" * 64
+        artifact = "founder-diagnostics-packages-" + package_identity
+        def api_get(_repository, path, _token):
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+        with patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "git_changed", return_value=["scripts/test-validation-resume.py"]), \
+             patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m, "package_inputs_compatible",
+                          side_effect=AssertionError("No byte input changed")):
+            result = m.compatible_package_producer(
+                "MYLEGND/masterapp", revision, "token"
+            )
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        self.assertEqual(package_identity, result["packageIdentity"])
+
     def test_compatible_package_producer_uses_trusted_run_artifacts_not_repository_artifact_listing(self):
         producer = "a" * 40
         revision = "b" * 40
