@@ -306,7 +306,7 @@ body{
 #mpShell .body .btn-mini.termwhole-focus,
 #rbShell .prosper-body .btn-mini.termwhole-focus,
 .scripts-shell .body .btn-mini.termwhole-focus{
-    background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 48%, #bfdbfe 100%) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
     border: 1px solid rgba(37,99,235,.42) !important;
     color: #123b86 !important;
     text-shadow: 0 1px 0 rgba(255,255,255,.52) !important;
@@ -325,34 +325,34 @@ body{
 #mpShell .body .btn-mini.termwhole-focus:hover,
 #rbShell .prosper-body .btn-mini.termwhole-focus:hover,
 .scripts-shell .body .btn-mini.termwhole-focus:hover{
-    background: linear-gradient(180deg, #f8fbff 0%, #e2eeff 52%, #c9e0ff 100%) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
     border-color: rgba(29,78,216,.56) !important;
     color: #0f2f6d !important;
 }
 
 #mpShell details.section.termwhole-step > summary,
 .scripts-shell details.section.termwhole-step > summary{
-    background: linear-gradient(180deg, rgba(219,234,254,.88) 0%, rgba(255,255,255,.98) 100%) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface), var(--legend-app-surface-elevated)) !important;
     border-bottom-color: rgba(37,99,235,.18) !important;
 }
 
 #mpShell details.section.termwhole-step > summary::before,
 .scripts-shell details.section.termwhole-step > summary::before{
-    background: linear-gradient(180deg, rgba(59,130,246,.98), rgba(29,78,216,.72)) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
 }
 
 #mpShell details.section.termwhole-step .body,
 .scripts-shell details.section.termwhole-step .body{
-    background: linear-gradient(180deg, rgba(248,251,255,.98) 0%, rgba(239,246,255,.94) 100%) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
 }
 
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"]{
     border-color: rgba(37,99,235,.34) !important;
-    background: linear-gradient(180deg, rgba(59,130,246,.10), rgba(255,255,255,.98)) !important;
+    background: linear-gradient(180deg, color-mix(in srgb,var(--legend-app-accent) 6%,var(--legend-app-surface-elevated)), var(--legend-app-surface)) !important;
 }
 
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"]::before{
-    background: linear-gradient(180deg, rgba(59,130,246,.98), rgba(29,78,216,.68)) !important;
+    background: linear-gradient(180deg, var(--legend-app-surface-elevated), var(--legend-app-surface)) !important;
 }
 
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-title,
@@ -376,7 +376,7 @@ body{
 }
 
 .uw-dialog{
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     border: 1px solid #d9dde6;
     border-radius: 16px;
     box-shadow: 0 26px 80px rgba(16,24,40,.26);
@@ -409,7 +409,7 @@ body{
     object-fit:contain;
     border-radius:10px;
     border:1px solid var(--line);
-    background:#fff;
+    background: var(--legend-app-surface-elevated);
     padding:6px;
     box-shadow: 0 6px 14px rgba(0,0,0,.08);
 }
@@ -488,7 +488,7 @@ body{
     gap:3px;
     font-weight:720;
     color: #0f172a;
-    background:#ffffff;
+    background: var(--legend-app-surface-elevated);
     border:1px solid #d9dde6;
     border-radius:8px;
     padding:6px 8px;
@@ -502,7 +502,7 @@ body{
     padding:6px 8px;
     border:1px solid #cbd3df;
     border-radius:6px;
-    background:#ffffff;
+    background: var(--legend-app-surface-elevated);
     font-weight:680;
     color:#0f172a;
     caret-color:#0f172a;
@@ -531,7 +531,7 @@ body{
 }
 .uw-multi-btn{
     border:1.6px solid #8a6618;
-    background: #fff;
+    background: var(--legend-app-surface-elevated);
     color:#3a2b0b;
     border-radius: 10px;
     padding:8px 10px;
@@ -1419,7 +1419,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 details.section{
     border: 1.25px solid var(--line);
     border-radius: 18px;
-    background: #fff;
+    background: var(--legend-app-surface-elevated);
     box-shadow: var(--shadow);
 }
 
@@ -2484,7 +2484,7 @@ details.section{
     width: min(1400px, 98vw);
     max-height: 92vh;
     overflow: auto;
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     border: 1.5px solid #e5e7eb;
     border-radius: 18px;
     box-shadow: 0 28px 70px rgba(0,0,0,.18);
@@ -3492,7 +3492,7 @@ details.section{
         border: 1.5px solid var(--line-strong);
         box-shadow: var(--shadow2);
         overflow: hidden;
-        background: #fff;
+        background: var(--legend-app-surface-elevated);
         margin-bottom: 22px;
         position: relative;
     }
@@ -4623,7 +4623,7 @@ details.section{
         padding: 11px 12px;
         border-radius: 12px;
         border: 1px solid rgba(0,0,0,.16);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         outline:none;
         font-weight: 850;
     }
@@ -4641,7 +4641,7 @@ details.section{
 
     #mpShell .btn{
         border:1px solid rgba(0,0,0,.14);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius: 12px;
         padding: 10px 10px;
         font-weight: 950;
@@ -4694,7 +4694,7 @@ details.section{
         font-weight: 950;
         font-size: 12px;
         border:1px solid rgba(0,0,0,.12);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         padding: 6px 10px;
         border-radius: 999px;
     }
@@ -4733,7 +4733,7 @@ details.section{
         gap:10px;
         text-align:left;
         border:1px solid rgba(0,0,0,.10);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:16px;
         padding:13px 14px 13px 16px;
         margin:0 0 10px 0;
@@ -5016,7 +5016,7 @@ details.section{
 
     #mpShell .btn-mini{
         border:1px solid rgba(0,0,0,.14);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:10px;
         padding:8px 10px;
         font-weight:950;
@@ -5057,7 +5057,7 @@ details.section{
 
     #mpShell .body{
         padding:14px 14px 16px 14px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     #mpShell details.section.good .body{
@@ -5194,7 +5194,7 @@ details.section{
         font-size: 12px;
         font-weight: 900;
         border:1px solid rgba(0,0,0,.10);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     #mpShell .legend-chip .swatch{
@@ -5282,7 +5282,7 @@ details.section{
 
     #mpShell .pill{
         border:1px solid rgba(0,0,0,.12);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius: 999px;
         padding: 8px 10px;
         font-weight: 950;
@@ -5447,7 +5447,7 @@ details.section{
 
     #rbShell .pill{
         border:1px solid rgba(0,0,0,.12);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius: 999px;
         padding: 8px 10px;
         font-weight: 950;
@@ -5503,7 +5503,7 @@ details.section{
         padding:12px 12px;
         border-radius:14px;
         border:1px solid rgba(0,0,0,.16);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         outline:none;
         font-weight:850;
     }
@@ -5516,7 +5516,7 @@ details.section{
 
     #rbShell .btn{
         border:1px solid rgba(0,0,0,.14);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:14px;
         padding:11px 12px;
         font-weight:950;
@@ -5888,7 +5888,7 @@ details.section{
 
     #rbShell .cat-count{
         border:1px solid rgba(0,0,0,.10);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         padding:5px 8px;
         border-radius:999px;
         font-size:10px;
@@ -5968,7 +5968,7 @@ details.section{
         border:1.5px solid rgba(166,128,35,.24);
         border-radius:20px;
         overflow:hidden;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 14px 28px rgba(0,0,0,.05), 0 8px 18px rgba(166,128,35,.05);
         margin-bottom:16px;
     }
@@ -6097,7 +6097,7 @@ details.section{
         position:relative;
         z-index:2;
         padding:16px 16px 16px 18px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     #rbShell .objection.good .objection-body{
@@ -6128,7 +6128,7 @@ details.section{
         font-weight: 800;
         color:#141414;
         outline:none;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border:1px solid rgba(0,0,0,.08);
         box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
     }
@@ -6157,7 +6157,7 @@ details.section{
         border:1.5px solid rgba(166,128,35,.30);
         border-radius:20px;
         overflow:hidden;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: 0 16px 34px rgba(0,0,0,.06), 0 8px 20px rgba(166,128,35,.08);
     }
 
@@ -6220,7 +6220,7 @@ details.section{
 
     #rbShell .prosper-body{
         padding:16px 16px 18px 16px;
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
     }
 
     #rbShell .prosper-stage.good .prosper-body{
@@ -6352,7 +6352,7 @@ details.section{
     #rbShell .prosper-body .btn,
     #rbShell .prosper-body .btn-mini{
         border:1px solid rgba(0,0,0,.14);
-        background:#fff;
+        background: var(--legend-app-surface-elevated);
         border-radius:10px;
         padding:9px 11px;
         font-weight:950;
@@ -6850,7 +6850,7 @@ details.section{
 .dialer-bar{
     border: 1px solid var(--line);
     border-radius: 12px;
-    background: #fff;
+    background: var(--legend-app-surface-elevated);
     margin: 0 0 10px 0;
     padding: 10px 12px;
     display: grid;
