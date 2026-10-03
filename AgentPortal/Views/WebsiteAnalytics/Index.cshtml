@@ -104,7 +104,7 @@
                                 <span class="marketing-setup-secure-label">Meta CAPI</span>
                                 <strong id="marketing-setup-capi-status">Checking secure connection…</strong>
                             </div>
-                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="#">Connect Meta Ads</a>
+                            <a class="btn btn-sm btn-outline-light" id="marketing-setup-meta-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Meta Ads</a>
                         </div>
                     </section>
 
@@ -195,7 +195,7 @@
                                 <div class="marketing-setup-help" id="marketing-setup-calendar-auth-detail">Connect the calendar account that owns this workspace.</div>
                             </div>
                             <div class="d-flex gap-2 flex-wrap">
-                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="#">Connect Microsoft Calendar</a>
+                                <a class="btn btn-outline-light btn-sm" id="marketing-setup-calendar-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Microsoft Calendar</a>
                                 <button type="button" class="btn btn-outline-danger btn-sm" id="marketing-setup-calendar-disconnect" hidden>Disconnect</button>
                             </div>
                         </div>
@@ -774,14 +774,14 @@
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top Page</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-page">—</div>
                         <div class="fa-kpi-sub">Most viewed</div>
                     </div>
                 </div>
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top CTA</div>
-                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
+                        <div class="fa-kpi-value fa-kpi-value--compact" id="kpi-top-cta">—</div>
                         <div class="fa-kpi-sub">Most clicked</div>
                     </div>
                 </div>
@@ -1063,7 +1063,7 @@
     </section>
 
     <div class="modal fade fa-modal" id="mhErrorDetailModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
           <div class="modal-header wa-modal-header">
             <div class="wa-modal-header-main">
@@ -1094,7 +1094,7 @@
 @if (canViewFounderTeamUi)
 {
 <div class="modal fade fa-modal" id="teamRollupModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-copy">
@@ -1614,7 +1614,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1847,7 +1847,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1928,7 +1928,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficExitedBeforeStartModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1961,7 +1961,7 @@
 @if(isFounder)
 {
 <div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -1996,7 +1996,7 @@
 }
 
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2036,7 +2036,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2076,7 +2076,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2244,7 +2244,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2304,7 +2304,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2393,7 +2393,7 @@
 }
 
 <div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2430,7 +2430,7 @@
 </div>
 
 <div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
       <div class="modal-header wa-modal-header">
         <div class="wa-modal-header-main">
@@ -2501,10 +2501,6 @@
 </div>
 
 <!-- Canonical standalone analytics modals -->
-<button type="button" id="openVisitorConcentrationModal" class="visually-hidden" aria-hidden="true" tabindex="-1">
-    Open Visitor Concentration
-</button>
-
 <div id="visitorConcentrationModal" class="wa-standalone-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
     <div class="wa-modal-dialog" role="document">
         <div class="wa-modal-shell">
@@ -2587,13 +2583,10 @@
     @Html.AntiForgeryToken()
 </form>
 
-@* Backdrop overlay *@
-<div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
-
 @* Drawer panel *@
 
 <div class="modal fade fa-modal" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
             <div class="modal-header wa-modal-header">
                 <div class="wa-modal-header-main">
@@ -2643,26 +2636,27 @@
     </div>
 </div>
 
-<div id="aiInsightsDrawer" class="ai-drawer" inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+<div id="aiInsightsDrawer" class="ai-drawer" data-legend-modal-surface inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+    <div class="ai-drawer-panel" data-legend-modal-panel>
     <div class="ai-drawer-header">
         <div>
             <div class="ai-drawer-title">AI Review</div>
             <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
             <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
         </div>
-        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+        <button type="button" class="ai-drawer-close" data-ai-drawer-close aria-label="Close AI Review panel">&times;</button>
     </div>
 
-    <div class="ai-drawer-body">
+    <div class="ai-drawer-body" data-legend-modal-scroll>
         @* Loading state *@
         <div class="ai-drawer-loading" aria-live="polite">
-            <div class="ai-skel-line medium" style="margin-top:4px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--lead"></div>
             <div class="ai-skel-line short"></div>
-            <div class="ai-skel-block" style="margin-top:14px;"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-block ai-skel-block--spaced"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-line short"></div>
             <div class="ai-skel-block"></div>
-            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-line medium ai-skel-line--spaced"></div>
             <div class="ai-skel-block"></div>
             <div class="ai-skel-line short"></div>
         </div>
@@ -2671,8 +2665,7 @@
         <div class="ai-drawer-error" hidden aria-live="assertive">
             <div class="ai-error-icon">&#9888;</div>
             <div class="ai-error-message">Unable to load AI review.</div>
-            <button type="button" class="btn btn-sm ai-retry-btn"
-                    style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
+            <button type="button" class="btn btn-sm ai-retry-btn" data-ai-retry>
                 Try Again
             </button>
         </div>
@@ -2695,6 +2688,7 @@
                 <button type="submit" class="ai-followup-btn">Submit Follow-Up</button>
             </form>
         </div>
+    </div>
     </div>
 </div>
 

@@ -11,7 +11,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 12
     environment: Production
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,581 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Diagnose Founder Meta connection without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal --only-show-errors -o json > "$scratch/appsettings.json"
+          az webapp config connection-string list -g masterapp-rg -n masterapp-portal --only-show-errors -o json > "$scratch/connections.json"
+          mkdir -p "$scratch/meta-diag"
+          cat > "$scratch/meta-diag/meta-diag.csproj" <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net10.0</TargetFramework>
+              <ImplicitUsings>enable</ImplicitUsings>
+              <Nullable>enable</Nullable>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="$GITHUB_WORKSPACE/Infrastructure/Infrastructure.csproj" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$scratch/meta-diag/Program.cs" <<'CS'
+          using System.Net;
+          using System.Text.Json;
+          using Infrastructure.Analytics;
+          using Infrastructure.Data;
+          using Microsoft.EntityFrameworkCore;
+          using Microsoft.Extensions.Configuration;
+          using Microsoft.Extensions.FileProviders;
+          using Microsoft.Extensions.Hosting;
+          using Shared.Analytics;
+
+          var scratch = Environment.GetEnvironmentVariable("LEGEND_META_DIAG_SCRATCH")
+              ?? throw new InvalidOperationException("Diagnostic scratch path missing.");
+          var settingsJson = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(scratch, "appsettings.json")));
+          var settings = new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
+          foreach (var item in settingsJson.RootElement.EnumerateArray())
+          {
+              var name = item.GetProperty("name").GetString();
+              var value = item.GetProperty("value").GetString();
+              if (string.IsNullOrWhiteSpace(name)) continue;
+              settings[name] = value;
+              settings[name.Replace("__", ":", StringComparison.Ordinal)] = value;
+          }
+          var connectionsJson = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(scratch, "connections.json")));
+          string? connectionString = null;
+          foreach (var item in connectionsJson.RootElement.EnumerateArray())
+              if (string.Equals(item.GetProperty("name").GetString(), "MasterAppDb", StringComparison.OrdinalIgnoreCase))
+                  connectionString = item.GetProperty("value").GetString();
+          connectionString ??= settings.GetValueOrDefault("ConnectionStrings:MasterAppDb")
+              ?? settings.GetValueOrDefault("MasterAppDb")
+              ?? settings.GetValueOrDefault("SQLCONNSTR_MasterAppDb");
+          if (string.IsNullOrWhiteSpace(connectionString))
+              throw new InvalidOperationException("Production MasterAppDb connection unavailable.");
+
+          var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+          using var env = new DiagnosticEnvironment(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? Directory.GetCurrentDirectory());
+          using var protector = MarketingCredentialProtector.CreateShared(configuration, env);
+          var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlServer(connectionString).Options;
+          await using var db = new MasterAppDbContext(options);
+          var owner = MarketingOwnerScope.Founder;
+          var row = await db.MarketingConnections.AsNoTracking()
+              .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta);
+          if (row is null)
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="store", exists=false }));
+              return;
+          }
+          Console.WriteLine(JsonSerializer.Serialize(new {
+              stage="store", exists=true, provider=row.Provider, row.OwnerKey, row.OwnerType,
+              row.AdAccountId, row.AdAccountName, row.MetaBusinessManagerId, row.MetaBusinessManagerName,
+              row.MetaUserId, row.MetaUserName, row.ConnectedUtc, row.DisconnectedUtc,
+              row.AccessTokenExpiresUtc, row.LastVerifiedUtc, row.UpdatedUtc
+          }));
+          if (string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="store", tokenPresent=false }));
+              return;
+          }
+
+          string token;
+          try
+          {
+              token = protector.Unprotect(owner, row.AdsAccessTokenCiphertext)
+                  ?? throw new InvalidOperationException("Decrypted token was empty.");
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="decrypt", success=true }));
+          }
+          catch (Exception ex)
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="decrypt", success=false, error=ex.GetType().Name }));
+              return;
+          }
+
+          var appId = configuration["MetaAds:AppId"];
+          var appSecret = configuration["MetaAds:AppSecret"];
+          using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+
+          async Task<JsonElement?> Get(string url, string stage)
+          {
+              using var response = await http.GetAsync(url);
+              var body = await response.Content.ReadAsStringAsync();
+              JsonElement? root = null;
+              try { root = JsonDocument.Parse(body).RootElement.Clone(); } catch { }
+              if (response.IsSuccessStatusCode)
+              {
+                  Console.WriteLine(JsonSerializer.Serialize(new { stage, http=(int)response.StatusCode, success=true, summary=SafeSummary(root) }));
+              }
+              else
+              {
+                  Console.WriteLine(JsonSerializer.Serialize(new { stage, http=(int)response.StatusCode, success=false, error=SafeError(root) }));
+              }
+              return root;
+          }
+
+          if (!string.IsNullOrWhiteSpace(appId) && !string.IsNullOrWhiteSpace(appSecret))
+          {
+              var debug = await Get(
+                  $"https://graph.facebook.com/debug_token?input_token={Uri.EscapeDataString(token)}&access_token={Uri.EscapeDataString(appId + "|" + appSecret)}",
+                  "debug_token");
+              if (debug is JsonElement d && d.TryGetProperty("data", out var data))
+              {
+                  Console.WriteLine(JsonSerializer.Serialize(new {
+                      stage="debug_token_detail",
+                      isValid=ReadBool(data,"is_valid"),
+                      appId=ReadString(data,"app_id"),
+                      userId=ReadString(data,"user_id"),
+                      expiresAt=ReadLong(data,"expires_at"),
+                      dataAccessExpiresAt=ReadLong(data,"data_access_expires_at"),
+                      scopes=ReadStringArray(data,"scopes")
+                  }));
+              }
+          }
+          else
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="debug_token", skipped="Meta app credentials unavailable" }));
+          }
+
+          var adaccounts = await Get(
+              $"https://graph.facebook.com/me/adaccounts?fields={Uri.EscapeDataString("id,name,account_status,business{id,name}")}&limit=200&access_token={Uri.EscapeDataString(token)}",
+              "me_adaccounts");
+          if (adaccounts is JsonElement aa && aa.TryGetProperty("data", out var adData) && adData.ValueKind == JsonValueKind.Array)
+          {
+              var rows = adData.EnumerateArray().Select(x => new {
+                  id=ReadString(x,"id"), name=ReadString(x,"name"), accountStatus=ReadLong(x,"account_status")
+              }).ToArray();
+              Console.WriteLine(JsonSerializer.Serialize(new {
+                  stage="me_adaccounts_detail",
+                  count=rows.Length,
+                  storedAccountPresent=rows.Any(x => NormalizeAccount(x.id) == NormalizeAccount(row.AdAccountId)),
+                  accounts=rows
+              }));
+          }
+
+          if (string.IsNullOrWhiteSpace(row.AdAccountId))
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="stored_account", success=false, error="missing_account_id" }));
+              return;
+          }
+
+          var account = NormalizeAccount(row.AdAccountId)!;
+          foreach (var prefix in new[] { "", "v26.0/", "v25.0/", "v24.0/" })
+          {
+              var label = string.IsNullOrEmpty(prefix) ? "versionless" : prefix.TrimEnd('/');
+              await Get(
+                  $"https://graph.facebook.com/{prefix}act_{Uri.EscapeDataString(account)}?fields={Uri.EscapeDataString("id,name,account_status,disable_reason,timezone_name")}&access_token={Uri.EscapeDataString(token)}",
+                  $"account_{label}");
+              await Get(
+                  $"https://graph.facebook.com/{prefix}act_{Uri.EscapeDataString(account)}/campaigns?fields={Uri.EscapeDataString("id,name,status,effective_status")}&limit=5&access_token={Uri.EscapeDataString(token)}",
+                  $"campaigns_{label}");
+          }
+
+          static object? SafeSummary(JsonElement? root)
+          {
+              if (root is not JsonElement value) return null;
+              if (value.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                  return new { dataCount=data.GetArrayLength() };
+              return new { id=ReadString(value,"id"), name=ReadString(value,"name"), accountStatus=ReadLong(value,"account_status"), disableReason=ReadLong(value,"disable_reason") };
+          }
+          static object SafeError(JsonElement? root)
+          {
+              if (root is JsonElement value && value.TryGetProperty("error", out var error))
+                  return new {
+                      type=ReadString(error,"type"),
+                      code=ReadLong(error,"code"),
+                      subcode=ReadLong(error,"error_subcode"),
+                      message=Truncate(ReadString(error,"message"),240),
+                      isTransient=ReadBool(error,"is_transient")
+                  };
+              return new { type="unparseable_meta_error", code=(long?)null, subcode=(long?)null, message=(string?)null, isTransient=(bool?)null };
+          }
+          static string? NormalizeAccount(string? value) =>
+              string.IsNullOrWhiteSpace(value) ? null :
+              value.Trim().StartsWith("act_", StringComparison.OrdinalIgnoreCase) ? value.Trim()[4..] : value.Trim();
+          static string? ReadString(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind==JsonValueKind.String ? v.GetString() : null;
+          static long? ReadLong(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.TryGetInt64(out var n) ? n : null;
+          static bool? ReadBool(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
+          static string[] ReadStringArray(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind==JsonValueKind.Array
+                  ? v.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray() : [];
+          static string? Truncate(string? value,int max) =>
+              string.IsNullOrWhiteSpace(value) ? value : value.Length <= max ? value : value[..max];
+
+          sealed class DiagnosticEnvironment(string root) : IHostEnvironment, IDisposable
+          {
+              public string EnvironmentName { get; set; } = Environments.Production;
+              public string ApplicationName { get; set; } = "LEGEND.MetaProductionDiagnostic";
+              public string ContentRootPath { get; set; } = root;
+              public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(root);
+              public void Dispose() => (ContentRootFileProvider as IDisposable)?.Dispose();
+          }
+          CS
+          export LEGEND_META_DIAG_SCRATCH="$scratch"
+          dotnet run --project "$scratch/meta-diag/meta-diag.csproj" -c Release
+      - name: Read recent AgentPortal Meta campaign warning body
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          if timeout 75s az webapp log download -g masterapp-rg -n masterapp-portal --log-file "$scratch/portal-logs.zip" --only-show-errors >/dev/null 2>&1; then
+            python3 - "$scratch/portal-logs.zip" <<'PYLOG'
+          import io, os, re, sys, zipfile
+          path=sys.argv[1]
+          patterns=("Meta campaigns fetch failed","Meta insights fetch failed","Meta account metadata fetch failed")
+          found=[]
+          try:
+              with zipfile.ZipFile(path) as z:
+                  for name in z.namelist():
+                      if name.endswith('/'): continue
+                      try:
+                          data=z.read(name)
+                      except Exception:
+                          continue
+                      text=data.decode('utf-8','replace')
+                      for line in text.splitlines():
+                          if any(p in line for p in patterns):
+                              # Provider bodies should not echo credentials, but redact defensively.
+                              line=re.sub(r'(?i)(access[_-]?token[=:" ]+)[^&\s",}]+', r'\1[REDACTED]', line)
+                              line=re.sub(r'(?i)(client_secret[=:" ]+)[^&\s",}]+', r'\1[REDACTED]', line)
+                              found.append((name,line[-3000:]))
+          except zipfile.BadZipFile:
+              pass
+          if not found:
+              print('META_RUNTIME_LOG_EVIDENCE none_found')
+          else:
+              for name,line in found[-20:]:
+                  print(f'META_RUNTIME_LOG_EVIDENCE file={name} {line}')
+          PYLOG
+          else
+            echo "META_RUNTIME_LOG_EVIDENCE download_unavailable"
+          fi
+      - name: Probe Meta from inside AgentPortal without mutations
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          mkdir -p "$scratch/inapp"
+          cat > "$scratch/inapp/meta-inapp.csproj" <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net10.0</TargetFramework>
+              <ImplicitUsings>enable</ImplicitUsings>
+              <Nullable>enable</Nullable>
+              <PublishSingleFile>true</PublishSingleFile>
+              <SelfContained>false</SelfContained>
+              <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+              <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="$GITHUB_WORKSPACE/Infrastructure/Infrastructure.csproj" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$scratch/inapp/Program.cs" <<'CS'
+          using System.Collections;
+          using System.Text.Json;
+          using Infrastructure.Analytics;
+          using Infrastructure.Data;
+          using Microsoft.EntityFrameworkCore;
+          using Microsoft.Extensions.Configuration;
+          using Microsoft.Extensions.FileProviders;
+          using Microsoft.Extensions.Hosting;
+          using Shared.Analytics;
+
+          var settings = new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
+          foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
+          {
+              var name = entry.Key?.ToString();
+              var value = entry.Value?.ToString();
+              if (string.IsNullOrWhiteSpace(name)) continue;
+              var key = name.StartsWith("APPSETTING_", StringComparison.OrdinalIgnoreCase) ? name["APPSETTING_".Length..] : name;
+              settings[key] = value;
+              settings[key.Replace("__", ":", StringComparison.Ordinal)] = value;
+          }
+          var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+          var connectionString =
+              Environment.GetEnvironmentVariable("SQLAZURECONNSTR_MasterAppDb")
+              ?? Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb")
+              ?? configuration["ConnectionStrings:MasterAppDb"]
+              ?? configuration["MasterAppDb"];
+          if (string.IsNullOrWhiteSpace(connectionString))
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_bootstrap", success=false, error="masterappdb_unavailable" }));
+              return;
+          }
+
+          var root = Environment.GetEnvironmentVariable("HOME") is { Length: > 0 } home
+              ? Path.Combine(home, "site", "wwwroot")
+              : Directory.GetCurrentDirectory();
+          using var env = new DiagnosticEnvironment(root);
+          using var protector = MarketingCredentialProtector.CreateShared(configuration, env);
+          var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlServer(connectionString).Options;
+          await using var db = new MasterAppDbContext(options);
+          var owner = MarketingOwnerScope.Founder;
+          var row = await db.MarketingConnections.AsNoTracking()
+              .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta);
+          if (row is null)
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_store", exists=false }));
+              return;
+          }
+          Console.WriteLine(JsonSerializer.Serialize(new {
+              stage="inapp_store", exists=true, row.AdAccountId, row.AdAccountName,
+              row.MetaBusinessManagerId, row.MetaBusinessManagerName, row.ConnectedUtc,
+              row.DisconnectedUtc, row.AccessTokenExpiresUtc, row.LastVerifiedUtc, row.UpdatedUtc
+          }));
+          if (string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_store", tokenPresent=false }));
+              return;
+          }
+
+          string token;
+          try
+          {
+              token = protector.Unprotect(owner, row.AdsAccessTokenCiphertext)
+                  ?? throw new InvalidOperationException("empty");
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_decrypt", success=true }));
+          }
+          catch (Exception ex)
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_decrypt", success=false, error=ex.GetType().Name }));
+              return;
+          }
+
+          using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+          async Task<JsonElement?> Get(string url, string stage)
+          {
+              using var response = await http.GetAsync(url);
+              var body = await response.Content.ReadAsStringAsync();
+              JsonElement? root = null;
+              try { root = JsonDocument.Parse(body).RootElement.Clone(); } catch { }
+              if (response.IsSuccessStatusCode)
+                  Console.WriteLine(JsonSerializer.Serialize(new { stage, http=(int)response.StatusCode, success=true, summary=SafeSummary(root) }));
+              else
+                  Console.WriteLine(JsonSerializer.Serialize(new { stage, http=(int)response.StatusCode, success=false, error=SafeError(root) }));
+              return root;
+          }
+
+          var appId = configuration["MetaAds:AppId"];
+          var appSecret = configuration["MetaAds:AppSecret"];
+          if (!string.IsNullOrWhiteSpace(appId) && !string.IsNullOrWhiteSpace(appSecret))
+          {
+              var debug = await Get(
+                  $"https://graph.facebook.com/debug_token?input_token={Uri.EscapeDataString(token)}&access_token={Uri.EscapeDataString(appId + "|" + appSecret)}",
+                  "inapp_debug_token");
+              if (debug is JsonElement d && d.TryGetProperty("data", out var data))
+                  Console.WriteLine(JsonSerializer.Serialize(new {
+                      stage="inapp_debug_token_detail",
+                      isValid=ReadBool(data,"is_valid"),
+                      expiresAt=ReadLong(data,"expires_at"),
+                      dataAccessExpiresAt=ReadLong(data,"data_access_expires_at"),
+                      scopes=ReadStringArray(data,"scopes")
+                  }));
+          }
+          else
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_debug_token", skipped="meta_app_credentials_unavailable" }));
+          }
+
+          var permissions = await Get(
+              $"https://graph.facebook.com/me/permissions?access_token={Uri.EscapeDataString(token)}",
+              "inapp_permissions");
+          if (permissions is JsonElement perms && perms.TryGetProperty("data", out var permData) && permData.ValueKind == JsonValueKind.Array)
+              Console.WriteLine(JsonSerializer.Serialize(new {
+                  stage="inapp_permissions_detail",
+                  permissions=permData.EnumerateArray().Select(x => new { permission=ReadString(x,"permission"), status=ReadString(x,"status") }).ToArray()
+              }));
+
+          var adaccounts = await Get(
+              $"https://graph.facebook.com/me/adaccounts?fields={Uri.EscapeDataString("id,name,account_status,business{id,name}")}&limit=200&access_token={Uri.EscapeDataString(token)}",
+              "inapp_me_adaccounts");
+          if (adaccounts is JsonElement aa && aa.TryGetProperty("data", out var adData) && adData.ValueKind == JsonValueKind.Array)
+          {
+              var rows = adData.EnumerateArray().Select(x => new {
+                  id=NormalizeAccount(ReadString(x,"id")), name=ReadString(x,"name"), accountStatus=ReadLong(x,"account_status")
+              }).ToArray();
+              Console.WriteLine(JsonSerializer.Serialize(new {
+                  stage="inapp_me_adaccounts_detail",
+                  count=rows.Length,
+                  storedAccountPresent=rows.Any(x => x.id == NormalizeAccount(row.AdAccountId)),
+                  accounts=rows
+              }));
+          }
+
+          var account = NormalizeAccount(row.AdAccountId);
+          if (string.IsNullOrWhiteSpace(account))
+          {
+              Console.WriteLine(JsonSerializer.Serialize(new { stage="inapp_stored_account", success=false, error="missing_account_id" }));
+              return;
+          }
+
+          foreach (var version in new[] { "versionless", "v21.0", "v22.0", "v23.0", "v24.0", "v25.0", "v26.0" })
+          {
+              var prefix = version == "versionless" ? "" : version + "/";
+              await Get(
+                  $"https://graph.facebook.com/{prefix}act_{Uri.EscapeDataString(account)}?fields={Uri.EscapeDataString("id,name,account_status,disable_reason,timezone_name")}&access_token={Uri.EscapeDataString(token)}",
+                  $"inapp_account_{version}");
+              await Get(
+                  $"https://graph.facebook.com/{prefix}act_{Uri.EscapeDataString(account)}/campaigns?fields={Uri.EscapeDataString("id,name,status,effective_status")}&limit=5&access_token={Uri.EscapeDataString(token)}",
+                  $"inapp_campaigns_{version}");
+          }
+
+          static object? SafeSummary(JsonElement? root)
+          {
+              if (root is not JsonElement value) return null;
+              if (value.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                  return new { dataCount=data.GetArrayLength() };
+              return new { id=ReadString(value,"id"), name=ReadString(value,"name"), accountStatus=ReadLong(value,"account_status"), disableReason=ReadLong(value,"disable_reason") };
+          }
+          static object SafeError(JsonElement? root)
+          {
+              if (root is JsonElement value && value.TryGetProperty("error", out var error))
+                  return new {
+                      type=ReadString(error,"type"),
+                      code=ReadLong(error,"code"),
+                      subcode=ReadLong(error,"error_subcode"),
+                      message=Truncate(ReadString(error,"message"),240),
+                      isTransient=ReadBool(error,"is_transient")
+                  };
+              return new { type="unparseable_meta_error", code=(long?)null, subcode=(long?)null, message=(string?)null, isTransient=(bool?)null };
+          }
+          static string? NormalizeAccount(string? value) =>
+              string.IsNullOrWhiteSpace(value) ? null :
+              value.Trim().StartsWith("act_", StringComparison.OrdinalIgnoreCase) ? value.Trim()[4..] : value.Trim();
+          static string? ReadString(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind==JsonValueKind.String ? v.GetString() : null;
+          static long? ReadLong(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.TryGetInt64(out var n) ? n : null;
+          static bool? ReadBool(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
+          static string[] ReadStringArray(JsonElement e,string name) =>
+              e.ValueKind==JsonValueKind.Object && e.TryGetProperty(name,out var v) && v.ValueKind==JsonValueKind.Array
+                  ? v.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray() : [];
+          static string? Truncate(string? value,int max) =>
+              string.IsNullOrWhiteSpace(value) ? value : value.Length <= max ? value : value[..max];
+
+          sealed class DiagnosticEnvironment(string contentRoot) : IHostEnvironment, IDisposable
+          {
+              public string EnvironmentName { get; set; } = Environments.Production;
+              public string ApplicationName { get; set; } = "LEGEND.MetaInAppDiagnostic";
+              public string ContentRootPath { get; set; } = contentRoot;
+              public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(contentRoot);
+              public void Dispose() => (ContentRootFileProvider as IDisposable)?.Dispose();
+          }
+          CS
+          dotnet publish "$scratch/inapp/meta-inapp.csproj" -c Release -r win-x64 --self-contained false -o "$scratch/publish" >/dev/null
+
+          creds="$(az webapp deployment list-publishing-credentials -g masterapp-rg -n masterapp-portal --only-show-errors --query '{u:publishingUserName,p:publishingPassword}' -o json)"
+          deploy_user="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["u"])' <<<"$creds")"
+          deploy_pass="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["p"])' <<<"$creds")"
+          echo "::add-mask::$deploy_user"
+          echo "::add-mask::$deploy_pass"
+          scm="https://masterapp-portal.scm.azurewebsites.net"
+
+          python3 - <<'PY' > "$scratch/mkdir.json"
+          import json
+          print(json.dumps({"command": r'cmd /c "if not exist D:\home\data\legend-meta-diag mkdir D:\home\data\legend-meta-diag"', "dir": r"D:\home\site\wwwroot"}))
+          PY
+          curl -fsS -u "$deploy_user:$deploy_pass" -H "Content-Type: application/json" --data @"$scratch/mkdir.json" "$scm/api/command" >/dev/null
+          exe="$(find "$scratch/publish" -maxdepth 1 -type f -iname '*.exe' | head -1)"
+          test -n "$exe"
+          curl -fsS -u "$deploy_user:$deploy_pass" -X PUT -H "If-Match: *" --data-binary @"$exe" "$scm/api/vfs/data/legend-meta-diag/meta-inapp.exe" >/dev/null
+
+          python3 - <<'PY' > "$scratch/run.json"
+          import json
+          print(json.dumps({"command": r"D:\home\data\legend-meta-diag\meta-inapp.exe", "dir": r"D:\home\site\wwwroot"}))
+          PY
+          set +e
+          curl -fsS -u "$deploy_user:$deploy_pass" -H "Content-Type: application/json" --data @"$scratch/run.json" "$scm/api/command" > "$scratch/result.json"
+          command_status=$?
+          set -e
+          python3 - "$scratch/result.json" <<'PY'
+          import json,sys
+          try:
+              result=json.load(open(sys.argv[1],encoding='utf-8'))
+          except Exception as e:
+              print(json.dumps({"stage":"inapp_kudu","success":False,"error":type(e).__name__}))
+              raise SystemExit(0)
+          output=result.get("Output","")
+          for line in output.splitlines():
+              if '"stage":"inapp_' in line:
+                  print(line)
+          if result.get("ExitCode") not in (0,None):
+              print(json.dumps({"stage":"inapp_kudu","success":False,"exitCode":result.get("ExitCode"),"error":str(result.get("Error",""))[-500:]}))
+          PY
+          python3 - <<'PY' > "$scratch/cleanup.json"
+          import json
+          print(json.dumps({"command": r'cmd /c "del /q D:\home\data\legend-meta-diag\meta-inapp.exe 2>nul & rmdir D:\home\data\legend-meta-diag 2>nul"', "dir": r"D:\home\site\wwwroot"}))
+          PY
+          curl -fsS -u "$deploy_user:$deploy_pass" -H "Content-Type: application/json" --data @"$scratch/cleanup.json" "$scm/api/command" >/dev/null || true
+          exit "$command_status"
+      - name: Correlate Meta failure history and live API version setting
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_json="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal --only-show-errors --query "[?name=='MetaAds__ApiVersion' || name=='MetaAds:ApiVersion'].{name:name,value:value}" -o json)"
+          python3 - <<'PYVER' <<<"$version_json"
+          import json,sys
+          try:
+              rows=json.load(sys.stdin)
+          except Exception:
+              rows=[]
+          print(json.dumps({"stage":"meta_api_version_setting","rows":rows}))
+          PYVER
+
+          scratch="$(mktemp -d)"
+          trap 'rm -rf "$scratch"' EXIT
+          if timeout 75s az webapp log download -g masterapp-rg -n masterapp-portal --log-file "$scratch/portal-logs.zip" --only-show-errors >/dev/null 2>&1; then
+            python3 - "$scratch/portal-logs.zip" <<'PYHIST'
+          import json,re,sys,zipfile,xml.etree.ElementTree as ET
+          path=sys.argv[1]
+          patterns=("Meta campaigns fetch failed","Meta insights fetch failed","Meta account metadata fetch failed")
+          rows=[]
+          try:
+              with zipfile.ZipFile(path) as z:
+                  names=[n for n in z.namelist() if n.lower().endswith("eventlog.xml")]
+                  for name in names:
+                      data=z.read(name)
+                      try:
+                          root=ET.fromstring(data)
+                      except Exception:
+                          continue
+                      for event in root.findall(".//{*}Event"):
+                          created=event.find(".//{*}TimeCreated")
+                          when=(created.attrib.get("SystemTime") if created is not None else None)
+                          text=" ".join(t.strip() for t in event.itertext() if t and t.strip())
+                          if not any(p in text for p in patterns):
+                              continue
+                          m=re.search(r'(Meta (?:campaigns|insights|account metadata) fetch failed\..*)',text)
+                          msg=(m.group(1) if m else text)[-3000:]
+                          msg=re.sub(r'(?i)(access[_-]?token[=:" ]+)[^&\s",}]+',r'\1[REDACTED]',msg)
+                          msg=re.sub(r'(?i)(client_secret[=:" ]+)[^&\s",}]+',r'\1[REDACTED]',msg)
+                          rows.append({"time":when,"message":msg})
+          except Exception as exc:
+              print(json.dumps({"stage":"meta_error_history","success":False,"error":type(exc).__name__}))
+              raise SystemExit(0)
+          rows.sort(key=lambda x:x.get("time") or "")
+          print(json.dumps({"stage":"meta_error_history","count":len(rows),"rows":rows[-80:]}))
+          PYHIST
+          else
+            echo '{"stage":"meta_error_history","success":false,"error":"download_unavailable"}'
+          fi
       - name: Observe current app state and recent capacity without mutations
         shell: bash
         run: |

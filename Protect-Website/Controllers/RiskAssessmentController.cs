@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 using Protect_Website.Models;
 using Protect_Website.Services;
 using ProtectWebsite.Services;
-using ProtectWebsite.Services.Communication;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using System.Text;
 using System.Net;
@@ -20,7 +19,7 @@ namespace Protect_Website.Controllers
     [Route("RiskAssessment")]
     public class RiskAssessmentController : Controller
     {
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         private readonly MasterAppDbContext _db;
         private readonly AgentTrackingResolver _resolver;
@@ -28,7 +27,7 @@ namespace Protect_Website.Controllers
         private readonly IWebsiteLifeLeadCaptureService _capture;
         private readonly ILogger<RiskAssessmentController> _logger;
 
-        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender,
+        public RiskAssessmentController(IConfiguration configuration, IWebsiteInquiryEmailSender emailSender,
             MasterAppDbContext db, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients, IWebsiteLifeLeadCaptureService capture,
             ILogger<RiskAssessmentController> logger)
         {

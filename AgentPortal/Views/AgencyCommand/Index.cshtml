@@ -262,8 +262,8 @@
         /* Modal */
         .rev-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;padding:2.5vh 0;}
         .rev-modal[aria-hidden="false"]{display:flex;}
-        .rev-modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);}        
-        .rev-modal__panel{position:relative;z-index:2;width:min(1200px,94vw);max-height:90vh;overflow-y:auto;overflow-x:hidden;background:#0b1529;border:2px solid rgba(221,180,87,.7);border-radius:18px;box-shadow:0 28px 64px rgba(0,0,0,.45);padding:18px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable;}
+        .rev-modal__backdrop{position:absolute;inset:0;}        
+        .rev-modal__panel{position:relative;z-index:2;overflow-y:auto;overflow-x:hidden;padding:18px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable;}
         .rev-modal__header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;color:#e5e7eb;margin-bottom:10px;}
         .rev-modal__header h2{margin:0;font-weight:900;letter-spacing:.01em;}
         .btn-close{background:transparent;border:1px solid rgba(221,180,87,.5);color:#e5e7eb;font-size:1.4rem;line-height:1;padding:6px 10px;border-radius:10px;}
@@ -373,7 +373,6 @@
 
         .founder-tier-page .command-hero__content,
         .founder-tier-page .agent-card,
-        .founder-tier-page .rev-modal__panel,
         .founder-tier-page .agent-table,
         .founder-tier-page .producer-card,
         .founder-tier-page .breakdown-card {
@@ -383,7 +382,6 @@
         }
 
         .founder-tier-page .command-hero__content::before,
-        .founder-tier-page .rev-modal__panel::before,
         .founder-tier-page .agent-table::before,
         .founder-tier-page .producer-card::before,
         .founder-tier-page .breakdown-card::before {
@@ -514,23 +512,6 @@
             box-shadow: 0 10px 18px rgba(0,0,0,.14) !important;
         }
 
-        .founder-tier-page .rev-modal__panel {
-            overflow-y: auto !important;
-            overflow-x: hidden !important;
-        }
-
-        @@media (max-width: 768px) {
-            .rev-modal {
-                align-items: flex-start;
-                padding: 12px 0;
-            }
-
-            .rev-modal__panel {
-                width: min(96vw, 1200px);
-                max-height: calc(100vh - 24px);
-                margin: 0 auto;
-            }
-        }
     </style>
 }
 
@@ -543,8 +524,8 @@
             const closeEls = modal.querySelectorAll('[data-close-rev]');
             const body = document.body;
 
-            const open = () => { modal.setAttribute('aria-hidden','false'); body.classList.add('overflow-hidden'); };
-            const close = () => { modal.setAttribute('aria-hidden','true'); body.classList.remove('overflow-hidden'); };
+            const open = () => { modal.setAttribute('aria-hidden','false');  };
+            const close = () => { modal.setAttribute('aria-hidden','true');  };
 
             openBtn?.addEventListener('click', open);
             closeEls.forEach(el => el.addEventListener('click', close));

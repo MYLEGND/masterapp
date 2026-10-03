@@ -11,7 +11,7 @@ on:
       - Step 6 isolated ChatGPT Ads execution validation
       - Steps 7-8 governed advertising and Promote This validation
       - LEGEND approved direct release
-      - Validate, merge, and deploy AgentPortal to production
+      - LEGEND approved release security validation
     types: [completed]
   push:
     branches: [legend/approved-changes]
@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: legend-release-lifecycle
   cancel-in-progress: false
@@ -48,10 +49,55 @@ jobs:
         with:
           ref: legend/approved-changes
           fetch-depth: 0
+
+      - name: Resolve lifecycle validation authority identity
+        id: lifecycleidentity
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/lifecycle-evidence.json"
+          python3 scripts/validation-resume.py lifecycle-evidence \
+            --repository "${{ github.repository }}" \
+            --output "$evidence"
+          python3 - "$evidence" "$GITHUB_OUTPUT" "$GITHUB_ENV" <<'PYLIFECYCLE'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write(f"artifact={data.get('artifact') or ''}\n")
+              output.write(f"run_id={data.get('runId') or ''}\n")
+          with open(sys.argv[3],'a') as env:
+              env.write("REUSE_LIFECYCLE_CONTRACTS="+str(bool(data.get('reusable'))).lower()+"\n")
+          print(json.dumps(data,sort_keys=True))
+          PYLIFECYCLE
+
       - name: Check lifecycle safety contracts
         run: |
+          if [ "$REUSE_LIFECYCLE_CONTRACTS" = true ]; then
+            echo "Preserved unchanged lifecycle safety validation."
+            exit 0
+          fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-release-lifecycle.py
+          python3 scripts/test-validation-resume.py
+          python3 scripts/validation-resume.py verify-release-coverage             --workflow all-intentional-direct-release-20260918.yml             --workflow-path .github/workflows/all-intentional-direct-release-20260918.yml
+          python3 scripts/validation-resume.py verify-release-coverage             --workflow legend-release-lifecycle.yml             --workflow-path .github/workflows/legend-release-lifecycle.yml
+
+      - name: Retain lifecycle validation authority receipt
+        if: env.REUSE_LIFECYCLE_CONTRACTS != 'true'
+        shell: bash
+        run: |
+          printf '%s\n' "${{ steps.lifecycleidentity.outputs.artifact }}" > "$RUNNER_TEMP/lifecycle-validation-receipt.txt"
+
+      - name: Preserve lifecycle validation authority receipt
+        if: env.REUSE_LIFECYCLE_CONTRACTS != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.lifecycleidentity.outputs.artifact }}
+          path: ${{ runner.temp }}/lifecycle-validation-receipt.txt
+          retention-days: 30
+          if-no-files-found: error
       - name: Integrate ready approved change and start direct release
         if: github.event_name == 'pull_request_target'
         env:
@@ -65,8 +111,23 @@ jobs:
         run: python3 scripts/release-lifecycle.py pending-updates
       - name: Refresh after automatically integrated corrections
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request')
-        run: git fetch --no-tags --prune origin
-      - name: Reconcile successful releases through existing production gates
+        env:
+          APPROVED_REF: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test -n "$APPROVED_REF"
+          python3 - "$APPROVED_REF" <<'PYAPPROVED'
+          import importlib.util, pathlib, sys
+          path=pathlib.Path('scripts/validation-resume.py')
+          spec=importlib.util.spec_from_file_location('validation_authority',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          if sys.argv[1] != module.TRUSTED_PR_BASE:
+              raise SystemExit('Repository default branch is not the canonical approved release authority')
+          PYAPPROVED
+          git fetch --no-tags --prune origin "+refs/heads/$APPROVED_REF:refs/remotes/origin/$APPROVED_REF"
+          git reset --hard "origin/$APPROVED_REF"
+      - name: Recover authorized direct release when needed
         if: github.event_name != 'pull_request_target'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,10 +136,15 @@ jobs:
           args=()
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
           python3 scripts/release-lifecycle.py reconcile "${args[@]}"
-      - name: Refresh references after synchronization
+      - name: Refresh approved references before cleanup
         run: git fetch --no-tags --prune origin
       - name: Retire only preserved successfully deployed branches
-        if: github.event_name != 'pull_request_target' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+        if: >-
+          github.event_name == 'schedule' ||
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'workflow_run' &&
+           github.event.workflow_run.name == 'LEGEND approved direct release' &&
+           github.event.workflow_run.conclusion == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/release-lifecycle.py cleanup --apply --output "$RUNNER_TEMP/branch-cleanup.json"

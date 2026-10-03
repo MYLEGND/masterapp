@@ -182,7 +182,10 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("Founder,", scope, StringComparison.Ordinal);
         Assert.Contains("ScopeContext.ForFounder(founderProfile.Id)", resolver, StringComparison.Ordinal);
         Assert.Contains("ScopeType.Founder", queryScope, StringComparison.Ordinal);
-        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("PersistProtectEventAsync(req, isFounderOwner, protectScope, ct)", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteContentVersionId = publishedScope?.PublishedVersion?.Id", proxy, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBindingId = Clean(req.WebsiteBindingId)", proxy, StringComparison.Ordinal);
+        Assert.Contains("CanonicalizePublishedBinding(req, protectScope)", proxy, StringComparison.Ordinal);
         Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ResolveByUpnAsync", proxy, StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardAsync(\"/api/analytics/ingest\"", proxy, StringComparison.Ordinal);
@@ -278,7 +281,11 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("AnyAsync(x => x.WebsiteLeadId == lead.LeadId", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
+        var portal = File.ReadAllText(Path.Combine(root, "AgentPortal", "Program.cs"));
+        var leadRegistration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
+        Assert.Contains("AddWebsiteLeadBackgroundWorkers", portal, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", leadRegistration, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddHostedService<WebsiteLeadNotificationRecoveryWorker>()", program, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,15 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the already validated and merged canonical marketing hardening release from legend/approved-changes through a merged release-control PR. Product code and target scope are unchanged.",
-  "purpose": "Final release-control dispatch for merged marketing hardening product PR #273. Deploy the validated canonical marketing hardening: shared inquiry intake across LEGEND/business/Protect/Parfait, scoped primary-account-email notifications, durable notification retry recovery, and canonical Meta/OpenAI measurement consent. No product logic changes in this release-control PR.",
-  "requestId": "canonical-marketing-hardening-release-final-20260928",
+  "authorization": "Explicit Founder authorization on 2026-10-02 to complete PR #405 end-to-end: integrate the canonical Founder engineering notification/action experience and deploy the affected masterapp-portal runtime after the exact-head required gates pass. Preserve successful compatible validation evidence, do not bypass any gate, and require final live provenance.",
+  "purpose": "Release the Founder engineering notification/action backend and web Action Center to masterapp-portal from the exact validated PR #405 revision. The same approved source revision also contains the iOS and Android native notification-center experience; native binaries must be built and distributed through their platform-native release authority because the web direct-release workflow cannot update installed mobile applications. Do not deploy ClientApp, Protect, Parfait, the static Website, or Cloudflare routing.",
+  "requestId": "founder-engineering-notification-actions-20261002",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-portal"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false

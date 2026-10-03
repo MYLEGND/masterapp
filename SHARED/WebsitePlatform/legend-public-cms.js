@@ -28,6 +28,17 @@
   const editorTicket = params.get('legendEdit') || '';
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const editorMode = !!editorTicket && !materializeMode;
+  const studioIsolationMode = editorMode || materializeMode;
+  if (studioIsolationMode) {
+    window.LEGEND_WEBSITE_STUDIO_MODE = true;
+    // Block production form mutations from the browser while Studio is active.
+    // Website Studio save/publish uses explicit fetch calls outside form submit.
+    document.addEventListener('submit', event => {
+      if (event.target?.closest?.('.legend-cms-editor')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
@@ -60,11 +71,15 @@
   let activeEditorPanel = 'content';
   let dirty = false;
   let sourceEditorDirty = false;
+  let sourceEditorBaseNode = null;
+  let canonicalSourceDocument = null;
+  let canonicalSourceRevision = null;
+  let templateRepairPending = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'minHeight', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
+  const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -159,18 +174,181 @@
     return doc;
   }
 
+  function isRuntimeShellChromeNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    return String(node.tag || '').toLowerCase()==='button' &&
+      classes.includes('nav-toggle') &&
+      !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
+  }
+
+  function wordsFromResourceName(value) {
+    if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
+    let path=value.trim();
+    try {
+      const url=new URL(path,location.origin);
+      path=url.pathname;
+    } catch { /* Keep a relative/static path as-is. */ }
+    let name=path.split('/').filter(Boolean).pop() || '';
+    try { name=decodeURIComponent(name); } catch { }
+    name=name.replace(/\.[a-z0-9]{1,8}$/i,'').replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!name) return '';
+    return name.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,160);
+  }
+
+  function defaultImageAlt(node) {
+    if (!node || typeof node !== 'object') return 'Website image';
+    // Explicit empty alt means decorative. Preserve that author decision.
+    if (node.alt != null) return String(node.alt).trim();
+    for (const candidate of [node.title,node.text]) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim().slice(0,160);
+    }
+    return wordsFromResourceName(node.mediaUrl) || 'Website image';
+  }
+
+  function defaultNavigationLabel(route,title) {
+    if(typeof title==='string' && title.trim()) return title.trim().slice(0,120);
+    if(route==='/') return 'Home';
+    const segment=String(route||'/').split('/').filter(Boolean).pop() || 'Page';
+    let value=segment;
+    try { value=decodeURIComponent(value); } catch { }
+    value=value.replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
+    if(!value) return 'Page';
+    return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
+  }
+
+  function isRetiredTemplateDecorationNode(node) {
+    if (!node || typeof node !== 'object') return false;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    const hasMeaning=
+      String(node.text || '').trim() ||
+      String(node.title || '').trim() ||
+      node.actionKey || node.href || node.alt ||
+      node.mediaAssetId || node.mediaUrl ||
+      node.systemKey || node.systemBinding || node.syncSourceId ||
+      node.dataBinding ||
+      (Array.isArray(node.signals) && node.signals.length) ||
+      (Array.isArray(node.children) && node.children.length);
+    if(hasMeaning) return false;
+    if(classes.includes('icon') || classes.includes('halo') || classes.includes('hero-mark')) return true;
+    return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
+  }
+
+  function canonicalizePassiveLinkNode(node) {
+    if (!node || isRuntimeShellChromeNode(node) || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
+    const href=String(node.href || '').trim();
+    if (href && href!=='#') return node;
+    // A destination-less anchor is presentation, not navigation. Converting it
+    // here repairs already-persisted early-v3 placeholder links instead of
+    // teaching readiness checks to ignore dead interactions.
+    node.type='text';
+    node.tag='span';
+    node.actionKey=null;
+    node.href=null;
+    node.target=null;
+    node.signals=[];
+    return node;
+  }
+
+  function canonicalizePlatformBrandGeometry(node) {
+    if (!node || typeof node!=='object') return node;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    if (!classes.includes('brand') && !classes.includes('brand-wordmark')) return node;
+    const clear=style=>{
+      if (!style || typeof style!=='object') return;
+      delete style.widthPercent;
+      delete style.offsetXPercent;
+    };
+    clear(node.style);
+    Object.values(node.breakpointStyles || {}).forEach(clear);
+    return node;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
-    return input.filter(node => node && typeof node === 'object').map(node => ({
-      ...node,
-      children: normalizeCompositionNodes(node.children),
-      style: node.style && typeof node.style === 'object' ? node.style : {},
-      breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
-      layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
-      breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
-      animations: Array.isArray(node.animations) ? node.animations : [],
-      signals: Array.isArray(node.signals) ? node.signals : []
-    }));
+    return input
+      .filter(node => node && typeof node === 'object')
+      .map(node => {
+        const normalized={
+          ...node,
+          children: normalizeCompositionNodes(node.children),
+          style: node.style && typeof node.style === 'object' ? node.style : {},
+          breakpointStyles: node.breakpointStyles && typeof node.breakpointStyles === 'object' ? node.breakpointStyles : {},
+          layout: node.layout && typeof node.layout === 'object' ? node.layout : {},
+          breakpointLayouts: node.breakpointLayouts && typeof node.breakpointLayouts === 'object' ? node.breakpointLayouts : {},
+          animations: Array.isArray(node.animations) ? node.animations : [],
+          signals: Array.isArray(node.signals) ? node.signals : []
+        };
+        if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        canonicalizePassiveLinkNode(normalized);
+        canonicalizePlatformBrandGeometry(normalized);
+        return normalized;
+      })
+      // Menu toggles are reconstructed runtime chrome. They were accidentally
+      // persisted by early v3 materialization and have no website destination.
+      .filter(node => !isRuntimeShellChromeNode(node))
+      // Repair early v3 drafts that persisted presentation-only template wrappers
+      // after their SVG/pseudo-element contents were deliberately excluded.
+      .filter(node => !isRetiredTemplateDecorationNode(node));
+  }
+
+  function applyCanonicalHeaderTypographyDefaults(node) {
+    if (!node || typeof node!=='object') return node;
+    node.style ||= {};
+    const tag=String(node.tag || '').toLowerCase();
+    const isBrandTitle=
+      node.systemBinding==='business_name' ||
+      (SITE_KEY==='legend' && tag==='strong' && String(node.text || '').trim()==='LEGEND®');
+    if(isBrandTitle){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=3.5;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+      node.breakpointStyles ||= {};
+      node.breakpointStyles.mobile ||= {};
+      node.breakpointStyles.tablet ||= {};
+      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1.35;
+      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
+      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.8;
+      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
+    }
+    if(node.systemKey==='primary_navigation'){
+      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=1.6;
+      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
+      node.breakpointStyles ||= {};
+      node.breakpointStyles.mobile ||= {};
+      node.breakpointStyles.tablet ||= {};
+      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1;
+      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
+      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.15;
+      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
+    }
+    return node;
+  }
+
+  function normalizeHeaderComposition(input) {
+    const roots=normalizeCompositionNodes(input);
+    let primarySeen=false;
+    const clean=nodes => {
+      const result=[];
+      for(const node of nodes || []) {
+        applyCanonicalHeaderTypographyDefaults(node);
+        const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
+        const primary=node?.systemKey==='primary_navigation';
+        const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
+        if(templateNav && SITE_KEY==='business') continue;
+        if(primary) {
+          if(primarySeen) continue;
+          primarySeen=true;
+          // Page links are a projection of versioned page navigation metadata,
+          // not a second persisted list inside the shell.
+          if(SITE_KEY==='business') node.children=[];
+        } else {
+          node.children=clean(node.children);
+        }
+        result.push(node);
+      }
+      return result;
+    };
+    return clean(roots);
   }
 
   function normalizeControlPresentation(input) {
@@ -184,19 +362,39 @@
     };
   }
 
+  function cleanBusinessPreviewTitle(value) {
+    if (typeof value !== 'string') return null;
+    if (SITE_KEY !== 'business') return value;
+    const suffix=' | Business website preview';
+    return value.endsWith(suffix) ? value.slice(0,-suffix.length) : value;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const route = normalizePageRoute(key);
+      const rawRoute = normalizePageRoute(key);
+      const route = canonicalSiteRoute(rawRoute);
       if (!route) continue;
+      // Protect v2 could persist the browser-owned /a/{slug}/... path. V3 owns
+      // route identity independent of agent URL scope, so collapse those rows
+      // into the one canonical page key and never serialize the prefixed copy.
+      if (pages[route] && rawRoute !== route) continue;
+      const title=cleanBusinessPreviewTitle(value.title);
+      const navigation=value.navigation && typeof value.navigation === 'object'
+        ? {...value.navigation}
+        : {showInNavigation:true,order:0,isDeleted:false};
+      navigation.showInNavigation=navigation.showInNavigation!==false;
+      navigation.isDeleted=navigation.isDeleted===true;
+      navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
+      if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
+        navigation.label=defaultNavigationLabel(route,title);
       pages[route] = {
-        title: typeof value.title === 'string' ? value.title : null,
+        title,
         description: typeof value.description === 'string' ? value.description : null,
-        navigation: value.navigation && typeof value.navigation === 'object'
-          ? {...value.navigation}
-          : {showInNavigation:true,order:0,isDeleted:false},
+        navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
+        systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
         composition: normalizeCompositionNodes(value.composition)
       };
     }
@@ -217,7 +415,7 @@
       faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
       breakpoints:normalizeBreakpoints(input?.breakpoints),
       shell:{
-        header:normalizeCompositionNodes(input?.shell?.header),
+        header:normalizeHeaderComposition(input?.shell?.header),
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
@@ -248,9 +446,30 @@
     return route;
   }
 
+  function protectCanonicalPathname(pathname) {
+    if (SITE_KEY !== 'protect') return pathname;
+    const prefixes = [];
+    const pagePrefix = String(context.pagePrefix || '').trim().replace(/\/+$/, '');
+    if (pagePrefix && pagePrefix !== '/') prefixes.push(pagePrefix);
+    const agentSlug = String(managementPayload?.agentSlug || AGENT_SLUG || '').trim();
+    if (agentSlug) prefixes.push('/a/' + encodeURIComponent(agentSlug));
+    for (const prefix of [...new Set(prefixes)].sort((left, right) => right.length - left.length)) {
+      if (pathname === prefix) return '/';
+      if (pathname.startsWith(prefix + '/')) return pathname.slice(prefix.length) || '/';
+    }
+    return pathname;
+  }
+
+  function canonicalSiteRoute(value) {
+    const normalized = normalizePageRoute(value);
+    if (!normalized) return null;
+    const scoped = protectCanonicalPathname(normalized);
+    return normalizePageRoute(scoped) || normalized;
+  }
+
   function currentPageRoute() {
-    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
-    return normalizePageRoute(pathname) || '/';
+    const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    return canonicalSiteRoute(browserPath) || '/';
   }
 
   function pageState() {
@@ -260,7 +479,7 @@
       documentState.pages[route]={
         title:null,
         description:null,
-        navigation:{showInNavigation:true,order:0,isDeleted:false},
+        navigation:{label:defaultNavigationLabel(route,null),showInNavigation:true,order:0,isDeleted:false},
         dynamicBinding:null,
         composition:[]
       };
@@ -269,6 +488,35 @@
     page.composition ||= [];
     page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
     return page;
+  }
+
+  function pageUsesSystemTemplate(page = pageState()) {
+    return SITE_KEY === 'protect' &&
+      typeof page?.systemTemplateKey === 'string' &&
+      page.systemTemplateKey.startsWith('protect_template:');
+  }
+
+  function containsProtectedRuntimeForm(nodes) {
+    let found=false;
+    walkComposition(nodes,node=>{
+      if(String(node?.systemKey || '').startsWith('protect_runtime_form:')) {
+        found=true;
+        return false;
+      }
+    });
+    return found;
+  }
+
+  function applyTemplateBackedCompositionPage() {
+    const page=pageState();
+    walkComposition(page.composition || [],node=>{
+      const el=findEditableElement(node.id);
+      if(!el) return;
+      el.dataset.cmsCompositionId=node.id;
+      applyCompositionNode(el,node);
+      if(el.tagName==='FORM' || String(node.systemKey || '').startsWith('protect_runtime_form:'))
+        applyFormFieldPresentations(el,node);
+    });
   }
 
   function usesCanonicalComposition() {
@@ -359,6 +607,11 @@
 
   function editorSelectionTarget(node) {
     if (!node?.closest) return null;
+    const locked=node.closest('[data-cms-locked="true"]');
+    if(locked){
+      const parent=locked.parentElement?.closest?.('[data-cms-editable="true"]');
+      return parent instanceof HTMLElement ? parent : null;
+    }
     const entity = node.closest('[data-business-name][data-cms-editable="true"],[data-business-field][data-cms-editable="true"]');
     if (entity instanceof HTMLElement) return entity;
     const anchor = node.closest('a[data-cms-editable="true"]');
@@ -375,6 +628,35 @@
       document.querySelector('.site-footer')
     ].filter(Boolean);
 
+    // Missing alt is corrected at the shared presentation boundary before the
+    // DOM can be materialized into canonical v3. Explicit alt="" remains a
+    // valid decorative-image decision.
+    document.querySelectorAll('main img').forEach(image=>{
+      if(image.hasAttribute('alt')) return;
+      image.setAttribute('alt',defaultImageAlt({
+        type:'image',
+        title:image.getAttribute('aria-label') || image.getAttribute('title'),
+        mediaUrl:image.getAttribute('src')
+      }));
+    });
+
+    // Stable system-form identities are assigned before generic DOM IDs.
+    document.querySelectorAll('[data-legend-public-inquiry-form]').forEach((mount,index)=>{
+      mount.dataset.cmsId = index ? 'form.canonical_inquiry.' + (index + 1) : 'form.canonical_inquiry';
+      mount.dataset.cmsEditable = 'true';
+      mount.dataset.cmsSystemForm = 'canonical_inquiry';
+      rememberOriginal(mount);
+    });
+    if (SITE_KEY === 'protect') {
+      document.querySelectorAll('form[data-form-key]:not([data-website-inquiry])').forEach((form,index)=>{
+        const formKey=safeId(form.dataset.formKey || form.id || ('runtime-' + (index + 1))) || ('runtime-' + (index + 1));
+        form.dataset.cmsId='runtime.form.'+formKey;
+        form.dataset.cmsEditable='true';
+        form.dataset.cmsSystemForm='protect_runtime_form:'+formKey;
+        rememberOriginal(form);
+      });
+    }
+
     const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
@@ -387,7 +669,7 @@
 
     let counter = 0, addedCounter = 0;
     roots.forEach(root => {
-      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer').forEach(el => {
+      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer,form,fieldset').forEach(el => {
         if (!canEditElement(el)) return;
         if (!['IMG','VIDEO','A','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && el.children.length > 0) return;
         if (!el.dataset.cmsId) {
@@ -405,17 +687,99 @@
         }
       });
     });
-    document.querySelectorAll('main form, main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
+    document.querySelectorAll('main form:not([data-cms-composition-id]), main input:not([type="hidden"]):not([type="password"]), main select, main textarea').forEach((node, index) => {
       if (node.closest('[data-cms-locked="true"]')) return;
       node.dataset.cmsId ||= `signal:${pageKey}.${safeId(node.tagName)}.${safeId(node.id || node.name || 'field')}.${index}`;
+      node.dataset.cmsFieldKey ||= safeId(node.name || node.id || ('field-'+index));
       node.dataset.cmsSignalOnly = 'true'; node.dataset.cmsEditable = 'true';
       rememberOriginal(node);
     });
   }
 
+  function selectedSignalContext() {
+    if (!selected || legacyMigration) return null;
+    const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
+      ? formFieldKey(selected)
+      : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id]') : null;
+    const elementId=fieldKey
+      ? form?.dataset?.cmsCompositionId
+      : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
+    if(!elementId) return null;
+    const model=compositionNode(elementId);
+    if(!model) return null;
+    const bindings=fieldKey
+      ? (model.fieldSignals?.[fieldKey] || [])
+      : (model.signals || []);
+    return {elementId,fieldKey,model,bindings};
+  }
+
   function selectedSignalElementId() {
-    if (!selected) return null;
-    return selected.dataset.cmsCompositionId || selected.dataset.cmsId || null;
+    return selectedSignalContext()?.elementId || null;
+  }
+
+  async function persistSelectedSignals(nextSignals) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const status=document.getElementById('legend-cms-status');
+
+    if(dirty){
+      if(status) status.textContent='Saving design changes before updating Analytics mapping…';
+      const saved=await save(false);
+      if(!saved || dirty) return false;
+    }
+
+    const response=await fetch(`${API_BASE}/api/website-content/manage/signals`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath:currentPageRoute(),
+        elementId:context.elementId,
+        fieldKey:context.fieldKey,
+        signals:nextSignals
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while updating this Analytics mapping.'))
+        return false;
+      if(status) status.textContent=payload.message || payload.error || `Signal update failed (${response.status}).`;
+      return false;
+    }
+    if(payload.source!=='website_signal_configuration'){
+      if(status) status.textContent='Signal update response was invalid.';
+      return false;
+    }
+
+    documentState=normalizeDocument(payload.document || documentState);
+    revision=payload.revision ?? revision;
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    dirty=false;
+    applyDocument(documentState);
+
+    let refreshed=findEditableElement(context.elementId);
+    if(context.fieldKey && refreshed){
+      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
+        .find(control=>formFieldKey(control)===context.fieldKey) || null;
+    }
+    if(refreshed) setSelected(refreshed);
+    else setSelected(null);
+    if(status) status.textContent='Analytics mapping saved to the canonical draft.';
+    return true;
+  }
+
+  async function mutateSelectedSignals(bindingId, mutation) {
+    const context=selectedSignalContext();
+    if(!context) return false;
+    const next=cloneCanonicalValue(context.bindings || []);
+    const binding=bindingId ? next.find(value=>value.id===bindingId) : null;
+    if(bindingId && !binding) return false;
+    mutation(binding,next);
+    return persistSelectedSignals(next);
   }
 
   function signalDiagnosticHost(bindingId) {
@@ -444,8 +808,8 @@
   }
 
   async function runSignalDryRun(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Running private dry-run validation…');
     try {
@@ -456,8 +820,9 @@
           ticket: editorTicket,
           expectedRevision: revision,
           pagePath: currentPageRoute(),
-          elementId,
-          bindingId: binding.id
+          elementId:context.elementId,
+          bindingId:binding.id,
+          fieldKey:context.fieldKey
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -483,16 +848,17 @@
   }
 
   async function loadSignalHealth(binding) {
-    const elementId = selectedSignalElementId();
-    if (!binding?.id || !elementId) return;
+    const context=selectedSignalContext();
+    if (!binding?.id || !context?.elementId) return;
     if (!await ensureSavedForSignalInspection(binding.id)) return;
     renderSignalDiagnosticMessage(binding.id, 'Loading destination health and published delivery evidence…');
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage/signals/health`);
       url.searchParams.set('ticket', editorTicket);
       url.searchParams.set('pagePath', currentPageRoute());
-      url.searchParams.set('elementId', elementId);
-      url.searchParams.set('bindingId', binding.id);
+      url.searchParams.set('elementId',context.elementId);
+      url.searchParams.set('bindingId',binding.id);
+      if(context.fieldKey) url.searchParams.set('fieldKey',context.fieldKey);
       const response = await fetch(url, { cache:'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || payload.error || `Signal health failed (${response.status})`);
@@ -541,105 +907,145 @@
   }
 
   function renderSignalControls() {
-    const host = document.getElementById('legend-cms-signal-controls');
-    if (!host) return;
+    const host=document.getElementById('legend-cms-signal-controls');
+    if(!host) return;
     host.replaceChildren();
-    const paragraph = text => { const node = document.createElement('p'); node.textContent = text; host.appendChild(node); };
-    if (!selected) { paragraph('Select a button, form, field, or section on the page.'); return; }
-    if (!signalCatalog) { paragraph('The event catalog could not be loaded. Reopen the editor to try again.'); return; }
-    const type = selected.tagName;
-    const triggers = ['viewed'];
-    if (['A','BUTTON'].includes(type)) triggers.push('click');
-    if (type === 'FORM') triggers.push('form_started','submit_attempt','submission_saved');
-    if (['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
-    if (type === 'INPUT' && selected.type === 'tel') triggers.push('field_completed');
-    if (selected.dataset.cmsSection) triggers.push('scroll_threshold');
-    const candidates = signalCatalog.events.filter(option => !option.requiresServerOutcome && option.triggers.some(trigger => triggers.includes(trigger)));
-    const models = selectedWebsiteModel();
-    const bindings = models?.signals || [];
-    paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
-    if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
-    const managedActionKey = selected.dataset.websiteActionKey;
-    const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
+    const paragraph=text=>{const node=document.createElement('p');node.textContent=text;host.appendChild(node);};
+    if(!selected){paragraph('Select a button, form, field, or section on the page.');return;}
+    if(!signalCatalog){paragraph('The event catalog could not be loaded. Reopen the editor to try again.');return;}
 
-      || null;
-    if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
-      host.appendChild(automaticHelp);
-      const automatic = document.createElement('div'); automatic.className = 'legend-cms-signal-presets';
-      const names = ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead'];
-      for (const name of names) {
-        const option = signalCatalog.events.find(value => value.name === name);
-        if (!option) continue;
-        const row = document.createElement('div');
-        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : 'analytics + eligible configured destinations'}`;
+    const context=selectedSignalContext();
+    if(!context){paragraph('This element does not expose canonical signal configuration.');return;}
+
+    const type=selected.tagName;
+    const triggers=['viewed'];
+    if(['A','BUTTON'].includes(type)) triggers.push('click');
+    if(type==='FORM') triggers.push('form_started','submit_attempt','submission_saved');
+    if(['INPUT','SELECT','TEXTAREA'].includes(type)) triggers.push('field_started','validation_failed');
+    if(type==='INPUT' && selected.type==='tel') triggers.push('field_completed');
+    if(selected.dataset.cmsSection) triggers.push('scroll_threshold');
+
+    const candidates=signalCatalog.events.filter(option=>
+      !option.requiresServerOutcome &&
+      option.triggers.some(trigger=>triggers.includes(trigger)));
+    const bindings=context.bindings || [];
+    paragraph(bindings.length
+      ? `${bindings.length} interaction mapping${bindings.length===1?'':'s'}`
+      : 'No signal. This element has no configured marketing event.');
+    if(!signalCatalog.runtimeEnabled)
+      paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
+
+    const managedActionKey=selected.dataset.websiteActionKey;
+    const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
+    if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
+      const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent='No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
+      host.appendChild(help);
+      const automatic=document.createElement('div');automatic.className='legend-cms-signal-presets';
+      for(const name of ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead']){
+        const option=signalCatalog.events.find(value=>value.name===name);
+        if(!option) continue;
+        const row=document.createElement('div');
+        row.textContent=`${name} · automatic · ${option.requiresServerOutcome?'verified server outcome':'analytics + eligible configured destinations'}`;
         automatic.appendChild(row);
       }
       host.appendChild(automatic);
-    } else if (managedAction) {
-      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic action analytics';
-      host.appendChild(automaticTitle);
-      const automaticHelp = document.createElement('p');
-      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
-      host.appendChild(automaticHelp);
+    }else if(managedAction){
+      const title=document.createElement('strong');title.textContent='Automatic action analytics';host.appendChild(title);
+      const help=document.createElement('p');
+      help.textContent=`${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}. No manual mapping is required.`;
+      host.appendChild(help);
     }
-    const addSelect = (labelText, values, value, action) => {
-      const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
-      const select = document.createElement('select');
-      for (const [key, text] of values) { const option = document.createElement('option'); option.value = key; option.textContent = text; select.appendChild(option); }
-      select.value = value; select.addEventListener('change', () => { checkpoint(); action(select.value); markDirty(); renderSignalControls(); });
-      label.appendChild(select); host.appendChild(label); return select;
+
+    const addSelect=(labelText,values,value,action)=>{
+      const label=document.createElement('label');label.className='legend-cms-group';label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const [key,text] of values){const option=document.createElement('option');option.value=key;option.textContent=text;select.appendChild(option);}
+      select.value=value;
+      select.addEventListener('change',()=>void action(select.value));
+      label.appendChild(select);host.appendChild(label);return select;
     };
-    for (const binding of bindings) {
-      const definition = signalCatalog.events.find(x => x.name === binding.eventName);
-      addSelect('Send', [['off','Do not send'],['analytics','Analytics only'], ['destinations','Analytics + configured destinations']], binding.deliveryMode === 'meta' ? 'destinations' : binding.deliveryMode, value => binding.deliveryMode = value);
-      const available = candidates.flatMap(option => option.triggers.filter(trigger => triggers.includes(trigger)).map(trigger => [option.name + ':' + trigger, `${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
-      addSelect('Event and trigger', available, binding.eventName + ':' + binding.trigger, value => {
-        const [name, trigger] = value.split(':'); binding.eventName = name; binding.trigger = trigger; binding.matchingFields = [];
-        binding.actionKey = signalCatalog.events.find(x => x.name === name)?.actionKey || null;
-      });
-      const label = document.createElement('label'), once = document.createElement('input'); once.type = 'checkbox'; once.checked = binding.oncePerSession;
-      once.addEventListener('change', () => { checkpoint(); binding.oncePerSession = once.checked; markDirty(); }); label.append(once, document.createTextNode(' Once per session')); host.appendChild(label);
-      if (definition?.requiresServerOutcome) {
+
+    for(const binding of bindings){
+      const definition=signalCatalog.events.find(x=>x.name===binding.eventName);
+      addSelect('Send',
+        [['off','Do not send'],['analytics','Analytics only'],['destinations','Analytics + configured destinations']],
+        binding.deliveryMode==='meta'?'destinations':binding.deliveryMode,
+        value=>mutateSelectedSignals(binding.id,draft=>{draft.deliveryMode=value;}));
+
+      const available=candidates.flatMap(option=>
+        option.triggers.filter(trigger=>triggers.includes(trigger))
+          .map(trigger=>[option.name+':'+trigger,`${option.displayLabel || option.name} · ${trigger.replaceAll('_',' ')}`]));
+      addSelect('Event and trigger',available,binding.eventName+':'+binding.trigger,
+        value=>mutateSelectedSignals(binding.id,draft=>{
+          const [name,trigger]=value.split(':');
+          draft.eventName=name;
+          draft.trigger=trigger;
+          draft.matchingFields=[];
+          draft.actionKey=signalCatalog.events.find(x=>x.name===name)?.actionKey || null;
+        }));
+
+      const onceLabel=document.createElement('label');
+      const once=document.createElement('input');once.type='checkbox';once.checked=binding.oncePerSession;
+      once.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{draft.oncePerSession=once.checked;}));
+      onceLabel.append(once,document.createTextNode(' Once per session'));host.appendChild(onceLabel);
+
+      if(definition?.requiresServerOutcome){
         paragraph('Sent only after the backend confirms this outcome. Customer matching requires advertising consent.');
-        for (const field of signalCatalog.matchingFields) {
-          const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox'; input.checked = binding.matchingFields?.includes(field);
-          input.addEventListener('change', () => { checkpoint(); const fields = new Set(binding.matchingFields || []); input.checked ? fields.add(field) : fields.delete(field); binding.matchingFields = [...fields]; markDirty(); });
-          label.append(input, document.createTextNode(' Match approved ' + field)); host.appendChild(label);
+        for(const field of signalCatalog.matchingFields){
+          const label=document.createElement('label'),input=document.createElement('input');
+          input.type='checkbox';input.checked=binding.matchingFields?.includes(field);
+          input.addEventListener('change',()=>void mutateSelectedSignals(binding.id,draft=>{
+            const fields=new Set(draft.matchingFields || []);
+            input.checked ? fields.add(field) : fields.delete(field);
+            draft.matchingFields=[...fields];
+          }));
+          label.append(input,document.createTextNode(' Match approved '+field));host.appendChild(label);
         }
       }
-      const diagnostics = document.createElement('div');
-      diagnostics.className = 'legend-cms-signal-diagnostics';
-      diagnostics.dataset.signalDiagnostics = binding.id;
-      const diagnosticIntro = document.createElement('p');
-      diagnosticIntro.textContent = 'Destination health and delivery evidence have not been checked for this mapping.';
-      diagnostics.appendChild(diagnosticIntro);
-      const diagnosticActions = document.createElement('div'); diagnosticActions.className = 'legend-cms-row';
-      const testButton = document.createElement('button'); testButton.type = 'button'; testButton.textContent = 'Run private test';
-      testButton.dataset.signalTest = binding.id;
-      testButton.addEventListener('click', () => void runSignalDryRun(binding));
-      const healthButton = document.createElement('button'); healthButton.type = 'button'; healthButton.textContent = 'Refresh delivery history';
-      healthButton.dataset.signalHealth = binding.id;
-      healthButton.addEventListener('click', () => void loadSignalHealth(binding));
-      diagnosticActions.append(testButton, healthButton);
-      diagnostics.appendChild(diagnosticActions);
-      host.appendChild(diagnostics);
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
-      remove.addEventListener('click', () => { checkpoint(); models.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
+
+      const diagnostics=document.createElement('div');
+      diagnostics.className='legend-cms-signal-diagnostics';
+      diagnostics.dataset.signalDiagnostics=binding.id;
+      const intro=document.createElement('p');
+      intro.textContent='Destination health and delivery evidence have not been checked for this mapping.';
+      diagnostics.appendChild(intro);
+      const actions=document.createElement('div');actions.className='legend-cms-row';
+      const testButton=document.createElement('button');testButton.type='button';testButton.textContent='Run private test';
+      testButton.dataset.signalTest=binding.id;testButton.addEventListener('click',()=>void runSignalDryRun(binding));
+      const healthButton=document.createElement('button');healthButton.type='button';healthButton.textContent='Refresh delivery history';
+      healthButton.dataset.signalHealth=binding.id;healthButton.addEventListener('click',()=>void loadSignalHealth(binding));
+      actions.append(testButton,healthButton);diagnostics.appendChild(actions);host.appendChild(diagnostics);
+
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Remove mapping';
+      remove.addEventListener('click',()=>void persistSelectedSignals(bindings.filter(value=>value.id!==binding.id)));
+      host.appendChild(remove);
     }
-    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
-    const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
-    add.hidden = automaticContract;
-    add.disabled = automaticContract || bindings.length >= 8 || !candidates.length;
-    add.addEventListener('click', () => {
-      const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
-      if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
-      checkpoint(); models.signals ||= []; models.signals.push({ id: crypto.randomUUID().replaceAll('-',''), eventName: option.event.name, actionKey: option.event.actionKey, trigger: option.trigger, deliveryMode: 'off', oncePerSession: true, matchingFields: [] });
-      markDirty(); renderSignalControls();
-    }); host.appendChild(add);
+
+    const add=document.createElement('button');add.type='button';add.textContent='Add advanced custom mapping';
+    const automaticContract=(type==='FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
+    add.hidden=automaticContract;
+    add.disabled=automaticContract || bindings.length>=8 || !candidates.length;
+    add.addEventListener('click',()=>{
+      const option=candidates.flatMap(candidate=>
+        candidate.triggers.filter(trigger=>
+          triggers.includes(trigger) && !bindings.some(binding=>binding.trigger===trigger))
+          .map(trigger=>({event:candidate,trigger})))[0];
+      if(!option){paragraph('All supported triggers for this element are already mapped.');return;}
+      const next=cloneCanonicalValue(bindings);
+      next.push({
+        id:crypto.randomUUID().replaceAll('-',''),
+        eventName:option.event.name,
+        actionKey:option.event.actionKey,
+        trigger:option.trigger,
+        deliveryMode:'off',
+        oncePerSession:true,
+        matchingFields:[]
+      });
+      void persistSelectedSignals(next);
+    });
+    host.appendChild(add);
   }
 
   function applyTheme(theme) {
@@ -692,11 +1098,113 @@
     return candidates[0]?.key || null;
   }
 
-  function effectiveStyle(model) {
+  function canonicalResponsiveRole(model, el = null) {
+    const type=String(model?.type || '').toLowerCase();
+    const tag=String(model?.tag || el?.tagName || '').toLowerCase();
+    const classes=new Set(String(model?.className || el?.className || '').split(/\s+/).filter(Boolean));
+    if(el?.closest?.('.site-header,.site-footer')) return 'shell';
+    if(classes.has('eyebrow') || classes.has('kicker')) return 'kicker';
+    if(classes.has('hero-copy') || classes.has('section-head')) return 'narrative';
+    if(classes.has('actions')) return 'actions';
+    if(classes.has('hero-mark') || classes.has('media') || classes.has('visual')) return 'media';
+    if(classes.has('card-grid') || classes.has('steps') || classes.has('standard-grid')) return 'collection';
+    if(classes.has('statement') || classes.has('pullquote') || classes.has('testimonial') || classes.has('proof') || classes.has('trust') || tag==='blockquote') return 'proof';
+    if(type==='heading' || /^h[1-6]$/.test(tag)) return 'heading';
+    if(type==='cta' || type==='link' || tag==='a' || tag==='button') return 'action';
+    if(type==='image' || type==='video' || tag==='img' || tag==='video') return 'media';
+    if(type==='form' || tag==='form') return 'form';
+    if(type==='text') return 'copy';
+    if(type==='section') return 'section';
+    if(type==='container') return 'group';
+    return 'content';
+  }
+
+  function canonicalResponsiveBodyElement(el) {
+    return !!el?.closest?.('main') && !el.closest?.('.site-header,.site-footer');
+  }
+
+  function applyCanonicalResponsiveStyle(model, el, key, style, responsive) {
+    if(!key) return style;
+    const explicit=responsive && typeof responsive==='object' ? responsive : {};
+    const has=field=>Object.hasOwn(explicit,field);
+    const role=canonicalResponsiveRole(model,el);
+
+    // Header typography has its own bounded responsive defaults so the strong
+    // desktop brand/navigation scale never consumes the mobile viewport.
+    if(role==='shell'){
+      const brand=model?.systemBinding==='business_name' ||
+        (SITE_KEY==='legend' && String(model?.tag || '').toLowerCase()==='strong' && String(model?.text || '').trim()==='LEGEND®');
+      if(brand){
+        const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+      }
+      if(model?.systemKey==='primary_navigation'){
+        const ceiling=key==='mobile' ? 1 : key==='tablet' ? 1.15 : 1.6;
+        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+      }
+      return style;
+    }
+
+    if(!canonicalResponsiveBodyElement(el)) return style;
+
+    if(key==='mobile'){
+      const flowRole=['section','kicker','heading','narrative','copy','proof','actions','action','form','collection','group','content'].includes(role);
+      const mediaRole=role==='media';
+
+      // Mobile flow geometry is a canonical safety invariant. Historical or
+      // explicit breakpoint values may still control visual styling, but they
+      // cannot push primary content out of frame, overlap adjacent content, or
+      // turn conversion actions into fixed-size floating shapes.
+      if(flowRole || mediaRole){
+        style.offsetXPercent=0;
+        style.offsetYPx=0;
+        style.widthPercent=100;
+        if(role!=='embed') delete style.heightPx;
+        delete style.minWidthPx;
+        if(!mediaRole) delete style.maxWidthPx;
+        style.marginTop=0;
+        style.marginBottom=0;
+        style.marginLeft=0;
+        style.marginRight=0;
+        delete style.minHeightPx;
+        if(!mediaRole) delete style.maxHeightPx;
+      } else {
+        if(!has('offsetXPercent')) style.offsetXPercent=0;
+        if(!has('offsetYPx')) style.offsetYPx=0;
+      }
+      if(spacingNumber(style.paddingLeft)) style.paddingLeft=Math.min(28,Number(style.paddingLeft));
+      if(spacingNumber(style.paddingRight)) style.paddingRight=Math.min(28,Number(style.paddingRight));
+      if(spacingNumber(style.paddingTop)) style.paddingTop=Math.min(40,Number(style.paddingTop));
+      if(spacingNumber(style.paddingBottom)) style.paddingBottom=Math.min(40,Number(style.paddingBottom));
+      if(spacingNumber(style.fontSize)){
+        const ceiling=role==='heading' ? 54 : role==='kicker' ? 14 : role==='action' ? 20 : 22;
+        style.fontSize=Math.min(ceiling,Number(style.fontSize));
+      }
+      if(positiveNumber(style.fontScale)){
+        const ceiling=role==='heading' ? 1.35 : role==='kicker' ? 1.05 : role==='action' ? 1.05 : 1.15;
+        style.fontScale=Math.min(ceiling,Number(style.fontScale));
+      }
+      if(mediaRole){
+        const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
+        style.maxWidthPx=Math.min(560,requestedMax);
+        if(positiveNumber(style.maxHeightPx)) style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
+      }
+    } else if(key==='tablet'){
+      if(!has('offsetXPercent')) style.offsetXPercent=0;
+      if(!has('offsetYPx')) style.offsetYPx=0;
+      if(role==='action' && !has('widthPercent') && positiveNumber(style.widthPercent) && Number(style.widthPercent)<35)
+        style.widthPercent=100;
+    }
+
+    return style;
+  }
+
+  function effectiveStyle(model, el = null) {
     const base = model?.style && typeof model.style === 'object' ? model.style : {};
     const key = activeBreakpoint();
     const responsive = key && model?.breakpointStyles && typeof model.breakpointStyles[key] === 'object' ? model.breakpointStyles[key] : null;
     const style = responsive ? { ...base, ...responsive } : { ...base };
+    applyCanonicalResponsiveStyle(model,el,key,style,responsive);
     // Stored width and in-section position are independent. Rendering constrains
     // the effective width to the remaining section space, so movement stays free
     // without creating horizontal page overflow.
@@ -707,11 +1215,56 @@
     return style;
   }
 
-  function effectiveLayout(model) {
+  function effectiveLayout(model, el = null) {
     const base = model?.layout && typeof model.layout === 'object' ? model.layout : { mode:'free' };
     const key = activeBreakpoint();
     const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
-    return responsive ? { ...base, ...responsive } : base;
+    const layout=responsive ? { ...base, ...responsive } : { ...base };
+    if(!key || !canonicalResponsiveBodyElement(el)) return layout;
+    const explicit=responsive && typeof responsive==='object' ? responsive : {};
+    const has=field=>Object.hasOwn(explicit,field);
+    const hasChildren=Array.isArray(model?.children) && model.children.length>0;
+
+    if(key==='mobile' && hasChildren){
+      if(layout.mode==='free' || !layout.mode){
+        // Free-canvas positioning remains a desktop/base authoring capability.
+        // Published mobile content always participates in document flow so
+        // stored offsets cannot overlap or hide conversion content.
+        layout.mode='stack';
+        layout.direction='column';
+      } else if(layout.mode==='grid'){
+        if(!has('columns')) layout.columns=1;
+      } else if(layout.mode==='stack'){
+        layout.direction='column';
+      } else if(layout.mode==='flex' && !has('direction')){
+        layout.direction='column';
+      }
+      if(!has('gapPx')) layout.gapPx=Math.max(12,Math.min(28,Number(layout.gapPx)||18));
+      if((layout.mode==='stack' || (layout.mode==='flex' && layout.direction!=='row')) && !has('alignItems')) layout.alignItems='stretch';
+      if(layout.mode==='flex' && !has('wrap')) layout.wrap='nowrap';
+    } else if(key==='tablet' && hasChildren){
+      if(layout.mode==='grid' && !has('columns')) layout.columns=Math.min(2,Math.max(1,Number(layout.columns)||2));
+      if(layout.mode==='flex' && layout.direction==='row' && !has('wrap')) layout.wrap='wrap';
+    } else if(key==='desktop' && hasChildren){
+      if(layout.mode==='grid' && !has('columns')) layout.columns=Math.min(4,Math.max(1,Number(layout.columns)||4));
+      if(layout.mode==='flex' && layout.direction==='row' && !has('wrap')) layout.wrap='wrap';
+    }
+    return layout;
+  }
+
+  function applyCanonicalResponsiveAttributes(el, model) {
+    if(!el) return;
+    if(!canonicalResponsiveBodyElement(el)){
+      delete el.dataset.legendContentRole;
+      delete el.dataset.legendResponsiveFlow;
+      return;
+    }
+    const role=canonicalResponsiveRole(model,el);
+    el.dataset.legendContentRole=role;
+    const flow=Array.isArray(model?.children) && model.children.length>0 &&
+      ['section','container'].includes(String(model?.type || '').toLowerCase());
+    if(flow) el.dataset.legendResponsiveFlow='true';
+    else delete el.dataset.legendResponsiveFlow;
   }
 
   function applyLayout(el, layout) {
@@ -832,12 +1385,23 @@
     }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
-    ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
-    // A chosen solid color replaces inherited background imagery in editor and published rendering.
-    if (style.backgroundColor) el.style.backgroundImage = 'none';
-    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
+    ['color','backgroundColor','fontFamily','fontWeight','objectFit','borderColor','borderStyle','textTransform','textDecoration'].forEach(key => { if (style[key] != null && style[key] !== '') el.style[key] = style[key]; });
+    if (style.backgroundGradient) el.style.backgroundImage=style.backgroundGradient;
+    else if (style.backgroundColor) el.style.backgroundImage = 'none';
+    ['fontSize','paddingLeft','paddingRight','borderRadius','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx'].forEach(key => {
+      if (spacingNumber(style[key])) {
+        const cssKey={minWidthPx:'minWidth',maxWidthPx:'maxWidth',minHeightPx:'minHeight',maxHeightPx:'maxHeight'}[key] || key;
+        el.style[cssKey]=`${style[key]}px`;
+      }
+    });
+    if (Number.isFinite(Number(style.letterSpacing)))
+      el.style.letterSpacing=`${Number(style.letterSpacing)}px`;
+    ['marginTop','marginBottom','marginLeft','marginRight'].forEach(key => { if(Number.isFinite(Number(style[key]))) el.style[key]=`${Number(style[key])}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
-    if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
+    if (style.opacity != null && Number.isFinite(Number(style.opacity))) el.style.opacity=String(style.opacity);
+    if (positiveNumber(style.aspectRatio)) el.style.aspectRatio=String(style.aspectRatio);
+    if (style.boxShadow) el.style.boxShadow=style.boxShadow;
+    if (style.objectPosition && (el instanceof HTMLImageElement || el instanceof HTMLVideoElement)) el.style.objectPosition = style.objectPosition;
   }
 
   function setContentText(el, text, preserveWhitespace = false) {
@@ -858,6 +1422,7 @@
     if (node && create) {
       node.style ||= {};
       node.signals ||= [];
+      node.fieldSignals ||= {};
       node.children ||= [];
     }
     return node;
@@ -873,8 +1438,31 @@
     return documentState.store[field] || null;
   }
 
+  function formFieldKey(el) {
+    if(!el) return null;
+    const raw=el.dataset?.cmsFieldKey || el.getAttribute?.('name') || el.id || '';
+    return safeId(raw);
+  }
+
+  function formFieldPresentationForElement(el, create = true) {
+    if(!el || legacyMigration) return null;
+    const form=el.closest?.('form[data-cms-composition-id]');
+    if(!form || form===el) return null;
+    const key=formFieldKey(el);
+    if(!key) return null;
+    const formNode=compositionNode(form.dataset.cmsCompositionId);
+    if(!formNode || !(formNode.type==='form' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(create){
+      formNode.fieldPresentations ||= {};
+      formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
+    }
+    return formNode.fieldPresentations?.[key] || null;
+  }
+
   function editableWebsiteModelForElement(el, create = true) {
-    return storeControlPresentationForElement(el, create) || compositionNodeForElement(el, create);
+    return formFieldPresentationForElement(el, create) ||
+      storeControlPresentationForElement(el, create) ||
+      compositionNodeForElement(el, create);
   }
 
   function editableCompositionNodeForElement(el, create = true) {
@@ -945,16 +1533,21 @@
     });
   }
 
-  const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
+  const defaultCodeBlock = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--navy:#102b62;--navy-deep:#081a3a;--gold:#d4ad45;--gold-strong:#f0cf78;--ink:#101a35;--muted:#5b6680;--surface:#f7f8fb;--line:rgba(16,43,98,.14)}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#fff,var(--surface));color:var(--ink);font:500 16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:clamp(14px,4vw,28px)}main{position:relative;overflow:hidden;max-width:760px;margin:auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(22px,5vw,38px);box-shadow:0 14px 38px rgba(8,26,58,.09)}main:before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:2px;background:linear-gradient(90deg,var(--gold),transparent 78%)}small{display:block;color:var(--gold);font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;margin-bottom:10px}h2{margin:0 0 10px;color:var(--navy-deep);font-size:clamp(27px,6vw,42px);line-height:1.06;letter-spacing:-.035em;overflow-wrap:break-word}p{margin:0;color:var(--muted);overflow-wrap:break-word}</style></head><body><main><small>Custom content</small><h2>Build something distinctive.</h2><p>Edit this sandboxed block with responsive, accessible presentation that belongs to this website.</p></main></body></html>';
+
+  function secureEmbedSource(source) {
+    const policy="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+    const meta='<meta http-equiv="Content-Security-Policy" content="'+policy+'">';
+    if(/<head(?:\s[^>]*)?>/i.test(source)) return source.replace(/<head(?:\s[^>]*)?>/i,match=>match+meta);
+    if(/<html(?:\s[^>]*)?>/i.test(source)) return source.replace(/<html(?:\s[^>]*)?>/i,match=>match+'<head>'+meta+'</head>');
+    return '<!doctype html><html><head>'+meta+'</head><body>'+source+'</body></html>';
+  }
 
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
     if (!frame) return;
     const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
-    // A data document has an opaque origin under this sandbox and does not inherit
-    // the parent page's script policy. This keeps owner code isolated without
-    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
-    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source));
   }
 
   function compositionMediaAssetId(value) {
@@ -972,7 +1565,7 @@
   function legacyMigrationPageState() {
     const pages=legacyMigration?.pages && typeof legacyMigration.pages==='object' ? legacyMigration.pages : {};
     const route=currentPageRoute();
-    return pages[route] || pages[pageKey] || (route==='/' ? pages.home : null) ||
+    return legacyPageForRoute(route) || pages[pageKey] || (route==='/' ? pages.home : null) ||
       {elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
   }
 
@@ -1121,30 +1714,113 @@
       .join(' ') || null;
   }
 
-  function materializeCompositionNode(el, fallbackId = null) {
+  function canonicalMaterializationIds(excludePageRoute = currentPageRoute(), includeShell = true) {
+    const used=new Set();
+    const addNodes=nodes=>walkComposition(nodes,node=>{const id=safeId(node?.id);if(id)used.add(id);});
+    if(includeShell){
+      addNodes(documentState.shell?.header || []);
+      addNodes(documentState.shell?.footer || []);
+    }
+    for(const [route,page] of Object.entries(documentState.pages || {}))
+      if(normalizePageRoute(route)!==normalizePageRoute(excludePageRoute)) addNodes(page?.composition || []);
+    for(const component of Object.values(documentState.reusableComponents || {}))
+      addNodes(component?.composition || []);
+    return used;
+  }
+
+  function createMaterializationIdentityContext(excludePageRoute = currentPageRoute(), includeShell = true) {
+    const pending=new Map();
+    document.querySelectorAll('[data-cms-id]').forEach(el=>{
+      const id=safeId(el.dataset.cmsId);
+      if(id) pending.set(id,(pending.get(id)||0)+1);
+    });
+    return {used:canonicalMaterializationIds(excludePageRoute,includeShell),pending};
+  }
+
+  function claimMaterializationId(preferred, identity) {
+    const base=safeId(preferred) || 'node';
+    let candidate=base, suffix=2;
+    while(identity.used.has(candidate) || (identity.pending.get(candidate)||0)>0)
+      candidate=safeId(base.slice(0,Math.max(1,154-String(suffix).length))+'.m'+suffix++);
+    identity.used.add(candidate);
+    return candidate;
+  }
+
+  function materializedNodeId(el, fallbackId, identity) {
+    const existing=safeId(el.dataset.cmsId);
+    if(existing){
+      const remaining=Math.max(0,(identity.pending.get(existing)||0)-1);
+      if(remaining) identity.pending.set(existing,remaining); else identity.pending.delete(existing);
+      if(!identity.used.has(existing)){
+        identity.used.add(existing);
+        return existing;
+      }
+    }
+    const id=claimMaterializationId(fallbackId || pageKey + '.' + safeId(el.tagName) + '.node',identity);
+    el.dataset.cmsId=id;
+    el.dataset.cmsEditable='true';
+    rememberOriginal(el);
+    return id;
+  }
+
+  function materializeCompositionNode(el, fallbackId = null, identity = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    identity ||= createMaterializationIdentityContext();
+    // Template decoration is deliberately presentation-only. Persisting SVG/icon
+    // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
+    // filtered from the safe composition grammar.
+    if (el.matches?.('[data-cms-decoration="true"]')) return null;
+    // Menu toggles are runtime shell chrome, not editable website links. Keeping
+    // them in v3 created invalid link nodes with no action/destination and made
+    // publish fail. Runtime recreates and wires this control from primary nav.
+    if (el.matches?.('[data-public-nav-toggle],.nav-toggle')) return null;
     const tag = el.tagName.toLowerCase();
     if (['script','style','noscript','input','select','textarea'].includes(tag)) return null;
 
-    const id = el.dataset.cmsId || fallbackId || pageKey + '.' + safeId(tag) + '.node';
+    const id = materializedNodeId(el, fallbackId, identity);
     const model = legacyMigrationRecordForElement(el) || {};
     const actionKey = model.actionKey || el.dataset.websiteActionKey || null;
     const extra = el.dataset.cmsExtraId ? legacyMigrationExtraById(el.dataset.cmsExtraId) : null;
 
-    if (tag === 'form' && el.matches('[data-website-inquiry]')) {
+    if (el.matches?.('[data-legend-public-inquiry-form]') ||
+        (tag === 'form' && el.matches('[data-website-inquiry]'))) {
       return {
         id, type:'form', tag:'form', className:cleanCompositionClassName(el),
-        title:el.querySelector('legend')?.textContent || extra?.title || 'Send an inquiry',
-        text:el.querySelector('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
+        title:el.querySelector?.('legend')?.textContent || extra?.title || 'Send an inquiry',
+        text:el.querySelector?.('button[type="submit"]')?.textContent || extra?.text || 'Send inquiry',
         systemKey:'canonical_inquiry', signals:cloneCanonicalValue(model.signals || extra?.signals || []),
         style:cloneCanonicalValue(model.style || extra?.style || {}),
         breakpointStyles:cloneCanonicalValue(model.breakpointStyles || extra?.breakpointStyles || {}),
         layout:cloneCanonicalValue(model.layout || extra?.layout || {}),
         breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || extra?.breakpointLayouts || {}),
         animations:cloneCanonicalValue(model.animations || extra?.animations || []),
-        dataBinding:cloneCanonicalValue(model.dataBinding || extra?.dataBinding || null),
+        dataBinding:null,
         children:[]
       };
+    }
+
+    if (tag === 'form' && SITE_KEY === 'protect' && el.dataset.formKey) {
+      const formKey=safeId(el.dataset.formKey || el.id || id) || 'runtime';
+      const runtimeNode={
+        id, type:'container', tag:'div', className:cleanCompositionClassName(el),
+        systemKey:'protect_runtime_form:'+formKey,
+        signals:[],
+        style:cloneCanonicalValue(model.style || {}),
+        breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
+        layout:cloneCanonicalValue(model.layout || {}),
+        breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
+        animations:cloneCanonicalValue(model.animations || []),
+        dataBinding:null,
+        children:[]
+      };
+      let childIndex=0;
+      for(const child of [...el.children].filter(child =>
+        child instanceof HTMLElement &&
+        !['input','select','textarea','script','style','noscript'].includes(child.tagName.toLowerCase()))) {
+        const childNode=materializeCompositionNode(child,id+'.child.'+(++childIndex),identity);
+        if(childNode) runtimeNode.children.push(childNode);
+      }
+      return runtimeNode;
     }
 
     if (extra?.type === 'code' && el.classList.contains('legend-legacy-migration-code')) {
@@ -1167,36 +1843,60 @@
       };
     }
 
+    const runtimeFormAncestor = SITE_KEY === 'protect'
+      ? el.closest?.('form[data-form-key]:not([data-website-inquiry])')
+      : null;
+    const runtimePresentationControl = !!runtimeFormAncestor && runtimeFormAncestor !== el &&
+      (tag === 'a' || tag === 'button');
+    const rawHref = tag === 'a' ? el.getAttribute('href') : model.href;
+    const dynamicHref = model.dataBinding?.target === 'href' || extra?.dataBinding?.target === 'href';
+    const unmanagedInteractiveControl =
+      (tag === 'button' && !actionKey) ||
+      (tag === 'a' && !actionKey && !dynamicHref && (!rawHref || rawHref === '#'));
+    const presentationOnlyControl = runtimePresentationControl || unmanagedInteractiveControl;
+
     let type = 'text';
     if (tag === 'section') type='section';
-    else if (['div','article','header','footer','nav','ul','ol'].includes(tag)) type='container';
+    else if (['div','article','header','footer','nav','ul','ol','fieldset'].includes(tag)) type='container';
     else if (/^h[1-6]$/.test(tag)) type='heading';
-    else if (tag === 'a' || tag === 'button') type=actionKey ? 'cta' : 'link';
+    else if (tag === 'a' || tag === 'button') type=presentationOnlyControl ? 'text' : (actionKey ? 'cta' : 'link');
     else if (tag === 'img') type='image';
     else if (tag === 'video') type='video';
 
+    // Runtime/UI-only controls are presentation projections only. Their actual
+    // behavior stays with the server/runtime owner. Materialization must never
+    // manufacture a publishable link from an unmanaged button or empty anchor.
+    const projectedTag = presentationOnlyControl ? 'span' : tag;
     const node = {
-      id, type, tag, className:cleanCompositionClassName(el),
-      actionKey:actionKey || null,
-      href:(tag === 'a' ? el.getAttribute('href') : model.href) || null,
-      target:(tag === 'a' ? el.getAttribute('target') : model.target) || null,
-      alt:(tag === 'img' || tag === 'video') ? (el.getAttribute('alt') || model.alt || null) : null,
+      id, type, tag:projectedTag, className:cleanCompositionClassName(el),
+      actionKey:presentationOnlyControl ? null : (actionKey || null),
+      href:presentationOnlyControl ? null : (rawHref || null),
+      target:presentationOnlyControl ? null : ((tag === 'a' ? el.getAttribute('target') : model.target) || null),
+      alt:(tag === 'img' || tag === 'video')
+        ? (el.hasAttribute('alt') ? el.getAttribute('alt') : (model.alt ?? null))
+        : null,
       hidden:el.hidden === true ? true : (model.hidden === false ? false : null),
-      signals:cloneCanonicalValue(model.signals || []),
+      signals:presentationOnlyControl ? [] : cloneCanonicalValue(model.signals || []),
       style:cloneCanonicalValue(model.style || {}),
       breakpointStyles:cloneCanonicalValue(model.breakpointStyles || {}),
       layout:cloneCanonicalValue(model.layout || {}),
       breakpointLayouts:cloneCanonicalValue(model.breakpointLayouts || {}),
       animations:cloneCanonicalValue(model.animations || []),
-      dataBinding:cloneCanonicalValue(model.dataBinding || null),
+      dataBinding:presentationOnlyControl ? null : cloneCanonicalValue(model.dataBinding || null),
       children:[]
     };
 
     if (tag === 'nav' && (el.id === 'primary-nav' || el.hasAttribute('data-public-nav')))
       node.systemKey='primary_navigation';
-    if (el.hasAttribute('data-business-name')) node.systemBinding='business_name';
-    else if (el.hasAttribute('data-business-field'))
-      node.systemBinding='business_field:' + el.getAttribute('data-business-field');
+    const boundName = el.hasAttribute('data-business-name')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-name]') : null);
+    const boundField = el.hasAttribute('data-business-field')
+      ? el
+      : ((type==='text' || type==='heading') ? el.querySelector?.('[data-business-field]') : null);
+    if (boundName) node.systemBinding='business_name';
+    else if (boundField)
+      node.systemBinding='business_field:' + boundField.getAttribute('data-business-field');
 
     if (type === 'image' || type === 'video') {
       const raw = type === 'image'
@@ -1223,7 +1923,7 @@
         .join(' ')
         .trim();
       if (directText) node.children.unshift({
-        id:id + '.text',type:'text',tag:'span',text:directText,className:null,
+        id:claimMaterializationId(id + '.text',identity),type:'text',tag:'span',text:directText,className:null,
         signals:[],style:{},breakpointStyles:{},layout:{},breakpointLayouts:{},animations:[],children:[]
       });
     } else if (!['image','video','section','container'].includes(type)) {
@@ -1233,23 +1933,23 @@
     return node;
   }
 
-  function materializeCurrentPageComposition() {
+  function materializeCurrentPageComposition(identity = createMaterializationIdentityContext()) {
     const main = document.querySelector('main');
     if (!main) return [];
     const nodes = [];
     let index = 0;
     for (const child of [...main.children]) {
-      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index));
+      const node = materializeCompositionNode(child, pageKey + '.root.' + (++index), identity);
       if (node) nodes.push(node);
     }
     return nodes;
   }
 
-  function materializeCurrentShell() {
+  function materializeCurrentShell(identity = createMaterializationIdentityContext(currentPageRoute(), false)) {
     const header=document.querySelector('.site-header');
     const footer=document.querySelector('.site-footer');
-    const headerNode=header ? materializeCompositionNode(header,'shell.header') : null;
-    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer') : null;
+    const headerNode=header ? materializeCompositionNode(header,'shell.header',identity) : null;
+    const footerNode=footer ? materializeCompositionNode(footer,'shell.footer',identity) : null;
     return {
       header:headerNode ? [headerNode] : [],
       footer:footerNode ? [footerNode] : []
@@ -1260,11 +1960,344 @@
     const type=String(node?.type || 'text');
     const tag=String(node?.tag || '').toLowerCase();
     const allowed={
-      section:['section'],container:['div','article','header','footer','nav','ul','ol'],
+      section:['section'],container:['div','article','header','footer','nav','ul','ol','fieldset'],
       heading:['h1','h2','h3','h4','h5','h6'],text:['p','span','small','strong','li','label','blockquote'],
-      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],embed:['div'],spacer:['div'],reusable:['div']
+      cta:['a','button'],link:['a','button'],image:['img'],video:['video'],form:['form'],experience:['form'],embed:['div'],spacer:['div'],reusable:['div']
     }[type] || ['div'];
     return allowed.includes(tag) ? tag : allowed[0];
+  }
+
+  function applyFormFieldPresentations(form,node) {
+    if(!form || !node) return;
+    const presentations=node.fieldPresentations || {};
+    const labels=node.fieldLabels || {};
+    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[data-cms-field-key]')];
+    controls.forEach((control,index)=>{
+      const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
+      if(!key) return;
+      control.dataset.cmsFieldKey=key;
+      control.dataset.cmsSignalOnly='true';
+      control.dataset.cmsEditable='true';
+      const presentation=presentations[key];
+      if(presentation){
+        applyStyle(control,effectiveStyle(presentation));
+        applyLayout(control,effectiveLayout(presentation));
+      }
+      if(control.matches('button[type="submit"]') && labels[key]) control.textContent=labels[key];
+      const label=control.closest('label');
+      if(label && labels[key]){
+        const textNode=[...label.childNodes].find(value=>value.nodeType===3 && String(value.textContent||'').trim());
+        if(textNode) textNode.textContent=labels[key]+' ';
+      }
+    });
+  }
+
+  function experienceValue(raw) {
+    if(raw == null) return null;
+    if(typeof raw==='boolean' || typeof raw==='number') return raw;
+    const text=String(raw);
+    const numeric=Number(text);
+    return text!=='' && Number.isFinite(numeric) ? numeric : text;
+  }
+
+  function experienceTruthy(value) {
+    if(typeof value==='boolean') return value;
+    if(typeof value==='number') return value!==0;
+    return ['true','yes','on','1'].includes(String(value ?? '').trim().toLowerCase());
+  }
+
+  function evaluateExperienceExpression(expression, answers, calculations, stack=new Set()) {
+    if(!expression || typeof expression!=='object') return null;
+    const values=Array.isArray(expression.values)
+      ? expression.values.map(item=>evaluateExperienceExpression(item,answers,calculations,stack))
+      : [];
+    const number=value=>{ const parsed=Number(value); return Number.isFinite(parsed)?parsed:0; };
+    const compare=()=>{
+      if(values.length<2) return 0;
+      const a=Number(values[0]), b=Number(values[1]);
+      if(Number.isFinite(a)&&Number.isFinite(b)) return a===b?0:(a>b?1:-1);
+      return String(values[0]??'').localeCompare(String(values[1]??''),undefined,{sensitivity:'accent'});
+    };
+    switch(String(expression.op||'value')){
+      case 'value': return expression.value ?? null;
+      case 'ref': {
+        let key=String(expression.ref||'');
+        if(key.startsWith('answer.')) key=key.slice(7);
+        if(key.startsWith('calc.')){
+          const calcKey=key.slice(5);
+          if(stack.has(calcKey) || !calculations?.[calcKey]) return null;
+          stack.add(calcKey);
+          try{return evaluateExperienceExpression(calculations[calcKey],answers,calculations,stack);}
+          finally{stack.delete(calcKey);}
+        }
+        return Object.hasOwn(answers,key)?answers[key]:null;
+      }
+      case 'add': return values.reduce((sum,value)=>sum+number(value),0);
+      case 'subtract': return values.length?values.slice(1).reduce((sum,value)=>sum-number(value),number(values[0])):0;
+      case 'multiply': return values.length?values.reduce((sum,value)=>sum*number(value),1):0;
+      case 'divide': return values.length?values.slice(1).reduce((sum,value)=>number(value)===0?NaN:sum/number(value),number(values[0])):0;
+      case 'min': return values.length?Math.min(...values.map(number)):0;
+      case 'max': return values.length?Math.max(...values.map(number)):0;
+      case 'round': {
+        const digits=Math.max(0,Math.min(6,Math.trunc(number(values[1]))||0));
+        const factor=10**digits; return Math.round(number(values[0])*factor)/factor;
+      }
+      case 'percent': return number(values[0])/100;
+      case 'equals': return compare()===0;
+      case 'not_equals': return compare()!==0;
+      case 'greater_than': return compare()>0;
+      case 'less_than': return compare()<0;
+      case 'greater_or_equal': return compare()>=0;
+      case 'less_or_equal': return compare()<=0;
+      case 'and': return values.every(experienceTruthy);
+      case 'or': return values.some(experienceTruthy);
+      case 'not': return !experienceTruthy(values[0]);
+      case 'if': return experienceTruthy(values[0])?values[1]:values[2];
+      case 'coalesce': return values.find(value=>value!=null && String(value)!=='') ?? null;
+      case 'concat': return values.map(value=>String(value??'')).join('');
+      case 'lookup': {
+        const key=String(values[0]??'');
+        return expression.map && Object.hasOwn(expression.map,key) ? expression.map[key] : null;
+      }
+      default: return null;
+    }
+  }
+
+  function experienceAnswers(form, definition) {
+    const result={};
+    for(const control of definition?.controls || []){
+      if(['button','cta'].includes(control.type)) continue;
+      const controls=[...form.querySelectorAll('[data-cms-field-key="'+CSS.escape(control.key)+'"]')];
+      if(!controls.length) continue;
+      if(control.type==='checkbox') result[control.key]=!!controls[0].checked;
+      else if(['radio','choice'].includes(control.type)){
+        const selected=controls.find(input=>input.checked);
+        result[control.key]=selected?.value ?? '';
+      }else result[control.key]=experienceValue(controls[0].value);
+    }
+    return result;
+  }
+
+  function formatExperienceResult(value, format) {
+    const number=Number(value);
+    if(!Number.isFinite(number)) return String(value ?? '');
+    if(format==='currency') return new Intl.NumberFormat(undefined,{style:'currency',currency:'USD',maximumFractionDigits:0}).format(number);
+    if(format==='percent') return number.toLocaleString(undefined,{maximumFractionDigits:2})+'%';
+    if(format==='integer') return Math.round(number).toLocaleString();
+    return number.toLocaleString(undefined,{maximumFractionDigits:2});
+  }
+
+  function buildNativeExperience(node) {
+    const definition=node.experience || {};
+    const form=document.createElement('form');
+    form.className='legend-native-experience';
+    form.dataset.websiteExperienceForm='';
+    form.dataset.websiteExperienceId=node.id;
+    form.dataset.submitCapability=definition.submitCapability || '';
+    form.dataset.formKey='experience:'+node.id;
+    form.noValidate=false;
+    if(editorMode) form.dataset.preview='';
+
+    const header=document.createElement('header');
+    header.className='legend-experience-header';
+    if(node.title){
+      const heading=document.createElement('h2');
+      heading.textContent=node.title;
+      header.appendChild(heading);
+    }
+    if(node.text){
+      const copy=document.createElement('p');
+      copy.textContent=node.text;
+      header.appendChild(copy);
+    }
+    if(header.childNodes.length) form.appendChild(header);
+
+    const progress=document.createElement('div');
+    progress.className='legend-experience-progress';
+    const progressBar=document.createElement('span');
+    progress.appendChild(progressBar);
+    form.appendChild(progress);
+
+    const body=document.createElement('div');
+    body.className='legend-experience-body';
+    form.appendChild(body);
+
+    const controlHosts=new Map();
+    const buildControl=control=>{
+      const wrapper=document.createElement('div');
+      wrapper.className='legend-experience-control';
+      wrapper.dataset.experienceControl=control.key;
+
+      if(control.type==='button' || control.type==='cta'){
+        const action=control.action || {};
+        const element=control.type==='cta' ? document.createElement('a') : document.createElement('button');
+        if(element.tagName==='BUTTON') element.type=action.type==='submit' && definition.submitCapability==='lead_capture' ? 'submit' : 'button';
+        else element.href='#';
+        element.className='btn '+(action.type==='back'?'secondary':'primary');
+        element.textContent=control.label || (action.type==='submit'?'Submit':'Continue');
+        element.dataset.experienceAction=action.type || (control.type==='cta'?'cta':'next');
+        element.dataset.experienceControlKey=control.key;
+        element.dataset.cmsFieldKey=control.key;
+        if(action.targetStep) element.dataset.experienceTargetStep=action.targetStep;
+        if(action.type==='cta' && action.actionKey) element.dataset.websiteActionKey=action.actionKey;
+        wrapper.appendChild(element);
+        return wrapper;
+      }
+
+      const label=document.createElement('label');
+      label.className='legend-experience-field';
+      if(control.label){
+        const title=document.createElement('span');
+        title.className='legend-experience-label';
+        title.textContent=control.label;
+        label.appendChild(title);
+      }
+
+      const applyCommon=input=>{
+        input.name=control.key;
+        input.dataset.cmsFieldKey=control.key;
+        if(control.required) input.required=true;
+        if(control.placeholder) input.placeholder=control.placeholder;
+        if(control.maxLength) input.maxLength=Number(control.maxLength);
+        if(control.min!=null) input.min=String(control.min);
+        if(control.max!=null) input.max=String(control.max);
+        if(control.step!=null) input.step=String(control.step);
+      };
+
+      if(control.type==='textarea'){
+        const input=document.createElement('textarea');
+        input.rows=4; applyCommon(input);
+        if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }else if(control.type==='select'){
+        const input=document.createElement('select'); applyCommon(input);
+        if(!control.required){const empty=document.createElement('option');empty.value='';empty.textContent='Select';input.appendChild(empty);}
+        for(const option of control.options || []){const el=document.createElement('option');el.value=option.value;el.textContent=option.label;input.appendChild(el);}
+        if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }else if(control.type==='radio' || control.type==='choice'){
+        const group=document.createElement('div');
+        group.className='legend-experience-options';
+        for(const option of control.options || []){
+          const optionLabel=document.createElement('label');
+          optionLabel.className='legend-experience-option';
+          const input=document.createElement('input');
+          input.type='radio'; applyCommon(input); input.value=option.value;
+          if(control.defaultValue!=null && String(control.defaultValue)===String(option.value)) input.checked=true;
+          const text=document.createElement('span'); text.textContent=option.label;
+          optionLabel.append(input,text); group.appendChild(optionLabel);
+        }
+        label.appendChild(group);
+      }else{
+        const input=document.createElement('input');
+        const types={email:'email',tel:'tel',number:'number',currency:'number',range:'range',checkbox:'checkbox',date:'date',text:'text'};
+        input.type=types[control.type] || 'text'; applyCommon(input);
+        if(control.type==='currency') input.inputMode='decimal';
+        if(control.type==='tel') input.inputMode='tel';
+        if(control.type==='checkbox') input.checked=control.defaultValue===true;
+        else if(control.defaultValue!=null) input.value=String(control.defaultValue);
+        label.appendChild(input);
+      }
+
+      if(control.helpText){
+        const help=document.createElement('small');
+        help.className='legend-experience-help';
+        help.textContent=control.helpText;
+        label.appendChild(help);
+      }
+      wrapper.appendChild(label);
+      return wrapper;
+    };
+
+    const controlsByKey=new Map((definition.controls || []).map(control=>[control.key,control]));
+    const steps=Array.isArray(definition.steps) && definition.steps.length
+      ? definition.steps
+      : [{key:'main',title:null,description:null,controlKeys:[...controlsByKey.keys()]}];
+    const stepHosts=new Map();
+
+    for(const step of steps){
+      const section=document.createElement('section');
+      section.className='legend-experience-step';
+      section.dataset.experienceStep=step.key;
+      if(step.title){const title=document.createElement('h3');title.textContent=step.title;section.appendChild(title);}
+      if(step.description){const copy=document.createElement('p');copy.className='legend-experience-step-copy';copy.textContent=step.description;section.appendChild(copy);}
+      const grid=document.createElement('div');grid.className='legend-experience-grid';section.appendChild(grid);
+      for(const key of step.controlKeys || []){
+        const control=controlsByKey.get(key);
+        if(!control) continue;
+        const wrapper=buildControl(control);
+        controlHosts.set(key,wrapper);
+        grid.appendChild(wrapper);
+      }
+      stepHosts.set(step.key,section);
+      body.appendChild(section);
+    }
+
+    const resultHost=document.createElement('div');
+    resultHost.className='legend-experience-results';
+    for(const result of definition.results || []){
+      const row=document.createElement('div'); row.className='legend-experience-result';
+      const label=document.createElement('span'); label.textContent=result.label || result.key;
+      const output=document.createElement('strong'); output.dataset.experienceResult=result.key;
+      row.append(label,output); resultHost.appendChild(row);
+    }
+    if(resultHost.childNodes.length) form.appendChild(resultHost);
+
+    const status=document.createElement('p');
+    status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+    status.className='legend-experience-status';
+    form.appendChild(status);
+
+    let currentStep=steps[0]?.key || null;
+    const visibleStepKeys=answers=>steps
+      .filter(step=>!step.visibleWhen || experienceTruthy(evaluateExperienceExpression(step.visibleWhen,answers,definition.calculations || {})))
+      .map(step=>step.key);
+
+    const render=()=>{
+      const answers=experienceAnswers(form,definition);
+      const visibleSteps=visibleStepKeys(answers);
+      if(!visibleSteps.includes(currentStep)) currentStep=visibleSteps[0] || null;
+      for(const [key,section] of stepHosts) section.hidden=key!==currentStep;
+      for(const control of definition.controls || []){
+        const host=controlHosts.get(control.key);
+        if(!host) continue;
+        host.hidden=!!control.visibleWhen && !experienceTruthy(evaluateExperienceExpression(control.visibleWhen,answers,definition.calculations || {}));
+      }
+      for(const result of definition.results || []){
+        const output=form.querySelector('[data-experience-result="'+CSS.escape(result.key)+'"]');
+        if(!output) continue;
+        const value=evaluateExperienceExpression(result.expression,answers,definition.calculations || {});
+        output.textContent=formatExperienceResult(value,result.format);
+      }
+      const index=Math.max(0,visibleSteps.indexOf(currentStep));
+      progress.hidden=visibleSteps.length<=1;
+      progressBar.style.width=visibleSteps.length ? (((index+1)/visibleSteps.length)*100)+'%' : '0%';
+      progress.setAttribute('aria-label',visibleSteps.length?('Step '+(index+1)+' of '+visibleSteps.length):'');
+    };
+
+    form.addEventListener('click',event=>{
+      const button=event.target.closest?.('[data-experience-action]');
+      if(!button || button.dataset.experienceAction==='cta') return;
+      const action=button.dataset.experienceAction;
+      if(action==='submit' && definition.submitCapability==='lead_capture') return;
+      event.preventDefault();
+      if(action==='reset'){form.reset();currentStep=steps[0]?.key || null;render();return;}
+      const answers=experienceAnswers(form,definition);
+      const visible=visibleStepKeys(answers);
+      const index=visible.indexOf(currentStep);
+      if(button.dataset.experienceTargetStep && visible.includes(button.dataset.experienceTargetStep))
+        currentStep=button.dataset.experienceTargetStep;
+      else if(action==='back') currentStep=visible[Math.max(0,index-1)] || currentStep;
+      else if(action==='next' || action==='submit') currentStep=visible[Math.min(visible.length-1,index+1)] || currentStep;
+      render();
+      form.scrollIntoView?.({behavior:'smooth',block:'nearest'});
+    });
+
+    form.addEventListener('input',render);
+    form.addEventListener('change',render);
+    applyFormFieldPresentations(form,node);
+    queueMicrotask(render);
+    return form;
   }
 
   function buildCanonicalInquiryForm(node) {
@@ -1284,9 +2317,11 @@
     grid.className='public-form-grid';
 
     const field=(labelText,name,type='text',attrs={})=>{
+      const key=safeId(name);
       const label=document.createElement('label');
-      label.textContent=labelText;
+      label.textContent=node.fieldLabels?.[key] || labelText;
       const input=name==='Message' ? document.createElement('textarea') : document.createElement('input');
+      input.dataset.cmsFieldKey=key;
       if(name!=='Message') input.type=type;
       input.name=name;
       input.required=true;
@@ -1311,22 +2346,25 @@
     const consent=document.createElement('input');
     consent.type='checkbox';
     consent.name='consent';
+    consent.dataset.cmsFieldKey='consent';
     consent.required=true;
     const consentText=document.createElement('span');
-    consentText.textContent='I agree to share this inquiry with this website.';
+    consentText.textContent=node.fieldLabels?.consent || 'I agree to share this inquiry with this website.';
     consentLabel.append(consent,consentText);
     grid.appendChild(consentLabel);
 
     const submit=document.createElement('button');
     submit.type='submit';
+    submit.dataset.cmsFieldKey='submit';
     submit.className='btn primary';
-    submit.textContent=node.text || 'Send inquiry';
+    submit.textContent=node.fieldLabels?.submit || node.text || 'Send inquiry';
     const status=document.createElement('p');
     status.setAttribute('role','status');
     status.setAttribute('aria-live','polite');
 
     fieldset.append(legend,grid,submit);
     el.append(fieldset,status);
+    applyFormFieldPresentations(el,node);
     return el;
   }
 
@@ -1336,7 +2374,7 @@
     const frame=document.createElement('iframe');
     frame.dataset.cmsCodeFrame='true';
     frame.title='Custom code block';
-    frame.setAttribute('sandbox','allow-scripts allow-forms allow-modals allow-popups');
+    frame.setAttribute('sandbox','allow-scripts');
     frame.setAttribute('referrerpolicy','no-referrer');
     frame.setAttribute('loading','lazy');
     el.appendChild(frame);
@@ -1358,6 +2396,8 @@
       renderReusableInstance(el, node);
     } else if (node.type === 'form') {
       el = buildCanonicalInquiryForm(node);
+    } else if (node.type === 'experience') {
+      el = buildNativeExperience(node);
     } else if (node.type === 'embed') {
       el = buildCanonicalEmbed(node);
     } else {
@@ -1381,7 +2421,7 @@
         el.id='primary-nav';
         el.classList.add('nav');
         el.setAttribute('data-public-nav','');
-        el.dataset.cmsLocked='true';
+        el.dataset.cmsBehaviorLocked='true';
       }
       if (node.systemBinding === 'business_name') el.setAttribute('data-business-name','');
       else if (String(node.systemBinding || '').startsWith('business_field:'))
@@ -1406,6 +2446,7 @@
     el.dataset.cmsCompositionId=node.id;
     el.dataset.cmsId=node.id;
     el.dataset.cmsEditable='true';
+    if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
     if (node.type === 'section' || node.tag === 'header' || node.tag === 'footer') el.dataset.cmsSection=node.id;
     rememberOriginal(el);
     applyCompositionNode(el,node);
@@ -1416,10 +2457,44 @@
     const main=document.querySelector('main');
     if(!main) return;
     main.replaceChildren();
-    for(const node of pageState().composition || []){
+    const roots=pageState().composition || [];
+    for(const node of roots){
       const element=buildCompositionNode(node);
       if(element) main.appendChild(element);
     }
+    // buildCompositionNode constructs descendants before the root is mounted.
+    // Reapply the same canonical presentation once the page graph is attached
+    // so responsive role/flow detection is correct on first paint, not only
+    // after a resize or editor breakpoint refresh.
+    for(const root of roots)
+      walkComposition([root],node=>applyCompositionNode(findEditableElement(node.id),node));
+  }
+
+  function ensureCanonicalNavigationToggle() {
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav,[data-public-nav]');
+    if(!header || !nav) return;
+    let toggle=header.querySelector('[data-public-nav-toggle]');
+    if(!toggle){
+      toggle=document.createElement('button');
+      toggle.type='button';
+      toggle.className='nav-toggle';
+      toggle.dataset.publicNavToggle='';
+      toggle.dataset.cmsLocked='true';
+      toggle.setAttribute('aria-controls','primary-nav');
+      toggle.setAttribute('aria-expanded','false');
+      toggle.textContent='Menu';
+      header.insertBefore(toggle,nav);
+    }
+    if(toggle.dataset.legendRuntimeBound==='true') return;
+    toggle.dataset.legendRuntimeBound='true';
+    const close=()=>{nav.dataset.open='false';toggle.setAttribute('aria-expanded','false');};
+    toggle.addEventListener('click',()=>{
+      const open=nav.dataset.open==='true';
+      nav.dataset.open=open?'false':'true';
+      toggle.setAttribute('aria-expanded',open?'false':'true');
+    });
+    nav.addEventListener('click',event=>{if(event.target.closest?.('a')) close();});
   }
 
   function renderCanonicalShell() {
@@ -1440,6 +2515,7 @@
     };
     renderRoot('.site-header',documentState.shell?.header || [],'site-header');
     renderRoot('.site-footer',documentState.shell?.footer || [],'site-footer');
+    ensureCanonicalNavigationToggle();
   }
 
   function mediaUrl(value) {
@@ -1690,8 +2766,9 @@
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
     }
     applyDataBinding(el, model.dataBinding);
-    applyStyle(el, effectiveStyle(model));
-    applyLayout(el, effectiveLayout(model));
+    applyCanonicalResponsiveAttributes(el,model);
+    applyStyle(el, effectiveStyle(model,el));
+    applyLayout(el, effectiveLayout(model,el));
     applyAnimations(el, model.animations);
   }
 
@@ -1772,7 +2849,7 @@
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'legend-legacy-migration-node legend-legacy-migration-code';
       const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
-      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      frame.setAttribute('sandbox', 'allow-scripts');
       frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
       el.appendChild(frame); renderCodePreview(el, extra);
     } else {
@@ -1795,6 +2872,7 @@
     const originalId=copy.id;
     copy.id=instanceId+'.'+originalId;
     copy.signals=[];
+    copy.fieldSignals={};
     copy.children=(copy.children || []).map(child=>reusableDefinitionClone(child,instanceId));
     return copy;
   }
@@ -1843,7 +2921,9 @@
 
   function containsProtectedSystemNode(node) {
     if(!node) return false;
-    if(node.type==='form' || node.systemKey || node.systemBinding) return true;
+    if(node.type==='form' || node.systemKey || node.systemBinding ||
+       (Array.isArray(node.signals) && node.signals.length > 0) ||
+       Object.values(node.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0)) return true;
     return (node.children || []).some(containsProtectedSystemNode);
   }
 
@@ -2078,8 +3158,12 @@
 
   function applyBusinessPageNavigation() {
     if (SITE_KEY !== 'business') return;
-    const nav=document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
+    const header=document.querySelector('.site-header');
+    const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
+    // Business navigation is projected exclusively from canonical page metadata.
+    // Remove stale preview/template nav copies instead of merging them.
+    header?.querySelectorAll('nav.nav,[data-public-nav]').forEach(candidate=>{if(candidate!==nav) candidate.remove();});
 
     // One authority only: the template route catalog plus this website's
     // versioned page metadata. Never merge the already-rendered DOM back into
@@ -2131,13 +3215,32 @@
     }else{
       document.querySelectorAll('.legend-legacy-migration-node').forEach(node=>{scaledElements.delete(node);node.remove();});
       renderCanonicalShell();
-      renderCanonicalCompositionPage();
+      const page=pageState();
+      if(pageUsesSystemTemplate(page)){
+        const liveRuntime=document.querySelector('form[data-form-key]:not([data-website-inquiry])');
+        if(liveRuntime && !containsProtectedRuntimeForm(page.composition)){
+          // Repair early v3 drafts that flattened an executable form into generic
+          // content. Re-materialize presentation from the still-mounted server
+          // template, while the form execution stays outside WebsiteContentDocument.
+          page.composition=materializeCurrentPageComposition();
+          templateRepairPending=true;
+          dirty=true;
+        }
+        applyTemplateBackedCompositionPage();
+      }else{
+        renderCanonicalCompositionPage();
+      }
     }
 
     if(SITE_KEY==='business' && (managementPayload || renderInput))
       bindBusiness(managementPayload || renderInput);
     applyBusinessPageNavigation();
     applyStoreNavigation();
+    try {
+      window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
+        detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
+      }));
+    } catch {}
   }
 
   function refreshResponsiveComposition() {
@@ -2302,7 +3405,7 @@
     const entries=new Map();
     const catalog=Array.isArray(renderInput?.pageCatalog) ? renderInput.pageCatalog : (context.pages || []);
     catalog.forEach((page,index) => {
-      const route=normalizePageRoute(page?.route || page?.path);
+      const route=canonicalSiteRoute(page?.route || page?.path);
       if (!route) return;
       entries.set(route,{
         route,
@@ -2319,20 +3422,24 @@
 
   function legacyPageForRoute(route) {
     if(!legacyMigration?.pages) return null;
-    return legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null) || null;
+    const direct=legacyMigration.pages[route] || (route==='/' ? legacyMigration.pages.home : null);
+    if(direct) return direct;
+    for(const [rawPath,page] of Object.entries(legacyMigration.pages))
+      if(canonicalSiteRoute(rawPath)===route) return page;
+    return null;
   }
 
   function websitePageEntries(includeDeleted = true) {
     const entries=publishedRouteCatalogEntries();
     for(const [rawPath,page] of Object.entries(documentState.pages || {})){
-      const route=normalizePageRoute(rawPath);
+      const route=canonicalSiteRoute(rawPath);
       if(!route || !page || typeof page!=='object') continue;
       const previous=entries.get(route);
       const navigation=page.navigation || {};
       const legacy=legacyPageForRoute(route);
       entries.set(route,{
         route,
-        label:SITE_KEY==='business' ? (navigation.label || page.title || previous?.label || route) : (page.title || navigation.label || previous?.label || route),
+        label:SITE_KEY==='business' ? (navigation.label || previous?.label || page.title || route) : (page.title || navigation.label || previous?.label || route),
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
@@ -2364,7 +3471,7 @@
   }
 
   function editorUrlForRoute(route, materialize = false) {
-    route=normalizePageRoute(route); if(!route) return null;
+    route=canonicalSiteRoute(route); if(!route) return null;
     const publishedRoutes=publishedRouteCatalogEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
@@ -2393,12 +3500,14 @@
   }
 
   function currentMaterializedPage() {
+    const identity=createMaterializationIdentityContext(currentPageRoute(),false);
     return {
       route:currentPageRoute(),
       title:pageState().title ?? originalTitle,
       description:pageState().description ?? originalDescription,
-      composition:materializeCurrentPageComposition(),
-      shell:materializeCurrentShell()
+      systemTemplateKey:pageState().systemTemplateKey || null,
+      composition:materializeCurrentPageComposition(identity),
+      shell:materializeCurrentShell(identity)
     };
   }
 
@@ -2509,8 +3618,14 @@
       const route=normalizePageRoute(snapshot.route);
       if(!route) throw new Error('Materialized page route was invalid.');
       const page=next.pages[route] || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]};
-      page.title=snapshot.title ?? page.title;
+      const routeEntry=entries.find(entry=>entry.route===route);
+      const snapshotTitle=cleanBusinessPreviewTitle(snapshot.title);
+      page.title=snapshotTitle ?? page.title;
       page.description=snapshot.description ?? page.description;
+      page.systemTemplateKey=snapshot.systemTemplateKey ?? page.systemTemplateKey ?? null;
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+      if(!String(page.navigation.label||'').trim())
+        page.navigation.label=routeEntry?.label || defaultNavigationLabel(route,page.title);
       page.composition=normalizeCompositionNodes(snapshot.composition);
       next.pages[route]=page;
     }
@@ -2665,9 +3780,6 @@
     action.addEventListener('click',()=>void updateStore(!enabled));
     if (!enabled) {
       host.appendChild(action);
-      const help=document.createElement('small');
-      help.textContent='Adds one scoped Store page, Store/Shop navigation, cart, product catalog and centralized checkout. Products remain preserved if the Store page is later removed.';
-      host.appendChild(help);
       return;
     }
 
@@ -2805,8 +3917,90 @@
     if (renderInput || SITE_KEY !== 'business') return;
     document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
   }
+  function canonicalProtectedEditCorrection() {
+    return managementPayload?.agentContract?.protectedEditCorrection ||
+      'CANONICAL CORRECTION REQUIRED: preserve the existing stable node ID and component type; restore the protected component from the current canonical draft and change only allowed presentation.';
+  }
+
+  function clearCanonicalProtectionViolation() {
+    for (const warning of document.querySelectorAll('[data-canonical-protection-warning]')) {
+      warning.hidden = true;
+      warning.textContent = '';
+    }
+    delete window.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION;
+  }
+
+  function showCanonicalProtectionViolation(message, correction = canonicalProtectedEditCorrection()) {
+    const safeMessage = String(message || 'Website Studio rejected a protected edit.');
+    const safeCorrection = String(correction || canonicalProtectedEditCorrection());
+    const text = 'CANONICAL PROTECTION BLOCKED THIS EDIT: ' + safeMessage + '\n\nGPT REDIRECT: ' + safeCorrection;
+    window.LEGEND_WEBSITE_STUDIO_PROTECTION_VIOLATION = Object.freeze({
+      message: safeMessage,
+      correction: safeCorrection
+    });
+    let warnings = [...document.querySelectorAll('[data-canonical-protection-warning]')];
+    if (!warnings.length) {
+      const warning = document.createElement('div');
+      warning.dataset.canonicalProtectionWarning = 'true';
+      warning.className = 'legend-cms-protection-warning';
+      warning.setAttribute('role', 'alert');
+      document.body.prepend(warning);
+      warnings = [warning];
+    }
+    for (const warning of warnings) {
+      warning.hidden = false;
+      warning.textContent = text;
+    }
+    document.documentElement.hidden = false;
+    return text;
+  }
+
+  function editorAuthorizationUrl() {
+    const raw = typeof context.editorAuthorizationUrl === 'string' ? context.editorAuthorizationUrl.trim() : '';
+    if (!raw) return null;
+    try {
+      const url = new URL(raw, location.origin);
+      const localHttp = url.protocol === 'http:' && ['localhost','127.0.0.1'].includes(url.hostname);
+      if (url.protocol !== 'https:' && !localHttp) return null;
+      return url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function showEditorAuthorizationRecovery(message = 'Website Studio needs a fresh authorized session.') {
+    const href = editorAuthorizationUrl();
+    if (!href) return false;
+    window.LEGEND_WEBSITE_EDITOR_REAUTHORIZE_URL = href;
+    let host = document.querySelector('[data-legend-editor-reauthorize-panel]');
+    if (!host) {
+      host = document.createElement('aside');
+      host.dataset.legendEditorReauthorizePanel = 'true';
+      host.setAttribute('role', 'alert');
+      host.style.cssText = 'position:fixed;z-index:2147483646;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));max-width:720px;margin:0 auto;padding:16px 18px;border:1px solid #d4ad45;border-radius:14px;background:#081a32;color:#f7f6f2;box-shadow:0 18px 60px rgba(0,0,0,.35);font:600 14px/1.45 system-ui,sans-serif';
+      const copy = document.createElement('p');
+      copy.style.margin = '0 0 12px';
+      const link = document.createElement('a');
+      link.dataset.legendEditorReauthorize = 'true';
+      link.textContent = 'Reauthorize Website Studio';
+      link.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:10px;background:#d4ad45;color:#081a32;text-decoration:none;font-weight:800';
+      host.append(copy, link);
+      document.body.prepend(host);
+    }
+    host.querySelector('p').textContent = message + ' Continue through the normal Agent Portal sign-in/approval flow; the portal will mint a new scoped editor ticket.';
+    host.querySelector('[data-legend-editor-reauthorize]').href = href;
+    document.documentElement.hidden = false;
+    return true;
+  }
+
   function unavailable(error) {
-    if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
+    if (SITE_KEY === 'business') {
+      document.body.replaceChildren();
+      const main = document.createElement('main');
+      main.textContent = error.message || 'This website is unavailable.';
+      document.body.appendChild(main);
+    }
+    document.documentElement.hidden = false;
   }
 
   let publicRuntimeStarted = false;
@@ -2900,6 +4094,11 @@
       else delete element.dataset.websiteRuntimeAction;
       if (option.metaIntentEventName) element.dataset.websiteMetaIntent = option.metaIntentEventName;
       else delete element.dataset.websiteMetaIntent;
+      if (element.tagName === 'A' && option.href && safeUrl(option.href)) {
+        element.href = option.href;
+        element.target = option.openInNewTab === true ? '_blank' : '_self';
+        element.rel = 'noopener noreferrer';
+      }
     });
   }
 
@@ -2915,8 +4114,20 @@
     const page = pageState();
     const candidates = [];
     if (!legacyMigration) {
-      walkComposition(page.composition, node => {
-        candidates.push({ id:node.id, model:node, node:findEditableElement(node.id) });
+      walkComposition(page.composition,node=>{
+        const element=findEditableElement(node.id);
+        candidates.push({id:node.id,model:node,node:element});
+        if(element && node.fieldSignals && typeof node.fieldSignals==='object'){
+          for(const [fieldKey,signals] of Object.entries(node.fieldSignals)){
+            const control=[...element.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
+              .find(candidate=>formFieldKey(candidate)===fieldKey);
+            if(control) candidates.push({
+              id:node.id+':field:'+fieldKey,
+              model:{signals},
+              node:control
+            });
+          }
+        }
       });
     } else {
       const legacyPage=legacyMigrationPageState();
@@ -2964,7 +4175,7 @@
         const managedForm = candidate.node.matches?.('form') ? candidate.node : candidate.node.closest?.('form');
         const managedAction = candidate.node.matches?.('[data-website-action-key],[data-cta]');
         if (window.LegendAnalytics?.registerBinding &&
-            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed'].includes(binding.trigger)) ||
+            ((managedForm && ['form_started','submit_attempt','field_started','validation_failed','field_completed'].includes(binding.trigger)) ||
              (managedAction && binding.trigger === 'click'))) {
           cleanups.push(window.LegendAnalytics.registerBinding(candidate.node, binding, candidate.id));
           continue;
@@ -3123,10 +4334,15 @@
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
+      if (!response.ok) {
+        if (SITE_KEY === 'business') throw new Error('This business website is unavailable.');
+        document.documentElement.hidden = false;
+        return;
+      }
       const payload = await response.json();
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
+      ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : ctaCatalog;
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
@@ -3135,6 +4351,9 @@
       bindBusiness(payload);
       prepareDom();
       applyDocument(payload.document || {});
+      applyRuntimeActionContracts();
+      if (SITE_KEY === 'protect' && window.__legendTrackingInitialized === true)
+        installPublishedSignalBindings();
       preservePreviewNavigation();
       document.documentElement.hidden = false;
     } catch (error) {
@@ -3157,7 +4376,7 @@
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Saving changes…';
-    if (activeEditorPanel === 'source' && !sourceEditorDirty) refreshSiteSourceEditor();
+    if (activeEditorPanel === 'source' && !sourceEditorDirty) void refreshSiteSourceEditor();
     if (editorMode) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
@@ -3181,7 +4400,7 @@
     if (activeEditorPanel === 'source' && !sourceEditorDirty) {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && el?.dataset?.cmsCompositionId) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (activeEditorPanel === 'gpt') refreshBrowserAgentWorkspace();
     if (openContent) showPanel('content');
@@ -3220,7 +4439,7 @@
   }
 
   function updateDirectCanvasUi() {
-    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+    if (!selectionFrame || !editorPreview || !selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || selected.closest('.legend-cms-editor')) {
       if (selectionFrame) selectionFrame.hidden = true;
       if (gridOverlay && !directGesture) gridOverlay.hidden = true;
       return;
@@ -3265,7 +4484,7 @@
     preview.appendChild(selectionFrame);
 
     const beginGesture = (event, mode, edge = '', captureTarget = null) => {
-      if (!selected || selected.dataset.cmsSignalOnly || inlineEditNode === selected) return false;
+      if (!selected || (selected.dataset.cmsSignalOnly && !formFieldPresentationForElement(selected,false)) || inlineEditNode === selected) return false;
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return false;
@@ -3413,7 +4632,8 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
+    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,true) : null;
+    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (inlineHelp) inlineHelp.hidden = true;
@@ -3442,24 +4662,28 @@
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     const serviceCard = businessServiceCardFor(selected);
+    const canonicalForm = ov.type === 'form' || String(ov.systemKey || '').startsWith('protect_runtime_form:');
+    const protectedMappings = (Array.isArray(ov.signals) && ov.signals.length > 0) ||
+      Object.values(ov.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length > 0);
     const duplicateButton = document.getElementById('legend-cms-duplicate');
     if (duplicateButton) {
       const immutableShell = selected.matches?.('.site-header,.site-footer');
       duplicateButton.textContent = serviceCard ? 'Duplicate service' : selected.dataset.cmsSection ? 'Duplicate section' : 'Duplicate selected';
-      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || immutableShell;
+      duplicateButton.disabled = !!selected.dataset.cmsSignalOnly || canonicalForm || immutableShell;
       duplicateButton.title = immutableShell ? 'The website banner and footer are shared shell authorities and cannot be duplicated.'
-        : selected.tagName === 'FORM' ? 'Each page uses one canonical inquiry form.' : '';
+        : canonicalForm ? 'Protected runtime forms cannot be duplicated.' : '';
     }
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const immutableShell = isSharedShellElement(selected);
-      const protectedSemantic = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+      const protectedSemantic = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
         : isCode ? 'code block'
         : selected.tagName === 'IMG' ? 'image'
         : selected.tagName === 'VIDEO' ? 'video'
-        : selected.tagName === 'FORM' ? 'form'
+        : ov.type === 'experience' ? 'interactive experience'
+        : canonicalForm ? 'form'
         : ['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? 'field'
         : ['A','BUTTON'].includes(selected.tagName) ? 'button'
         : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
@@ -3507,7 +4731,7 @@
     const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) {
       hidden.checked = ov.hidden === true || selected.hidden;
-      hidden.disabled = !!ov.actionKey || !!ov.systemKey || !!ov.systemBinding || selected.tagName === 'FORM';
+      hidden.disabled = !!selected.dataset.cmsSignalOnly || !!ov.systemKey || !!ov.systemBinding || protectedMappings || canonicalForm;
     }
     if (targetInput) targetInput.disabled = !!ov.actionKey;
   }
@@ -3568,6 +4792,7 @@
     }
     updateDirectCanvasUi();
     markDirty();
+    syncSelectedSourcePresentationFromCanvas();
   }
 
   async function uploadMedia(file) {
@@ -3644,8 +4869,10 @@
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.actionKey || current.systemKey || current.systemBinding || current.type==='form'){
-      alert('This component has protected platform wiring. Rename, restyle, or reposition it without deleting its canonical behavior.');
+    if(current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
+      const message='This component has protected platform wiring and cannot be deleted or replaced.';
+      showCanonicalProtectionViolation(message);
+      alert(message+' '+canonicalProtectedEditCorrection());
       return;
     }
     checkpoint();
@@ -3676,11 +4903,18 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
       });
-      if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
+      if (!response.ok) {
+        if ((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired before this draft could be saved.')) return false;
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || error.error || `Save failed (${response.status})`);
+      }
       const payload = await response.json();
       const changedDuringSave = JSON.stringify(documentState) !== submitted;
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       namedDrafts = payload.drafts || namedDrafts;
       dirty = changedDuringSave;
       saved = true;
@@ -3840,52 +5074,6 @@
     const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
     if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
   }
-  function sourceProjectionNode(node) {
-    const copy=cloneCanonicalValue(node || {});
-    delete copy.signals;
-    copy.children=(node?.children || []).map(sourceProjectionNode);
-    return copy;
-  }
-
-  function siteSourceProjection() {
-    const pages=Object.entries(documentState.pages || {})
-      .sort((a,b)=>(Number(a[1]?.navigation?.order)||0)-(Number(b[1]?.navigation?.order)||0) || a[0].localeCompare(b[0]))
-      .map(([path,page])=>({
-        path,
-        title:page?.title ?? null,
-        description:page?.description ?? null,
-        navigation:cloneCanonicalValue(page?.navigation || {showInNavigation:true,order:0,isDeleted:false}),
-        dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null),
-        composition:(page?.composition || []).map(sourceProjectionNode)
-      }));
-
-    return {
-      schema:'legend-site-source/v1',
-      version:3,
-      faviconImageDataUrl:documentState.faviconImageDataUrl || null,
-      store:cloneCanonicalValue(documentState.store || {}),
-      breakpoints:cloneCanonicalValue(documentState.breakpoints || []),
-      theme:cloneCanonicalValue(documentState.theme || {}),
-      shell:{
-        header:(documentState.shell?.header || []).map(sourceProjectionNode),
-        footer:(documentState.shell?.footer || []).map(sourceProjectionNode)
-      },
-      pages,
-      reusableComponents:Object.fromEntries(
-        Object.entries(documentState.reusableComponents || {}).map(([id,component])=>[
-          id,
-          {
-            id,
-            name:component?.name || id,
-            kind:component?.kind === 'block' ? 'block' : 'section',
-            composition:(component?.composition || []).map(sourceProjectionNode)
-          }
-        ])
-      ),
-      collections:cloneCanonicalValue(documentState.collections || {})
-    };
-  }
-
   function sourceFindNode(nodes,id) {
     for(const node of nodes || []){
       if(node?.id===id) return node;
@@ -3904,91 +5092,423 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
-  function refreshSiteSourceEditor(force=false) {
+  function sourceFindNodeInDocument(sourceDocument,id) {
+    if(!sourceDocument || !id) return null;
+    return sourceFindNode(sourceDocument.shell?.header,id) ||
+      sourceFindNode(sourceDocument.shell?.footer,id) ||
+      (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
+      Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
+      null;
+  }
+
+  function syncSelectedSourcePresentationFromCanvas() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const selectedNodeId=sourceSelectedNodeId();
+    if(!textarea || textarea.readOnly || sourceEditorDirty || scope?.value!=='selection' || !selectedNodeId) return;
+    const current=editableCompositionNodeForElement(selected,false);
+    if(!current) return;
+    let projected;
+    try{ projected=JSON.parse(textarea.value); }
+    catch{ return; }
+    if(projected?.id!==selectedNodeId) return;
+
+    // Keep Selected Source visually synchronized with Canvas presentation while
+    // retaining the server-projected protected-authority omissions. This is a
+    // view synchronization only; persistence still flows through canonical save.
+    for(const key of ['text','className','style','breakpointStyles','layout','breakpointLayouts','animations','hidden','alt','mediaAssetId','mediaUrl'])
+    {
+      if(Object.hasOwn(current,key)) projected[key]=cloneCanonicalValue(current[key]);
+      else delete projected[key];
+    }
+    textarea.value=JSON.stringify(projected,null,2);
+    sourceEditorBaseNode=cloneCanonicalValue(projected);
+    renderSourceHighlight();
+  }
+
+  async function loadCanonicalSourceSnapshot() {
+    const url=new URL(`${API_BASE}/api/website-content/manage/source`);
+    url.searchParams.set('ticket',editorTicket);
+    const response=await fetch(url,{cache:'no-store'});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      if((response.status===401 || response.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired while loading canonical Source.'))
+        return null;
+      throw new Error(payload.message || payload.error || `Unable to load canonical Source (${response.status}).`);
+    }
+    if(payload.requiresMaterialization===true)
+      throw new Error('Materialize this website into canonical v3 before editing Source.');
+    if(typeof payload.text!=='string' || !payload.text.trim())
+      throw new Error('Canonical Source projection is unavailable.');
+    const sourceDocument=JSON.parse(payload.text);
+    canonicalSourceDocument=sourceDocument;
+    canonicalSourceRevision=payload.revision;
+    return {revision:payload.revision,sourceDocument,text:payload.text,sourceMap:payload.sourceMap || {}};
+  }
+
+
+  function sourceToneForLine(line) {
+    const key=/^\s*"([^"]+)"\s*:/.exec(String(line || ''))?.[1] || '';
+    if (['text','title','alt','href','description','label'].includes(key)) return 'content';
+    if (['color','backgroundColor'].includes(key)) return 'color';
+    if (['widthPercent','heightPx','fontSize','fontScale','lineHeight','letterSpacing','paddingTop','paddingBottom','paddingLeft','paddingRight','offsetXPercent','offsetYPx','borderRadius','objectPosition','marginTop','marginBottom','marginLeft','marginRight','borderWidth','minWidthPx','maxWidthPx','minHeightPx','maxHeightPx','aspectRatio','opacity'].includes(key)) return 'size';
+    if (['style','breakpointStyles','fontFamily','fontWeight','textAlign','objectFit','borderColor','borderStyle','textTransform','textDecoration','backgroundGradient','boxShadow','fieldPresentations','fieldLabels'].includes(key)) return 'style';
+    if (['layout','breakpointLayouts','mode','direction','gapPx','columns','minItemWidthPx','alignItems','justifyContent','wrap'].includes(key)) return 'layout';
+    if (['mediaAssetId','mediaUrl','faviconImageDataUrl'].includes(key)) return 'media';
+    if (['animations','trigger','effect','durationMs','delayMs','distancePx','easing','once','hidden','target','actionKey'].includes(key)) return 'behavior';
+    if (['id','systemKey','systemBinding','signals'].includes(key)) return 'protected';
+    if (['type','tag','className','dataBinding','syncSourceId'].includes(key)) return 'structure';
+    return 'default';
+  }
+
+  function renderSourceHighlight() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const highlight=document.getElementById('legend-cms-source-highlight');
+    if(!textarea || !highlight?.replaceChildren) return;
+    highlight.replaceChildren();
+    const lines=String(textarea.value || '').replace(/\r/g,'').split('\n');
+    lines.forEach((line,index)=>{
+      const span=document.createElement('span');
+      const tone=sourceToneForLine(line);
+      span.className='legend-cms-source-'+tone;
+      span.dataset.tone=tone;
+      span.textContent=line || ' ';
+      highlight.appendChild(span);
+      if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
+    });
+    highlight.scrollTop=textarea.scrollTop;
+    highlight.scrollLeft=textarea.scrollLeft;
+  }
+
+  function sourceEditorDispatchInput(textarea) {
+    textarea.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+
+  function sourceEditorIndentSelection(textarea, outdent=false) {
+    const value=textarea.value;
+    const start=textarea.selectionStart ?? 0;
+    const end=textarea.selectionEnd ?? start;
+    const lineStart=value.lastIndexOf('\n',Math.max(0,start-1))+1;
+    const nextBreak=value.indexOf('\n',end);
+    const lineEnd=nextBreak<0 ? value.length : nextBreak;
+    const block=value.slice(lineStart,lineEnd);
+    const lines=block.split('\n');
+    const transformed=lines.map(line=>{
+      if(!outdent) return '  '+line;
+      if(line.startsWith('  ')) return line.slice(2);
+      if(line.startsWith('\t') || line.startsWith(' ')) return line.slice(1);
+      return line;
+    }).join('\n');
+    textarea.setRangeText(transformed,lineStart,lineEnd,'select');
+    const removedStart=outdent ? Math.min(2,(block.match(/^\s{1,2}/)?.[0] || '').length) : 0;
+    const delta=transformed.length-block.length;
+    textarea.setSelectionRange(
+      Math.max(lineStart,start+(outdent?-removedStart:2)),
+      Math.max(lineStart,end+delta));
+    sourceEditorDispatchInput(textarea);
+  }
+
+  function handleSourceEditorKeydown(event) {
+    const textarea=event.currentTarget;
+    if(!(textarea instanceof HTMLTextAreaElement) || textarea.readOnly) return;
+
+    if(event.key==='Tab'){
+      event.preventDefault();
+      const start=textarea.selectionStart ?? 0;
+      const end=textarea.selectionEnd ?? start;
+      const selected=textarea.value.slice(start,end);
+      if(start!==end && selected.includes('\n')){
+        sourceEditorIndentSelection(textarea,event.shiftKey);
+        return;
+      }
+
+      if(event.shiftKey){
+        const lineStart=textarea.value.lastIndexOf('\n',Math.max(0,start-1))+1;
+        const before=textarea.value.slice(lineStart,start);
+        const removable=/^(?:  |\t| )/.exec(before)?.[0] || '';
+        if(removable){
+          textarea.setRangeText('',lineStart,lineStart+removable.length,'preserve');
+          textarea.setSelectionRange(
+            Math.max(lineStart,start-removable.length),
+            Math.max(lineStart,end-removable.length));
+          sourceEditorDispatchInput(textarea);
+        }
+        return;
+      }
+
+      textarea.setRangeText('  ',start,end,'end');
+      sourceEditorDispatchInput(textarea);
+      return;
+    }
+
+    if(event.key==='Enter'){
+      event.preventDefault();
+      const start=textarea.selectionStart ?? 0;
+      const end=textarea.selectionEnd ?? start;
+      const value=textarea.value;
+      const lineStart=value.lastIndexOf('\n',Math.max(0,start-1))+1;
+      const before=value.slice(lineStart,start);
+      const indent=/^\s*/.exec(before)?.[0] || '';
+      const extra=/[\{\[]\s*$/.test(before) ? '  ' : '';
+      textarea.setRangeText('\n'+indent+extra,start,end,'end');
+      sourceEditorDispatchInput(textarea);
+    }
+  }
+
+  function syncSourceEditingMode() {
+    const textarea=document.getElementById('legend-cms-site-source');
+    const scope=document.getElementById('legend-cms-source-scope');
+    const apply=document.getElementById('legend-cms-source-apply');
+    const reload=document.getElementById('legend-cms-source-reload');
+    if(!textarea || !scope) return false;
+    const editable=scope.value==='selection' && !!sourceSelectedNodeId();
+    textarea.readOnly=!editable;
+    textarea.setAttribute('aria-readonly',String(!editable));
+    textarea.dataset.sourceMode=editable?'selection':'master';
+    if(apply){ apply.disabled=!editable; apply.hidden=!editable; }
+    if(reload) reload.textContent=editable?'Discard selected source edits':'Refresh Master Source';
+    return editable;
+  }
+
+  async function refreshSiteSourceEditor(force=false) {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const label=document.getElementById('legend-cms-source-location');
+    const status=document.getElementById('legend-cms-source-status');
     if(!textarea || (sourceEditorDirty && !force)) return;
+
+    if(dirty){
+      if(status) status.textContent='Saving canvas changes before refreshing canonical Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        if(status) status.textContent='Save or reconcile canvas changes before opening Source.';
+        return;
+      }
+    }
+
+    let snapshot;
+    try{ snapshot=await loadCanonicalSourceSnapshot(); }
+    catch(error){
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
+      return;
+    }
+    if(!snapshot) return;
+
     const selectedId=sourceSelectedNodeId();
     if(scope && scope.value==='selection' && !selectedId) scope.value='site';
     const mode=scope?.value || 'site';
     if(mode==='selection' && selectedId){
-      const node=compositionNode(selectedId);
-      textarea.value=JSON.stringify(sourceProjectionNode(node),null,2);
-      if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      const node=sourceFindNodeInDocument(snapshot.sourceDocument,selectedId);
+      if(!node){
+        if(status) status.textContent='The selected component is not exposed in canonical Source. Select another component.';
+        scope.value='site';
+        sourceEditorBaseNode=null;
+        textarea.value=snapshot.text;
+      }else{
+        sourceEditorBaseNode=cloneCanonicalValue(node);
+        textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
+        if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+      }
     }else{
-      textarea.value=JSON.stringify(siteSourceProjection(),null,2);
+      sourceEditorBaseNode=null;
+      textarea.value=snapshot.text;
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
         const marker='"id": "'+selectedId+'"';
         const index=textarea.value.indexOf(marker);
-        if(index>=0){ textarea.setSelectionRange(index,index+marker.length); }
+        if(index>=0) textarea.setSelectionRange(index,index+marker.length);
       }
     }
     sourceEditorDirty=false;
-    const status=document.getElementById('legend-cms-source-status');
-    if(status) status.textContent='Source is synchronized with the current draft.';
+    const editable=syncSourceEditingMode();
+    renderSourceHighlight();
+    if(status) status.textContent=editable
+      ? 'Selected Source is synchronized with the server canonical projection.'
+      : 'Master Source is synchronized from the server and read only.';
+    if(force) clearCanonicalProtectionViolation();
+  }
+
+  function selectedSourceHasConcurrentChange(sourceDocument, selectedNodeId) {
+    if(!sourceEditorBaseNode) return false;
+    const latest=sourceFindNodeInDocument(sourceDocument,selectedNodeId);
+    if(!latest) return true;
+    return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
+  }
+
+  function selectedSourceDocument(baseSourceDocument, selectedNodeId, replacement) {
+    const projected=cloneCanonicalValue(baseSourceDocument);
+    let replaced=
+      sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
+      sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
+    if(!replaced){
+      for(const page of projected.pages || []){
+        if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced){
+      for(const component of Object.values(projected.reusableComponents || {})){
+        if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
+      }
+    }
+    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical Source projection.');
+    return JSON.stringify(projected,null,2);
   }
 
   async function applySiteSource() {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
     const status=document.getElementById('legend-cms-source-status');
+    const selectedNodeId=sourceSelectedNodeId();
     if(!textarea) return;
-    let sourceText=textarea.value;
-    try{
-      if(scope?.value==='selection'){
-        const id=sourceSelectedNodeId();
-        if(!id) throw new Error('Select a page component before editing Selected Source.');
-        const replacement=JSON.parse(sourceText);
-        if(replacement?.id!==id) throw new Error('Selected Source must keep the stable node ID '+id+'.');
-        const projected=siteSourceProjection();
-        let replaced=
-          sourceReplaceNode(projected.shell?.header,id,replacement) ||
-          sourceReplaceNode(projected.shell?.footer,id,replacement);
-        if(!replaced){
-          for(const page of projected.pages){
-            if(sourceReplaceNode(page.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced){
-          for(const component of Object.values(projected.reusableComponents || {})){
-            if(sourceReplaceNode(component.composition,id,replacement)){ replaced=true; break; }
-          }
-        }
-        if(!replaced) throw new Error('The selected source node is no longer present in this canonical draft.');
-        sourceText=JSON.stringify(projected,null,2);
-      }else{
-        JSON.parse(sourceText);
-      }
-    }catch(error){
-      if(status) status.textContent=error?.message || 'Source syntax is invalid.';
+    if(scope?.value!=='selection' || !selectedNodeId || textarea.readOnly){
+      if(status) status.textContent='Master Source is read only. Select a canvas component to edit Selected Source.';
+      syncSourceEditingMode();
+      renderSourceHighlight();
       return;
     }
 
-    if(status) status.textContent='Validating protected actions, media, and structure…';
-    try{
+    let replacement;
+    try{ replacement=JSON.parse(textarea.value); }
+    catch(error){
+      clearCanonicalProtectionViolation();
+      if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
+      return;
+    }
+    if(replacement?.id!==selectedNodeId){
+      const message='Selected Source must keep the stable node ID '+selectedNodeId+'.';
+      if(status) status.textContent=message;
+      showCanonicalProtectionViolation(message);
+      return;
+    }
+
+    let baseSourceDocument=canonicalSourceDocument ? cloneCanonicalValue(canonicalSourceDocument) : null;
+    let expectedRevision=canonicalSourceRevision ?? revision;
+
+    if(dirty){
+      if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
+      const saved=await save(false);
+      if(!saved || dirty){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
+        return;
+      }
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      if(selectedSourceHasConcurrentChange(latest.sourceDocument,selectedNodeId)){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
+        return;
+      }
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
+    }else if(!baseSourceDocument){
+      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+      if(!latest) return;
+      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+      expectedRevision=latest.revision;
+    }
+
+    clearCanonicalProtectionViolation();
+    let rebased=false;
+    for(let attempt=0;attempt<3;attempt++){
+      let sourceText;
+      try{ sourceText=selectedSourceDocument(baseSourceDocument,selectedNodeId,replacement); }
+      catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'The selected component is no longer available.';
+        return;
+      }
+
+      if(status) status.textContent=rebased
+        ? 'Revalidating this design edit against the latest canonical Source…'
+        : 'Validating authorable design against protected backend authority…';
+
       const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision:revision,source:sourceText})
+        body:JSON.stringify({ticket:editorTicket,expectedRevision,source:sourceText,selectedNodeId})
       });
       const payload=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(payload.message || payload.error || 'Site Source validation failed.');
+
+      if(!response.ok){
+        if((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
+        if(response.status===409 && payload.error==='revision_conflict'){
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
+          rebased=true;
+          continue;
+        }
+
+        const message=payload.message || payload.error || 'Site Source validation failed.';
+        if(payload.canonicalProtectionViolation===true)
+          showCanonicalProtectionViolation(message,payload.correction);
+        else
+          clearCanonicalProtectionViolation();
+        if(status) status.textContent=message;
+        return;
+      }
+
+      const proposedDocument=normalizeDocument(payload.proposedDocument || {});
+      const validatedRevision=payload.baseRevision ?? expectedRevision;
+      const saveResponse=await fetch(`${API_BASE}/api/website-content/manage`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ticket:editorTicket,document:proposedDocument,expectedRevision:validatedRevision})
+      });
+      const savePayload=await saveResponse.json().catch(()=>({}));
+
+      if(!saveResponse.ok){
+        if((saveResponse.status===401 || saveResponse.status===403) &&
+            showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
+        if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
+          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
+          if(!latest) return;
+          expectedRevision=latest.revision;
+          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
+          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
+            clearCanonicalProtectionViolation();
+            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
+            return;
+          }
+          rebased=true;
+          continue;
+        }
+
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=savePayload.message || savePayload.error || `Source save failed (${saveResponse.status}).`;
+        return;
+      }
+
       checkpoint();
-      documentState=normalizeDocument(payload.proposedDocument || {});
+      documentState=normalizeDocument(savePayload.document || proposedDocument);
+      revision=savePayload.revision ?? validatedRevision;
+      namedDrafts=savePayload.drafts || namedDrafts;
+      dirty=false;
       sourceEditorDirty=false;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       applyDocument(documentState);
-      dirty=true;
-      const saved=await save(false);
-      if(!saved || dirty) throw new Error('Validated source could not be saved.');
-      refreshSiteSourceEditor(true);
-      if(status) status.textContent='Applied to the canonical draft. Protected wiring unchanged.';
-    }catch(error){
-      if(status) status.textContent=error?.message || 'Site Source could not be applied.';
+      await refreshSiteSourceEditor(true);
+      if(status) status.textContent=rebased
+        ? 'Applied after rebasing onto the latest canonical Source. Protected backend authority unchanged.'
+        : 'Applied to the canonical draft. Protected backend authority unchanged.';
+      return;
     }
+
+    clearCanonicalProtectionViolation();
+    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and reconcile the latest design.';
   }
 
   function showPanel(name) {
@@ -4000,7 +5520,7 @@
     if (name === 'source') {
       const scope=document.getElementById('legend-cms-source-scope');
       if(scope && sourceSelectedNodeId()) scope.value='selection';
-      refreshSiteSourceEditor();
+      void refreshSiteSourceEditor();
     }
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
@@ -4245,7 +5765,7 @@
       checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
     document.querySelectorAll('main img:not([hidden])').forEach(image => {
-      if (!image.getAttribute('alt')?.trim())
+      if (!image.hasAttribute('alt'))
         checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
     });
 
@@ -4266,7 +5786,9 @@
 
     document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
       if (node.hidden) return;
-      if (Number(node.scrollWidth) > Number(node.clientWidth) + 1)
+      const overflowX=getComputedStyle(node).overflowX;
+      const visiblyClipped=overflowX==='hidden' || overflowX==='clip';
+      if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
     });
     return checks;
@@ -4393,13 +5915,25 @@
   }
 
   function appearanceFields() {
-    const choices = { fontFamily: ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial'], fontWeight: ['100','200','300','400','500','600','700','800','900'], objectFit: ['cover','contain','fill','none','scale-down'] };
-    return ['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit'].map(key => {
+    const choices = {
+      fontWeight:['100','200','300','400','500','600','700','800','900'],
+      objectFit:['cover','contain','fill','none','scale-down'],
+      borderStyle:['none','solid','dashed','dotted','double'],
+      textTransform:['none','uppercase','lowercase','capitalize'],
+      textDecoration:['none','underline','line-through','overline']
+    };
+    const keys=['backgroundColor','borderRadius','objectFit','marginLeft','marginRight',
+      'borderWidth','borderColor','borderStyle','opacity','minWidthPx','maxWidthPx',
+      'minHeightPx','maxHeightPx','aspectRatio','backgroundGradient','boxShadow','objectPosition'];
+    return keys.map(key => {
       const label = key.replace(/([A-Z])/g, ' $1');
-      const control = choices[key]
-        ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
-        : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
+      const isColor=['color','backgroundColor','borderColor'].includes(key);
+      let control;
+      if(choices[key]) control=`<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`;
+      else if(['fontFamily','backgroundGradient','boxShadow','objectPosition'].includes(key))
+        control=`<input data-style-key="${key}" type="text" maxlength="500" placeholder="${key==='fontFamily'?'system-ui, Arial, sans-serif':''}">`;
+      else control=`<input data-style-key="${key}" type="${isColor?'text':'number'}" step="any">`;
+      return `<label class="legend-cms-group">${label}${control}${isColor ? `<button type="button" data-color-reset="${key}">Use inherited color</button>` : ''}</label>`;
     }).join('');
   }
 
@@ -4412,7 +5946,10 @@
     const copy=cloneCanonicalValue(node);
     const rewrite=current=>{
       current.id=freshStableId();
-      current.signals=(current.signals || []).map(binding=>({...binding,id:freshStableId()}));
+      // Duplicating presentation never duplicates hidden analytics/provider wiring.
+      // New custom mappings are added only through the canonical Analytics controls.
+      current.signals=[];
+      current.fieldSignals={};
       (current.children || []).forEach(rewrite);
     };
     rewrite(copy);
@@ -4540,14 +6077,6 @@
       markDirty();
     });
 
-    const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
-    if (fontInput?.replaceWith) {
-      const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
-      for (const value of ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial']) {
-        const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
-      }
-      fontInput.replaceWith(select);
-    }
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && inlineEditNode) {
         event.preventDefault();
@@ -4694,14 +6223,14 @@
     const selectedOption = byKey || byHref || null;
     const hasCustomHref = currentHref && currentHref !== '#';
     select.value = selectedOption?.choiceKey || (hasCustomHref ? 'custom' : '');
-    const lockedManaged = !!key && !!byKey;
+    const lockedManaged = !!key && !!byKey && (!!model?.systemKey || !!model?.systemBinding || (Array.isArray(model?.signals) && model.signals.length>0));
     select.disabled = lockedManaged;
     if (custom) custom.hidden = lockedManaged || select.value !== 'custom';
     if (wiring) {
       wiring.textContent = lockedManaged
-        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. The visible label, style, and position remain editable; the canonical action identity cannot change.`
+        ? `Protected wiring: ${selectedOption.defaultText || selectedOption.label || key}. This system/signal-bound action identity cannot change; presentation remains editable.`
         : selectedOption?.managed
-        ? `Automatic wiring: Analytics ${selectedOption.analyticsEventName || 'cta_click'}. Every phrase in this group uses the same destination and event contract.`
+        ? `Managed action: choose any approved catalog action for this CTA instance. Destination and analytics resolve canonically from the selected action.`
         : selectedOption
           ? 'Navigation only. This links to an existing page or section and does not create a second CTA wiring contract.'
           : select.value === 'custom'
@@ -4768,12 +6297,13 @@
     const id=(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).replaceAll('-','');
     const map={button:'cta',code:'embed'};
     const nodeType=map[type] || type;
-    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',embed:'div'}; 
+    const tags={section:'section',text:'p',cta:'a',video:'video',form:'form',experience:'form',embed:'div'}; 
     const defaultClasses={
       section:'section',
       cta:'btn primary',
       image:'legend-cms-image',
       form:'public-form legend-cms-inquiry-form',
+      experience:'legend-native-experience',
       embed:'legend-cms-embed'
     };
     const node={
@@ -4782,8 +6312,14 @@
       title:nodeType==='form'?'Send an inquiry':null,
       actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
       systemKey:nodeType==='form'?'canonical_inquiry':null,
-      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:nodeType==='form'?{widthPercent:100}:{},
-      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
+      signals:[],style:nodeType==='embed'?{widthPercent:100,heightPx:320}:['form','experience'].includes(nodeType)?{widthPercent:100}:{},
+      breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[],
+      experience:nodeType==='experience'?{
+        kind:'form',submitCapability:null,
+        steps:[{key:'main',title:'Interactive experience',description:'Customize questions, logic, calculations, and results in Selected Source.',controlKeys:['choice']}],
+        controls:[{key:'choice',type:'choice',label:'Choose an option',required:true,options:[{value:'option_a',label:'Option A'},{value:'option_b',label:'Option B'}]}],
+        calculations:{},results:[]
+      }:null
     };
 
     if(nodeType==='section'){
@@ -4820,15 +6356,15 @@
     navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. Use X/Y offsets for precise positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Mobile uses a conversion-first stack: context → headline → supporting copy/proof → action/form → media → deeper content. Visual breakpoint choices remain editable, while mobile flow safety keeps content in-frame and prevents stored X/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page. Desktop preserves intentional side-by-side composition.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. X/Y offsets remain a base/desktop composition tool; published mobile flow neutralizes them for primary content so it cannot overlap or leave the viewport.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
-    sourceView.innerHTML='<h2>LEGEND Site Source</h2><p>One deterministic source view of the same v3 graph used by the canvas and browser-operated GPT. Canonical actions and system forms are validated server-side and provider/event wiring is not editable here.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Entire site</option><option value="selection">Selected component / section</option></select></label><small id="legend-cms-source-location">Master Source · entire website</small><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false"></textarea><small id="legend-cms-source-status" role="status">Source is synchronized with the current draft.</small><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply validated source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Reload from canvas</button></div>';
+    sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only, color-guided inspection of the canonical v3 graph. Selected Source is the normal editable code surface: click, select, type, paste, use Tab / Shift+Tab to indent or outdent, and Enter to keep indentation. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="soft" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
     tools.appendChild(sourceView);
 
     const publishView=document.createElement('section'); publishView.dataset.cmsView='publish'; publishView.hidden=true;
@@ -4849,7 +6385,9 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><ul><li>Source, canvas, media, pages, draft, validation, and publish all modify the same WebsiteContentDocument v3.</li><li>Preset CTA action keys, inquiry authority, commerce scope, analytics, Meta, and OpenAI conversion wiring remain backend-owned.</li><li>GPT may restyle, rewrite, reposition, add pages/sections/content, choose only available preset actions, and use media owned by this website.</li><li>Publishing remains an explicit browser action through the normal immutable publish authority.</li></ul></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Open Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Open selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed in Source and on canvas as <code>data-cms-id</code>. Use Source for large multi-page changes, selection source for surgical changes, Media for uploads/asset selection, and Publish only after validation.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed as <code>data-cms-id</code>. Master Source is inspection-only. Make source-code changes only through Selected Source, then validate and save through the canonical authority.</p>';
+    const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
+    if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
@@ -4885,19 +6423,30 @@
     document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
+    sourceTextarea?.addEventListener('keydown',handleSourceEditorKeydown);
     sourceTextarea?.addEventListener('input',()=>{
+      if(sourceTextarea.readOnly){
+        sourceEditorDirty=false;
+        void refreshSiteSourceEditor(true);
+        return;
+      }
       sourceEditorDirty=true;
+      renderSourceHighlight();
       const status=document.getElementById('legend-cms-source-status');
-      if(status) status.textContent='Unsaved source changes · canvas remains on the last valid graph.';
+      if(status) status.textContent='Selected Source has unapplied changes · canvas remains on the last validated canonical node.';
+    });
+    sourceTextarea?.addEventListener('scroll',()=>{
+      const highlight=document.getElementById('legend-cms-source-highlight');
+      if(highlight){highlight.scrollTop=sourceTextarea.scrollTop;highlight.scrollLeft=sourceTextarea.scrollLeft;}
     });
     document.getElementById('legend-cms-source-scope')?.addEventListener('change',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-source-apply')?.addEventListener('click',()=>void applySiteSource());
     document.getElementById('legend-cms-source-reload')?.addEventListener('click',()=>{
       sourceEditorDirty=false;
-      refreshSiteSourceEditor(true);
+      void refreshSiteSourceEditor(true);
     });
     document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
     document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
@@ -4989,15 +6538,18 @@
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
       const ov = selectedWebsiteModel(); if (!ov) return;
-      if (ov.actionKey) { syncEditorControls(); return; }
+      const actionIdentityLocked=!!ov.systemKey || !!ov.systemBinding || (Array.isArray(ov.signals) && ov.signals.length>0);
+      if(actionIdentityLocked && ov.actionKey){ syncEditorControls(); return; }
       checkpoint();
       const option = availableCtaOptions().find(candidate => candidate.choiceKey === event.target.value);
       if (!option) {
-        if (event.target.value !== 'custom' && ov.actionKey) { syncEditorControls(); return; }
-        if (event.target.value === 'custom') { delete ov.actionKey; delete selected.dataset.websiteActionKey; }
         if (event.target.value === 'custom') {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           document.getElementById('legend-cms-custom-link').hidden = false;
         } else {
+          delete ov.actionKey;
+          delete selected.dataset.websiteActionKey;
           ov.href = '';
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
@@ -5005,8 +6557,13 @@
         applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
         return;
       }
-      if (!option.managed && ov.actionKey) { syncEditorControls(); return; }
-      if (option.managed) ov.actionKey = option.actionKey;
+      if (option.managed) {
+        ov.actionKey = option.actionKey;
+        selected.dataset.websiteActionKey=option.actionKey;
+      } else {
+        delete ov.actionKey;
+        delete selected.dataset.websiteActionKey;
+      }
       ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
       if (selected.dataset.cmsCompositionId) {
         ov.text = option.defaultText || option.label;
@@ -5018,7 +6575,29 @@
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => {
+      if (!selected) return;
+      const key=input.dataset.styleKey;
+      const numeric=input.type==='number' || key==='fontWeight';
+      const value=numeric ? Number(input.value) : input.value;
+      if(numeric && input.value!==''){
+        if(!Number.isFinite(value)) return;
+        const allowNegative=['letterSpacing','marginTop','marginBottom','marginLeft','marginRight'].includes(key);
+        if(!allowNegative && value<0) return;
+        if(['fontSize','lineHeight','aspectRatio'].includes(key) && value===0) return;
+        if(key==='opacity' && (value<0 || value>1)) return;
+        if(key==='fontWeight' && (value<100 || value>900)) return;
+      }
+      checkpoint();
+      const ov=selectedWebsiteModel(); if(!ov) return;
+      const style=editingStyle(ov,true);
+      if(input.value==='') delete style[key]; else style[key]=value;
+      applyStyle(selected,effectiveStyle(ov));
+      updateDirectCanvasUi();
+      syncSelectedSourcePresentationFromCanvas();
+      syncEditorControls();
+      markDirty();
+    }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
@@ -5056,7 +6635,10 @@
       html,body{max-width:100%}
       body{overflow-x:clip}
       main,main>*{min-width:0;max-width:100%;box-sizing:border-box}
+      main *{min-width:0;box-sizing:border-box}
+      main :is(h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span){max-width:100%;overflow-wrap:anywhere;word-break:normal;white-space:normal}
       main img,main video,main iframe,main form{max-width:100%}
+      [data-cms-editable="true"]{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
       [data-cms-id][hidden]{display:none}
       .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
       .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
@@ -5096,8 +6678,9 @@
       .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-move-handle,
       .legend-cms-selection-frame[data-text-editing="true"] .legend-cms-edge-handle{display:none!important;pointer-events:none!important}
-      .legend-cms-store-controls{display:grid;gap:8px;padding:9px;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 60%,transparent);border-radius:10px;background:color-mix(in srgb,var(--web-navy,#081a3a) 88%,transparent);color:var(--web-surface,#fff)}
-      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.legend-cms-store-settings label{display:grid;gap:5px;margin:0;font-size:11px;font-weight:800;color:var(--web-gold,#d4ad45)}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.legend-cms-store-actions button{min-height:34px!important;padding:7px 9px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 62%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 84%,var(--web-gold,#d4ad45) 16%)!important;color:var(--web-surface,#fff)!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:34px!important;padding:6px 8px!important;border-color:color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent)!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 90%,transparent)!important;color:var(--web-surface,#fff)!important}
+      .legend-cms-store-controls{display:grid;gap:6px;margin:4px 0 8px;padding:0;border:0;background:transparent;color:var(--web-surface,#fff)}
+      #legend-cms-store-toggle{justify-self:start;width:auto;min-height:32px!important;padding:6px 11px!important;border:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 58%,transparent)!important;border-radius:8px!important;background:color-mix(in srgb,var(--web-navy-deep,#07152d) 86%,var(--web-gold,#d4ad45) 14%)!important;color:var(--web-surface,#fff)!important;font-weight:800}
+      .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:7px;border:1px solid #344766;border-radius:9px;background:#0d213e}.legend-cms-store-settings label{display:grid;gap:4px;margin:0;font-size:10px;font-weight:800;color:#cbd7e8}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.legend-cms-store-actions button{min-height:32px!important;padding:6px 8px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:32px!important;padding:5px 7px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
@@ -5109,9 +6692,8 @@
       .legend-cms-corner-nw,.legend-cms-corner-ne,.legend-cms-corner-se,.legend-cms-corner-sw{width:14px;height:14px}
       .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
-      body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
-      body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0);contain:inline-size}
+      body.legend-cms-editing{display:block;height:100dvh;min-height:0;margin:0;overflow:hidden}
+      .legend-cms-preview{width:100vw;max-width:none;min-width:100vw;min-height:0;height:100dvh;overflow-y:auto;overflow-x:clip;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -5120,32 +6702,105 @@
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 0;background:#081a3a;color:#fff;border-bottom:1px solid #344766;margin:0 0 12px;position:sticky;top:-20px;z-index:2}
       .legend-cms-bar button{min-height:38px;border-radius:8px;padding:8px 12px;border:1px solid #50617e;background:#142c50;color:#fff;font-weight:650}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
-      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
-      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
-      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
-      .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
+      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;display:grid;place-items:center;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;cursor:pointer;box-shadow:0 8px 24px #0005}
+      .legend-cms-panel-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .legend-cms-sheet-handle{display:none}
+      .legend-cms-panel h2{margin:0 0 3px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:8px;overflow-wrap:anywhere}
+      .legend-cms-control-heading{display:block;margin:7px 0 1px;color:#e6c77e;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+      .legend-cms-group{display:grid;gap:5px;margin:6px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
-      .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
+      .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:5px 0 8px;padding:8px 10px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:5px}.legend-cms-menu button,.legend-cms-panel section>button{padding:9px 10px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
-      .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
+      .legend-cms-navigation{margin:0 0 10px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-section-layer{align-items:stretch}.legend-cms-layer-drag{display:grid;place-items:center;width:28px;flex:0 0 28px;border:1px solid #344766;border-radius:8px;color:#d4ad45;cursor:grab;user-select:none}.legend-cms-layer-dragging{opacity:.55}.legend-cms-layer-drop{outline:1px solid #d4ad45;outline-offset:2px}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
       .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
-      .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
-      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}.legend-cms-site-source{width:100%;min-height:52vh;resize:vertical;padding:14px;border:1px solid #3f5271;border-radius:10px;background:#07162b;color:#e8eef8;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:1px}[data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
+      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
+      .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="structure"],.legend-cms-source-structure{color:#9bd67d}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
+      .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 13px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:normal}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:#07162b!important;color:#dce6f4!important;-webkit-text-fill-color:currentColor;caret-color:#fff;line-height:1.6}.legend-cms-site-source::selection{background:#4f77aa66}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45;box-shadow:inset 0 0 0 1px color-mix(in srgb,#d4ad45 22%,transparent)}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])) .legend-cms-source-highlight{display:none}
+      [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
+      @media(max-width:800px){
+        html{max-width:100%;overflow-x:hidden}
+        body.legend-cms-editing{width:100%;max-width:100%;overflow:hidden}
+        .legend-cms-preview{width:100%;max-width:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y pinch-zoom;padding-top:0}
+        .legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}
+        .legend-cms-panel{
+          --legend-cms-sheet-compact:min(46dvh,430px);
+          --legend-cms-sheet-expanded:min(88dvh,calc(100dvh - 12px));
+          top:0;right:0;bottom:auto;width:100%;max-width:100%;min-width:0;
+          height:var(--legend-cms-sheet-height,var(--legend-cms-sheet-compact));max-height:none;
+          overflow-y:auto;overflow-x:hidden;
+          overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+          border:0;border-bottom:1px solid #d4ad45;border-radius:0 0 14px 14px;
+          padding:max(6px,env(safe-area-inset-top)) 10px 10px;
+          box-shadow:0 14px 32px #0007;
+          transition:height .2s ease;
+        }
+        body.legend-cms-panel-expanded .legend-cms-panel{--legend-cms-sheet-height:var(--legend-cms-sheet-expanded)}
+        body.legend-cms-sheet-dragging .legend-cms-panel{transition:none}
+        .legend-cms-panel>*{min-width:0;max-width:100%}
+        .legend-cms-sheet-handle{
+          position:sticky;top:0;z-index:8;display:grid;place-items:center;
+          width:72px;min-height:22px;margin:0 auto 2px;padding:5px 0;border:0!important;
+          background:transparent!important;color:#aab8cf!important;touch-action:none;cursor:ns-resize
+        }
+        .legend-cms-sheet-handle::before{content:"";display:block;width:38px;height:4px;border-radius:999px;background:currentColor}
+        .legend-cms-panel-toggle{
+          top:max(6px,env(safe-area-inset-top));right:8px;
+          width:34px;height:34px;min-width:34px;min-height:34px;padding:0;max-width:none
+        }
+        .legend-cms-panel h2{font-size:16px;margin:0 74px 2px 0}
+        .legend-cms-panel>small{margin:0 74px 6px 0;font-size:11px}
+        .legend-cms-bar{
+          display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+          position:sticky;top:calc(-1 * max(6px,env(safe-area-inset-top)));
+          z-index:5;gap:4px;padding:5px 0 6px;margin:0 0 7px;
+          background:#081a3af7;border-bottom:1px solid #344766;
+        }
+        .legend-cms-bar button{
+          width:100%;min-width:0;min-height:32px;padding:5px 3px;border-radius:7px;
+          font-size:11px;line-height:1.05;white-space:normal
+        }
+        .legend-cms-bar #legend-cms-status{
+          grid-column:1/-1;min-height:0;margin:0;padding:1px 3px;
+          font-size:10px;line-height:1.2
+        }
+        .legend-cms-primary-tabs{
+          display:flex;grid-template-columns:none;gap:5px;overflow-x:auto;
+          margin:0 0 7px;padding:0 0 2px;scrollbar-width:none
+        }
+        .legend-cms-primary-tabs::-webkit-scrollbar{display:none}
+        .legend-cms-primary-tabs button{
+          flex:0 0 auto;min-height:32px;padding:6px 9px;font-size:11px
+        }
+        .legend-cms-menu{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+        .legend-cms-menu button,.legend-cms-panel section>button{
+          min-height:34px;padding:7px 6px;border-radius:8px;font-size:11px;
+          line-height:1.15;text-align:center
+        }
+        .legend-cms-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+        .legend-cms-theme{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+        .legend-cms-group{gap:5px;margin:7px 0}
+        .legend-cms-inline-help{margin:5px 0 8px;padding:7px 8px;font-size:11px}
+        .legend-cms-agent-contract{padding:8px 9px;border-radius:9px}
+        .legend-cms-agent-contract pre{max-height:26dvh;overflow:auto;overscroll-behavior:contain;font-size:10px;line-height:1.4}
+        .legend-cms-site-source{min-height:28dvh;font-size:10px;padding:9px}
+        .legend-cms-protection-warning{margin:6px 0;padding:8px 9px;font-size:10px}
+      }
     `;
     document.head.appendChild(style);
   }
@@ -5169,9 +6824,10 @@
     panel.className = 'legend-cms-editor legend-cms-panel';
     panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
+      <button id="legend-cms-sheet-handle" class="legend-cms-sheet-handle" type="button" aria-label="Expand Website Studio controls"></button>
       <h2 id="legend-cms-heading">Website studio</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
-      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
+      <div id="legend-cms-inline-help" class="legend-cms-inline-help" hidden><span>Single click selects and opens Content. Use the gold Move control to position. Resize only from the selected border edges or corners. Double-click text, or choose Edit text, to type.</span><button id="legend-cms-edit-text" type="button">Edit text</button></div>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
         <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
         <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
@@ -5180,17 +6836,45 @@
         <label for="legend-cms-image">Replace image</label>
         <input id="legend-cms-image" type="file" accept="image/jpeg,image/png,image/webp">
       </div>
+      <strong class="legend-cms-control-heading">Typography</strong>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0" step="any" value="1"></div>
-        <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" step="any" value="100"></div>
+        <label class="legend-cms-group">Font family<input data-style-key="fontFamily" type="text" list="legend-cms-font-options" maxlength="160" placeholder="Inherited / system font"></label>
+        <label class="legend-cms-group">Font size px<input data-style-key="fontSize" type="number" min="1" step="any" placeholder="Inherited"></label>
+      </div>
+      <datalist id="legend-cms-font-options"><option value="Inter"><option value="Arial"><option value="Helvetica"><option value="Georgia"><option value="Times New Roman"><option value="Verdana"><option value="Trebuchet MS"><option value="Courier New"><option value="system-ui"></datalist>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Weight / thickness<select data-style-key="fontWeight"><option value="">Inherited</option><option>100</option><option>200</option><option>300</option><option>400</option><option>500</option><option>600</option><option>700</option><option>800</option><option>900</option></select></label>
+        <label class="legend-cms-group">Line height<input data-style-key="lineHeight" type="number" min="0.1" step="any" placeholder="Inherited"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Letter spacing px<input data-style-key="letterSpacing" type="number" step="any" placeholder="Inherited"></label>
+        <label class="legend-cms-group">Text color<input data-style-key="color" type="text" maxlength="120" placeholder="#ffffff or inherited"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Text transform<select data-style-key="textTransform"><option value="">Inherited</option><option value="none">None</option><option value="uppercase">Uppercase</option><option value="lowercase">Lowercase</option><option value="capitalize">Capitalize</option></select></label>
+        <label class="legend-cms-group">Decoration<select data-style-key="textDecoration"><option value="">Inherited</option><option value="none">None</option><option value="underline">Underline</option><option value="line-through">Line through</option><option value="overline">Overline</option></select></label>
+      </div>
+      <strong class="legend-cms-control-heading">Size & position</strong>
+      <div class="legend-cms-row">
+        <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0.05" step="any" value="1"></div>
+        <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" max="100" step="any" value="100"></div>
       </div>
       <div class="legend-cms-row">
         <div class="legend-cms-group"><label for="legend-cms-height">Height px</label><input id="legend-cms-height" type="number" min="0" step="any" placeholder="Auto"></div>
         <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
       </div>
+      <strong class="legend-cms-control-heading">Spacing</strong>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label for="legend-cms-padding-top">Top spacing</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
-        <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Bottom spacing</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-top">Padding top</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Padding bottom</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Padding left<input data-style-key="paddingLeft" type="number" min="0" step="any"></label>
+        <label class="legend-cms-group">Padding right<input data-style-key="paddingRight" type="number" min="0" step="any"></label>
+      </div>
+      <div class="legend-cms-row">
+        <label class="legend-cms-group">Margin top<input data-style-key="marginTop" type="number" step="any"></label>
+        <label class="legend-cms-group">Margin bottom<input data-style-key="marginBottom" type="number" step="any"></label>
       </div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
       <div class="legend-cms-group"><label>Site colors</label>
@@ -5208,18 +6892,80 @@
     panelToggle.type = 'button';
     panelToggle.id = 'legend-cms-panel-toggle';
     panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
-    panelToggle.textContent = 'Full-page canvas';
     panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
-    panelToggle.setAttribute('aria-expanded', 'true');
-    panelToggle.addEventListener('click', () => {
-      const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
-      panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
-      panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+
+    const panelToggleIcon = hidden => hidden
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5h14v14H5Z"/><path d="M9 12h6"/><path d="m12 15-3-3 3-3"/></svg>';
+    const syncPanelToggle = () => {
+      const hidden=document.body.classList.contains('legend-cms-panel-hidden');
+      panelToggle.innerHTML=panelToggleIcon(hidden);
+      panelToggle.setAttribute('aria-label',hidden ? 'Open Website Studio controls' : 'Hide Website Studio controls');
+      panelToggle.setAttribute('title',hidden ? 'Open controls' : 'Hide controls');
+      panelToggle.setAttribute('aria-expanded',hidden ? 'false' : 'true');
+    };
+    const refreshPanelCanvas = () => {
       const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
       else refresh();
+    };
+    panelToggle.addEventListener('click', () => {
+      document.body.classList.toggle('legend-cms-panel-hidden');
+      if(document.body.classList.contains('legend-cms-panel-hidden'))
+        document.body.classList.remove('legend-cms-panel-expanded');
+      syncPanelToggle();
+      refreshPanelCanvas();
     });
+    syncPanelToggle();
     document.body.appendChild(panelToggle);
+
+    const sheetHandle=panel.querySelector('#legend-cms-sheet-handle');
+    const mobileSheet=()=>window.matchMedia?.('(max-width: 800px)').matches === true;
+    const syncSheetHandle=()=>{
+      if(!sheetHandle) return;
+      const expanded=document.body.classList.contains('legend-cms-panel-expanded');
+      sheetHandle.setAttribute('aria-label',expanded ? 'Collapse Website Studio controls' : 'Expand Website Studio controls');
+      sheetHandle.setAttribute('aria-expanded',expanded ? 'true' : 'false');
+    };
+    const setSheetExpanded=expanded=>{
+      document.body.classList.toggle('legend-cms-panel-expanded',!!expanded);
+      panel.style.removeProperty('--legend-cms-sheet-height');
+      syncSheetHandle();
+      refreshPanelCanvas();
+    };
+    let sheetDrag=null;
+    sheetHandle?.addEventListener('click',()=>{ if(mobileSheet()) setSheetExpanded(!document.body.classList.contains('legend-cms-panel-expanded')); });
+    sheetHandle?.addEventListener('pointerdown',event=>{
+      if(!mobileSheet() || event.button!==0) return;
+      sheetDrag={startY:event.clientY,startHeight:panel.getBoundingClientRect().height};
+      document.body.classList.add('legend-cms-sheet-dragging');
+      sheetHandle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+    sheetHandle?.addEventListener('pointermove',event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=Math.max(compact,Math.min(expanded,sheetDrag.startHeight+(event.clientY-sheetDrag.startY)));
+      panel.style.setProperty('--legend-cms-sheet-height',height+'px');
+      event.preventDefault();
+    });
+    const finishSheetDrag=event=>{
+      if(!sheetDrag) return;
+      const viewport=Math.max(320,Number(window.innerHeight)||document.documentElement.clientHeight||800);
+      const compact=Math.min(viewport*.46,430);
+      const expanded=Math.min(viewport*.88,viewport-12);
+      const height=panel.getBoundingClientRect().height;
+      const expand=height>(compact+expanded)/2;
+      sheetDrag=null;
+      document.body.classList.remove('legend-cms-sheet-dragging');
+      sheetHandle?.releasePointerCapture?.(event.pointerId);
+      setSheetExpanded(expand);
+    };
+    sheetHandle?.addEventListener('pointerup',finishSheetDrag);
+    sheetHandle?.addEventListener('pointercancel',finishSheetDrag);
+    syncSheetHandle();
     window.addEventListener('beforeunload', event => {
       if (!dirty) return;
       event.preventDefault();
@@ -5247,7 +6993,7 @@
       const target = editorSelectionTarget(event.target);
       if (!target || target.closest('.legend-cms-editor')) return;
       const alreadySelected = target === selected;
-      if (!alreadySelected) setSelected(target);
+      if (!alreadySelected) setSelected(target,{openContent:true});
       else if (inlineEditNode !== target && event.detail === 1) showPanel('content');
       if (target.tagName === 'A' || target.tagName === 'BUTTON') event.preventDefault();
       event.stopPropagation();
@@ -5328,7 +7074,10 @@
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected || isSharedShellElement(selected)) return;
       const current=selectedWebsiteModel(false);
-      if (current && (current.actionKey || current.systemKey || current.systemBinding || selected.tagName === 'FORM')) return;
+      if (current && (current.systemKey || current.systemBinding ||
+          (Array.isArray(current.signals) && current.signals.length>0) ||
+          Object.values(current.fieldSignals || {}).some(bindings=>Array.isArray(bindings) && bindings.length>0) ||
+          current.type === 'form')) return;
       const serviceCard=businessServiceCardFor(selected);
       if(serviceCard?.dataset?.cmsCompositionId) setSelected(serviceCard);
       removeSelected();
@@ -5347,9 +7096,16 @@
       const url = new URL(`${API_BASE}/api/website-content/manage`);
       url.searchParams.set('ticket', editorTicket);
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) throw new Error('This edit session has expired.');
+      if (!response.ok) {
+        if ((response.status===401 || response.status===403) &&
+            showEditorAuthorizationRecovery('This Website Studio authorization is missing or expired.')) return;
+        throw new Error('This edit session has expired.');
+      }
       const payload = await response.json();
-      if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
+      if (payload.siteKey && payload.siteKey !== SITE_KEY) {
+        if (showEditorAuthorizationRecovery('This Website Studio authorization belongs to a different website scope.')) return;
+        throw new Error('This edit session belongs to a different website. Open it from your profile.');
+      }
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
@@ -5374,6 +7130,12 @@
 
       if(legacyMigration && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
+      }
+
+      if(!materializeMode && templateRepairPending && !legacyMigration){
+        const repaired=await save(false);
+        if(!repaired) throw new Error('Protected form presentation could not be repaired safely. Publishing remains blocked.');
+        templateRepairPending=false;
       }
 
       preservePreviewNavigation();

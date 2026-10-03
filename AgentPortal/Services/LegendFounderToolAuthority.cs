@@ -62,6 +62,22 @@ internal sealed partial class LegendFounderToolAuthority
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
 
+    internal static IReadOnlyList<object> ProjectToolSchemas(IEnumerable<string> names)
+    {
+        var allowed = names.ToHashSet(StringComparer.Ordinal);
+        return BuildFounderTools()
+            .Where(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool, JsonOptions);
+                return element.TryGetProperty("name", out var name) &&
+                    name.ValueKind == JsonValueKind.String &&
+                    name.GetString() is { } value &&
+                    allowed.Contains(value);
+            })
+            .ToArray();
+    }
+
+
     internal IReadOnlyList<object> GetAvailableTools(
         bool mutationConfirmed,
         string? conversationId,
@@ -76,12 +92,40 @@ internal sealed partial class LegendFounderToolAuthority
             if (name == "legend_remember_conversation_facts")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
-                return !externalTeacher && !providerPolicy.ForbidsExternalAnswering;
-            if (name == "legend_research_internet" && providerPolicy.ForbidsExternalProviders)
+                return !externalTeacher && !providerPolicy.ForbidsExternalAnswering && !providerPolicy.ForbidsOpenAiPayg;
+            if (name == "legend_research_internet" &&
+                (providerPolicy.ForbidsExternalProviders || providerPolicy.ForbidsOpenAiPayg))
                 return false;
             return !RequiresExplicitFounderCommand(name) || mutationConfirmed;
         }).ToArray();
     }
+
+    internal IReadOnlyList<object> GetAvailableSiteReadTools()
+    {
+        // Browser/site-tool exposure is a projection of this one executable
+        // registry. It never copies schemas into a second permission catalog.
+        return Tools.Where(tool =>
+        {
+            var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            return IsSiteReadableTool(name);
+        }).ToArray();
+    }
+
+    internal IReadOnlyList<object> GetAvailableFounderSiteTools()
+    {
+        // Authenticated Founder GPT Work/browser sessions consume the same
+        // executable registry. Add only bounded engineering workflow mutations
+        // whose own canonical authorities remain responsible for authorization,
+        // isolated repair preparation, validation and release gating.
+        return Tools.Where(tool =>
+        {
+            var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            return IsSiteReadableTool(name) || IsFounderSiteWorkflowMutationTool(name);
+        }).ToArray();
+    }
+
+    internal bool IsFounderSiteWorkflowMutation(string name) =>
+        IsFounderSiteWorkflowMutationTool(name);
 
     internal IReadOnlyList<object> GetAvailableCloudTools(
         string? conversationId, LegendConnectExternalProviderPolicy providerPolicy)
@@ -91,7 +135,12 @@ internal sealed partial class LegendFounderToolAuthority
         // Reuse the executable registry's original schemas. Read-only does not
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
-        var mutationsEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        // Read callbacks can be live while every cloud mutation remains
+        // independently fail-closed. Future write enablement reuses this same
+        // registry and still requires the existing exact-action approval gates.
+        var mutationsEnabled =
+            CloudToolFeatureEnabled("LegendConnect:Foundation:Cloudflare:MutationsEnabled") &&
+            CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
         var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
             .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
@@ -101,14 +150,51 @@ internal sealed partial class LegendFounderToolAuthority
     }
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
-        name == CloudRepairTool ? mutationsEnabled : name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name);
+        name == CloudRepairTool ? mutationsEnabled
+        : name == "legend_inspect_repository" ? repositoryEnabled
+        : IsCloudReadableTool(name);
 
-    private static bool IsCloudReadableTool(string name) => name is
-        "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
-        "legend_system_overview" or "legend_provider_capacity" or "legend_client_lead_portfolio" or
-        // Source inspection keeps its own regular-file, immutable-revision,
-        // sensitive-path and credential-material checks before returning text.
-        "legend_inspect_repository";
+    // Cloudflare consumes the same canonical read projection exposed by the
+    // Founder GPT/site-tool path. This is intentionally a deny-classification,
+    // not a second hand-maintained allowlist: adding a new privacy-safe read to
+    // the one executable registry must not require a second Cloudflare string.
+    // The excluded reads are those whose existing payloads can contain private
+    // retained text, unrestricted record-level drilldowns, external-provider
+    // actions, or release/control requests rather than bounded MasterApp reads.
+    private static bool IsCloudReadableTool(string name) =>
+        IsSiteReadableTool(name) &&
+        name is not (
+            "legend_metric_detail" or
+            "legend_search_retained_knowledge" or
+            "legend_operational_diagnostics" or
+            "legend_research_internet" or
+            "legend_request_teacher_escalation" or
+            "legend_request_repair_release");
+
+    private static bool IsFounderSiteWorkflowMutationTool(string name) =>
+        name is
+            "legend_engineering_bootstrap" or
+            "legend_prepare_software_repair";
+
+    private static bool IsSiteReadableTool(string name) =>
+        IsReadOnlyFounderTool(name) && name is
+            "legend_calculate" or
+            "legend_capabilities" or
+            "legend_read_masterapp" or
+            "legend_system_inventory" or
+            "legend_system_health" or
+            "legend_configuration_presence" or
+            "legend_software_remediation_status" or
+            "legend_engineering_status" or
+            "legend_inspect_repository" or
+            "legend_prepare_repair_packet" or
+            "legend_inspect_repair_validation" or
+            "legend_request_repair_release" or
+            "legend_verify_repair_deployment" or
+            "legend_system_overview" or
+            "legend_provider_capacity" or
+            "legend_client_lead_portfolio";
+
 
     // A read-only status grouping can still contain arbitrary private text.
     // Cloud disclosure includes aggregate numbers, never editable CRM labels.
@@ -159,6 +245,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
@@ -166,9 +253,14 @@ internal sealed partial class LegendFounderToolAuthority
         name is
             "legend_calculate" or
             "legend_capabilities" or
+            "legend_system_inventory" or
+            "legend_system_health" or
+            "legend_configuration_presence" or
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
+            "legend_engineering_status" or
             "legend_inspect_repository" or
+            "legend_prepare_repair_packet" or
             "legend_inspect_repair_validation" or
             "legend_request_repair_release" or
             "legend_verify_repair_deployment" or
@@ -183,6 +275,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_read_masterapp" or
             "legend_language_state";
 
     /// <summary>
@@ -451,6 +544,52 @@ internal sealed partial class LegendFounderToolAuthority
                     cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled")));
             }
 
+            case "legend_read_masterapp":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"masterapp_read_authority_unavailable"}""";
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                try
+                {
+                    using var arguments = JsonDocument.Parse(call.Arguments);
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
+                        !IsStrictSchemaInstance(schema, root))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+
+                    var operation = root.GetProperty("operation").GetString();
+                    var surface = root.GetProperty("surface").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("surface").GetString();
+                    var preset = root.GetProperty("preset").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("preset").GetString();
+                    var timeZoneId = root.GetProperty("timezone_id").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_id").GetString();
+                    int? timeZoneOffsetMinutes = root.GetProperty("timezone_offset_minutes").ValueKind == JsonValueKind.Null
+                        ? null : root.GetProperty("timezone_offset_minutes").GetInt32();
+
+                    await using var readScope = _authorizationScopes.CreateAsyncScope();
+                    var authority = readScope.ServiceProvider.GetRequiredService<LegendMasterAppReadAuthority>();
+                    if (operation == "catalog")
+                    {
+                        if (surface is not null || preset is not null || timeZoneId is not null || timeZoneOffsetMinutes is not null)
+                            return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                        return SerializeUnbounded(authority.Catalog());
+                    }
+                    if (operation != "read" || string.IsNullOrWhiteSpace(surface))
+                        return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                    return SerializeUnbounded(await authority.ReadAsync(
+                        founder,
+                        surface,
+                        new LegendMasterAppReadRequest(preset, timeZoneId, timeZoneOffsetMinutes),
+                        cancellationToken));
+                }
+                catch (JsonException)
+                {
+                    return """{"ok":false,"error":"masterapp_read_arguments_invalid"}""";
+                }
+            }
+
             case "legend_remember_conversation_facts":
             {
                 // The existing conversation-state authority validates literal
@@ -475,6 +614,21 @@ internal sealed partial class LegendFounderToolAuthority
                 });
             }
 
+            case "legend_system_inventory":
+                return SerializeUnbounded(Shared.Diagnostics.LegendSiteToolDisclosureAuthority.SystemInventory());
+
+            case "legend_system_health":
+                return SerializeUnbounded(await ReadSanitizedSystemHealthAsync(cancellationToken));
+
+            case "legend_configuration_presence":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var capability = ReadRequiredString(arguments.RootElement, "capability");
+                if (string.IsNullOrWhiteSpace(capability))
+                    return """{"ok":false,"error":"configuration_capability_required"}""";
+                return SerializeUnbounded(ReadConfigurationPresence(capability));
+            }
+
             case "legend_software_remediation_status":
             {
                 if (_softwareRemediation is null)
@@ -483,6 +637,49 @@ internal sealed partial class LegendFounderToolAuthority
                 return SerializeUnbounded(
                     await _softwareRemediation.GetStatusAsync(cancellationToken));
             }
+
+            case "legend_engineering_status":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                var adapter = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringAgentAdapter>();
+                return SerializeUnbounded(new
+                {
+                    controlPlane = await orchestrator.GetStatusAsync(cancellationToken),
+                    executor = await adapter.GetStatusAsync(cancellationToken)
+                });
+            }
+
+            case "legend_engineering_bootstrap":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var workItemRaw = ReadRequiredString(arguments.RootElement, "work_item_id");
+                var role = ReadRequiredString(arguments.RootElement, "role");
+                if (!Guid.TryParse(workItemRaw, out var workItemId) || role is not
+                    ("TRIAGE_WORKER" or "HEAD_GPT" or "CODEX_IMPLEMENTER" or "INDEPENDENT_REVIEWER" or "LIVE_VERIFIER"))
+                    return """{"ok":false,"error":"engineering_bootstrap_arguments_invalid"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                return SerializeUnbounded(await orchestrator.BootstrapAsync(founder, workItemId, role, cancellationToken));
+            }
+
+            case "legend_engineering_approve_release":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var workItemRaw = ReadRequiredString(arguments.RootElement, "work_item_id");
+                if (!Guid.TryParse(workItemRaw, out var workItemId))
+                    return """{"ok":false,"error":"engineering_release_approval_arguments_invalid"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                return SerializeUnbounded(await orchestrator.ApproveReleaseAsync(founder, workItemId, cancellationToken));
+            }
+
 
             case "legend_inspect_repository":
             {
@@ -495,6 +692,75 @@ internal sealed partial class LegendFounderToolAuthority
                         ReadOptionalString(arguments.RootElement, "path"),
                         ReadOptionalString(arguments.RootElement, "git_reference"),
                         cancellationToken));
+            }
+
+            case "legend_prepare_repair_packet":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var root = arguments.RootElement;
+                var application = ReadRequiredString(root, "application");
+                var route = ReadRequiredString(root, "route");
+                var sourceRevision = ReadRequiredString(root, "source_revision");
+                var failureClass = ReadRequiredString(root, "failure_class");
+                var expected = ReadRequiredString(root, "expected_behavior");
+                var observed = ReadRequiredString(root, "observed_behavior");
+                if (!IsSafeRepairSymbol(application, 64) ||
+                    !IsSafeRepairRoute(route) ||
+                    !IsCommitSha(sourceRevision) ||
+                    failureClass is not ("CODE_DEFECT" or "CONFIGURATION_DEFECT" or "DEPLOYMENT_DRIFT" or
+                        "AUTHORIZATION_DENIAL" or "NETWORK_PROVIDER_FAILURE" or "EXPECTED_POLICY_BEHAVIOR" or "UNKNOWN") ||
+                    !IsSafeRepairNarrative(expected) || !IsSafeRepairNarrative(observed))
+                    return """{"ok":false,"error":"repair_packet_arguments_invalid"}""";
+
+                if (!TryReadSafeRepairSymbols(root, "component_ids", 24, out var componentIds) ||
+                    !TryReadSafeRepairSymbols(root, "issue_codes", 24, out var issueCodes) ||
+                    !TryReadRepairPaths(root, "suspected_paths", 16, out var suspectedPaths))
+                    return """{"ok":false,"error":"repair_packet_arguments_invalid"}""";
+
+                var sourcePaths = new List<object>();
+                foreach (var path in suspectedPaths)
+                {
+                    var disclosureClass = FounderSoftwareRemediationService.ClassifyInspectableSourcePath(path);
+                    if (disclosureClass is null ||
+                        disclosureClass == Shared.Diagnostics.LegendSiteToolDisclosureAuthority.PrivacyProtected)
+                        return """{"ok":false,"error":"repair_packet_protected_path"}""";
+                    sourcePaths.Add(new
+                    {
+                        path,
+                        disclosureClass,
+                        readable = disclosureClass == Shared.Diagnostics.LegendSiteToolDisclosureAuthority.SafeSource
+                    });
+                }
+
+                return SerializeUnbounded(new
+                {
+                    ok = true,
+                    schemaVersion = 1,
+                    packetType = "legend_sanitized_software_repair.v1",
+                    observedApplication = application,
+                    liveRoute = route,
+                    deployedSha = sourceRevision!.ToLowerInvariant(),
+                    failureClass,
+                    expectedBehavior = expected,
+                    observedBehavior = observed,
+                    canonicalComponentIds = componentIds,
+                    safeIssueCodes = issueCodes,
+                    suspectedSourcePaths = sourcePaths,
+                    explicitProtectedAreas = new[]
+                    {
+                        "secret_values", "credentials", "authentication_material", "private_customer_data",
+                        "raw_production_payloads", "integrity_protected_source_bodies", "approved_branch_direct_edits",
+                        "production_branch_direct_edits"
+                    },
+                    privacySecurityClassification = "SANITIZED_STRUCTURAL_EVIDENCE_ONLY",
+                    sourceAuthority = "LegendFounderToolAuthority",
+                    repositoryAuthority = "FounderSoftwareRemediationService",
+                    requiresFreshApprovedHead = true,
+                    requiresIsolatedBranch = true,
+                    requiredValidationCannotBeBypassed = true,
+                    deployOnlyAffectedApplications = true,
+                    mutationAuthorized = false
+                });
             }
 
             case "legend_prepare_software_repair":
@@ -1950,6 +2216,63 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
+    private static bool IsCommitSha(string? value) =>
+        value is { Length: 40 } && value.All(Uri.IsHexDigit);
+
+    private static bool IsSafeRepairSymbol(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-' or ':' or '/');
+
+    private static bool IsSafeRepairRoute(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 256 && value.StartsWith('/') &&
+        !value.Contains('?') && !value.Contains('#') && !value.Contains("..", StringComparison.Ordinal) &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '/' or '{' or '}' or ':' or '.' or '_' or '-');
+
+    private static bool IsSafeRepairNarrative(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 500 || value.Any(char.IsControl))
+            return false;
+        return !System.Text.RegularExpressions.Regex.IsMatch(
+            value,
+            @"(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\b\d{8,}\b|\bBearer\s+|(?:password|passwd|secret|token|api[_-]?key|cookie|connectionstring)\s*[:=]|https?://\S+[?#])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
+    }
+
+    private static bool TryReadSafeRepairSymbols(JsonElement root, string propertyName, int maximumItems, out string[] values)
+    {
+        values = Array.Empty<string>();
+        if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array ||
+            element.GetArrayLength() > maximumItems) return false;
+        var list = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || !IsSafeRepairSymbol(item.GetString(), 96))
+                return false;
+            list.Add(item.GetString()!);
+        }
+        values = list.Distinct(StringComparer.Ordinal).ToArray();
+        return true;
+    }
+
+    private static bool TryReadRepairPaths(JsonElement root, string propertyName, int maximumItems, out string[] values)
+    {
+        values = Array.Empty<string>();
+        if (!root.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array ||
+            element.GetArrayLength() > maximumItems) return false;
+        var list = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            var value = item.ValueKind == JsonValueKind.String ? item.GetString() : null;
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 260 || value.Any(char.IsControl))
+                return false;
+            list.Add(value);
+        }
+        values = list.Distinct(StringComparer.Ordinal).ToArray();
+        return true;
+    }
+
     private static IReadOnlyList<object> DescribeFounderCapabilities() => DescribeFounderCapabilitiesCore(false);
 
     private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly,
@@ -2046,6 +2369,42 @@ internal sealed partial class LegendFounderToolAuthority
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_read_masterapp",
+                description =
+                    "Discover or read privacy-safe canonical MasterApp page/data projections across applications. Use operation=catalog first when the relevant surface is unknown. Read projections are owned by the same page/service authorities used by the product and GPT/site-tool path; this tool does not scrape HTML, run SQL, expose credentials, or create a provider-specific data registry.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new { type = "string", @enum = new[] { "catalog", "read" } },
+                        surface = new { type = new[] { "string", "null" }, minLength = 1, maxLength = 120 },
+                        preset = new
+                        {
+                            type = new[] { "string", "null" },
+                            @enum = new string?[] { "today", "7d", "30d", "month", "year", null }
+                        },
+                        timezone_id = new
+                        {
+                            type = new[] { "string", "null" },
+                            minLength = 1,
+                            maxLength = 128
+                        },
+                        timezone_offset_minutes = new
+                        {
+                            type = new[] { "integer", "null" },
+                            minimum = -840,
+                            maximum = 840
+                        }
+                    },
+                    required = new[] { "operation", "surface", "preset", "timezone_id", "timezone_offset_minutes" },
                     additionalProperties = false
                 },
                 strict = true
@@ -2728,6 +3087,59 @@ internal sealed partial class LegendFounderToolAuthority
             new
             {
                 type = "function",
+                name = "legend_system_inventory",
+                description =
+                    "Read the privacy-safe whole-MasterApp application and authority inventory across AgentPortal, ClientApp, Protect, Parfait, LEGEND Website, iOS, Android, Cloudflare, Infrastructure, SHARED, Domain and shared design. Returns repository/deployment/diagnostic ownership metadata only; no private data or credentials.",
+                parameters = new
+                {
+                    type = "object", properties = new { },
+                    required = Array.Empty<string>(), additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_system_health",
+                description =
+                    "Read aggregate privacy-safe runtime diagnostic health across all MasterApp applications and platforms from the existing sanitized incident store. Returns counts, categories and safe revision identity only; never user identity, raw messages, request/response bodies, cookies, tokens or private fields.",
+                parameters = new
+                {
+                    type = "object", properties = new { },
+                    required = Array.Empty<string>(), additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_configuration_presence",
+                description =
+                    "Read presence-only status for a fixed allowlist of production capability configuration groups. Returns configured/missing roles and counts only. It never accepts arbitrary configuration keys and never returns secret, credential, connection-string, token, identifier, endpoint value, or private data.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        capability = new
+                        {
+                            type = "string",
+                            @enum = new[]
+                            {
+                                "all", "founder_identity", "master_database", "github_remediation",
+                                "data_protection", "website_editor_data_protection", "meta_ads",
+                                "graph_provisioning", "azure_translator", "square_server_payments"
+                            }
+                        }
+                    },
+                    required = new[] { "capability" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
                 name = "legend_software_remediation_status",
                 description =
                     "Read whether the single Founder-governed software-remediation authority is configured. It reports only capability state; it never reveals a GitHub token, private key, connection string, or production credential.",
@@ -2740,6 +3152,60 @@ internal sealed partial class LegendFounderToolAuthority
                 },
                 strict = true
             },
+
+            new
+            {
+                type = "function",
+                name = "legend_engineering_status",
+                description =
+                    "Read the Founder-only autonomous engineering control-plane status: durable work-item counts, priorities, risk states, local budget mode, and whether the configured ChatGPT-plan-backed Codex executor is eligible and ready. No OAuth token, API key, private source, customer data, or secret value is returned.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_engineering_bootstrap",
+                description =
+                    "Founder-only request to mint one server-enforced EngineeringContext for an existing durable engineering work item and its exact server-assigned role. This cannot change risk, role, scope, live SHA, evidence revision, or source disclosure; mismatches fail closed.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        work_item_id = new { type = "string", minLength = 36, maxLength = 36 },
+                        role = new { type = "string", @enum = new[] { "TRIAGE_WORKER", "HEAD_GPT", "CODEX_IMPLEMENTER", "INDEPENDENT_REVIEWER", "LIVE_VERIFIER" } }
+                    },
+                    required = new[] { "work_item_id", "role" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_engineering_approve_release",
+                description =
+                    "Explicit Founder approval for one exact Tier B engineering work item that has already passed independent review and required CI. Approval is invalidated by changed evidence and does not itself bypass release cohort policy, merge checks, deployment proof, or live functional proof.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        work_item_id = new { type = "string", minLength = 36, maxLength = 36 }
+                    },
+                    required = new[] { "work_item_id" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+
             new
             {
                 type = "function",
@@ -2755,6 +3221,54 @@ internal sealed partial class LegendFounderToolAuthority
                         git_reference = new { type = new[] { "string", "null" }, maxLength = 100 }
                     },
                     required = new[] { "path", "git_reference" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_prepare_repair_packet",
+                description =
+                    "Create a bounded sanitized software-repair packet from already observed structural evidence. It returns no source contents, customer data, credentials, auth material or mutation authority. Suspected repository paths are classified by the canonical disclosure policy; privacy-protected paths are rejected and integrity/existence-only paths remain unreadable metadata.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        application = new { type = "string", minLength = 1, maxLength = 64 },
+                        route = new { type = "string", minLength = 1, maxLength = 256 },
+                        source_revision = new { type = "string", minLength = 40, maxLength = 40 },
+                        failure_class = new { type = "string", @enum = new[]
+                        {
+                            "CODE_DEFECT", "CONFIGURATION_DEFECT", "DEPLOYMENT_DRIFT",
+                            "AUTHORIZATION_DENIAL", "NETWORK_PROVIDER_FAILURE",
+                            "EXPECTED_POLICY_BEHAVIOR", "UNKNOWN"
+                        } },
+                        expected_behavior = new { type = "string", minLength = 1, maxLength = 500 },
+                        observed_behavior = new { type = "string", minLength = 1, maxLength = 500 },
+                        component_ids = new
+                        {
+                            type = "array", maxItems = 24,
+                            items = new { type = "string", minLength = 1, maxLength = 96 }
+                        },
+                        issue_codes = new
+                        {
+                            type = "array", maxItems = 24,
+                            items = new { type = "string", minLength = 1, maxLength = 96 }
+                        },
+                        suspected_paths = new
+                        {
+                            type = "array", maxItems = 16,
+                            items = new { type = "string", minLength = 1, maxLength = 260 }
+                        }
+                    },
+                    required = new[]
+                    {
+                        "application", "route", "source_revision", "failure_class",
+                        "expected_behavior", "observed_behavior", "component_ids",
+                        "issue_codes", "suspected_paths"
+                    },
                     additionalProperties = false
                 },
                 strict = true

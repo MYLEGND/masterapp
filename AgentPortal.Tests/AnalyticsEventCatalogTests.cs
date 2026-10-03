@@ -22,6 +22,7 @@ public class AnalyticsEventCatalogTests
         "form_first_focus",
         "form_interaction", // Internal form state transition reason; never emitted as an analytics event.
         "form_started",
+        "field_completed", // Website signal binding trigger; canonical analytics event is form_field_complete.
         "lead_confirmed",
         "page_load",
         "processing_viewed",

@@ -1,4 +1,4 @@
-<div class="modal fade legend-founder-ai-modal"
+<div class="modal fade legend-founder-ai-modal" data-legend-modal-surface
      id="legendFounderAiModal"
      tabindex="-1"
      aria-labelledby="legendFounderAiTitle"
@@ -6,8 +6,8 @@
      data-chat-url="@Url.Action("Chat", "LegendFounderAi")"
      data-history-url="@Url.Action("Conversations", "LegendFounderAi")">
 
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content legend-founder-ai-shell">
+    <div class="modal-dialog modal-dialog-centered" data-legend-modal-panel>
+        <div class="modal-content legend-founder-ai-shell" data-legend-modal-panel>
 
             <header class="legend-founder-ai-header">
                 <div class="legend-founder-ai-identity">
@@ -229,22 +229,9 @@
                                      class="legend-founder-ai-logo-image" />
                             </div>
 
-                            <span class="legend-founder-ai-eyebrow">
-                                FOUNDER INTELLIGENCE
-                            </span>
-
                             <h3>
                                 Ask Legend<sup>®</sup> Ai
                             </h3>
-
-                            <p>
-                                Legend® Ai mode uses governed native intelligence first.
-                                OpenAI Teacher mode is a direct Founder-to-OpenAI channel
-                                that can inspect and teach through the existing governed
-                                LEGEND tools without becoming a second authority.
-                                Turn on Native-only test to prohibit every OpenAI fallback
-                                and verify LEGEND without provider assistance.
-                            </p>
                         </div>
                     </main>
 

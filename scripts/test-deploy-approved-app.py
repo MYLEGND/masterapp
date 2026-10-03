@@ -22,9 +22,11 @@ def row(identifier, status):
 
 
 class FakeAzure:
-    def __init__(self, states, revisions, accepted=True):
+    def __init__(self, states, revisions, accepted=True, static=False, recovery_accepted=True):
         self.states, self.revisions, self.accepted = list(states), list(revisions), accepted
+        self.static, self.recovery_accepted = static, recovery_accepted
         self.uploads = 0
+        self.recovery_uploads = 0
         self.now = 0
 
     def deployments(self):
@@ -40,11 +42,24 @@ class FakeAzure:
         self.uploads += 1
         return self.accepted
 
+    def submit_static_recovery(self):
+        if not self.static:
+            raise RuntimeError('not static')
+        self.recovery_uploads += 1
+        return self.recovery_accepted
+
     def sleep(self, seconds):
         self.now += seconds
 
-    def run(self):
-        return deploy.reconcile(self, clock=lambda: self.now, sleep=self.sleep, interval=1, timeout=10)
+    def run(self, **kwargs):
+        return deploy.reconcile(
+            self,
+            clock=lambda: self.now,
+            sleep=self.sleep,
+            interval=1,
+            timeout=10,
+            **kwargs,
+        )
 
 
 class ReconciliationTests(unittest.TestCase):
@@ -70,6 +85,28 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(1, azure.uploads)
 
+    def test_static_terminal_onedeploy_failure_uses_one_verified_recovery_then_requires_live_revision(self):
+        azure = FakeAzure(
+            [[], [row('failed', 3)], [row('recovery', 1)], [row('recovery', 4)]],
+            [False, False, None, True, True],
+            accepted=False,
+            static=True)
+        self.assertEqual('deployed', azure.run())
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual(1, azure.recovery_uploads)
+
+    def test_static_recovery_terminal_failure_is_not_retried_again(self):
+        azure = FakeAzure(
+            [[], [row('failed', 3)], [row('recovery-failed', 3)]],
+            [False, False, False],
+            accepted=False,
+            static=True,
+            recovery_accepted=False)
+        with self.assertRaisesRegex(RuntimeError, 'failed'):
+            azure.run()
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual(1, azure.recovery_uploads)
+
     def test_unknown_upload_outcome_never_causes_another_upload(self):
         azure = FakeAzure([[]], [False], accepted=False)
         with self.assertRaisesRegex(RuntimeError, 'deadline'):
@@ -82,11 +119,20 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(0, azure.uploads)
 
-    def test_status_unavailable_is_fail_closed(self):
+    def test_status_unavailable_is_bounded_and_fail_closed(self):
         azure = FakeAzure([RuntimeError('gateway unavailable')], [False])
-        with self.assertRaisesRegex(RuntimeError, 'deadline'):
+        with self.assertRaisesRegex(deploy.DeploymentStatusUnavailable, '3 consecutive reads'):
             azure.run()
+        self.assertEqual(2, azure.now)
         self.assertEqual(0, azure.uploads)
+
+    def test_transient_status_outage_recovers_without_upload_replay(self):
+        azure = FakeAzure(
+            [[], RuntimeError('gateway unavailable'), RuntimeError('gateway unavailable'), [row('new', 4)]],
+            [False, True, True],
+            accepted=False)
+        self.assertEqual('deployed', azure.run())
+        self.assertEqual(1, azure.uploads)
 
     def test_live_revision_alone_cannot_override_active_deployment(self):
         azure = FakeAzure([[row('still-running', 2)]], [True])
@@ -154,13 +200,115 @@ class PackageTests(unittest.TestCase):
                 self.assertEqual(value, command[command.index(flag) + 1])
             self.assertEqual(1, run.call_count)
 
+    def test_static_recovery_uses_kudu_config_zip_once_with_same_package(self):
+        azure = deploy.Azure('masterapp-website', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40, static=True)
+        with patch.object(deploy.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            self.assertTrue(azure.submit_static_recovery())
+            command = run.call_args.args[0]
+            self.assertEqual(['az','webapp','deployment','source','config-zip'], command[:5])
+            self.assertEqual('/immutable.zip', command[command.index('--src') + 1])
+            self.assertEqual(1, run.call_count)
+
+
+class TransactionTests(unittest.TestCase):
+    def test_failure_rolls_every_changed_target_back_to_preserved_baseline(self):
+        keys = list(deploy.TARGETS)[:2]
+        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
+        baseline = "b" * 40
+        baselines = json.dumps([
+            {"app": key, "revision": baseline}
+            for key in keys
+        ])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
+             patch.object(deploy, "deploy_one", side_effect=["deployed", RuntimeError("boom")]), \
+             patch.object(deploy, "rollback_transaction") as rollback:
+            with self.assertRaisesRegex(RuntimeError, "every changed target was restored"):
+                deploy.deploy_transaction(
+                    names,
+                    baselines,
+                    Path("/tmp/candidate"),
+                    Path("/tmp/rollback"),
+                    "a" * 40,
+                )
+        rollback.assert_called_once()
+        self.assertEqual(keys, rollback.call_args.args[0])
+
+    def test_single_target_transaction_does_not_repeat_completed_reconciliation(self):
+        key = next(iter(deploy.TARGETS))
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"]]
+        baselines = json.dumps([{"app": key, "revision": revision}])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "deploy_one", return_value="deployed"), \
+             patch.object(deploy, "reconcile") as recheck:
+            deploy.deploy_transaction(
+                names,
+                baselines,
+                Path("/tmp/candidate"),
+                Path("/tmp/rollback"),
+                revision,
+            )
+        recheck.assert_not_called()
+
+    def test_multi_target_transaction_retains_final_cross_target_reconciliation(self):
+        keys = list(deploy.TARGETS)[:2]
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"] for key in keys]
+        baselines = json.dumps([
+            {"app": key, "revision": revision}
+            for key in keys
+        ])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "deploy_one", return_value="deployed"), \
+             patch.object(deploy, "reconcile", return_value="preserved") as recheck:
+            deploy.deploy_transaction(
+                names,
+                baselines,
+                Path("/tmp/candidate"),
+                Path("/tmp/rollback"),
+                revision,
+            )
+        self.assertEqual(len(keys), recheck.call_count)
+
+    def test_control_plane_blindness_never_authorizes_rollback_writes(self):
+        key = next(iter(deploy.TARGETS))
+        revision = "a" * 40
+        names = [deploy.TARGETS[key]["releaseName"]]
+        baselines = json.dumps([{"app": key, "revision": "b" * 40}])
+        with patch.object(deploy, "verify_package"), \
+             patch.object(deploy, "_rollback_package", return_value=Path("/tmp/rollback.zip")), \
+             patch.object(deploy, "deploy_one", side_effect=deploy.DeploymentStatusUnavailable("blind")), \
+             patch.object(deploy, "rollback_transaction") as rollback:
+            with self.assertRaises(deploy.DeploymentStatusUnavailable):
+                deploy.deploy_transaction(
+                    names,
+                    baselines,
+                    Path("/tmp/candidate"),
+                    Path("/tmp/rollback"),
+                    revision,
+                )
+        rollback.assert_not_called()
+
+    def test_transaction_scope_comes_only_from_canonical_inventory(self):
+        names = [row["releaseName"] for row in deploy.TARGETS.values()]
+        keys = deploy._RELEASE_AUTHORITY.selected_release_target_keys(names)
+        self.assertEqual(tuple(deploy.TARGETS), keys)
+
+
 
 
 class SettingsIdempotenceTests(unittest.TestCase):
     def run_settings(self, drift=False):
         workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
-        names = ['Synchronize Protect shared website authorization and publisher runtime',
-                 'Synchronize shared website editor ticket authority']
+        names = ['Synchronize selected shared authorization and publisher runtimes',
+                 'Synchronize selected editor ticket authority']
+        authority = deploy._RELEASE_AUTHORITY
+        all_names = [row['releaseName'] for row in deploy.TARGETS.values()]
+        profile = authority.release_runtime_profile(all_names)
+        shared_target = profile['sharedAuthTargets'][0]
+        editor_target = next(name for name in profile['editorTargets'] if name != shared_target)
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
             common = {'FOUNDER_OID': 'test-founder', 'Founder__Upn': 'test@example.invalid',
@@ -171,10 +319,10 @@ class SettingsIdempotenceTests(unittest.TestCase):
                       'WebsiteEditorDataProtection__KeyVaultKeyId': 'test-key',
                       'Analytics__SharedSecret': 'test-secret', 'Tracking__SharedSecret': 'test-secret',
                       'Tracking:SharedSecret': 'test-secret', 'WEBSITE_NODE_DEFAULT_VERSION': '~24'}
-            state = {app: dict(common) for app, _, _ in deploy.TARGETS.values()}
+            state = {row['releaseName']: dict(common) for row in deploy.TARGETS.values()}
             if drift:
-                state['masterapp-protect']['Tracking:SharedSecret'] = 'stale'
-                state['masterapp-parfait']['WebsiteEditorDataProtection__BlobUri'] = 'stale'
+                state[shared_target]['Tracking:SharedSecret'] = 'stale'
+                state[editor_target]['WebsiteEditorDataProtection__BlobUri'] = 'stale'
             (directory / 'state.json').write_text(json.dumps(state))
             (directory / 'writes.json').write_text('[]')
             executable = directory / 'az'
@@ -201,8 +349,16 @@ else:
     raise AssertionError('Unexpected Azure mutation')
 """)
             executable.chmod(0o755)
-            env = os.environ | {'PATH': str(directory) + os.pathsep + os.environ['PATH'],
-                                'FAKE_AZ_ROOT': folder, 'SELECTED_TARGETS': json.dumps(list(state))}
+            env = os.environ | {
+                'PATH': str(directory) + os.pathsep + os.environ['PATH'],
+                'FAKE_AZ_ROOT': folder,
+                'SELECTED_TARGETS': json.dumps(list(state)),
+                'RELEASE_RESOURCE_GROUP': profile['resourceGroup'],
+                'DATABASE_AUTHORITY': profile['databaseAuthority'],
+                'SHARED_AUTH_TARGETS': json.dumps(profile['sharedAuthTargets']),
+                'MARKETING_TARGETS': json.dumps(profile['marketingTargets']),
+                'EDITOR_TARGETS': json.dumps(profile['editorTargets']),
+            }
             for _ in range(2):
                 for name in names:
                     block = workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
@@ -210,15 +366,18 @@ else:
                     script = script.replace('/tmp/', folder + '/')
                     result = subprocess.run(['bash', '-c', script], env=env, text=True, capture_output=True)
                     self.assertEqual(0, result.returncode, result.stderr)
-            return json.loads((directory / 'writes.json').read_text())
+            return json.loads((directory / 'writes.json').read_text()), shared_target, editor_target
 
     def test_matching_settings_make_zero_azure_writes_across_repeated_runs(self):
-        self.assertEqual([], self.run_settings())
+        writes, _, _ = self.run_settings()
+        self.assertEqual([], writes)
 
     def test_only_drifted_keys_are_updated_once_and_then_preserved(self):
-        self.assertEqual([{'app': 'masterapp-protect', 'keys': ['Tracking:SharedSecret']},
-                          {'app': 'masterapp-parfait', 'keys': ['WebsiteEditorDataProtection__BlobUri']}],
-                         self.run_settings(drift=True))
+        writes, shared_target, editor_target = self.run_settings(drift=True)
+        self.assertEqual([
+            {'app': shared_target, 'keys': ['Tracking:SharedSecret']},
+            {'app': editor_target, 'keys': ['WebsiteEditorDataProtection__BlobUri']},
+        ], writes)
 
 if __name__ == '__main__':
     unittest.main()

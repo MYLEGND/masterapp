@@ -1,0 +1,300 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join, basename } from 'node:path';
+
+const ROOT = new URL('../../', import.meta.url).pathname;
+
+function walk(dir, suffix) {
+  const out=[];
+  for (const entry of readdirSync(dir,{withFileTypes:true})) {
+    const path=join(dir,entry.name);
+    if(entry.isDirectory()) out.push(...walk(path,suffix));
+    else if(path.endsWith(suffix)) out.push(path);
+  }
+  return out;
+}
+
+function attrs(tag) {
+  const map=new Map();
+  for(const m of tag.matchAll(/([:@\w-]+)\s*=\s*"([^"]*)"/g)) map.set(m[1].toLowerCase(),m[2]);
+  for(const m of tag.matchAll(/([:@\w-]+)\s*=\s*'([^']*)'/g)) map.set(m[1].toLowerCase(),m[2]);
+  for(const m of tag.matchAll(/\s([:@\w-]+)(?=\s|\/?>)/g)) {
+    const key=m[1].toLowerCase();
+    if(!map.has(key)) map.set(key,'');
+  }
+  return map;
+}
+
+function controllerActions(appDir) {
+  const controllers=join(ROOT,appDir,'Controllers');
+  const index=new Map();
+  if(!existsSync(controllers)) return index;
+  for(const file of walk(controllers,'.cs')) {
+    const src=readFileSync(file,'utf8');
+    const classMatch=src.match(/class\s+(\w+)Controller\b/);
+    if(!classMatch) continue;
+    const name=classMatch[1];
+    const actions=new Set();
+    for(const m of src.matchAll(/(?:public|internal)\s+(?:async\s+)?(?:Task<\s*)?(?:IActionResult|ActionResult(?:<[^>]+>)?|Task|JsonResult|ContentResult|FileResult|RedirectResult)[^\n{]*?\s+(\w+)\s*\(/g)) actions.add(m[1]);
+    for(const m of src.matchAll(/\[(?:HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch)\s*\([^\]]*Name\s*=\s*"([^"]+)"/g)) actions.add(m[1]);
+    index.set(name,actions);
+  }
+  return index;
+}
+
+const apps=['AgentPortal','ClientApp'];
+
+test('AgentPortal and ClientApp views contain no placeholder navigation targets',()=>{
+  const bad=[];
+  for(const app of apps) {
+    for(const file of walk(join(ROOT,app,'Views'),'.cshtml')) {
+      const src=readFileSync(file,'utf8');
+      for(const m of src.matchAll(/<a\b[^>]*>/gi)) {
+        const a=attrs(m[0]);
+        const href=(a.get('href')||'').trim();
+        if(href==='#' || /^javascript:\s*(?:void\s*\(\s*0\s*\)|;?)$/i.test(href)) bad.push(file+': '+m[0]);
+        const dynamic=a.has('data-dynamic-destination');
+        if(dynamic){
+          if(!a.get('id') || a.get('aria-disabled')!=='true' || a.get('tabindex')!=='-1')
+            bad.push(file+': dynamic destination must start disabled with a stable id: '+m[0]);
+          continue;
+        }
+        const jsHook=[...a.keys()].some(k=>k.startsWith('data-'));
+        if(!href && !a.get('asp-controller') && !a.get('asp-action') && !a.get('asp-page') && !a.get('data-bs-toggle') && !a.get('data-bs-dismiss') && !a.get('role') && !jsHook) {
+          bad.push(file+': anchor has no destination or explicit UI role: '+m[0]);
+        }
+      }
+    }
+  }
+  assert.deepEqual(bad,[]);
+});
+
+test('dynamic destinations are backed by code that assigns a real href',()=>{
+  const sourceFiles=[];
+  for(const app of apps){
+    for(const dir of ['Views','wwwroot/js']){
+      const root=join(ROOT,app,dir);
+      if(existsSync(root)) sourceFiles.push(...walk(root,dir==='Views'?'.cshtml':'.js'));
+    }
+  }
+  const corpus=sourceFiles.map(file=>[file,readFileSync(file,'utf8')]);
+  const bad=[];
+  for(const app of apps){
+    for(const file of walk(join(ROOT,app,'Views'),'.cshtml')){
+      const src=readFileSync(file,'utf8');
+      for(const m of src.matchAll(/<a\b[^>]*data-dynamic-destination[^>]*>/gi)){
+        const a=attrs(m[0]);
+        const id=a.get('id');
+        if(!id) continue;
+        const refs=corpus.filter(([,text])=>text.includes(id));
+        const wired=refs.some(([,text])=>/\.href\s*=|setAttribute\(\s*['"]href['"]/.test(text));
+        if(!wired) bad.push(file+': dynamic destination #'+id+' has no href assignment');
+      }
+    }
+  }
+  assert.deepEqual(bad,[]);
+});
+
+test('every authenticated and shared type=button control resolves to a concrete handler',()=>{
+  const viewRoots=[
+    join(ROOT,'AgentPortal','Views'),
+    join(ROOT,'ClientApp','Views'),
+    join(ROOT,'SHARED','Views')
+  ].filter(existsSync);
+  const sourceFiles=[
+    ...viewRoots.flatMap(root=>walk(root,'.cshtml')),
+    ...['AgentPortal','ClientApp','SHARED'].flatMap(app=>{
+      const root=join(ROOT,app,'wwwroot/js');
+      return existsSync(root)?walk(root,'.js'):[];
+    }),
+    ...(existsSync(join(ROOT,'Legend-Design'))?walk(join(ROOT,'Legend-Design'),'.js'):[])
+  ];
+  const sources=sourceFiles.map(path=>[path,readFileSync(path,'utf8')]);
+  const corpus=sources.map(([,text])=>text).join('\n');
+  const escape=value=>value.replace(/[.*+?^$\{\}()|[\]\\\\]/g,'\\$&');
+  const bad=[];
+
+  for(const root of viewRoots){
+    for(const file of walk(root,'.cshtml')){
+      const source=readFileSync(file,'utf8');
+      for(const match of source.matchAll(/<button\b[^>]*>/gi)){
+        const tag=match[0], a=attrs(tag);
+        if((a.get('type')||'submit').toLowerCase()!=='button') continue;
+        if(a.has('onclick')||a.has('form')||a.has('data-bs-toggle')||a.has('data-bs-dismiss')) continue;
+
+        let wired=false;
+        const id=(a.get('id')||'').trim();
+        if(id){
+          const q=escape(id);
+          wired=sources.some(([,text])=>{
+            const direct=new RegExp("getElementById\\(\\s*['\"]"+q+"['\"]").test(text);
+            const selector=new RegExp("(?:querySelector|querySelectorAll|matches|closest)\\(\\s*['\"][^'\"]*#"+q+"(?:[^'\"]*)['\"]").test(text);
+            const tableBinding=new RegExp("['\"]"+q+"['\"]").test(text)
+              && /getElementById\(\s*id\s*\)/.test(text);
+            return direct || selector || tableBinding;
+          });
+        }
+
+        if(!wired){
+          for(const key of [...a.keys()].filter(key=>key.startsWith('data-'))){
+            const camel=key.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+            const q=escape(key);
+            const cq=escape(camel);
+            if(new RegExp("(?:\\["+q+"(?:[=\\]])|dataset\\."+cq+"\\b|getAttribute\\(\\s*['\"]"+q+"['\"])").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          for(const className of (a.get('class')||'').split(/\s+/).filter(Boolean)){
+            const q=escape(className);
+            if(new RegExp("['\"][^'\"]*\\."+q+"(?:[.#:[\\s'\"]|$)").test(corpus)){
+              wired=true;
+              break;
+            }
+          }
+        }
+
+        if(!wired){
+          const controls=(a.get('aria-controls')||'').trim();
+          if(controls){
+            const q=escape(controls);
+            wired=new RegExp("(?:getElementById\\(\\s*['\"]"+q+"['\"]|['\"]#"+q+"['\"])").test(corpus);
+          }
+        }
+
+        if(!wired) bad.push(file+': unresolved button handler: '+tag);
+      }
+    }
+  }
+
+  assert.deepEqual(bad,[]);
+});
+
+test('Razor controller/action links resolve to real controller action source',()=>{
+  const bad=[];
+  for(const app of apps) {
+    const index=controllerActions(app);
+    for(const file of walk(join(ROOT,app,'Views'),'.cshtml')) {
+      const src=readFileSync(file,'utf8');
+      for(const m of src.matchAll(/<(?:a|form|button)\b[^>]*>/gi)) {
+        const a=attrs(m[0]);
+        const controller=a.get('asp-controller');
+        const action=a.get('asp-action');
+        if(!controller || !action) continue;
+        // Razor expressions are runtime-owned and cannot be resolved statically.
+        if(/[(@{]/.test(controller+action)) continue;
+        if(!index.has(controller)) {
+          bad.push(file+': missing '+controller+'Controller for '+m[0]);
+          continue;
+        }
+        if(!index.get(controller).has(action)) bad.push(file+': missing '+controller+'Controller.'+action+' for '+m[0]);
+      }
+    }
+  }
+  assert.deepEqual(bad,[]);
+});
+
+test('type=button controls expose an explicit interaction hook',()=>{
+  const bad=[];
+  const hook=/^(?:id|onclick|data-[\w-]+|aria-controls|form)$/;
+  for(const app of apps) {
+    for(const file of walk(join(ROOT,app,'Views'),'.cshtml')) {
+      const src=readFileSync(file,'utf8');
+      for(const m of src.matchAll(/<button\b[^>]*>/gi)) {
+        const a=attrs(m[0]);
+        const type=(a.get('type')||'submit').toLowerCase();
+        if(type!=='button') continue;
+        if([...a.keys()].some(k=>hook.test(k))) continue;
+        bad.push(file+': type=button has no route, id, data hook, onclick, form, or aria-controls: '+m[0]);
+      }
+    }
+  }
+  assert.deepEqual(bad,[]);
+});
+
+test('mobile shared authority keeps controls clickable and modal content reachable',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const modal=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-modal.js'),'utf8');
+  const mobile=css.slice(css.indexOf('@media (max-width: 900px)'));
+
+  assert.doesNotMatch(mobile,/\[data-legend-modal-panel\][^}]*pointer-events:\s*none/);
+  assert.match(mobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(mobile,/\.legend-modal-close-control\s*\{[\s\S]*cursor:\s*pointer/);
+  assert.match(nav,/panel\.addEventListener\('click'/);
+  assert.match(nav,/const leavesCurrentDocument = control =>/);
+  assert.match(nav,/const dismissAfterActivation = callback => window\.setTimeout\(callback, 0\)/);
+  assert.doesNotMatch(nav,/queueMicrotask/);
+  assert.match(modal,/button\.addEventListener\("click"/);
+});
+
+test('mobile utility controls use their real canonical selectors and visible command labels',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const messages=readFileSync(join(ROOT,'SHARED/Views/Messaging/_NavButton.cshtml'),'utf8');
+  const agentLayout=readFileSync(join(ROOT,'AgentPortal/Views/Shared/_Layout.cshtml'),'utf8');
+
+  assert.doesNotMatch(css,/\.messaging-nav-button\b/);
+  assert.match(css,/\.messaging-nav-trigger/);
+  assert.doesNotMatch(messages,/class="messaging-nav-label"/);
+  assert.match(messages,/class="visually-hidden"[^>]*>Open Messages<\/span>/);
+  assert.doesNotMatch(agentLayout,/class="legend-founder-ai-nav-label"/);
+  assert.match(agentLayout,/src="~\/images\/legend-ai\/legendai\.png"/);
+  assert.match(css,/\[data-legend-mobile-nav-integrated\] \.profile-meta \{[\s\S]*display:\s*grid/);
+});
+
+test('mobile navigation preserves real URL activation before any command-surface teardown',()=>{
+  const nav=readFileSync(join(ROOT,'SHARED/wwwroot/js/legend-global-navigation.js'),'utf8');
+  const handler=nav.slice(
+    nav.indexOf("panel.addEventListener('click'"),
+    nav.indexOf("document.addEventListener('click'",nav.indexOf("panel.addEventListener('click'"))
+  );
+  const exploreHandler=nav.slice(
+    nav.indexOf("list.addEventListener('click'"),
+    nav.indexOf("search?.addEventListener('input'",nav.indexOf("list.addEventListener('click'"))
+  );
+
+  assert.match(nav,/const leavesCurrentDocument = control =>/);
+  assert.match(nav,/return !target \|\| target === '_self'/);
+  assert.match(handler,/event\.target\.closest\?\.\('a, \.explore-item, button'\)/);
+  assert.match(handler,/control\.matches\('\[data-bs-toggle\], \[aria-controls="exploreDrawer"\], \[data-legend-explore-close\]'\)/);
+  assert.match(handler,/if \(leavesCurrentDocument\(control\)\) return;/);
+  assert.match(handler,/dismissAfterActivation\(\(\) =>/);
+  assert.match(exploreHandler,/const item = event\.target\.closest\('\.explore-item'\)/);
+  assert.match(exploreHandler,/if \(leavesCurrentDocument\(item\)\) return;/);
+  assert.doesNotMatch(nav,/queueMicrotask/);
+  assert.doesNotMatch(handler,/event\.preventDefault\(/);
+});
+
+test('mobile navigation keeps approved compact rows and Quick Find as a same-panel subview',()=>{
+  const css=readFileSync(join(ROOT,'SHARED/wwwroot/css/dashboard-home-shared.css'),'utf8');
+  const start=css.indexOf('@media (max-width: 840px) {\n    .legend-global-nav {');
+  const end=css.indexOf('/* Global navigation motto:',start);
+  const mobile=css.slice(start,end);
+
+  assert.match(mobile,/grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"panel panel panel"/);
+  assert.match(mobile,/\.legend-global-nav\.mobile-open \.legend-mobile-nav-panel \{[\s\S]*display:\s*grid[\s\S]*max-height:\s*min\(72dvh, 540px\)/);
+  assert.match(mobile,/\.navbar-left \.nav-row \{[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.navbar-right \{[\s\S]*grid-template-columns:\s*repeat\(auto-fit, minmax\(88px, 1fr\)\)/);
+  assert.match(mobile,/\.navbar-right > \.dropdown \{[\s\S]*grid-column:\s*1 \/ -1/);
+  assert.match(mobile,/\.legend-mobile-nav-panel > \.explore-drawer \{[\s\S]*display:\s*none/);
+  assert.match(mobile,/\.mobile-explore-open \.legend-mobile-nav-panel > \.explore-drawer \{[\s\S]*display:\s*block/);
+  assert.match(mobile,/\.explore-list \{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mobile,/\.explore-item small \{[\s\S]*font-size:\s*\.44rem/);
+  assert.doesNotMatch(mobile,/display:\s*contents/);
+  assert.doesNotMatch(mobile,/position:\s*fixed/);
+  assert.doesNotMatch(mobile,/height:\s*100dvh/);
+
+  for(const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml'
+  ]){
+    const source=readFileSync(join(ROOT,file),'utf8');
+    assert.match(source,/class="container-fluid legend-global-nav-shell"/,file);
+    assert.doesNotMatch(source,/container-fluid d-flex flex-wrap align-items-start justify-content-between/,file);
+  }
+});

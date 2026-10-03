@@ -104,7 +104,8 @@ public sealed class WebsiteStudioV3ContractTests
         var node = clean.Pages["/"].Composition.Single(value => value.Id == "home.title");
         Assert.Equal("Existing text", node.Text);
         Assert.Equal(80m, node.Style.WidthPercent);
-        Assert.Equal(100m, node.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Null(node.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Equal(0.9m, node.BreakpointStyles["mobile"].FontScale);
         Assert.Equal(70m, node.BreakpointStyles["wide"].WidthPercent);
         Assert.DoesNotContain("unknown", node.BreakpointStyles.Keys);
         Assert.Equal("flex", node.Layout.Mode);
@@ -117,6 +118,334 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Single(clean.ReusableComponents["hero"].Composition);
         Assert.Equal(["services", "hours"], clean.Collections["business-profile"].Fields);
         Assert.False(clean.Collections.ContainsKey("shadow-store"));
+    }
+
+    [Fact]
+    public void Sanitize_RemovesUnsafePublishedMobileGeometryWhilePreservingDesktopAndVisualIntent()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.hero",
+                    Type = "section",
+                    Tag = "section",
+                    Style = new WebsiteVisualStyle { HeightPx = 900, OffsetXPercent = 12 },
+                    BreakpointStyles = new(StringComparer.Ordinal)
+                    {
+                        ["mobile"] = new WebsiteVisualStyle
+                        {
+                            WidthPercent = 70,
+                            HeightPx = 700,
+                            OffsetXPercent = 30,
+                            OffsetYPx = -200,
+                            MarginTop = -100,
+                            MarginBottom = -80,
+                            MarginLeft = 40,
+                            MarginRight = 20,
+                            MinWidthPx = 500,
+                            MaxWidthPx = 900,
+                            MinHeightPx = 400,
+                            MaxHeightPx = 1200,
+                            BorderRadius = 30
+                        }
+                    },
+                    Layout = new WebsiteCompositionLayout { Mode = "grid", Columns = 2, GapPx = 24 },
+                    BreakpointLayouts = new(StringComparer.Ordinal)
+                    {
+                        ["mobile"] = new WebsiteCompositionLayout { Mode = "free", Direction = "row", GapPx = 16 }
+                    },
+                    Children =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "home.hero.title",
+                            Type = "heading",
+                            Tag = "h1",
+                            Style = new WebsiteVisualStyle { WidthPercent = 45, OffsetXPercent = 50 },
+                            BreakpointStyles = new(StringComparer.Ordinal)
+                            {
+                                ["mobile"] = new WebsiteVisualStyle
+                                {
+                                    WidthPercent = 36,
+                                    HeightPx = 150,
+                                    OffsetXPercent = 58,
+                                    OffsetYPx = -180,
+                                    MarginTop = -60,
+                                    MaxWidthPx = 480,
+                                    FontSize = 48,
+                                    BorderRadius = 999
+                                }
+                            }
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "home.hero.image",
+                            Type = "image",
+                            Tag = "img",
+                            MediaUrl = "/assets/hero.png",
+                            BreakpointStyles = new(StringComparer.Ordinal)
+                            {
+                                ["mobile"] = new WebsiteVisualStyle
+                                {
+                                    WidthPercent = 92,
+                                    HeightPx = 760,
+                                    OffsetXPercent = 12,
+                                    OffsetYPx = -420,
+                                    MaxWidthPx = 900,
+                                    MaxHeightPx = 1000
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        var hero = Assert.Single(clean.Pages["/"].Composition);
+
+        Assert.Equal(900m, hero.Style.HeightPx);
+        Assert.Equal(12m, hero.Style.OffsetXPercent);
+
+        var heroMobile = hero.BreakpointStyles["mobile"];
+        Assert.Null(heroMobile.WidthPercent);
+        Assert.Null(heroMobile.HeightPx);
+        Assert.Null(heroMobile.OffsetXPercent);
+        Assert.Null(heroMobile.OffsetYPx);
+        Assert.Null(heroMobile.MarginTop);
+        Assert.Null(heroMobile.MarginBottom);
+        Assert.Null(heroMobile.MarginLeft);
+        Assert.Null(heroMobile.MarginRight);
+        Assert.Null(heroMobile.MinWidthPx);
+        Assert.Null(heroMobile.MaxWidthPx);
+        Assert.Null(heroMobile.MinHeightPx);
+        Assert.Null(heroMobile.MaxHeightPx);
+        Assert.Equal(30m, heroMobile.BorderRadius);
+
+        var mobileLayout = hero.BreakpointLayouts["mobile"];
+        Assert.Equal("stack", mobileLayout.Mode);
+        Assert.Equal("column", mobileLayout.Direction);
+        Assert.Equal("stretch", mobileLayout.AlignItems);
+        Assert.Equal(16m, mobileLayout.GapPx);
+
+        var heading = hero.Children.Single(node => node.Id == "home.hero.title");
+        Assert.Equal(45m, heading.Style.WidthPercent);
+        Assert.Equal(50m, heading.Style.OffsetXPercent);
+        var headingMobile = heading.BreakpointStyles["mobile"];
+        Assert.Null(headingMobile.WidthPercent);
+        Assert.Null(headingMobile.HeightPx);
+        Assert.Null(headingMobile.OffsetXPercent);
+        Assert.Null(headingMobile.OffsetYPx);
+        Assert.Null(headingMobile.MarginTop);
+        Assert.Null(headingMobile.MaxWidthPx);
+        Assert.Equal(48m, headingMobile.FontSize);
+        Assert.Equal(999m, headingMobile.BorderRadius);
+
+        var image = hero.Children.Single(node => node.Id == "home.hero.image");
+        var imageMobile = image.BreakpointStyles["mobile"];
+        Assert.Null(imageMobile.WidthPercent);
+        Assert.Null(imageMobile.HeightPx);
+        Assert.Null(imageMobile.OffsetXPercent);
+        Assert.Null(imageMobile.OffsetYPx);
+        Assert.Equal(560m, imageMobile.MaxWidthPx);
+        Assert.Equal(520m, imageMobile.MaxHeightPx);
+    }
+
+    [Fact]
+    public void Sanitize_CanonicalizesStartupNavigationAndImageAccessibilityDefaults()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.photo",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/hero-photo.png"
+                },
+                new WebsiteCompositionNode
+                {
+                    Id = "home.decorative",
+                    Type = "image",
+                    Tag = "img",
+                    MediaUrl = "/assets/decorative.png",
+                    Alt = ""
+                }
+            ]
+        };
+        source.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "About Us",
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true }
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+
+        Assert.Equal("Home", clean.Pages["/"].Navigation.Label);
+        Assert.Equal("About Us", clean.Pages["/about"].Navigation.Label);
+        Assert.Equal("Hero Photo", clean.Pages["/"].Composition.Single(node => node.Id == "home.photo").Alt);
+        Assert.Equal("", clean.Pages["/"].Composition.Single(node => node.Id == "home.decorative").Alt);
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check => check.Code == "navigation_label_missing");
+        Assert.DoesNotContain(report.Checks, check => check.Code == "image_alt_missing");
+    }
+
+    [Fact]
+    public void Sanitize_RepairsDeadLinksAndCorruptBrandGeometryWithoutBreakingDynamicHrefBindings()
+    {
+        var source = new WebsiteContentDocument
+        {
+            Shell = new WebsiteSharedShellDocument
+            {
+                Header =
+                [
+                    new WebsiteCompositionNode
+                    {
+                        Id = "shell.brand",
+                        Type = "container",
+                        Tag = "div",
+                        ClassName = "brand-wordmark",
+                        Style = new WebsiteVisualStyle { WidthPercent = 4, OffsetXPercent = 91 },
+                        BreakpointStyles = new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal)
+                        {
+                            ["mobile"] = new WebsiteVisualStyle { WidthPercent = 3, OffsetXPercent = 95 }
+                        },
+                        Children =
+                        [
+                            new WebsiteCompositionNode
+                            {
+                                Id = "shell.brand.copy",
+                                Type = "text",
+                                Tag = "strong",
+                                Text = "Canonical Business",
+                                SystemBinding = "business_name",
+                                BreakpointStyles = new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal)
+                                {
+                                    ["mobile"] = new WebsiteVisualStyle { FontScale = 4.5m },
+                                    ["tablet"] = new WebsiteVisualStyle { FontScale = 3.5m }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        };
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.dead-link",
+                    Type = "link",
+                    Tag = "a",
+                    Text = "Placeholder",
+                    Href = "#"
+                },
+                new WebsiteCompositionNode
+                {
+                    Id = "home.dynamic-link",
+                    Type = "link",
+                    Tag = "a",
+                    Text = "Dynamic",
+                    DataBinding = new WebsiteDataBinding
+                    {
+                        CollectionId = "catalog",
+                        Field = "url",
+                        Target = "href"
+                    }
+                }
+            ]
+        };
+        source.Collections["catalog"] = new WebsiteCollectionDefinition
+        {
+            Id = "catalog",
+            Source = "business-profile",
+            Fields = ["url"]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+
+        var dead = clean.Pages["/"].Composition.Single(node => node.Id == "home.dead-link");
+        Assert.Equal("text", dead.Type);
+        Assert.Equal("span", dead.Tag);
+        Assert.Null(dead.Href);
+        Assert.Null(dead.ActionKey);
+        Assert.Empty(dead.Signals);
+
+        var dynamic = clean.Pages["/"].Composition.Single(node => node.Id == "home.dynamic-link");
+        Assert.Equal("link", dynamic.Type);
+        Assert.Equal("href", dynamic.DataBinding?.Target);
+
+        var brand = Assert.Single(clean.Shell.Header);
+        Assert.Null(brand.Style.WidthPercent);
+        Assert.Null(brand.Style.OffsetXPercent);
+        Assert.Null(brand.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Null(brand.BreakpointStyles["mobile"].OffsetXPercent);
+        var brandCopy = Assert.Single(brand.Children);
+        Assert.Equal(1.35m, brandCopy.BreakpointStyles["mobile"].FontScale);
+        Assert.Equal(1.8m, brandCopy.BreakpointStyles["tablet"].FontScale);
+
+        var report = WebsiteDraftQualityInspector.Inspect(clean);
+        Assert.DoesNotContain(report.Checks, check =>
+            check.Code == "link_destination_missing" &&
+            check.ElementId is "home.dead-link" or "home.dynamic-link");
+    }
+
+    [Fact]
+    public void Sanitize_DeletesOnlySemanticallyEmptyRetiredStarterDecoration()
+    {
+        var source = new WebsiteContentDocument();
+        source.Pages["/"] = new WebsitePageDocument
+        {
+            Title = "Home",
+            Navigation = new WebsitePageNavigation { Label = "Home", ShowInNavigation = true },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.hero",
+                    Type = "section",
+                    Tag = "section",
+                    Children =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "home.hero.visual",
+                            Type = "container",
+                            Tag = "div",
+                            ClassName = "hero-mark",
+                            Children =
+                            [
+                                new WebsiteCompositionNode { Id = "home.hero.halo", Type = "container", Tag = "div", ClassName = "halo" },
+                                new WebsiteCompositionNode { Id = "home.hero.empty", Type = "text", Tag = "span", Text = "" }
+                            ]
+                        },
+                        new WebsiteCompositionNode { Id = "home.card.icon", Type = "text", Tag = "span", ClassName = "icon", Text = "" },
+                        new WebsiteCompositionNode { Id = "home.card.copy", Type = "text", Tag = "p", ClassName = "icon", Text = "Meaningful text stays" }
+                    ]
+                }
+            ]
+        };
+
+        var clean = WebsiteContentSanitizer.Sanitize(source);
+        var hero = Assert.Single(clean.Pages["/"].Composition);
+        Assert.DoesNotContain(hero.Children, node => node.Id == "home.hero.visual");
+        Assert.DoesNotContain(hero.Children, node => node.Id == "home.card.icon");
+        Assert.Contains(hero.Children, node => node.Id == "home.card.copy" && node.Text == "Meaningful text stays");
     }
 
     [Fact]
@@ -262,4 +591,46 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteCompositionLayout"));
         Assert.NotNull(assembly.GetType("Infrastructure.WebsiteEditing.WebsiteDesignTheme"));
     }
+    [Fact]
+    public void PersistedCanonicalDuplicateIds_PreserveProtectedIdentityAndRepairOnlyFreeDuplicate()
+    {
+        var document = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/Quote/Dental-Vision-Hearing"] = new WebsitePageDocument
+                {
+                    Title = "Dental Vision Hearing",
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "quote_dvh.root.1",
+                            Type = "section",
+                            Tag = "section",
+                            Text = "Presentation duplicate"
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "quote_dvh.root.1",
+                            Type = "container",
+                            Tag = "div",
+                            SystemKey = "protect_runtime_form:quote_dvh_form"
+                        }
+                    ]
+                }
+            }
+        };
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var repaired = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(document, options), options);
+        var nodes = repaired.Pages["/Quote/Dental-Vision-Hearing"].Composition;
+
+        var protectedNode = Assert.Single(nodes.Where(node => !string.IsNullOrWhiteSpace(node.SystemKey)));
+        var freeNode = Assert.Single(nodes.Where(node => string.IsNullOrWhiteSpace(node.SystemKey)));
+        Assert.Equal("quote_dvh.root.1", protectedNode.Id);
+        Assert.StartsWith("quote_dvh.root.1.repair.", freeNode.Id);
+        Assert.Equal("Presentation duplicate", freeNode.Text);
+    }
+
 }

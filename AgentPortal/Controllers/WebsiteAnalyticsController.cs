@@ -39,10 +39,10 @@ namespace AgentPortal.Controllers;
         private readonly IVisitorConcentrationService _visitorConcentrationService;
         private readonly IKpiDetailBreakdownService _kpiDetailBreakdownService;
         private readonly IVisitorTrustScoringService _visitorTrustScoringService;
-        private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
+        private readonly Infrastructure.Analytics.MetaCapiCredentialProtector _metaCapiCredentialProtector;
         private readonly IAnalyticsIncidentQueryService _incidentMonitor;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, Infrastructure.Analytics.MetaCapiCredentialProtector metaCapiCredentialProtector)
         {
             _analytics = analytics;
             _metaAds = metaAds;

@@ -405,6 +405,36 @@ struct MobileActivityNotification: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+
+struct FounderEngineeringActionItem: Codable, Equatable, Identifiable, Sendable {
+    let workItemID: UUID
+    let attentionKind: String
+    let title: String
+    let summary: String
+    let actionStep: String
+    let requiresFounderAction: Bool
+    let primaryAction: String?
+    let primaryActionLabel: String?
+    let secondaryAction: String?
+    let secondaryActionLabel: String?
+    let technicalSummary: String
+    let updatedUTC: Date
+
+    var id: UUID { workItemID }
+
+    private enum CodingKeys: String, CodingKey {
+        case workItemID = "workItemId"
+        case attentionKind, title, summary, actionStep, requiresFounderAction
+        case primaryAction, primaryActionLabel, secondaryAction, secondaryActionLabel
+        case technicalSummary
+        case updatedUTC = "updatedUtc"
+    }
+}
+
+private struct FounderEngineeringDecisionRequest: Encodable, Sendable {
+    let decision: String
+}
+
 enum ControlledResourceType: String, Codable, Identifiable, Sendable {
     case verificationBadge = "VerificationBadge"
     case languageTranslation = "LanguageTranslation"
@@ -803,6 +833,8 @@ protocol MessagingAPI: Sendable {
     ) async throws -> VerificationRequestSubmission
     func communicationLanguages(accessToken: String) async throws -> [LegendCommunicationLanguage]
     func activityNotifications(accessToken: String) async throws -> [MobileActivityNotification]
+    func founderEngineeringActions(accessToken: String) async throws -> [FounderEngineeringActionItem]
+    func decideFounderEngineering(workItemID: UUID, decision: String, accessToken: String) async throws
     func controlledResourceRecipients(
         resourceType: ControlledResourceType,
         search: String?,
@@ -995,6 +1027,14 @@ extension MessagingAPI {
     }
 
     func activityNotifications(accessToken: String) async throws -> [MobileActivityNotification] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func founderEngineeringActions(accessToken: String) async throws -> [FounderEngineeringActionItem] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func decideFounderEngineering(workItemID: UUID, decision: String, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1387,6 +1427,23 @@ struct URLSessionMessagingAPI: MessagingAPI {
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileActivityNotification].self)
+    }
+
+    func founderEngineeringActions(accessToken: String) async throws -> [FounderEngineeringActionItem] {
+        try await client.get(
+            "/api/v1/mobile/founder/engineering/actions",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: [FounderEngineeringActionItem].self)
+    }
+
+    func decideFounderEngineering(workItemID: UUID, decision: String, accessToken: String) async throws {
+        try await client.post(
+            "/api/v1/mobile/founder/engineering/actions/\(workItemID.uuidString)/decision",
+            body: FounderEngineeringDecisionRequest(decision: decision),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
     }
 
     func controlledResourceRecipients(

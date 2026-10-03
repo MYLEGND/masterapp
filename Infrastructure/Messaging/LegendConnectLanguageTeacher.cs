@@ -790,12 +790,11 @@ Return only the requested structured result.
 
     private TeacherConfiguration ReadConfiguration(string role)
     {
-        if (LegendConnectModelTrainingConfiguration.IsControlled(LegendConnectModelTrainingConfiguration.ResolveBackend(_configuration)) &&
-            (!bool.TryParse(_configuration[ConfigurationPrefix + "ExternalLearningEnabled"], out var externalLearning) ||
-             !externalLearning))
+        if (!bool.TryParse(_configuration[ConfigurationPrefix + "ExternalLearningEnabled"], out var externalLearning) ||
+            !externalLearning)
         {
             return new TeacherConfiguration(false, null, string.Empty, string.Empty,
-                LegendLanguageIdentity.TextHash("local-learning-external-disabled:" + role),
+                LegendLanguageIdentity.TextHash("external-learning-disabled:" + role),
                 "external_learning_not_authorized");
         }
 
@@ -817,11 +816,8 @@ Return only the requested structured result.
             .Trim();
         var key =
             (_configuration[
-                ConfigurationPrefix + "ApiKey"] ??
-             _configuration["OpenAI:ApiKey"] ??
-             Environment.GetEnvironmentVariable(
-                 "OPENAI_API_KEY") ??
-             string.Empty)
+                 ConfigurationPrefix + "ApiKey"] ??
+              string.Empty)
             .Trim();
         var model = modelKey is null
             ? string.Empty

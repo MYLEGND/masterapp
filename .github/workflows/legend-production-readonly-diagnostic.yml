@@ -2,7 +2,7 @@ name: LEGEND candidate read-only production observation
 
 # PR #31 remains the sole isolated candidate validation owner. This workflow
 # collects bounded SQL and selected provider observations; production proof lives only in
-# agentportal-production-deploy.yml. It cannot merge, deploy or claim a live SHA.
+# all-intentional-direct-release-20260918.yml. It cannot merge, deploy or claim a live SHA.
 on:
   push:
     branches:

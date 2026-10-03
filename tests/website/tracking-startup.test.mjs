@@ -5,6 +5,8 @@ import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/tracking.js', import.meta.url), 'utf8');
 const cmsSource = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../../Protect-Website/Views/Shared/_Layout.cshtml', import.meta.url), 'utf8');
+const metaSource = readFileSync(new URL('../../SHARED/WebsitePlatform/meta-signal-intelligence.js', import.meta.url), 'utf8');
+const openAiSource = readFileSync(new URL('../../SHARED/WebsitePlatform/openai-measurement.js', import.meta.url), 'utf8');
 test('linked storefront CMS preserves the owning tracker and starts no second provider runtime', async () => {
   const f = fixture();
   try {
@@ -40,6 +42,50 @@ function fixture() {
   window.fetch = async (url, options) => { events.push(JSON.parse(options.body)); return {ok:true,status:200}; };
   return {dom, window, events};
 }
+
+test('Website Studio is a zero-production-signal environment across analytics and provider runtimes',async()=>{
+  const dom=new JSDOM('<body data-page-key="home"><form data-form-key="inquiry"><input name="FirstName"><button type="submit">Send</button></form></body>',{
+    url:'https://protect.example.test/a/agent/contact?legendEdit=ticket',
+    runScripts:'outside-only',
+    pretendToBeVisual:true
+  });
+  const w=dom.window;
+  const requests=[];
+  const pixels=[];
+  const openai=[];
+  try{
+    w.LEGEND_ANALYTICS_CONFIG={allowedBrowserEvents:['page_view','form_start','cta_click'],criticalBrowserEvents:[]};
+    w.fetch=async(...args)=>{requests.push(args);return {ok:true,status:200};};
+    w.fbq=(...args)=>pixels.push(args);
+    w.oaiq=(...args)=>openai.push(args);
+
+    w.eval(source);
+    w.eval(metaSource);
+    w.eval(openAiSource);
+
+    assert.equal(w.__legendTrackingInitialized,undefined);
+    assert.equal(w.__legendTrackingSuppressedForWebsiteStudio,true);
+    assert.equal(w.__legendMetaSignalSuppressedForWebsiteStudio,true);
+    assert.equal(w.__legendOpenAiMeasurementSuppressedForWebsiteStudio,true);
+    assert.equal(w.LegendAnalytics,undefined);
+    assert.equal(w.metaSignalIntelligence,undefined);
+    assert.equal(w.LegendOpenAiMeasurement,undefined);
+    assert.equal(requests.length,0);
+    assert.equal(pixels.length,0);
+    assert.equal(openai.length,0);
+  }finally{dom.window.close();}
+});
+
+test('Protect layout never bootstraps production measurement or lead runtime in Website Studio mode',()=>{
+  assert.match(layout,/websiteStudioMode\s*=\s*[\s\S]*ContainsKey\("legendEdit"\)[\s\S]*ContainsKey\("legendMaterialize"\)/);
+  assert.match(layout,/window\.LEGEND_WEBSITE_STUDIO_MODE\s*=/);
+  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*src="~\/js\/tracking\.js"/);
+  assert.doesNotMatch(layout,/lead-modal\.js/);
+  assert.doesNotMatch(layout,/id="leadModal"|id="leadForm"/);
+  assert.match(layout,/type="module" src="~\/js\/public-inquiry-form\.mjs"/);
+  assert.match(layout,/@if \(!websiteStudioMode\)[\s\S]*_PageHealth\.cshtml/);
+});
+
 test('failed tracker installation rolls back listeners and retries with one page view and form start', async () => {
   const f = fixture();
   try {
@@ -158,6 +204,45 @@ test('late provider projections share one accepted page event and unique signals
     const prior=replayed;
     w.LegendAnalytics.subscribe('test',()=>{replayed++;});
     assert.equal(replayed,prior);
+  } finally {f.dom.window.close();}
+});
+
+test('generic forms emit canonical field completion and validation friction for mapped experience fields',async()=>{
+  const f=fixture();
+  try {
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    const form=w.document.querySelector('form');
+    const field=form.querySelector('input');
+    field.dataset.cmsFieldKey='project_size';
+
+    w.LegendAnalytics.registerBinding(
+      field,
+      {id:'project-size-complete',eventName:'form_field_complete',actionKey:'form_field_complete',trigger:'field_completed',deliveryMode:'analytics',oncePerSession:false},
+      'project_size'
+    );
+
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const completes=f.events.filter(event=>event.EventType==='form_field_complete');
+    assert.equal(completes.length,1);
+    assert.equal(completes[0].FieldName,'FirstName');
+    assert.equal(completes[0].WebsiteBindingId,'project-size-complete');
+    const configured=JSON.parse(completes[0].MetadataJson).configuredSignalBindings[0];
+    assert.equal(configured.trigger,'field_completed');
+    assert.equal(configured.elementId,'project_size');
+
+    field.required=true;
+    field.value='';
+    field.dispatchEvent(new w.Event('invalid',{bubbles:false,cancelable:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const errors=f.events.filter(event=>event.EventType==='form_field_error');
+    assert.equal(errors.length,1);
+    assert.equal(errors[0].FieldName,'FirstName');
+    assert.match(errors[0].MetadataJson,/required|invalid/);
   } finally {f.dom.window.close();}
 });
 
@@ -289,4 +374,35 @@ test('canonical measurement consent choice is shared with every provider adapter
     assert.equal(granted.allowed,true);
     assert.match(w.document.cookie,/legend_measurement_consent=granted/);
   } finally { f.dom.window.close(); }
+});
+
+
+test('late CMS-rendered native forms join the same canonical tracker without duplicate startup wiring',async()=>{
+  const f=fixture();
+  try{
+    const w=f.window;
+    w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('form_field_focus','form_field_complete','form_field_error');
+    w.eval(source);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    const late=w.document.createElement('form');
+    late.dataset.formKey='experience:late';
+    const field=w.document.createElement('input');
+    field.name='project_size';
+    late.appendChild(field);
+    w.document.body.appendChild(late);
+
+    w.dispatchEvent(new w.CustomEvent('legend:website-content-rendered'));
+    assert.equal(late._legendTrackingBound,true);
+    assert.equal(w.LegendAnalytics.bindForms(w.document),0);
+
+    field.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+    field.value='1500';
+    field.dispatchEvent(new w.Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    assert.equal(f.events.filter(event=>event.EventType==='form_start' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_focus' && event.FormKey==='experience:late').length,1);
+    assert.equal(f.events.filter(event=>event.EventType==='form_field_complete' && event.FormKey==='experience:late').length,1);
+  }finally{f.dom.window.close();}
 });

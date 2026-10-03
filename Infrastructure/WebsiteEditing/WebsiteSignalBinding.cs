@@ -72,4 +72,37 @@ public static class WebsiteSignalBindingPolicy
         }
         return clean;
     }
+
+    public static void ValidateExperienceControl(
+        WebsiteExperienceControl control,
+        IReadOnlyList<WebsiteSignalBinding> signals)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        var buttonLike = control.Type is "button" or "cta";
+
+        foreach (var binding in signals ?? [])
+        {
+            if (buttonLike)
+            {
+                if (binding.Trigger != "click")
+                    throw new ArgumentException(
+                        $"Interactive button '{control.Key}' may map only a canonical click behavior.");
+            }
+            else if (binding.Trigger is not ("field_started" or "field_completed" or "validation_failed"))
+            {
+                throw new ArgumentException(
+                    $"Interactive input '{control.Key}' may map only field start, field completion, or validation behaviors.");
+            }
+
+            if (binding.ActionKey == "phone_field_completed" &&
+                !string.Equals(control.ContactRole, "phone", StringComparison.Ordinal))
+                throw new ArgumentException(
+                    "PhoneFieldCompleted may be connected only to the control carrying the canonical phone contact role.");
+
+            if (binding.ActionKey == "contact_input_started" &&
+                control.ContactRole is not ("first_name" or "last_name" or "phone" or "email" or "message"))
+                throw new ArgumentException(
+                    "ContactInputStarted may be connected only to a canonical contact-input control.");
+        }
+    }
 }

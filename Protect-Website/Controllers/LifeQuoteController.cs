@@ -19,12 +19,10 @@ using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using Shared.Meta;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.Communication;
 
 using Shared.Analytics;
 namespace Protect_Website.Controllers
@@ -53,10 +51,10 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<LifeQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IWebsiteInquiryEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;

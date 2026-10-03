@@ -39,6 +39,7 @@ public sealed class ClientCrmMeta
     public string? RecordType { get; set; }
     public string PipelineStage { get; set; } = DefaultPipelineStage;
     public double PipelineOrder { get; set; }
+    public bool IsStarred { get; set; }
     public DateTime StageEnteredUtc { get; set; } = DateTime.UtcNow;
     public string WaitingOn { get; set; } = DefaultWaitingOn;
     public string? PinnedBrief { get; set; }

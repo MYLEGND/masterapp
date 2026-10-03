@@ -8,10 +8,9 @@
 @using Shared.Auth
 @inject AgentPortal.Services.Tracking.IAgentTrackingService WebsiteTracking
 @inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
-@inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
-@inject MasterAppDbContext _db
+@inject Shared.PortalShell.IPortalShellIdentityResolver PortalShellIdentityResolver
 @{
     var currentController =
         (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName
@@ -36,20 +35,11 @@
     var impersonatedAgentId = Context.Items.TryGetValue("ImpersonatedAgentOid", out var impOid) ? impOid as string : null;
     var impersonatedAgentName = Context.Items.TryGetValue("ImpersonatedAgentName", out var impName) ? impName as string : null;
     var impersonatedAgentEmail = Context.Items.TryGetValue("ImpersonatedAgentEmail", out var impEmail) ? impEmail as string : null;
-    string? impersonatedDisplay = null;
-    var showImpersonatedId = false;
-    if (!string.IsNullOrWhiteSpace(impersonatedAgentId))
-    {
-        impersonatedDisplay = impersonatedAgentName ?? impersonatedAgentEmail;
-        if (string.IsNullOrWhiteSpace(impersonatedDisplay))
-        {
-            // Derive a friendly display name from the stored AgentProfile if available.
-            var prof = _db.AgentProfiles.AsNoTracking().FirstOrDefault(x => x.AgentUserId == impersonatedAgentId);
-            impersonatedDisplay = prof?.FullName ?? prof?.AgentUpn ?? impersonatedAgentId;
-        }
-        showImpersonatedId = string.IsNullOrWhiteSpace(impersonatedDisplay) ||
-                             string.Equals(impersonatedDisplay, impersonatedAgentId, StringComparison.OrdinalIgnoreCase);
-    }
+    var impersonatedDisplay = impersonatedAgentName ?? impersonatedAgentEmail ?? impersonatedAgentId;
+    var showImpersonatedId = !string.IsNullOrWhiteSpace(impersonatedAgentId) &&
+                             (string.IsNullOrWhiteSpace(impersonatedDisplay) ||
+                              string.Equals(impersonatedDisplay, impersonatedAgentId, StringComparison.OrdinalIgnoreCase));
+    var portalShellIdentity = await PortalShellIdentityResolver.ResolveAsync(User, Context, Context.RequestAborted);
     var isFounder = AgentPortal.Security.FounderGuard.IsFounder(User);
     ViewData["RuntimeDiagnosticsFounder"] = isFounder;
     var isOnboardingPublic = string.Equals(currentController, "OnboardingPublic", StringComparison.OrdinalIgnoreCase);
@@ -99,27 +89,8 @@
     <link rel="icon" href="@applicationFaviconUrl" />
 
     @RenderSection("Styles", required: false)
-
-
-    <style>
-        .impersonation-banner {
-            position: sticky;
-            top: 0;
-            z-index: 2000;
-            background: #f0b429;
-            color: #0b1529;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 16px;
-            border-bottom: 2px solid #d69a00;
-            box-shadow: 0 6px 18px rgba(0,0,0,.25);
-        }
-        .impersonation-text { font-weight: 800; letter-spacing: 0.02em; }
-        .impersonation-text .muted { color: #4b5563; font-weight: 700; margin-left: 6px; }
-    </style>
-<link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 
@@ -143,7 +114,7 @@
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-light legend-global-nav" data-legend-global-nav>
-        <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
+        <div class="container-fluid legend-global-nav-shell">
 
             @if (isOnboardingPublic)
             {
@@ -215,130 +186,7 @@
             @if (!isOnboardingPublic)
             {
             <div class="navbar-right">
-@{
-    var user = HttpContextAccessor.HttpContext?.User;
-
-    string? CleanFirstToken(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        var t = s.Trim();
-
-        // reject junk / non-human labels
-        if (string.Equals(t, "connect", StringComparison.OrdinalIgnoreCase)) return null;
-        if (string.Equals(t, "unknown", StringComparison.OrdinalIgnoreCase)) return null;
-
-        // reject emails / UPNs
-        if (t.Contains("@")) return null;
-
-        // take first word
-        var first = t.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-
-        // reject identifiers like "zac.owen"
-        if (first.Contains(".")) return null;
-
-        // basic sanity
-        if (first.Length < 2) return null;
-
-        return first;
-    }
-
-    string? Initial(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        var trimmed = s.Trim();
-        return trimmed.Length > 0 ? trimmed.Substring(0, 1).ToUpperInvariant() : null;
-    }
-
-    var name = "Agent";
-    var displayName = "Agent";
-    string? first = null;
-    string? last = null;
-    string? avatarUrl = null;
-    string? userId = null;
-    string? profileTitle = null;
-
-    Domain.Entities.AgentProfile? agentProfile = null;
-
-    if (user?.Identity?.IsAuthenticated == true)
-    {
-        // Best sources for first name
-        first =
-            CleanFirstToken(user.FindFirst(ClaimTypes.GivenName)?.Value)
-            ?? CleanFirstToken(user.FindFirst("given_name")?.Value)
-            ?? CleanFirstToken(user.FindFirst("first_name")?.Value);
-
-        last =
-            CleanFirstToken(user.FindFirst(ClaimTypes.Surname)?.Value)
-            ?? CleanFirstToken(user.FindFirst("family_name")?.Value)
-            ?? CleanFirstToken(user.FindFirst("last_name")?.Value);
-
-        // Build display name: prefer explicit first+last; otherwise directory display name.
-        var nameClaim =
-            user.FindFirst("name")?.Value
-            ?? user.FindFirst(ClaimTypes.Name)?.Value;
-
-        if (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
-        {
-            displayName = string.Join(" ", new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        }
-        else if (!string.IsNullOrWhiteSpace(nameClaim))
-        {
-            displayName = nameClaim.Trim();
-        }
-        else
-        {
-            displayName = first ?? "Agent";
-        }
-
-        name = first ?? "Agent";
-
-        userId =
-            user.FindFirst("oid")?.Value
-            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? user.Identity?.Name;
-
-        // Pull agent profile to prefer stored full name (avoids showing email)
-        agentProfile = _db.AgentProfiles.AsNoTracking().FirstOrDefault(x => x.AgentUserId == userId);
-        if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.FullName))
-        {
-            displayName = agentProfile.FullName.Trim();
-            // derive initials from stored full name if we lack first/last
-            if (string.IsNullOrWhiteSpace(first))
-            {
-                var parts = agentProfile.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length > 0) first = parts[0];
-                if (parts.Length > 1) last = parts[^1];
-            }
-        }
-        // If display name looks like an email, fall back to the token before '@'
-        if (!string.IsNullOrWhiteSpace(displayName) && displayName.Contains("@"))
-        {
-            var beforeAt = displayName.Split('@')[0];
-            if (!string.IsNullOrWhiteSpace(beforeAt))
-                displayName = beforeAt;
-        }
-
-        profileTitle = agentProfile?.Title?.Trim();
-    }
-
-    var initials = (Initial(first) ?? "") + (Initial(last) ?? "");
-    if (string.IsNullOrWhiteSpace(initials))
-    {
-        initials = (Initial(displayName) ?? "A");
-    }
-
-    if (string.IsNullOrWhiteSpace(profileTitle))
-    {
-        profileTitle = isAssistant ? "Assistant" : "Agent";
-    }
-
-    if (!string.IsNullOrWhiteSpace(userId))
-    {
-        avatarUrl = Url.Action("Current", "Avatar");
-    }
-}
-
-                    <a class="nav-link" href="https://shopparfait.com/store" target="_blank">Store</a>
+                    <a class="nav-link" href="@portalShellIdentity.StoreUrl" target="_blank" rel="noopener">Store</a>
                     @if (isFounder)
                     {
                         <button type="button"
@@ -349,7 +197,8 @@
                             <img src="~/images/legend-ai/legendai.png"
                                  asp-append-version="true"
                                  alt=""
-                                 class="legend-founder-ai-logo-image" />
+                                 class="legend-founder-ai-logo-image"
+                                 decoding="async" />
                         </button>
                     }
                     @if (!isAssistant)
@@ -362,33 +211,7 @@
                         <a class="nav-link" asp-controller="Leads" asp-action="Index">Leads</a>
                         <a class="nav-link" asp-controller="Workstation" asp-action="Index">Workstation</a>
                     }
-                    <div class="dropdown">
-        <button class="profile-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="@displayName">
-            <div class="profile-avatar">
-                @if (!string.IsNullOrWhiteSpace(avatarUrl))
-                {
-                    <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <span>@initials</span>
-                                }
-                            </div>
-            <div class="profile-meta">
-                <span class="profile-name">@displayName</span>
-                <span class="profile-role-pill">@profileTitle</span>
-            </div>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
-            <li><a class="dropdown-item" asp-controller="Account" asp-action="ManageProfile">Edit profile</a></li>
-            <li>
-                <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="dropdown-item">Logout</button>
-                                </form>
-                            </li>
-                        </ul>
-                    </div>
+                    @await Html.PartialAsync("~/Views/Shared/_PortalProfileMenu.cshtml", portalShellIdentity)
             </div>
             }
 
@@ -410,11 +233,16 @@
 
 @if (!isAssistant && !isOnboardingPublic)
 {
-<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
+<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel" aria-hidden="true">
     <div class="explore-card">
         <div class="explore-header">
             <div class="explore-title">EXPLORE</div>
             <div class="explore-pill">Quick Find</div>
+            <button type="button"
+                    class="explore-close"
+                    data-legend-explore-close
+                    aria-label="Close Explore"
+                    hidden></button>
         </div>
 
         <div class="explore-search">
@@ -497,6 +325,10 @@
                     <span>Diagnostics</span>
                     <small>System</small>
                 </a>
+                <a class="explore-item" data-tone="ops" href="/founder/engineering" data-refresh-current-link="1">
+                    <span>Engineering</span>
+                    <small>GPT + Codex</small>
+                </a>
                 <a class="explore-item" data-tone="ops" asp-controller="AgencyCommand" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                     <span>Agency Command</span>
                     <small>Ops</small>
@@ -542,54 +374,11 @@
 }
 
 @{
-    var legendProfileUser = HttpContextAccessor.HttpContext?.User;
-
-    string? CleanAgentFirstName(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var trimmed = value.Trim();
-        if (trimmed.Contains("@")) return null;
-
-        var firstToken = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(firstToken)) return null;
-        if (firstToken.Contains(".")) return null;
-        if (firstToken.Length < 2) return null;
-
-        return firstToken;
-    }
-
-    var legendProfileUserId =
-        !string.IsNullOrWhiteSpace(impersonatedAgentId)
-            ? impersonatedAgentId
-            : legendProfileUser?.FindFirst("oid")?.Value
-                ?? legendProfileUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? legendProfileUser?.Identity?.Name;
-
-    var legendStoredAgentProfile =
-        !string.IsNullOrWhiteSpace(legendProfileUserId)
-            ? _db.AgentProfiles.AsNoTracking().FirstOrDefault(x => x.AgentUserId == legendProfileUserId)
-            : null;
-
-    var legendProfileFullName =
-        !string.IsNullOrWhiteSpace(legendStoredAgentProfile?.FullName)
-            ? legendStoredAgentProfile.FullName.Trim()
-            : !string.IsNullOrWhiteSpace(impersonatedDisplay)
-                ? impersonatedDisplay.Trim()
-                : legendProfileUser?.FindFirst("name")?.Value?.Trim()
-                    ?? legendProfileUser?.FindFirst(ClaimTypes.Name)?.Value?.Trim();
-
-    var legendProfileFirstName =
-        CleanAgentFirstName(legendProfileFullName)
-        ?? CleanAgentFirstName(legendProfileUser?.FindFirst(ClaimTypes.GivenName)?.Value)
-        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("given_name")?.Value)
-        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("first_name")?.Value)
-        ?? "Agent";
-
     var legendAgentProfileJson = System.Text.Json.JsonSerializer.Serialize(new
     {
-        firstName = legendProfileFirstName,
-        fullName = string.IsNullOrWhiteSpace(legendProfileFullName) ? legendProfileFirstName : legendProfileFullName,
-        phone = legendStoredAgentProfile?.Phone?.Trim() ?? ""
+        firstName = portalShellIdentity.FirstName,
+        fullName = portalShellIdentity.DisplayName,
+        phone = portalShellIdentity.Phone
     });
 }
 
@@ -1401,55 +1190,7 @@
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 }
 
-<script>
-    (function () {
-        const trigger = document.getElementById('exploreTrigger');
-        const drawer = document.getElementById('exploreDrawer');
-        const overlay = document.getElementById('exploreOverlay');
-        const search = document.getElementById('exploreSearch');
-        const list = document.getElementById('exploreList');
 
-        if (!trigger || !drawer || !overlay) {
-            return;
-        }
-
-        function openDrawer() {
-            drawer.classList.add('open');
-            overlay.classList.add('open');
-            trigger.setAttribute('aria-expanded', 'true');
-            setTimeout(() => search && search.focus(), 50);
-        }
-
-        function closeDrawer() {
-            drawer.classList.remove('open');
-            overlay.classList.remove('open');
-            trigger.setAttribute('aria-expanded', 'false');
-        }
-
-        trigger.addEventListener('click', function () {
-            if (drawer.classList.contains('open')) closeDrawer();
-            else openDrawer();
-        });
-
-        overlay.addEventListener('click', closeDrawer);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closeDrawer();
-        });
-
-        // simple search filter
-        if (search && list) {
-            search.addEventListener('input', function () {
-                const q = (search.value || '').toLowerCase().trim();
-                const items = list.querySelectorAll('.explore-item');
-                items.forEach(function (a) {
-                    const text = (a.innerText || a.textContent || '').toLowerCase();
-                    a.style.display = text.includes(q) ? '' : 'none';
-                });
-            });
-        }
-    })();
-</script>
 
 <script>
     (function () {
@@ -1489,23 +1230,43 @@
 
 @await RenderSectionAsync("Scripts", required:false)
 
-<div id="appointmentModal" style="display:none; position:fixed; top:10%; left:30%; width:40%; background:white; padding:20px; z-index:9999;">
-    <h3>Book Appointment</h3>
-
-    <input id="apptTitle" placeholder="Title" style="width:100%;" />
-    <br/><br/>
-
-    <input id="apptStart" type="datetime-local" style="width:100%;" />
-    <br/><br/>
-
-    <input id="apptDuration" type="number" value="30" style="width:100%;" />
-    <br/><br/>
-
-    <textarea id="apptNotes" placeholder="Notes" style="width:100%;"></textarea>
-    <br/><br/>
-
-    <button onclick="submitAppointment()">Create</button>
-    <button onclick="closeAppointmentModal()">Cancel</button>
+<div id="appointmentModal"
+     class="modal fade"
+     tabindex="-1"
+     aria-labelledby="appointmentModalTitle"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="appointmentModalTitle">Book Appointment</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="legend-modal-field-grid">
+                    <label class="legend-modal-field">
+                        <span>Title</span>
+                        <input id="apptTitle" class="form-control" placeholder="Title" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Start</span>
+                        <input id="apptStart" class="form-control" type="datetime-local" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Duration</span>
+                        <input id="apptDuration" class="form-control" type="number" value="30" min="1" />
+                    </label>
+                    <label class="legend-modal-field">
+                        <span>Notes</span>
+                        <textarea id="apptNotes" class="form-control" placeholder="Notes"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-gold" id="apptCreate">Create</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="/js/appointment-modal.js"></script>

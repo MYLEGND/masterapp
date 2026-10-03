@@ -146,11 +146,20 @@ public class WebsitePlatformController : ControllerBase
                 return NotFound(new { error = "website_not_published" });
             document = new WebsiteContentDocument();
         }
+        WebsiteSystemTemplateAuthority.Apply(siteKey, document);
         var publicFacts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> publicCollections = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadAsync(document, business.Id, cancellationToken);
         var publicStoreScope = await PublishedStoreScopeAsync(ownerKey, siteKey, document, cancellationToken);
+        var publicActions = await BuildCallToActionCatalogAsync(
+            siteKey,
+            ownerKey,
+            agentSlug,
+            business?.Id,
+            publicFacts,
+            cancellationToken,
+            document);
         return Ok(new
         {
             siteKey,
@@ -159,6 +168,7 @@ public class WebsitePlatformController : ControllerBase
             facts = publicFacts,
             collections = publicCollections.Values,
             store = await StorePayloadAsync(siteKey, document, publicStoreScope, ticket: null, cancellationToken),
+            ctaCatalog = new { options = publicActions },
             document,
             legacyMigration = document.LegacyMigration
         });
@@ -283,6 +293,7 @@ public class WebsitePlatformController : ControllerBase
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var draft = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
@@ -297,7 +308,7 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new {
+            history, signalCatalog = SignalCatalogPayload(), agentContract = WebsiteStudioAgentContract.Payload, capabilities = new {
                 canPublish = await CanPublishAsync(actor, cancellationToken),
                 canManageDomains = await CanPublishAsync(actor, cancellationToken),
                 canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
@@ -324,6 +335,7 @@ public class WebsitePlatformController : ControllerBase
 
         var state = await StateAsync(actor, cancellationToken);
         var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         if (document.LegacyMigration is not null)
             return Ok(new
             {
@@ -366,6 +378,7 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
         var baseline = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
         if (baseline.LegacyMigration is not null)
             return Conflict(new
             {
@@ -386,6 +399,7 @@ public class WebsitePlatformController : ControllerBase
         {
             var options = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
             var parsed = WebsiteSiteSource.Parse(request.Source, baseline, options);
+            WebsiteSiteSource.EnsureSelectedNodeOnly(baseline, parsed.Document, request.SelectedNodeId);
             await ValidateCompositionMediaOwnershipAsync(actor, parsed.Document, cancellationToken);
             var normalized = WebsiteSiteSource.Serialize(parsed.Document);
             return Ok(new
@@ -399,13 +413,33 @@ public class WebsitePlatformController : ControllerBase
                 sourceMap = parsed.SourceMap
             });
         }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new
+            {
+                error = "website_site_source_protected",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "website_site_source_invalid", message = ex.Message });
+            return BadRequest(new
+            {
+                error = "website_site_source_invalid",
+                message = ex.Message,
+                canonicalProtectionViolation = false
+            });
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message, message = "LEGEND Site Source could not be validated. No draft changes were saved." });
+            return BadRequest(new
+            {
+                error = ex.Message,
+                message = "LEGEND Site Source could not be validated. No draft changes were saved.",
+                canonicalProtectionViolation = false
+            });
         }
     }
 
@@ -505,14 +539,24 @@ public class WebsitePlatformController : ControllerBase
     public sealed record WebsiteSiteSourceRequest(
         string Ticket,
         long ExpectedRevision,
-        string Source);
+        string Source,
+        string? SelectedNodeId = null);
+
+    public sealed record WebsiteSignalUpdateRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string PagePath,
+        string ElementId,
+        List<WebsiteSignalBinding>? Signals,
+        string? FieldKey = null);
 
     public sealed record WebsiteSignalTestRequest(
         string Ticket,
         long ExpectedRevision,
         string PagePath,
         string ElementId,
-        string BindingId);
+        string BindingId,
+        string? FieldKey = null);
 
     public sealed record WebsiteStudioCommentCreateRequest(
         string Ticket,
@@ -550,6 +594,89 @@ public class WebsitePlatformController : ControllerBase
             entries = await new WebsiteEventMapQuery(_db, _configuration).ReadTicketAsync(actor, cancellationToken) });
     }
 
+    [HttpPost("manage/signals")]
+    public async Task<IActionResult> UpdateSignals(
+        [FromBody] WebsiteSignalUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var document = Read(state.DraftJson);
+        if (document.LegacyMigration is not null)
+            return Conflict(new
+            {
+                error = "website_materialization_required",
+                message = "Materialize this website into canonical v3 before editing signal mappings."
+            });
+
+        if (!TryFindSignalTarget(
+                document,
+                request.PagePath,
+                request.ElementId,
+                request.FieldKey,
+                out var target,
+                out var fieldKey))
+            return NotFound(new { error = "website_signal_target_not_found" });
+
+        List<WebsiteSignalBinding> signals;
+        try
+        {
+            signals = WebsiteSignalBindingPolicy.Validate(request.Signals);
+            if (target.Type == "experience" && target.Experience is not null && fieldKey is not null)
+            {
+                var control = target.Experience.Controls.Single(control =>
+                    string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
+                WebsiteSignalBindingPolicy.ValidateExperienceControl(control, signals);
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_signal_mapping_invalid", message = ex.Message });
+        }
+
+        if (fieldKey is null)
+        {
+            target.Signals = signals;
+        }
+        else
+        {
+            target.FieldSignals ??= new Dictionary<string, List<WebsiteSignalBinding>>(StringComparer.Ordinal);
+            if (signals.Count == 0) target.FieldSignals.Remove(fieldKey);
+            else target.FieldSignals[fieldKey] = signals;
+        }
+
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { error = "revision_conflict" });
+        }
+
+        return Ok(new
+        {
+            source = "website_signal_configuration",
+            revision = state.Revision,
+            document,
+            elementId = request.ElementId,
+            fieldKey,
+            signals
+        });
+    }
+
     [HttpGet("manage/signals/health")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> SignalHealth(
@@ -557,13 +684,14 @@ public class WebsitePlatformController : ControllerBase
         [FromQuery] string pagePath,
         [FromQuery] string elementId,
         [FromQuery] string bindingId,
+        [FromQuery] string? fieldKey = null,
         CancellationToken cancellationToken = default)
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
         var document = Read(state.DraftJson);
-        if (!TryFindSignalBinding(document, pagePath, elementId, bindingId, out var binding))
+        if (!TryFindSignalBinding(document, pagePath, elementId, fieldKey, bindingId, out var binding))
             return NotFound(new { error = "website_signal_binding_not_found" });
         if (!Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(binding.EventName, out var definition))
             return BadRequest(new { error = "website_signal_event_invalid" });
@@ -628,7 +756,7 @@ public class WebsitePlatformController : ControllerBase
         if (state.Revision != request.ExpectedRevision)
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
         var document = Read(state.DraftJson);
-        if (!TryFindSignalBinding(document, request.PagePath, request.ElementId, request.BindingId, out var binding))
+        if (!TryFindSignalBinding(document, request.PagePath, request.ElementId, request.FieldKey, request.BindingId, out var binding))
             return NotFound(new { error = "website_signal_binding_not_found" });
         if (!Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(binding.EventName, out var definition))
             return BadRequest(new { error = "website_signal_event_invalid" });
@@ -865,10 +993,40 @@ public class WebsitePlatformController : ControllerBase
         WebsiteContentDocument document;
         try
         {
-            document = WebsiteContentSanitizer.Sanitize(request.Document);
+            var baseline = Read(state.DraftJson);
+            document = await NormalizeAuthorableDocumentAsync(
+                actor,
+                baseline,
+                request.Document,
+                cancellationToken);
         }
-        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_website_document", message = ex.Message }); }
-        catch (InvalidOperationException ex) { return Conflict(new { error = ex.Message, message = "Materialize the website into the canonical v3 graph before saving." }); }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new
+            {
+                error = "website_document_protected",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                error = "invalid_website_document",
+                message = ex.Message,
+                canonicalProtectionViolation = false
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new
+            {
+                error = ex.Message,
+                message = "Materialize the website into the canonical v3 graph before saving."
+            });
+        }
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
         {
@@ -896,6 +1054,67 @@ public class WebsitePlatformController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    private async Task<WebsiteContentDocument> NormalizeAuthorableDocumentAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument baseline,
+        WebsiteContentDocument proposed,
+        CancellationToken cancellationToken)
+    {
+        var candidate = WebsiteContentSanitizer.Sanitize(proposed);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, candidate);
+
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business &&
+                                     actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(
+                _db,
+                actor.CommerceBusinessId.Value,
+                cancellationToken)
+            : null;
+
+        // A pre-v3 persisted document is a read-only migration envelope, not a
+        // competing canonical baseline. Its one permitted write is replacement
+        // by the browser-materialized v3 document. From that save forward the
+        // strict v3 protection path below owns every mutation.
+        if (baseline.LegacyMigration is not null)
+        {
+            await ValidateCompositionMediaOwnershipAsync(
+                actor,
+                candidate,
+                cancellationToken);
+            return candidate;
+        }
+
+        var current = WebsiteContentSanitizer.Sanitize(baseline);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, current);
+
+        var actions = await BuildCallToActionCatalogAsync(
+            actor,
+            facts,
+            cancellationToken,
+            current);
+
+        // One protection authority for Canvas, Selected Source, GPT, autosave,
+        // and named drafts. Project the candidate through the same public
+        // authoring representation used by Source, then parse it against the
+        // current canonical baseline. The parser restores server-owned signals,
+        // system/form/data authority and approved action destinations by stable
+        // node ID while preserving authorable presentation and free structure.
+        var source = WebsiteSiteSource.Serialize(candidate);
+        var protectedDocument = WebsiteSiteSource.Parse(
+            source,
+            current,
+            actions,
+            validateCanonical: false,
+            requireActiveHomePage: false).Document;
+
+        await ValidateCompositionMediaOwnershipAsync(
+            actor,
+            protectedDocument,
+            cancellationToken);
+
+        return protectedDocument;
     }
 
     private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
@@ -1024,6 +1243,7 @@ public class WebsitePlatformController : ControllerBase
         var state = await StateAsync(actor, cancellationToken);
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
         var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         CommerceBusiness? business = null;
         WebsiteBusinessFacts? facts = null;
         if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
@@ -1634,10 +1854,70 @@ public class WebsitePlatformController : ControllerBase
             destination.HasServerCapiCredentials, !string.IsNullOrWhiteSpace(destination.TestEventCode));
     }
 
+    private static string? NormalizeSignalFieldKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var chars = value.Trim().Take(160)
+            .Where(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or ':')
+            .ToArray();
+        return chars.Length == 0 ? null : new string(chars).ToLowerInvariant();
+    }
+
+    private static WebsiteCompositionNode? FindCompositionNode(
+        IEnumerable<WebsiteCompositionNode>? nodes,
+        string id)
+    {
+        foreach (var node in nodes ?? [])
+        {
+            if (node.Id == id) return node;
+            var child = FindCompositionNode(node.Children, id);
+            if (child is not null) return child;
+        }
+        return null;
+    }
+
+    internal static bool TryFindSignalTarget(
+        WebsiteContentDocument document,
+        string? pagePath,
+        string? elementId,
+        string? fieldKey,
+        out WebsiteCompositionNode target,
+        out string? normalizedFieldKey)
+    {
+        target = null!;
+        normalizedFieldKey = NormalizeSignalFieldKey(fieldKey);
+        if (string.IsNullOrWhiteSpace(pagePath) || string.IsNullOrWhiteSpace(elementId) ||
+            document.LegacyMigration is not null ||
+            !document.Pages.TryGetValue(pagePath, out var page))
+            return false;
+
+        var found = FindCompositionNode(page.Composition, elementId);
+        if (found is null) return false;
+
+        if (normalizedFieldKey is not null &&
+            found.Type is not ("form" or "experience") &&
+            !WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(found.SystemKey))
+            return false;
+
+        if (normalizedFieldKey is not null &&
+            found.Type == "experience")
+        {
+            var signalFieldKey = normalizedFieldKey;
+            if (found.Experience is null ||
+                found.Experience.Controls.Count(control =>
+                    string.Equals(control.Key, signalFieldKey, StringComparison.OrdinalIgnoreCase)) != 1)
+                return false;
+        }
+
+        target = found;
+        return true;
+    }
+
     private static bool TryFindSignalBinding(
         WebsiteContentDocument document,
         string? pagePath,
         string? elementId,
+        string? fieldKey,
         string? bindingId,
         out WebsiteSignalBinding binding)
     {
@@ -1649,7 +1929,10 @@ public class WebsitePlatformController : ControllerBase
         IEnumerable<WebsiteSignalBinding>? bindings = null;
         if (document.LegacyMigration is { } legacy)
         {
-            if (!legacy.Pages.TryGetValue(pagePath, out var legacyPage)) return false;
+            if (!string.IsNullOrWhiteSpace(fieldKey) ||
+                !legacy.Pages.TryGetValue(pagePath, out var legacyPage))
+                return false;
+
             if (elementId.StartsWith("extra:", StringComparison.Ordinal))
             {
                 var id = elementId.Split(':', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
@@ -1660,18 +1943,13 @@ public class WebsitePlatformController : ControllerBase
         }
         else
         {
-            if (!document.Pages.TryGetValue(pagePath, out var page)) return false;
-            WebsiteCompositionNode? Find(IEnumerable<WebsiteCompositionNode> nodes)
-            {
-                foreach (var node in nodes ?? [])
-                {
-                    if (node.Id == elementId) return node;
-                    var child = Find(node.Children);
-                    if (child is not null) return child;
-                }
-                return null;
-            }
-            bindings = Find(page.Composition)?.Signals;
+            if (!TryFindSignalTarget(document, pagePath, elementId, fieldKey, out var target, out var normalizedFieldKey))
+                return false;
+
+            if (normalizedFieldKey is null)
+                bindings = target.Signals;
+            else if (target.FieldSignals.TryGetValue(normalizedFieldKey, out var fieldBindings))
+                bindings = fieldBindings;
         }
 
         var matches = (bindings ?? []).Where(value => value.Id == bindingId).Take(2).ToArray();

@@ -44,6 +44,42 @@
   // Remove only the obsolete diagnostic cache; do not read it or touch app data.
   try { window.localStorage?.removeItem("legend_page_health_learning_v1"); } catch { }
 
+  function structuralValues(selector, attribute, maximum) {
+    try {
+      const values = Array.from(document.querySelectorAll(selector)).slice(0, maximum * 2)
+        .map(node => node.getAttribute(attribute))
+        .filter(value => typeof value === "string" && value.length > 0 && value.length <= 96)
+        .filter(value => /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(value))
+        .filter(value => !/^[a-fA-F0-9]{24,}$/.test(value) && !/[0-9]{8,}/.test(value));
+      return [...new Set(values)].slice(0, maximum);
+    } catch { return []; }
+  }
+  function structuralSnapshot() {
+    let modalIds = [];
+    try {
+      modalIds = Array.from(document.querySelectorAll('[role="dialog"][id],.modal[id]')).slice(0, 32)
+        .filter(node => { try { const style = window.getComputedStyle(node); return style.display !== "none" && style.visibility !== "hidden"; } catch { return false; } })
+        .map(node => node.id)
+        .filter(value => typeof value === "string" && value.length > 0 && value.length <= 96)
+        .filter(value => /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(value))
+        .filter(value => !/^[a-fA-F0-9]{24,}$/.test(value) && !/[0-9]{8,}/.test(value));
+      modalIds = [...new Set(modalIds)].slice(0, 16);
+    } catch { modalIds = []; }
+    return Object.freeze({
+      componentIds: [...new Set([
+        ...structuralValues("[data-canonical-id]", "data-canonical-id", 24),
+        ...structuralValues("[data-component-id]", "data-component-id", 24),
+        ...structuralValues("[data-system-key]", "data-system-key", 24)
+      ])].slice(0, 24),
+      actionKeys: [...new Set([
+        ...structuralValues("[data-action-key]", "data-action-key", 24),
+        ...structuralValues("[data-website-action-key]", "data-website-action-key", 24)
+      ])].slice(0, 24),
+      compositionIds: structuralValues("[data-cms-composition-id]", "data-cms-composition-id", 24),
+      modalIds
+    });
+  }
+
   const current = Object.freeze({
     log() { return null; },
     warn(_message, detail, scope = "app") { return observe(detail, scope, "warning"); },
@@ -51,6 +87,7 @@
     open() { if (canManage) window.location.assign("/founder/diagnostics"); },
     close() { },
     clearSession() { clear(false); },
+    structuralSnapshot() { return structuralSnapshot(); },
     exportReport() {
       return JSON.stringify({ route, generatedAt: new Date().toISOString(), currentIssues: state.events, learnedPatterns: {} });
     }
@@ -118,7 +155,8 @@
           : scope === "network" ? "A browser request ended without a response." : "A browser script reported an error.",
         stackTrace: frames.join("\n"), gitCommitHash, timestamp: new Date().toISOString(),
         operation, correlationId: "",
-        category: scope === "network" ? "Network" : "SuspectedDefect", statusCode, appVersion: ""
+        category: scope === "network" ? "Network" : "SuspectedDefect", statusCode, appVersion: "",
+        structuralReproducer: structuralSnapshot()
       };
       const key = [route, payload.errorName, payload.sourceFilePath, operation, statusCode].join("|");
       const now = Date.now();

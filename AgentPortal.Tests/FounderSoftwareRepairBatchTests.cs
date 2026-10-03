@@ -49,7 +49,7 @@ public sealed class FounderSoftwareRepairBatchTests
         Assert.EndsWith("/pulls", writes[1].Path);
         Assert.False(writes[1].Body.GetProperty("draft").GetBoolean());
         Assert.Equal("hotfix/publish-" + HeadSha, writes[1].Body.GetProperty("head").GetString());
-        Assert.Equal("production", writes[1].Body.GetProperty("base").GetString());
+        Assert.Equal("legend/approved-changes", writes[1].Body.GetProperty("base").GetString());
         Assert.EndsWith("/git/commits", writes[2].Path);
         Assert.Equal(new string('e', 40), writes[2].Body.GetProperty("tree").GetString());
         Assert.Equal(HeadSha, Assert.Single(writes[2].Body.GetProperty("parents").EnumerateArray()).GetString());
@@ -220,6 +220,26 @@ public sealed class FounderSoftwareRepairBatchTests
     }
 
     [Fact]
+    public async Task VerifyDeployment_RequiresExactConfiguredHostRuntimeTreeProof()
+    {
+        using var fixture = new Fixture(configureLiveProof: true);
+        var result = JsonSerializer.SerializeToElement(
+            await fixture.Service.VerifyDeploymentAsync(HeadSha, default),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.True(result.GetProperty("liveDeploymentVerified").GetBoolean(), result.ToString());
+        Assert.Equal("live_verified", result.GetProperty("deploymentState").GetString());
+        var proof = result.GetProperty("liveProof");
+        Assert.True(proof.GetProperty("verified").GetBoolean());
+        var host = Assert.Single(proof.GetProperty("hosts").EnumerateArray());
+        Assert.Equal("AppOne", host.GetProperty("appIdentifier").GetString());
+        Assert.Equal(HeadSha, host.GetProperty("sourceRevision").GetString());
+        Assert.True(host.GetProperty("treeMatchesExpected").GetBoolean());
+        Assert.Equal("live_tree_matches_expected", host.GetProperty("status").GetString());
+        Assert.Empty(fixture.Handler.Writes);
+    }
+
+    [Fact]
     public async Task Reconcile_PublicationShowsExistingWorkflowObservation_WithoutClaimingLiveDeployment()
     {
         using var fixture = new Fixture();
@@ -256,7 +276,7 @@ public sealed class FounderSoftwareRepairBatchTests
         Assert.False(result.GetProperty("verified").GetBoolean());
         Assert.False(result.GetProperty("writesUnlocked").GetBoolean());
         Assert.False(result.GetProperty("workflowObservations").GetProperty("liveDeploymentVerified").GetBoolean());
-        Assert.Contains(fixture.Handler.Reads, path => path.EndsWith("/actions/workflows/agentportal-production-deploy.yml/runs"));
+        Assert.Contains(fixture.Handler.Reads, path => path.EndsWith("/actions/workflows/all-intentional-direct-release-20260918.yml/runs"));
         Assert.Empty(fixture.Handler.Writes);
         Assert.Equal("ValidationRequested", (await fixture.Db.FounderSoftwareRepairBatches.SingleAsync()).State);
     }
@@ -280,21 +300,25 @@ public sealed class FounderSoftwareRepairBatchTests
         public ScenarioHandler Handler { get; }
         public FounderSoftwareRemediationService Service { get; }
         public FounderSoftwareRepairProposal Proposal { get; }
-        public Fixture(string project = "AgentPortal/AgentPortal.csproj", string path = "AgentPortal/Services/Example.cs", string mode = "100644")
+        public Fixture(string project = "AgentPortal/AgentPortal.csproj", string path = "AgentPortal/Services/Example.cs",
+            string mode = "100644", bool configureLiveProof = false)
         {
             Handler = new ScenarioHandler(_key.ExportPkcs8PrivateKeyPem(), project, path, mode);
             Proposal = new(BaseSha, "Bounded repair", "Synthetic reviewed fixture", [new(path, "// corrected fixture")]);
-            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            var values = new Dictionary<string, string?>
             {
                 ["FounderSoftwareRemediation:Enabled"] = "true",
                 ["FounderSoftwareRemediation:RepositoryOwner"] = "MYLEGND",
                 ["FounderSoftwareRemediation:RepositoryName"] = "masterapp",
-                ["FounderSoftwareRemediation:BaseBranch"] = "production",
+                ["FounderSoftwareRemediation:BaseBranch"] = "legend/approved-changes",
                 ["FounderSoftwareRemediation:GitHubAppId"] = "1",
                 ["FounderSoftwareRemediation:GitHubInstallationId"] = "2",
                 ["FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"] = "https://fixture.vault.azure.net/secrets/app",
                 ["FounderSoftwareRemediation:GitHubApiBaseUri"] = "https://api.github.com/"
-            }).Build();
+            };
+            if (configureLiveProof)
+                values["FounderSoftwareRemediation:DeploymentVerificationHosts:AppOne"] = "https://one.example.test";
+            var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
             Service = new(new ClientFactory(Handler), config, NullLogger<FounderSoftwareRemediationService>.Instance, new Credential(), Db);
         }
         public async Task StageAsync()
@@ -316,7 +340,7 @@ public sealed class FounderSoftwareRepairBatchTests
     private sealed class ScenarioHandler(string key, string project, string source, string mode) : HttpMessageHandler
     {
         private const string Repo = "/repos/MYLEGND/masterapp/";
-        public Dictionary<string, string> Refs { get; } = new() { ["production"] = BaseSha };
+        public Dictionary<string, string> Refs { get; } = new() { ["legend/approved-changes"] = BaseSha };
         public List<Write> Writes { get; } = [];
         public List<string> Reads { get; } = [];
         public bool PreviewDraft { get; set; } = true;
@@ -332,6 +356,13 @@ public sealed class FounderSoftwareRepairBatchTests
             var path = request.RequestUri!.AbsolutePath;
             if (request.RequestUri.Host == "fixture.vault.azure.net") return Json(new { value = key });
             if (path == "/app/installations/2/access_tokens") return Json(new { token = "synthetic-installation" });
+            if (request.RequestUri.Host == "one.example.test" && path == "/api/runtime-provenance")
+            {
+                var response = Json(new { schemaVersion = 1, appIdentifier = "AppOne", sourceRevision = HeadSha });
+                response.RequestMessage = request;
+                return response;
+            }
+
             if (request.Method == HttpMethod.Get) Reads.Add(path);
             JsonElement body = default;
             if (request.Content is not null)
@@ -340,8 +371,11 @@ public sealed class FounderSoftwareRepairBatchTests
                 Writes.Add(new(path, body));
             }
             if (path.StartsWith(Repo + "git/ref/heads/") && request.Method == HttpMethod.Get)
-                return Refs.TryGetValue(path[(Repo + "git/ref/heads/").Length..], out var sha)
+            {
+                var branch = Uri.UnescapeDataString(path[(Repo + "git/ref/heads/").Length..]);
+                return Refs.TryGetValue(branch, out var sha)
                     ? Json(new { @object = new { sha } }) : Json(new { }, HttpStatusCode.NotFound);
+            }
             if (path.StartsWith(Repo + "git/commits/") && request.Method == HttpMethod.Get)
                 return Json(new { tree = new { sha = path.EndsWith(BaseSha) ? new string('b', 40) : new string('e', 40) } });
             if (path.StartsWith(Repo + "git/trees/") && request.Method == HttpMethod.Get)
@@ -367,16 +401,16 @@ public sealed class FounderSoftwareRepairBatchTests
             }
             if (path == Repo + "pulls/123") return Json(PullRequest(123, PreviewBranch, PreviewDraft));
             if (path == Repo + "pulls/456") return Json(PullRequest(456, "hotfix/publish-" + HeadSha, false));
-            if (path == Repo + "actions/workflows/agentportal-production-deploy.yml/runs") return Json(new { workflow_runs = Array.Empty<object>() });
-            if (path == Repo + "branches/production/protection")
-                return Json(new { required_status_checks = new { strict = true, contexts = new[] { "security" } }, enforce_admins = new { enabled = true }, required_pull_request_reviews = new { } });
+            if (path == Repo + "actions/workflows/all-intentional-direct-release-20260918.yml/runs") return Json(new { workflow_runs = Array.Empty<object>() });
+            if (path == Repo + "branches/legend%2Fapproved-changes/protection" || path == Repo + "branches/legend/approved-changes/protection")
+                return Json(new { required_status_checks = new { strict = true, contexts = new[] { "architecture-validation" } }, enforce_admins = new { enabled = true }, required_pull_request_reviews = new { } });
             return Json(new { }, HttpStatusCode.NotFound);
         }
         private object PullRequest(int number, string branch, bool draft) => new
         {
             number, draft, state = number == 456 ? PublicationState : "open", merged = number == 456 && PublicationMerged,
             head = new { sha = number == 456 && InvalidPublicationReceipt ? BaseSha : Refs.GetValueOrDefault(branch, MarkerSha), @ref = branch, repo = new { full_name = PreviewRepository } },
-            @base = new { @ref = "production", repo = new { full_name = "MYLEGND/masterapp" } }
+            @base = new { @ref = "legend/approved-changes", repo = new { full_name = "MYLEGND/masterapp" } }
         };
         private static HttpResponseMessage Json(object body, HttpStatusCode status = HttpStatusCode.OK) =>
             new(status) { Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json") };

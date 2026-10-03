@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_REGISTRY, estimateCostMicrousd } from '../../src/runtime/registry.mjs';
+import { FOUNDER_BASELINE_MODEL_IDS, FOUNDER_BASELINE_PRIMARY_MODEL, MODEL_REGISTRY, estimateCostMicrousd } from '../../src/runtime/registry.mjs';
 import { orchestrate } from '../../src/runtime/orchestrator.mjs';
 import { CircuitBreaker } from '../../src/runtime/reliability.mjs';
 
@@ -13,20 +13,20 @@ function fixture() {
     task: { kind: 'general', messages: [{ role: 'user', content: 'Synthetic fixture.' }], tools: [], requiredCapabilities: [] },
     limits: { deadlineUnixMs: now + 10000, maxOutputTokens: 1024, maxIterations: 1, maxModelCalls: 1, maxToolCalls: 0, maxCostMicrousd: 3000000 }, stream: false };
   const context = { ...scope, keyId: 'founder-key', requestId: envelope.requestId };
-  const manual = { version: 'legend-founder-manual-test.v1', accountId: scope.accountId,
+  const baseline = { version: 'legend-founder-baseline.v3', accountId: scope.accountId,
     tenantId: scope.tenantId, founderUserId: scope.userId, serviceKeyId: context.keyId, requiredRole: 'Founder',
-    environment: 'production', modelId: '@cf/openai/gpt-oss-120b', expiresAt: now + 60000, lifetimeCostMicrousd: 3000000 };
+    environment: 'production', modelIds: FOUNDER_BASELINE_MODEL_IDS, lifetimeCostMicrousd: 3000000 };
   const policies = MODEL_REGISTRY.map((model, i) => ({ version: 'legend-qualification.v1', accountId: scope.accountId,
     modelId: model.id, tenantId: 'test-tenant', allowedUserIds: ['test-user-' + i], requiredRole: 'LegendQualification',
     serviceKeyId: 'test-key-' + i, suiteSha256: 'a'.repeat(64), expiresAt: now + 60000, lifetimeCostMicrousd: 3000000 }));
   const reservations = []; const calls = []; const settled = [];
-  const env = { LEGEND_RUNTIME_MODE: 'founder_manual_test', LEGEND_DEPLOYMENT_ENVIRONMENT: 'production', LEGEND_ACCOUNT_ID: scope.accountId,
-    LEGEND_MANUAL_TEST_POLICY_JSON: JSON.stringify(manual),
+  const env = { LEGEND_RUNTIME_MODE: 'founder_baseline', LEGEND_DEPLOYMENT_ENVIRONMENT: 'production', LEGEND_ACCOUNT_ID: scope.accountId,
+    LEGEND_FOUNDER_BASELINE_POLICY_JSON: JSON.stringify(baseline),
     LEGEND_BUDGET_POLICY_JSON: JSON.stringify({ period: 'lifetime', accountMicrousd: 3000000 }),
     AI: { async run(modelId, input) { calls.push({ modelId, input }); return { response: 'Synthetic result', usage: { prompt_tokens: 20, completion_tokens: 5 } }; } } };
   const budget = { async reserve(ctx, request) { reservations.push({ ctx, ...request }); return { reservationId: request.reservationId, reservedMicrousd: request.maxCostMicrousd }; },
     async settle(ctx, request) { settled.push(request); return { chargedMicrousd: request.usageKnown ? request.actualCostMicrousd : reservations.at(-1).maxCostMicrousd }; } };
-  const f = { envelope, context, env, budget, circuit: new CircuitBreaker(), manual, policies, reservations, calls, settled };
+  const f = { envelope, context, env, budget, circuit: new CircuitBreaker(), baseline, policies, reservations, calls, settled };
   f.configure = () => { env.LEGEND_QUALIFICATION_POLICIES_JSON = JSON.stringify({ version: 'legend-qualification-policies.v1', policies }); };
   f.select = index => {
     const policy = policies[index];
@@ -36,14 +36,14 @@ function fixture() {
   return f;
 }
 
-test('default Founder baseline stays fixed GPT with no list and with a valid operator list', async () => {
+test('default Founder baseline stays on GPT-OSS general routing with or without qualification grants', async () => {
   for (const configured of [false, true]) {
     const f = fixture(); if (configured) f.configure();
     f.envelope.task.modelId = MODEL_REGISTRY[4].id;
     f.envelope.qualificationSuiteSha256 = 'f'.repeat(64);
     const result = await orchestrate(f);
-    assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_manual_test');
-    assert.equal(result.provider.modelId, f.manual.modelId);
+    assert.equal(result.status, 'completed'); assert.equal(result.executionMode, 'founder_baseline');
+    assert.equal(result.provider.modelId, FOUNDER_BASELINE_PRIMARY_MODEL);
     assert.equal(Object.hasOwn(result, 'qualificationSuiteSha256'), false);
   }
 });
@@ -58,14 +58,14 @@ test('each distinct authenticated qualification key uses its exact operator mode
     assert.equal(result.provider.modelId, f.policies[i].modelId);
     assert.equal(result.qualificationSuiteSha256, f.policies[i].suiteSha256);
     assert.equal(f.calls.length, 1); assert.equal(f.reservations.length, 1);
-    assert.equal(f.reservations[0].ctx.accountId, f.manual.accountId);
+    assert.equal(f.reservations[0].ctx.accountId, f.baseline.accountId);
     assert.equal(f.reservations[0].maxCostMicrousd, estimateCostMicrousd(MODEL_REGISTRY[i], MODEL_REGISTRY[i].contextTokens, 1024));
     assert.equal(f.calls[0].input[MODEL_REGISTRY[i].outputLimitParameter], 1024);
     assert(MODEL_REGISTRY.every(model => model.enabled === false && model.qualification === null));
   }
 });
 
-test('qualification role with manual or unlisted key cannot fall through to Founder access', async () => {
+test('qualification role with baseline or unlisted key cannot fall through to Founder access', async () => {
   for (const keyId of ['founder-key', 'unknown-key']) {
     const f = fixture(); f.configure(); f.select(0); f.context.keyId = keyId;
     const result = await orchestrate(f);
@@ -104,7 +104,7 @@ test('an expired unrelated qualification policy leaves Founder baseline and othe
     if (selected >= 0) f.select(selected);
     const result = await orchestrate(f);
     assert.equal(result.status, 'completed');
-    assert.equal(result.provider.modelId, selected < 0 ? f.manual.modelId : f.policies[selected].modelId);
+    assert.equal(result.provider.modelId, selected < 0 ? FOUNDER_BASELINE_PRIMARY_MODEL : f.policies[selected].modelId);
   }
   const expired = fixture(); expired.policies[4].expiresAt = Date.now() - 1; expired.configure(); expired.select(4);
   assert.equal((await orchestrate(expired)).error.code, 'qualification_configuration_invalid');
@@ -121,7 +121,7 @@ test('invalid list or incompatible lifetime budget cannot create an alternate le
   }
   const f = fixture(); f.configure(); f.select(0);
   f.env.LEGEND_BUDGET_POLICY_JSON = JSON.stringify({ period: 'calendar-month', accountMicrousd: 3000000 });
-  assert.equal((await orchestrate(f)).error.code, 'manual_test_lifetime_budget_required');
+  assert.equal((await orchestrate(f)).error.code, 'founder_baseline_lifetime_budget_required');
 });
 
 test('production ignores policy lists and request mode flags; absent list grants no qualification', async () => {
@@ -131,7 +131,7 @@ test('production ignores policy lists and request mode flags; absent list grants
     assert.equal((await orchestrate(f)).error.code, 'no_qualified_model'); assert.equal(f.calls.length, 0);
   }
   const f = fixture(); f.select(0);
-  assert.equal((await orchestrate(f)).error.code, 'manual_test_scope_denied');
+  assert.equal((await orchestrate(f)).error.code, 'founder_baseline_scope_denied');
 });
 
 test('qualification keeps tools disabled and grant deadline enforced', async () => {

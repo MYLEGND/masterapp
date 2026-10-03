@@ -49,9 +49,71 @@
   --app-mobile-block-gap:.72rem;
   --app-mobile-control-gap:.5rem;
   --app-mobile-card-pad:.78rem;
+
+  /*
+   * Canonical authenticated-app visual contract.
+   * Mobile and desktop consume one palette/material authority. Viewport-specific
+   * aliases below own geometry only, so a brand/style change is made once.
+   */
+  --legend-app-surface:var(--web-navy-deep);
+  --legend-app-surface-elevated:color-mix(in srgb,var(--web-navy) 78%,var(--web-navy-deep));
+  --legend-app-control:color-mix(in srgb,var(--web-navy) 82%,var(--web-white));
+  --legend-app-control-line:color-mix(in srgb,var(--web-gold) 34%,var(--web-white) 12%);
+  --legend-app-accent:var(--web-gold);
+  --legend-app-accent-bright:var(--web-gold-strong);
+  --legend-app-on-dark:var(--web-white);
+  --legend-app-on-dark-muted:color-mix(in srgb,var(--web-white) 72%,var(--web-navy));
+  --legend-app-panel:var(--legend-app-surface-elevated);
+  --legend-app-panel-soft:var(--legend-app-control);
+  --legend-app-border:var(--legend-app-control-line);
+  --legend-app-radius:14px;
+  --legend-app-radius-compact:10px;
+
+  /* Mobile geometry aliases preserve the approved mobile contract. */
+  --legend-mobile-surface:var(--legend-app-surface);
+  --legend-mobile-surface-deep:var(--legend-app-surface);
+  --legend-mobile-control:var(--legend-app-control);
+  --legend-mobile-control-line:var(--legend-app-control-line);
+  --legend-mobile-gold:var(--legend-app-accent);
+  --legend-mobile-gold-bright:var(--legend-app-accent-bright);
+  --legend-mobile-text:var(--legend-app-on-dark);
+  --legend-mobile-muted:var(--legend-app-on-dark-muted);
+  --legend-mobile-radius:14px;
+  --legend-mobile-control-height:34px;
+  --legend-mobile-gap:6px;
+
+  /*
+   * Canonical desktop geometry + modal material authority.
+   * Every authenticated surface uses one LEGEND navy / gold material language.
+   * Geometry may differ by viewport; color authority never forks by feature.
+   */
+  --legend-desktop-control-height:38px;
+  --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
+  --legend-desktop-gap:clamp(.48rem,.7vw,.78rem);
+
+  /* Modals do not own a second color theme. They consume the same canonical
+     authenticated-page navy/gold material authority as the main application. */
+  --legend-modal-surface:var(--legend-app-surface);
+  --legend-modal-surface-raised:var(--legend-app-surface-elevated);
+  --legend-modal-surface-subtle:var(--legend-app-control);
+  --legend-modal-chrome:var(--legend-app-surface-elevated);
+  --legend-modal-chrome-deep:var(--legend-app-surface);
+  --legend-modal-ink:var(--legend-app-on-dark);
+  --legend-modal-muted:var(--legend-app-on-dark-muted);
+  --legend-modal-line:color-mix(in srgb,var(--legend-app-on-dark) 12%,transparent);
+  --legend-modal-line-strong:var(--legend-app-control-line);
+  --legend-modal-gold:var(--legend-app-accent);
+  --legend-modal-gold-strong:var(--legend-app-accent-bright);
+  --legend-modal-gold-soft:color-mix(in srgb,var(--legend-app-accent) 14%,transparent);
+  --legend-modal-on-gold:var(--legend-app-surface);
+  --legend-modal-shadow:var(--legend-shadow-strong);
+
+  --legend-desktop-modal-gutter:clamp(18px,2vw,32px);
+  --legend-desktop-modal-width:min(1540px,calc(100vw - (2 * var(--legend-desktop-modal-gutter))));
+  --legend-desktop-modal-height:calc(100dvh - (2 * var(--legend-desktop-modal-gutter)));
 }
 html{font-size:16px}
-body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
+body.legend-app{display:flex;flex-direction:column}
 .legend-app-content{width:100%;min-width:0;flex:1;padding:var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-right)) var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-left))}
 .legend-app-content>main{min-width:0;width:100%}
 /* Shared horizontal workspace for analytics and business CRM in every app host. */
@@ -64,291 +126,6 @@ body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
 .legend-app-content :where(.btn-primary){--bs-btn-bg:var(--web-gold);--bs-btn-border-color:var(--web-gold);--bs-btn-color:var(--web-navy-deep);--bs-btn-hover-bg:var(--web-gold-strong);--bs-btn-hover-color:var(--web-navy-deep);--bs-btn-hover-border-color:var(--web-gold-strong)}
 footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient(115deg,var(--web-navy-deep),var(--web-navy));color:var(--web-gold-strong);border-top:1px solid var(--web-border);font-size:.95rem}
 .legend-app-footer{width:100%;padding-inline:var(--app-gutter)}
-.onboarding-public-only .explore-trigger,.onboarding-public-only #exploreDrawer,.onboarding-public-only #exploreOverlay{display:none}
-/* Click-away overlay */
-.explore-overlay{
-    position: fixed;
-    inset: 0;
-    z-index: 1098;
-    background: transparent;
-    display: none;
-}
-.explore-overlay.open{ display:block; }
-
-/* Explore trigger anchored inline with main nav */
-.explore-trigger{
-    position: static;
-    left: auto;
-    top: auto;
-    z-index: auto;
-    width: 42px;
-    height: 42px;
-    border-radius: 13px;
-    border: 1.6px solid var(--legend-gold-deep);
-    background: var(--web-navy-deep);
-    box-shadow:
-        0 10px 20px rgba(0,0,0,.22),
-        inset 0 0 0 1px rgba(255,255,255,.10);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all .2s ease;
-    padding: 0;
-}
-
-.explore-trigger:hover{
-    transform: translateY(-1px) scale(1.01);
-    border-color: rgba(166,128,35,.94);
-    box-shadow:
-        0 14px 24px rgba(0,0,0,.26),
-        inset 0 0 0 1px rgba(255,255,255,.14);
-}
-
-.explore-bars{
-    width: 16px;
-    height: 14px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-    line-height: 0;
-}
-
-.explore-bars span{
-    display:block;
-    width: 100%;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #f8fafc, var(--web-gold));
-    transition: all .2s ease;
-    opacity: 1;
-    flex: 0 0 auto;
-}
-
-.explore-trigger:hover .explore-bars span{
-    background: linear-gradient(90deg, #f8fafc, var(--web-gold-strong));
-}
-
-/* Drawer shell */
-.explore-drawer{
-    position: fixed;
-    left: 18px;
-    top: 16px;
-    bottom: 16px;
-    z-index: 1099;
-    width: min(360px, calc(100vw - 36px));
-    max-width: calc(100vw - 36px);
-
-    /* CLOSED: fully hidden (no peeking) */
-    transform: translateX(-140%);
-    transition: transform .25s ease;
-    pointer-events: none;
-}
-
-.explore-drawer.open{
-    transform: translateX(0);
-    pointer-events: auto;
-}
-
-/* remove shadow when closed so nothing bleeds */
-.explore-drawer:not(.open) .explore-card{
-    display:flex;
-    flex-direction:column;
-    max-height:100%;
-    box-shadow: none;
-}
-
-/* Boxed banner matching top vibe */
-.explore-card{
-    display:flex;
-    flex-direction:column;
-    max-height:100%;
-    background: var(--web-navy-deep);
-    border: 1.5px solid rgba(166,128,35,.86);
-    border-radius: 18px;
-    box-shadow:
-        0 22px 48px rgba(0,0,0,.30),
-        inset 0 0 0 1px rgba(255,255,255,.08);
-    overflow: hidden;
-    position: relative;
-}
-
-.explore-card::before{
-    content:"";
-    position:absolute;
-    left:0;
-    right:0;
-    top:0;
-    height:4px;
-    background: linear-gradient(90deg, #a68023, #c79931 26%, var(--web-gold-strong) 54%, #c79931 80%, #a68023);
-}
-
-.explore-header{
-    padding: 18px 18px 12px 18px;
-    border-bottom: 1px solid rgba(166,128,35,.32);
-    display:flex;
-    align-items:center;
-    justify-content: space-between;
-    gap: 10px;
-    background: var(--web-navy-deep);
-}
-
-.explore-title{
-    font-weight: 1000;
-    letter-spacing: 1.2px;
-    color: var(--legend-gold-bright);
-    font-size: 1rem;
-    white-space: nowrap;
-}
-
-.explore-pill{
-    font-size: .74rem;
-    font-weight: 900;
-    color: var(--legend-gold-bright);
-    background: var(--web-navy);
-    border: 1px solid rgba(166,128,35,.42);
-    padding: 6px 11px;
-    border-radius: 999px;
-    white-space: nowrap;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.72);
-}
-
-.explore-search{
-    padding: 14px 18px 10px 18px;
-}
-
-.explore-search input{
-    width: 100%;
-    border-radius: 999px;
-    border: 1.5px solid rgba(166,128,35,.42);
-    padding: 11px 15px;
-    outline: none;
-    font-weight: 800;
-    transition: all .2s ease;
-    background: var(--web-navy);
-    color:#f8fafc;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-}
-
-.explore-search input:focus{
-    border-color: rgba(166,128,35,.94);
-    box-shadow: 0 0 0 4px rgba(166,128,35,.14), 0 12px 24px rgba(64,47,11,.08);
-}
-
-/* Scrollable list auto-adjusts */
-.explore-list{
-    min-height: 0;
-    overflow: auto;
-    padding: 8px 12px 16px 12px;
-}
-
-.explore-group-label{
-    margin: 10px 8px 6px;
-    font-size: .68rem;
-    font-weight: 900;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: var(--web-gold-strong);
-    opacity: .9;
-}
-
-.explore-item{
-    width: calc(100% - 12px);
-    text-align: left;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    text-decoration: none;
-    color: #f8fafc;
-    font-weight: 900;
-    transition: all .2s ease;
-    margin: 6px 6px;
-    border: 1px solid rgba(166,128,35,.38);
-    background: var(--web-navy);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-}
-
-.explore-item:hover{
-    color: var(--legend-gold-bright);
-    background: rgba(166,128,35,.14);
-    transform: translateY(-2px);
-    border-color: rgba(166,128,35,.56);
-    box-shadow: 0 14px 28px rgba(0,0,0,.24);
-}
-
-.explore-item span{
-    display:block;
-    font-size:.98rem;
-    letter-spacing:.18px;
-}
-
-.explore-item small{
-    font-weight: 900;
-    white-space: nowrap;
-    padding: 5px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.16);
-    background: rgba(255,255,255,.06);
-    color: #e2e8f0;
-    letter-spacing: .35px;
-    text-transform: uppercase;
-    font-size: .67rem;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
-}
-
-.explore-item[data-tone="crm"] small{
-    color:#2457c5;
-    border-color:rgba(36,87,197,.28);
-    background:linear-gradient(180deg, #f4f8ff, #e9f1ff);
-}
-
-.explore-item[data-tone="prospect"] small{
-    color:#a05d12;
-    border-color:rgba(160,93,18,.26);
-    background:linear-gradient(180deg, #fff7ee, #ffecd7);
-}
-
-.explore-item[data-tone="forms"] small{
-    color:#0d7d73;
-    border-color:rgba(13,125,115,.24);
-    background:linear-gradient(180deg, #f1fcfa, #e7f8f5);
-}
-
-.explore-item[data-tone="ops"] small{
-    color:#1f8b49;
-    border-color:rgba(31,139,73,.24);
-    background:linear-gradient(180deg, #f3fbf6, #e8f7ed);
-}
-
-.explore-item[data-tone="network"] small{
-    color:#7a3fe0;
-    border-color:rgba(122,63,224,.24);
-    background:linear-gradient(180deg, #f7f4ff, #efe9ff);
-}
-
-.explore-item[data-tone="library"] small{
-    color:#a05d12;
-    border-color:rgba(160,93,18,.24);
-    background:linear-gradient(180deg, #fff8ef, #fff0dd);
-}
-
-.explore-item[data-tone="growth"] small{
-    color:#9d4edd;
-    border-color:rgba(157,78,221,.24);
-    background:linear-gradient(180deg, #faf4ff, #f1e6ff);
-}
-
-.explore-item[data-tone="utility"] small{
-    color:#4f6b1b;
-    border-color:rgba(79,107,27,.24);
-    background:linear-gradient(180deg, #f8fbeF, #eef5df);
-}
-
 .footer-shell{
     display:grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -429,13 +206,118 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
 }
 
 
-@media(max-width:840px){
- .explore-drawer{top:12px;bottom:12px;left:12px;width:calc(100vw - 24px);max-width:360px}
+@media(min-width:769px){
+ body.legend-app{overflow-x:clip}
+
+ /*
+  * Canonical authenticated desktop geometry. Every AgentPortal/ClientApp page
+  * gets the same full-width workspace while component behavior remains owned
+  * by the feature. This block intentionally changes presentation only.
+  */
+ body.legend-app .legend-app-content{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  padding:clamp(18px,2vw,32px) max(var(--app-shell-gutter),env(safe-area-inset-right)) clamp(22px,2.4vw,40px) max(var(--app-shell-gutter),env(safe-area-inset-left));
+ }
+ body.legend-app .legend-app-content>main{
+  width:100%;
+  max-width:none;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.container,.container-fluid){
+  width:100%;
+  max-width:none;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.row)>*{
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.card){
+  border:1px solid var(--legend-app-border);
+  border-radius:var(--legend-app-radius);
+  background:var(--legend-app-panel);
+  box-shadow:var(--legend-shadow-soft);
+ }
+ body.legend-app .legend-app-content :where(.card-body){
+  padding:var(--legend-desktop-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.btn){
+  min-height:var(--legend-desktop-control-height);
+  padding:.5rem .82rem;
+  border-radius:var(--legend-app-radius-compact);
+  line-height:1.15;
+ }
+ body.legend-app .legend-app-content :where(.form-control,.form-select){
+  min-height:var(--legend-desktop-control-height);
+  border-color:var(--legend-app-border);
+  border-radius:var(--legend-app-radius-compact);
+ }
+ body.legend-app .legend-app-content :where(.table-responsive){
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+ }
 }
 @media(max-width:768px){
+ body.legend-app{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:visible;
+ }
  :root{
   --app-shell-gutter:0px;
-  --app-section-gap:.78rem;
+  --app-section-gap:.42rem;
+  --app-mobile-block-gap:.48rem;
+  --app-mobile-control-gap:.35rem;
+  --app-mobile-card-pad:.62rem;
+ }
+ body.legend-app .legend-app-content{
+  padding:.42rem max(.32rem,env(safe-area-inset-right)) .7rem max(.32rem,env(safe-area-inset-left));
+ }
+ body.legend-app .legend-app-content>main{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+ }
+ body.legend-app .legend-app-content :where(.container,.container-fluid){
+  --bs-gutter-x:.7rem;
+ }
+ body.legend-app .legend-app-content :where(.row){
+  --bs-gutter-x:.7rem;
+  --bs-gutter-y:.5rem;
+ }
+ body.legend-app .legend-app-content :where(.card){
+  border-radius:var(--legend-mobile-radius,14px);
+ }
+ body.legend-app .legend-app-content :where(.card-body){
+  padding:var(--app-mobile-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.btn){
+  min-height:var(--legend-mobile-control-height,34px);
+  padding:.38rem .62rem;
+  border-radius:8px;
+  font-size:.78rem;
+  line-height:1.1;
+ }
+ body.legend-app .legend-app-content :where(.form-control,.form-select){
+  min-height:38px;
+  padding:.42rem .56rem;
+  border-radius:8px;
+  font-size:16px;
+ }
+ body.legend-app .legend-app-content :where(.table)>:not(caption)>*>*{
+  padding:.42rem .48rem;
+  font-size:.75rem;
+ }
+ body.legend-app .legend-app-content .legend-hero-body{
+  padding:var(--app-mobile-card-pad);
+ }
+ body.legend-app .legend-app-content :where(.legend-title,.hero-title,.training-hero-title){
+  font-size:1.45rem;
+  line-height:1.05;
  }
  .legend-app-content :where(.legend-mobile-compact){
   margin-block:0;
@@ -464,6 +346,34 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  }
  .footer-shell{grid-template-columns:1fr;justify-items:center}
  .footer-left,.footer-center,.footer-right{justify-self:center;text-align:center}
- .footer-support{flex-direction:column;justify-content:center;gap:.45rem}
- .footer-meta{flex-direction:column}
+ .footer-support{flex-direction:column;justify-content:center;gap:.35rem}
+ .footer-meta{flex-direction:column;gap:.2rem}
+}
+
+
+/* Canonical authenticated shell context banner. */
+.impersonation-banner {
+    position: sticky;
+    top: 0;
+    z-index: var(--legend-shell-context-z, 2000);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--legend-app-accent);
+    background: linear-gradient(180deg,var(--legend-app-accent-bright),var(--legend-app-accent));
+    color: var(--legend-app-surface);
+    box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+
+.impersonation-text {
+    font-weight: 850;
+    letter-spacing: .02em;
+}
+
+.impersonation-text .muted {
+    margin-left: 6px;
+    color: color-mix(in srgb,var(--legend-app-surface) 74%,transparent);
+    font-weight: 750;
 }

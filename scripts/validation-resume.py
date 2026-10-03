@@ -1,0 +1,2840 @@
+#!/usr/bin/env python3
+"""Fail-closed validation resumption for LEGEND GitHub Actions.
+
+The planner preserves a successful gate only when it can prove all of the following:
+1. the evidence came from the same workflow/trust event and branch (or the prior
+   attempt of the exact same run);
+2. the prior gate step concluded successfully;
+3. no file changed since that evidence which is declared to invalidate the gate;
+4. no validation-control file changed; and
+5. every changed file is understood by the workflow's gate map.
+
+Anything uncertain falls back to running the gate. Production/source changes are
+intentionally conservative and invalidate the whole architecture suite.
+"""
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import fnmatch
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+
+TRUSTED_PR_BASE = "legend/approved-changes"
+DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
+PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
+RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
+RELEASE_RESOURCE_GROUP = "masterapp-rg"
+MIGRATION_BUNDLE_NAME = "masterapp-migrations"
+ROUTING_WORKER_NAME = "legend-business-website-router"
+ROUTING_PASS_THROUGH_HOSTS = (
+    "mylegnd.com",
+    "www.mylegnd.com",
+    "protect.mylegnd.com",
+    "portal.mylegnd.com",
+    "client.mylegnd.com",
+)
+DOMAIN_REFRESH_PROJECT = "scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj"
+
+# Single canonical web release inventory. Validation, release baseline discovery,
+# deployment reconciliation, live-resume probing, package naming and final
+# enforcement consume this exact definition instead of maintaining parallel maps.
+RELEASE_TARGETS = {
+    "portal": {
+        "releaseName": "masterapp-portal",
+        "host": "portal.mylegnd.com",
+        "azureHost": "masterapp-portal.azurewebsites.net",
+        "project": "AgentPortal/AgentPortal.csproj",
+        "sourceRoot": "AgentPortal",
+        "roles": ("database-authority", "database-dependent", "shared-settings-source", "marketing-settings-target"),
+        "package": "agentportal.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("portal.mylegnd.com", "masterapp-portal.azurewebsites.net"),
+        "static": False,
+    },
+    "client": {
+        "releaseName": "masterapp-client",
+        "host": "client.mylegnd.com",
+        "azureHost": "masterapp-client.azurewebsites.net",
+        "project": "ClientApp/ClientApp.csproj",
+        "sourceRoot": "ClientApp",
+        "roles": ("browser-entry", "marketing-settings-target"),
+        "package": "clientapp.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("client.mylegnd.com", "masterapp-client.azurewebsites.net"),
+        "static": False,
+    },
+    "protect": {
+        "releaseName": "masterapp-protect",
+        "host": "masterapp-protect.azurewebsites.net",
+        "azureHost": "masterapp-protect.azurewebsites.net",
+        "project": "Protect-Website/ProtectWebsite.csproj",
+        "sourceRoot": "Protect-Website",
+        "roles": ("database-dependent", "shared-auth-target", "editor-target", "marketing-settings-target", "routing-target", "routing-primary", "public-release"),
+        "routingProbePath": "/",
+        "package": "protect.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("masterapp-protect.azurewebsites.net",),
+        "static": False,
+    },
+    "parfait": {
+        "releaseName": "masterapp-parfait",
+        "host": "masterapp-parfait.azurewebsites.net",
+        "azureHost": "masterapp-parfait.azurewebsites.net",
+        "project": "ParfaitApp/ParfaitApp.csproj",
+        "sourceRoot": "ParfaitApp",
+        "roles": ("database-dependent", "editor-target", "marketing-settings-target", "routing-target"),
+        "routingProbePath": "/store",
+        "package": "parfait.zip",
+        "provenancePath": "/api/runtime-provenance",
+        "proofHosts": ("masterapp-parfait.azurewebsites.net",),
+        "static": False,
+    },
+    "website": {
+        "releaseName": "masterapp-website",
+        "host": "masterapp-website.azurewebsites.net",
+        "azureHost": "masterapp-website.azurewebsites.net",
+        "project": "static",
+        "sourceRoot": "Legend-Website",
+        "roles": ("static-target", "public-release"),
+        "package": "website.zip",
+        "provenancePath": "/_deployment-provenance.txt",
+        "proofHosts": ("masterapp-website.azurewebsites.net", "mylegnd.com", "www.mylegnd.com"),
+        "static": True,
+    },
+}
+
+def release_name_map():
+    return {row["releaseName"]: key for key, row in RELEASE_TARGETS.items()}
+
+
+def target_keys_with_role(role: str):
+    return tuple(
+        key for key, row in RELEASE_TARGETS.items()
+        if role in row.get("roles", ())
+    )
+
+
+def unique_target_with_role(role: str):
+    keys = target_keys_with_role(role)
+    if len(keys) != 1:
+        raise ValueError(f"Canonical release role {role!r} must resolve to exactly one target")
+    return keys[0]
+
+
+def release_runtime_profile(selected_names):
+    keys = selected_release_target_keys(selected_names)
+    selected = set(keys)
+    def names_for(role):
+        return [
+            RELEASE_TARGETS[key]["releaseName"]
+            for key in target_keys_with_role(role)
+        ]
+    def selected_has(role):
+        return any(key in selected for key in target_keys_with_role(role))
+
+    database_key = unique_target_with_role("database-authority")
+    browser_keys = target_keys_with_role("browser-entry")
+    static_keys = target_keys_with_role("static-target")
+    routing_primary = unique_target_with_role("routing-primary")
+    return {
+        "resourceGroup": RELEASE_RESOURCE_GROUP,
+        "migrationBundle": MIGRATION_BUNDLE_NAME,
+        "routingWorker": ROUTING_WORKER_NAME,
+        "routingPassThroughHosts": list(ROUTING_PASS_THROUGH_HOSTS),
+        "domainRefreshProject": DOMAIN_REFRESH_PROJECT,
+        "databaseAuthority": RELEASE_TARGETS[database_key]["releaseName"],
+        "browserEntryTargets": names_for("browser-entry"),
+        "browserEntryHosts": [
+            host
+            for key in browser_keys
+            for host in RELEASE_TARGETS[key]["proofHosts"]
+        ],
+        "sharedAuthTargets": names_for("shared-auth-target"),
+        "editorTargets": names_for("editor-target"),
+        "marketingTargets": names_for("marketing-settings-target"),
+        "routingTargets": [
+            {
+                "releaseName": RELEASE_TARGETS[key]["releaseName"],
+                "azureHost": RELEASE_TARGETS[key]["azureHost"],
+                "probePath": RELEASE_TARGETS[key]["routingProbePath"],
+            }
+            for key in target_keys_with_role("routing-target")
+        ],
+        "routingPrimary": RELEASE_TARGETS[routing_primary]["releaseName"],
+        "routingPrimaryHost": RELEASE_TARGETS[routing_primary]["azureHost"],
+        "selectedHasBrowserEntry": selected_has("browser-entry"),
+        "selectedHasStatic": selected_has("static-target"),
+        "selectedHasSharedAuth": selected_has("shared-auth-target"),
+        "selectedHasEditor": selected_has("editor-target"),
+        "selectedDatabaseDependent": selected_has("database-dependent"),
+        "clientOnly": len(keys) == 1 and keys[0] in browser_keys,
+        "websiteOnly": len(keys) == 1 and keys[0] in static_keys,
+        "portalOnly": len(keys) == 1 and keys[0] == database_key,
+        "publicOnly": bool(keys) and all("public-release" in RELEASE_TARGETS[key].get("roles", ()) for key in keys),
+    }
+
+
+def selected_release_target_keys(names, *, allow_empty=False):
+    by_name = release_name_map()
+    if (
+        not isinstance(names, list)
+        or (not allow_empty and not names)
+        or len(names) != len(set(names))
+        or any(not isinstance(name, str) or name not in by_name for name in names)
+    ):
+        raise ValueError("Selected release targets do not match canonical inventory")
+    selected = set(names)
+    return tuple(
+        key for key, row in RELEASE_TARGETS.items()
+        if row["releaseName"] in selected
+    )
+
+
+def founder_cloudflare_release_required(paths):
+    """True only when validated source changes the canonical Founder Worker runtime or deploy authority."""
+    return any(
+        path.startswith("Legend-Cloudflare/src/")
+        or path == "Legend-Cloudflare/wrangler.founder-baseline.jsonc"
+        or path == "scripts/deploy-founder-cloudflare.py"
+        for path in dict.fromkeys(paths)
+    )
+
+
+def release_targets_for_paths(paths):
+    """Derive publication scope from the validated PR without a parallel scope table.
+
+    A target owns its canonical sourceRoot. Founder Cloudflare runtime/deploy
+    authority is activated through the Founder Portal control boundary, so it
+    selects only the Portal target rather than expanding to every application.
+    Other release-control/test-only changes need no application publication. Any
+    remaining application path not owned by exactly one target is treated as
+    shared/unknown and expands fail-closed to the complete inventory so a new
+    shared source cannot be silently omitted.
+    """
+    unique_paths = tuple(dict.fromkeys(paths))
+    founder_cloudflare = founder_cloudflare_release_required(unique_paths)
+    application_paths = [
+        path for path in unique_paths
+        if not release_control_only_path(path)
+        and not (
+            path.startswith("Legend-Cloudflare/src/")
+            or path == "Legend-Cloudflare/wrangler.founder-baseline.jsonc"
+        )
+    ]
+
+    selected = {"portal"} if founder_cloudflare else set()
+    if not application_paths:
+        return tuple(
+            row["releaseName"] for key, row in RELEASE_TARGETS.items()
+            if key in selected
+        )
+
+    for path in application_paths:
+        owners = [
+            key for key, row in RELEASE_TARGETS.items()
+            if path == row["sourceRoot"] or path.startswith(row["sourceRoot"] + "/")
+        ]
+        if len(owners) != 1:
+            return tuple(row["releaseName"] for row in RELEASE_TARGETS.values())
+        selected.add(owners[0])
+    return tuple(
+        row["releaseName"] for key, row in RELEASE_TARGETS.items()
+        if key in selected
+    )
+
+LIFECYCLE_AUTHORITY_PATHS = (
+    ".github/workflows/legend-release-lifecycle.yml",
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/approved-release-security-validation.yml",
+    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    "scripts/release-lifecycle.py",
+    "scripts/release_policy.py",
+    "scripts/approved-release-baseline.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/deploy-founder-cloudflare.py",
+)
+
+# Application identity excludes release/test/control-only edits. This authority is
+# shared by release baseline resolution and package-canary preservation.
+RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "scripts/approved-release-baseline.py",
+    "scripts/release-lifecycle.py",
+    "scripts/release_policy.py",
+    "scripts/deploy-approved-app.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+    "scripts/deploy-founder-cloudflare.py",
+})
+
+PACKAGE_AUTHORITY_PATHS = frozenset({
+    "scripts/release-package.py",
+    "scripts/deploy-approved-app.py",
+    ".config/dotnet-tools.json",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+})
+
+
+def release_control_only_path(path: str) -> bool:
+    return (
+        path.startswith(".github/workflows/")
+        or path.startswith("Docs/")
+        or path.startswith("AgentPortal.Tests/")
+        or path.startswith("tests/")
+        or path in RELEASE_CONTROL_ONLY_EXACT
+    )
+
+
+def package_canary_input_path(path: str) -> bool:
+    return path in PACKAGE_AUTHORITY_PATHS or not release_control_only_path(path)
+
+WORKFLOW_PATHS = {
+    name: ".github/workflows/" + name
+    for name in (
+        "masterapp-platform-architecture-validation.yml",
+        "step5-isolated-conversion-mapping-validation.yml",
+        "step6-openai-ads-execution-validation.yml",
+        "steps7-8-governed-advertising-validation.yml",
+        "approved-release-security-validation.yml",
+    )
+}
+
+GLOBAL_DOTNET_INPUTS = (
+    "MASTERAPP.sln",
+    "global.json",
+    "NuGet.config",
+    "Directory.Build.*",
+    "Directory.Packages.*",
+    "**/*.csproj",
+    "**/*.props",
+    "**/*.targets",
+)
+
+WEB_DOTNET_SOURCE = (
+    "AgentPortal/**",
+    "ClientApp/**",
+    "Protect-Website/**",
+    "ParfaitApp/**",
+    "Infrastructure/**",
+    "Domain/**",
+    "SHARED/**",
+)
+
+WEBSITE_SOURCE = (
+    "Infrastructure/WebsiteEditing/**",
+    "Infrastructure/WebsiteRuntime/**",
+    "Infrastructure/Businesses/**",
+    "AgentPortal/Controllers/**Website*",
+    "AgentPortal/Services/**Website*",
+    "AgentPortal/Views/**Website*",
+    "ClientApp/Controllers/**Website*",
+    "ClientApp/Views/**Website*",
+    "Protect-Website/**",
+    "SHARED/WebsitePlatform/**",
+)
+
+MARKETING_SOURCE = (
+    "Infrastructure/Analytics/**",
+    "SHARED/Analytics/**",
+    "AgentPortal/Controllers/WebsiteAnalyticsController.cs",
+    "AgentPortal/Views/WebsiteAnalytics/**",
+    "AgentPortal/wwwroot/js/website-analytics.js",
+    "AgentPortal/wwwroot/css/website-analytics.css",
+)
+
+BOOKING_SOURCE = (
+    "Infrastructure/**Booking*",
+    "AgentPortal/**Booking*",
+    "Protect-Website/**Booking*",
+    "Domain/**Booking*",
+    "SHARED/**Booking*",
+)
+
+CRM_SOURCE = (
+    "Infrastructure/Businesses/**",
+    "AgentPortal/Controllers/LeadsController.cs",
+    "AgentPortal/Controllers/ClientsController.cs",
+    "AgentPortal/**CRM*",
+    "ClientApp/**CRM*",
+    "Domain/**Lead*",
+    "Domain/**Client*",
+    "SHARED/**Lead*",
+    "SHARED/**Client*",
+)
+
+DIAGNOSTICS_SOURCE = (
+    "AgentPortal/Controllers/FounderDiagnosticsController.cs",
+    "AgentPortal/Services/FounderSoftwareRemediationService*.cs",
+    "AgentPortal/Services/LegendFounderToolAuthority*.cs",
+    "AgentPortal/Services/Engineering/**",
+    "Domain/Engineering/**",
+    "Infrastructure/Diagnostics/**",
+    "SHARED/Diagnostics/**",
+    "SHARED/Views/Diagnostics/**",
+    "SHARED/wwwroot/js/legend-site-tools.js",
+)
+
+DIAGNOSTICS_TESTS = (
+    "AgentPortal.Tests/LegendSiteToolBridgeTests.cs",
+    "AgentPortal.Tests/FounderRepositoryInspectionTests.cs",
+    "AgentPortal.Tests/LegendFounderToolAuthorizationTests.cs",
+    "AgentPortal.Tests/FounderSoftwareRepairBatchTests.cs",
+    "AgentPortal.Tests/FounderSoftwareRepairCompletionTests.cs",
+    "AgentPortal.Tests/FounderRemediationRevocationTests.cs",
+    "AgentPortal.Tests/LegendEngineeringControlPlaneTests.cs",
+    "AgentPortal.Tests/RuntimeDiagnostics*Tests.cs",
+    "AgentPortal.Tests/PageHealthContractTests.cs",
+    "AgentPortal.Tests/WebDiagnosticPrivacyTests.cs",
+)
+
+WORKFLOWS = {
+    "masterapp-platform-architecture-validation.yml": {
+        "force_all": (),
+        "neutral": (
+            "Docs/**",
+            "*.md",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/step6-openai-ads-execution-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+        ),
+        "gates": {
+            "lifecycle": {
+                "step": "Run branch lifecycle safety contracts",
+                "paths": (
+                    ".github/workflows/legend-release-lifecycle.yml",
+                    ".github/workflows/all-intentional-direct-release-20260918.yml",
+                    ".github/workflows/approved-release-security-validation.yml",
+                    "scripts/release-lifecycle.py",
+                    "scripts/validation-resume.py",
+                    "scripts/release_policy.py",
+                    "scripts/approved-release-baseline.py",
+                    "scripts/deploy-approved-app.py",
+                    "scripts/release-package.py",
+                    "scripts/test-validation-resume.py",
+                    "scripts/test-release-lifecycle.py",
+                    "scripts/test-release-policy.py",
+                    "scripts/test-deploy-approved-app.py",
+                ),
+            },
+            "mobile": {
+                "step": "Run authenticated mobile authority tests",
+                "paths": (
+                    "tests/layout/modal-content-region.test.mjs",
+                    "tests/layout/app-navigation-contract.test.mjs",
+                ),
+            },
+            "restore-dotnet": {
+                "step": "Restore .NET graph",
+                "paths": GLOBAL_DOTNET_INPUTS,
+            },
+            "build-infrastructure": {
+                "step": "Build shared infrastructure",
+                "paths": ("Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore-dotnet",),
+            },
+            "build-hosts": {
+                "step": "Build AgentPortal and ClientApp hosts",
+                "paths": ("AgentPortal/**", "ClientApp/**", "Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore-dotnet",),
+            },
+            "build-protect": {
+                "step": "Build Protect host",
+                "paths": ("Protect-Website/**", "Infrastructure/**", "Domain/**", "SHARED/**") + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore-dotnet",),
+            },
+            "tracking-assets": {
+                "step": "Verify Protect serves the exact shared tracking assets",
+                "paths": (
+                    "SHARED/WebsitePlatform/tracking.js",
+                    "SHARED/WebsitePlatform/meta-signal-intelligence.js",
+                    "SHARED/WebsitePlatform/openai-measurement.js",
+                ),
+                "requires": ("restore-dotnet",),
+            },
+            "renderer-install": {
+                "step": "Install shared website renderer dependencies",
+                "paths": ("Legend-Website/package.json", "Legend-Website/package-lock.json"),
+            },
+            "renderer-build": {
+                "step": "Build shared website renderer",
+                "paths": ("Legend-Website/**", "Legend-Design/**", "SHARED/WebsitePlatform/**"),
+                "requires": ("renderer-install",),
+            },
+            "renderer-parity": {
+                "step": "Verify renderer authority parity",
+                "paths": ("Legend-Website/**", "Legend-Design/**", "SHARED/WebsitePlatform/**"),
+                "requires": ("renderer-build",),
+            },
+            "renderer-tests": {
+                "step": "Run business renderer tests with approved-baseline no-regression proof",
+                "paths": (
+                    "Legend-Website/scripts/render-business.test.mjs",
+                    "Legend-Website/scripts/render-business.mjs",
+                    "Legend-Website/package-lock.json",
+                    "SHARED/WebsitePlatform/**",
+                    "tests/website/legend-public-cms.test.mjs",
+                ),
+                "requires": ("renderer-install",),
+            },
+            "cms-install": {
+                "step": "Install canonical shared CMS test dependencies",
+                "paths": ("tests/website/package.json", "tests/website/package-lock.json"),
+            },
+            "cms-tests": {
+                "step": "Run canonical shared CMS tests",
+                "paths": ("tests/website/**", "SHARED/WebsitePlatform/**", "Legend-Design/**"),
+                "requires": ("cms-install",),
+            },
+            "compile-regression": {
+                "step": "Compile full regression test project",
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore-dotnet",),
+            },
+            "founder-diagnostics-regressions": {
+                "step": "Run Founder diagnostics and safe GPT Codex regressions",
+                "paths": DIAGNOSTICS_SOURCE + DIAGNOSTICS_TESTS,
+                "requires": ("compile-regression",),
+            },
+            "domain-release": {
+                "step": "Compile shared domain release refresh",
+                "paths": ("scripts/DomainReleaseRefresh/**", "Domain/**", "Infrastructure/**") + GLOBAL_DOTNET_INPUTS,
+            },
+            "website-regressions": {
+                "step": "Run website ownership and publishing regressions",
+                "paths": (
+                    "AgentPortal.Tests/WebsitePublishingAuthorityTests.cs",
+                    "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs",
+                    "AgentPortal.Tests/WebsiteEditorTicketAuthorityIsolationTests.cs",
+                    "AgentPortal.Tests/WebsiteDomainImportTests.cs",
+                    "AgentPortal.Tests/WebsiteInquiryIsolationTests.cs",
+                    "AgentPortal.Tests/BusinessWorkspaceTests.cs",
+                    "AgentPortal.Tests/BusinessAnalyticsCompletionTests.cs",
+                    "AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs",
+                    "AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs",
+                    "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
+                ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
+                "requires": ("compile-regression",),
+            },
+            "meta-regressions": {
+                "step": "Run Meta authority regressions",
+                "paths": (
+                    "AgentPortal.Tests/Meta*Tests.cs",
+                    "AgentPortal.Tests/*Analytics*Tests.cs",
+                    "AgentPortal.Tests/Marketing*Tests.cs",
+                    "AgentPortal.Tests/OpenAi*Tests.cs",
+                    "AgentPortal.Tests/Tracking*Tests.cs",
+                    "AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs",
+                    "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
+                ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
+                "requires": ("compile-regression",),
+            },
+            "booking-regressions": {
+                "step": "Run booking authority regressions",
+                "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
+                "requires": ("compile-regression",),
+            },
+            "crm-regressions": {
+                "step": "Run CRM outcome regressions",
+                "paths": (
+                    "AgentPortal.Tests/LeadsControllerTests.cs",
+                    "AgentPortal.Tests/ProductionControllerTests.cs",
+                    "AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs",
+                    "AgentPortal.Tests/LaunchAuditRiskAssessmentTests.cs",
+                    "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
+                ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "exclude_paths": DIAGNOSTICS_SOURCE,
+                "requires": ("compile-regression",),
+            },
+            "form-tracking": {
+                "step": "Run canonical form tracking tests",
+                "paths": (
+                    "tests/analytics/form-tracker.test.cjs",
+                    "SHARED/WebsitePlatform/tracking.js",
+                    "SHARED/WebsitePlatform/meta-signal-intelligence.js",
+                    "SHARED/WebsitePlatform/openai-measurement.js",
+                ),
+            },
+            "release-web-contracts": {
+                "step": "Run release web contract regressions",
+                "paths": (
+                    "tests/analytics/csv-export.test.cjs",
+                    "tests/analytics/form-tracker.test.cjs",
+                    "tests/legend-connect/**",
+                    "tests/messaging/message-presentation.test.mjs",
+                    "tests/layout/page-health.test.mjs",
+                    "Legend-Cloudflare/tests/runtime/**",
+                    "Legend-Cloudflare/tests/security/**",
+                    "scripts/test-diagnostic-project-impact.py",
+                    "scripts/test-sync-published-checkout.py",
+                ),
+                "requires": ("compile-regression",),
+            },
+            "release-policy": {
+                "step": "Verify consolidated release scope and routing policy",
+                "paths": (
+                    "scripts/release_policy.py",
+                    "scripts/deploy-approved-app.py",
+                    "scripts/release-package.py",
+                    "scripts/approved-release-baseline.py",
+                    "scripts/test-release-policy.py",
+                    "scripts/test-deploy-approved-app.py",
+                    "Docs/releases/direct-release-request.json",
+                ),
+            },
+        },
+    },
+    "step5-isolated-conversion-mapping-validation.yml": {
+        "unmatched_neutral": False,
+        "force_all": (),
+        "neutral": (
+            "Docs/**",
+            "*.md",
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            ".github/workflows/step6-openai-ads-execution-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+            ".github/workflows/all-intentional-direct-release-20260918.yml",
+            ".github/workflows/legend-release-lifecycle.yml",
+            "scripts/approved-release-baseline.py",
+            "scripts/release-lifecycle.py",
+            "scripts/release-package.py",
+            "scripts/deploy-approved-app.py",
+            "scripts/test-release-lifecycle.py",
+            "scripts/test-release-policy.py",
+            "scripts/test-deploy-approved-app.py",
+            "Legend-Cloudflare/tests/**",
+            "tests/**",
+        ),
+        "gates": {
+            "candidate-restore": {
+                "step": "Restore AgentPortal tests",
+                "paths": GLOBAL_DOTNET_INPUTS,
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-build": {
+                "step": "Build affected test graph",
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-restore",),
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-focused": {
+                "step": "Run Step 5 focused tests",
+                "paths": (
+                    "AgentPortal.Tests/OpenAiMeasurementDeliveryTests.cs",
+                    "AgentPortal.Tests/MarketingScopeParityContractTests.cs",
+                ) + MARKETING_SOURCE + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-build",),
+                "group": "candidate",
+                "runtime": "dotnet",
+            },
+            "candidate-full": {
+                "step": "Run full AgentPortal candidate suite",
+                "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("candidate-build",),
+                "group": "candidate",
+                "runtime": "dotnet",
+                "artifact": "candidate-trx",
+            },
+            "comparison": {
+                "step": "Prove Step 5 adds no full-suite failures",
+                "paths": (
+                    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+                    "scripts/validation-resume.py",
+                    "scripts/test-validation-resume.py",
+                    "scripts/test-release-policy.py",
+                ),
+                "consumes": ("candidate-full",),
+                "group": "comparison",
+            },
+        },
+    },
+    "step6-openai-ads-execution-validation.yml": {
+        "unmatched_neutral": True,
+        "force_all": (
+            "SHARED/Analytics/OpenAiAdsExecutionContracts.cs",
+            "Infrastructure/Analytics/OpenAiAdsExecutionService.cs",
+            "Infrastructure/Analytics/MarketingConnectionStore.cs",
+        ),
+        "neutral": (),
+        "gates": {
+            "restore": {"step": "Restore affected graph", "paths": ()},
+            "build": {"step": "Build affected graph", "paths": (), "requires": ("restore",)},
+            "tests": {
+                "step": "Run Step 6 execution and standing scope-parity tests",
+                "paths": (
+                    "AgentPortal.Tests/OpenAiAdsExecutionServiceTests.cs",
+                    "AgentPortal.Tests/OpenAiAdsAccountConnectionAuthorityTests.cs",
+                    "AgentPortal.Tests/MarketingDestinationLayerTests.cs",
+                    "AgentPortal.Tests/MarketingScopeParityContractTests.cs",
+                ),
+                "requires": ("build",),
+            },
+        },
+    },
+    "approved-release-security-validation.yml": {
+        "unmatched_neutral": True,
+        "force_all": (),
+        "neutral": ("Docs/**", "*.md"),
+        "gates": {
+            "restore": {
+                "step": "Restore security validation graph",
+                "paths": GLOBAL_DOTNET_INPUTS,
+            },
+            "build": {
+                "step": "Build migration validation graph",
+                "paths": (
+                    "scripts/db.sh",
+                    "Infrastructure/Migrations/**",
+                    "Infrastructure/Data/MasterAppDbContext.cs",
+                    "Infrastructure/**DbContext*.cs",
+                    "Domain/Entities/**",
+                ) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore",),
+            },
+            "db-validation": {
+                "step": "Validate database migration artifacts",
+                "paths": (
+                    "scripts/db.sh",
+                    "Infrastructure/Migrations/**",
+                    "Infrastructure/Data/MasterAppDbContext.cs",
+                    "Infrastructure/**DbContext*.cs",
+                    "Domain/Entities/**",
+                ) + GLOBAL_DOTNET_INPUTS,
+                "requires": ("build",),
+            },
+            "no-skips": {
+                "step": "Reject skipped security tests",
+                "paths": (
+                    "AgentPortal.Tests/*Antiforgery*.cs",
+                    "AgentPortal.Tests/Phase3IdentityAuthorityTests.cs",
+                    "AgentPortal.Tests/Phase4PlatformSecurityTests.cs",
+                    "AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs",
+                    "AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs",
+                    "AgentPortal.Tests/CalendarControllerTests.cs",
+                ),
+            },
+            "vulnerabilities": {
+                "step": "Audit dependency vulnerabilities",
+                "paths": GLOBAL_DOTNET_INPUTS,
+                "requires": ("restore",),
+            },
+            "secret-scan": {
+                "step": "Scan committed configuration for secrets",
+                "paths": ("**/appsettings*.json",),
+            },
+            "composition": {
+                "step": "Verify shared composition authorities",
+                "paths": (
+                    "AgentPortal/Program.cs",
+                    "ClientApp/Program.cs",
+                    "Protect-Website/Program.cs",
+                    "ParfaitApp/Program.cs",
+                    "AgentPortal/Services/LegendFounderAiConversationService.cs",
+                ),
+            },
+            "keyring": {
+                "step": "Reject inline Azure key-ring wiring",
+                "paths": (
+                    "AgentPortal/Program.cs",
+                    "ClientApp/Program.cs",
+                    "Protect-Website/Program.cs",
+                    "ParfaitApp/Program.cs",
+                ),
+            },
+            "diff-check": {
+                "step": "Verify patch whitespace integrity",
+                "paths": ("**",),
+            },
+        },
+    },
+    "steps7-8-governed-advertising-validation.yml": {
+        "unmatched_neutral": True,
+        "force_all": (
+            "Domain/Entities/AdvertisingActionAuthorization.cs",
+            "SHARED/Analytics/AdvertisingActionContracts.cs",
+            "Infrastructure/Analytics/AdvertisingActionAuthorizationService.cs",
+            "Infrastructure/Analytics/MarketingConnectionStore.cs",
+            "Infrastructure/WebsiteEditing/PromotionOrchestrationService.cs",
+            "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
+            "Infrastructure/Data/MasterAppDbContext.cs",
+            "Infrastructure/Migrations/20260927053000_AddAdvertisingActionAuthorizations.cs",
+            "Infrastructure/Analytics/AdvertisingCommandCenterService.cs",
+            "AgentPortal/Controllers/WebsiteAnalyticsController.cs",
+            "AgentPortal/Views/WebsiteAnalytics/Index.cshtml",
+            "AgentPortal/wwwroot/js/website-analytics.js",
+            "AgentPortal/wwwroot/css/website-analytics.css",
+            "Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs",
+        ),
+        "neutral": (),
+        "gates": {
+            "restore": {"step": "Restore affected graph", "paths": ()},
+            "build": {"step": "Build affected graph", "paths": (), "requires": ("restore",)},
+            "governance-tests": {
+                "step": "Run Steps 7-8 governance, promotion, execution, and scope-parity tests",
+                "paths": (
+                    "AgentPortal.Tests/AdvertisingActionAuthorizationServiceTests.cs",
+                    "AgentPortal.Tests/PromotionOrchestrationTests.cs",
+                    "AgentPortal.Tests/MarketingScopeParityContractTests.cs",
+                    "AgentPortal.Tests/AdvertisingCommandCenterCentralizationTests.cs",
+                ),
+                "requires": ("build",),
+            },
+            "website-ui-tests": {
+                "step": "Run shared website management UI tests",
+                "paths": (
+                    "Legend-Design/legend-website-management.js",
+                    "tests/website/**",
+                ),
+            },
+        },
+    },
+}
+
+
+
+RELEASE_WORKFLOWS = frozenset({
+    "all-intentional-direct-release-20260918.yml",
+    "legend-release-lifecycle.yml",
+})
+
+
+def _named_step_spans(text: str):
+    lines = text.splitlines(keepends=True)
+    rows = []
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.startswith("- name:"):
+            continue
+        indent = len(line) - len(stripped)
+        raw = stripped[len("- name:"):].strip()
+        name = raw.strip("'\"")
+        end = len(lines)
+        for cursor in range(index + 1, len(lines)):
+            candidate = lines[cursor]
+            candidate_stripped = candidate.lstrip()
+            candidate_indent = len(candidate) - len(candidate_stripped)
+            if candidate_indent == indent and candidate_stripped.startswith("- "):
+                end = cursor
+                break
+        rows.append((name, index, end))
+    return lines, rows
+
+
+def named_step_blocks(text: str):
+    lines, rows = _named_step_spans(text)
+    return {name: "".join(lines[start:end]) for name, start, end in rows}
+
+
+def _mask_named_steps(text: str, names):
+    lines, rows = _named_step_spans(text)
+    wanted = set(names)
+    spans = {start: (name, end) for name, start, end in rows if name in wanted}
+    output = []
+    cursor = 0
+    while cursor < len(lines):
+        row = spans.get(cursor)
+        if row is None:
+            output.append(lines[cursor])
+            cursor += 1
+            continue
+        name, end = row
+        indent = " " * (len(lines[cursor]) - len(lines[cursor].lstrip()))
+        output.append(f"{indent}- name: __LEGEND_GATE__{name}\\n")
+        cursor = end
+    return "".join(output)
+
+
+def workflow_gate_change_scope(prior_text: str, current_text: str, gate_steps):
+    gate_steps = tuple(gate_steps)
+    prior_blocks = named_step_blocks(prior_text)
+    current_blocks = named_step_blocks(current_text)
+    changed = {
+        name
+        for name in gate_steps
+        if prior_blocks.get(name) != current_blocks.get(name)
+    }
+    structure_changed = (
+        _mask_named_steps(prior_text, gate_steps)
+        != _mask_named_steps(current_text, gate_steps)
+    )
+    return changed, structure_changed
+
+
+def _job_blocks(text: str):
+    """Return exact top-level job blocks without treating blank lines as EOF.
+
+    GitHub workflow jobs routinely contain blank separators. The previous parser
+    treated a bare newline as a non-indented top-level key, stopped after the
+    first job, and falsely reported later jobs as missing. That silently defeated
+    content-addressed Step 5 baseline reuse.
+    """
+    lines = text.splitlines(keepends=True)
+    jobs_line = next((i for i, line in enumerate(lines) if line.strip() == "jobs:" and not line.startswith(" ")), None)
+    if jobs_line is None:
+        return {}
+    blocks = {}
+    index = jobs_line + 1
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            index += 1
+            continue
+        if not line.startswith(" "):
+            break
+        if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
+            name = line.strip()[:-1]
+            end = index + 1
+            while end < len(lines):
+                candidate = lines[end]
+                if not candidate.strip():
+                    end += 1
+                    continue
+                if not candidate.startswith(" "):
+                    break
+                if candidate.startswith("  ") and not candidate.startswith("    ") and candidate.strip().endswith(":"):
+                    break
+                end += 1
+            blocks[name] = "".join(lines[index:end])
+            index = end
+            continue
+        index += 1
+    return blocks
+
+
+def git_show_file(revision: str, path: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f"{revision}:{path}"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout
+
+
+def _dynamic_release_policy(step_name: str, block: str) -> str:
+    """Classify a newly added release step conservatively without a second registry.
+
+    Explicit policies remain useful documentation for established external-effect
+    steps, but correctness never depends on remembering to extend that registry.
+    New named steps are discovered from the workflow itself and default to
+    fail-closed execution unless their action shape is intrinsically reusable.
+    """
+    if "actions/upload-artifact@" in block:
+        return "artifact_receipt"
+    if "actions/download-artifact@" in block:
+        return "artifact_restore"
+    if "actions/setup-" in block or "azure/login@" in block:
+        return "ephemeral_runtime"
+    return "fail_closed_execute"
+
+
+def verify_release_policy_coverage(workflow_name: str, workflow_text: str):
+    if workflow_name not in RELEASE_WORKFLOWS:
+        raise ValueError(f"Unsupported release workflow coverage: {workflow_name}")
+    blocks = named_step_blocks(workflow_text)
+    if not blocks:
+        raise ValueError(f"Release workflow has no discoverable named steps: {workflow_name}")
+    return {
+        name: _dynamic_release_policy(name, block)
+        for name, block in blocks.items()
+    }
+
+
+def matches(path: str, patterns) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def gate_matches(path: str, gate) -> bool:
+    return matches(path, gate.get("paths", ())) and not matches(path, gate.get("exclude_paths", ()))
+
+
+def git_changed(prior: str, current: str) -> list[str]:
+    if prior == current:
+        return []
+    result = subprocess.run(
+        ["git", "diff", "--name-only", prior, current, "--"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def api_get(repository: str, path: str, token: str):
+    url = f"https://api.github.com/repos/{repository}/{path.lstrip('/')}"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "legend-validation-resume/1.0",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def _step_map(jobs):
+    return {
+        step.get("name"): step.get("conclusion")
+        for job in jobs
+        for step in (job.get("steps") or [])
+        if step.get("name")
+    }
+
+
+def _effective_steps(newest_to_oldest):
+    """Keep the newest executed result; skipped/missing later steps do not erase proof.
+
+    A later failure/cancellation always wins over an older success. A later run
+    that never reached a gate may inherit that gate's most recent executed result
+    from the exact same source SHA only.
+    """
+    effective = {}
+    for steps in newest_to_oldest:
+        for name, outcome in steps.items():
+            if name in effective or outcome in {None, "", "skipped"}:
+                continue
+            effective[name] = outcome
+    return effective
+
+
+def prior_evidence(args):
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return None, {}, "github_token_unavailable"
+
+    if args.run_attempt > 1:
+        histories = []
+        newest_attempt = args.run_attempt - 1
+        for attempt in range(newest_attempt, 0, -1):
+            payload = api_get(
+                args.repository,
+                f"actions/runs/{args.current_run_id}/attempts/{attempt}/jobs?per_page=100",
+                token,
+            )
+            histories.append(_step_map(payload.get("jobs", [])))
+        return {
+            "id": args.current_run_id,
+            "head_sha": args.current_sha,
+            "run_attempt": newest_attempt,
+            "event": args.event,
+            "head_branch": args.head_branch,
+        }, _effective_steps(histories), "prior_attempts"
+
+    workflow = urllib.parse.quote(args.workflow, safe="")
+    branch = urllib.parse.quote(args.head_branch, safe="")
+    event = urllib.parse.quote(args.event, safe="")
+    payload = api_get(
+        args.repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event={event}&status=completed&per_page=100",
+        token,
+    )
+    runs = [
+        run
+        for run in payload.get("workflow_runs", [])
+        if int(run.get("id", 0)) != args.current_run_id
+        and run.get("head_branch") == args.head_branch
+        and run.get("event") == args.event
+        and run.get("head_sha")
+    ]
+    if not runs:
+        return None, {}, "no_prior_completed_run"
+
+    ordered = sorted(
+        runs,
+        key=lambda run: (run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    prior = ordered[0]
+    exact_head_runs = [run for run in ordered if run.get("head_sha") == prior.get("head_sha")][:10]
+    histories = []
+    for run in exact_head_runs:
+        jobs_payload = api_get(
+            args.repository,
+            f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+            token,
+        )
+        histories.append(_step_map(jobs_payload.get("jobs", [])))
+
+    return prior, _effective_steps(histories), "prior_exact_head_runs"
+
+
+def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_source):
+    """Build the same fail-closed gate plan against one exact historical source tree."""
+    changed = git_changed(prior["head_sha"], current_sha) if prior else []
+    changed_gate_steps = set()
+    workflow_structure_changed = False
+    workflow_path = WORKFLOW_PATHS.get(workflow)
+    if prior and workflow_path and workflow_path in changed:
+        prior_text = git_show_file(prior["head_sha"], workflow_path)
+        current_text = Path(workflow_path).read_text()
+        gate_steps = [gate["step"] for gate in WORKFLOWS[workflow]["gates"].values()]
+        changed_gate_steps, workflow_structure_changed = workflow_gate_change_scope(
+            prior_text, current_text, gate_steps
+        )
+        changed = [path for path in changed if path != workflow_path]
+    return compute_plan(
+        workflow,
+        current_sha,
+        prior,
+        prior_steps,
+        changed,
+        evidence_source,
+        changed_gate_steps,
+        workflow_structure_changed,
+    )
+
+
+def _stamp_evidence(plan, prior, source):
+    if not prior:
+        return
+    for gate in plan.get("gates", {}).values():
+        if gate.get("run"):
+            continue
+        gate["evidenceRunId"] = prior.get("id")
+        gate["evidenceHeadSha"] = prior.get("head_sha")
+        gate["evidenceSource"] = source
+
+
+def _enforce_runtime_requirements(plan):
+    """Preserved proof cannot replace a prerequisite needed by a gate executing now."""
+    gates = WORKFLOWS[plan["workflow"]]["gates"]
+    changed = True
+    while changed:
+        changed = False
+        for key, result in list(plan["gates"].items()):
+            if not result.get("run"):
+                continue
+            for required in gates[key].get("requires", ()):
+                required_result = plan["gates"][required]
+                if required_result.get("run"):
+                    continue
+                required_result["run"] = True
+                required_result["reason"] = f"required_by:{key}"
+                required_result.pop("evidenceRunId", None)
+                required_result.pop("evidenceHeadSha", None)
+                required_result.pop("evidenceSource", None)
+                changed = True
+
+
+def merge_content_equivalent_evidence(plan, candidate_plan, run):
+    """Reuse only gates whose exact declared inputs and gate definition are unchanged."""
+    reused = False
+    for key, result in plan["gates"].items():
+        if not result.get("run"):
+            continue
+        candidate = candidate_plan["gates"].get(key)
+        if not candidate or candidate.get("run"):
+            continue
+        result["run"] = False
+        result["reason"] = "content_equivalent_success"
+        result["evidenceRunId"] = run.get("id")
+        result["evidenceHeadSha"] = run.get("head_sha")
+        result["evidenceSource"] = "trusted_pr_history"
+        reused = True
+    return reused
+
+
+def _trusted_historical_runs(args, token):
+    """Return only successful same-repository PR runs targeting the protected trunk."""
+    if args.event != "pull_request":
+        return []
+    workflow = urllib.parse.quote(args.workflow, safe="")
+    payload = api_get(
+        args.repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    rows = []
+    for run in payload.get("workflow_runs", []):
+        if int(run.get("id", 0)) == args.current_run_id:
+            continue
+        if run.get("event") != "pull_request" or run.get("conclusion") != "success":
+            continue
+        if (run.get("head_repository") or {}).get("full_name") != args.repository:
+            continue
+        head_sha = run.get("head_sha")
+        if not head_sha:
+            continue
+        pulls = run.get("pull_requests") or []
+        trusted = any(
+            (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+            and (row.get("head") or {}).get("sha") == head_sha
+            and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+            for row in pulls
+        )
+        if not trusted:
+            associated = api_get(
+                args.repository,
+                f"commits/{head_sha}/pulls?per_page=100",
+                token,
+            )
+            trusted = any(
+                (row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+                and (row.get("head") or {}).get("sha") == head_sha
+                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == args.repository
+                for row in associated
+            )
+        if not trusted:
+            continue
+        rows.append(run)
+    rows.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    return rows
+
+
+def _apply_content_equivalent_evidence(args, plan):
+    """Fill unresolved gates from recent successful runs with identical gate inputs.
+
+    This is intentionally an optimization only. Any lookup/diff uncertainty keeps
+    the existing plan unchanged, so historical reuse can never weaken validation.
+    """
+    if args.event != "pull_request" or not any(row.get("run") for row in plan["gates"].values()):
+        return plan
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return plan
+
+    reused = False
+    seen_heads = set()
+    examined = 0
+    try:
+        runs = _trusted_historical_runs(args, token)
+    except Exception as exc:
+        plan["historicalEvidenceError"] = type(exc).__name__
+        return plan
+
+    for run in runs:
+        head_sha = run["head_sha"]
+        if head_sha in seen_heads:
+            continue
+        seen_heads.add(head_sha)
+        try:
+            jobs_payload = api_get(
+                args.repository,
+                f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+                token,
+            )
+            steps = _step_map(jobs_payload.get("jobs", []))
+            prior = {
+                "id": run["id"],
+                "head_sha": head_sha,
+                "run_attempt": run.get("run_attempt", 1),
+                "event": run.get("event"),
+                "head_branch": run.get("head_branch"),
+            }
+            candidate_plan = _plan_against_prior(
+                args.workflow,
+                args.current_sha,
+                prior,
+                steps,
+                "trusted_pr_history",
+            )
+        except Exception:
+            examined += 1
+            continue
+        examined += 1
+        reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
+        if not any(row.get("run") for row in plan["gates"].values()):
+            break
+
+    _enforce_runtime_requirements(plan)
+    if reused:
+        plan["mode"] = "content-addressed"
+        plan["historicalEvidenceRunsExamined"] = examined
+    return plan
+
+
+def compute_plan(
+    workflow: str,
+    current_sha: str,
+    prior,
+    prior_steps,
+    changed_paths,
+    evidence_source,
+    changed_gate_steps=None,
+    workflow_structure_changed=False,
+):
+    config = WORKFLOWS[workflow]
+    gates = config["gates"]
+    plan = {
+        "schemaVersion": 1,
+        "workflow": workflow,
+        "currentSha": current_sha,
+        "priorRunId": prior.get("id") if prior else None,
+        "priorHeadSha": prior.get("head_sha") if prior else None,
+        "evidenceSource": evidence_source,
+        "changedPaths": changed_paths,
+        "mode": "full",
+        "gates": {},
+    }
+
+    if prior is None:
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": "no_prior_success_evidence",
+            }
+        return plan
+
+    if workflow_structure_changed:
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": "workflow_structure_changed",
+            }
+        return plan
+
+    changed_gate_steps = set(changed_gate_steps or ())
+    force_all = any(matches(path, config.get("force_all", ())) for path in changed_paths)
+    known = set()
+    neutral = set()
+    for path in changed_paths:
+        if matches(path, config.get("neutral", ())):
+            neutral.add(path)
+            continue
+        for key, gate in gates.items():
+            if gate_matches(path, gate):
+                known.add(path)
+                break
+
+    unknown = [] if config.get("unmatched_neutral") else [
+        path
+        for path in changed_paths
+        if path not in known
+        and path not in neutral
+        and not matches(path, config.get("force_all", ()))
+    ]
+    if force_all or unknown:
+        reason = "source_change_requires_full_validation" if force_all else "unclassified_change_requires_full_validation"
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": reason,
+            }
+        plan["unclassifiedPaths"] = unknown
+        return plan
+
+    run = set()
+    reasons = {}
+    for key, gate in gates.items():
+        step = gate["step"]
+        if step in changed_gate_steps:
+            run.add(key)
+            reasons[key] = "gate_definition_changed"
+            continue
+        if prior_steps.get(step) != "success":
+            run.add(key)
+            reasons[key] = "prior_gate_not_successful"
+            continue
+        if any(gate_matches(path, gate) for path in changed_paths):
+            run.add(key)
+            reasons[key] = "gate_inputs_changed"
+
+    # Close only real execution/evidence edges. "requires" means a runtime
+    # prerequisite that must exist when a child executes; "consumes" means the
+    # child's preserved evidence is semantically derived from that node and must
+    # be invalidated when the consumed evidence changes. Keeping these distinct
+    # prevents a repaired sibling test from cascading across unrelated suites.
+    changed = True
+    while changed:
+        changed = False
+        for key in list(run):
+            for required in gates[key].get("requires", ()):
+                if required not in run:
+                    run.add(required)
+                    reasons[required] = f"required_by:{key}"
+                    changed = True
+        for key, gate in gates.items():
+            if key in run:
+                continue
+            invalidated = next(
+                (dependency for dependency in gate.get("consumes", ()) if dependency in run),
+                None,
+            )
+            if invalidated:
+                run.add(key)
+                reasons[key] = f"evidence_dependency_invalidated:{invalidated}"
+                changed = True
+
+    for key, gate in gates.items():
+        should_run = key in run
+        plan["gates"][key] = {
+            "step": gate["step"],
+            "run": should_run,
+            "reason": reasons.get(key, "preserved_prior_success"),
+        }
+    plan["mode"] = "incremental"
+    return plan
+
+
+def cmd_plan(args):
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+    try:
+        prior, steps, source = prior_evidence(args)
+        if prior:
+            plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+            _stamp_evidence(plan, prior, source)
+        else:
+            plan = compute_plan(
+                args.workflow,
+                args.current_sha,
+                None,
+                {},
+                [],
+                source,
+            )
+        plan = _apply_content_equivalent_evidence(args, plan)
+    except Exception as exc:
+        # Fail closed: planner uncertainty is never permission to skip validation.
+        config = WORKFLOWS[args.workflow]
+        plan = {
+            "schemaVersion": 1,
+            "workflow": args.workflow,
+            "currentSha": args.current_sha,
+            "priorRunId": None,
+            "priorHeadSha": None,
+            "evidenceSource": "planner_fallback",
+            "changedPaths": [],
+            "mode": "full",
+            "plannerError": type(exc).__name__,
+            "gates": {
+                key: {"step": gate["step"], "run": True, "reason": "planner_error_fail_closed"}
+                for key, gate in config["gates"].items()
+            },
+        }
+
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(plan, indent=2, sort_keys=True))
+
+
+def cmd_preserved(args):
+    plan = json.loads(Path(args.plan).read_text())
+    gate = plan.get("gates", {}).get(args.gate)
+    if gate is None:
+        print(f"Unknown gate {args.gate}; run it.", file=sys.stderr)
+        raise SystemExit(1)
+    if gate.get("run"):
+        print(f"RUN {args.gate}: {gate.get('reason')}")
+        raise SystemExit(1)
+    print(
+        f"PRESERVED {args.gate}: successful evidence from "
+        f"run {gate.get('evidenceRunId', plan.get('priorRunId'))} at "
+        f"{gate.get('evidenceHeadSha', plan.get('priorHeadSha'))} "
+        f"({gate.get('evidenceSource', plan.get('evidenceSource'))})"
+    )
+    raise SystemExit(0)
+
+
+
+MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    ".github/workflows/approved-release-security-validation.yml",
+    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    "Docs/releases/direct-release-request.json",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/release-lifecycle.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+    "tests/website/legend-public-cms.test.mjs",
+    "AgentPortal.Tests/WebsiteStudioV3ContractTests.cs",
+})
+
+STEP5_RELEASE_EVIDENCE_PATHS = frozenset({
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+})
+
+SECURITY_RELEASE_EVIDENCE_PATHS = frozenset({
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+})
+
+PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
+    "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs",
+    "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
+    "Legend-Design/legend-web-foundation.css",
+    "Legend-Website/scripts/build.mjs",
+    "Legend-Website/public/web.config",
+    "Protect-Website/Views/Shared/_Layout.cshtml",
+    "SHARED/WebsitePlatform/legend-public-cms.js",
+    "SHARED/WebsitePlatform/legend-public-web.css",
+    "Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs",
+    "Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs",
+    "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
+    "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
+    "Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs",
+    "Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs",
+})
+
+
+def validation_neutral_path(path: str) -> bool:
+    return path in MERGE_VALIDATION_NEUTRAL_PATHS or path.startswith("tests/")
+
+
+def _workflow_affected_by_path(workflow_name: str, path: str) -> bool:
+    config = WORKFLOWS[workflow_name]
+    if matches(path, config.get("force_all", ())):
+        return True
+    return any(gate_matches(path, gate) for gate in config["gates"].values())
+
+
+def required_validation_topology(changed_paths):
+    """Return the exact validation workflows required before integration.
+
+    This is the single merge-readiness topology. Release lifecycle consumes the
+    answer; it does not maintain subsystem path registries of its own.
+    """
+    names = tuple(dict.fromkeys(changed_paths))
+    architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+    step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+    step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+    security = ".github/workflows/approved-release-security-validation.yml"
+
+    required = {architecture}
+    step5_release_evidence_change = any(name in STEP5_RELEASE_EVIDENCE_PATHS for name in names)
+    security_release_evidence_change = any(name in SECURITY_RELEASE_EVIDENCE_PATHS for name in names)
+    release_evidence_change = step5_release_evidence_change or security_release_evidence_change
+
+    scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
+        "scripts/deploy-approved-app.py",
+        "scripts/release-package.py",
+    }
+    product_names = [
+        name for name in names
+        if name not in scope_neutral and not name.startswith("tests/")
+    ]
+    public_website_only = bool(product_names) and all(
+        name in PUBLIC_WEBSITE_EXACT_PATHS for name in product_names
+    )
+
+    if step5 in names or step5_release_evidence_change:
+        required.add(step5)
+
+    shared_resume_authority_change = any(
+        name in {"scripts/validation-resume.py", "scripts/test-validation-resume.py"}
+        for name in names
+    )
+
+    step6_name = "step6-openai-ads-execution-validation.yml"
+    if (
+        shared_resume_authority_change
+        or step6 in names
+        or any(_workflow_affected_by_path(step6_name, name) for name in names)
+    ):
+        required.add(step6)
+
+    step78_name = "steps7-8-governed-advertising-validation.yml"
+    if (
+        not public_website_only
+        and (
+            shared_resume_authority_change
+            or step78 in names
+            or any(_workflow_affected_by_path(step78_name, name) for name in names)
+        )
+    ):
+        required.add(step78)
+
+    broad_product_change = any(
+        name.startswith((
+            "AgentPortal/",
+            "ClientApp/",
+            "Protect-Website/",
+            "ParfaitApp/",
+            "SHARED/",
+            "Infrastructure/",
+            "Domain/",
+        ))
+        or name == step5
+        for name in product_names
+    )
+    if broad_product_change and not public_website_only:
+        required.add(step5)
+        required.add(security)
+    if security in names or security_release_evidence_change:
+        required.add(security)
+
+    return {
+        "required": tuple(sorted(required)),
+        "publicWebsiteOnly": public_website_only,
+        "releaseEvidenceChange": release_evidence_change,
+        "broadProductChange": broad_product_change,
+    }
+
+
+def _selected_release_targets(raw: str):
+    return selected_release_target_keys(json.loads(raw))
+
+
+def _read_provenance(host: str, target, revision: str):
+    path = target["provenancePath"]
+    request = urllib.request.Request(
+        f"https://{host}{path}?release={revision}",
+        headers={"Cache-Control": "no-cache", "User-Agent": "LEGEND-release-proof/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        if target["static"]:
+            return response.read().decode().strip()
+        payload = json.load(response)
+        return payload.get("sourceRevision")
+
+
+def cmd_live_state(args):
+    keys = _selected_release_targets(args.selected_targets)
+    result = {
+        "schemaVersion": 1,
+        "revision": args.revision,
+        "targets": {},
+    }
+    for key, target in RELEASE_TARGETS.items():
+        selected = key in keys
+        actual = None
+        live = False
+        if selected:
+            try:
+                actual = _read_provenance(target["host"], target, args.revision)
+                live = actual == args.revision
+            except Exception as exc:
+                actual = type(exc).__name__
+        result["targets"][key] = {
+            "releaseName": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+        }
+        print(json.dumps({
+            "target": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+            "expected": args.revision if selected else None,
+        }, sort_keys=True))
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            for key in RELEASE_TARGETS:
+                output.write(f"{key}_live={str(result['targets'][key]['alreadyLive']).lower()}\n")
+
+
+def cmd_verify_live(args):
+    keys = _selected_release_targets(args.selected_targets)
+    work = [
+        (key, host)
+        for key in keys
+        for host in RELEASE_TARGETS[key]["proofHosts"]
+    ]
+
+    def verify(item):
+        key, host = item
+        target = RELEASE_TARGETS[key]
+        end = time.monotonic() + args.timeout_seconds
+        actual = None
+        while time.monotonic() < end:
+            try:
+                actual = _read_provenance(host, target, args.revision)
+                if actual == args.revision:
+                    return {
+                        "target": target["releaseName"],
+                        "host": host,
+                        "passed": True,
+                        "actual": actual,
+                    }
+            except Exception as exc:
+                actual = type(exc).__name__
+            time.sleep(args.poll_seconds)
+        return {
+            "target": target["releaseName"],
+            "host": host,
+            "passed": False,
+            "actual": actual,
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(work))) as pool:
+        rows = list(pool.map(verify, work))
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
+    for row in rows:
+        print(json.dumps(row, sort_keys=True))
+    if not rows or not all(row["passed"] for row in rows):
+        raise SystemExit("Final live provenance proof failed")
+
+
+def release_target_rows():
+    return tuple(
+        (
+            key,
+            row["host"],
+            row["project"],
+        )
+        for key, row in RELEASE_TARGETS.items()
+    )
+
+
+def lifecycle_authority_identity():
+    digest = hashlib.sha256()
+    for path in LIFECYCLE_AUTHORITY_PATHS:
+        payload = Path(path).read_bytes()
+        digest.update(path.encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(payload).digest())
+    return digest.hexdigest()
+
+
+def compute_lifecycle_evidence(repository: str):
+    result = {
+        "schemaVersion": 1,
+        "identity": lifecycle_authority_identity(),
+        "artifact": None,
+        "runId": None,
+        "reusable": False,
+    }
+    result["artifact"] = f"legend-lifecycle-contracts-{result['identity']}"
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/legend-release-lifecycle.yml"
+    for artifact in _artifact_rows(repository, result["artifact"], token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if (
+            run.get("path") == workflow_path
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        ):
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": "exact_lifecycle_authority_receipt",
+            })
+            return result
+    result["reason"] = "no_exact_lifecycle_authority_receipt"
+    return result
+
+
+def cmd_lifecycle_evidence(args):
+    try:
+        result = compute_lifecycle_evidence(args.repository)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "identity": None,
+            "artifact": None,
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def _package_canary_proof_runs(repository: str, current_run_id: int, head_branch: str, token: str):
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe="")
+    branch = urllib.parse.quote(head_branch, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    rows = []
+    for run in payload.get("workflow_runs", []):
+        if int(run.get("id", 0)) == current_run_id or not run.get("head_sha"):
+            continue
+        jobs = api_get(
+            repository,
+            f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+            token,
+        ).get("jobs", [])
+        package_jobs = [job for job in jobs if job.get("name") == "validated-release-package"]
+        if len(package_jobs) != 1 or package_jobs[0].get("conclusion") != "success":
+            continue
+        steps = {
+            step.get("name"): step.get("conclusion")
+            for step in package_jobs[0].get("steps", [])
+            if step.get("name")
+        }
+        if steps.get("Build immutable validated release package") != "success":
+            continue
+        rows.append(run)
+    rows.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    return rows
+
+
+def package_identity_for_revision(revision: str) -> str:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("release-package.py")),
+            "identity",
+            "--revision",
+            revision,
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr or "package_identity_failed")
+    payload = json.loads(completed.stdout)
+    identity = payload.get("identity")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise RuntimeError("package_identity_invalid")
+    return identity
+
+
+def compute_package_canary_plan(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    current_run_id: int,
+    head_branch: str,
+):
+    result = {
+        "schemaVersion": 1,
+        "needed": True,
+        "currentSha": current_sha,
+        "evidenceRunId": None,
+        "evidenceHeadSha": None,
+        "changedInputs": [],
+        "reason": "no_prior_package_canary_proof",
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    proof = None
+    if token:
+        try:
+            proofs = _package_canary_proof_runs(
+                repository, current_run_id, head_branch, token
+            )
+            proof = proofs[0] if proofs else None
+        except Exception as exc:
+            result["evidenceLookupError"] = type(exc).__name__
+
+    prior_sha = proof.get("head_sha") if proof else base_sha
+    changed = git_changed(prior_sha, current_sha)
+    inputs = sorted(path for path in changed if package_canary_input_path(path))
+    result["changedInputs"] = inputs
+    if proof:
+        result["evidenceRunId"] = proof.get("id")
+        result["evidenceHeadSha"] = prior_sha
+    if not inputs:
+        if proof:
+            # Preserving package-input evidence is not sufficient to publish the
+            # current revision. Production provenance is revision-bound, so the
+            # current head must still own an exact immutable package artifact.
+            # A reconciled head with identical package inputs therefore rebuilds
+            # only when its exact package is absent; it never reuses prior-head
+            # bytes under a new revision receipt.
+            identity = package_identity_for_revision(current_sha)
+            exact = compute_validated_package_evidence(
+                repository,
+                current_sha,
+                identity,
+            )
+            if not exact.get("reusable"):
+                result["needed"] = True
+                result["reason"] = "exact_revision_package_missing_despite_preserved_inputs"
+                result["packageIdentity"] = identity
+                return result
+            result["packageIdentity"] = identity
+            result["exactPackageRunId"] = exact.get("runId")
+            result["exactPackageArtifact"] = exact.get("artifact")
+        result["needed"] = False
+        result["reason"] = (
+            "preserved_prior_package_canary"
+            if proof
+            else "no_package_or_application_inputs_changed"
+        )
+    else:
+        result["reason"] = (
+            "package_or_application_inputs_changed_since_proof"
+            if proof
+            else "package_or_application_inputs_changed"
+        )
+    return result
+
+
+def cmd_package_canary_plan(args):
+    try:
+        result = compute_package_canary_plan(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "needed": True,
+            "currentSha": args.current_sha,
+            "evidenceRunId": None,
+            "evidenceHeadSha": None,
+            "changedInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
+    return f"validated-package-backfill-{revision}-{package_identity}"
+
+
+def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
+    """Authorize package-only recovery for an already-green historical product head.
+
+    The current approved control plane may package the historical revision only when
+    the exact product head has a successful Architecture PR validation and every
+    change since that revision is release/test/control-only. Any application-source
+    drift fails closed.
+    """
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "currentSha": current_sha,
+        "allowed": False,
+        "validationRunId": None,
+        "changedApplicationInputs": [],
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", revision, current_sha],
+        text=True,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        result["reason"] = "revision_not_preserved_in_current_approved_history"
+        return result
+
+    changed = git_changed(revision, current_sha)
+    application_changes = sorted(
+        path for path in changed
+        if not release_control_only_path(path)
+    )
+    result["changedApplicationInputs"] = application_changes
+    if application_changes:
+        result["reason"] = "application_inputs_changed_since_validated_revision"
+        return result
+
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    encoded = urllib.parse.quote(revision, safe="")
+    payload = api_get(
+        repository,
+        f"actions/runs?head_sha={encoded}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = [
+        run for run in payload.get("workflow_runs", [])
+        if run.get("path") == workflow_path
+        and run.get("event") == "pull_request"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and run.get("head_sha") == revision
+        and (run.get("head_repository") or {}).get("full_name") == repository
+    ]
+    pulls = api_get(repository, f"commits/{revision}/pulls", token)
+    bound = [
+        pr for pr in pulls
+        if pr.get("merged_at")
+        and pr.get("base", {}).get("ref") == TRUSTED_PR_BASE
+        and pr.get("head", {}).get("sha") == revision
+        and pr.get("head", {}).get("repo", {}).get("full_name") == repository
+    ]
+    if not runs or len(bound) != 1:
+        result["reason"] = "exact_green_architecture_pr_evidence_missing"
+        return result
+
+    runs.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    result.update({
+        "allowed": True,
+        "validationRunId": int(runs[0]["id"]),
+        "sourcePr": int(bound[0]["number"]),
+        "reason": "exact_green_revision_with_control_only_descendants",
+    })
+    return result
+
+
+def cmd_package_backfill_plan(args):
+    try:
+        result = compute_package_backfill_plan(
+            args.repository,
+            args.revision,
+            args.current_sha,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "currentSha": args.current_sha,
+            "allowed": False,
+            "validationRunId": None,
+            "changedApplicationInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def compute_validated_package_evidence(repository: str, revision: str, package_identity: str):
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "packageIdentity": package_identity,
+        "artifact": f"founder-diagnostics-packages-{package_identity}",
+        "runId": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    for artifact in _artifact_rows(repository, result["artifact"], token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        common = (
+            run.get("path") == workflow_path
+            and run.get("status") == "completed"
+            and run.get("conclusion") == "success"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        )
+        exact_pr = (
+            common
+            and run.get("event") == "pull_request"
+            and run.get("head_sha") == revision
+        )
+        backfill = False
+        if (
+            common
+            and run.get("event") == "workflow_dispatch"
+            and run.get("head_branch") == TRUSTED_PR_BASE
+        ):
+            receipt = package_backfill_receipt_name(revision, package_identity)
+            backfill = receipt in _run_artifact_names(repository, run_id, token)
+        if exact_pr or backfill:
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": (
+                    "exact_validated_application_package"
+                    if exact_pr
+                    else "validated_package_backfill_from_exact_green_revision"
+                ),
+            })
+            return result
+    result["reason"] = "exact_validated_package_missing"
+    return result
+
+
+def cmd_validated_package(args):
+    try:
+        result = compute_validated_package_evidence(
+            args.repository,
+            args.revision,
+            args.package_identity,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "packageIdentity": args.package_identity,
+            "artifact": f"founder-diagnostics-packages-{args.package_identity}",
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def compute_rollback_evidence(repository: str, revision: str, app: str):
+    if app not in RELEASE_TARGETS:
+        raise ValueError(f"Unknown release target: {app}")
+    result = {
+        "schemaVersion": 2,
+        "revision": revision,
+        "app": app,
+        "packageName": RELEASE_TARGETS[app]["package"],
+        "runId": None,
+        "releaseRunId": None,
+        "packageArtifact": None,
+        "packageIdentity": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    release_name = RELEASE_TARGETS[app]["releaseName"]
+    receipt_names = (
+        f"legend-approved-release-{revision}-{release_name}",
+        f"legend-approved-release-{revision}",
+    )
+    workflow_path = ".github/workflows/all-intentional-direct-release-20260918.yml"
+    seen_runs = set()
+    for receipt_name in receipt_names:
+        for artifact in _artifact_rows(repository, receipt_name, token):
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id or run_id in seen_runs:
+                continue
+            seen_runs.add(run_id)
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if not (
+                run.get("path") == workflow_path
+                and run.get("head_branch") == TRUSTED_PR_BASE
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+            ):
+                continue
+            artifact_names = _run_artifact_names(repository, run_id, token)
+            link_prefix = f"legend-approved-package-link-{revision}-"
+            package_links = sorted(
+                name for name in artifact_names
+                if name.startswith(link_prefix)
+            )
+            for link_name in package_links:
+                package_identity = link_name[len(link_prefix):]
+                if not re.fullmatch(r"[0-9a-f]{64}", package_identity):
+                    continue
+                validated = compute_validated_package_evidence(
+                    repository,
+                    revision,
+                    package_identity,
+                )
+                if not validated.get("reusable"):
+                    continue
+                result.update({
+                    "runId": int(validated["runId"]),
+                    "releaseRunId": run_id,
+                    "packageArtifact": validated["artifact"],
+                    "packageIdentity": package_identity,
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt_with_validated_package_link"
+                        if receipt_name.endswith("-" + release_name)
+                        else "legacy_release_receipt_with_validated_package_link"
+                    ),
+                })
+                return result
+
+            # Backward compatibility for releases created before package-link
+            # receipts existed. New releases do not duplicate validated package
+            # bytes into the release run.
+            names = sorted(
+                name for name in artifact_names
+                if name.startswith("founder-diagnostics-packages-")
+            )
+            if names:
+                package_identity = names[-1].removeprefix("founder-diagnostics-packages-")
+                result.update({
+                    "runId": run_id,
+                    "releaseRunId": run_id,
+                    "packageArtifact": names[-1],
+                    "packageIdentity": (
+                        package_identity
+                        if re.fullmatch(r"[0-9a-f]{64}", package_identity)
+                        else None
+                    ),
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt"
+                        if receipt_name.endswith("-" + release_name)
+                        else "legacy_exact_successful_release_receipt"
+                    ),
+                })
+                return result
+    result["reason"] = "no_exact_successful_release_package"
+    return result
+
+
+def cmd_rollback_evidence(args):
+    try:
+        result = compute_rollback_evidence(args.repository, args.revision, args.app)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 2,
+            "revision": args.revision,
+            "app": args.app,
+            "packageName": RELEASE_TARGETS.get(args.app, {}).get("package"),
+            "runId": None,
+            "releaseRunId": None,
+            "packageArtifact": None,
+            "packageIdentity": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def _step5_jobs_unchanged(prior_sha: str, workflow_path: str) -> bool:
+    prior = git_show_file(prior_sha, workflow_path)
+    current = Path(workflow_path).read_text()
+    prior_jobs = _job_blocks(prior)
+    current_jobs = _job_blocks(current)
+    wanted = ("candidate", "baseline")
+    return all(
+        name in prior_jobs
+        and name in current_jobs
+        and prior_jobs[name] == current_jobs[name]
+        for name in wanted
+    )
+
+
+def _artifact_rows(repository: str, name: str, token: str):
+    encoded = urllib.parse.quote(name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/artifacts?name={encoded}&per_page=100",
+        token,
+    )
+    return [
+        row for row in payload.get("artifacts", [])
+        if not row.get("expired")
+    ]
+
+
+def _run_artifact_names(repository: str, run_id: int, token: str):
+    payload = api_get(
+        repository,
+        f"actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+    )
+    return {
+        row.get("name")
+        for row in payload.get("artifacts", [])
+        if row.get("name") and not row.get("expired")
+    }
+
+
+def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path):
+    directory.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
+        env["GH_TOKEN"] = env["GITHUB_TOKEN"]
+    subprocess.run(
+        [
+            "gh", "run", "download", str(run_id),
+            "--repo", repository,
+            "--name", name,
+            "--dir", str(directory),
+        ],
+        check=True,
+        env=env,
+    )
+
+
+def _trx_failed(path: Path):
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    return {
+        node.attrib.get("testName", "")
+        for node in root.iter()
+        if node.tag.endswith("UnitTestResult")
+        and node.attrib.get("outcome") == "Failed"
+        and node.attrib.get("testName")
+    }
+
+
+def _git_name_status(prior: str, current: str):
+    result = subprocess.run(
+        ["git", "diff", "--name-status", prior, current, "--"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    rows = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 2:
+            return []
+        rows.append((parts[0], parts[1]))
+    return rows
+
+
+def _step5_prior_candidate_evidence(
+    repository: str,
+    current_run_id: int,
+    head_branch: str,
+    token: str,
+):
+    """Find the newest durable full-candidate TRX for this retained PR branch."""
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    branch = urllib.parse.quote(head_branch, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        head_sha = run.get("head_sha") or ""
+        if (
+            not run_id
+            or run_id == current_run_id
+            or len(head_sha) != 40
+            or run.get("path") != workflow_path
+            or run.get("head_branch") != head_branch
+            or run.get("event") != "pull_request"
+            or run.get("status") != "completed"
+            or (run.get("head_repository") or {}).get("full_name") != repository
+        ):
+            continue
+        artifact = f"step5-candidate-{head_sha}"
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except Exception:
+            continue
+        if artifact in names:
+            return {
+                "runId": run_id,
+                "headSha": head_sha,
+                "artifact": artifact,
+            }
+    return None
+
+
+def _step5_class_source_files(class_name: str):
+    """Resolve all source files declaring a test class, including partial classes."""
+    short_name = class_name.rsplit(".", 1)[-1]
+    declaration = re.compile(rf"\bclass\s+{re.escape(short_name)}\b")
+    matches = set()
+    for path in Path("AgentPortal.Tests").glob("*.cs"):
+        try:
+            source = path.read_text()
+        except (OSError, UnicodeError):
+            continue
+        if declaration.search(source):
+            matches.add(path.as_posix())
+    return matches
+
+
+def compute_step5_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    current_run_id: int,
+    head_branch: str,
+):
+    """Choose only Step 5's cross-run comparison mode.
+
+    Candidate full-suite evidence and approved-baseline evidence are independent
+    canonical artifacts. A final-comparison repair therefore never requires both
+    artifacts to have originated from the same historical run. When the prior
+    comparison identified bounded failing classes, only source files declaring
+    those classes may be repaired; the full candidate TRX and content-identical
+    baseline TRX remain preserved.
+    """
+    decision = {
+        "schemaVersion": 3,
+        "mode": "full",
+        "priorRunId": None,
+        "priorHeadSha": None,
+        "baselineEvidenceRunId": None,
+        "baselineEvidenceArtifact": None,
+        "repairClasses": [],
+        "repairFilter": None,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        decision["reason"] = "github_token_unavailable"
+        return decision
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    candidate_evidence = _step5_prior_candidate_evidence(
+        repository,
+        current_run_id,
+        head_branch,
+        token,
+    )
+    if not candidate_evidence:
+        decision["reason"] = "no_reusable_candidate_evidence"
+        return decision
+
+    baseline_evidence = compute_step5_baseline_evidence(repository, base_sha)
+    if not baseline_evidence.get("reusable"):
+        decision["reason"] = "no_reusable_baseline_evidence"
+        return decision
+
+    prior_run_id = int(candidate_evidence["runId"])
+    prior_head_sha = candidate_evidence["headSha"]
+    candidate_name = candidate_evidence["artifact"]
+    baseline_run_id = int(baseline_evidence["evidenceRunId"])
+    baseline_name = baseline_evidence["evidenceArtifact"]
+
+    decision.update({
+        "priorRunId": prior_run_id,
+        "priorHeadSha": prior_head_sha,
+        "baselineEvidenceRunId": baseline_run_id,
+        "baselineEvidenceArtifact": baseline_name,
+    })
+
+    changed = git_changed(prior_head_sha, current_sha)
+    jobs_unchanged = _step5_jobs_unchanged(prior_head_sha, workflow_path)
+
+    if changed == [workflow_path] and jobs_unchanged:
+        decision.update({
+            "mode": "reuse",
+            "reason": "comparison_only_workflow_change",
+        })
+        return decision
+
+    allowed_planner_only = {
+        workflow_path,
+        "scripts/validation-resume.py",
+        "scripts/test-validation-resume.py",
+        "scripts/test-release-policy.py",
+    }
+    if changed and set(changed) <= allowed_planner_only and jobs_unchanged:
+        decision.update({
+            "mode": "reuse",
+            "reason": "comparison_only_policy_change",
+        })
+        return decision
+
+    security = ".github/workflows/approved-release-security-validation.yml"
+    if security in changed and set(changed) <= allowed_planner_only | {security} and jobs_unchanged:
+        classes = [
+            "AgentPortal.Tests.ClientAppDeploymentWorkflowTests",
+            "AgentPortal.Tests.LegendFounderAiContractTests",
+        ]
+        decision.update({
+            "mode": "repair",
+            "repairClasses": classes,
+            "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+            "reason": "security_contract_consumers_only",
+        })
+        return decision
+
+    if not jobs_unchanged:
+        decision["reason"] = "candidate_or_baseline_job_changed"
+        return decision
+
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="step5-prior-") as temp:
+        root = Path(temp)
+        candidate_dir = root / "candidate"
+        baseline_dir = root / "baseline"
+        try:
+            _download_run_artifact(
+                repository,
+                prior_run_id,
+                candidate_name,
+                candidate_dir,
+            )
+            _download_run_artifact(
+                repository,
+                baseline_run_id,
+                baseline_name,
+                baseline_dir,
+            )
+        except Exception:
+            decision["reason"] = "prior_artifact_download_failed"
+            return decision
+
+        candidate_path = candidate_dir / "candidate.trx"
+        baseline_path = baseline_dir / "baseline.trx"
+        if not baseline_path.exists():
+            legacy = baseline_dir / "candidate.trx"
+            if legacy.exists():
+                baseline_path = legacy
+        if not candidate_path.exists() or not baseline_path.exists():
+            decision["reason"] = "prior_artifact_pair_incomplete"
+            return decision
+
+        introduced = sorted(_trx_failed(candidate_path) - _trx_failed(baseline_path))
+        classes = sorted({name.rsplit(".", 1)[0] for name in introduced if "." in name})
+        if not introduced or not classes:
+            decision["reason"] = "no_bounded_introduced_failure"
+            return decision
+
+    class_sources = {
+        class_name: _step5_class_source_files(class_name)
+        for class_name in classes
+    }
+    if any(not paths for paths in class_sources.values()):
+        decision["reason"] = "unbounded_failure_authority"
+        return decision
+
+    rows = _git_name_status(prior_head_sha, current_sha)
+    if not rows:
+        decision["reason"] = "no_exact_repair_diff"
+        return decision
+
+    changed_files = {path for _, path in rows}
+    changed_tests = {
+        path for status, path in rows
+        if path.startswith("AgentPortal.Tests/") and path.endswith(".cs")
+    }
+    allowed_test_files = set().union(*class_sources.values())
+    step5_neutral_patterns = WORKFLOWS[workflow_name].get("neutral", ())
+    allowed_neutral_files = {
+        path for _, path in rows
+        if matches(path, step5_neutral_patterns)
+    }
+    allowed_control_files = allowed_planner_only | allowed_neutral_files
+    allowed = allowed_test_files | allowed_control_files
+    if (
+        not changed_files <= allowed
+        or not changed_tests
+        or not changed_tests <= allowed_test_files
+        or any(status != "M" for status, path in rows if path in changed_tests)
+        or any(not (changed_tests & source_files) for source_files in class_sources.values())
+        or any(status not in {"M", "A"} for status, path in rows if path in allowed_control_files)
+    ):
+        decision["reason"] = "repair_diff_not_exact"
+        return decision
+
+    decision.update({
+        "mode": "repair",
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+        "reason": "replace_only_previously_failing_classes",
+    })
+    return decision
+
+
+def cmd_step5_decision(args):
+    try:
+        decision = compute_step5_decision(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+        )
+    except Exception as exc:
+        decision = {
+            "schemaVersion": 2,
+            "mode": "full",
+            "priorRunId": None,
+            "priorHeadSha": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(decision, indent=2, sort_keys=True))
+
+
+def _step5_baseline_inputs_equivalent(prior_base_sha: str, current_base_sha: str) -> bool:
+    """Compare only inputs that can change the full Step 5 baseline result."""
+    if prior_base_sha == current_base_sha:
+        return True
+    gate = WORKFLOWS["step5-isolated-conversion-mapping-validation.yml"]["gates"]["candidate-full"]
+    return not any(
+        gate_matches(path, gate)
+        for path in git_changed(prior_base_sha, current_base_sha)
+    )
+
+
+def compute_step5_baseline_evidence(repository: str, base_sha: str):
+    result = {
+        "schemaVersion": 3,
+        "approvedBaseSha": base_sha,
+        "reusable": False,
+        "evidenceRunId": None,
+        "evidenceArtifact": None,
+        "evidenceBaseSha": None,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    def accept(run, artifact_name, evidence_base_sha):
+        run_id = int(run.get("id") or 0)
+        run_head = run.get("head_sha") or ""
+        if not (
+            run_id
+            and run.get("path") == workflow_path
+            and run.get("event") == "pull_request"
+            and run.get("status") == "completed"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+            and len(run_head) == 40
+            and len(evidence_base_sha) == 40
+        ):
+            return False
+        if not _step5_jobs_unchanged(run_head, workflow_path):
+            return False
+        if not _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha):
+            return False
+        result.update({
+            "reusable": True,
+            "evidenceRunId": run_id,
+            "evidenceArtifact": artifact_name,
+            "evidenceBaseSha": evidence_base_sha,
+            "reason": (
+                "exact_approved_baseline_evidence"
+                if evidence_base_sha == base_sha
+                else "content_identical_step5_inputs"
+            ),
+        })
+        return True
+
+    # Fast path: an artifact already keyed to the exact approved base.
+    exact_name = f"step5-baseline-{base_sha}"
+    for artifact in _artifact_rows(repository, exact_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        if accept(run, exact_name, base_sha):
+            return result
+
+    # Control-only commits must not invalidate a full baseline suite. Search recent
+    # completed Step 5 runs for a durable baseline artifact whose declared test
+    # inputs are tree-equivalent to the current approved base.
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        if not run_id:
+            continue
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except Exception:
+            continue
+        for artifact_name in sorted(names):
+            prefix = "step5-baseline-"
+            if not artifact_name.startswith(prefix):
+                continue
+            evidence_base_sha = artifact_name[len(prefix):]
+            if len(evidence_base_sha) != 40 or any(ch not in "0123456789abcdef" for ch in evidence_base_sha):
+                continue
+            try:
+                if accept(run, artifact_name, evidence_base_sha):
+                    return result
+            except Exception:
+                continue
+
+    result["reason"] = "no_content_identical_baseline_artifact"
+    return result
+
+
+def cmd_step5_baseline(args):
+    try:
+        result = compute_step5_baseline_evidence(args.repository, args.base_sha)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 2,
+            "approvedBaseSha": args.base_sha,
+            "reusable": False,
+            "evidenceRunId": None,
+            "evidenceArtifact": None,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def cmd_job_unchanged(args):
+    prior = git_show_file(args.prior_sha, args.workflow_path)
+    current = Path(args.workflow_path).read_text()
+    prior_jobs = _job_blocks(prior)
+    current_jobs = _job_blocks(current)
+    missing = [name for name in args.job if name not in prior_jobs or name not in current_jobs]
+    if missing:
+        print("Missing workflow jobs: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(1)
+    changed = [name for name in args.job if prior_jobs[name] != current_jobs[name]]
+    if changed:
+        print("Changed workflow jobs: " + ", ".join(changed), file=sys.stderr)
+        raise SystemExit(1)
+    print("Preserved workflow job definitions: " + ", ".join(args.job))
+
+
+def cmd_verify_release_coverage(args):
+    text = Path(args.workflow_path).read_text()
+    verify_release_policy_coverage(args.workflow, text)
+    print(f"Every named release step is classified: {args.workflow}")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    plan = sub.add_parser("plan")
+    plan.add_argument("--workflow", required=True)
+    plan.add_argument("--current-sha", required=True)
+    plan.add_argument("--current-run-id", required=True, type=int)
+    plan.add_argument("--run-attempt", required=True, type=int)
+    plan.add_argument("--head-branch", required=True)
+    plan.add_argument("--event", required=True)
+    plan.add_argument("--repository", required=True)
+    plan.add_argument("--output", required=True)
+    plan.set_defaults(func=cmd_plan)
+
+    preserved = sub.add_parser("preserved")
+    preserved.add_argument("--plan", required=True)
+    preserved.add_argument("--gate", required=True)
+    preserved.set_defaults(func=cmd_preserved)
+
+    live_state = sub.add_parser("live-state")
+    live_state.add_argument("--revision", required=True)
+    live_state.add_argument("--selected-targets", required=True)
+    live_state.add_argument("--output", required=True)
+    live_state.add_argument("--github-output")
+    live_state.set_defaults(func=cmd_live_state)
+
+    verify_live = sub.add_parser("verify-live")
+    verify_live.add_argument("--revision", required=True)
+    verify_live.add_argument("--selected-targets", required=True)
+    verify_live.add_argument("--output", required=True)
+    verify_live.add_argument("--timeout-seconds", type=int, default=480)
+    verify_live.add_argument("--poll-seconds", type=int, default=5)
+    verify_live.set_defaults(func=cmd_verify_live)
+
+    lifecycle_evidence = sub.add_parser("lifecycle-evidence")
+    lifecycle_evidence.add_argument("--repository", required=True)
+    lifecycle_evidence.add_argument("--output", required=True)
+    lifecycle_evidence.set_defaults(func=cmd_lifecycle_evidence)
+
+    package_canary = sub.add_parser("package-canary-plan")
+    package_canary.add_argument("--repository", required=True)
+    package_canary.add_argument("--current-sha", required=True)
+    package_canary.add_argument("--base-sha", required=True)
+    package_canary.add_argument("--current-run-id", required=True, type=int)
+    package_canary.add_argument("--head-branch", required=True)
+    package_canary.add_argument("--output", required=True)
+    package_canary.set_defaults(func=cmd_package_canary_plan)
+
+    package_backfill = sub.add_parser("package-backfill-plan")
+    package_backfill.add_argument("--repository", required=True)
+    package_backfill.add_argument("--revision", required=True)
+    package_backfill.add_argument("--current-sha", required=True)
+    package_backfill.add_argument("--output", required=True)
+    package_backfill.set_defaults(func=cmd_package_backfill_plan)
+
+    validated_package = sub.add_parser("validated-package")
+    validated_package.add_argument("--repository", required=True)
+    validated_package.add_argument("--revision", required=True)
+    validated_package.add_argument("--package-identity", required=True)
+    validated_package.add_argument("--output", required=True)
+    validated_package.set_defaults(func=cmd_validated_package)
+
+    rollback_evidence = sub.add_parser("rollback-evidence")
+    rollback_evidence.add_argument("--repository", required=True)
+    rollback_evidence.add_argument("--revision", required=True)
+    rollback_evidence.add_argument("--app", required=True)
+    rollback_evidence.add_argument("--output", required=True)
+    rollback_evidence.set_defaults(func=cmd_rollback_evidence)
+
+    step5_decision = sub.add_parser("step5-decision")
+    step5_decision.add_argument("--current-sha", required=True)
+    step5_decision.add_argument("--base-sha", required=True)
+    step5_decision.add_argument("--current-run-id", required=True, type=int)
+    step5_decision.add_argument("--head-branch", required=True)
+    step5_decision.add_argument("--repository", required=True)
+    step5_decision.add_argument("--output", required=True)
+    step5_decision.set_defaults(func=cmd_step5_decision)
+
+    step5_baseline = sub.add_parser("step5-baseline")
+    step5_baseline.add_argument("--base-sha", required=True)
+    step5_baseline.add_argument("--repository", required=True)
+    step5_baseline.add_argument("--output", required=True)
+    step5_baseline.set_defaults(func=cmd_step5_baseline)
+
+    job_unchanged = sub.add_parser("job-unchanged")
+    job_unchanged.add_argument("--workflow-path", required=True)
+    job_unchanged.add_argument("--prior-sha", required=True)
+    job_unchanged.add_argument("--job", action="append", required=True)
+    job_unchanged.set_defaults(func=cmd_job_unchanged)
+
+    coverage = sub.add_parser("verify-release-coverage")
+    coverage.add_argument("--workflow", required=True)
+    coverage.add_argument("--workflow-path", required=True)
+    coverage.set_defaults(func=cmd_verify_release_coverage)
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

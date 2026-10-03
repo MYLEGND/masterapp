@@ -1,4 +1,16 @@
 (() => {
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  const WEBSITE_STUDIO_ISOLATED =
+    window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+    websiteStudioParams.has('legendEdit') ||
+    websiteStudioParams.has('legendMaterialize');
+  if (WEBSITE_STUDIO_ISOLATED) {
+    // Website Studio is a zero-production-signal environment. Do not create
+    // visitor/session attribution, listeners, queues, page views, CTA events,
+    // form events, provider bridges, or network ingestion from edit/migration.
+    window.__legendTrackingSuppressedForWebsiteStudio = true;
+    return;
+  }
   if (window.__legendTrackingInitialized) {
     return;
   }
@@ -708,6 +720,7 @@
     const trigger = body.EventType === 'form_start' ? 'form_started'
       : body.EventType === 'form_submit_attempt' ? 'submit_attempt'
       : body.EventType === 'form_field_focus' ? 'field_started'
+      : body.EventType === 'form_field_complete' ? 'field_completed'
       : body.EventType === 'form_field_error' ? 'validation_failed'
       : body.EventType === 'cta_click' || body.ElementKey ? 'click' : null;
     if (!trigger) return body;
@@ -2038,6 +2051,16 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     const state = ensureFormTrackState(formKey);
     syncFormAttribution(form);
     const focusedFields = new Set();
+    const completedFields = new Set();
+    const fieldValuePresent = field => {
+      if (!field || field.type === 'hidden') return false;
+      if (field.type === 'checkbox' || field.type === 'radio') return field.checked === true;
+      return String(field.value ?? '').trim().length > 0;
+    };
+    const fieldIsValid = field => {
+      try { return typeof field?.checkValidity !== 'function' || field.checkValidity(); }
+      catch { return true; }
+    };
     const handler = event => {
       state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
@@ -2047,11 +2070,34 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
           ['INPUT','SELECT','TEXTAREA'].includes(field.tagName)) {
         focusedFields.add(fieldName);
         sendEvent({EventType:'form_field_focus', FormKey:formKey, FieldName:fieldName,
-          ElementKey:field.dataset.cmsId || field.id || fieldName});
+          ElementKey:field.dataset.cmsId || field.dataset.cmsFieldKey || field.id || fieldName});
       }
+      if (event.type === 'change' && fieldName && !completedFields.has(fieldName) &&
+          ['INPUT','SELECT','TEXTAREA'].includes(field?.tagName || '') &&
+          fieldValuePresent(field) && fieldIsValid(field)) {
+        completedFields.add(fieldName);
+        sendEvent({EventType:'form_field_complete', FormKey:formKey, FieldName:fieldName,
+          ElementKey:field.dataset.cmsId || field.dataset.cmsFieldKey || field.id || fieldName});
+      }
+    };
+    const invalidHandler = event => {
+      const field = event.target;
+      const fieldName = field?.name || field?.id;
+      if (!fieldName || !['INPUT','SELECT','TEXTAREA'].includes(field?.tagName || '')) return;
+      const validity = field.validity || {};
+      const errorType = validity.valueMissing ? 'required'
+        : validity.typeMismatch ? 'type'
+        : validity.patternMismatch ? 'pattern'
+        : validity.rangeUnderflow ? 'min'
+        : validity.rangeOverflow ? 'max'
+        : validity.tooShort ? 'too_short'
+        : validity.tooLong ? 'too_long'
+        : 'invalid';
+      trackCustomFieldError(formKey, fieldName, errorType);
     };
     listen(form, 'focusin', handler);
     listen(form, 'change', handler);
+    listen(form, 'invalid', invalidHandler, true);
     let submitRevision = 0;
     const isAjax = form.dataset.ajaxSubmit === 'true';
     form._trackSubmitAttempt = (valid, errorCount = 0) => {
@@ -2156,11 +2202,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   wireClick('[data-cta="quote_index_disability_start"]', 'quote_index_disability_start', 'quote_click');
   wireClick('[data-cta="quote_index_health_start"]',     'quote_index_health_start',     'quote_click');
 
-  document.querySelectorAll('form[data-form-key]').forEach(f => {
-    const key = f.getAttribute('data-form-key');
-    if (!key) return;
-    wireFormStart(f, key);
-  });
+  function bindCanonicalForms(root = document) {
+    if (!root?.querySelectorAll) return 0;
+    let bound = 0;
+    root.querySelectorAll('form[data-form-key]').forEach(form => {
+      const key = form.getAttribute('data-form-key');
+      if (!key || form._legendTrackingBound) return;
+      wireFormStart(form, key);
+      bound++;
+    });
+    return bound;
+  }
+
+  bindCanonicalForms(document);
+  listen(window, 'legend:website-content-rendered', () => bindCanonicalForms(document));
 
 
   // ============================================================
@@ -2204,6 +2259,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     registerBinding(node, binding, elementId) {
       canonicalBindings.set(binding.id, {node, binding, elementId});
       return () => canonicalBindings.delete(binding.id);
+    },
+    bindForms(root = document) {
+      return bindCanonicalForms(root);
     },
     signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
     measurementConsent: Object.freeze({
