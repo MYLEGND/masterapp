@@ -91,6 +91,62 @@ class ValidationResumePlannerTests(unittest.TestCase):
         )
         self.assertNotIn("receipt", recorded["gates"]["diff-check"])
 
+    def historical_plan_steps(self, parent_conclusion, gates):
+        run = {
+            "id": 77,
+            "run_attempt": 1,
+            "conclusion": parent_conclusion,
+        }
+        args = SimpleNamespace(
+            workflow="approved-release-security-validation.yml",
+            repository="MYLEGND/masterapp",
+        )
+        artifact = "validation-resume-security-77-1"
+        stored = {"workflow": args.workflow, "gates": gates}
+        def download(_repo, _run_id, _artifact, directory):
+            Path(directory, "validation-resume.json").write_text(
+                __import__("json").dumps(stored)
+            )
+        with patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m, "_download_run_artifact", side_effect=download):
+            return m._historical_plan_steps(args, run, "token")
+
+    def test_successful_parent_plan_proves_executed_child_without_jobs_api(self):
+        steps = self.historical_plan_steps("success", {
+            "diff-check": {
+                "step": "Verify patch whitespace integrity",
+                "run": True,
+            }
+        })
+        self.assertEqual("success", steps["Verify patch whitespace integrity"])
+        self.assertEqual(
+            77,
+            steps.producers["Verify patch whitespace integrity"]["runId"],
+        )
+
+    def test_failed_parent_plan_preserves_only_prior_green_child(self):
+        steps = self.historical_plan_steps("failure", {
+            "executed-later-failure": {
+                "step": "A gate that ran in failed parent",
+                "run": True,
+            },
+            "preserved": {
+                "step": "An older preserved green gate",
+                "run": False,
+                "evidenceRunId": 44,
+                "producerReceipt": {
+                    "result": "success",
+                    "runId": 44,
+                },
+            },
+        })
+        self.assertNotIn("A gate that ran in failed parent", steps)
+        self.assertEqual("success", steps["An older preserved green gate"])
+        self.assertEqual(
+            44,
+            steps.producers["An older preserved green gate"]["runId"],
+        )
+
     def test_effective_steps_keeps_latest_executed_failure_and_backfills_only_skips(self):
         effective = m._effective_steps([
             {
@@ -472,6 +528,29 @@ jobs:
         self.assertNotIn("STEP6_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("STEP78_VALIDATION_PATHS", lifecycle)
         self.assertNotIn("VALIDATION_NEUTRAL_PATHS =", lifecycle)
+
+    def test_historical_run_discovery_prefers_candidate_lineage_without_pull_lookup(self):
+        args = SimpleNamespace(
+            event="pull_request",
+            workflow="approved-release-security-validation.yml",
+            repository="MYLEGND/masterapp",
+            current_run_id=99,
+            current_sha="b" * 40,
+        )
+        run = {
+            "id": 77,
+            "head_sha": "a" * 40,
+            "status": "completed",
+            "event": "pull_request",
+            "path": ".github/workflows/approved-release-security-validation.yml",
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-03T00:00:00Z",
+        }
+        with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "_trusted_pr_run", side_effect=AssertionError("pull lookup should not run")):
+            rows = m._trusted_historical_runs(args, "token")
+        self.assertEqual([77], [row["id"] for row in rows])
 
     def test_validation_resume_test_change_requires_architecture_only(self):
         topology = m.required_validation_topology([
