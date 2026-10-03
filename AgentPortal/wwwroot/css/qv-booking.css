@@ -4,19 +4,18 @@
 ========================================================= */
 
 .qv-booking-modal-shell{
-    --qv-bg-1:#0b2b8f;
-    --qv-bg-2:#061f68;
-    --qv-bg-3:#03123f;
-    --qv-panel-1:rgba(10,36,105,.78);
-    --qv-panel-2:rgba(3,14,45,.92);
-    --qv-line:rgba(96,165,250,.30);
-    --qv-line-strong:rgba(59,130,246,.78);
-    --qv-gold:#f6c343;
-    --qv-gold-light:#ffe58a;
-    --qv-gold-dark:#d99a13;
-    --qv-text:#ffffff;
-    --qv-muted:#c8d4f2;
-    z-index:1085;
+    --qv-bg-1:var(--legend-app-surface-elevated);
+    --qv-bg-2:var(--legend-app-surface);
+    --qv-bg-3:var(--legend-app-surface);
+    --qv-panel-1:var(--legend-app-surface-elevated);
+    --qv-panel-2:var(--legend-app-surface);
+    --qv-line:var(--legend-app-control-line);
+    --qv-line-strong:var(--legend-app-control-line);
+    --qv-gold:var(--legend-app-accent);
+    --qv-gold-light:var(--legend-app-accent-bright);
+    --qv-gold-dark:var(--legend-app-accent);
+    --qv-text:var(--legend-app-on-dark);
+    --qv-muted:var(--legend-app-on-dark-muted);
 }
 
 
@@ -74,16 +73,16 @@
     min-width:126px;
     height:50px;
     border-radius:15px;
-    color:#f6d36b !important;
+    color:#f6d36b ;
     font-weight:950;
-    background:linear-gradient(180deg, rgba(37,39,46,.78), rgba(19,23,33,.78)) !important;
-    border:1px solid rgba(246,195,67,.82) !important;
+    background:linear-gradient(180deg, rgba(37,39,46,.78), rgba(19,23,33,.78)) ;
+    border:1px solid rgba(246,195,67,.82) ;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
 }
 
 .qv-booking-close.btn:hover{
-    color:#08111f !important;
-    background:linear-gradient(180deg, var(--qv-gold-light), var(--qv-gold-dark)) !important;
+    color:#08111f ;
+    background:linear-gradient(180deg, var(--qv-gold-light), var(--qv-gold-dark)) ;
 }
 
 /* Body */
@@ -246,15 +245,15 @@
     display:grid;
     place-items:center;
     border-radius:14px;
-    color:#f6d36b !important;
-    background:rgba(31,34,43,.62) !important;
-    border:1px solid rgba(246,195,67,.64) !important;
+    color:#f6d36b ;
+    background:rgba(31,34,43,.62) ;
+    border:1px solid rgba(246,195,67,.64) ;
     font-size:13px;
     font-weight:950;
 }
 
 .qv-booking-calendar-nav:hover{
-    background:linear-gradient(180deg, rgba(246,195,67,.22), rgba(31,34,43,.72)) !important;
+    background:linear-gradient(180deg, rgba(246,195,67,.22), rgba(31,34,43,.72)) ;
 }
 
 .qv-booking-calendar-label{
@@ -355,12 +354,12 @@
 .qv-slot-btn.btn-ghost{
     min-height:58px;
     border-radius:12px;
-    color:#f4d06f !important;
+    color:#f4d06f ;
     font-size:15px;
     font-weight:950;
     letter-spacing:-.01em;
-    background:linear-gradient(180deg, rgba(38,40,47,.98), rgba(23,26,34,.98)) !important;
-    border:1px solid rgba(246,195,67,.76) !important;
+    background:linear-gradient(180deg, rgba(38,40,47,.98), rgba(23,26,34,.98)) ;
+    border:1px solid rgba(246,195,67,.76) ;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.06),
         0 8px 18px rgba(0,0,0,.18);
@@ -372,21 +371,21 @@
 .qv-slot-btn.btn:focus-visible,
 .qv-slot-btn.btn-ghost:focus-visible{
     transform:translateY(-1px);
-    color:#fff !important;
-    border-color:rgba(255,229,138,.96) !important;
-    background:linear-gradient(180deg, rgba(48,51,60,.98), rgba(26,30,39,.98)) !important;
+    color:#fff ;
+    border-color:rgba(255,229,138,.96) ;
+    background:linear-gradient(180deg, rgba(48,51,60,.98), rgba(26,30,39,.98)) ;
     box-shadow:0 12px 28px rgba(246,195,67,.16);
 }
 
 .qv-slot-btn.btn.selected,
 .qv-slot-btn.btn-ghost.selected,
 .qv-slot-btn.selected{
-    color:#08111f !important;
-    background:linear-gradient(180deg, var(--qv-gold-light) 0%, var(--qv-gold) 48%, var(--qv-gold-dark) 100%) !important;
-    border-color:rgba(255,229,138,.98) !important;
+    color:#08111f ;
+    background:linear-gradient(180deg, var(--qv-gold-light) 0%, var(--qv-gold) 48%, var(--qv-gold-dark) 100%) ;
+    border-color:rgba(255,229,138,.98) ;
     box-shadow:
         0 14px 36px rgba(245,158,11,.42),
-        inset 0 1px 0 rgba(255,255,255,.72) !important;
+        inset 0 1px 0 rgba(255,255,255,.72) ;
 }
 
 .qv-slot-btn.selected:after{
@@ -447,12 +446,12 @@
 .qv-booking-submit.btn-gold{
     min-height:58px;
     border-radius:14px;
-    color:#08111f !important;
+    color:#08111f ;
     font-size:16px;
     font-weight:950;
     letter-spacing:-.015em;
-    background:linear-gradient(180deg, var(--qv-gold-light) 0%, var(--qv-gold) 48%, var(--qv-gold-dark) 100%) !important;
-    border:1px solid rgba(255,229,138,.98) !important;
+    background:linear-gradient(180deg, var(--qv-gold-light) 0%, var(--qv-gold) 48%, var(--qv-gold-dark) 100%) ;
+    border:1px solid rgba(255,229,138,.98) ;
     box-shadow:
         0 18px 42px rgba(245,158,11,.38),
         0 0 26px rgba(245,158,11,.18),
@@ -484,37 +483,37 @@
 /* Time slots: premium blue by default, gold only when selected */
 .qv-slot-btn.btn,
 .qv-slot-btn.btn-ghost{
-    color:#f8fbff !important;
+    color:#f8fbff ;
     background:
-        linear-gradient(180deg, rgba(10,42,122,.96), rgba(4,18,58,.98)) !important;
-    border:1px solid rgba(96,165,250,.34) !important;
+        linear-gradient(180deg, rgba(10,42,122,.96), rgba(4,18,58,.98)) ;
+    border:1px solid rgba(96,165,250,.34) ;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.06),
-        0 10px 22px rgba(0,0,0,.18) !important;
+        0 10px 22px rgba(0,0,0,.18) ;
 }
 
 .qv-slot-btn.btn:hover,
 .qv-slot-btn.btn-ghost:hover,
 .qv-slot-btn.btn:focus-visible,
 .qv-slot-btn.btn-ghost:focus-visible{
-    color:#fff !important;
+    color:#fff ;
     background:
-        linear-gradient(180deg, rgba(18,64,164,.98), rgba(6,25,76,.98)) !important;
-    border-color:rgba(147,197,253,.75) !important;
+        linear-gradient(180deg, rgba(18,64,164,.98), rgba(6,25,76,.98)) ;
+    border-color:rgba(147,197,253,.75) ;
     box-shadow:
         0 14px 32px rgba(37,99,235,.24),
-        inset 0 1px 0 rgba(255,255,255,.08) !important;
+        inset 0 1px 0 rgba(255,255,255,.08) ;
 }
 
 .qv-slot-btn.btn.selected,
 .qv-slot-btn.btn-ghost.selected,
 .qv-slot-btn.selected{
-    color:#08111f !important;
-    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
-    border-color:rgba(255,229,138,.98) !important;
+    color:#08111f ;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) ;
+    border-color:rgba(255,229,138,.98) ;
     box-shadow:
         0 14px 36px rgba(245,158,11,.42),
-        inset 0 1px 0 rgba(255,255,255,.72) !important;
+        inset 0 1px 0 rgba(255,255,255,.72) ;
 }
 
 /* Make footer closer to mock */
@@ -553,7 +552,7 @@
     box-shadow:
         0 18px 44px rgba(245,158,11,.42),
         0 0 32px rgba(245,158,11,.22),
-        inset 0 1px 0 rgba(255,255,255,.75) !important;
+        inset 0 1px 0 rgba(255,255,255,.75) ;
 }
 
 /* =========================================================
@@ -684,7 +683,7 @@
 .qv-slot-btn.btn,
 .qv-slot-btn.btn-ghost,
 .qv-slot-btn{
-    min-height:68px !important;
+    min-height:68px ;
     font-size:14px;
 }
 
@@ -827,7 +826,7 @@
 .qv-slot-btn.btn,
 .qv-slot-btn.btn-ghost,
 .qv-slot-btn{
-    min-height:0 !important;
+    min-height:0 ;
     height:100%;
     padding:0 10px;
 }
@@ -877,27 +876,27 @@
 
 /* Time slots: allow 20, 24, or more slots to divide evenly */
 .qv-book-slots{
-    grid-template-rows:none !important;
-    grid-auto-rows:minmax(0, 1fr) !important;
-    align-content:stretch !important;
-    min-height:0 !important;
+    grid-template-rows:none ;
+    grid-auto-rows:minmax(0, 1fr) ;
+    align-content:stretch ;
+    min-height:0 ;
 }
 
 .qv-slot-btn.btn,
 .qv-slot-btn.btn-ghost,
 .qv-slot-btn{
-    height:100% !important;
-    min-height:0 !important;
-    max-height:none !important;
-    padding-block:0 !important;
+    height:100% ;
+    min-height:0 ;
+    max-height:none ;
+    padding-block:0 ;
 }
 
 /* Calendar: make previous/next month days visually distinct */
 .qv-booking-calendar-grid button.is-muted{
-    color:rgba(203,213,225,.26) !important;
-    background:rgba(3,15,43,.22) !important;
-    border-color:rgba(96,165,250,.06) !important;
-    box-shadow:none !important;
+    color:rgba(203,213,225,.26) ;
+    background:rgba(3,15,43,.22) ;
+    border-color:rgba(96,165,250,.06) ;
+    box-shadow:none ;
     opacity:.55;
 }
 
@@ -909,9 +908,9 @@
 }
 
 .qv-booking-calendar-grid button.is-muted:hover{
-    color:rgba(203,213,225,.38) !important;
-    background:rgba(3,15,43,.30) !important;
-    border-color:rgba(96,165,250,.10) !important;
+    color:rgba(203,213,225,.38) ;
+    background:rgba(3,15,43,.30) ;
+    border-color:rgba(96,165,250,.10) ;
 }
 
 /* Keep selected day dominant even if classes overlap */
@@ -924,11 +923,11 @@
 ========================================================= */
 
 .qv-booking-calendar-grid button.is-outside{
-    color:rgba(203,213,225,.24) !important;
-    background:rgba(3,15,43,.18) !important;
-    border-color:rgba(96,165,250,.05) !important;
-    box-shadow:none !important;
-    opacity:.48 !important;
+    color:rgba(203,213,225,.24) ;
+    background:rgba(3,15,43,.18) ;
+    border-color:rgba(96,165,250,.05) ;
+    box-shadow:none ;
+    opacity:.48 ;
 }
 
 .qv-booking-calendar-grid button.is-outside span{
@@ -936,28 +935,28 @@
 }
 
 .qv-booking-calendar-grid button.is-outside:hover{
-    color:rgba(203,213,225,.34) !important;
-    background:rgba(3,15,43,.26) !important;
-    border-color:rgba(96,165,250,.08) !important;
+    color:rgba(203,213,225,.34) ;
+    background:rgba(3,15,43,.26) ;
+    border-color:rgba(96,165,250,.08) ;
 }
 
 .qv-booking-calendar-grid button:not(.is-outside){
-    color:#f8fbff !important;
-    background:rgba(3,15,43,.64) !important;
-    border-color:rgba(96,165,250,.18) !important;
-    opacity:1 !important;
+    color:#f8fbff ;
+    background:rgba(3,15,43,.64) ;
+    border-color:rgba(96,165,250,.18) ;
+    opacity:1 ;
 }
 
 .qv-booking-calendar-grid button.is-selected,
 .qv-booking-calendar-grid button.selected,
 .qv-booking-calendar-grid button[aria-pressed="true"]{
-    color:#08111f !important;
-    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
-    border-color:rgba(255,229,138,.98) !important;
-    opacity:1 !important;
+    color:#08111f ;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) ;
+    border-color:rgba(255,229,138,.98) ;
+    opacity:1 ;
     box-shadow:
         0 10px 28px rgba(245,158,11,.42),
-        inset 0 1px 0 rgba(255,255,255,.68) !important;
+        inset 0 1px 0 rgba(255,255,255,.68) ;
 }
 
 
@@ -986,25 +985,25 @@
 ========================================================= */
 
 .qv-booking-launch{
-    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
-    color:#08111f !important;
-    border:1px solid rgba(255,229,138,.95) !important;
-    border-radius: var(--legend-app-radius-compact) !important;
-    font-weight:950 !important;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) ;
+    color:#08111f ;
+    border:1px solid rgba(255,229,138,.95) ;
+    border-radius: var(--legend-app-radius-compact) ;
+    font-weight:950 ;
     letter-spacing:-.01em;
     box-shadow:
         0 14px 34px rgba(245,158,11,.36),
-        inset 0 1px 0 rgba(255,255,255,.72) !important;
+        inset 0 1px 0 rgba(255,255,255,.72) ;
 }
 
 .qv-booking-launch:hover,
 .qv-booking-launch:focus-visible{
-    color:#04070d !important;
+    color:#04070d ;
     transform:translateY(-1px);
     box-shadow:
         0 18px 42px rgba(245,158,11,.46),
         0 0 28px rgba(245,158,11,.18),
-        inset 0 1px 0 rgba(255,255,255,.78) !important;
+        inset 0 1px 0 rgba(255,255,255,.78) ;
 }
 
 .workstation-booking-btn.qv-booking-launch{
@@ -1018,22 +1017,22 @@
 .content-head-next .workstation-booking-btn.qv-booking-launch,
 .content-head-next .btn.workstation-booking-btn.qv-booking-launch,
 .content-head-next .lb-btn.workstation-booking-btn.qv-booking-launch{
-    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
-    color:#08111f !important;
-    border:1px solid rgba(255,229,138,.95) !important;
-    border-radius: var(--legend-app-radius-compact) !important;
-    font-weight:950 !important;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) ;
+    color:#08111f ;
+    border:1px solid rgba(255,229,138,.95) ;
+    border-radius: var(--legend-app-radius-compact) ;
+    font-weight:950 ;
     box-shadow:
         0 14px 34px rgba(245,158,11,.36),
-        inset 0 1px 0 rgba(255,255,255,.72) !important;
-    text-shadow:none !important;
+        inset 0 1px 0 rgba(255,255,255,.72) ;
+    text-shadow:none ;
 }
 
 .content-head-next .workstation-booking-btn.qv-booking-launch:hover,
 .content-head-next .workstation-booking-btn.qv-booking-launch:focus-visible{
-    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) !important;
-    color:#04070d !important;
-    border-color:rgba(255,240,168,.98) !important;
+    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) ;
+    color:#04070d ;
+    border-color:rgba(255,240,168,.98) ;
 }
 
 
@@ -1044,10 +1043,10 @@
 
 #qvBookStatus.qv-booking-status,
 .qv-booking-status{
-    color:#f8fbff !important;
-    background:linear-gradient(180deg, rgba(8,36,108,.92), rgba(3,14,44,.96)) !important;
-    border:1px solid rgba(96,165,250,.38) !important;
-    text-shadow:none !important;
+    color:#f8fbff ;
+    background:linear-gradient(180deg, rgba(8,36,108,.92), rgba(3,14,44,.96)) ;
+    border:1px solid rgba(96,165,250,.38) ;
+    text-shadow:none ;
 }
 
 #qvBookStatus.qv-booking-status[data-state="selected"],
@@ -1055,14 +1054,14 @@
 #qvBookStatus.qv-booking-status[data-state="success"],
 #qvBookStatus.qv-booking-status[data-state="warning"],
 #qvBookStatus.qv-booking-status[data-state="error"]{
-    color:#f8fbff !important;
+    color:#f8fbff ;
 }
 
 #qvBookStatus.qv-booking-status strong,
 #qvBookStatus.qv-booking-status b,
 #qvBookStatus.qv-booking-status .qv-status-highlight{
-    color:#f6c343 !important;
-    font-weight:950 !important;
+    color:#f6c343 ;
+    font-weight:950 ;
 }
 
 
@@ -1074,16 +1073,16 @@
 button.qv-booking-launch,
 .btn.qv-booking-launch,
 .content-head-next .workstation-booking-btn.qv-booking-launch{
-    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
-    color:#08111f !important;
-    border:1px solid rgba(255,229,138,.98) !important;
-    border-radius:14px !important;
-    font-weight:950 !important;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) ;
+    color:#08111f ;
+    border:1px solid rgba(255,229,138,.98) ;
+    border-radius:14px ;
+    font-weight:950 ;
     box-shadow:
         0 18px 44px rgba(245,158,11,.42),
         0 0 32px rgba(245,158,11,.22),
-        inset 0 1px 0 rgba(255,255,255,.75) !important;
-    text-shadow:none !important;
+        inset 0 1px 0 rgba(255,255,255,.75) ;
+    text-shadow:none ;
 }
 
 button.qv-booking-launch:hover,
@@ -1092,9 +1091,9 @@ button.qv-booking-launch:focus-visible,
 .btn.qv-booking-launch:focus-visible,
 .content-head-next .workstation-booking-btn.qv-booking-launch:hover,
 .content-head-next .workstation-booking-btn.qv-booking-launch:focus-visible{
-    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) !important;
-    color:#04070d !important;
-    border-color:rgba(255,240,168,.98) !important;
+    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) ;
+    color:#04070d ;
+    border-color:rgba(255,240,168,.98) ;
 }
 
 /* =========================================================
@@ -1137,17 +1136,17 @@ button.qv-booking-launch:focus-visible,
     }
 
     .qv-book-slots{
-        grid-template-rows:none !important;
-        grid-auto-rows:auto !important;
-        align-content:start !important;
+        grid-template-rows:none ;
+        grid-auto-rows:auto ;
+        align-content:start ;
     }
 
     .qv-slot-btn.btn,
     .qv-slot-btn.btn-ghost,
     .qv-slot-btn{
-        height:auto !important;
-        min-height:52px !important;
-        padding:10px !important;
+        height:auto ;
+        min-height:52px ;
+        padding:10px ;
     }
 }
 
@@ -1284,8 +1283,8 @@ button.qv-booking-launch:focus-visible,
 
     .qv-book-slots{
         grid-template-columns:repeat(2, minmax(0,1fr));
-        grid-template-rows:none !important;
-        grid-auto-rows:auto !important;
+        grid-template-rows:none ;
+        grid-auto-rows:auto ;
         gap:5px;
         margin-top:6px;
     }
@@ -1293,9 +1292,9 @@ button.qv-booking-launch:focus-visible,
     .qv-slot-btn.btn,
     .qv-slot-btn.btn-ghost,
     .qv-slot-btn{
-        height:auto !important;
-        min-height:var(--legend-mobile-control-height) !important;
-        padding:6px 7px !important;
+        height:auto ;
+        min-height:var(--legend-mobile-control-height) ;
+        padding:6px 7px ;
         white-space:normal;
     }
 
