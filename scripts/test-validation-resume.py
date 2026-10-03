@@ -766,7 +766,7 @@ jobs:
             if key not in {"lifecycle", "release-policy"}:
                 self.assertFalse(gate["run"], key)
 
-    def test_release_web_contract_change_invalidates_only_release_web_gate(self):
+    def test_release_web_contract_change_reruns_release_web_with_its_local_dotnet_build_chain(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
             workflow,
@@ -776,9 +776,10 @@ jobs:
             ["tests/legend-connect/example.test.mjs"],
             "prior_run",
         )
-        self.assertTrue(plan["gates"]["release-web-contracts"]["run"])
+        for key in ("release-web-contracts", "compile-regression", "restore-dotnet"):
+            self.assertTrue(plan["gates"][key]["run"], key)
         for key, gate in plan["gates"].items():
-            if key != "release-web-contracts":
+            if key not in {"release-web-contracts", "compile-regression", "restore-dotnet"}:
                 self.assertFalse(gate["run"], key)
 
     def test_validation_authority_change_reruns_only_declared_consumers(self):

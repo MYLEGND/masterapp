@@ -5,8 +5,8 @@
     var includeScratch = ViewData["ProposalIncludeScratch"] as bool? ?? true;
 }
 
-<div class="hp-overlay" id="proposalOverlay" hidden>
-    <div class="hp-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+<div class="hp-overlay" id="proposalOverlay" data-legend-modal-surface hidden>
+    <div class="hp-dialog" id="proposalDialog" data-legend-modal-panel role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
         <div class="hp-dialog-head">
             <div class="hp-dialog-brand">
                 <div class="hp-dialog-icon">📋</div>
@@ -18,7 +18,7 @@
             <button type="button" class="hp-dialog-close" data-proposal-close aria-label="Close proposal builder">×</button>
         </div>
 
-        <form id="proposalForm" class="hp-form">
+        <form id="proposalForm" class="hp-form" data-legend-modal-scroll>
             <div class="hp-form-meta">
                 <label class="hp-field">Proposal Name
                     <input id="propName" name="propName" placeholder="Client name or label" />
@@ -30,7 +30,7 @@
                 </div>
             </div>
 
-            <div class="proposal-latest-decision" id="latestDecisionSummary" hidden style="margin-bottom:12px; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; background:#0f1629;">
+            <div class="proposal-latest-decision" id="latestDecisionSummary" hidden>
                 <div class="tiny text-muted">Latest decision</div>
                 <div class="fw-bold" data-decision-title>-</div>
                 <div class="tiny" data-decision-type></div>

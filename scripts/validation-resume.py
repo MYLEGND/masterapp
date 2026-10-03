@@ -586,6 +586,7 @@ WORKFLOWS = {
                     "scripts/test-diagnostic-project-impact.py",
                     "scripts/test-sync-published-checkout.py",
                 ),
+                "requires": ("compile-regression",),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",

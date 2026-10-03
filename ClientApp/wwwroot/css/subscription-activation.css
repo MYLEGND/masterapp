@@ -5,10 +5,10 @@
     --activation-navy: var(--legend-app-surface);
     --activation-navy-strong: var(--legend-app-surface-elevated);
     --activation-blue: var(--legend-app-accent);
-    --activation-text: var(--web-ink);
-    --activation-muted: var(--web-muted);
-    --activation-line: var(--legend-app-border);
-    --activation-surface: var(--legend-app-panel-soft);
+    --activation-text: var(--legend-app-on-dark);
+    --activation-muted: var(--legend-app-on-dark-muted);
+    --activation-line: var(--legend-app-control-line);
+    --activation-surface: var(--legend-app-control);
     --activation-danger: #a6384a;
 }
 
@@ -19,7 +19,7 @@
 body.subscription-activation-standalone {
     margin: 0;
     min-height: 100vh;
-    background: var(--legend-app-panel);
+    background: var(--legend-app-surface);
     color: var(--activation-text);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -36,8 +36,8 @@ body.subscription-activation-standalone {
     overflow: hidden;
     border: 1px solid var(--activation-line);
     border-radius: var(--legend-app-radius);
-    background: var(--legend-app-panel);
-    box-shadow: 0 14px 34px rgba(13, 33, 69, 0.1);
+    background: var(--legend-app-surface);
+    box-shadow: 0 14px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .activation-header {
@@ -52,7 +52,7 @@ body.subscription-activation-standalone {
 
 .activation-brand {
     margin: 0 0 7px;
-    color: #cbdcff;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.72rem;
     font-weight: 850;
     letter-spacing: 0.12em;
@@ -69,7 +69,7 @@ body.subscription-activation-standalone {
 
 .activation-client {
     margin: 9px 0 0;
-    color: #d8e4fa;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.9rem;
     line-height: 1.35;
 }
@@ -90,7 +90,7 @@ body.subscription-activation-standalone {
 
 .activation-summary-label {
     display: block;
-    color: #bfd1f3;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.66rem;
     font-weight: 800;
     letter-spacing: 0.08em;
@@ -150,9 +150,9 @@ body.subscription-activation-standalone {
 .activation-card-surface {
     width: 100%;
     min-height: 42px;
-    border: 1px solid #cbd7e8;
+    border: 1px solid var(--legend-app-control-line);
     border-radius: var(--legend-app-radius-compact);
-    background: #fbfcfe;
+    background: var(--legend-app-control);
     color: var(--activation-text);
     font: inherit;
 }
@@ -163,13 +163,13 @@ body.subscription-activation-standalone {
 }
 
 .activation-field input::placeholder {
-    color: #8290a7;
+    color: var(--legend-app-on-dark-muted);
 }
 
 .activation-field input:focus,
 .activation-field select:focus,
 .activation-card-surface:focus-within {
-    outline: 3px solid rgba(46, 95, 169, 0.16);
+    outline: 3px solid color-mix(in srgb, var(--legend-app-accent) 18%, transparent);
     border-color: var(--activation-blue);
 }
 
@@ -188,10 +188,10 @@ body.subscription-activation-standalone {
 .activation-validation {
     margin: 0 0 12px;
     padding: 10px 12px;
-    border: 1px solid #e5b9c2;
+    border: 1px solid color-mix(in srgb, var(--activation-danger) 48%, var(--legend-app-control-line));
     border-radius: var(--legend-app-radius-compact);
-    background: #fff5f6;
-    color: #873244;
+    background: color-mix(in srgb, var(--activation-danger) 12%, var(--legend-app-surface-elevated));
+    color: #ffc0cb;
     font-size: 0.84rem;
     line-height: 1.35;
 }
@@ -207,10 +207,10 @@ body.subscription-activation-standalone {
     align-items: start;
     margin-top: 15px;
     padding: 11px 12px;
-    border: 1px solid #dbe5f4;
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 11px;
     background: var(--activation-surface);
-    color: #33445f;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.78rem;
     line-height: 1.42;
 }
@@ -224,7 +224,7 @@ body.subscription-activation-standalone {
 
 .activation-membership-confirmation {
     padding: 14px;
-    border: 1px solid #dbe5f4;
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 11px;
     background: var(--activation-surface);
 }
@@ -238,7 +238,7 @@ body.subscription-activation-standalone {
 
 .activation-membership-confirmation p {
     margin: 6px 0 0;
-    color: #40536f;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.86rem;
     line-height: 1.45;
 }
@@ -285,7 +285,7 @@ body.subscription-activation-standalone {
 
 .activation-notice-card > header > p {
     margin: 9px 0 0;
-    color: #d8e4fa;
+    color: var(--legend-app-on-dark-muted);
     line-height: 1.45;
 }
 
@@ -312,7 +312,7 @@ body.subscription-activation-standalone {
     padding: 0 15px;
     border: 1px solid var(--activation-line);
     border-radius: var(--legend-app-radius-compact);
-    color: var(--activation-navy);
+    color: var(--legend-app-on-dark);
     font-size: 0.84rem;
     font-weight: 760;
     text-decoration: none;

@@ -215,31 +215,27 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("return { ...item.responseProvenance, id: item.id", script, StringComparison.Ordinal);
         Assert.Contains("message.responseAuthority,", script, StringComparison.Ordinal);
         Assert.Contains("message.stage,", script, StringComparison.Ordinal);
-        Assert.Contains("metadata.stage === 'response_partial'", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
         Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
         Assert.DoesNotContain("result.responseAuthority ||", script, StringComparison.Ordinal);
         Assert.Contains("item.authorKind !== 'Human' && !item.responseProvenance", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
-        Assert.Contains("responseAuthority === 'GovernedResearch'", script, StringComparison.Ordinal);
-        Assert.Contains("'LEGEND governed research'", script, StringComparison.Ordinal);
-        Assert.Contains("'OpenAI'", script, StringComparison.Ordinal);
-        Assert.Contains("responseAuthority === 'SystemDiagnostic'", script, StringComparison.Ordinal);
-        Assert.Contains("'System diagnostic'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("All external providers are blocked for this clean conversation.", script, StringComparison.Ordinal);
         Assert.Contains("Strict provider blocking is disabled for this clean conversation.", script, StringComparison.Ordinal);
         Assert.Contains("externalAnsweringBlocked: conversation.externalAnsweringBlocked === true", script, StringComparison.Ordinal);
-        Assert.Contains("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
-        Assert.Contains("'LEGEND-controlled model'", script, StringComparison.Ordinal);
-        Assert.Contains("metadata?.foundationHosting === 'CloudflareHosted'", script, StringComparison.Ordinal);
-        Assert.Contains("'LEGEND · Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'Provider: Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'Billing: Cloudflare Workers AI'", script, StringComparison.Ordinal);
-        Assert.Contains("'OpenAI API used: No'", script, StringComparison.Ordinal);
-        Assert.Contains("'OpenAI Teacher escalation: No'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("responseAuthority === 'GovernedResearch'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'LEGEND governed research'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("responseAuthority === 'SystemDiagnostic'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'System diagnostic'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'LEGEND-controlled model'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Provider: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'Billing: Cloudflare Workers AI'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'OpenAI API used: No'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'OpenAI Teacher escalation: No'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
@@ -363,8 +359,9 @@ public sealed class LegendFounderAiContractTests
             1,
             css.Split("@media (max-width: 820px)", StringSplitOptions.None).Length - 1);
         Assert.Contains("linear-gradient(135deg, #f0c767", css, StringComparison.Ordinal);
-        Assert.Contains("--legend-ai-response: var(--legend-design-aiResponseRoyal", css, StringComparison.Ordinal);
-        Assert.Contains("background: var(--legend-ai-response)", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("--legend-ai-response", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("--legend-ai-on-response", css, StringComparison.Ordinal);
+        Assert.Contains("background: linear-gradient(145deg,var(--legend-app-surface-elevated),var(--legend-app-surface))", css, StringComparison.Ordinal);
         Assert.DoesNotContain("border-left: 3px solid var(--legend-ai-gold-600)", css, StringComparison.Ordinal);
         Assert.Contains("\"aiResponseRoyal\"", tokens, StringComparison.Ordinal);
 

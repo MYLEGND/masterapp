@@ -5,9 +5,9 @@
     --client-auth-navy: var(--legend-app-surface);
     --client-auth-navy-strong: var(--legend-app-surface-elevated);
     --client-auth-blue: var(--legend-app-accent);
-    --client-auth-text: var(--web-ink);
-    --client-auth-muted: var(--web-muted);
-    --client-auth-line: var(--legend-app-border);
+    --client-auth-text: var(--legend-app-on-dark);
+    --client-auth-muted: var(--legend-app-on-dark-muted);
+    --client-auth-line: var(--legend-app-control-line);
     --client-auth-danger: #a6384a;
 }
 
@@ -19,7 +19,7 @@ body.client-auth-page {
     min-width: 0;
     min-height: 100vh;
     margin: 0;
-    background: var(--legend-app-panel);
+    background: var(--legend-app-surface);
     color: var(--client-auth-text);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -36,8 +36,8 @@ body.client-auth-page {
     overflow: hidden;
     border: 1px solid var(--client-auth-line);
     border-radius: var(--legend-app-radius);
-    background: var(--legend-app-panel);
-    box-shadow: 0 18px 42px rgba(13, 33, 69, 0.12);
+    background: var(--legend-app-surface-elevated);
+    box-shadow: 0 18px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .client-auth-brand {
@@ -68,7 +68,7 @@ body.client-auth-page {
 }
 
 .client-auth-brand-label {
-    color: #cbdcff;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.9rem;
     font-weight: 750;
     letter-spacing: 0.12em;
@@ -103,10 +103,10 @@ body.client-auth-page {
 .client-auth-alert {
     margin: 20px 0 0;
     padding: 10px 12px;
-    border: 1px solid #e6bec6;
+    border: 1px solid color-mix(in srgb, var(--client-auth-danger) 48%, var(--legend-app-control-line));
     border-radius: var(--legend-app-radius-compact);
-    background: #fff7f8;
-    color: #873244;
+    background: color-mix(in srgb, var(--client-auth-danger) 12%, var(--legend-app-surface-elevated));
+    color: #ffc0cb;
     font-size: 0.85rem;
     line-height: 1.4;
 }
@@ -132,21 +132,21 @@ body.client-auth-page {
     width: 100%;
     min-height: 46px;
     padding: 0 13px;
-    border: 1px solid #cbd7e8;
+    border: 1px solid var(--legend-app-control-line);
     border-radius: var(--legend-app-radius-compact);
     outline: none;
-    background: #fbfcfe;
+    background: var(--legend-app-control);
     color: var(--client-auth-text);
     font: inherit;
 }
 
 .client-auth-field input::placeholder {
-    color: #8290a7;
+    color: var(--legend-app-on-dark-muted);
 }
 
 .client-auth-field input:focus {
     border-color: var(--client-auth-blue);
-    box-shadow: 0 0 0 3px rgba(46, 95, 169, 0.16);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--legend-app-accent) 18%, transparent);
 }
 
 .client-auth-validation {

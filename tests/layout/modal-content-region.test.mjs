@@ -378,6 +378,132 @@ test('premium desktop modal system consumes the canonical authenticated page nav
   assert.match(shared,/background:\s*var\(--legend-app-control\);[\s\S]*color:\s*var\(--legend-modal-ink\);[\s\S]*box-shadow:\s*var\(--legend-inset\);/);
 });
 
+test('conversational surfaces use the same canonical roadster palette and do not expose provider badges',()=>{
+  const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const aiCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  const aiView=readFileSync(new URL('../../AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml',import.meta.url),'utf8');
+  const aiJs=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
+  assert.match(shell,/--legend-app-panel:var\(--legend-app-surface-elevated\)/);
+  assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
+  assert.match(aiCss,/--legend-ai-response: var\(--legend-design-aiResponseRoyal, var\(--legend-app-surface-elevated\)\);/);
+  assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*background: var\(--legend-app-surface\);/);
+  assert.match(aiView,/Ask Legend<sup>®<\/sup> Ai/);
+  assert.doesNotMatch(aiView,/OpenAI Teacher mode is a direct Founder-to-OpenAI channel/);
+  assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
+});
+
+test('legacy inline authenticated pages cannot re-own modal material or light controls',()=>{
+  const onboarding=readFileSync(new URL('../../AgentPortal/Views/Onboarding/Index.cshtml',import.meta.url),'utf8');
+  const agency=readFileSync(new URL('../../AgentPortal/Views/AgencyCommand/Index.cshtml',import.meta.url),'utf8');
+  assert.doesNotMatch(onboarding,/\.onb-modal-content\s*\{[^}]*background:/);
+  assert.doesNotMatch(onboarding,/background:#f8fbff\s*!important/);
+  assert.doesNotMatch(agency,/\.rev-modal__panel\s*\{[^}]*background:/);
+  assert.doesNotMatch(agency,/\.founder-tier-page \.rev-modal__panel,[\s\S]*background:/);
+});
+
+test('feature CSS cannot re-own canonical modal geometry or light form materials',()=>{
+  const carrier=readFileSync(new URL('../../AgentPortal/wwwroot/css/dashboard-carrier-settings.css',import.meta.url),'utf8');
+  const quick=readFileSync(new URL('../../AgentPortal/Views/Clients/_ClientsQuickView.cshtml',import.meta.url),'utf8');
+  const rebut=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  const booking=readFileSync(new URL('../../AgentPortal/wwwroot/css/qv-booking.css',import.meta.url),'utf8');
+  assert.doesNotMatch(carrier,/carrier-settings-modal \.modal-dialog\s*\{[^}]*max-width:/);
+  assert.doesNotMatch(quick,/\.finplan-modal \.modal-dialog\s*\{[^}]*max-width:/);
+  assert.doesNotMatch(rebut,/#captureDecisionModal\.legend-popout-modal \.modal-dialog\s*\{/);
+  assert.match(booking,/\.qv-booking-field select\s*\{[\s\S]*background:var\(--legend-app-surface-elevated\)/);
+});
+
+test('authenticated feature surfaces cannot reintroduce legacy white or separate AI palette drift',()=>{
+  const files=[
+    'AgentPortal/wwwroot/css/clients-index.css',
+    'AgentPortal/wwwroot/css/scripts-rebuttals.css',
+    'AgentPortal/wwwroot/css/website-analytics.css',
+    'AgentPortal/wwwroot/css/legend-forms.css',
+    'AgentPortal/wwwroot/css/founder-engineering-command-center.css'
+  ];
+  for(const file of files){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.doesNotMatch(source,/background(?:-color)?\\s*:\\s*(?:#fff(?:fff|efa|ef8)?|white)\\b/i,file);
+  }
+  const rebut=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  assert.doesNotMatch(rebut,/Workstation premium elevation pass|Stronger global contrast override/);
+  const ai=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  assert.doesNotMatch(ai,/--legend-ai-provider(?:-surface)?:/);
+});
+
+test('authenticated nav renders profile photos through one shared image partial rather than object fallbacks',()=>{
+  const partial=readFileSync(new URL('../../SHARED/Views/Shared/_PortalProfileMenu.cshtml',import.meta.url),'utf8');
+  assert.match(partial,/class="profile-avatar-image"/);
+  assert.doesNotMatch(partial,/class="profile-avatar-object"/);
+  for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/_PortalProfileMenu\.cshtml/,file);
+    assert.doesNotMatch(source,/class="profile-avatar-(?:image|object)"/,file);
+  }
+});
+
+test('mobile modal authority has exactly one vertical scroll owner and a reliable exit path',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const controller=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
+
+  assert.match(shared, /\[data-legend-mobile-sheet\]\[data-legend-mobile-sheet\][\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*overflow:\s*hidden;/);
+  assert.match(shared, /\[data-legend-mobile-sheet\] \[data-legend-sheet-scroll\][\s\S]*flex:\s*1 1 auto;[\s\S]*overflow-y:\s*auto;/);
+  assert.doesNotMatch(shared, /:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]{0,220}position:\s*sticky/);
+  assert.match(shared, /\[data-legend-modal-surface\]:not\(\.modal\) > \[data-legend-modal-panel\] \{[\s\S]*overflow:\s*hidden !important;/);
+  assert.match(controller, /function requestSurfaceClose\(surface, sourceControl = null\)/);
+  assert.match(controller, /if \(surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
+  assert.match(controller, /event\.key !== 'Escape'[\s\S]*requestSurfaceClose\(top\)/);
+});
+
+test('CRM quick views keep only contact identity in fixed mobile chrome',()=>{
+  for(const file of ['AgentPortal/Views/Clients/_ClientsQuickView.cshtml','AgentPortal/Views/Leads/_LeadQuickView.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const headStart=source.indexOf('<div class="dhead crm-qv-identity-bar">');
+    const bodyStart=source.indexOf('<div class="dbody" data-legend-sheet-scroll>', headStart);
+    assert.ok(headStart >= 0 && bodyStart > headStart,file);
+    const head=source.slice(headStart,bodyStart);
+    assert.match(head,/id="dName"/,file);
+    assert.match(head,/id="dEmail"/,file);
+    assert.match(head,/id="dPhone"/,file);
+    assert.match(head,/data-legend-sheet-close/,file);
+    assert.doesNotMatch(head,/drawer-statbar|drawer-top-actions|id="dPortalWrap"/,file);
+    const body=source.slice(bodyStart);
+    assert.match(body,/crm-qv-command-strip/,file);
+    assert.match(body,/drawer-statbar/,file);
+    assert.match(body,/drawer-top-actions/,file);
+    assert.match(body,/id="dPortalWrap"/,file);
+  }
+
+  const crmCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+  const workstationCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  assert.match(crmCss, /\.drawer\.crm-qv-shell \.dhead\.crm-qv-identity-bar[\s\S]*flex:0 0 auto/);
+  assert.match(crmCss, /\.drawer\.crm-qv-shell \.dbody[\s\S]*overflow-y:auto/);
+  assert.doesNotMatch(workstationCss, /#rbShell #drawer\.crm-qv-shell \.dhead\{\s*position:\s*sticky/);
+});
+
+test('Home Clients uses the canonical wide modal and compact twelve-client summary',()=>{
+  const view=readFileSync(new URL('../../AgentPortal/Views/Home/Index.cshtml',import.meta.url),'utf8');
+  const script=readFileSync(new URL('../../AgentPortal/wwwroot/js/home-clients-hub.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../../AgentPortal/wwwroot/css/home-command-page.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const controller=readFileSync(new URL('../../AgentPortal/Controllers/ClientsController.cs',import.meta.url),'utf8');
+
+  assert.match(view,/id="homeClientsHub"[\s\S]*data-legend-modal-surface/);
+  assert.match(view,/class="home-clients-dialog" data-legend-modal-panel/);
+  assert.match(view,/class="home-clients-shell" data-legend-modal-scroll/);
+  assert.match(shared,/:is\(\.lc-limits-modal, \.home-clients-hub\)[\s\S]*1760px/);
+  assert.doesNotMatch(css,/\.home-clients-shell\s*\{[\s\S]{0,180}width:\s*min\(1160px/);
+  assert.match(css,/\.home-clients-recent-grid[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+
+  assert.match(controller,/PortalQuickAccessClients[\s\S]*\.Take\(string\.IsNullOrWhiteSpace\(search\) \? 12 : 24\)/);
+  assert.match(script,/fallbackItems\.slice\(0, 12\)/);
+  assert.doesNotMatch(script,/legend\.homeClientsHub\.recent|localStorage/);
+  assert.doesNotMatch(script,/No email on file|No phone on file|Client actions|Open Client Profile|Edit Record/);
+  assert.match(script,/access\.textContent = item\.agentWorkspaceAccessEnabled === true \? "Shared Access" : "Self Managed"/);
+  assert.match(script,/openButton\.textContent = "Open Client"/);
+  assert.match(script,/editButton\.textContent = "Edit Client"/);
+});
+
 test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(shared,/\.modal\.show\[data-legend-modal-surface\] > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: auto;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);

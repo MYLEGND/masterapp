@@ -63,9 +63,9 @@
   --legend-app-accent-bright:var(--web-gold-strong);
   --legend-app-on-dark:var(--web-white);
   --legend-app-on-dark-muted:color-mix(in srgb,var(--web-white) 72%,var(--web-navy));
-  --legend-app-panel:var(--web-white);
-  --legend-app-panel-soft:var(--web-surface);
-  --legend-app-border:var(--web-border);
+  --legend-app-panel:var(--legend-app-surface-elevated);
+  --legend-app-panel-soft:var(--legend-app-control);
+  --legend-app-border:var(--legend-app-control-line);
   --legend-app-radius:14px;
   --legend-app-radius-compact:10px;
 
@@ -84,8 +84,8 @@
 
   /*
    * Canonical desktop geometry + modal material authority.
-   * Main app surfaces stay deep LEGEND navy/gold; modal surfaces intentionally
-   * break into cool graphite/grey so commands read as a distinct work layer.
+   * Every authenticated surface uses one LEGEND navy / gold material language.
+   * Geometry may differ by viewport; color authority never forks by feature.
    */
   --legend-desktop-control-height:38px;
   --legend-desktop-card-pad:clamp(.72rem,.9vw,1rem);
@@ -348,4 +348,32 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  .footer-left,.footer-center,.footer-right{justify-self:center;text-align:center}
  .footer-support{flex-direction:column;justify-content:center;gap:.35rem}
  .footer-meta{flex-direction:column;gap:.2rem}
+}
+
+
+/* Canonical authenticated shell context banner. */
+.impersonation-banner {
+    position: sticky;
+    top: 0;
+    z-index: var(--legend-shell-context-z, 2000);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--legend-app-accent);
+    background: linear-gradient(180deg,var(--legend-app-accent-bright),var(--legend-app-accent));
+    color: var(--legend-app-surface);
+    box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+
+.impersonation-text {
+    font-weight: 850;
+    letter-spacing: .02em;
+}
+
+.impersonation-text .muted {
+    margin-left: 6px;
+    color: color-mix(in srgb,var(--legend-app-surface) 74%,transparent);
+    font-weight: 750;
 }

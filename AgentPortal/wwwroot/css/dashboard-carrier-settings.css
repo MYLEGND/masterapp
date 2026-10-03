@@ -94,26 +94,11 @@
     outline-offset: 3px;
 }
 
-.legend-modal.carrier-settings-modal .modal-dialog {
-    max-width: min(1540px, calc(100vw - 40px));
-    margin: clamp(18px, 4vh, 34px) auto;
-}
-
 .legend-modal.carrier-settings-modal .modal-content {
     position: relative;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background:
-        radial-gradient(120% 90% at 50% 0%, rgba(212, 167, 67, 0.1) 0%, transparent 56%),
-        linear-gradient(180deg, var(--dcs-navy-1) 0%, var(--dcs-navy-2) 42%, var(--dcs-navy-4) 100%);
-    color: var(--dcs-ivory);
-    border: 1.5px solid rgba(212, 167, 67, 0.62);
-    border-radius: var(--dcs-radius-xl);
-    box-shadow:
-        0 38px 94px rgba(0, 0, 0, 0.56),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    max-height: calc(100vh - clamp(36px, 9vh, 88px));
 }
 
 .legend-modal.carrier-settings-modal .modal-content::before {
@@ -129,11 +114,8 @@
 .legend-modal.carrier-settings-modal .modal-footer {
     position: relative;
     z-index: 1;
-    border-color: rgba(212, 167, 67, 0.18);
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
-        rgba(8, 13, 23, 0.42);
-    backdrop-filter: blur(12px);
+    border-color: var(--legend-modal-line);
+    background: linear-gradient(180deg,var(--legend-modal-chrome),var(--legend-modal-chrome-deep));
 }
 
 .legend-modal.carrier-settings-modal .modal-header {

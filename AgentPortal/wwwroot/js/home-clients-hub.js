@@ -19,7 +19,6 @@
   const editUrl = hub.dataset.editUrl || "/Clients/Edit";
   const crmUrl = hub.dataset.crmUrl || "/Clients";
   const homeReturnUrl = "/Home?clientHub=1";
-  const recentKey = "legend.homeClientsHub.recent";
 
   let isOpen = false;
   let defaultItems = [];
@@ -30,47 +29,7 @@
     return (value || "").toString().trim();
   }
 
-  function phoneDisplay(value) {
-    return norm(value) || "No phone on file";
-  }
-
-  function loadRecent() {
-    try {
-      const raw = window.localStorage.getItem(recentKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function saveRecent(items) {
-    try {
-      window.localStorage.setItem(recentKey, JSON.stringify(items.slice(0, 6)));
-    } catch {
-      // ignore storage failures
-    }
-  }
-
-  function rememberClient(item) {
-    if (!item || !item.clientUserId) return;
-    const entry = {
-      clientUserId: item.clientUserId,
-      displayName: item.displayName,
-      email: item.email,
-      phone: item.phone,
-      recordType: item.recordType,
-      agentWorkspaceAccessEnabled: item.agentWorkspaceAccessEnabled === true,
-      profileUrl: item.profileUrl,
-      openedAt: new Date().toISOString()
-    };
-
-    const next = [entry].concat(loadRecent().filter(x => x.clientUserId !== entry.clientUserId));
-    saveRecent(next);
-    renderRecent(defaultItems);
-  }
-
-  function buildCreateHref() {
+    function buildCreateHref() {
     const url = new URL(createUrl, window.location.origin);
     url.searchParams.set("returnUrl", homeReturnUrl);
     return `${url.pathname}${url.search}`;
@@ -86,14 +45,12 @@
 
   function openProfile(item) {
     if (!item || !item.clientUserId || item.agentWorkspaceAccessEnabled !== true) return;
-    rememberClient(item);
     const href = norm(item.profileUrl) || `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(item.clientUserId)}`;
     window.open(href, "_blank", "noopener,noreferrer");
   }
 
   function openEdit(item) {
     if (!item || !item.clientUserId) return;
-    rememberClient(item);
     window.location.href = buildEditHref(item.clientUserId);
   }
 
@@ -126,47 +83,36 @@
     badge.textContent = norm(item.recordType) || "Client";
     titleRow.appendChild(badge);
 
-    const email = document.createElement("div");
-    email.className = "home-clients-card-meta";
-    email.textContent = norm(item.email) || "No email on file";
-
-    const phone = document.createElement("div");
-    phone.className = "home-clients-card-meta";
-    phone.textContent = phoneDisplay(item.phone);
-
-    const cta = document.createElement("div");
-    cta.className = "home-clients-card-cta";
-    cta.textContent = context === "result" ? "Open or edit from home" : "Client actions";
-
-    const actions = document.createElement("div");
+        const actions = document.createElement("div");
     actions.className = "home-clients-card-actions";
 
-    if (item.agentWorkspaceAccessEnabled === true) {
-      const openButton = document.createElement("button");
-      openButton.type = "button";
-      openButton.className = "home-clients-card-action is-primary";
-      openButton.textContent = "Open Client Profile";
-      openButton.addEventListener("click", () => openProfile(item));
-      actions.appendChild(openButton);
-    } else {
-      const selfManaged = document.createElement("span");
-      selfManaged.className = "home-clients-card-meta";
-      selfManaged.textContent = "Self-managed account";
-      actions.appendChild(selfManaged);
-    }
+    const access = document.createElement("span");
+    access.className = "home-clients-card-access";
+    access.textContent = item.agentWorkspaceAccessEnabled === true ? "Shared Access" : "Self Managed";
 
     const editButton = document.createElement("button");
     editButton.type = "button";
     editButton.className = "home-clients-card-action";
-    editButton.textContent = "Edit Record";
+    editButton.textContent = "Edit Client";
     editButton.addEventListener("click", () => openEdit(item));
 
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "home-clients-card-action is-primary";
+    openButton.textContent = "Open Client";
+    if (item.agentWorkspaceAccessEnabled === true) {
+      openButton.addEventListener("click", () => openProfile(item));
+    } else {
+      openButton.disabled = true;
+      openButton.setAttribute("aria-disabled", "true");
+      openButton.title = "This client manages their own account.";
+    }
+
     actions.appendChild(editButton);
+    actions.appendChild(openButton);
 
     card.appendChild(titleRow);
-    card.appendChild(email);
-    card.appendChild(phone);
-    card.appendChild(cta);
+    card.appendChild(access);
     card.appendChild(actions);
     return card;
   }
@@ -199,17 +145,14 @@
     if (!recentGrid) return;
     recentGrid.innerHTML = "";
 
-    const recentItems = loadRecent();
-    const items = recentItems.length ? recentItems : fallbackItems.slice(0, 6);
+    const items = fallbackItems.slice(0, 12);
 
     if (recentHeading) {
-      recentHeading.textContent = recentItems.length ? "Recently Viewed Clients" : "Quick Access Clients";
+      recentHeading.textContent = "Recent Clients";
     }
 
     if (recentSub) {
-      recentSub.textContent = recentItems.length
-        ? "The last client profiles you opened are pinned here for fast repeat access."
-        : "";
+      recentSub.textContent = "Your 12 most recently updated client records.";
     }
 
     if (!items.length) {
@@ -254,7 +197,7 @@
       }
       renderRecent(defaultItems);
       if (hasQuery) {
-        setResultsStatus(items.length ? "Select a client to open the live client profile." : "No portal-enabled clients found.", !items.length);
+        setResultsStatus(items.length ? "Select a client to edit or open." : "No portal-enabled clients found.", !items.length);
       } else {
         setResultsStatus("");
       }

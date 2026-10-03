@@ -17,8 +17,8 @@ test('body-ported dialogs retain one shared token declaration and readable contr
 });
 test('limits alone use expanded horizontal width through the shared modal authority',()=>{
   assert.match(index,/class="modal fade lc-section-modal lc-limits-modal" id="translationLimitsModal"/);
-  assert.match(shared,/\.lc-limits-modal\s*\{[^}]*--legend-desktop-modal-width:min\(1760px,/);
-  assert.match(shared,/width:\s*var\(--legend-desktop-modal-width,/);
+  assert.match(shared,/:is\(\.lc-limits-modal, \.home-clients-hub\)\s*\{[^}]*--legend-desktop-modal-width:\s*min\(1760px,/);
+  assert.match(shared,/width:\s*var\(--legend-desktop-modal-width\);/);
   assert.doesNotMatch(css,/\.lc-limits-modal\s*\{[^}]*width:/);
   assert.doesNotMatch(css,/\.lc-section-modal \.modal-dialog\s*\{[^}]*max-width:/);
   assert.equal(index.split('lc-limits-modal').length-1,1);

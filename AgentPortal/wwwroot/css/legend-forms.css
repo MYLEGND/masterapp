@@ -65,7 +65,7 @@
 .legend-card {
     border: 1.5px solid #d7dae3;
     border-radius: var(--legend-app-radius);
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     color: #0f172a;
     box-shadow: 0 12px 26px rgba(15, 23, 42, .10);
     overflow: hidden; /* prevent hard white edges bleeding out */
@@ -79,7 +79,7 @@
 }
 
 .legend-card .card-body {
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
 }
 
 .legend-form input.form-control,
@@ -108,7 +108,7 @@
 }
 
 .legend-form .text-muted {
-    color: #64748b !important;
+    color: var(--legend-app-on-dark-muted) !important;
 }
 
 .legend-form .table {
