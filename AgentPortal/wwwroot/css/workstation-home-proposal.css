@@ -55,9 +55,9 @@
 #rbShell .hp-proposal-empty,
 #proposalMenu .hp-proposal-empty{font-weight:800;color:#b9c5d8;padding:8px 4px;}
 
-#proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
-#proposalOverlay.hp-overlay[hidden]{display:none !important;}
-#proposalDialog.hp-dialog{border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:var(--legend-app-on-dark);box-shadow:0 40px 100px rgba(0,0,0,.52);}
+#proposalOverlay.hp-overlay[hidden]{display:none;}
+#proposalOverlay.hp-overlay[hidden]{display:none;}
+#proposalDialog.hp-dialog{display:flex;flex-direction:column;}
 
 #proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
 #proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
@@ -898,4 +898,13 @@
 
 /* Mobile */
 @media (max-width: 900px) {
+}
+
+
+.proposal-latest-decision{
+    margin-bottom:12px;
+    padding:10px;
+    border:1px solid var(--legend-app-control-line);
+    border-radius:10px;
+    background:var(--legend-app-control);
 }
