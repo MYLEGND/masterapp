@@ -1,3 +1,4 @@
+using Domain.Entities;
 using System.Security.Claims;
 using Shared.Auth;
 using Shared.PortalShell;
