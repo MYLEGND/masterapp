@@ -3497,9 +3497,18 @@ def read_step5_results(path):
         raise ValueError("Incomplete test evidence: execution errors remain")
     if any(node.get("outcome") not in {"Passed", "Failed", "NotExecuted"} or not node.get("testName") for node in rows):
         raise ValueError("Incomplete test evidence: unknown test outcome or identity")
-    result = {node.get("testName"): node.get("outcome") for node in rows}
-    if len(result) != len(rows):
-        raise ValueError("Ambiguous duplicate test identity")
+    result = {}
+    for node in rows:
+        name = node.get("testName")
+        outcome = node.get("outcome")
+        previous = result.get(name)
+        if previous is None:
+            result[name] = outcome
+        elif previous != outcome:
+            # TRX may contain repeated rows for one logical test identity
+            # (for example framework retry/reporting duplication). Reusing the
+            # evidence is safe only when every terminal observation agrees.
+            raise ValueError("Ambiguous duplicate test identity")
     return result
 
 
