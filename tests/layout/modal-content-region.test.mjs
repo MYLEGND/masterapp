@@ -439,6 +439,45 @@ test('authenticated nav renders profile photos as image elements rather than obj
   }
 });
 
+test('mobile modal authority has exactly one vertical scroll owner and a reliable exit path',()=>{
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const controller=readFileSync(new URL('../../SHARED/wwwroot/js/legend-modal.js',import.meta.url),'utf8');
+
+  assert.match(shared, /\[data-legend-mobile-sheet\]\[data-legend-mobile-sheet\][\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*overflow:\s*hidden;/);
+  assert.match(shared, /\[data-legend-mobile-sheet\] \[data-legend-sheet-scroll\][\s\S]*flex:\s*1 1 auto;[\s\S]*overflow-y:\s*auto;/);
+  assert.doesNotMatch(shared, /:is\(\[data-legend-modal-panel\], \[data-legend-mobile-sheet\]\)[\s\S]{0,220}position:\s*sticky/);
+  assert.match(shared, /\[data-legend-modal-surface\]:not\(\.modal\) > \[data-legend-modal-panel\] \{[\s\S]*overflow:\s*hidden !important;/);
+  assert.match(controller, /function requestSurfaceClose\(surface, sourceControl = null\)/);
+  assert.match(controller, /if \(surfaceOpen\(surface\)\) closeSurfaceFallback\(surface\)/);
+  assert.match(controller, /event\.key !== 'Escape'[\s\S]*requestSurfaceClose\(top\)/);
+});
+
+test('CRM quick views keep only contact identity in fixed mobile chrome',()=>{
+  for(const file of ['AgentPortal/Views/Clients/_ClientsQuickView.cshtml','AgentPortal/Views/Leads/_LeadQuickView.cshtml']){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    const headStart=source.indexOf('<div class="dhead crm-qv-identity-bar">');
+    const bodyStart=source.indexOf('<div class="dbody" data-legend-sheet-scroll>', headStart);
+    assert.ok(headStart >= 0 && bodyStart > headStart,file);
+    const head=source.slice(headStart,bodyStart);
+    assert.match(head,/id="dName"/,file);
+    assert.match(head,/id="dEmail"/,file);
+    assert.match(head,/id="dPhone"/,file);
+    assert.match(head,/data-legend-sheet-close/,file);
+    assert.doesNotMatch(head,/drawer-statbar|drawer-top-actions|id="dPortalWrap"/,file);
+    const body=source.slice(bodyStart);
+    assert.match(body,/crm-qv-command-strip/,file);
+    assert.match(body,/drawer-statbar/,file);
+    assert.match(body,/drawer-top-actions/,file);
+    assert.match(body,/id="dPortalWrap"/,file);
+  }
+
+  const crmCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+  const workstationCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/scripts-rebuttals.css',import.meta.url),'utf8');
+  assert.match(crmCss, /\.drawer\.crm-qv-shell \.dhead\.crm-qv-identity-bar[\s\S]*flex:0 0 auto/);
+  assert.match(crmCss, /\.drawer\.crm-qv-shell \.dbody[\s\S]*overflow-y:auto/);
+  assert.doesNotMatch(workstationCss, /#rbShell #drawer\.crm-qv-shell \.dhead\{\s*position:\s*sticky/);
+});
+
 test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(shared,/\.modal\.show\[data-legend-modal-surface\] > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: auto;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
