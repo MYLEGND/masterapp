@@ -8871,16 +8871,6 @@ header .legend-global-nav .container-fluid {
         line-height: 1;
     }
 
-    body.legend-app .legend-global-nav .profile-avatar-object {
-        display: block;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        border: 0;
-        border-radius: inherit;
-        background: transparent;
-    }
-
     body.legend-app .legend-global-nav .profile-avatar-image {
         display: block;
         width: 100%;
