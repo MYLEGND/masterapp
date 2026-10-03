@@ -2029,12 +2029,9 @@ body {
     font-weight: 900;
 }
 
-.finance-support-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 3000;
-    display: grid;
-    place-items: center;
+.finance-support-overlay[hidden],
+.finance-support-overlay.d-none {
+    display: none;
 }
 
 .finance-support-backdrop {
@@ -2043,32 +2040,12 @@ body {
 }
 
 .finance-support-modal {
-    position: relative;
-    overflow: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    border: 2px solid var(--line-dark);
-    border-radius: 18px;
-    background: var(--navy-panel);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, .22);
-    padding: 1rem;
-}
-
-@media (min-width:901px) {
-    .finance-support-overlay {
-        padding: 2rem 1rem;
-        overflow-y: auto;
-    }
-
-    .finance-support-overlay--dense {
-        padding: 1rem;
-    }
-
-    .finance-support-modal {
-        width: min(1750px, 96vw);
-        max-height: min(90dvh, 90vh);
-    }
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .finance-support-modal-head {
@@ -2161,8 +2138,6 @@ body {
 .finance-support-modal--dense {
     display: flex;
     flex-direction: column;
-    width: min(97vw, 1540px);
-    max-width: 1540px;
     max-height: calc(100dvh - 2rem);
     overflow: auto;
     overscroll-behavior: contain;
@@ -2171,10 +2146,6 @@ body {
     padding: 12px;
 }
 
-.finance-support-modal--dense.legend-finance-tool-card--xl {
-    width: min(97vw, 1540px);
-    max-width: 1540px;
-}
 
 .finance-support-modal--dense .finance-support-grid--tool {
     grid-template-columns: minmax(320px, .94fr) minmax(0, 1.26fr);
@@ -9061,14 +9032,8 @@ body {
     height: 16px;
 }
 
-.savings-illustration-backdrop {
-    position: fixed;
-    inset: 0;
+.savings-illustration-backdrop[hidden] {
     display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    z-index: 2147483000;
 }
 
 .savings-illustration-backdrop.is-open {
@@ -9077,16 +9042,11 @@ body {
 
 .savings-illustration-modal {
     display: grid;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(1460px, 96vw);
-    height: min(92vh, 940px);
-    max-height: min(92vh, 940px);
     overflow: hidden;
-    padding: 14px 14px 12px;
-    border: 1px solid rgba(214, 176, 90, .34);
-    border-radius: 28px;
-    background: radial-gradient(1400px 520px at 0% 0%, rgba(166, 128, 35, .14), transparent 52%), linear-gradient(180deg, rgba(5, 13, 28, .995), rgba(10, 22, 44, .99));
-    box-shadow: 0 46px 120px rgba(0, 0, 0, .58);
 }
 
 .savings-illustration-modal-head {
@@ -10444,15 +10404,8 @@ body {
     }
 
     .finance-support-modal--dense {
-        width: min(98vw, 1580px);
-        max-width: 1580px;
         max-height: calc(100dvh - 1rem);
         padding: 8px;
-    }
-
-    .finance-support-modal--dense.legend-finance-tool-card--xl {
-        width: min(98vw, 1580px);
-        max-width: 1580px;
     }
 
     .finance-support-modal--dense .wf-header-row {
