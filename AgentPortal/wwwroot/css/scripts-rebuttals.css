@@ -251,8 +251,8 @@ body{
 }
 
 .note-self-col textarea.note-self-has-body{
-    color: #0f172a !important;
-    -webkit-text-fill-color: #0f172a !important;
+    color: var(--legend-app-on-dark) !important;
+    -webkit-text-fill-color: var(--legend-app-on-dark) !important;
 }
 
 .note-self-col textarea.note-self-prefix-only{
@@ -6688,18 +6688,18 @@ details.section{
 #rbShell .btn:not(.gold),
 #rbShell .lb-btn.ghost,
 #rbShell .prosper-body .btn.dark{
-    background: #ffffff !important;
+    background: var(--legend-app-surface-elevated) !important;
     border-color: #c5992d !important;
-    color: #0f172a !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow:
         0 12px 24px rgba(0,0,0,.14),
         0 0 0 1px rgba(198,153,45,.32) inset !important;
 }
 
 #rbShell .lb-btn.ghost {
-    background: #ffffff !important;
+    background: var(--legend-app-surface-elevated) !important;
     border: 2px solid #c5992d !important;
-    color: #0f172a !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow:
         0 14px 28px rgba(0,0,0,.18),
         0 0 0 1px rgba(198,153,45,.28) inset !important;
@@ -8591,7 +8591,7 @@ details.section{
 .scripts-shell .body .btn-mini.gold{
     background: linear-gradient(180deg, var(--ws-brand-gold-100) 0%, var(--ws-brand-gold-300) 56%, var(--ws-brand-gold-500) 100%) !important;
     border-color: rgba(137, 93, 24, .58) !important;
-    color: #0f172a !important;
+    color: var(--legend-app-on-dark) !important;
     text-shadow: 0 1px 0 rgba(255,255,255,.28);
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.74),
@@ -9322,7 +9322,7 @@ details.section{
     border-radius: 13px !important;
     border: 1px solid rgba(148,163,184,.22) !important;
     background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(233,239,247,.96)) !important;
-    color: #0f172a !important;
+    color: var(--legend-app-on-dark) !important;
     box-shadow: 0 8px 18px rgba(2,6,23,.11), inset 0 1px 0 rgba(255,255,255,.7) !important;
     font-weight: 700 !important;
     font-size: .92rem !important;
