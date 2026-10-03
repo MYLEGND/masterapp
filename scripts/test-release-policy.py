@@ -555,6 +555,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Preserve targets already live at exact candidate', workflow)
+        self.assertIn("actual not in {row['revision'], candidate}", workflow)
+        self.assertIn('exact candidate already live; preserve and continue reconciliation', workflow)
+        self.assertIn('Live revision drifted outside preserved baseline/candidate', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('Publish selected head as one transaction', workflow)
         self.assertIn('Deploy and activate LEGEND Founder Cloudflare baseline', workflow)
