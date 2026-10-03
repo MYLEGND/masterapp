@@ -149,6 +149,9 @@
   let modalSurfaceSequence = 0;
   const pageScrollLockOwners = new Set();
   const surfaceLayerState = new WeakMap();
+  const surfaceOpenState = new WeakMap();
+  const MODAL_LAYER_BASE = 5200;
+  const MODAL_LAYER_STEP = 20;
   let pageScrollState = null;
   let header;
   let footer;
@@ -198,19 +201,40 @@
     return style.position === "fixed";
   }
 
-  function ensureSurfaceLayer(surface){
+  function captureSurfaceLayer(surface){
     if (!surface || surfaceLayerState.has(surface)) return;
-    const inline = surface.style.zIndex;
+    surfaceLayerState.set(surface, surface.style.zIndex);
+  }
+
+  function promoteSurfaceLayer(surface){
+    if (!surface) return;
+    captureSurfaceLayer(surface);
+
+    let highest = MODAL_LAYER_BASE - MODAL_LAYER_STEP;
+    surfaceList.forEach(other => {
+      if (other === surface || !other.isConnected || !surfaceOpen(other)) return;
+      const value = Number.parseInt(window.getComputedStyle(other).zIndex || "", 10);
+      if (Number.isFinite(value)) highest = Math.max(highest, value);
+    });
+
+    const current = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
+    if (Number.isFinite(current)) highest = Math.max(highest, current - MODAL_LAYER_STEP);
+    surface.style.zIndex = String(Math.max(MODAL_LAYER_BASE, highest + MODAL_LAYER_STEP));
+  }
+
+  function ensureSurfaceLayer(surface){
+    if (!surface) return;
+    captureSurfaceLayer(surface);
     const computed = Number.parseInt(window.getComputedStyle(surface).zIndex || "", 10);
-    if (Number.isFinite(computed) && computed >= 5200) return;
-    surfaceLayerState.set(surface, inline);
-    surface.style.zIndex = "5200";
+    if (!Number.isFinite(computed) || computed < MODAL_LAYER_BASE)
+      surface.style.zIndex = String(MODAL_LAYER_BASE);
   }
 
   function restoreSurfaceLayer(surface){
     if (!surface || !surfaceLayerState.has(surface)) return;
     const previous = surfaceLayerState.get(surface);
     surfaceLayerState.delete(surface);
+    surfaceOpenState.delete(surface);
     if (previous) surface.style.zIndex = previous;
     else surface.style.removeProperty("z-index");
   }
@@ -313,7 +337,14 @@
     if (!surface || !surfaces.has(surface)) return;
     const owner = modalOwner(surface);
     const open = surfaceOpen(surface);
+    const wasOpen = surfaceOpenState.get(surface) === true;
     surface.dataset.legendModalOpen = open ? "true" : "false";
+
+    if (open && !wasOpen) promoteSurfaceLayer(surface);
+    else if (!open && wasOpen) restoreSurfaceLayer(surface);
+    else if (open) ensureSurfaceLayer(surface);
+
+    surfaceOpenState.set(surface, open);
     if (isMobileModalViewport() && open) lockPageScroll(owner);
     else unlockPageScroll(owner);
     syncCanonicalBackdrop();
@@ -577,7 +608,12 @@
       syncViewportOffsets();
       syncModalSurfaceState(event.target);
     });
-    document.addEventListener('shown.bs.modal', event => syncModalSurfaceState(event.target));
+    document.addEventListener('shown.bs.modal', event => {
+      registerDialogs(event.target);
+      promoteSurfaceLayer(event.target);
+      surfaceOpenState.set(event.target, true);
+      syncModalSurfaceState(event.target);
+    });
     document.addEventListener('hidden.bs.modal', event => syncModalSurfaceState(event.target));
   }
 
