@@ -10,6 +10,24 @@ public sealed record FounderEngineeringContractHistoryItem(
     DateTime UpdatedUtc,
     string UpdatedBy);
 
+public sealed record FounderEngineeringActionItemViewModel(
+    Guid WorkItemId,
+    string AttentionKind,
+    string Title,
+    string Summary,
+    string ActionStep,
+    bool RequiresFounderAction,
+    string? PrimaryAction,
+    string? PrimaryActionLabel,
+    string? SecondaryAction,
+    string? SecondaryActionLabel,
+    string TechnicalSummary,
+    DateTime UpdatedUtc);
+
+public sealed record FounderEngineeringDecisionResult(
+    bool Succeeded,
+    string? ErrorCode);
+
 public sealed class FounderEngineeringCommandCenterViewModel
 {
     public string Revision { get; init; } = string.Empty;
@@ -59,6 +77,8 @@ public sealed class FounderEngineeringCommandCenterViewModel
     public int LeasedWorkItems { get; init; }
     public int PendingBrowserProofItems { get; init; }
     public int SecurityReviewItems { get; init; }
+    public IReadOnlyList<FounderEngineeringActionItemViewModel> ActionItems { get; init; } =
+        Array.Empty<FounderEngineeringActionItemViewModel>();
     public IReadOnlyList<FounderEngineeringContractHistoryItem> History { get; init; } =
         Array.Empty<FounderEngineeringContractHistoryItem>();
 }

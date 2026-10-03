@@ -22,15 +22,19 @@ internal sealed class LegendEngineeringFounderNotificationService(
     {
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _)) return;
         var founder = AgentPortal.Security.FounderGuard.FounderOid.Trim().ToLowerInvariant();
-        var actionable = workItems.Where(item => item.PriorityClass == "P1" || item.RiskClass == EngineeringRiskClass.TierC ||
-            item.State is "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "FOUNDER_ESCALATION" or "CI_FAILED_NEEDS_EVIDENCE" or
-                "RELEASE_BLOCKED" or "LIVE_FUNCTIONAL_PROOF_REQUIRED").ToArray();
+        var actionable = workItems.Where(LegendEngineeringFounderPresentation.ShouldSurface).ToArray();
 
         foreach (var item in actionable)
         {
             var code = NotificationCode(item);
-            await StageOnceAsync(founder, item.WorkItemId, code,
-                Title(item), Detail(item), cancellationToken);
+            var presentation = LegendEngineeringFounderPresentation.Present(item);
+            await StageOnceAsync(
+                founder,
+                item.WorkItemId,
+                code,
+                "LEGEND Engineering · " + presentation.Title,
+                LegendEngineeringFounderPresentation.PushDetail(presentation),
+                cancellationToken);
         }
 
         if (!string.IsNullOrWhiteSpace(executorBlocker) && workItems.Any(IsPendingModelWork))
@@ -58,10 +62,12 @@ internal sealed class LegendEngineeringFounderNotificationService(
         if (!Guid.TryParse(AgentPortal.Security.FounderGuard.FounderOid, out _)) return;
         var founder = AgentPortal.Security.FounderGuard.FounderOid.Trim().ToLowerInvariant();
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        var detail = $"Open {workItems.Count}; P1 {workItems.Count(item => item.PriorityClass == "P1")}; " +
-                     $"waiting on Founder {workItems.Count(item => item.State is "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "FOUNDER_ESCALATION")}; " +
-                     $"validated {workItems.Count(item => item.State == "VALIDATED")}; release requested {workItems.Count(item => item.State == "RELEASE_REQUESTED")}.";
-        await StageOnceAsync(founder, Guid.Empty, "daily:" + today, "LEGEND Engineering Daily Summary", detail, cancellationToken);
+        var founderActions = workItems.Count(item => item.State is "FOUNDER_RELEASE_APPROVAL_REQUIRED" or "FOUNDER_ESCALATION");
+        var highPriority = workItems.Count(item => item.PriorityClass == "P1");
+        var detail = founderActions > 0
+            ? $"LEGEND has {workItems.Count} open engineering item(s). {founderActions} need your review and {highPriority} are high priority. Action: Open Founder Engineering to review the items that need a decision."
+            : $"LEGEND has {workItems.Count} open engineering item(s), including {highPriority} high-priority item(s). Action: No Founder decision is waiting right now.";
+        await StageOnceAsync(founder, Guid.Empty, "daily:" + today, "LEGEND Engineering · Daily summary", detail, cancellationToken);
     }
 
     private async Task StageOnceAsync(string founder, Guid workItemId, string code, string title, string detail, CancellationToken cancellationToken)
@@ -98,27 +104,13 @@ internal sealed class LegendEngineeringFounderNotificationService(
     private static string NotificationCode(EngineeringWorkItemSnapshot item) => item.State switch
     {
         "FOUNDER_RELEASE_APPROVAL_REQUIRED" => "release-approval:" + item.CandidateSha,
-        "FOUNDER_ESCALATION" => "escalation:" + item.EvidenceRevision,
+        "FOUNDER_ESCALATION" => "escalation",
         "CI_FAILED_NEEDS_EVIDENCE" => "ci-failed:" + item.CandidateSha,
         "RELEASE_BLOCKED" => "release-blocked:" + item.CandidateSha,
         "LIVE_FUNCTIONAL_PROOF_REQUIRED" => "live-proof:" + item.MergedSha + ":" + item.ReproducerRoute,
-        _ when item.RiskClass == EngineeringRiskClass.TierC => "tier-c:" + item.EvidenceRevision,
-        _ => "p1:" + item.EvidenceRevision
+        _ when item.RiskClass == EngineeringRiskClass.TierC => "tier-c:" + item.State,
+        _ => "p1:" + item.State
     };
-
-    private static string Title(EngineeringWorkItemSnapshot item) => item.State switch
-    {
-        "FOUNDER_RELEASE_APPROVAL_REQUIRED" => "LEGEND Engineering release approval required",
-        "CI_FAILED_NEEDS_EVIDENCE" => "LEGEND Engineering CI needs review",
-        "RELEASE_BLOCKED" => "LEGEND Engineering release blocked",
-        "LIVE_FUNCTIONAL_PROOF_REQUIRED" => "LEGEND Engineering browser proof required",
-        "FOUNDER_ESCALATION" => "LEGEND Engineering needs Founder review",
-        _ when item.RiskClass == EngineeringRiskClass.TierC => "LEGEND Engineering security review required",
-        _ => "LEGEND Engineering P1 incident"
-    };
-
-    private static string Detail(EngineeringWorkItemSnapshot item)
-        => $"Work item {item.WorkItemId:D}; priority {item.PriorityClass}; failure {item.FailureClass}; risk {item.RiskClass}; state {item.State}. No private customer data or secret values are included.";
 
     private static string Safe(string? value, int maximum)
     {

@@ -502,6 +502,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var isRemovingFounderAccount = false
     @Published private(set) var isSubmittingControlledResourceRequest = false
     @Published private(set) var activityNotifications: [MobileActivityNotification] = []
+    @Published private(set) var founderEngineeringActions: [FounderEngineeringActionItem] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var isLoadingMoreConversations = false
     @Published private(set) var hasMoreConversations = true
@@ -912,10 +913,44 @@ final class MessagingStore: ObservableObject {
         do {
             activityNotifications = try await api.activityNotifications(
                 accessToken: try await accessTokenProvider())
-                .filter { $0.controlledResourceRequestID != nil }
         } catch {
             // Activity is supplementary: a temporary fetch failure must never
             // obscure conversations or overwrite a more relevant user action error.
+        }
+
+        guard isFounder else {
+            founderEngineeringActions = []
+            return
+        }
+
+        do {
+            founderEngineeringActions = try await api.founderEngineeringActions(
+                accessToken: try await accessTokenProvider())
+        } catch {
+            // Preserve the last server-authorized Founder action projection on a
+            // temporary fetch failure. A failed refresh must not erase a decision.
+        }
+    }
+
+    @discardableResult
+    func decideFounderEngineering(
+        workItemID: UUID,
+        decision: String
+    ) async -> Bool {
+        guard isFounder else { return false }
+        sendFailure = nil
+        do {
+            try await api.decideFounderEngineering(
+                workItemID: workItemID,
+                decision: decision,
+                accessToken: try await accessTokenProvider())
+            await refreshActivityNotifications()
+            return true
+        } catch {
+            sendFailure = failure(
+                for: error,
+                title: LegendLocalized("Engineering decision not completed"))
+            return false
         }
     }
 

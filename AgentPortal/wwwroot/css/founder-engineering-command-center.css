@@ -763,3 +763,210 @@
         width: 100%;
     }
 }
+
+
+/* Founder Action Center — one canonical engineering-notification surface. */
+.eng-action-center {
+    margin-top: 16px;
+    padding: 20px;
+    border: 1px solid var(--eng-line);
+    border-radius: var(--legend-app-radius);
+    background:
+        radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--eng-gold) 14%, transparent), transparent 32%),
+        linear-gradient(180deg, var(--eng-surface), var(--eng-navy));
+    box-shadow: 0 18px 48px rgba(0,0,0,.18);
+}
+
+.eng-action-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 14px;
+}
+
+.eng-action-head h2 {
+    margin: 5px 0 6px;
+    font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+    letter-spacing: -.02em;
+}
+
+.eng-action-head p {
+    margin: 0;
+    max-width: 850px;
+    color: var(--eng-muted);
+    line-height: 1.5;
+}
+
+.eng-action-count {
+    flex: 0 0 auto;
+    padding: 7px 10px;
+    border: 1px solid color-mix(in srgb, var(--eng-gold) 32%, transparent);
+    border-radius: 999px;
+    color: var(--eng-gold-soft);
+    background: color-mix(in srgb, var(--eng-gold) 8%, transparent);
+    font-size: .75rem;
+    font-weight: 850;
+}
+
+.eng-action-list {
+    display: grid;
+    gap: 10px;
+}
+
+.eng-action-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    padding: 17px 18px;
+    border: 1px solid var(--eng-line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--legend-app-surface-elevated) 94%, transparent);
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--eng-gold) 70%, transparent);
+}
+
+.eng-action-card.is-action-required {
+    border-color: color-mix(in srgb, var(--eng-gold) 42%, var(--eng-line));
+    background:
+        linear-gradient(100deg, color-mix(in srgb, var(--eng-gold) 8%, transparent), transparent 42%),
+        var(--eng-surface);
+}
+
+.eng-action-card.is-security-review {
+    box-shadow: inset 3px 0 0 var(--eng-warn);
+}
+
+.eng-action-card.is-legend-handling {
+    box-shadow: inset 3px 0 0 var(--eng-good);
+}
+
+.eng-action-copy h3 {
+    margin: 4px 0 5px;
+    font-size: 1.08rem;
+    letter-spacing: -.01em;
+}
+
+.eng-action-copy > p {
+    margin: 0;
+    color: var(--eng-muted);
+    line-height: 1.48;
+}
+
+.eng-action-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--eng-gold);
+    font-size: .67rem;
+    font-weight: 900;
+    letter-spacing: .11em;
+}
+
+.eng-action-meta time {
+    color: var(--eng-muted);
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.eng-next-step {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    margin-top: 11px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--eng-gold) 18%, var(--eng-line));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--eng-gold) 5%, transparent);
+    color: var(--eng-muted);
+    line-height: 1.42;
+}
+
+.eng-next-step strong {
+    color: var(--eng-gold-soft);
+}
+
+.eng-technical {
+    margin-top: 9px;
+    color: var(--eng-muted);
+    font-size: .78rem;
+}
+
+.eng-technical summary {
+    cursor: pointer;
+    color: var(--eng-muted);
+    font-weight: 750;
+}
+
+.eng-technical code {
+    display: block;
+    margin-top: 7px;
+    padding: 9px 10px;
+    overflow-wrap: anywhere;
+    border-radius: 10px;
+    background: rgba(0,0,0,.16);
+    color: color-mix(in srgb, var(--eng-text) 78%, var(--eng-muted));
+}
+
+.eng-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.eng-action-buttons form {
+    margin: 0;
+}
+
+.eng-action-empty {
+    display: grid;
+    gap: 3px;
+    padding: 16px 17px;
+    border: 1px dashed color-mix(in srgb, var(--eng-good) 35%, var(--eng-line));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--eng-good) 5%, transparent);
+}
+
+.eng-action-empty strong {
+    color: var(--eng-text);
+}
+
+.eng-action-empty span {
+    color: var(--eng-muted);
+}
+
+@media (max-width: 760px) {
+    .eng-action-center {
+        padding: 14px;
+    }
+
+    .eng-action-head,
+    .eng-action-card {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .eng-action-head {
+        align-items: start;
+    }
+
+    .eng-action-count {
+        justify-self: start;
+    }
+
+    .eng-action-buttons {
+        justify-content: stretch;
+    }
+
+    .eng-action-buttons form,
+    .eng-action-buttons .eng-button {
+        width: 100%;
+    }
+
+    .eng-next-step {
+        grid-template-columns: 1fr;
+        gap: 3px;
+    }
+}

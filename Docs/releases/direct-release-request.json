@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-02 to complete the already-validated Founder Engineering runtime resilience release after canonical release-lifecycle recovery hardening. Reuse all preserved successful validation evidence, bind publication to the corrected PR #364 product revision, and deploy only masterapp-portal through legend/approved-changes.",
-  "purpose": "Complete only masterapp-portal for the corrected Founder Engineering runtime resilience candidate from PR #364. Reuse its existing successful Architecture, Step 5, and Security evidence; apply the existing additive migration through the canonical migration authority; publish through the sole transactional approved release workflow; and require final live provenance. Do not deploy ClientApp, Protect, Parfait, the static Website, native iOS/Android, or Cloudflare routing.",
-  "requestId": "founder-engineering-runtime-hardening-final-resume-20261002",
+  "authorization": "Explicit Founder authorization on 2026-10-02 to complete PR #405 end-to-end: integrate the canonical Founder engineering notification/action experience and deploy the affected masterapp-portal runtime after the exact-head required gates pass. Preserve successful compatible validation evidence, do not bypass any gate, and require final live provenance.",
+  "purpose": "Release the Founder engineering notification/action backend and web Action Center to masterapp-portal from the exact validated PR #405 revision. The same approved source revision also contains the iOS and Android native notification-center experience; native binaries must be built and distributed through their platform-native release authority because the web direct-release workflow cannot update installed mobile applications. Do not deploy ClientApp, Protect, Parfait, the static Website, or Cloudflare routing.",
+  "requestId": "founder-engineering-notification-actions-20261002",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
