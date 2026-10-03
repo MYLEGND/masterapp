@@ -35,7 +35,8 @@ internal sealed class FounderEngineeringCommandCenterService(
     ILegendEngineeringContractAuthority contractAuthority,
     ILegendEngineeringOrchestrator orchestrator,
     ILegendChatGptPlanCredentialAuthority credentials,
-    ILegendEngineeringAgentAdapter adapter)
+    ILegendEngineeringAgentAdapter adapter,
+    LegendEngineeringStateStore store)
     : IFounderEngineeringCommandCenterService
 {
     public async Task<FounderEngineeringCommandCenterViewModel> GetAsync(
@@ -51,6 +52,13 @@ internal sealed class FounderEngineeringCommandCenterService(
             await adapter.GetStatusAsync(cancellationToken),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var catalog = await adapter.GetModelCatalogAsync(cancellationToken);
+        var actionItems = (await store.GetOpenWorkItemsAsync(100, cancellationToken))
+            .Where(LegendEngineeringFounderPresentation.ShouldSurface)
+            .Select(LegendEngineeringFounderPresentation.Present)
+            .OrderByDescending(item => item.RequiresFounderAction)
+            .ThenByDescending(item => item.UpdatedUtc)
+            .Take(25)
+            .ToArray();
 
         return new FounderEngineeringCommandCenterViewModel
         {
@@ -112,6 +120,19 @@ internal sealed class FounderEngineeringCommandCenterService(
                 status,
                 "LIVE_FUNCTIONAL_PROOF_REQUIRED"),
             SecurityReviewItems = ReadInt(status, "securityReviewItems"),
+            ActionItems = actionItems.Select(item => new FounderEngineeringActionItemViewModel(
+                item.WorkItemId,
+                item.AttentionKind,
+                item.Title,
+                item.Summary,
+                item.ActionStep,
+                item.RequiresFounderAction,
+                item.PrimaryAction,
+                item.PrimaryActionLabel,
+                item.SecondaryAction,
+                item.SecondaryActionLabel,
+                item.TechnicalSummary,
+                item.UpdatedUtc)).ToArray(),
             History = history.Select(row => new FounderEngineeringContractHistoryItem(
                 row.Revision,
                 row.Version,
