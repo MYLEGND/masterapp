@@ -1130,6 +1130,7 @@ jobs:
             workflow="masterapp-platform-architecture-validation.yml",
             repository="MYLEGND/masterapp",
             current_run_id=99,
+            current_sha="d" * 40,
         )
 
         def response(repository, path, token):
