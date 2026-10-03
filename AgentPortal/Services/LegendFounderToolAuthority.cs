@@ -62,6 +62,22 @@ internal sealed partial class LegendFounderToolAuthority
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
 
+    internal static IReadOnlyList<object> ProjectToolSchemas(IEnumerable<string> names)
+    {
+        var allowed = names.ToHashSet(StringComparer.Ordinal);
+        return BuildFounderTools()
+            .Where(tool =>
+            {
+                var element = JsonSerializer.SerializeToElement(tool, JsonOptions);
+                return element.TryGetProperty("name", out var name) &&
+                    name.ValueKind == JsonValueKind.String &&
+                    name.GetString() is { } value &&
+                    allowed.Contains(value);
+            })
+            .ToArray();
+    }
+
+
     internal IReadOnlyList<object> GetAvailableTools(
         bool mutationConfirmed,
         string? conversationId,
