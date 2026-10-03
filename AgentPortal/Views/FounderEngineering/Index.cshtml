@@ -35,6 +35,72 @@
         <div class="eng-alert is-error" role="alert">@error</div>
     }
 
+    <section class="eng-action-center" aria-label="Founder engineering action center">
+        <div class="eng-action-head">
+            <div>
+                <div class="eng-section-kicker">FOUNDER ACTION CENTER</div>
+                <h2>What needs your attention — in plain language.</h2>
+                <p>LEGEND keeps the machine diagnostics underneath. This surface tells you what happened, what LEGEND is doing, and exactly what you need to do next.</p>
+            </div>
+            <span class="eng-action-count">@Model.ActionItems.Count active</span>
+        </div>
+
+        @if (Model.ActionItems.Count == 0)
+        {
+            <div class="eng-action-empty">
+                <strong>No engineering decision is waiting on you.</strong>
+                <span>LEGEND will surface the next required action here and in your mobile Notifications center.</span>
+            </div>
+        }
+        else
+        {
+            <div class="eng-action-list">
+                @foreach (var item in Model.ActionItems)
+                {
+                    <article class="eng-action-card is-@item.AttentionKind.Replace("_", "-")">
+                        <div class="eng-action-copy">
+                            <div class="eng-action-meta">
+                                <span>@(item.RequiresFounderAction ? "YOUR ACTION" : "LEGEND STATUS")</span>
+                                <time datetime="@item.UpdatedUtc.ToString("O")">@item.UpdatedUtc.ToLocalTime().ToString("MMM d · h:mm tt")</time>
+                            </div>
+                            <h3>@item.Title</h3>
+                            <p>@item.Summary</p>
+                            <div class="eng-next-step">
+                                <strong>Next step</strong>
+                                <span>@item.ActionStep</span>
+                            </div>
+                            <details class="eng-technical">
+                                <summary>Technical details</summary>
+                                <code>@item.TechnicalSummary</code>
+                            </details>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.PrimaryAction) || !string.IsNullOrWhiteSpace(item.SecondaryAction))
+                        {
+                            <div class="eng-action-buttons">
+                                @if (!string.IsNullOrWhiteSpace(item.PrimaryAction))
+                                {
+                                    <form asp-action="DecideWorkItem" asp-route-workItemId="@item.WorkItemId" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="decision" value="@item.PrimaryAction" />
+                                        <button type="submit" class="eng-button is-primary">@item.PrimaryActionLabel</button>
+                                    </form>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(item.SecondaryAction))
+                                {
+                                    <form asp-action="DecideWorkItem" asp-route-workItemId="@item.WorkItemId" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="decision" value="@item.SecondaryAction" />
+                                        <button type="submit" class="eng-button is-danger">@item.SecondaryActionLabel</button>
+                                    </form>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
     <section class="eng-status-grid" aria-label="Engineering runtime status">
         <article class="eng-status-card">
             <div class="eng-status-top">
