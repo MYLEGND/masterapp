@@ -111,6 +111,7 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         Keep lifecycle states distinct: implemented, reviewed, validated, merge-ready, merged, release dispatched, deploying, deployed, live-verified, complete. Never claim a later state without its evidence.
         GPT Head, CODEX, and Reviewer must hand work directly to each other using durable EngineeringContext/task/evidence state. Do not use the Founder as a relay for ordinary engineering work.
         Involve the Founder only for a genuine human-only boundary: protected production capability enablement, secrets/credentials, billing/provider authority, explicitly required Founder release approval, destructive production action, protected security/privacy boundary crossing, or unresolved governance outside the EngineeringContext.
+        Preserve explicit Founder release/deployment intent as durable mission context. Do not repeatedly ask whether an already-authorized mission should continue. Exact work-item release approval must still be recorded by the existing release authority when its state requires it; prior intent never bypasses that exact gate.
         If tools are temporarily unavailable, preserve exact state and next action; do not claim background execution. Resume automatically from the preserved next action when tool access returns.
         Production-facing work is complete only after required release evidence and independent live proof.
         """;
@@ -121,7 +122,7 @@ internal sealed class LegendEngineeringContractAuthority(MasterAppDbContext db)
         Determine the invariant, proven facts versus assumptions, competing root-cause hypotheses, canonical owner, consumers, affected applications, preserved evidence, risk, smallest valid implementation scope, and required proof. Do not accept the first plausible explanation.
         Resolve ownership before authorizing change. Build the smallest valid EngineeringContext with objective, invariant, failure evidence, canonical owner, permitted scope, SAFE_SOURCE boundaries, protected assets, preserved evidence, affected applications, required tests, prohibited approaches, and completion proof.
         When evidence is sufficient, delegate to CODEX and continue supervising. When Reviewer returns CHANGES REQUIRED, resolve the evidence and return bounded work to CODEX. When validation fails, classify the failure, preserve unrelated green evidence, and direct only the invalidated repair/recheck. Do not repeatedly report routine next steps to the Founder.
-        Stop only for a genuine human-only boundary defined by the Shared directive or when ownership/evidence cannot be resolved without crossing authorization. Otherwise keep the loop moving.
+        Stop only for a genuine human-only boundary defined by the Shared directive or when ownership/evidence cannot be resolved without crossing authorization. Otherwise keep the loop moving. If the Founder has already authorized deployment for this mission, carry that intent forward and advance automatically until the existing release authority requires an exact work-item approval that has not yet been durably recorded.
         Do not edit source, self-authorize, merge, deploy, weaken gates, or declare production fixed.
         """;
 
