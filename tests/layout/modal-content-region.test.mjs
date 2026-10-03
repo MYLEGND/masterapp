@@ -354,17 +354,28 @@ test('CRM utility backdrops cannot render a Bootstrap black screen before a moda
   }
 });
 
-test('premium desktop modal system is wide midnight-graphite with one gold control authority',()=>{
+test('premium desktop modal system consumes the canonical authenticated page navy-gold authority',()=>{
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
-  assert.match(shell,/--legend-modal-surface:#0b1426/);
-  assert.match(shell,/--legend-modal-chrome:#12213b/);
-  assert.match(shell,/--legend-modal-gold:#b88a31/);
+  assert.match(shell,/--legend-modal-surface:var\(--legend-app-surface\)/);
+  assert.match(shell,/--legend-modal-surface-raised:var\(--legend-app-surface-elevated\)/);
+  assert.match(shell,/--legend-modal-surface-subtle:var\(--legend-app-control\)/);
+  assert.match(shell,/--legend-modal-chrome:var\(--legend-app-surface-elevated\)/);
+  assert.match(shell,/--legend-modal-chrome-deep:var\(--legend-app-surface\)/);
+  assert.match(shell,/--legend-modal-ink:var\(--legend-app-on-dark\)/);
+  assert.match(shell,/--legend-modal-muted:var\(--legend-app-on-dark-muted\)/);
+  assert.match(shell,/--legend-modal-line-strong:var\(--legend-app-control-line\)/);
+  assert.match(shell,/--legend-modal-gold:var\(--legend-app-accent\)/);
+  assert.match(shell,/--legend-modal-gold-strong:var\(--legend-app-accent-bright\)/);
+  assert.match(shell,/--legend-modal-on-gold:var\(--legend-app-surface\)/);
   assert.match(shell,/--legend-desktop-modal-width:min\(1540px,calc\(100vw - \(2 \* var\(--legend-desktop-modal-gutter\)\)\)\)/);
   assert.match(shared,/linear-gradient\(180deg,var\(--legend-modal-surface\),var\(--legend-modal-surface-raised\)\)/);
   assert.match(shared,/\.btn-primary,[\s\S]*\.btn-gold,[\s\S]*background:\s*linear-gradient\(180deg,var\(--legend-modal-gold-strong\),var\(--legend-modal-gold\)\)/);
   assert.doesNotMatch(shared,/--legend-desktop-modal-width:min\(1120px/);
+  assert.doesNotMatch(shell,/--legend-modal-(?:surface|surface-raised|surface-subtle|chrome|chrome-deep):#(?:f4f5f7|e6e8eb|d9dde2|656d79|454c57|0b1426|101d33|17243a|12213b|08111f)/);
+  assert.match(shared,/background:\s*linear-gradient\(180deg,var\(--legend-modal-surface-raised\),var\(--legend-modal-surface\)\)/);
+  assert.match(shared,/background:\s*var\(--legend-app-control\);[\s\S]*color:\s*var\(--legend-modal-ink\);[\s\S]*box-shadow:\s*var\(--legend-inset\);/);
 });
 
 test('desktop Bootstrap modal wrapper is transparent geometry and content owns the only visible surface',()=>{
