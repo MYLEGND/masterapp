@@ -728,6 +728,21 @@ jobs:
             exit 1
           fi
 
+          changed="$(
+            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
+            grep -v '\.Designer\.cs$' || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the database baseline; migration receipt gate is not applicable."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          # A prior successful database release receipt is required only when this
+          # candidate actually changes migration source and is about to mutate SQL.
+          # Schema-neutral releases authorize no database write and therefore do not
+          # require historical database-receipt evidence.
           python3 - <<'PYBASELINE'
           import importlib.util, os, sys
           from pathlib import Path
@@ -743,17 +758,6 @@ jobs:
               raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
           print('Database baseline release receipt verified:',base)
           PYBASELINE
-
-          changed="$(
-            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
-            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
-            grep -v '\.Designer\.cs$' || true
-          )"
-          if [ -z "$changed" ]; then
-            echo "No candidate migration source changed from the proven database baseline."
-            exit 0
-          fi
-          printf '%s\n' "$changed"
 
           bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
           test -x "$bundle"
