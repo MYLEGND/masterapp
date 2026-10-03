@@ -1562,6 +1562,30 @@ def merge_content_equivalent_evidence(plan, candidate_plan, run):
     return reused
 
 
+def _trusted_lineage_run(repository, run, workflow_path, revision):
+    """Authenticate an immutable producer already in the current candidate lineage.
+
+    This avoids a separate commit->pull API lookup for evidence whose producer
+    commit is already part of the exact candidate history. Workflow path, event,
+    completion, repository ownership and git ancestry must all agree.
+    """
+    head = run.get("head_sha") or ""
+    if (
+        run.get("path") != workflow_path
+        or run.get("event") != "pull_request"
+        or run.get("status") != "completed"
+        or not re.fullmatch(r"[0-9a-f]{40}", head)
+        or (run.get("head_repository") or {}).get("full_name") != repository
+        or not re.fullmatch(r"[0-9a-f]{40}", revision or "")
+    ):
+        return False
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", head, revision],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
 def _trusted_pr_run(repository, run, workflow_path, token):
     """Authenticate a producer independently of its parent workflow conclusion."""
     head = run.get("head_sha") or ""
@@ -2596,7 +2620,9 @@ def migration_probe_evidence(repository, identity):
         reverse=True)
     for run in runs:
         run_id = int(run.get('id') or 0)
-        if not run_id or not _trusted_pr_run(repository, run, workflow_path, token):
+        current_revision = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], text=True).strip()
+        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision):
             continue
         producer = migration_probe_identity(run['head_sha'], run['head_sha'])
         if producer != identity:
@@ -2730,12 +2756,9 @@ def compatible_package_producer(repository, revision, token):
         reverse=True)
     for run in runs:
         run_id = int(run.get('id') or 0)
-        if not run_id or not _trusted_pr_run(repository, run, workflow_path, token):
+        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
             continue
         producer = run['head_sha']
-        if subprocess.run(['git', 'merge-base', '--is-ancestor', producer, revision],
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
-            continue
         if not package_inputs_compatible(producer, revision) or not _successful_package_child(repository, run_id, token):
             continue
         names = sorted(name for name in _run_artifact_names(repository, run_id, token)
@@ -3578,9 +3601,10 @@ def _step5_prior_candidate_evidence(
         if not run_id or run_id == current_run_id:
             continue
         try:
-            if not _trusted_pr_run(repository, run, workflow_path, token):
-                continue
             head_sha = run["head_sha"]
+            if not _trusted_lineage_run(repository, run, workflow_path, current_sha):
+                if not _trusted_pr_run(repository, run, workflow_path, token):
+                    continue
             impact = step5_dependency_change(head_sha, current_sha)
             if impact is None or not _step5_jobs_unchanged(head_sha, workflow_path):
                 continue
