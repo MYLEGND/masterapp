@@ -1440,14 +1440,11 @@ def prior_evidence(args):
     exact_head_runs = [run for run in ordered if run.get("head_sha") == prior.get("head_sha")][:10]
     histories = []
     for run in exact_head_runs:
-        jobs_payload = api_get(
-            args.repository,
-            f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
-            token,
-        )
-        histories.append(_step_map(jobs_payload.get("jobs", [])))
+        steps = _historical_plan_steps(args, run, token)
+        if steps:
+            histories.append(steps)
 
-    return prior, _effective_steps(histories), "prior_exact_head_runs"
+    return prior, _effective_steps(histories), "prior_exact_head_plan_artifacts"
 
 
 def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_source):
