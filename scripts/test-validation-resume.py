@@ -523,6 +523,69 @@ jobs:
             set(topology["required"]),
         )
 
+    def test_compatible_package_producer_uses_trusted_run_artifacts_not_repository_artifact_listing(self):
+        producer = "a" * 40
+        revision = "b" * 40
+        run = {
+            "id": 77,
+            "head_sha": producer,
+            "updated_at": "2026-10-03T00:00:00Z",
+        }
+        package_identity = "c" * 64
+        artifact = "founder-diagnostics-packages-" + package_identity
+        seen = []
+        def api_get(_repository, path, _token):
+            seen.append(path)
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            raise AssertionError(path)
+        with patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "package_inputs_compatible", return_value=True), \
+             patch.object(m, "_successful_package_child", return_value=True), \
+             patch.object(m, "_run_artifact_names", return_value={artifact}), \
+             patch.object(m.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            result = m.compatible_package_producer("MYLEGND/masterapp", revision, "token")
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        self.assertEqual(package_identity, result["packageIdentity"])
+        self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
+
+    def test_migration_probe_evidence_uses_trusted_run_artifacts_not_repository_artifact_listing(self):
+        identity = {
+            "schemaVersion": 1,
+            "runtimeIdentity": "a" * 64,
+            "toolIdentity": "b" * 64,
+            "executionIdentity": "c" * 64,
+            "identity": "d" * 64,
+            "artifact": "legend-migration-probe-" + "d" * 64,
+        }
+        run = {"id": 88, "head_sha": "e" * 40, "updated_at": "2026-10-03T00:00:00Z"}
+        jobs = {"jobs": [{
+            "name": "validated-migration-probe",
+            "steps": [
+                {"name": "Build immutable migration probe", "conclusion": "success"},
+                {"name": "Preserve validated migration probe", "conclusion": "success"},
+            ],
+        }]}
+        seen = []
+        def api_get(_repository, path, _token):
+            seen.append(path)
+            if path.startswith("actions/workflows/"):
+                return {"workflow_runs": [run]}
+            if path == "actions/runs/88/jobs?filter=latest&per_page=100":
+                return jobs
+            raise AssertionError(path)
+        with patch.object(m, "api_get", side_effect=api_get), \
+             patch.object(m, "_trusted_pr_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", return_value=identity), \
+             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
+        self.assertTrue(result["reusable"])
+        self.assertEqual(88, result["runId"])
+        self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
+
     def test_package_canary_preserves_original_producer_for_control_only_change(self):
         producer = {'runId': 91, 'revision': 'a' * 40, 'packageIdentity': 'c' * 64,
                     'artifact': 'original-package', 'reason': 'dependency_equivalent_immutable_package_producer'}
