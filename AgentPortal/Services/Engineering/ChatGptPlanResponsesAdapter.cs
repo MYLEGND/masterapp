@@ -39,11 +39,10 @@ internal sealed class ChatGptPlanResponsesAdapter(
         var readinessMatches =
             string.Equals(credential.ReadinessState, "READY", StringComparison.Ordinal) &&
             string.Equals(credential.ReadinessSignature, signature, StringComparison.OrdinalIgnoreCase);
-        var triage = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.TriageWorker, credential) : null;
         var head = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.HeadGpt, credential) : null;
         var codex = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.CodexImplementer, credential) : null;
         var reviewer = readinessMatches ? ResolveCachedReadyModel(EngineeringRole.IndependentReviewer, credential) : null;
-        var modelsReady = triage is not null && head is not null && codex is not null && reviewer is not null;
+        var modelsReady = head is not null && codex is not null && reviewer is not null;
         var circuitOpen = !string.IsNullOrWhiteSpace(credential.ProviderBlockerCode);
         var runtimeReady = credential.Ready && readinessMatches && modelsReady && !circuitOpen;
         var eligibility = !contract.ModelExecutionEnabled
