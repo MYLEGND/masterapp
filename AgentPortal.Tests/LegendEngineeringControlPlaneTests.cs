@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -17,6 +18,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Moq;
 using Shared.Diagnostics;
 using Xunit;
 
@@ -760,6 +762,164 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ChatGptPlanToolLoop_ExecutesInspectionThenFinalizesAfterToolBudgetIsConsumed()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "tool-loop-owner", TimeSpan.FromMinutes(10), default);
+        Assert.True(lease.Acquired);
+        var context = Context(item, lease) with
+        {
+            Role = EngineeringRole.HeadGpt,
+            AllowedTools = ["legend_inspect_repository"]
+        };
+
+        var toolArguments = JsonSerializer.Serialize(new
+        {
+            path = "AgentPortal/Controllers/HomeController.cs",
+            git_reference = context.LiveSha
+        });
+        var handler = new PlanResponsesHandler(
+            ResponseWithToolCall("resp-tool", "call-1", "legend_inspect_repository", toolArguments, 11),
+            ResponseWithFinalJson("resp-final",
+                """{"decision":"PROCEED_TO_CODEX","evidence_sufficient":true,"summary":"Inspection complete."}""", 7));
+        var orchestrator = new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict);
+        orchestrator.Setup(value => value.InspectRepositoryAsync(
+                context.EngineeringContextId,
+                "AgentPortal/Controllers/HomeController.cs",
+                "live",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new { ok = true, content = "bounded source" });
+
+        var adapter = PlanAdapter(
+            handler,
+            orchestrator.Object,
+            new Dictionary<string, string?>
+            {
+                ["LegendEngineering:ChatGptPlan:MaxToolCallsPerTurn"] = "1",
+                ["LegendEngineering:ChatGptPlan:MaxToolIterations"] = "4"
+            });
+
+        var run = await InvokeRunWithToolsAsync(
+            adapter, context, item, """{"mission":"inspect"}""");
+
+        Assert.True(ReadRunBool(run, "Success"));
+        Assert.Equal(2, handler.Calls);
+        Assert.Contains("\"function_call_output\"", handler.Bodies[1], StringComparison.Ordinal);
+        Assert.Contains("\"tool_choice\":\"none\"", handler.Bodies[1], StringComparison.Ordinal);
+        Assert.Contains("bounded source", handler.Bodies[1], StringComparison.Ordinal);
+        orchestrator.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ChatGptPlanToolLoop_DeniesToolOutsideEngineeringContext()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "tool-denial-owner", TimeSpan.FromMinutes(10), default);
+        Assert.True(lease.Acquired);
+        var context = Context(item, lease) with
+        {
+            Role = EngineeringRole.HeadGpt,
+            AllowedTools = ["legend_inspect_repository"]
+        };
+
+        var handler = new PlanResponsesHandler(
+            ResponseWithToolCall(
+                "resp-denied",
+                "call-denied",
+                "legend_prepare_software_repair",
+                JsonSerializer.Serialize(new
+                {
+                    base_sha = item.LiveSha,
+                    title = "Not allowed",
+                    summary = "Role must not mutate.",
+                    changes = new[] { new { path = "AgentPortal/Controllers/HomeController.cs", content = "// no-op" } }
+                }),
+                5),
+            ResponseWithFinalJson("resp-final",
+                """{"decision":"ESCALATE","evidence_sufficient":false,"summary":"Mutation denied by context."}""", 3));
+        var orchestrator = new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict);
+        var adapter = PlanAdapter(handler, orchestrator.Object);
+
+        var run = await InvokeRunWithToolsAsync(
+            adapter, context, item, """{"mission":"deny unauthorized mutation"}""");
+
+        Assert.True(ReadRunBool(run, "Success"));
+        Assert.Contains("engineering_context_tool_not_allowed", handler.Bodies[1], StringComparison.Ordinal);
+        orchestrator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ChatGptPlanStart_DeniesExpiredContextBeforeProviderExecution()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "expired-tool-owner", TimeSpan.FromMinutes(10), default);
+        Assert.True(lease.Acquired);
+        var context = Context(item, lease) with { ExpiresUtc = DateTime.UtcNow.AddSeconds(-1) };
+        await _store.SaveContextAsync(context, default);
+
+        var handler = new PlanResponsesHandler();
+        var adapter = PlanAdapter(
+            handler,
+            new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict).Object);
+
+        var outcome = JsonSerializer.SerializeToElement(
+            await adapter.StartAsync(context.EngineeringContextId, default));
+
+        Assert.Equal("engineering_context_expired", outcome.GetProperty("error").GetString());
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task CodexPreparedRepair_HandsOffToIndependentReviewer()
+    {
+        var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
+        var item = await _store.AttachIncidentAsync(
+            incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(
+            item.WorkItemId, "repair-handoff-owner", TimeSpan.FromMinutes(10), default);
+        Assert.True(lease.Acquired);
+        var context = Context(item, lease) with
+        {
+            Role = EngineeringRole.CodexImplementer,
+            AllowedTools = ["legend_inspect_repository", "legend_prepare_software_repair"]
+        };
+        var candidateSha = new string('d', 40);
+        await _store.UpdateWorkItemAsync(item with
+        {
+            State = "CANDIDATE_PREPARED",
+            CandidateSha = candidateSha,
+            PullRequestNumber = 417,
+            LeaseOwner = "repair-handoff-owner",
+            LeaseIdentity = lease.LeaseIdentity,
+            LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(10)
+        }, default);
+
+        var adapter = PlanAdapter(
+            new PlanResponsesHandler(),
+            new Mock<ILegendEngineeringOrchestrator>(MockBehavior.Strict).Object);
+        var output = JsonDocument.Parse(
+            """{"decision":"REPAIR_PREPARED","base_sha":"dddddddddddddddddddddddddddddddddddddddd","title":"Prepared","summary":"Prepared through canonical tool.","changes":[]}""")
+            .RootElement.Clone();
+
+        await InvokeApplyOutcomeAsync(adapter, context, item, "resp-prepared", output);
+
+        var current = await _store.GetWorkItemAsync(item.WorkItemId, default);
+        Assert.NotNull(current);
+        Assert.Equal("REVIEW_REQUIRED", current!.State);
+        Assert.Equal(EngineeringRole.IndependentReviewer, current.AssignedRole);
+        Assert.Equal(EngineeringModelTier.IndependentReview, current.ModelTier);
+    }
+
+    [Fact]
     public void ChatGptPlanResponsesAdapter_UsesCanonicalBoundedToolLoop()
     {
         var root = SourceRoot();
@@ -1034,6 +1194,143 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             ExpiresUtc = now.AddDays(14),
             Occurrences = occurrences
         };
+    }
+
+    private ChatGptPlanResponsesAdapter PlanAdapter(
+        HttpMessageHandler handler,
+        ILegendEngineeringOrchestrator orchestrator,
+        IReadOnlyDictionary<string, string?>? overrides = null)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["LegendEngineering:ChatGptPlan:TurnTimeoutSeconds"] = "30",
+            ["LegendEngineering:ChatGptPlan:MaxToolCallsPerTurn"] = "6",
+            ["LegendEngineering:ChatGptPlan:MaxToolIterations"] = "4"
+        };
+        if (overrides is not null)
+            foreach (var pair in overrides)
+                values[pair.Key] = pair.Value;
+
+        return new ChatGptPlanResponsesAdapter(
+            new ConfigurationBuilder().AddInMemoryCollection(values).Build(),
+            new PlanClientFactory(handler),
+            _store,
+            orchestrator,
+            new Mock<ILegendChatGptPlanCredentialAuthority>(MockBehavior.Strict).Object,
+            new Mock<ILegendEngineeringContractAuthority>(MockBehavior.Strict).Object);
+    }
+
+    private static async Task<object> InvokeRunWithToolsAsync(
+        ChatGptPlanResponsesAdapter adapter,
+        EngineeringContextSnapshot context,
+        EngineeringWorkItemSnapshot item,
+        string prompt)
+    {
+        var method = typeof(ChatGptPlanResponsesAdapter).GetMethod(
+            "RunWithToolsAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("RunWithToolsAsync test seam not found.");
+        var task = (Task)(method.Invoke(adapter, new object[]
+        {
+            "plan-access-token",
+            "gpt-test",
+            EngineeringModelTier.DeepReasoning,
+            context,
+            item,
+            prompt,
+            CancellationToken.None
+        }) ?? throw new InvalidOperationException("RunWithToolsAsync did not return a task."));
+        await task;
+        return task.GetType().GetProperty("Result")?.GetValue(task)
+            ?? throw new InvalidOperationException("RunWithToolsAsync result unavailable.");
+    }
+
+    private static async Task InvokeApplyOutcomeAsync(
+        ChatGptPlanResponsesAdapter adapter,
+        EngineeringContextSnapshot context,
+        EngineeringWorkItemSnapshot item,
+        string responseId,
+        JsonElement output)
+    {
+        var method = typeof(ChatGptPlanResponsesAdapter).GetMethod(
+            "ApplyOutcomeAsync", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("ApplyOutcomeAsync test seam not found.");
+        var task = (Task)(method.Invoke(adapter, new object[]
+        {
+            context,
+            item,
+            responseId,
+            output,
+            CancellationToken.None
+        }) ?? throw new InvalidOperationException("ApplyOutcomeAsync did not return a task."));
+        await task;
+    }
+
+    private static bool ReadRunBool(object run, string property) =>
+        (bool)(run.GetType().GetProperty(property)?.GetValue(run)
+            ?? throw new InvalidOperationException(property + " unavailable."));
+
+    private static string ResponseWithToolCall(
+        string responseId,
+        string callId,
+        string name,
+        string arguments,
+        int tokens) =>
+        JsonSerializer.Serialize(new
+        {
+            id = responseId,
+            output = new object[]
+            {
+                new
+                {
+                    type = "function_call",
+                    call_id = callId,
+                    name,
+                    arguments
+                }
+            },
+            usage = new { total_tokens = tokens }
+        });
+
+    private static string ResponseWithFinalJson(string responseId, string outputJson, int tokens) =>
+        JsonSerializer.Serialize(new
+        {
+            id = responseId,
+            output = new object[]
+            {
+                new
+                {
+                    type = "message",
+                    content = new object[]
+                    {
+                        new { type = "output_text", text = outputJson }
+                    }
+                }
+            },
+            usage = new { total_tokens = tokens }
+        });
+
+    private sealed class PlanResponsesHandler(params string[] responses) : HttpMessageHandler
+    {
+        private readonly Queue<string> _responses = new(responses);
+        public int Calls { get; private set; }
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            Bodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+            if (_responses.Count == 0)
+                throw new InvalidOperationException("Unexpected provider call.");
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json"),
+                RequestMessage = request
+            };
+        }
     }
 
     private LegendChatGptPlanCredentialAuthority PlanCredentialAuthority(
