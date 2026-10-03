@@ -1188,10 +1188,6 @@ public sealed class LegendFounderAiConversationService
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "The authenticated cloud request has no active delegation.",
                     "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
-            if (request.FounderCommandConfirmed)
-                return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "Cloudflare consequential actions require the separate reviewed-action approval path. This operation was not executed.",
-                    "governed_tool", "cloudflare_tools", "cloudflare_reviewed_action_required");
             var cloudTools = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:ToolCallbackEnabled")
                 ? _toolAuthority.GetAvailableCloudTools(request.ConversationId, providerPolicy)
                 : Array.Empty<object>();
