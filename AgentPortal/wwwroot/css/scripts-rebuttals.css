@@ -2182,10 +2182,7 @@ details.section{
 
 /* Align underwriting dialog styling with proposal */
 .uw-dialog{
-    width: min(1400px, 98vw);
-    max-height: 92vh;
-    overflow: auto;
-    background: var(--legend-app-surface-elevated);
+background: var(--legend-app-surface-elevated);
     border: 1.5px solid #e5e7eb;
     border-radius: 18px;
     box-shadow: 0 28px 70px rgba(0,0,0,.18);
