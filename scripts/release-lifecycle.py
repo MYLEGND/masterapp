@@ -975,8 +975,12 @@ def admission_conflicts(api, candidate, *, current_run):
         if own_run:
             current_attempt = int(os.environ.get('GITHUB_RUN_ATTEMPT', '1'))
             records = [record for record in records if record['producingAttempt'] < current_attempt]
-            if not records and current_attempt == 1:
-                continue
+            if not records:
+                # The active admission cannot prove its own downstream jobs skipped.
+                # Inspect every earlier attempt; only proven non-entry permits retry.
+                prior_attempts = dict(run, run_attempt=current_attempt - 1)
+                if current_attempt == 1 or _never_admitted(api, prior_attempts):
+                    continue
         if not records:
             if run.get('status') == 'completed' and _never_admitted(api, run):
                 continue
