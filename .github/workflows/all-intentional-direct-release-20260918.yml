@@ -715,6 +715,22 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$EXPECTED_DB_BASE_SHA"
+          changed="$(
+            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
+            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
+            grep -v '\.Designer\.cs$' || true
+          )"
+          if [ -z "$changed" ]; then
+            echo "No candidate migration source changed from the observed database baseline; no database mutation is required."
+            exit 0
+          fi
+          printf '%s\n' "$changed"
+
+          # Receipt/ancestry proof is required only when this release would
+          # actually mutate the production schema. A partially completed prior
+          # publication may advance application provenance without a final
+          # release receipt; that must not block a later release whose migration
+          # diff is empty, because this step performs no database write.
           if git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"; then
             echo "Live database baseline is an ancestor of the validated application revision."
           elif git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"; then
@@ -743,17 +759,6 @@ jobs:
               raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
           print('Database baseline release receipt verified:',base)
           PYBASELINE
-
-          changed="$(
-            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
-            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
-            grep -v '\.Designer\.cs$' || true
-          )"
-          if [ -z "$changed" ]; then
-            echo "No candidate migration source changed from the proven database baseline."
-            exit 0
-          fi
-          printf '%s\n' "$changed"
 
           bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
           test -x "$bundle"
