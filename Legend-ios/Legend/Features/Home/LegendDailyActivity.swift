@@ -775,7 +775,7 @@ enum LegendInAppNotificationProjection {
         accountNotifications: [MobileActivityNotification]
     ) -> [LegendDailyActivityItem] {
         var notifications = accountNotifications
-            .filter { !$0.kind.caseInsensitiveCompare("Engineering").isOrderedSame }
+            .filter { $0.kind.caseInsensitiveCompare("Engineering") != .orderedSame }
             .map {
             LegendDailyActivityItem(
                 id: "account:\($0.id.uuidString)",
