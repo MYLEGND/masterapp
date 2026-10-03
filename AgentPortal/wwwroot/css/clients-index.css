@@ -3707,22 +3707,8 @@
         flex-wrap:wrap;
     }
 
-    /* ===== MODALS ===== */
-    .modal:not(.fade){
-        position: fixed;
-        left:50%;
-        top:10%;
-        transform: translateX(-50%);
-        width:min(760px, 94vw);
-        background: var(--legend-app-surface-elevated);
-        border:1px solid var(--line);
-        border-radius:22px;
-        box-shadow: var(--shadow);
-        display:none;
-        z-index:12050;
-        overflow:hidden;
-    }
-    .modal:not(.fade).open{ display:block; }
+    /* Custom modal open-state only; shared LEGEND modal CSS owns geometry. */
+    .modal:not(.fade):not(.open){ display:none; }
 
     .modal-head{
         padding:14px 16px;
