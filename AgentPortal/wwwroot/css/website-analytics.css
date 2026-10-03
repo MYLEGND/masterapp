@@ -8516,3 +8516,5 @@ body {
     padding: .65rem;
   }
 }
+
+.fa-kpi-value--compact { font-size: 1.1rem; }
