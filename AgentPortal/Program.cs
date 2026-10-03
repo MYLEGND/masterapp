@@ -179,6 +179,7 @@ builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<EffectiveAgentContext>();
+builder.Services.AddScoped<Shared.PortalShell.IPortalShellIdentityResolver, AgentPortal.Services.AgentPortalShellIdentityResolver>();
 builder.Services.AddScoped<IMessagingActorContextResolver, AgentPortalMessagingActorContextResolver>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();
