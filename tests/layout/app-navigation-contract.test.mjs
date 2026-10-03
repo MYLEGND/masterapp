@@ -239,8 +239,10 @@ test('mobile utility controls use their real canonical selectors and visible com
 
   assert.doesNotMatch(css,/\.messaging-nav-button\b/);
   assert.match(css,/\.messaging-nav-trigger/);
-  assert.match(messages,/class="messaging-nav-label"[^>]*>Messages<\/span>/);
-  assert.match(agentLayout,/class="legend-founder-ai-nav-label"[^>]*>LEGEND® AI<\/span>/);
+  assert.doesNotMatch(messages,/class="messaging-nav-label"/);
+  assert.match(messages,/class="visually-hidden"[^>]*>Open Messages<\/span>/);
+  assert.doesNotMatch(agentLayout,/class="legend-founder-ai-nav-label"/);
+  assert.match(agentLayout,/src="~\/images\/legend-ai\/legendai\.png"/);
   assert.match(css,/\[data-legend-mobile-nav-integrated\] \.profile-meta \{[\s\S]*display:\s*grid/);
 });
 
