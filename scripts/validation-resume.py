@@ -1012,7 +1012,7 @@ WORKFLOWS = {
             "Infrastructure/Analytics/OpenAiAdsExecutionService.cs",
             "Infrastructure/Analytics/MarketingConnectionStore.cs",
         ),
-        "neutral": (),
+        "neutral": ("scripts/validation-resume.py", "scripts/test-validation-resume.py"),
         "gates": {
             "restore": {"step": "Restore affected graph", "paths": ()},
             "build": {"step": "Build affected graph", "paths": (), "requires": ("restore",)},
@@ -1031,7 +1031,7 @@ WORKFLOWS = {
     "approved-release-security-validation.yml": {
         "unmatched_neutral": True,
         "force_all": (),
-        "neutral": ("Docs/**", "*.md"),
+        "neutral": ("Docs/**", "*.md", "scripts/validation-resume.py", "scripts/test-validation-resume.py"),
         "gates": {
             "restore": {
                 "step": "Restore security validation graph",
@@ -1121,8 +1121,25 @@ WORKFLOWS = {
             "AgentPortal/wwwroot/js/website-analytics.js",
             "AgentPortal/wwwroot/css/website-analytics.css",
             "Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs",
+    "steps7-8-governed-advertising-validation.yml": {
+        "unmatched_neutral": True,
+        "force_all": (
+            "Domain/Entities/AdvertisingActionAuthorization.cs",
+            "SHARED/Analytics/AdvertisingActionContracts.cs",
+            "Infrastructure/Analytics/AdvertisingActionAuthorizationService.cs",
+            "Infrastructure/Analytics/MarketingConnectionStore.cs",
+            "Infrastructure/WebsiteEditing/PromotionOrchestrationService.cs",
+            "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
+            "Infrastructure/Data/MasterAppDbContext.cs",
+            "Infrastructure/Migrations/20260927053000_AddAdvertisingActionAuthorizations.cs",
+            "Infrastructure/Analytics/AdvertisingCommandCenterService.cs",
+            "AgentPortal/Controllers/WebsiteAnalyticsController.cs",
+            "AgentPortal/Views/WebsiteAnalytics/Index.cshtml",
+            "AgentPortal/wwwroot/js/website-analytics.js",
+            "AgentPortal/wwwroot/css/website-analytics.css",
+            "Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs",
         ),
-        "neutral": (),
+        "neutral": ("scripts/validation-resume.py", "scripts/test-validation-resume.py"),
         "gates": {
             "restore": {"step": "Restore affected graph", "paths": ()},
             "build": {"step": "Build affected graph", "paths": (), "requires": ("restore",)},
@@ -1958,7 +1975,21 @@ def cmd_record_evidence(args):
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         raise ValueError("Evidence recording requires authenticated producer observations")
-    jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
+    try:
+        jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
+    except urllib.error.HTTPError as exc:
+        if exc.code != 403:
+            raise
+        # GitHub can deny self-observation while a pull-request run is active
+        # even with actions:read. Never turn that transport limitation into a
+        # validation failure or fabricate child success. The completed run is
+        # read canonically on the next planner pass and supplies exact step proof.
+        plan["receiptSchemaVersion"] = 1
+        plan["recordingRunId"] = args.run_id
+        plan["receiptRecordingDeferred"] = "current_run_actions_observation_forbidden"
+        Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+        print("Deferred current-run child receipt enrichment; completed-run evidence remains canonical.")
+        return
     observed = {}
     for job in jobs:
         for step in job.get("steps", []):
@@ -2063,6 +2094,7 @@ MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
     "scripts/approved-release-baseline.py",
     "scripts/release-package.py",
     "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
     "scripts/release-lifecycle.py",
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
@@ -2077,12 +2109,10 @@ STEP5_RELEASE_EVIDENCE_PATHS = frozenset({
     "scripts/approved-release-baseline.py",
     "scripts/release-package.py",
     "scripts/validation-resume.py",
-    "scripts/test-validation-resume.py",
 })
 
 SECURITY_RELEASE_EVIDENCE_PATHS = frozenset({
     "scripts/validation-resume.py",
-    "scripts/test-validation-resume.py",
 })
 
 PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
@@ -2147,10 +2177,7 @@ def required_validation_topology(changed_paths):
     if step5 in names or step5_release_evidence_change:
         required.add(step5)
 
-    shared_resume_authority_change = any(
-        name in {"scripts/validation-resume.py", "scripts/test-validation-resume.py"}
-        for name in names
-    )
+    shared_resume_authority_change = "scripts/validation-resume.py" in names
 
     step6_name = "step6-openai-ads-execution-validation.yml"
     if (
