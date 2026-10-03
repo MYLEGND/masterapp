@@ -72,6 +72,7 @@ public sealed class ClientPortalShellIdentityResolver(
             PortalShellIdentityFactory.Initials(first, last, displayName),
             roleLabel,
             avatarUrl,
-            PortalShellIdentityFactory.CanonicalStoreUrl);
+            PortalShellIdentityFactory.CanonicalStoreUrl,
+            "/profile");
     }
 }
