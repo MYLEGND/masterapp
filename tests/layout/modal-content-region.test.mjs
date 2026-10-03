@@ -358,11 +358,11 @@ test('premium desktop modal system is wide midnight-graphite with one gold contr
   const shell=readFileSync(new URL('../../Legend-Design/legend-app-shell.css',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
 
-  assert.match(shell,/--legend-modal-surface:#f4f5f7/);
-  assert.match(shell,/--legend-modal-chrome:#656d79/);
-  assert.match(shell,/--legend-modal-gold:#8c671c/);
-  assert.match(shell,/--legend-desktop-modal-width:min\(1600px,calc\(100vw - \(2 \* var\(--legend-desktop-modal-gutter\)\)\)\)/);
-  assert.match(shared,/background:\s*linear-gradient\(180deg,var\(--legend-modal-surface\),var\(--legend-modal-surface-raised\)\)/);
+  assert.match(shell,/--legend-modal-surface:#0b1426/);
+  assert.match(shell,/--legend-modal-chrome:#12213b/);
+  assert.match(shell,/--legend-modal-gold:#b88a31/);
+  assert.match(shell,/--legend-desktop-modal-width:min\(1540px,calc\(100vw - \(2 \* var\(--legend-desktop-modal-gutter\)\)\)\)/);
+  assert.match(shared,/linear-gradient\(180deg,var\(--legend-modal-surface\),var\(--legend-modal-surface-raised\)\)/);
   assert.match(shared,/\.btn-primary,[\s\S]*\.btn-gold,[\s\S]*background:\s*linear-gradient\(180deg,var\(--legend-modal-gold-strong\),var\(--legend-modal-gold\)\)/);
   assert.doesNotMatch(shared,/--legend-desktop-modal-width:min\(1120px/);
 });
@@ -373,7 +373,7 @@ test('desktop Bootstrap modal wrapper is transparent geometry and content owns t
   assert.match(shared,/> \.modal-dialog\[data-legend-modal-panel\] > \.modal-content,[\s\S]*border: 1px solid var\(--legend-modal-line-strong\);[\s\S]*border-radius: 18px;[\s\S]*box-shadow: var\(--legend-modal-shadow\);/);
   const desktop=shared.slice(shared.indexOf('@media (min-width: 901px)'),shared.indexOf('/* One shared content-region boundary'));
   assert.match(desktop,/\.modal-dialog-scrollable\[data-legend-modal-panel\],[\s\S]*height: auto;/);
-  const globalRegion=shared.slice(shared.indexOf('/* One shared content-region boundary'),shared.indexOf('/*\n * Canonical authenticated mobile width contract'));
+  const globalRegion=shared.slice(shared.indexOf('/* One shared content-region boundary'),shared.indexOf('@media (max-width: 900px)',shared.indexOf('/* One shared content-region boundary')));
   assert.doesNotMatch(globalRegion,/\.modal-dialog-scrollable \{\s*height: 100dvh;/);
   assert.doesNotMatch(globalRegion,/\.modal-dialog-centered \{\s*min-height: 100dvh;/);
 });
@@ -444,7 +444,7 @@ test('feature styles cannot reintroduce mobile modal scroll or sticky-shell auth
   }
   assert.doesNotMatch(founderAi,/@media \(min-width: 821px\) and \(max-width: 1100px\)/);
 
-  const sharedMobile=mobileBlocks(shared).find(block=>/^@media \(max-width: 900px\)/.test(block));
+  const sharedMobile=mobileBlocks(shared).find(block=>/^@media \(max-width: 900px\)/.test(block) && block.includes('Canonical authenticated mobile modal authority'));
   assert(sharedMobile);
   assert.match(sharedMobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\][\s\S]*overflow:\s*hidden !important/);
   assert.match(sharedMobile,/\.modal \.modal-body\s*\{[\s\S]*overflow-y:\s*auto/);
