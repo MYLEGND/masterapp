@@ -174,6 +174,8 @@ internal sealed partial class LegendFounderToolAuthority
     private static bool IsFounderSiteWorkflowMutationTool(string name) =>
         name is
             "legend_engineering_bootstrap" or
+            "legend_engineering_complete_turn" or
+            "legend_engineering_renew_turn" or
             "legend_prepare_software_repair";
 
     private static bool IsSiteReadableTool(string name) =>
@@ -664,7 +666,36 @@ internal sealed partial class LegendFounderToolAuthority
                     return """{"ok":false,"error":"engineering_bootstrap_arguments_invalid"}""";
                 await using var scope = _authorizationScopes.CreateAsyncScope();
                 var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
-                return SerializeUnbounded(await orchestrator.BootstrapAsync(founder, workItemId, role, cancellationToken));
+                var context = await orchestrator.BootstrapAsync(founder, workItemId, role, cancellationToken);
+                var contract = await scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringContractAuthority>()
+                    .GetCurrentAsync(cancellationToken);
+                return SerializeUnbounded(new
+                {
+                    engineeringContext = context,
+                    taskPacket = await orchestrator.GetTaskPacketAsync(context.EngineeringContextId, cancellationToken),
+                    sharedDirective = contract.SharedDirective,
+                    roleDirective = contract.DirectiveForRole(context.Role),
+                    heartbeatTool = "legend_engineering_renew_turn",
+                    heartbeatIntervalSeconds = 60,
+                    completionTool = "legend_engineering_complete_turn"
+                });
+            }
+
+            case "legend_engineering_renew_turn":
+            case "legend_engineering_complete_turn":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"engineering_control_plane_unavailable"}""";
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var root = arguments.RootElement;
+                if (!Guid.TryParse(ReadRequiredString(root, "engineering_context_id"), out var contextId))
+                    return """{"ok":false,"error":"engineering_context_required"}""";
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                if (call.Name == "legend_engineering_renew_turn")
+                    return SerializeUnbounded(await orchestrator.RenewTurnAsync(contextId, cancellationToken));
+                return SerializeUnbounded(await orchestrator.CompleteTurnAsync(
+                    contextId, "work:" + call.CallId, root, cancellationToken));
             }
 
             case "legend_engineering_approve_release":
@@ -687,6 +718,20 @@ internal sealed partial class LegendFounderToolAuthority
                     return SerializeUnbounded(SoftwareRemediationNotAvailable());
 
                 using var arguments = JsonDocument.Parse(call.Arguments);
+                var contextRaw = ReadOptionalString(arguments.RootElement, "engineering_context_id");
+                if (contextRaw is not null)
+                {
+                    if (_authorizationScopes is null || !Guid.TryParse(contextRaw, out var contextId))
+                        return """{"ok":false,"error":"engineering_context_required"}""";
+                    await using var scope = _authorizationScopes.CreateAsyncScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                    var path = ReadRequiredString(arguments.RootElement, "path");
+                    var revision = ReadRequiredString(arguments.RootElement, "git_reference");
+                    if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(revision))
+                        return """{"ok":false,"error":"engineering_repository_arguments_invalid"}""";
+                    return SerializeUnbounded(await orchestrator.InspectRepositoryAsync(contextId,
+                        path, revision, cancellationToken));
+                }
                 return SerializeUnbounded(
                     await _softwareRemediation.InspectRepositoryAsync(
                         ReadOptionalString(arguments.RootElement, "path"),
@@ -772,9 +817,9 @@ internal sealed partial class LegendFounderToolAuthority
                 // Durable cloud approval binds the exact strings shown in the
                 // review; source indentation/newlines and metadata must survive
                 // dispatch unchanged. Preserve legacy caller normalization.
-                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha", preserveWhitespace: reviewedCloudRepair);
-                var title = ReadRequiredString(arguments.RootElement, "title", preserveWhitespace: reviewedCloudRepair);
-                var summary = ReadRequiredString(arguments.RootElement, "summary", preserveWhitespace: reviewedCloudRepair);
+                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha", preserveWhitespace: reviewedCloudRepair || mode == "founder_work");
+                var title = ReadRequiredString(arguments.RootElement, "title", preserveWhitespace: reviewedCloudRepair || mode == "founder_work");
+                var summary = ReadRequiredString(arguments.RootElement, "summary", preserveWhitespace: reviewedCloudRepair || mode == "founder_work");
                 if (string.IsNullOrWhiteSpace(baseSha) ||
                     string.IsNullOrWhiteSpace(title) ||
                     string.IsNullOrWhiteSpace(summary))
@@ -794,14 +839,24 @@ internal sealed partial class LegendFounderToolAuthority
                     if (change.ValueKind != JsonValueKind.Object)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
-                    var path = ReadRequiredString(change, "path", preserveWhitespace: reviewedCloudRepair);
-                    var content = ReadRequiredString(change, "content", preserveWhitespace: reviewedCloudRepair);
+                    var path = ReadRequiredString(change, "path", preserveWhitespace: reviewedCloudRepair || mode == "founder_work");
+                    var content = ReadRequiredString(change, "content", preserveWhitespace: reviewedCloudRepair || mode == "founder_work");
                     if (string.IsNullOrWhiteSpace(path) || content is null)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
                     changes.Add(new FounderSoftwareRepairChange(path, content));
                 }
 
+                var contextRaw = ReadOptionalString(arguments.RootElement, "engineering_context_id");
+                if (mode == "founder_work" || contextRaw is not null)
+                {
+                    if (_authorizationScopes is null || !Guid.TryParse(contextRaw, out var contextId))
+                        return """{"ok":false,"error":"engineering_context_required"}""";
+                    await using var scope = _authorizationScopes.CreateAsyncScope();
+                    var orchestrator = scope.ServiceProvider.GetRequiredService<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator>();
+                    return SerializeUnbounded(await orchestrator.PrepareRepairAsync(contextId,
+                        new FounderSoftwareRepairProposal(baseSha, title, summary, changes), cancellationToken));
+                }
                 return SerializeUnbounded(
                     await _softwareRemediation.PrepareAsync(
                         reviewedCloudRepair ? "founder" : mode,
@@ -3190,6 +3245,41 @@ internal sealed partial class LegendFounderToolAuthority
             new
             {
                 type = "function",
+                name = "legend_engineering_renew_turn",
+                description = "Renew the exact active Work engineering lease before it expires. Call every 60 seconds while reasoning. Never changes role, scope, context expiry, or native executor readiness.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { engineering_context_id = new { type = "string", minLength = 36, maxLength = 36 } },
+                    required = new[] { "engineering_context_id" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_engineering_complete_turn",
+                description = "Complete the exact leased engineering role through the shared canonical orchestrator. Bootstrap the next server-assigned role separately. Reviewer must independently inspect the exact candidate. This cannot approve a Founder release or bypass CI and live proof.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        engineering_context_id = new { type = "string", minLength = 36, maxLength = 36 },
+                        decision = new { type = "string", @enum = new[] { "ESCALATE_TO_HEAD_GPT", "PROCEED_TO_CODEX", "REPAIR_PREPARED", "APPROVE_VALIDATION", "REJECT", "STOP", "ESCALATE" } },
+                        evidence_sufficient = new { type = "boolean" },
+                        summary = new { type = "string", minLength = 1, maxLength = 1000 },
+                        findings = new { type = "array", maxItems = 20, items = new { type = "string", maxLength = 1000 } }
+                    },
+                    required = new[] { "engineering_context_id", "decision", "evidence_sufficient", "summary", "findings" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
                 name = "legend_engineering_approve_release",
                 description =
                     "Explicit Founder approval for one exact Tier B engineering work item that has already passed independent review and required CI. Approval is invalidated by changed evidence and does not itself bypass release cohort policy, merge checks, deployment proof, or live functional proof.",
@@ -3211,16 +3301,17 @@ internal sealed partial class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_inspect_repository",
                 description =
-                    "Read a bounded source or test file, or the protected production branch SHA, through the configured GitHub App. This is repository inspection only; it cannot execute commands, change files, open a pull request, merge, or deploy.",
+                    "Read a bounded source or test file, or the protected production branch SHA, through the configured GitHub App. For an engineering turn, supply engineering_context_id and use live or candidate as git_reference; null context is only for general Founder inspection. This cannot execute commands, change files, merge, or deploy.",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
+                        engineering_context_id = new { type = new[] { "string", "null" }, maxLength = 36 },
                         path = new { type = new[] { "string", "null" }, maxLength = 260 },
                         git_reference = new { type = new[] { "string", "null" }, maxLength = 100 }
                     },
-                    required = new[] { "path", "git_reference" },
+                    required = new[] { "path", "git_reference", "engineering_context_id" },
                     additionalProperties = false
                 },
                 strict = true
@@ -3278,12 +3369,13 @@ internal sealed partial class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_prepare_software_repair",
                 description =
-                    "After the Founder explicitly directs and confirms a repair, prepare one bounded source/test patch against the exact inspected base SHA. The canonical authority creates an isolated repair branch, immutable commit and pull request, which invokes existing pull-request CI. It cannot merge protected production or deploy. Legend® Ai itself is competency-gated and must fail closed/escalate to OpenAI Teacher until a governed software-repair competency is established.",
+                    "After the Founder explicitly directs and confirms a repair, prepare bounded source/test replacements against the exact inspected base SHA. GPT Work must supply its CODEX_IMPLEMENTER engineering_context_id. The canonical authority creates an isolated repair branch, immutable commit and pull request, which invokes existing pull-request CI. It cannot merge protected production or deploy. Legend® Ai itself is competency-gated and must fail closed/escalate to OpenAI Teacher until a governed software-repair competency is established.",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
+                        engineering_context_id = new { type = new[] { "string", "null" }, maxLength = 36 },
                         base_sha = new { type = "string", minLength = 40, maxLength = 40 },
                         title = new { type = "string", minLength = 1, maxLength = 160 },
                         summary = new { type = "string", minLength = 1, maxLength = 4000 },
@@ -3305,7 +3397,7 @@ internal sealed partial class LegendFounderToolAuthority
                             }
                         }
                     },
-                    required = new[] { "base_sha", "title", "summary", "changes" },
+                    required = new[] { "base_sha", "title", "summary", "changes", "engineering_context_id" },
                     additionalProperties = false
                 },
                 strict = true

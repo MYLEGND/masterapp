@@ -19,7 +19,7 @@
   const AGENT_SLUG = context.agentSlug || '';
   let BUSINESS_ID = context.businessId || '';
   const params = new URLSearchParams(location.search);
-  const requestedPage = SITE_KEY === 'business' && params.has('legendEdit') ? params.get('cmsPage') : null;
+  const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
   const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/?)*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
   const pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
@@ -509,14 +509,36 @@
 
   function applyTemplateBackedCompositionPage() {
     const page=pageState();
+    const mounted=new Map();
     walkComposition(page.composition || [],node=>{
       const el=findEditableElement(node.id);
-      if(!el) return;
-      el.dataset.cmsCompositionId=node.id;
-      applyCompositionNode(el,node);
-      if(el.tagName==='FORM' || String(node.systemKey || '').startsWith('protect_runtime_form:'))
-        applyFormFieldPresentations(el,node);
+      if(el) mounted.set(node.id,el);
     });
+    const ids=new Set();
+    walkComposition(page.composition || [],node=>ids.add(node.id));
+    document.querySelectorAll('main [data-cms-id]').forEach(el=>{
+      if(ids.has(el.dataset.cmsId) || el.closest('form[data-form-key]') || el.querySelector('form[data-form-key]')) return;
+      // Omitted free presentation stays omitted on reload. Native form controls
+      // are executable template state and never deleted by this reconciliation.
+      el.remove();
+    });
+    const reconcile=(nodes,parent)=>{
+      for(const node of nodes || []) {
+        let el=mounted.get(node.id);
+        // Only the server template can mount executable protected forms.
+        if(!el && String(node.systemKey || '').startsWith('protect_runtime_form:')) continue;
+        el ||= buildCompositionNode({...node,children:[]});
+        if(!el) continue;
+        el.dataset.cmsCompositionId=node.id;
+        applyCompositionNode(el,node);
+        if(el.tagName==='FORM') applyFormFieldPresentations(el,node);
+        // Move the original nodes, retaining native controls, state and listeners.
+        // Unrepresented runtime inputs remain in their native parent.
+        if(parent && el!==parent) parent.appendChild(el);
+        reconcile(node.children,el);
+      }
+    };
+    reconcile(page.composition,document.querySelector('main'));
   }
 
   function usesCanonicalComposition() {
@@ -1407,9 +1429,9 @@
   function setContentText(el, text, preserveWhitespace = false) {
     if (preserveWhitespace) el.dataset.cmsPreserveWhitespace = 'true';
     else delete el.dataset.cmsPreserveWhitespace;
-    if (el.tagName !== 'A' || !el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
+    if (!el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
     const walker = document.createTreeWalker(el, 4); const nodes = []; let node;
-    while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('svg,i,[aria-hidden="true"]')) nodes.push(node);
+    while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('input,select,textarea,svg,i,[aria-hidden="true"]')) nodes.push(node);
     if (nodes.length) { nodes[0].textContent = text; nodes.slice(1).forEach(node => { node.textContent = ''; }); }
     else el.appendChild(document.createTextNode(text));
   }
@@ -1813,6 +1835,13 @@
         dataBinding:null,
         children:[]
       };
+      runtimeNode.fieldLabels=cloneCanonicalValue(model.fieldLabels || {});
+      runtimeNode.fieldPresentations=cloneCanonicalValue(model.fieldPresentations || {});
+      for(const control of el.querySelectorAll('input:not([type="hidden"])[name],select[name],textarea[name]')) {
+        const key=safeId(control.dataset.cmsFieldKey || control.name);
+        if(!key) continue;
+        runtimeNode.fieldPresentations[key] ||= {style:{},breakpointStyles:{},layout:{},breakpointLayouts:{}};
+      }
       let childIndex=0;
       for(const child of [...el.children].filter(child =>
         child instanceof HTMLElement &&
@@ -1969,12 +1998,16 @@
 
   function applyFormFieldPresentations(form,node) {
     if(!form || !node) return;
-    const presentations=node.fieldPresentations || {};
+    const presentations=node.fieldPresentations ||= {};
     const labels=node.fieldLabels || {};
-    const controls=[...form.querySelectorAll('input[name],select[name],textarea[name],button[data-cms-field-key]')];
+    const controls=[...form.querySelectorAll('input:not([type="hidden"])[name],select[name],textarea[name],button[data-cms-field-key]')];
     controls.forEach((control,index)=>{
       const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
       if(!key) return;
+      if(String(node.systemKey || '').startsWith('protect_runtime_form:') && !Object.hasOwn(presentations,key)) {
+        presentations[key]=normalizeControlPresentation(null);
+        if(editorMode) { templateRepairPending=true; dirty=true; }
+      }
       control.dataset.cmsFieldKey=key;
       control.dataset.cmsSignalOnly='true';
       control.dataset.cmsEditable='true';
@@ -1983,12 +2016,9 @@
         applyStyle(control,effectiveStyle(presentation));
         applyLayout(control,effectiveLayout(presentation));
       }
-      if(control.matches('button[type="submit"]') && labels[key]) control.textContent=labels[key];
-      const label=control.closest('label');
-      if(label && labels[key]){
-        const textNode=[...label.childNodes].find(value=>value.nodeType===3 && String(value.textContent||'').trim());
-        if(textNode) textNode.textContent=labels[key]+' ';
-      }
+      if(control.matches('button[type="submit"]') && labels[key]) setContentText(control,labels[key],true);
+      const label=control.labels?.[0] || control.closest('label');
+      if(label && labels[key]) setContentText(label,labels[key],true);
     });
   }
 
@@ -2454,6 +2484,9 @@
   }
 
   function renderCanonicalCompositionPage() {
+    // Template runtimes own their DOM and event listeners. All structural editor
+    // paths must preserve that mounted runtime and apply presentation only.
+    if(pageUsesSystemTemplate()) { applyTemplateBackedCompositionPage(); return; }
     const main=document.querySelector('main');
     if(!main) return;
     main.replaceChildren();
@@ -2737,7 +2770,7 @@
   }
 
   function applyCompositionNode(el, model) {
-    if (el?.dataset.cmsSignalOnly) return;
+    if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') return;
     if (!el || !model) return;
     if (model.actionKey) el.dataset.websiteActionKey = model.actionKey;
     else if (model.href != null) delete el.dataset.websiteActionKey;
@@ -3178,7 +3211,7 @@
     entries.forEach(entry=>{
       const link=document.createElement(editorMode ? 'button' : 'a');
       if (editorMode) link.type='button';
-      else link.href=entry.route;
+      else link.href=location.pathname.startsWith('/business-preview') ? editorUrlForRoute(entry.route).toString() : entry.route;
       link.textContent=entry.label;
       link.dataset.legendPageNav='true';
       link.dataset.legendPageRoute=entry.route;
@@ -3222,7 +3255,15 @@
           // Repair early v3 drafts that flattened an executable form into generic
           // content. Re-materialize presentation from the still-mounted server
           // template, while the form execution stays outside WebsiteContentDocument.
+          const previous=new Map();
+          walkComposition(page.composition || [],node=>previous.set(node.id,node));
           page.composition=materializeCurrentPageComposition();
+          walkComposition(page.composition,node=>{
+            const saved=previous.get(node.id);
+            if(!saved) return;
+            for(const key of ['text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations'])
+              if(saved[key] != null) node[key]=cloneCanonicalValue(saved[key]);
+          });
           templateRepairPending=true;
           dirty=true;
         }
@@ -3472,11 +3513,10 @@
 
   function editorUrlForRoute(route, materialize = false) {
     route=canonicalSiteRoute(route); if(!route) return null;
-    const publishedRoutes=publishedRouteCatalogEntries();
     const entry=websitePageEntries(true).find(value=>value.route===route);
-    const url=new URL(location.origin);
+    const url=new URL(managementPayload?.editorBaseUrl || location.origin);
     if (SITE_KEY==='business') {
-      const nativePublishedRoute=publishedRoutes.has(route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
+      const nativePublishedRoute=Array.isArray(context.pages) && context.pages.some(page=>canonicalSiteRoute(page.path)===route) && (!legacyMigration || !entry?.legacyTemplatePath || entry.legacyTemplatePath===route);
       url.pathname='/business-preview/' + (nativePublishedRoute ? route.replace(/^\//,'') : '');
       url.searchParams.set('businessId',BUSINESS_ID);
       if (!nativePublishedRoute) url.searchParams.set('cmsPage',route);
@@ -3484,7 +3524,7 @@
       const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
       url.pathname=prefix + (route==='/'?'/':route);
     }
-    url.searchParams.set('legendEdit',editorTicket);
+    if(editorTicket) url.searchParams.set('legendEdit',editorTicket);
     if(materialize) url.searchParams.set('legendMaterialize','1');
     return url;
   }
@@ -3494,6 +3534,11 @@
     closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
     if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
+    if(sourceEditorDirty) {
+      const status=document.getElementById('legend-cms-status');
+      if(status) status.textContent='Apply or discard Selected Source before opening another page.';
+      showPanel('source'); return;
+    }
     if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
     const url=editorUrlForRoute(route);
     if(url) location.assign(url.toString());
@@ -3914,8 +3959,17 @@
     modal.hidden=false;
   }
   function preservePreviewNavigation() {
-    if (renderInput || SITE_KEY !== 'business') return;
-    document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
+    if (renderInput || SITE_KEY !== 'business' || !location.pathname.startsWith('/business-preview')) return;
+    const routes=new Set(websitePageEntries(false).map(entry=>entry.route));
+    document.querySelectorAll('a[href]').forEach(el => {
+      const url=new URL(el.getAttribute('href'),location.origin);
+      if(url.origin!==location.origin || el.getAttribute('href').startsWith('#')) return;
+      const route=canonicalSiteRoute(url.searchParams.get('cmsPage') || url.pathname.replace(/^\/business-preview/,'') || '/');
+      if(!routes.has(route)) return;
+      const scoped=editorUrlForRoute(route);
+      scoped.hash=url.hash;
+      el.href=scoped.toString();
+    });
   }
   function canonicalProtectedEditCorrection() {
     return managementPayload?.agentContract?.protectedEditCorrection ||
@@ -4892,7 +4946,12 @@
       if (status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
       return false;
     }
-    if (publish && dirty) { await save(false); if (dirty) return; }
+    if (publish && sourceEditorDirty) {
+      if(status) status.textContent='Apply or discard your Selected Source changes before publishing. Nothing was published.';
+      showPanel('source');
+      return false;
+    }
+    if (publish && dirty) { const draftSaved=await save(false); if (!draftSaved || dirty) return false; return save(true); }
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
@@ -7134,7 +7193,7 @@
 
       if(!materializeMode && templateRepairPending && !legacyMigration){
         const repaired=await save(false);
-        if(!repaired) throw new Error('Protected form presentation could not be repaired safely. Publishing remains blocked.');
+        if(!repaired) throw new Error(document.getElementById('legend-cms-status')?.textContent || 'Protected form presentation could not be repaired safely. Publishing remains blocked.');
         templateRepairPending=false;
       }
 

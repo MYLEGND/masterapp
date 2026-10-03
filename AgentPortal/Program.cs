@@ -177,7 +177,7 @@ builder.Services.AddLegendMasterAppReadAuthority();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
-builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
+builder.Services.AddScoped<CanonicalCrmOutcomeService>();
 builder.Services.AddScoped<EffectiveAgentContext>();
 builder.Services.AddScoped<Shared.PortalShell.IPortalShellIdentityResolver, AgentPortal.Services.AgentPortalShellIdentityResolver>();
 builder.Services.AddScoped<IMessagingActorContextResolver, AgentPortalMessagingActorContextResolver>();
@@ -246,7 +246,6 @@ builder.Services.AddHostedService<AgentProfileImageLegacyBackfillHostedService>(
 builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
 builder.Services.AddHostedService<AgentPortal.Services.Engineering.LegendEngineeringHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
-builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
 builder.Services.AddHostedService<BillingReconciliationHostedService>();
 builder.Services.AddHostedService<ClientBillingNotificationDeliveryHostedService>();

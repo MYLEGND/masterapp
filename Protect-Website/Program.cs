@@ -113,7 +113,7 @@ builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptur
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
-builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
+builder.Services.AddScoped<CanonicalCrmOutcomeService>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 

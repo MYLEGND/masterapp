@@ -301,6 +301,8 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft, legacyMigration = draft.LegacyMigration,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
+            editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
+                ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/') : null,
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
@@ -308,7 +310,7 @@ public class WebsitePlatformController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), agentContract = WebsiteStudioAgentContract.Payload, capabilities = new {
+            history, signalCatalog = SignalCatalogPayload(), agentContract = WebsiteStudioAgentContract.ForScope(ctaOptions, SignalCatalogPayload()), capabilities = new {
                 canPublish = await CanPublishAsync(actor, cancellationToken),
                 canManageDomains = await CanPublishAsync(actor, cancellationToken),
                 canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
@@ -1079,6 +1081,7 @@ public class WebsitePlatformController : ControllerBase
         // strict v3 protection path below owns every mutation.
         if (baseline.LegacyMigration is not null)
         {
+            WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, candidate, candidate);
             await ValidateCompositionMediaOwnershipAsync(
                 actor,
                 candidate,
@@ -1108,6 +1111,8 @@ public class WebsitePlatformController : ControllerBase
             actions,
             validateCanonical: false,
             requireActiveHomePage: false).Document;
+
+        WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, candidate, protectedDocument);
 
         await ValidateCompositionMediaOwnershipAsync(
             actor,
@@ -1242,7 +1247,13 @@ public class WebsitePlatformController : ControllerBase
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
         var state = await StateAsync(actor, cancellationToken);
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
-        var document = Read(state.DraftJson);
+        return await PublishDocumentAsync(actor, state, Read(state.DraftJson), state.ImportReportJson, cancellationToken);
+    }
+
+    private async Task<IActionResult> PublishDocumentAsync(
+        WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
+        string? importReportJson, CancellationToken cancellationToken)
+    {
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         CommerceBusiness? business = null;
         WebsiteBusinessFacts? facts = null;
@@ -1268,7 +1279,7 @@ public class WebsitePlatformController : ControllerBase
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         var version = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
-            DocumentJson = state.DraftJson, ImportReportJson = state.ImportReportJson, ActorUserId = actor.ActorUserId! };
+            DocumentJson = state.DraftJson, ImportReportJson = importReportJson, ActorUserId = actor.ActorUserId! };
         if (business is not null)
         {
             var collections = await new WebsiteCollectionProjectionService(_db)
@@ -1277,6 +1288,7 @@ public class WebsitePlatformController : ControllerBase
             version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, collections, cancellationToken);
         }
         _db.Set<WebsiteContentVersion>().Add(version);
+        state.ImportReportJson = importReportJson;
         state.PublishedVersionId = version.Id;
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;
@@ -1286,7 +1298,7 @@ public class WebsitePlatformController : ControllerBase
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id });
+        return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id, document });
     }
 
     [HttpPost("manage/rollback")]
@@ -1299,20 +1311,7 @@ public class WebsitePlatformController : ControllerBase
         if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
         var previous = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.Id == request.VersionId && v.StateId == state.Id, cancellationToken);
         if (previous is null) return NotFound();
-        var restored = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
-            DocumentJson = previous.DocumentJson, CompiledPagesJson = previous.CompiledPagesJson, ImportReportJson = previous.ImportReportJson, ActorUserId = actor.ActorUserId! };
-        _db.Set<WebsiteContentVersion>().Add(restored);
-        state.ScheduledPublishUtc = null;
-        state.ScheduledActorJson = null;
-        state.ScheduledRevision = null;
-        state.PublishedVersionId = restored.Id;
-        state.DraftJson = previous.DocumentJson;
-        state.ImportReportJson = previous.ImportReportJson;
-        state.Revision++;
-        state.UpdatedUtc = DateTime.UtcNow;
-        try { await _db.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { revision = state.Revision, publishedRevision = restored.Revision, document = Read(state.DraftJson) });
+        return await PublishDocumentAsync(actor, state, Read(previous.DocumentJson), previous.ImportReportJson, cancellationToken);
     }
 
     [HttpGet("manage/export")]

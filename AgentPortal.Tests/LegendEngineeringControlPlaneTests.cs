@@ -880,8 +880,10 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(0, handler.Calls);
     }
 
-    [Fact]
-    public async Task CodexPreparedRepair_HandsOffToIndependentReviewer()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CodexPreparedRepair_HandsOffToIndependentReviewer(bool resumed)
     {
         var incident = Incident(source: "AgentPortal/Controllers/HomeController.cs");
         var item = await _store.AttachIncidentAsync(
@@ -892,6 +894,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var context = Context(item, lease) with
         {
             Role = EngineeringRole.CodexImplementer,
+            OperationalContractRevision = LegendEngineeringContractAuthority.BuiltinRevision,
             AllowedTools = ["legend_inspect_repository", "legend_prepare_software_repair"]
         };
         var candidateSha = new string('d', 40);
@@ -899,7 +902,9 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.NotNull(leasedItem);
         await _store.UpdateWorkItemAsync(leasedItem! with
         {
-            State = "CANDIDATE_PREPARED",
+            State = resumed ? "LEASED" : "CANDIDATE_PREPARED",
+            ResumeState = resumed ? "CANDIDATE_PREPARED" : null,
+            AssignedRole = EngineeringRole.CodexImplementer,
             CandidateSha = candidateSha,
             PullRequestNumber = 417,
             LeaseOwner = "repair-handoff-owner",
@@ -907,14 +912,13 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(10)
         }, default);
 
-        var adapter = PlanAdapter(
-            new PlanResponsesHandler(),
-            new TestEngineeringOrchestrator());
+        await _store.SaveContextAsync(context, default);
+        var orchestrator = WorkOrchestrator();
         var output = JsonDocument.Parse(
             """{"decision":"REPAIR_PREPARED","base_sha":"dddddddddddddddddddddddddddddddddddddddd","title":"Prepared","summary":"Prepared through canonical tool.","changes":[]}""")
             .RootElement.Clone();
 
-        await InvokeApplyOutcomeAsync(adapter, context, item, "resp-prepared", output);
+        await orchestrator.CompleteTurnAsync(context.EngineeringContextId, "work:prepared", output, default);
 
         var current = await _store.GetWorkItemAsync(item.WorkItemId, default);
         Assert.NotNull(current);
@@ -1248,25 +1252,58 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             ?? throw new InvalidOperationException("RunWithToolsAsync result unavailable.");
     }
 
-    private static async Task InvokeApplyOutcomeAsync(
-        ChatGptPlanResponsesAdapter adapter,
-        EngineeringContextSnapshot context,
-        EngineeringWorkItemSnapshot item,
-        string responseId,
-        JsonElement output)
+    private LegendEngineeringOrchestrator WorkOrchestrator()
     {
-        var method = typeof(ChatGptPlanResponsesAdapter).GetMethod(
-            "ApplyOutcomeAsync", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("ApplyOutcomeAsync test seam not found.");
-        var task = (Task)(method.Invoke(adapter, new object[]
+        var configuration = new ConfigurationBuilder().Build();
+        return new LegendEngineeringOrchestrator(_db, _store,
+            new LegendEngineeringBudgetAuthority(_store, configuration), null!,
+            new LegendEngineeringContractAuthority(_db), configuration);
+    }
+
+    [Theory]
+    [InlineData("PROCEED_TO_CODEX", true, true, "QUEUED", null)]
+    [InlineData("PROCEED_TO_CODEX", false, true, "LEASED", "engineering_evidence_insufficient")]
+    [InlineData("APPROVE_VALIDATION", true, true, "LEASED", "engineering_role_decision_invalid")]
+    [InlineData("PROCEED_TO_CODEX", true, false, "LEASED", "engineering_operational_contract_changed")]
+    public async Task WorkCompletion_UsesBoundRoleAndCurrentContract(
+        string decision, bool evidence, bool bindingValid, string expectedState, string? error)
+    {
+        var incident = Incident();
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+        await _store.UpdateWorkItemAsync(item with { AssignedRole = EngineeringRole.HeadGpt, State = "NEEDS_SUPERVISOR" }, default);
+        item = (await _store.GetWorkItemAsync(item.WorkItemId, default))!;
+        var lease = await _store.TryAcquireLeaseAsync(item.WorkItemId, "work-test", TimeSpan.FromMinutes(5), default);
+        var context = Context(item, lease) with
         {
-            context,
-            item,
-            responseId,
-            output,
-            CancellationToken.None
-        }) ?? throw new InvalidOperationException("ApplyOutcomeAsync did not return a task."));
-        await task;
+            OperationalContractRevision = bindingValid ? LegendEngineeringContractAuthority.BuiltinRevision : "stale"
+        };
+        await _store.SaveContextAsync(context, default);
+        var output = JsonSerializer.SerializeToElement(new { decision, evidence_sufficient = evidence, summary = "Bound evidence" });
+        var result = JsonSerializer.SerializeToElement(await WorkOrchestrator()
+            .CompleteTurnAsync(context.EngineeringContextId, "work:test", output, default));
+        Assert.Equal(expectedState, (await _store.GetWorkItemAsync(item.WorkItemId, default))!.State);
+        if (error is not null) Assert.Equal(error, result.GetProperty("error").GetString());
+        else
+        {
+            Assert.True(result.GetProperty("ok").GetBoolean());
+            Assert.Equal(1, await _store.CountModelAttemptsAsync(item.WorkItemId, EngineeringRole.HeadGpt, default));
+            var replay = JsonSerializer.SerializeToElement(await WorkOrchestrator()
+                .CompleteTurnAsync(context.EngineeringContextId, "work:replay", output, default));
+            Assert.False(replay.GetProperty("ok").GetBoolean());
+            Assert.Equal(1, await _store.CountModelAttemptsAsync(item.WorkItemId, EngineeringRole.HeadGpt, default));
+        }
+    }
+
+    [Fact]
+    public async Task WorkRenewal_RejectsExpiredContext()
+    {
+        var incident = Incident();
+        var item = await _store.AttachIncidentAsync(incident, LegendEngineeringPolicies.Classify(incident), default);
+        var lease = await _store.TryAcquireLeaseAsync(item.WorkItemId, "work-test", TimeSpan.FromMinutes(5), default);
+        var context = Context(item, lease) with { ExpiresUtc = DateTime.UtcNow.AddSeconds(-1) };
+        await _store.SaveContextAsync(context, default);
+        var result = JsonSerializer.SerializeToElement(await WorkOrchestrator().RenewTurnAsync(context.EngineeringContextId, default));
+        Assert.Equal("engineering_context_expired", result.GetProperty("error").GetString());
     }
 
     private static bool ReadRunBool(object run, string property) =>
@@ -1319,6 +1356,11 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         public Func<Guid, FounderSoftwareRepairProposal, CancellationToken, Task<object>>? PrepareRepair { get; init; }
         public int InspectRepositoryCalls { get; private set; }
         public int PrepareRepairCalls { get; private set; }
+
+        public Task<object> CompleteTurnAsync(Guid engineeringContextId, string responseId, JsonElement output, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<object> RenewTurnAsync(Guid engineeringContextId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public Task<object> GetStatusAsync(CancellationToken cancellationToken) =>
             Task.FromResult<object>(new { ok = true });
@@ -1472,6 +1514,22 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
     {
         using var command = _connection.CreateCommand();
         command.CommandText = """
+            CREATE TABLE LegendEngineeringOperationalContract (
+              ContractKey TEXT PRIMARY KEY,
+              Revision TEXT NOT NULL,
+              Version INTEGER NOT NULL,
+              ModelExecutionEnabled INTEGER NOT NULL,
+              AutonomousEngineeringEnabled INTEGER NOT NULL,
+              HeadGptModel TEXT NOT NULL,
+              CodexModel TEXT NOT NULL,
+              ReviewerModel TEXT NOT NULL,
+              SharedDirective TEXT NOT NULL,
+              HeadGptDirective TEXT NOT NULL,
+              CodexDirective TEXT NOT NULL,
+              ReviewerDirective TEXT NOT NULL,
+              UpdatedUtc TEXT NOT NULL,
+              UpdatedBy TEXT NOT NULL);
+
             CREATE TABLE LegendEngineeringControlLocks (LockKey TEXT PRIMARY KEY, Revision INTEGER NOT NULL);
             INSERT INTO LegendEngineeringControlLocks (LockKey,Revision) VALUES ('lease-authority',0);
             INSERT INTO LegendEngineeringControlLocks (LockKey,Revision) VALUES ('chatgpt-plan-credential',0);

@@ -19,6 +19,8 @@ internal interface ILegendEngineeringOrchestrator
     Task<EngineeringTaskPacket> GetTaskPacketAsync(Guid engineeringContextId, CancellationToken cancellationToken);
     Task<object> InspectRepositoryAsync(Guid engineeringContextId, string path, string revision, CancellationToken cancellationToken);
     Task<object> PrepareRepairAsync(Guid engineeringContextId, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
+    Task<object> CompleteTurnAsync(Guid engineeringContextId, string responseId, JsonElement output, CancellationToken cancellationToken);
+    Task<object> RenewTurnAsync(Guid engineeringContextId, CancellationToken cancellationToken);
     Task<object> ApproveReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
     Task<object> DeclineReleaseAsync(ClaimsPrincipal founder, Guid workItemId, CancellationToken cancellationToken);
     Task RecordBrowserFunctionalProofAsync(
@@ -60,6 +62,14 @@ internal sealed class LegendEngineeringOrchestrator(
             modelExecutionEnabled = operationalContract.ModelExecutionEnabled,
             autonomousEngineeringEnabled = operationalContract.AutonomousEngineeringEnabled,
             founderOnly = true,
+            workOrchestration = new
+            {
+                enabled = operationalContract.ModelExecutionEnabled,
+                transport = "authenticated_founder_site_tools",
+                connectionState = "REQUIRES_BROWSER_TOOL_VERIFICATION",
+                requiresNativeClientRegistration = false,
+                completionAuthority = nameof(LegendEngineeringOrchestrator)
+            },
             openWorkItems = work.Count,
             leasedWorkItems = work.Count(item => item.LeaseExpiresUtc > DateTime.UtcNow),
             securityReviewItems = work.Count(item => item.RiskClass == EngineeringRiskClass.TierC),
@@ -153,7 +163,7 @@ internal sealed class LegendEngineeringOrchestrator(
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(founder);
-        return BootstrapCoreAsync(workItemId, role, cancellationToken);
+        return BootstrapCoreAsync(workItemId, role, "work", cancellationToken);
     }
 
     public async Task<EngineeringContextSnapshot> BootstrapSystemAsync(
@@ -171,7 +181,7 @@ internal sealed class LegendEngineeringOrchestrator(
         if (!LegendEngineeringPolicies.IsApprovedAutonomousBaseBranch(
                 configuration["FounderSoftwareRemediation:BaseBranch"]))
             throw new InvalidOperationException("autonomous_engineering_approved_base_required");
-        return await BootstrapCoreAsync(workItemId, role, cancellationToken);
+        return await BootstrapCoreAsync(workItemId, role, "native", cancellationToken);
     }
 
     public async Task<EngineeringTaskPacket> GetTaskPacketAsync(
@@ -386,6 +396,252 @@ internal sealed class LegendEngineeringOrchestrator(
     }
 
 
+    public async Task<object> RenewTurnAsync(Guid engineeringContextId, CancellationToken cancellationToken)
+    {
+        var validation = await store.ValidateContextAsync(engineeringContextId, cancellationToken);
+        if (!validation.Valid || validation.Context is null) return Failure(validation.Code);
+        var context = validation.Context;
+        var binding = await contractAuthority.ValidateBindingAsync(context.OperationalContractRevision, cancellationToken);
+        if (!binding.Valid) return Failure(binding.Code);
+        var renewed = await store.RenewLeaseAsync(context.WorkItemId, context.LeaseIdentity,
+            TimeSpan.FromMinutes(5), context.ExpiresUtc, cancellationToken);
+        return new { ok = renewed, context.ExpiresUtc, error = renewed ? null : "engineering_lease_changed" };
+    }
+
+    public async Task<object> CompleteTurnAsync(
+        Guid engineeringContextId, string responseId, JsonElement output, CancellationToken cancellationToken)
+    {
+        var validation = await store.ValidateContextAsync(engineeringContextId, cancellationToken);
+        if (!validation.Valid || validation.Context is null) return Failure(validation.Code);
+        var context = validation.Context;
+        var binding = await contractAuthority.ValidateBindingAsync(context.OperationalContractRevision, cancellationToken);
+        if (!binding.Valid) return Failure(binding.Code);
+        var item = await store.GetWorkItemAsync(context.WorkItemId, cancellationToken);
+        if (item is null) return Failure("work_item_not_found");
+        if (item.AssignedRole != context.Role) return Failure("forged_or_stale_engineering_role");
+        if (output.ValueKind != JsonValueKind.Object ||
+            !output.TryGetProperty("decision", out var decisionElement) || decisionElement.ValueKind != JsonValueKind.String)
+            return Failure("engineering_role_output_invalid");
+        var decision = decisionElement.GetString();
+        var allowed = context.Role switch
+        {
+            EngineeringRole.TriageWorker => decision is "ESCALATE_TO_HEAD_GPT" or "STOP" or "ESCALATE",
+            EngineeringRole.HeadGpt => decision is "PROCEED_TO_CODEX" or "STOP" or "ESCALATE",
+            EngineeringRole.CodexImplementer => decision is "REPAIR" or "REPAIR_PREPARED" or "STOP" or "ESCALATE",
+            EngineeringRole.IndependentReviewer => decision is "APPROVE_VALIDATION" or "REJECT" or "ESCALATE",
+            _ => false
+        };
+        if (!allowed) return Failure("engineering_role_decision_invalid");
+        if (decision == "PROCEED_TO_CODEX" &&
+            (!output.TryGetProperty("evidence_sufficient", out var sufficient) || sufficient.ValueKind != JsonValueKind.True))
+            return Failure("engineering_evidence_insufficient");
+        if (context.Role == EngineeringRole.IndependentReviewer &&
+            (!LegendEngineeringPolicies.IsImmutableSha(item.CandidateSha) || item.PullRequestNumber is not > 0))
+            return Failure("engineering_review_candidate_missing");
+        if (responseId.StartsWith("work:", StringComparison.Ordinal))
+            await store.RecordUsageAsync(new EngineeringUsageObservation(
+                context.EngineeringContextId, item.WorkItemId, item.ModelTier, context.Role,
+                "CHATGPT_WORK", responseId, null, null, null, null, false, DateTime.UtcNow,
+                ProviderAttempted: true, LogicalAttemptCompleted: true,
+                ProviderOutcome: "ROLE_OUTPUT_RECEIVED"), cancellationToken);
+        return await ApplyOutcomeAsync(context, item, responseId, output, cancellationToken);
+    }
+
+    private async Task<object> ApplyOutcomeAsync(
+        EngineeringContextSnapshot context,
+        EngineeringWorkItemSnapshot item,
+        string responseId,
+        JsonElement output,
+        CancellationToken cancellationToken)
+    {
+        var decision = output.GetProperty("decision").GetString();
+        if (context.Role == EngineeringRole.TriageWorker)
+        {
+            var next = decision == "ESCALATE_TO_HEAD_GPT"
+                ? ClearLease(item) with
+                {
+                    State = "NEEDS_SUPERVISOR",
+                    AssignedRole = EngineeringRole.HeadGpt,
+                    ModelTier = EngineeringModelTier.DeepReasoning,
+                    UpdatedUtc = DateTime.UtcNow
+                }
+                : ClearLease(item) with
+                {
+                    State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
+                    UpdatedUtc = DateTime.UtcNow
+                };
+            await store.UpdateWorkItemAsync(next, cancellationToken);
+            return Outcome(context, responseId, next.State);
+        }
+
+        if (context.Role == EngineeringRole.HeadGpt)
+        {
+            var next =
+                decision == "PROCEED_TO_CODEX" &&
+                item.FailureClass == EngineeringFailureClass.CodeDefect &&
+                item.RiskClass != EngineeringRiskClass.TierC
+                    ? ClearLease(item) with
+                    {
+                        State = "QUEUED",
+                        AssignedRole = EngineeringRole.CodexImplementer,
+                        ModelTier = EngineeringModelTier.CodeImplementation,
+                        UpdatedUtc = DateTime.UtcNow
+                    }
+                    : ClearLease(item) with
+                    {
+                        State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
+                        UpdatedUtc = DateTime.UtcNow
+                    };
+            await store.UpdateWorkItemAsync(next, cancellationToken);
+            return Outcome(context, responseId, next.State);
+        }
+
+        if (context.Role == EngineeringRole.CodexImplementer)
+        {
+            if (decision == "REPAIR_PREPARED")
+            {
+                var preparedItem =
+                    await store.GetWorkItemAsync(item.WorkItemId, cancellationToken) ?? item;
+                if ((preparedItem.State != "CANDIDATE_PREPARED" &&
+                     !(preparedItem.State == "LEASED" && preparedItem.ResumeState == "CANDIDATE_PREPARED")) ||
+                    !LegendEngineeringPolicies.IsImmutableSha(preparedItem.CandidateSha) ||
+                    preparedItem.PullRequestNumber is not > 0)
+                    return Failure("engineering_tool_repair_not_prepared");
+
+                var preparedNext = ClearLease(preparedItem) with
+                {
+                    State = "REVIEW_REQUIRED",
+                    AssignedRole = EngineeringRole.IndependentReviewer,
+                    ModelTier = EngineeringModelTier.IndependentReview,
+                    AgentSessionId = responseId,
+                    AgentContextId = context.EngineeringContextId,
+                    AgentSessionRole = context.Role,
+                    AgentSessionUpdatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                await store.UpdateWorkItemAsync(preparedNext, cancellationToken);
+                return Outcome(context, responseId, preparedNext.State);
+            }
+
+            if (decision != "REPAIR")
+            {
+                var stopped = ClearLease(item) with
+                {
+                    State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                await store.UpdateWorkItemAsync(stopped, cancellationToken);
+                return Outcome(context, responseId, stopped.State);
+            }
+
+            var proposal = ParseProposal(
+                output,
+                LegendEngineeringPolicies.ResolveRepairBaseSha(item));
+            if (proposal is null)
+                return Failure("codex_repair_proposal_invalid");
+
+            var result = await PrepareRepairAsync(
+                context.EngineeringContextId,
+                proposal,
+                cancellationToken);
+            var prepared = JsonSerializer.SerializeToElement(result, JsonOptions);
+            if (!prepared.TryGetProperty("prepared", out var value) ||
+                value.ValueKind != JsonValueKind.True)
+                return result;
+
+            var current =
+                await store.GetWorkItemAsync(item.WorkItemId, cancellationToken) ?? item;
+            var next = ClearLease(current) with
+            {
+                State = "REVIEW_REQUIRED",
+                AssignedRole = EngineeringRole.IndependentReviewer,
+                ModelTier = EngineeringModelTier.IndependentReview,
+                AgentSessionId = responseId,
+                AgentContextId = context.EngineeringContextId,
+                AgentSessionRole = context.Role,
+                AgentSessionUpdatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            };
+            await store.UpdateWorkItemAsync(next, cancellationToken);
+            return Outcome(context, responseId, next.State);
+        }
+
+        if (context.Role == EngineeringRole.IndependentReviewer)
+        {
+            var next = decision switch
+            {
+                "APPROVE_VALIDATION" => ClearLease(item) with
+                {
+                    State = "REVIEWED",
+                    ValidationState = "READY_FOR_CI",
+                    UpdatedUtc = DateTime.UtcNow
+                },
+                "REJECT" => ClearLease(item) with
+                {
+                    State = "REVIEW_REJECTED",
+                    AssignedRole = EngineeringRole.HeadGpt,
+                    ModelTier = EngineeringModelTier.DeepReasoning,
+                    UpdatedUtc = DateTime.UtcNow
+                },
+                _ => ClearLease(item) with
+                {
+                    State = "FOUNDER_ESCALATION",
+                    UpdatedUtc = DateTime.UtcNow
+                }
+            };
+            await store.UpdateWorkItemAsync(next, cancellationToken);
+            return Outcome(context, responseId, next.State);
+        }
+
+        return Failure("engineering_role_not_supported_by_plan_adapter");
+    }
+
+    private static EngineeringWorkItemSnapshot ClearLease(
+        EngineeringWorkItemSnapshot item) =>
+        item with
+        {
+            LeaseOwner = null,
+            LeaseIdentity = null,
+            LeaseExpiresUtc = null
+        };
+
+    internal static FounderSoftwareRepairProposal? ParseProposal(
+        JsonElement output,
+        string expectedBaseSha)
+    {
+        var baseSha = ReadOutcomeString(output, "base_sha") ?? expectedBaseSha;
+        var title = ReadOutcomeString(output, "title");
+        var summary = ReadOutcomeString(output, "summary");
+        if (!string.Equals(baseSha, expectedBaseSha, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(title) ||
+            string.IsNullOrWhiteSpace(summary) ||
+            !output.TryGetProperty("changes", out var changes) ||
+            changes.ValueKind != JsonValueKind.Array ||
+            changes.GetArrayLength() is < 1 or > 6)
+            return null;
+
+        var result = new List<FounderSoftwareRepairChange>();
+        foreach (var item in changes.EnumerateArray())
+        {
+            var path = ReadOutcomeString(item, "path");
+            var source = ReadOutcomeString(item, "content");
+            if (string.IsNullOrWhiteSpace(path) || source is null)
+                return null;
+            result.Add(new(path, source));
+        }
+
+        return new(baseSha, title, summary, result);
+    }
+
+    private static string? ReadOutcomeString(JsonElement output, string name) =>
+        output.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static object Failure(string code) => new { ok = false, error = code };
+
+    private static object Outcome(EngineeringContextSnapshot context, string responseId, string state) =>
+        new { ok = true, authority = nameof(LegendEngineeringOrchestrator),
+            contextId = context.EngineeringContextId, context.Role, responseId, workItemState = state };
+
     public async Task<object> ApproveReleaseAsync(
         ClaimsPrincipal founder,
         Guid workItemId,
@@ -508,6 +764,7 @@ internal sealed class LegendEngineeringOrchestrator(
     private async Task<EngineeringContextSnapshot> BootstrapCoreAsync(
         Guid workItemId,
         string requestedRole,
+        string executor,
         CancellationToken cancellationToken)
     {
         var item = await store.GetWorkItemAsync(workItemId, cancellationToken)
@@ -537,7 +794,7 @@ internal sealed class LegendEngineeringOrchestrator(
         if (observedAttempts >= attemptLimit)
             throw new InvalidOperationException("engineering_attempt_limit_reached");
 
-        var owner = $"engineering:{requestedRole.ToLowerInvariant()}:{workItemId:N}";
+        var owner = $"engineering:{executor}:{requestedRole.ToLowerInvariant()}:{workItemId:N}";
         var lease = await store.TryAcquireLeaseAsync(
             workItemId,
             owner,

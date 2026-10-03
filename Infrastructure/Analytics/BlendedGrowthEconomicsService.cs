@@ -34,11 +34,10 @@ public sealed class BlendedGrowthEconomicsService(
                 g => g.Key,
                 g => new
                 {
-                    Customers = g.LongCount(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventType)),
+                    Customers = CanonicalMarketingOutcomeProjection.CustomerCount(g.Select(x => x.Row)),
                     Revenue = g.Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventType))
                         .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.Row.MetadataJson)),
-                    Pipeline = g.Where(x => CanonicalMarketingOutcomeProjection.IsPipeline(x.Row.EventType))
-                        .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.Row.MetadataJson))
+                    Pipeline = CanonicalMarketingOutcomeProjection.PipelineValue(g.Select(x => x.Row))
                 },
                 StringComparer.OrdinalIgnoreCase);
 
@@ -54,7 +53,7 @@ public sealed class BlendedGrowthEconomicsService(
                 string.Equals(x.Channel, channel, StringComparison.OrdinalIgnoreCase));
             outcomeGroups.TryGetValue(channel, out var outcome);
 
-            var spend = delivery?.Spend ?? 0m;
+            var spend = delivery?.Spend;
             var customers = outcome?.Customers ?? delivery?.Customers ?? 0;
             var revenue = outcome?.Revenue ?? delivery?.Revenue ?? 0m;
             var pipeline = outcome?.Pipeline ?? 0m;
@@ -63,9 +62,9 @@ public sealed class BlendedGrowthEconomicsService(
                 channel,
                 spend,
                 customers,
-                customers > 0 ? Math.Round(spend / customers, 2) : 0m,
+                customers > 0 && spend.HasValue ? Math.Round(spend.Value / customers, 2) : (decimal?)null,
                 revenue,
-                spend > 0 ? Math.Round(revenue / spend, 2) : 0m,
+                spend > 0 ? Math.Round(revenue / spend.Value, 2) : (decimal?)null,
                 pipeline,
                 delivery?.AttributionBasis ?? "Canonical analytics + CRM outcome lineage"));
         }
@@ -76,15 +75,16 @@ public sealed class BlendedGrowthEconomicsService(
             .ThenBy(x => x.Channel)
             .ToList();
 
-        var totalSpend = rows.Sum(x => x.Spend);
-        var totalCustomers = rows.Sum(x => x.CustomersAcquired);
+        decimal? totalSpend = rows.All(x => x.Spend.HasValue) ? rows.Sum(x => x.Spend) : null;
+        var totalCustomers = CanonicalMarketingOutcomeProjection.CustomerCount(CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events));
         var totalRevenue = rows.Sum(x => x.Revenue);
         var totalPipeline = rows.Sum(x => x.PipelineValue);
 
         var notes = new List<string>(unified.DataQualityNotes)
         {
             "Blended economics uses one canonical scoped outcome stream. Spend comes from connected paid providers; customers, revenue, and pipeline value come from downstream CRM/commerce outcomes attributed to the acquisition channel.",
-            "Cost per customer is zero when a channel has no acquired customers in the selected range; it is not an estimate."
+            "Cost per customer and ROAS are unavailable when required evidence or a valid denominator is missing.",
+            "Channel customer counts can overlap; the blended customer total deduplicates across channels."
         };
 
         return new(
@@ -93,9 +93,9 @@ public sealed class BlendedGrowthEconomicsService(
             range.ToUtc,
             totalSpend,
             totalCustomers,
-            totalCustomers > 0 ? Math.Round(totalSpend / totalCustomers, 2) : 0m,
+            totalCustomers > 0 && totalSpend.HasValue ? Math.Round(totalSpend.Value / totalCustomers, 2) : (decimal?)null,
             totalRevenue,
-            totalSpend > 0 ? Math.Round(totalRevenue / totalSpend, 2) : 0m,
+            totalSpend > 0 ? Math.Round(totalRevenue / totalSpend.Value, 2) : (decimal?)null,
             totalPipeline,
             rows,
             notes);

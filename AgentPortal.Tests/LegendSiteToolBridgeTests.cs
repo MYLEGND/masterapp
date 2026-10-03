@@ -76,7 +76,9 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("data-website-action-key", pageHealth, StringComparison.Ordinal);
         Assert.Contains("data-cms-composition-id", pageHealth, StringComparison.Ordinal);
         Assert.Contains("result.push(url.pathname)", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("textContent", source, StringComparison.Ordinal);
+        // The bridge may write its own connection label; it must never read page text into a payload.
+        Assert.Contains("status.textContent = message", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("document.body.textContent", source, StringComparison.Ordinal);
         Assert.DoesNotContain("innerHTML", source, StringComparison.Ordinal);
         Assert.DoesNotContain("document.cookie", source, StringComparison.Ordinal);
         Assert.DoesNotContain("localStorage.getItem", source, StringComparison.Ordinal);

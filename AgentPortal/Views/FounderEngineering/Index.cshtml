@@ -161,10 +161,10 @@
 
         <article class="eng-status-card">
             <div class="eng-status-top">
-                <span class="eng-status-label">Autonomous Engineering</span>
-                <span class="eng-dot @StateClass(Model.AutonomousRuntimeActive)"></span>
+                <span class="eng-status-label">Native autonomous executor</span>
+                <span class="eng-dot @StateClass(Model.NativeAutonomousRuntimeActive)"></span>
             </div>
-            <strong>@(Model.AutonomousRuntimeActive ? "Enabled" : "Paused")</strong>
+            <strong>@(Model.NativeAutonomousRuntimeActive ? "Enabled" : "Paused")</strong>
             <p>Deterministic monitoring and release reconciliation continue even when model execution is paused.</p>
             <div class="eng-mini-row"><span>Open work</span><b>@Model.OpenWorkItems</b></div>
             <div class="eng-mini-row"><span>Leased</span><b>@Model.LeasedWorkItems</b></div>
@@ -177,6 +177,12 @@
                 </p>
             }
         </article>
+    </section>
+
+    <section class="eng-status-card" aria-label="GPT Work orchestration">
+        <span class="eng-status-label">GPT Work orchestration</span>
+        <strong data-engineering-work-status data-enabled="@(Model.ModelExecutionEnabled ? "true" : "false")">@(Model.ModelExecutionEnabled ? "Browser connection unverified" : "Paused by Founder")</strong>
+        <p>Work uses the authenticated page tools and the same engineering contexts, role transitions, validation, and release authority. It does not require the native executor's client ID. A registered tool connection does not prove a running task.</p>
     </section>
 
     <section class="eng-protected">

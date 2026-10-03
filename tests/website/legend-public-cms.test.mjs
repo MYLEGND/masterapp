@@ -3185,3 +3185,82 @@ test('Protect native experiences reuse public CTA catalog, canonical bindings, a
   assert.match(publicInquiryFormSource,/data-submit-capability="lead_capture"/);
   assert.match(protectLayoutSource,/src="~\/js\/tracking\.js"/);
 });
+
+
+test('unapplied Selected Source blocks publication without publishing the older draft',async()=>{
+  const f=await domFixture();
+  try {
+    f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    const value=JSON.parse(input.value); value.text='Unapplied source';
+    input.value=JSON.stringify(value); input.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.click('#legend-cms-publish');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/publish')),false);
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/Apply or discard/);
+  } finally {f.close();}
+});
+
+test('protected native fields remain real controls after label edits and structural rendering',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/life']={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[]};
+  const html='<!doctype html><html><body><main><section><form id="lifeWizardForm" data-form-key="quote_life"><label data-cms-id="life.name">Your name <input name="FirstName" required></label><button type="submit">Continue <svg aria-hidden="true"></svg></button></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try {
+    const control=f.w.document.querySelector('input[name="FirstName"]');
+    let changes=0;control.addEventListener('change',()=>changes++);
+    f.click('main section');f.click('[data-add="text"]');
+    const saved=await f.save();
+    assert.equal(f.w.document.querySelector('input[name="FirstName"]'),control);
+    assert.equal(control.required,true);
+    control.dispatchEvent(new f.w.Event('change'));assert.equal(changes,1);
+    const runtime=canonicalNodes(saved,'/quote/life').find(node=>node.systemKey==='protect_runtime_form:quote_life');
+    assert.ok(runtime.fieldPresentations.firstname);
+    assert.equal(f.w.document.querySelector('main label').textContent.trim(),'Your name');
+    assert.ok(f.w.document.querySelector('button[type="submit"] svg'));
+  } finally {f.close();}
+});
+
+test('business preview navigation retains its business scope for authored pages',async()=>{
+  const doc=canonicalBusinessNavigation();
+  doc.pages['/custom-offer']={title:'Offer',navigation:{label:'Offer',order:2,showInNavigation:true},composition:[canonicalNode('offer.title','heading','h1',{text:'Offer'})]};
+  const f=await domFixture({siteKey:'business',business:{id:'11111111-1111-1111-1111-111111111111',displayName:'Scoped'},doc,pathname:'/business-preview/',search:'?businessId=11111111-1111-1111-1111-111111111111',pages:[{path:'/',label:'Home'}]});
+  try {
+    const link=f.w.document.querySelector('[data-legend-page-route="/custom-offer"]');
+    const url=new URL(link.href);
+    assert.equal(url.pathname,'/business-preview/');
+    assert.equal(url.searchParams.get('cmsPage'),'/custom-offer');
+    assert.equal(url.searchParams.get('businessId'),'11111111-1111-1111-1111-111111111111');
+    assert.equal(url.searchParams.has('legendEdit'),false);
+  } finally {f.close();}
+});
+
+
+test('custom-domain asset authority serves the canonical form stylesheet referenced by compiled pages',()=>{
+  assert.match(businessBuildSource,/href="\/public-inquiry-form\.css/);
+  assert.match(businessMiddlewareSource,/path is "\/site\.css" or "\/public-inquiry-form\.css"/);
+});
+
+
+test('template label presentation updates preserve native inputs and button icons',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/quote/life']={title:'Life',systemTemplateKey:'protect_template:life_wizard',navigation:{isDeleted:false},composition:[
+    canonicalNode('life.section','section','section',{children:[
+      canonicalNode('runtime.form.quote_life','container','div',{systemKey:'protect_runtime_form:quote_life',style:{backgroundColor:'#112233'},children:[
+        canonicalNode('life.label','text','label',{text:'Your first name'}),
+        canonicalNode('life.submit','text','span',{text:'Get started'})
+      ]})
+    ]})
+  ]};
+  const html='<!doctype html><html><body><main><section data-cms-id="life.section"><p data-cms-id="removed.copy">Stale copy</p><form id="lifeWizardForm" data-form-key="quote_life"><label data-cms-id="life.label">Old label <input name="FirstName" required></label><button data-cms-id="life.submit" type="submit">Old submit <svg aria-hidden="true"></svg></button></form></section></main></body></html>';
+  const f=await domFixture({siteKey:'protect',doc,pathname:'/Quote/Life',html});
+  try {
+    assert.equal(f.w.document.querySelector('[data-cms-id="removed.copy"]'),null);
+    assert.equal(f.w.document.querySelector('main form').style.backgroundColor,'rgb(17, 34, 51)');
+    assert.equal(f.w.document.querySelector('main label').textContent,'Your first name');
+    assert.ok(f.w.document.querySelector('main label input[required]'));
+    assert.equal(f.w.document.querySelector('main button[type="submit"]').textContent,'Get started');
+    assert.ok(f.w.document.querySelector('main button[type="submit"] svg'));
+  } finally {f.close();}
+});

@@ -53,7 +53,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
-            new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance),
+            new CanonicalCrmOutcomeService(db, NullLogger<CanonicalCrmOutcomeService>.Instance),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -122,7 +122,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
-            new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance),
+            new CanonicalCrmOutcomeService(db, NullLogger<CanonicalCrmOutcomeService>.Instance),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(

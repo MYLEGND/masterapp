@@ -2696,6 +2696,10 @@ def cmd_package_backfill_plan(args):
 
 
 
+class MigrationProbeAuthorityMissing(ValueError):
+    """A revision predates the required probe child and cannot supply its evidence."""
+
+
 def migration_probe_identity(tool_revision, application_revision):
     """One dependency model: derive the probe runtime from infrastructure build ownership."""
     if not all(re.fullmatch(r'[0-9a-f]{40}', value or '') for value in (tool_revision, application_revision)):
@@ -2720,7 +2724,7 @@ def migration_probe_identity(tool_revision, application_revision):
     workflow = git_show_file(tool_revision, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW)
     job = _job_blocks(workflow).get('validated-migration-probe')
     if not job:
-        raise ValueError('Validated migration probe child authority missing')
+        raise MigrationProbeAuthorityMissing('Validated migration probe child authority missing')
     payload = {'schemaVersion': 1, 'runtimeIdentity': runtime, 'toolIdentity': tooling,
                'executionIdentity': hashlib.sha256(job.rstrip().encode()).hexdigest()}
     identity = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
@@ -2744,7 +2748,12 @@ def migration_probe_evidence(repository, identity):
             ['git', 'rev-parse', 'HEAD'], text=True).strip()
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision):
             continue
-        producer = migration_probe_identity(run['head_sha'], run['head_sha'])
+        try:
+            producer = migration_probe_identity(run['head_sha'], run['head_sha'])
+        except MigrationProbeAuthorityMissing:
+            # Historical runs before this child existed cannot prove probe reuse.
+            # Continue searching; without a compatible producer the caller builds.
+            continue
         if producer != identity:
             continue
         if identity['artifact'] not in _run_artifact_names(repository, run_id, token):

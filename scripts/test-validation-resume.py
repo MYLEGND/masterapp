@@ -757,6 +757,46 @@ jobs:
         self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
         self.assertFalse(any("/jobs?" in path for path in seen))
 
+    def test_current_probe_identity_still_requires_child_authority(self):
+        with patch.object(m.subprocess, "check_output", return_value=""), \
+             patch.object(m, "git_show_file", return_value="jobs:\n  other:\n    runs-on: ubuntu-latest\n"):
+            with self.assertRaisesRegex(m.MigrationProbeAuthorityMissing, "child authority missing"):
+                m.migration_probe_identity("a" * 40, "a" * 40)
+
+    def test_probe_history_without_child_does_not_abort_new_candidate(self):
+        identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}
+        old = {"id": 88, "head_sha": "e" * 40, "updated_at": "2026-10-03T01:00:00Z"}
+        valid = {"id": 77, "head_sha": "f" * 40, "updated_at": "2026-10-03T00:00:00Z"}
+        with patch.object(m, "api_get", return_value={"workflow_runs": [old, valid]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=[m.MigrationProbeAuthorityMissing("missing"), identity]), \
+             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}) as artifacts, \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        artifacts.assert_called_once_with("MYLEGND/masterapp", 77, "token")
+
+    def test_probe_history_without_child_requires_fresh_build(self):
+        identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}
+        run = {"id": 88, "head_sha": "e" * 40}
+        with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=m.MigrationProbeAuthorityMissing("missing")), \
+             patch.object(m, "_run_artifact_names") as artifacts, \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            self.assertEqual({"reusable": False, "artifact": identity["artifact"]},
+                             m.migration_probe_evidence("MYLEGND/masterapp", identity))
+        artifacts.assert_not_called()
+
+    def test_probe_history_other_identity_errors_remain_fatal(self):
+        with patch.object(m, "api_get", return_value={"workflow_runs": [{"id": 88, "head_sha": "e" * 40}]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=ValueError("runtime mismatch")), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            with self.assertRaisesRegex(ValueError, "runtime mismatch"):
+                m.migration_probe_evidence("MYLEGND/masterapp", {})
+
     def test_trusted_lineage_run_requires_same_repo_workflow_and_ancestor(self):
         run = {
             "path": ".github/workflows/" + m.PACKAGE_VALIDATION_WORKFLOW,
