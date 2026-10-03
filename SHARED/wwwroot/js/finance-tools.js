@@ -6574,25 +6574,14 @@ if (t.id === "SavingsAccelerator") {
                 <dd id="${pid('PctTotal')}">0%</dd>
             </dl>
         </div>
-        <div class="savings-row-header${isDualPanel ? ' compact' : ''}" aria-hidden="true">
-            ${isDualPanel
-                ? `
-                    <span>Bucket Name</span>
-                    <span>Alloc %</span>
-                    <span>Alloc $</span>
-                    <span>APR %</span>
-                    <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                    <span class="savings-row-header__action">Details</span>
-                `
-                : `
-                    <span>Bucket Name</span>
-                    <span>Allocation Amount</span>
-                    <span class="savings-row-header__multiline">Allocation<br>%</span>
-                    <span>APR %</span>
-                    <span>Start Date</span>
-                    <span>Starting Balance</span>
-                    <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                `}
+        <div class="savings-row-header" aria-hidden="true">
+            <span>Bucket Name</span>
+            <span>Allocation Amount</span>
+            <span class="savings-row-header__multiline">Allocation<br>%</span>
+            <span>APR %</span>
+            <span>Start Date</span>
+            <span>Starting Balance</span>
+            <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
     </div>
@@ -6660,7 +6649,7 @@ if (t.id === "SavingsAccelerator") {
     // ----- Tooltip engine (overlay) -----
     const tipLayer = document.getElementById(pid('TipLayer'));
     const tipBox = document.createElement('div');
-    tipBox.className = `${prefix}-tipbox`;
+    tipBox.className = 'sa-tipbox';
     tipLayer.appendChild(tipBox);
 
     const showTip = (el) => {
@@ -6691,7 +6680,7 @@ if (t.id === "SavingsAccelerator") {
     // Register for global click binder
     window.__LegendHideActiveTip = hideTip;
 
-    container.querySelectorAll(`.${prefix}-i`).forEach(el => {
+    container.querySelectorAll('.sa-i').forEach(el => {
         el.addEventListener('mouseenter', () => showTip(el));
         el.addEventListener('mouseleave', hideTip);
         el.addEventListener('focus', () => showTip(el));
@@ -7263,7 +7252,7 @@ if (t.id === "SavingsAccelerator") {
                 startingBalance: row.querySelector('.sa-alloc-starting-balance')?.value || ''
             });
         });
-        savePersistedState(saStateId, { allocations });
+        savePersistedState(savingsToolStateId, { allocations });
     };
 
     const injectDefaultSavingsAllocationRows = () => {
@@ -7397,7 +7386,7 @@ if (t.id === "SavingsAccelerator") {
         row.dataset.isTemplate = isTemplate ? 'true' : 'false';
 
         const grid = document.createElement('div');
-        grid.className = isDualPanel ? 'savings-row compact' : 'savings-row';
+        grid.className = 'savings-row';
 
         const name = document.createElement('input');
         name.className = 'sa-alloc-name savings-name';
@@ -7458,23 +7447,8 @@ if (t.id === "SavingsAccelerator") {
         note.className = 'sa-alloc-note';
         note.textContent = description || 'Adjust APR, start date, and opening balance to refine the year-end projection.';
 
-        if (isDualPanel) {
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'sa-alloc-toggle';
-            const syncLabel = () => { editBtn.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Details'; };
-            editBtn.addEventListener('click', () => { drawer.classList.toggle('is-open'); syncLabel(); });
-            syncLabel();
-            grid.append(name, pctWrap, amtWrap, aprWrap, projectedWrap, editBtn);
-            drawer.append(startDate, startingWrap, note);
-            fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
-            fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 18 });
-            fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 18 });
-            fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 18 });
-        } else {
             grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedWrap);
             drawer.append(note);
-        }
 
         row.append(grid, drawer);
         allocationContainer.appendChild(row);
@@ -7675,6 +7649,7 @@ if (t.id === "ExpenseLens") {
         const expenseLensToolStateId = "ExpenseLens";
         const expenseLensUpdatedEvent = "ExpenseLens:updated";
         const expenseLensIdPrefix = "el";
+        const expenseLensTitle = isBusinessExpenseLens ? "Business Expenses" : "Expense Lens";
         const elId = (name) => `${expenseLensIdPrefix}${name}`;
         const elById = (name) => document.getElementById(elId(name));
         const expenseLensSubtitle = isBusinessExpenseLens
@@ -8827,7 +8802,7 @@ if (t.id === "ExpenseLens") {
             options = {}
         ) => {
             const div = document.createElement("div");
-            div.className = `el-category-row ${isDualPanel ? 'el-category-row--compact' : 'el-category-row--standard'}`;
+            div.className = 'el-category-row el-category-row--standard';
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.dataset.isPinned = isPinned ? 'true' : 'false';
@@ -8837,14 +8812,14 @@ if (t.id === "ExpenseLens") {
             const nameInput = document.createElement("input");
             nameInput.type = "text";
             nameInput.id = `${elId('CatName')}${index}`;
-            nameInput.className = `form-control flex-grow-1 el-row-name ${isDualPanel ? 'el-row-name--compact' : 'el-row-name--standard'}`;
+            nameInput.className = 'form-control flex-grow-1 el-row-name el-row-name--standard';
             nameInput.placeholder = `Category ${index} Name`;
             nameInput.value = preName;
             nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Premium blue due date field
             const dueWrapper = document.createElement("div");
-            dueWrapper.className = `el-row-date-wrap ${isDualPanel ? 'el-row-date-wrap--compact' : 'el-row-date-wrap--standard'}`;
+            dueWrapper.className = 'el-row-date-wrap el-row-date-wrap--standard';
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
@@ -8859,7 +8834,7 @@ if (t.id === "ExpenseLens") {
 
             const frequencySelect = document.createElement("select");
             frequencySelect.id = `${elId('CatFrequency')}${index}`;
-            frequencySelect.className = `form-select el-row-select ${isDualPanel ? 'el-row-select--compact' : 'el-row-select--standard'}`;
+            frequencySelect.className = 'form-select el-row-select el-row-select--standard';
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -8871,7 +8846,7 @@ if (t.id === "ExpenseLens") {
 
             const paymentMethodSelect = document.createElement("select");
             paymentMethodSelect.id = `${elId('CatPaymentMethod')}${index}`;
-            paymentMethodSelect.className = `form-select el-row-select ${isDualPanel ? 'el-row-select--compact' : 'el-row-select--standard'}`;
+            paymentMethodSelect.className = 'form-select el-row-select el-row-select--standard';
             paymentMethodSelect.setAttribute("aria-label", "Payment method");
             EL_PAYMENT_METHODS.forEach(option => {
                 const opt = document.createElement("option");
@@ -8883,7 +8858,7 @@ if (t.id === "ExpenseLens") {
             paymentMethodSelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
 
             const amountWrapper = document.createElement("div");
-            amountWrapper.className = `el-currency-field ${isDualPanel ? 'el-row-amount-wrap--compact' : 'el-row-amount-wrap--standard'}`;
+            amountWrapper.className = 'el-currency-field el-row-amount-wrap--standard';
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
@@ -8902,11 +8877,11 @@ if (t.id === "ExpenseLens") {
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
-            percentSpan.className = `el-percentage ${isDualPanel ? 'el-percentage--compact' : 'el-percentage--standard'}`;
+            percentSpan.className = 'el-percentage el-percentage--standard';
 
             const deleteBtn = document.createElement("button");
             deleteBtn.textContent = "✕";
-            deleteBtn.className = `el-delete-btn ${isDualPanel ? 'el-delete-btn--compact' : 'el-delete-btn--standard'}`;
+            deleteBtn.className = 'el-delete-btn el-delete-btn--standard';
             const isInsuranceRow = isTemplate && preName.toLowerCase().includes("insurance");
             if (isInsuranceRow) {
                 deleteBtn.classList.add('is-locked');
@@ -8929,20 +8904,20 @@ if (t.id === "ExpenseLens") {
             amountInput.addEventListener("input", refreshExpenseLensViews);
 
             const leftControls = document.createElement("div");
-            leftControls.className = `el-left-controls ${isDualPanel ? 'el-left-controls--compact' : 'el-left-controls--standard'}`;
+            leftControls.className = 'el-left-controls el-left-controls--standard';
 
             // Drag handle — drag only activates from this grip, never from inputs
             const dragHandle = document.createElement("span");
             dragHandle.textContent = "⠿";
             dragHandle.title = "Drag to reorder";
-            dragHandle.className = `el-drag-handle ${isDualPanel ? 'el-drag-handle--compact' : 'el-drag-handle--standard'}`;
+            dragHandle.className = 'el-drag-handle el-drag-handle--standard';
             dragHandle.addEventListener("pointerdown", () => { div.draggable = true; });
             dragHandle.addEventListener("pointerup",   () => { div.draggable = false; });
             dragHandle.addEventListener("pointercancel", () => { div.draggable = false; });
 
             const pinBtn = document.createElement("button");
             pinBtn.type = "button";
-            pinBtn.className = `el-pin-btn ${isDualPanel ? 'el-pin-btn--compact' : 'el-pin-btn--standard'}`;
+            pinBtn.className = 'el-pin-btn el-pin-btn--standard';
 
             const syncPinButton = () => {
                 const pinned = isExpenseRowPinned(div);
@@ -9009,14 +8984,6 @@ if (t.id === "ExpenseLens") {
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
             categoriesContainer.appendChild(div);
-
-            if (isDualPanel) {
-                fitSingleLineControlText(nameInput, { minSize: 10, maxSize: 14 });
-                fitSingleLineControlText(dueInput, { minSize: 10, maxSize: 13 });
-                fitSingleLineControlText(frequencySelect, { minSize: 10, maxSize: 13, reserve: 18 });
-                fitSingleLineControlText(paymentMethodSelect, { minSize: 10, maxSize: 13, reserve: 18 });
-                fitSingleLineControlText(amountInput, { minSize: 10, maxSize: 14, reserve: 24 });
-            }
 
             if (preAmount) refreshExpenseLens();
         };
