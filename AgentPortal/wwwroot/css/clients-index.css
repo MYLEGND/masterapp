@@ -8692,3 +8692,44 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     #clientFinPlanModal .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
     #clientFinPlanModal .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
     #clientFinPlanModal .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
+
+
+/* ===== Canonical Client Quick View planner utility classes ===== */
+.qv-review-help { margin-bottom: 10px; }
+
+.client-finplan-modal-content {
+    border: 1px solid var(--legend-app-control-line);
+    border-radius: var(--legend-app-radius);
+    background: linear-gradient(180deg,var(--legend-app-surface-elevated),var(--legend-app-surface));
+    color: var(--legend-app-on-dark);
+}
+
+.client-finplan-modal-header {
+    align-items: flex-start;
+    border-bottom: 1px solid var(--legend-app-control-line);
+}
+
+.client-finplan-modal-title { color: var(--legend-app-accent-bright); }
+.client-finplan-modal-body { min-height: 0; overflow-y: auto; }
+.client-finplan-kicker { color: var(--legend-app-on-dark-muted); }
+.client-finplan-helper { margin: 0 0 10px; color: var(--legend-app-on-dark-muted); font-size: .8rem; }
+.client-finplan-total-label { color: var(--legend-app-on-dark-muted); font-size: .85rem; font-weight: 650; }
+.client-finplan-allocation-status { color: #ff7b7b; font-size: .78rem; font-weight: 700; }
+.client-finplan-optional { color: var(--legend-app-on-dark-muted); font-size: .72rem; font-weight: 500; }
+.client-finplan-modal-footer { border-top: 1px solid var(--legend-app-control-line); }
+
+.wfd-sec-title.is-flush { margin: 0; }
+.wfd-tog-wrap.is-spaced { margin-top: 4px; margin-bottom: 6px; }
+.wfd-tog-wrap.is-top-spaced { margin-top: 4px; }
+.wfd-inp.is-pointer { cursor: pointer; }
+
+.wfd-bkt-bar { height: 3px; }
+.wfd-bkt-bar.is-investment { background: #3b82f6; }
+.wfd-bkt-bar.is-life { background: var(--legend-app-accent); }
+.wfd-bkt-bar.is-annuity { background: #16a34a; }
+.wfd-bkt.is-investment { border-color: color-mix(in srgb,#3b82f6 40%,transparent); }
+.wfd-bkt.is-life { border-color: color-mix(in srgb,var(--legend-app-accent) 45%,transparent); }
+.wfd-bkt.is-annuity { border-color: color-mix(in srgb,#16a34a 40%,transparent); }
+.wfd-bkt-title.is-investment { color: #60a5fa; }
+.wfd-bkt-title.is-life { color: var(--legend-app-accent-bright); }
+.wfd-bkt-title.is-annuity { color: #4ade80; }
