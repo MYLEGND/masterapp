@@ -22,7 +22,6 @@ on:
       - '**/*.targets'
       - 'scripts/db.sh'
       - 'scripts/validation-resume.py'
-      - 'scripts/test-validation-resume.py'
       - '.github/workflows/approved-release-security-validation.yml'
 
 concurrency:
