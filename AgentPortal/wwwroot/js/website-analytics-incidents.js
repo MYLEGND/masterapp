@@ -287,6 +287,10 @@
       }
 
       const payload = await response.json();
+      if (payload?.isAvailable === false) {
+        markUnavailable('Incident monitor data is unavailable. No zero-incident result has been verified.');
+        return;
+      }
       render(payload);
     } catch (error) {
       if (error?.name === 'AbortError') return;
