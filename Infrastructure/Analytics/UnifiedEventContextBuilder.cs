@@ -153,6 +153,60 @@ public static class UnifiedEventContextBuilder
         };
     }
 
+    public static UnifiedEventContext BuildWebsiteLead(
+        HttpContext? httpContext,
+        WebsiteLead lead,
+        string eventName,
+        object? metadata = null,
+        string? pageKey = null,
+        string? pageVariant = null,
+        string? pageMode = null,
+        DateTime? eventUtc = null,
+        string? quoteType = null,
+        bool? isBrowserSignal = null,
+        bool? isServerAuthority = null,
+        bool? metaServerAuthorityEligible = null)
+    {
+        ArgumentNullException.ThrowIfNull(lead);
+        var effectivePageKey = string.IsNullOrWhiteSpace(pageKey) ? lead.SourcePageKey : pageKey.Trim();
+        return Build(
+            httpContext,
+            eventId: AnalyticsEventCatalog.TryGet(eventName, out var definition) && definition.CountsAsConfirmedLead
+                ? CanonicalLeadEventIdentity.Resolve(lead)
+                : null,
+            eventName: eventName,
+            eventUtc: eventUtc,
+            sessionId: lead.SessionId,
+            visitorId: lead.VisitorId,
+            pageKey: effectivePageKey,
+            effectivePageKey: effectivePageKey,
+            pageVariant: pageVariant,
+            pageMode: pageMode,
+            utmSource: lead.UtmSource,
+            utmMedium: lead.UtmMedium,
+            utmCampaign: lead.UtmCampaign,
+            utmId: lead.UtmId,
+            utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
+            utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
+            metaCampaignId: lead.MetaCampaignId,
+            metaAdSetId: lead.MetaAdSetId,
+            metaAdId: lead.MetaAdId,
+            fbclid: lead.Fbclid,
+            oppref: lead.Oppref,
+            agentSlug: lead.AgentSlug,
+            agentTrackingProfileId: lead.AgentTrackingProfileId,
+            isInternal: lead.IsInternal,
+            environment: lead.Environment,
+            host: lead.Host,
+            quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
+            isBrowserSignal: isBrowserSignal,
+            isServerAuthority: isServerAuthority,
+            metaServerAuthorityEligible: metaServerAuthorityEligible,
+            metadata: metadata,
+            websiteContentVersionId: lead.WebsiteContentVersionId,
+            websiteBindingId: lead.WebsiteBindingId);
+    }
+
     public static string? ResolveOpenAiBrowserReference(HttpRequest? request, string? explicitValue = null)
     {
         if (!CanUseOpenAiBrowserReference(request)) return null;
