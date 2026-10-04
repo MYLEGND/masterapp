@@ -164,6 +164,9 @@ public class WebsiteInquiryAuthority : ControllerBase
         string path,
         bool consent)
     {
+        var measurementConsent = UnifiedEventContextBuilder.ResolveMeasurementConsent(
+            Request,
+            request.MeasurementConsent);
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(),
@@ -194,10 +197,10 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmId = Optional(request.UtmId, 160),
             Fbclid = Optional(request.Fbclid, 120),
             Oppref = OpenAiClickReference.Normalize(request.Oppref),
-            Fbp = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).Allowed
+            Fbp = measurementConsent.Allowed
                 ? Optional(request.Fbp, 512)
                 : null,
-            Fbc = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).Allowed
+            Fbc = measurementConsent.Allowed
                 ? Optional(request.Fbc, 512)
                 : null,
             MetaCampaignId = Optional(request.MetaCampaignId, 200),
@@ -216,7 +219,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Oppref = lead.Oppref,
-            Obref = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).Allowed
+            Obref = measurementConsent.Allowed
                 ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
                 : null,
             PublishedWebsiteVersionId = scope.PublishedVersion?.Id,
@@ -386,6 +389,9 @@ public class WebsiteInquiryAuthority : ControllerBase
         PublicRequest request,
         WebsiteSignalBinding? submissionBinding)
     {
+        var measurementConsent = UnifiedEventContextBuilder.ResolveMeasurementConsent(
+            Request,
+            request.MeasurementConsent);
         if (!AnalyticsEventCatalog.TryGet("website_lead_submitted", out var leadEvent))
             throw new InvalidOperationException("Canonical lead analytics event is unavailable.");
 
@@ -428,6 +434,9 @@ public class WebsiteInquiryAuthority : ControllerBase
             IsBrowserSignal = false,
             IsServerAuthority = true,
             MetaServerAuthorityEligible = submissionBinding is null || submissionBinding.DeliveryMode is "meta" or "destinations",
+            MeasurementConsentAllowed = measurementConsent.Allowed,
+            MeasurementConsentState = measurementConsent.State,
+            MeasurementConsentSource = measurementConsent.Source,
             Metadata = new
             {
                 LeadId = lead.LeadId,
@@ -436,9 +445,6 @@ public class WebsiteInquiryAuthority : ControllerBase
                 WebsiteFormElementId = request.SourceFormElementId,
                 WebsiteSignalBindingId = submissionBinding?.Id,
                 WebsiteSignalDeliveryMode = submissionBinding?.DeliveryMode,
-                MeasurementConsentAllowed = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).Allowed,
-                MeasurementConsentState = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).State,
-                MeasurementConsentSource = UnifiedEventContextBuilder.ResolveMeasurementConsent(Request, request.MeasurementConsent).Source,
                 Source = scope.SiteKey + "_website_inquiry_saved"
             }
         });
