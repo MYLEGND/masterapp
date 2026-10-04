@@ -4026,7 +4026,7 @@ def _step5_extension_method_names(source):
         r"(\w+)\s*(?:<[^>]+>)?\s*\(\s*this\s+", source))
 
 
-def step5_dependency_change(prior_sha, current_sha):
+def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
     """Return bounded invalidated classes, or None when suite proof is required.
 
     Project-copied data is a real test dependency, even when its owning release
@@ -4093,6 +4093,10 @@ def step5_dependency_change(prior_sha, current_sha):
             return None
         for file in consumers:
             affected.update(classes[file])
+        # Baseline equivalence needs only a yes/no answer. Once any consumer is
+        # affected, no later path or transitive closure can restore equivalence.
+        if stop_on_change and affected:
+            return sorted(affected)
     # Follow shared helpers' exported method names too: extension-method users
     # need not spell the declaring static type at the call site.
     test_classes = set().union(*(classes[file] for file, source in sources.items()
@@ -4237,7 +4241,7 @@ def _step5_baseline_inputs_equivalent(prior_base_sha: str, current_base_sha: str
     """Compare only inputs that can change the full Step 5 baseline result."""
     if prior_base_sha == current_base_sha:
         return True
-    return step5_dependency_change(prior_base_sha, current_base_sha) == []
+    return step5_dependency_change(prior_base_sha, current_base_sha, stop_on_change=True) == []
 
 
 def compute_step5_baseline_evidence(repository: str, base_sha: str):
@@ -4257,6 +4261,8 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
     workflow_name = "step5-isolated-conversion-mapping-validation.yml"
     workflow_path = WORKFLOW_PATHS[workflow_name]
 
+    input_equivalence = {}
+
     def accept(run, artifact_name, evidence_base_sha):
         run_id = int(run.get("id") or 0)
         run_head = run.get("head_sha") or ""
@@ -4266,7 +4272,9 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
             return False
         if not _step5_jobs_unchanged(run_head, workflow_path):
             return False
-        if not _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha):
+        if evidence_base_sha not in input_equivalence:
+            input_equivalence[evidence_base_sha] = _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha)
+        if not input_equivalence[evidence_base_sha]:
             return False
         kind = "candidate" if artifact_name.startswith("step5-candidate-") else "baseline"
         if kind == "candidate" and evidence_base_sha != run_head:
