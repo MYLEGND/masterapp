@@ -783,6 +783,41 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_settled', return_value=False):
             self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=98))
 
+    def test_completed_admission_with_skipped_release_is_nonmutating_terminal(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'admission', 'conclusion': 'success'},
+            {'name': 'discover-live', 'conclusion': 'failure'},
+            {'name': 'release', 'conclusion': 'skipped', 'steps': []},
+        ]
+        self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_failed_transaction_prepare_releases_lease_only_before_any_mutation(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        safe_steps = [
+            {'name': 'Prepare complete immutable release transaction', 'conclusion': 'failure'},
+            {'name': 'Publish canonical target (client)', 'conclusion': 'skipped'},
+            {'name': 'Apply additive diagnostics migrations before restarting apps', 'conclusion': 'skipped'},
+            {'name': 'Reconcile complete immutable release transaction', 'conclusion': 'skipped'},
+        ]
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'conclusion': 'failure', 'steps': safe_steps},
+        ]
+        self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
+        self.api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-operation-intent-' + 'a' * 64, 'expired': False},
+        ]
+        self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        unsafe_steps = list(safe_steps)
+        unsafe_steps[1] = {'name': 'Publish canonical target (client)', 'conclusion': 'success'}
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'conclusion': 'failure', 'steps': unsafe_steps},
+        ]
+        self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
+
     def test_expired_lease_is_not_absence_proof(self):
         self.api.pages_map['actions/runs/98/artifacts'] = [
             {'name': 'legend-release-admission-' + 'e' * 64, 'expired': True}]
