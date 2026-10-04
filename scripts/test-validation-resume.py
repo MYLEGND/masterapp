@@ -73,7 +73,8 @@ class Step5DecisionFastFailTests(unittest.TestCase):
             "headSha": "a" * 40,
             "artifact": "step5-candidate-" + "a" * 40,
         }
-        with patch.object(m, "_step5_prior_candidate_evidence", return_value=candidate), \
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "fixture-token"}), \
+             patch.object(m, "_step5_prior_candidate_evidence", return_value=candidate), \
              patch.object(m, "_step5_jobs_unchanged", return_value=False), \
              patch.object(m, "compute_step5_baseline_evidence") as baseline:
             result = m.compute_step5_decision(
