@@ -69,7 +69,9 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 output=str(Path(directory) / "plan.json"),
                 workflow="approved-release-security-validation.yml",
                 repository="owner/repo",
-                current_sha="a" * 40,
+                current_sha=m.subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], text=True
+                ).strip(),
                 current_run_id=4,
                 run_attempt=1,
                 head_branch="repair",
