@@ -319,6 +319,9 @@ def candidate_control_plane_integrity(api, pr, names):
         'lifecycle_workflow': '.github/workflows/legend-release-lifecycle.yml',
         'direct_workflow': '.github/workflows/all-intentional-direct-release-20260918.yml',
         'architecture_workflow': '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'step5_workflow': '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
+        'step6_workflow': '.github/workflows/step6-openai-ads-execution-validation.yml',
+        'step78_workflow': '.github/workflows/steps7-8-governed-advertising-validation.yml',
         'security_workflow': '.github/workflows/approved-release-security-validation.yml',
     }
     try:
@@ -368,11 +371,22 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened exact-head merge validation'
 
     guard_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_control_plane_integrity')
+    sync_source = _function_source(source['lifecycle'], lifecycle_tree, 'sync_candidate_to_current_approved')
     merge_source = _function_source(source['lifecycle'], lifecycle_tree, 'merge_validated')
     if not guard_source or 'candidate_control_plane_integrity(api, pr, names)' not in merge_source:
         return 'Candidate removed trusted control-plane integrity enforcement'
     if merge_source.find('candidate_control_plane_integrity(api, pr, names)') > merge_source.find("pulls/{pr['number']}/merge"):
         return 'Candidate moved control-plane integrity enforcement after merge'
+    if not sync_source or not all(token in sync_source for token in (
+        'approved_head_state(api, pr)',
+        '"merges"',
+        '"base": pr["head"]["ref"]',
+        '"head": state["approved"]',
+        '"state": "BASE_SYNCED"',
+    )):
+        return 'Candidate weakened automatic current-approved-head synchronization'
+    if 'base_state = approved_head_state(api, pr)' not in merge_source:
+        return 'Candidate removed final approved-head freshness guard before merge'
 
     lifecycle_workflow = source['lifecycle_workflow']
     if not all(token in lifecycle_workflow for token in (
@@ -408,6 +422,25 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate architecture workflow lost its canonical validation job'
     if 'Run branch lifecycle safety contracts' not in architecture:
         return 'Candidate architecture workflow stopped exercising lifecycle contracts'
+
+    validation_workflows = {
+        'architecture': architecture,
+        'step5': source['step5_workflow'],
+        'step6': source['step6_workflow'],
+        'step78': source['step78_workflow'],
+        'security': source['security_workflow'],
+    }
+    for label, workflow in validation_workflows.items():
+        if (
+            'approved-head-preflight:' not in workflow
+            or 'Verify candidate contains current approved head' not in workflow
+            or 'ref: legend/approved-changes' not in workflow
+            or 'approved-head-preflight \\' not in workflow
+            or 'needs: approved-head-preflight' not in workflow
+        ):
+            return f'Candidate {label} validator lost canonical approved-head preflight'
+    if architecture.count('needs: approved-head-preflight') < 3:
+        return 'Candidate architecture validator allows package/probe work before approved-head preflight'
 
     security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
     if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
