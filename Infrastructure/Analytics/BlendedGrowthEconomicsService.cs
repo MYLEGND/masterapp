@@ -12,8 +12,7 @@ public interface IBlendedGrowthEconomicsService
 }
 
 public sealed class BlendedGrowthEconomicsService(
-    IUnifiedMarketingPerformanceService performance,
-    IAnalyticsQueryService analytics) : IBlendedGrowthEconomicsService
+    IUnifiedMarketingPerformanceService performance) : IBlendedGrowthEconomicsService
 {
     public async Task<BlendedGrowthEconomicsSnapshot> GetAsync(
         MarketingOwnerScope owner,
@@ -22,7 +21,12 @@ public sealed class BlendedGrowthEconomicsService(
         CancellationToken ct = default)
     {
         var unified = await performance.GetAsync(owner, analyticsScope, range, ct);
-        var events = await analytics.LoadAttributedEventsAsync(range, analyticsScope, TrafficType.All, ct);
+        return unified.Economics ?? throw new InvalidOperationException("Canonical performance economics are unavailable.");
+    }
+
+    internal static BlendedGrowthEconomicsSnapshot Calculate(MarketingOwnerScope owner, TimeRangeRequest range,
+        UnifiedChannelPerformanceSnapshot unified, IReadOnlyCollection<Domain.Entities.AnalyticsEvent> events)
+    {
         var outcomeGroups = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events)
             .Select(x => new
             {
