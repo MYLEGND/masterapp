@@ -39,8 +39,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
     private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
     private const int DispatcherGraceMinutes = 10;
-    private static readonly HashSet<string> BridgeSourceEventTypes = new(
-        MetaSignalAnalyticsBridge.SourceEventTypes, StringComparer.OrdinalIgnoreCase);
+
     private static readonly HashSet<string> BrowserPixelEventNames = new(
         MetaSignalEventCatalog.BrowserPixelEventNames,
         StringComparer.OrdinalIgnoreCase);
@@ -192,6 +191,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Select(x => new HealthAnalyticsEventRow
             {
                 Id = x.Id,
+                BridgeEligible = MetaSignalAnalyticsBridge.IsEligibleSource(x),
                 EventType = x.EventType,
                 SessionId = x.SessionId,
                 VisitorId = x.VisitorId,
@@ -227,7 +227,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .CountAsync(ct);
 
         var bridgeEligibleAnalytics = analyticsRows
-            .Where(IsBridgeEligibleAnalyticsEvent)
+            .Where(x => x.BridgeEligible)
             .ToList();
         var bridgeEligibleAnalyticsIds = bridgeEligibleAnalytics
             .Select(x => x.Id)
@@ -304,14 +304,16 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 "Events Missing MetaSignalEvents",
                 missingBridgeCount,
                 bridgeEligibleAnalyticsIds.Count,
-                missingBridgeCount == 0
+                bridgeEligibleAnalyticsIds.Count == 0
+                    ? "No bridge-eligible analytics events were evaluated in the selected range."
+                    : missingBridgeCount == 0
                     ? "Every bridge-eligible analytics event in the selected diagnostic range produced a derived signal row."
                     : $"{missingBridgeCount} of {bridgeEligibleAnalyticsIds.Count} bridge-eligible analytics events do not have a matching bridge-owned MetaSignal row."),
             BuildIssue(
                 "missing_identity",
                 "Meta Rows Missing LeadId or SessionId",
                 conversionRowsMissingLead + bridgeRowsMissingSession,
-                Math.Max(1, metaContexts.Count),
+                metaContexts.Count,
                 $"Missing lead on {conversionRowsMissingLead} conversion rows and missing session on {bridgeRowsMissingSession} bridge rows."),
             BuildIssue(
                 "browser_pending",
@@ -1262,7 +1264,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             Key = key,
             Label = label,
             Count = count,
-            Status = ResolveIssueStatus(count, ratio),
+            Status = baseline <= 0 && count == 0 ? "NoData" : ResolveIssueStatus(count, ratio),
             Detail = detail
         };
     }
@@ -1281,20 +1283,6 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (ratio <= 0.05m) return "Watch";
         if (ratio <= 0.15m) return "Risk";
         return "Critical";
-    }
-
-    private static bool IsBridgeEligibleAnalyticsEvent(HealthAnalyticsEventRow row)
-    {
-        if (!BridgeSourceEventTypes.Contains(row.EventType))
-            return false;
-
-        return !MetaSignalAnalyticsAliasCatalog.TryGet(row.EventType, out _)
-            || MetaSignalAnalyticsAliasCatalog.IsBridgeEligibleAnalyticsSource(
-                row.EventType,
-                row.ScrollPercent,
-                row.DwellMilliseconds,
-                row.EngagedMilliseconds,
-                row.IsBounceCandidate);
     }
 
     private static HealthMetaSignalContext CreateHealthMetaContext(HealthMetaSignalRow row)
@@ -1510,6 +1498,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     private sealed class HealthAnalyticsEventRow
     {
         public long Id { get; init; }
+        public bool BridgeEligible { get; init; }
         public string EventType { get; init; } = string.Empty;
         public string? SessionId { get; init; }
         public string? VisitorId { get; init; }

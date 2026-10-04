@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../../AgentPortal/wwwroot/js/website-analyt
 async function fixture({ device = true } = {}) {
   const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="founder-profile" data-initial-scope-label="Founder Personal"></div>
     <div id="kpi-pageviews"></div><div id="kpi-session"></div>
-    <div id="channel-performance-grid"></div><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div>
+    <button id="channel-performance-refresh"></button><div id="channel-performance-grid"></div><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div>
     ${device ? '<button id="mod-device-intelligence"></button><div id="deviceIntelligenceModal"></div><div id="deviceIntelligenceContent"></div><div id="deviceSessions"></div>' : ''}`,
     { url: 'https://portal.example.test/WebsiteAnalytics', runScripts: 'outside-only' });
   const { window } = dom;
@@ -21,7 +21,7 @@ async function fixture({ device = true } = {}) {
     const path = new URL(url, window.location.href).pathname;
     const data = path.endsWith('/summary') ? { isAvailable: true, scopeLabel: 'Founder Personal', pageViews: 7, uniqueVisitors: 2, sessions: 2, verifiedLeads: 0, sessionConversionRate: 0 }
       : path.endsWith('/DeviceIntelligence') ? { sessions: 2, events: 7 }
-      : path.endsWith('/growth-economics') ? { totalMarketingSpend: 12, channels: [] }
+      : path.endsWith('/marketing-manager/performance') ? { channels: [], economics: { totalMarketingSpend: 12, channels: [] } }
       : { channels: [] };
     return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
   };
@@ -36,9 +36,8 @@ for (const device of [true, false]) {
     const f = await fixture({ device });
     try {
       assert.equal(f.window.document.getElementById('kpi-pageviews').textContent, '7');
-      for (const endpoint of ['/marketing-manager/performance', '/growth-economics']) {
-        assert.ok(f.calls.some(url => url.includes(endpoint)), endpoint);
-      }
+      assert.equal(f.calls.filter(url => url.includes('/marketing-manager/performance')).length, 1);
+      assert.equal(f.calls.filter(url => url.includes('/growth-economics')).length, 0);
       assert.match(f.window.document.getElementById('channel-performance-grid').textContent, /No channel outcomes/);
       assert.match(f.window.document.getElementById('growth-economics-spend').textContent, /12/);
       assert.deepEqual(f.errors, []);
@@ -70,5 +69,28 @@ test('loading the script again does not duplicate initialization or summary requ
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(f.calls.length, before);
     assert.deepEqual(f.errors, []);
+  } finally { f.dom.window.close(); }
+});
+
+
+test('refresh removes prior totals and ignores an older response arriving last', async () => {
+  const f = await fixture();
+  try {
+    const pending = [];
+    f.window.fetch = () => new Promise(resolve => pending.push(resolve));
+    const refresh = f.window.document.getElementById('channel-performance-refresh');
+    refresh.click();
+    assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
+    refresh.click();
+    const response = spend => new Response(JSON.stringify({ channels: [], economics: { totalMarketingSpend: spend, channels: [] } }));
+    pending[1](response(24));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    pending[0](response(99));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.match(f.window.document.getElementById('growth-economics-spend').textContent, /24/);
+    f.window.fetch = async () => new Response('', { status: 503 });
+    refresh.click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
   } finally { f.dom.window.close(); }
 });

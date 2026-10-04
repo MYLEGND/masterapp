@@ -3,7 +3,7 @@
 @{
     var diagnosticsAction = ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor;
     // Descriptor names are application structure, never URL parameters or route values.
-    var diagnosticsRoute = diagnosticsAction is null ? "/" : $"/{diagnosticsAction.ControllerName}/{diagnosticsAction.ActionName}";
+    var diagnosticsRoute = Shared.Diagnostics.LegendSiteToolDisclosureAuthority.DiagnosticRoute(diagnosticsAction);
     var diagnosticsToken = DiagnosticsAntiforgery.GetAndStoreTokens(Context).RequestToken;
     var diagnosticsFounder = ViewData["RuntimeDiagnosticsFounder"] is true;
 }
