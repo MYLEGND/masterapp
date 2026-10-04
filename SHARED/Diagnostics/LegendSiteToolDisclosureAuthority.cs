@@ -348,30 +348,51 @@ public static class LegendSiteToolDisclosureAuthority
         };
     }
 
+    public static string DiagnosticRoute(ControllerActionDescriptor? action) =>
+        action?.AttributeRouteInfo?.Template is { Length: > 0 } template
+            ? SafeRoutePattern(template)
+            : action is null ? "/" : $"/{action.ControllerName}/{action.ActionName}";
+
     public static LegendRouteAuthority ResolveRouteAuthority(string? path, IEnumerable<EndpointDataSource> endpointSources)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > 1024 || !path.StartsWith('/') ||
             path.StartsWith("//", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#'))
             return new("/unmatched", null, null, null);
 
+        var candidates = new List<(RouteEndpoint Endpoint, ControllerActionDescriptor? Action)>();
         foreach (var endpoint in endpointSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>())
         {
             var pattern = endpoint.RoutePattern.RawText;
             if (string.IsNullOrWhiteSpace(pattern)) continue;
             try
             {
+                var action = endpoint.Metadata.GetMetadata<ControllerActionDescriptor>();
+                var values = new RouteValueDictionary();
                 var matcher = new Microsoft.AspNetCore.Routing.Template.TemplateMatcher(
                     Microsoft.AspNetCore.Routing.Template.TemplateParser.Parse(pattern),
-                    new RouteValueDictionary());
-                if (!matcher.TryMatch(path, new RouteValueDictionary())) continue;
-                var action = endpoint.Metadata.GetMetadata<ControllerActionDescriptor>();
-                return new(
-                    SafeRoutePattern(pattern),
-                    action?.ControllerTypeInfo.Name,
-                    action?.ActionName,
-                    action?.ControllerTypeInfo.Assembly.GetName().Name);
+                    new RouteValueDictionary(endpoint.RoutePattern.Defaults));
+                // The page may supply the server template itself. Never disclose route values.
+                var exactTemplate = string.Equals(path, SafeRoutePattern(pattern), StringComparison.OrdinalIgnoreCase);
+                if (!exactTemplate && !matcher.TryMatch(path, values)) continue;
+                if (!exactTemplate && action is not null && action.RouteValues.Any(required =>
+                    required.Value is not null && values.TryGetValue(required.Key, out var actual) &&
+                    !string.Equals(Convert.ToString(actual), required.Value, StringComparison.OrdinalIgnoreCase))) continue;
+                candidates.Add((endpoint, action));
             }
             catch (ArgumentException) { }
+        }
+        if (candidates.Count > 0)
+        {
+            var ordered = candidates.OrderBy(x => x.Endpoint.Order)
+                .ThenBy(x => x.Endpoint.RoutePattern.InboundPrecedence).ToArray();
+            var best = ordered[0];
+            var peers = ordered.Where(x => x.Endpoint.Order == best.Endpoint.Order &&
+                x.Endpoint.RoutePattern.InboundPrecedence == best.Endpoint.RoutePattern.InboundPrecedence);
+            // A path alone cannot distinguish conflicting action authorities. Fail closed.
+            if (peers.Any(x => x.Action?.ControllerName != best.Action?.ControllerName ||
+                x.Action?.ActionName != best.Action?.ActionName)) return new("/unmatched", null, null, null);
+            return new(SafeRoutePattern(best.Endpoint.RoutePattern.RawText), best.Action?.ControllerTypeInfo.Name,
+                best.Action?.ActionName, best.Action?.ControllerTypeInfo.Assembly.GetName().Name);
         }
 
         return new("/unmatched", null, null, null);
@@ -438,8 +459,10 @@ public static class LegendSiteToolDisclosureAuthority
 
     private static string SafeRoutePattern(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 256 || value.Contains('?') || value.Contains('#'))
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 256 || value.Contains('#'))
             return "/unmatched";
+        value = Regex.Replace(value, @"\{([A-Za-z0-9_]+)(?:=[^{}]*|\?)\}", "{$1}",
+            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
         return Regex.IsMatch(value, @"\A/?[A-Za-z0-9_{}:./-]*\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50))
             ? "/" + value.TrimStart('/') : "/unmatched";
     }
