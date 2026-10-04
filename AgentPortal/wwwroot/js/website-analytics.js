@@ -6415,7 +6415,9 @@ function escapeHtml(value) {
   function marketingManagerRangePayload() {
     const body = {
       preset: state.scope.preset || '30d',
-      qualityMode: marketingManagerQualityModeValue()
+      qualityMode: marketingManagerQualityModeValue(),
+      timezoneId: viewerTz.id || null,
+      timezoneOffsetMinutes: Number.isFinite(viewerTz.offsetMinutes) ? viewerTz.offsetMinutes : null
     };
     const custom = resolveCustomRangeUtc();
     if (custom) Object.assign(body, custom);
