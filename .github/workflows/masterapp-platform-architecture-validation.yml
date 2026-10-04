@@ -40,7 +40,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  approved-head-preflight:
+    name: approved-head-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout trusted approved validation authority
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate contains current approved head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py approved-head-preflight \
+            --repository "${{ github.repository }}" \
+            --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --output "$RUNNER_TEMP/approved-head-preflight.json"
+
   validate:
+    needs: approved-head-preflight
     name: architecture-validation
     if: github.event_name != 'workflow_dispatch' || inputs.package_revision == ''
     runs-on: ubuntu-24.04
@@ -315,6 +337,7 @@ jobs:
           if-no-files-found: error
 
   validated-release-package:
+    needs: approved-head-preflight
     name: validated-release-package
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
     runs-on: ubuntu-24.04
@@ -453,6 +476,7 @@ jobs:
           overwrite: true
 
   validated-migration-probe:
+    needs: approved-head-preflight
     name: validated-migration-probe
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
