@@ -2137,7 +2137,9 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                 environment: lead.Environment,
                 host: lead.Host,
                 quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
-                metadata: metadata);
+                metadata: metadata,
+                websiteContentVersionId: lead.WebsiteContentVersionId,
+                websiteBindingId: lead.WebsiteBindingId);
         }
 
         private async Task TryWriteLeadPipelineEventAsync(
