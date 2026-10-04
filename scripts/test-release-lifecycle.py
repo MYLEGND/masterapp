@@ -83,7 +83,7 @@ class Api:
         return value
 
     def text(self, revision, path):
-        return (ROOT.parent / path).read_text()
+        return (Path(__file__).resolve().parents[1] / path).read_text()
 
     def status(self, revision, state, description):
         self.statuses.append((revision, state, description))
