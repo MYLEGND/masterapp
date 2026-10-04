@@ -104,6 +104,8 @@ class ReleaseScopeSelection(unittest.TestCase):
             shared,
         )
         self.assertEqual(tuple(), authority.release_targets_for_paths(['scripts/test-release-policy.py']))
+        self.assertEqual(tuple(), authority.release_targets_for_paths(['AGENTS.md']))
+        self.assertTrue(authority.release_control_authority_path('AGENTS.md'))
 
 
     def test_release_control_only_changes_preserve_live_application_identity(self):
@@ -530,7 +532,11 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 raise AssertionError(path)
 
         pending = self.lifecycle.candidate_validation(Api(), pr)
-        self.assertEqual("Awaiting successful exact-head validation: " + step5, pending)
+        security = ".github/workflows/approved-release-security-validation.yml"
+        self.assertEqual(
+            "Awaiting successful exact-head validation: " + security + ", " + step5,
+            pending,
+        )
 
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
@@ -554,6 +560,10 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        base=workflow.split('      - name: Verify current live base before publication\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('for attempt in range(3):', base)
+        self.assertIn('{408,429,500,502,503,504}', base)
+        self.assertIn("Cache-Control':'no-cache", base)
         self.assertIn('Preserve targets already live at exact candidate', workflow)
         self.assertIn("actual not in {row['revision'], candidate}", workflow)
         self.assertIn('exact candidate already live; preserve and continue reconciliation', workflow)
