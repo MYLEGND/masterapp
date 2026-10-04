@@ -709,7 +709,7 @@ public sealed class LegendFounderAiConversationService
                 governedSourceLanguageCode) ?? currentDiscourseState;
         }
 
-        if (ShouldAttemptNativeInference(mode) && governedSourceLanguageCode is not null)
+        if (ShouldAttemptNativeInference(mode, providerPolicy) && governedSourceLanguageCode is not null)
         {
             var sourceLanguageCode = governedSourceLanguageCode;
             var nativeStarted = Stopwatch.GetTimestamp();
@@ -4281,8 +4281,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return learningAction && learningSubject;
     }
 
-    private static bool ShouldAttemptNativeInference(string mode) =>
-        string.Equals(mode, "legend", StringComparison.Ordinal);
+    private static bool ShouldAttemptNativeInference(
+        string mode,
+        LegendConnectExternalProviderPolicy providerPolicy) =>
+        string.Equals(mode, "legend", StringComparison.Ordinal) &&
+        !providerPolicy.AllowCloudflareInference;
 
     private static string ResolveToolChoice(
         bool allowTools,

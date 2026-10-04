@@ -39,7 +39,6 @@
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
     const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
     const modebar = document.getElementById('legendFounderAiModebar');
-    const modebarHome = document.getElementById('legendFounderAiModebarHome');
     const mobileControls = document.getElementById('legendFounderAiMobileControls');
 
     const modeButtons = Array.from(
@@ -160,20 +159,12 @@
         }
     }
 
-    // The same controls have one DOM owner. On a compact viewport, move that
-    // owner into the hamburger drawer instead of rendering a second mobile
-    // mode/native-only implementation.
+    // Conversation/provider controls have one canonical home in the sidebar.
+    // The mobile hamburger exposes that same sidebar; never duplicate controls
+    // across the chat canvas and navigation rail.
     function syncControlPlacement() {
-        if (!modebar) {
-            return;
-        }
-
-        const destination = isMobile()
-            ? mobileControls
-            : modebarHome;
-
-        if (destination && modebar.parentElement !== destination) {
-            destination.appendChild(modebar);
+        if (modebar && mobileControls && modebar.parentElement !== mobileControls) {
+            mobileControls.appendChild(modebar);
         }
     }
 
@@ -931,6 +922,10 @@
                     ? 'is-user'
                     : 'is-assistant'
             }`;
+        if (metadata?.pending === true) {
+            message.classList.add('is-pending');
+            message.setAttribute('aria-label', 'Message sent; waiting for Legend AI');
+        }
 
         if (role !== 'user') {
             const mark =
@@ -1326,7 +1321,14 @@
                 conversation.id = result.conversationId;
                 if (result.userMessageId || result.messageId) conversation.persisted = true;
             }
-            if (result.userMessageId) operation.userMessageId = result.userMessageId;
+            if (result.userMessageId) {
+                operation.userMessageId = result.userMessageId;
+                const optimisticUser = conversation.messages.find(item => item.id === operation.localUserMessageId);
+                if (optimisticUser) {
+                    optimisticUser.id = result.userMessageId;
+                    optimisticUser.pending = false;
+                }
+            }
             if (result.messageId) {
                 operation.terminalId = result.messageId;
                 conversation.lastMessageId = result.messageId;
@@ -1375,7 +1377,9 @@
         }
         // Only the current Human turn is submitted. Prior Assistant content,
         // permissions and canonical ordering are resolved by the server.
-        const operation = { id: crypto.randomUUID(), body: JSON.stringify({
+        const operationId = crypto.randomUUID();
+        const localUserMessageId = `pending-user-${operationId}`;
+        const operation = { id: operationId, localUserMessageId, body: JSON.stringify({
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
             externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
             sourceLanguageCode: null, conversationId: conversation.id,
@@ -1384,8 +1388,18 @@
             messages: [{ role: 'user', content: text }]
         }) };
         conversation.pendingOperation = operation;
+        conversation.messages.push({
+            id: localUserMessageId,
+            sentUtc: new Date().toISOString(),
+            role: 'user',
+            content: text,
+            pending: true
+        });
+        conversation.updatedUtc = new Date().toISOString();
+        updateConversationTitle(conversation);
         input.value = '';
         resizeInput();
+        renderAll({ forceBottom: true });
         await executeConversationRequest(conversation, operation);
         focusComposer();
     });

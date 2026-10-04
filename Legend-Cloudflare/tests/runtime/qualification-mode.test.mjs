@@ -112,6 +112,18 @@ function baselineFixture() {
   return f;
 }
 
+test('Founder baseline registry is exactly the five canonical Cloudflare models', () => {
+  assert.deepEqual(FOUNDER_BASELINE_MODEL_IDS, [
+    '@cf/qwen/qwen3-30b-a3b-fp8',
+    '@cf/openai/gpt-oss-120b',
+    '@cf/zai-org/glm-5.3-flash',
+    '@cf/zai-org/glm-5.3',
+    '@cf/deepseek-ai/deepseek-v4-pro-0813'
+  ]);
+  assert.equal(FOUNDER_BASELINE_MODEL_IDS.length, 5);
+  assert.equal(FOUNDER_BASELINE_PRIMARY_MODEL, '@cf/openai/gpt-oss-120b');
+});
+
 test('Founder baseline uses operator-owned five-model router and explicit receipt without fabricating qualification', async () => {
   const f = baselineFixture();
   f.envelope.task.modelId = MODEL_REGISTRY[0].id;

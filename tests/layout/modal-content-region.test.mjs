@@ -388,8 +388,20 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
   assert.doesNotMatch(aiCss,/--legend-ai-response/);
   assert.match(aiCss,/background: linear-gradient\(145deg,var\(--legend-app-surface-elevated\),var\(--legend-app-surface\)\)/);
-  assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*background: var\(--legend-app-surface\);/);
+  assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*linear-gradient\(180deg, var\(--legend-ai-navy-925\), var\(--legend-ai-ink\)\)/);
+  assert.match(aiCss,/\.legend-founder-ai-transcript[\s\S]*background: #ffffff;[\s\S]*color: var\(--legend-ai-canvas-ink\);[\s\S]*border-radius: 18px/);
+  assert.match(aiCss,/\.legend-founder-ai-title-row sup,[\s\S]*color: inherit;/);
   assert.match(aiView,/Ask Legend<sup>®<\/sup> Ai/);
+  assert.ok(aiView.indexOf('id="legendFounderAiModebar"') > aiView.indexOf('id="legendFounderAiMobileControls"'));
+  assert.ok(aiView.indexOf('id="legendFounderAiModebar"') < aiView.indexOf('legend-founder-ai-conversations-section'));
+  assert.ok(aiView.indexOf('id="legendFounderAiRetry"') < aiView.indexOf('legend-founder-ai-conversations-section'));
+  assert.doesNotMatch(aiView,/id="legendFounderAiModebarHome"/);
+  assert.ok(aiView.indexOf('id="legendFounderAiFounderCommandConfirmed"') < aiView.indexOf('legend-founder-ai-conversations-section'));
+  assert.doesNotMatch(aiView,/legend-founder-ai-composer-meta[\s\S]{0,800}id="legendFounderAiFounderCommandConfirmed"/);
+  assert.match(aiJs,/modebar\.parentElement !== mobileControls[\s\S]*mobileControls\.appendChild\(modebar\)/);
+  assert.match(aiJs,/conversation\.messages\.push\(\{[\s\S]*role: 'user',[\s\S]*content: text,[\s\S]*pending: true/);
+  assert.match(aiJs,/renderAll\(\{ forceBottom: true \}\);[\s\S]*await executeConversationRequest\(conversation, operation\)/);
+  assert.match(aiJs,/optimisticUser\.id = result\.userMessageId;[\s\S]*optimisticUser\.pending = false/);
   assert.doesNotMatch(aiView,/OpenAI Teacher mode is a direct Founder-to-OpenAI channel/);
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
@@ -416,7 +428,6 @@ test('feature CSS cannot re-own canonical modal geometry or light form materials
 
 test('authenticated feature surfaces cannot reintroduce legacy white or separate AI palette drift',()=>{
   const files=[
-    'AgentPortal/wwwroot/css/clients-index.css',
     'AgentPortal/wwwroot/css/scripts-rebuttals.css',
     'AgentPortal/wwwroot/css/website-analytics.css',
     'AgentPortal/wwwroot/css/legend-forms.css',
@@ -430,6 +441,16 @@ test('authenticated feature surfaces cannot reintroduce legacy white or separate
   assert.doesNotMatch(rebut,/Workstation premium elevation pass|Stronger global contrast override/);
   const ai=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
   assert.doesNotMatch(ai,/--legend-ai-provider(?:-surface)?:/);
+});
+
+test('CRM pages use a white canvas and never exceed four desktop pipeline buckets',()=>{
+  const crm=readFileSync(new URL('../../AgentPortal/wwwroot/css/clients-index.css',import.meta.url),'utf8');
+  assert.match(crm,/--bg:#ffffff;/);
+  assert.match(crm,/body\{[\s\S]*background:#ffffff !important;/);
+  assert.match(crm,/\.pipeline-board\{[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(crm,/@media \(max-width: 1260px\)[\s\S]*\.pipeline-board\{ grid-template-columns: repeat\(2, minmax\(0,1fr\)\)/);
+  assert.match(crm,/@media \(max-width: 900px\)[\s\S]*\.pipeline-board\{ grid-template-columns:1fr;/);
+  assert.doesNotMatch(crm,/\.pipeline-board\{[\s\S]{0,180}repeat\(5,/);
 });
 
 test('authenticated nav renders profile photos through one shared image partial rather than object fallbacks',()=>{
