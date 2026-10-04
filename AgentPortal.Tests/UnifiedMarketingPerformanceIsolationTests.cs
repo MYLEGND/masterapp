@@ -87,7 +87,9 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         }
         var performance = new Mock<IUnifiedMarketingPerformanceService>();
         performance.Setup(x => x.GetAsync(owner, scope, range, It.IsAny<CancellationToken>())).ReturnsAsync(result);
-        var economics = await new BlendedGrowthEconomicsService(performance.Object, analytics.Object).GetAsync(owner, scope, range);
+        var economics = await new BlendedGrowthEconomicsService(performance.Object).GetAsync(owner, scope, range);
+        Assert.Same(result.Economics, economics);
+        analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(1, economics.CustomersAcquired);
         Assert.Null(economics.TotalMarketingSpend); Assert.Null(economics.BlendedRoas); Assert.Null(economics.CostPerCustomer);
         Assert.Equal(2, result.DataQualityNotes.Count);
