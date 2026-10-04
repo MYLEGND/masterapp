@@ -3367,19 +3367,41 @@ def _release_checkout_from_job_log(repository, release_job, application, token):
     cache_key = (repository, job_id, application)
     if release_job.get('status') == 'completed' and cache_key in _RELEASE_HISTORY_LOG_BINDINGS:
         return _RELEASE_HISTORY_LOG_BINDINGS[cache_key]
-    env = dict(os.environ, GH_TOKEN=token)
+    limit = 32 * 1024 * 1024
+    encoded_repository = urllib.parse.quote(repository, safe='/')
+    request = urllib.request.Request(
+        f'https://api.github.com/repos/{encoded_repository}/actions/jobs/{job_id}/logs',
+        headers={
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'LEGEND-release-evidence',
+        })
+    # GitHub redirects this endpoint to a short-lived signed object URL.
+    # Authenticate only the first-party request; urllib deliberately does not
+    # copy unredirected headers onto the redirected request.
+    request.add_unredirected_header('Authorization', f'Bearer {token}')
     try:
-        # Authenticated historical logs can approach the 32 MiB evidence cap.
-        # Keep the bounded size check below, but allow the redirect/download to
-        # complete on a throttled Actions evidence endpoint.
-        result = subprocess.run(['gh', 'api', f'repos/{repository}/actions/jobs/{job_id}/logs'],
-                                capture_output=True, text=True, timeout=180, env=env, check=True)
-    except (OSError, subprocess.SubprocessError):
+        with urllib.request.urlopen(request, timeout=180) as response:
+            if urllib.parse.urlparse(response.geturl()).scheme != 'https':
+                raise ReleaseOperationHistoryUnproven('Historical checkout log redirect is not HTTPS')
+            content_length = response.headers.get('Content-Length')
+            if content_length is not None:
+                content_length = int(content_length)
+                if content_length < 0 or content_length > limit:
+                    raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
+            raw = response.read(limit + 1)
+    except ReleaseOperationHistoryUnproven:
+        raise
+    except (OSError, ValueError):
         raise ReleaseOperationHistoryUnproven('Historical checkout log unavailable') from None
-    if len(result.stdout) > 32 * 1024 * 1024:
+    if len(raw) > limit:
         raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
-    lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
-             for line in result.stdout.splitlines()]
+    try:
+        log = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        raise ReleaseOperationHistoryUnproven('Historical checkout log is not UTF-8') from None
+    lines = [re.sub(r'^\\d{4}-\\d{2}-\\d{2}T[0-9:.]+Z ', '', line)
+             for line in log.splitlines()]
     text = '\n'.join(lines)
     heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
     authorities = set(re.findall(r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))

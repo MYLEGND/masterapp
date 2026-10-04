@@ -247,10 +247,24 @@ class CanonicalHistoryTests(unittest.TestCase):
                '2026-10-02T12:00:00.001Z   APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
                '2026-10-02T12:00:00.002Z [command]/usr/bin/git log -1 --format=%H\n'
                '2026-10-02T12:00:00.003Z ' + 'd' * 40 + '\n')
-        with patch.object(self.authority.subprocess, 'run',
-                return_value=subprocess.CompletedProcess([], 0, log, '')) as download:
+        class Response:
+            headers = {'Content-Length': str(len(log.encode()))}
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def geturl(self):
+                return 'https://signed-results.example.test/job-log'
+            def read(self, limit):
+                self.limit = limit
+                return log.encode()
+        response = Response()
+        with patch.object(self.authority.urllib.request, 'urlopen', return_value=response) as download:
             self.assertIsNone(self.legacy_history())
+        request = download.call_args.args[0]
         self.assertEqual(180, download.call_args.kwargs['timeout'])
+        self.assertEqual('Bearer placeholder', request.unredirected_hdrs['Authorization'])
+        self.assertEqual(32 * 1024 * 1024 + 1, response.limit)
 
     def test_checkout_log_rejects_conflicting_package_and_missing_head(self):
         job = dict(id=123, steps=[dict(name='Run actions/checkout@v4', conclusion='success')])
@@ -258,8 +272,15 @@ class CanonicalHistoryTests(unittest.TestCase):
         valid += '[command]/usr/bin/git log -1 --format=%H\n' + 'd' * 40 + '\n'
         for log in (valid.replace('f' * 40, 'a' * 40), valid.split('[command]')[0],
                     valid + '  RELEASE_SHA: ' + 'c' * 40 + '\n'):
-            with self.subTest(log=log), patch.object(self.authority.subprocess, 'run',
-                    return_value=subprocess.CompletedProcess([], 0, log, '')):
+            response = type('Response', (), {
+                'headers': {'Content-Length': str(len(log.encode()))},
+                '__enter__': lambda self: self,
+                '__exit__': lambda self, *args: False,
+                'geturl': lambda self: 'https://signed-results.example.test/job-log',
+                'read': lambda self, limit: log.encode(),
+            })()
+            with self.subTest(log=log), patch.object(
+                    self.authority.urllib.request, 'urlopen', return_value=response):
                 with self.assertRaisesRegex(RuntimeError, 'missing or contradictory'):
                     self.authority._release_checkout_from_job_log('owner/repo', job, 'f' * 40, 'placeholder')
 
