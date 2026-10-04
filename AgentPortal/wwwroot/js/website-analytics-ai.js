@@ -433,9 +433,10 @@
       }
     });
 
-    // Backdrop click
+    // The drawer root is the backdrop surface; close only when the backdrop itself is clicked.
     document.addEventListener('click', function (e) {
-      if (e.target.id === BACKDROP_ID) closeDrawer();
+      var d = drawer();
+      if (d && e.target === d) closeDrawer();
     });
 
     // ESC key

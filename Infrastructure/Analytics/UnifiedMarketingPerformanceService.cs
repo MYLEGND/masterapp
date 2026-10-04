@@ -38,6 +38,8 @@ public sealed class UnifiedMarketingPerformanceService(
         {
             try
             {
+                using var providerDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                providerDeadline.CancelAfter(TimeSpan.FromSeconds(5));
                 var provider = await openAiAds.GetAccountInsightsAsync(
                     owner,
                     "campaign",
@@ -46,7 +48,7 @@ public sealed class UnifiedMarketingPerformanceService(
                         range.ToUtc,
                         TimeGranularity: "none",
                         Fields: ["campaign.spend", "campaign.impressions", "campaign.clicks", "campaign.id", "campaign.name", "campaign.status"]),
-                    ct);
+                    providerDeadline.Token);
                 delivery.AddRange(ParseOpenAiRows(provider.Payload));
                 openAiDeliveryAvailable = true;
                 if (provider.EffectiveFromUtc is { } effectiveFrom && provider.EffectiveToUtc is { } effectiveTo &&
@@ -89,7 +91,9 @@ public sealed class UnifiedMarketingPerformanceService(
 
         try
         {
-            var meta = await metaAds.GetCampaignsAsync(range, analyticsScope, ct);
+            using var providerDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            providerDeadline.CancelAfter(TimeSpan.FromSeconds(5));
+            var meta = await metaAds.GetCampaignsAsync(range, analyticsScope, providerDeadline.Token);
             var rows = meta.Rows ?? [];
             var spend = rows.Sum(x => x.Spend);
             channels.Add(new ChannelPerformanceRow(
@@ -120,7 +124,7 @@ public sealed class UnifiedMarketingPerformanceService(
         if (delivery.Count > 0 && outcomes.Leads > 0)
             notes.Add("ChatGPT Ads downstream outcomes are joined only through stored oppref lineage. Campaign-level revenue is not inferred when provider campaign lineage cannot be proven.");
 
-        return new UnifiedChannelPerformanceSnapshot(
+        var snapshot = new UnifiedChannelPerformanceSnapshot(
             owner,
             range.FromUtc,
             range.ToUtc,
@@ -129,6 +133,7 @@ public sealed class UnifiedMarketingPerformanceService(
             outcomes,
             channels,
             notes);
+        return snapshot with { Economics = BlendedGrowthEconomicsService.Calculate(owner, range, snapshot, attributedEvents) };
     }
 
     private static IReadOnlyList<ProviderDeliveryMetricRow> ParseOpenAiRows(JsonElement payload)
