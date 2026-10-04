@@ -605,6 +605,8 @@ def release_targets(revision):
         return set()
     if request.get('releaseMode') != 'approved-only':
         return set()
+    if 'targets' not in request:
+        return set(VALIDATION_AUTHORITY.release_name_map())
     targets = request.get('targets')
     if not isinstance(targets, list) or any(not isinstance(item, str) for item in targets):
         return set()
