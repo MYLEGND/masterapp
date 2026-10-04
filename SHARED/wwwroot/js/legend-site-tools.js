@@ -7,8 +7,7 @@
     const status = document.querySelector('[data-engineering-work-status]');
     if (status && status.dataset.enabled === "true") status.textContent = message;
   }
-  const modelContext = document.modelContext;
-  if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") {
+  if (typeof window.fetch !== "function") {
     reportWorkConnection("Browser tool transport unavailable");
     return;
   }
@@ -122,7 +121,20 @@
     return await response.json();
   }
 
+  async function waitForModelContext() {
+    for (let attempt = 0; attempt < 40 && !registrationController.signal.aborted; attempt++) {
+      const modelContext = document.modelContext;
+      if (modelContext && typeof modelContext.registerTool === "function") return modelContext;
+      if (attempt === 0) reportWorkConnection("Connecting browser diagnostic tools…");
+      await new Promise(resolve => window.setTimeout(resolve, 100));
+    }
+    reportWorkConnection("Browser tool transport unavailable");
+    return null;
+  }
+
   async function register() {
+    const modelContext = await waitForModelContext();
+    if (!modelContext) return;
     let response;
     try {
       response = await window.fetch(endpoint + "/catalog", {
@@ -136,7 +148,13 @@
     if (!payload || !Array.isArray(payload.tools)) return;
 
     const registered = new Set();
-    for (const tool of payload.tools) {
+    const priority = new Map([
+      ["legend_current_page_diagnostics", 0],
+      ["legend_inspect_repository", 1]
+    ]);
+    const tools = payload.tools.slice().sort((left, right) =>
+      (priority.get(left?.name) ?? 2) - (priority.get(right?.name) ?? 2));
+    for (const tool of tools) {
       if (!tool || tool.type !== "function" || typeof tool.name !== "string" ||
           typeof tool.description !== "string" || !tool.parameters) continue;
       try {
@@ -157,8 +175,9 @@
         registered.add(tool.name);
       } catch { }
     }
-    const required = ["legend_engineering_bootstrap", "legend_inspect_repository",
-      "legend_prepare_software_repair", "legend_engineering_renew_turn", "legend_engineering_complete_turn"];
+    const required = ["legend_current_page_diagnostics", "legend_inspect_repository",
+      "legend_engineering_bootstrap", "legend_prepare_software_repair",
+      "legend_engineering_renew_turn", "legend_engineering_complete_turn"];
     reportWorkConnection(required.every(name => registered.has(name))
       ? "Tools connected · awaiting governed task" : "Engineering tool registration incomplete");
   }
