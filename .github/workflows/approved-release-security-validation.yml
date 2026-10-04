@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Checkout trusted approved validation authority
+      - name: Checkout exact candidate preflight authority
         uses: actions/checkout@v4
         with:
-          ref: legend/approved-changes
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Verify candidate contains current approved head
