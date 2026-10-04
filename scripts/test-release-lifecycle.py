@@ -794,6 +794,13 @@ class ResourceAdmission(unittest.TestCase):
             blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
         self.assertEqual(98, blocked[0]['runId'])
 
+    def test_completed_nonmutating_history_is_discharged_before_old_scope_is_reinterpreted(self):
+        self.run.update(status='completed', conclusion='failure')
+        with patch.object(m, '_admission_nonmutating_terminal', return_value=True), \
+             patch.object(m, '_admission_records', side_effect=AssertionError('historical scope must not be replayed')) as records:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        records.assert_not_called()
+
     def test_failed_parent_does_not_release_unsettled_resources(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior['resources'] = self.candidate['resources']
