@@ -958,6 +958,56 @@ def _never_admitted(api, run):
     return True
 
 
+def _admission_nonmutating_terminal(api, run):
+    """Prove a completed admitted run never crossed into a mutable release phase.
+
+    This is intentionally stricter than workflow failure. Every attempt must show
+    either a skipped release job, or a transaction-preparation failure with every
+    downstream mutation-capable step skipped. Any durable operation intent keeps
+    the lease blocking.
+    """
+    if run.get('status') != 'completed':
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    names = {item.get('name', '') for item in artifacts if not item.get('expired')}
+    if any(name.startswith('legend-release-operation-intent-') for name in names):
+        return False
+    attempts = run.get('run_attempt', 1)
+    if type(attempts) is not int or attempts < 1:
+        return False
+    mutation_steps = {
+        'Synchronize selected shared authorization and publisher runtimes',
+        'Synchronize selected editor ticket authority',
+        'Prepare canonical business website routing authority',
+        'Audit centralized Cloudflare routing authority',
+        'Diagnose preserve-live routing origin acceptance',
+        'Apply additive diagnostics migrations before restarting apps',
+        'Deploy and activate LEGEND Founder Cloudflare baseline',
+        'Reconcile public custom-hostname Cloudflare policy',
+        'Deploy shared Cloudflare business website router',
+        'Verify custom-domain bridge end to end',
+        'Reconcile complete immutable release transaction',
+    }
+    for attempt in range(1, attempts + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        release_jobs = [job for job in jobs if job.get('name') == 'release']
+        if len(release_jobs) != 1:
+            return False
+        release = release_jobs[0]
+        if release.get('conclusion') == 'skipped':
+            continue
+        steps = release.get('steps', [])
+        prepare = [step for step in steps if step.get('name') == 'Prepare complete immutable release transaction']
+        if len(prepare) != 1 or prepare[0].get('conclusion') != 'failure':
+            return False
+        for step in steps:
+            name = step.get('name', '')
+            if name.startswith('Publish canonical target (') or name in mutation_steps:
+                if step.get('conclusion') != 'skipped':
+                    return False
+    return True
+
+
 def _admission_settled(api, run, record):
     if run.get('status') != 'completed':
         return False
@@ -1009,7 +1059,7 @@ def admission_conflicts(api, candidate, *, current_run):
             # active legacy workflows always block new admission globally.
             continue
         for record in records:
-            if _admission_settled(api, run, record):
+            if _admission_settled(api, run, record) or _admission_nonmutating_terminal(api, run):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
