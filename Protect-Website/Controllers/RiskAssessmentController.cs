@@ -60,18 +60,11 @@ namespace Protect_Website.Controllers
             try
             {
                 var ct = HttpContext.RequestAborted;
-                var requestedSlug = Request.Form["AgentSlug"].FirstOrDefault();
                 var ownership = await WebsiteLeadOwnerAuthority.ResolveAsync(
                     HttpContext,
                     _resolver,
                     _intakeRecipients,
-                    requestedSlug,
                     ct);
-                if (!string.IsNullOrWhiteSpace(requestedSlug) && ownership.ExplicitSlugInvalid)
-                {
-                    ModelState.AddModelError("", "The advisor link is no longer available.");
-                    return View("~/Views/RiskAssessment/Index.cshtml", model);
-                }
                 var recipient = ownership.RecipientEmail;
                 var lead = new WebsiteLead
                 {
