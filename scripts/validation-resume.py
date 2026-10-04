@@ -3369,8 +3369,11 @@ def _release_checkout_from_job_log(repository, release_job, application, token):
         return _RELEASE_HISTORY_LOG_BINDINGS[cache_key]
     env = dict(os.environ, GH_TOKEN=token)
     try:
+        # Authenticated historical logs can approach the 32 MiB evidence cap.
+        # Keep the bounded size check below, but allow the redirect/download to
+        # complete on a throttled Actions evidence endpoint.
         result = subprocess.run(['gh', 'api', f'repos/{repository}/actions/jobs/{job_id}/logs'],
-                                capture_output=True, text=True, timeout=60, env=env, check=True)
+                                capture_output=True, text=True, timeout=180, env=env, check=True)
     except (OSError, subprocess.SubprocessError):
         raise ReleaseOperationHistoryUnproven('Historical checkout log unavailable') from None
     if len(result.stdout) > 32 * 1024 * 1024:

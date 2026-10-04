@@ -247,8 +247,10 @@ class CanonicalHistoryTests(unittest.TestCase):
                '2026-10-02T12:00:00.001Z   APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
                '2026-10-02T12:00:00.002Z [command]/usr/bin/git log -1 --format=%H\n'
                '2026-10-02T12:00:00.003Z ' + 'd' * 40 + '\n')
-        with patch.object(self.authority.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, log, '')):
+        with patch.object(self.authority.subprocess, 'run',
+                return_value=subprocess.CompletedProcess([], 0, log, '')) as download:
             self.assertIsNone(self.legacy_history())
+        self.assertEqual(180, download.call_args.kwargs['timeout'])
 
     def test_checkout_log_rejects_conflicting_package_and_missing_head(self):
         job = dict(id=123, steps=[dict(name='Run actions/checkout@v4', conclusion='success')])
