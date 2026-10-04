@@ -24,7 +24,29 @@ permissions:
   actions: read
 
 jobs:
+  approved-head-preflight:
+    name: approved-head-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout trusted approved validation authority
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate contains current approved head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py approved-head-preflight \
+            --repository "${{ github.repository }}" \
+            --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --output "$RUNNER_TEMP/approved-head-preflight.json"
+
   validate:
+    needs: approved-head-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
