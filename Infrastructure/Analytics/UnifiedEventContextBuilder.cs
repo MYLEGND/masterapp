@@ -51,7 +51,10 @@ public static class UnifiedEventContextBuilder
         bool? isBrowserSignal = null,
         bool? isServerAuthority = null,
         bool? metaServerAuthorityEligible = null,
-        object? metadata = null)
+        object? metadata = null,
+        Guid? websiteContentVersionId = null,
+        string? websiteBindingId = null,
+        string? measurementConsentState = null)
     {
         var clientContext = httpContext != null
             ? RequestContextAccessor.Resolve(httpContext)
@@ -64,9 +67,12 @@ public static class UnifiedEventContextBuilder
             (!resolvedIsBrowserSignal &&
              AnalyticsEventCatalog.IsServerAllowed(normalizedEventName) &&
              !AnalyticsEventCatalog.IsBrowserAllowed(normalizedEventName));
+        var measurementConsent = ResolveMeasurementConsent(request, measurementConsentState);
 
         return new UnifiedEventContext
         {
+            WebsiteContentVersionId = websiteContentVersionId,
+            WebsiteBindingId = websiteBindingId,
             EventId = eventId,
             EventName = eventName,
             EventCategory = eventCategory,
@@ -140,6 +146,9 @@ public static class UnifiedEventContextBuilder
             IsBrowserSignal = resolvedIsBrowserSignal,
             IsServerAuthority = isServerAuthority ?? (!resolvedIsBrowserSignal && AnalyticsEventCatalog.IsServerAllowed(normalizedEventName) && !AnalyticsEventCatalog.IsBrowserAllowed(normalizedEventName)),
             MetaServerAuthorityEligible = resolvedMetaServerAuthorityEligible,
+            MeasurementConsentAllowed = measurementConsent.Allowed,
+            MeasurementConsentState = measurementConsent.State,
+            MeasurementConsentSource = measurementConsent.Source,
             Metadata = metadata
         };
     }
@@ -160,14 +169,36 @@ public static class UnifiedEventContextBuilder
         return MetaLeadTrackingWorkflow.ResolveCookieValue(request, cookieName);
     }
 
-    public static bool CanUseMarketingIdentifiers(HttpRequest? request)
-    {
-        if (request is null) return true;
-        var gpc = request.Headers["Sec-GPC"].FirstOrDefault()?.Trim();
-        if (string.Equals(gpc, "1", StringComparison.Ordinal)) return false;
+    public sealed record MeasurementConsentResolution(bool Allowed, string State, string Source);
 
-        var consent = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "legend_measurement_consent");
-        return !string.Equals(consent, "denied", StringComparison.OrdinalIgnoreCase);
+    public static MeasurementConsentResolution ResolveMeasurementConsent(HttpRequest? request, string? submittedState = null)
+    {
+        if (request is null)
+            return new(true, "granted", "default_policy");
+
+        var gpc = request.Headers["Sec-GPC"].FirstOrDefault()?.Trim();
+        if (string.Equals(gpc, "1", StringComparison.Ordinal))
+            return new(false, "denied", "gpc");
+
+        var cookie = MetaLeadTrackingWorkflow.ResolveCookieValue(request, "legend_measurement_consent")?.Trim();
+        if (string.Equals(cookie, "denied", StringComparison.OrdinalIgnoreCase))
+            return new(false, "denied", "stored_choice");
+
+        var submitted = submittedState?.Trim();
+        if (string.Equals(submitted, "denied", StringComparison.OrdinalIgnoreCase))
+            return new(false, "denied", "submitted_state");
+        if (string.Equals(submitted, "unknown", StringComparison.OrdinalIgnoreCase))
+            return new(false, "unknown", "submitted_state");
+        if (string.Equals(submitted, "granted", StringComparison.OrdinalIgnoreCase))
+            return new(true, "granted", "submitted_state");
+
+        if (string.Equals(cookie, "granted", StringComparison.OrdinalIgnoreCase))
+            return new(true, "granted", "stored_choice");
+
+        return new(true, "granted", "default_policy");
     }
+
+    public static bool CanUseMarketingIdentifiers(HttpRequest? request) =>
+        ResolveMeasurementConsent(request).Allowed;
 
 }
