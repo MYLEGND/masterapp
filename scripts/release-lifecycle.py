@@ -310,7 +310,7 @@ def candidate_control_plane_integrity(api, pr, names):
         'cancel-in-progress: false',
         "if: github.ref == 'refs/heads/legend/approved-changes'",
         'Verify selected authority belongs to protected event history',
-        'Prepare governed release transaction',
+        'Prepare complete immutable release transaction',
         'Reconcile complete immutable release transaction',
         'Verify every deployed target and collect all failures',
         'Enforce complete direct deployment outcome',
