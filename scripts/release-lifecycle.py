@@ -839,6 +839,15 @@ def _package_backfill_running(api, approved):
     )
 
 
+def _package_backfill_preflight(api, revision, approved):
+    """Use the package builder's canonical eligibility proof before dispatch."""
+    return VALIDATION_AUTHORITY.compute_package_backfill_plan(
+        api.repo,
+        revision,
+        approved,
+    )
+
+
 def pending_automatic_releases(api, approved):
     """Derive the durable queue from approved first-parent PR authorization history.
 
@@ -985,6 +994,15 @@ def dispatch_pending_automatic_release(api, approved):
             continue
         package = _validated_package_evidence(api, pending['applicationRevision'])
         if not package.get('reusable'):
+            preflight = _package_backfill_preflight(api, pending['applicationRevision'], approved)
+            if not preflight.get('allowed'):
+                retained.append({
+                    **pending,
+                    'packageBackfill': 'not dispatched',
+                    'packageReason': preflight.get('reason') or package.get('reason'),
+                    'retained': 'Historical package backfill is ineligible under current approved application lineage',
+                })
+                continue
             if _package_backfill_running(api, approved):
                 retained.append({**pending, 'packageBackfill': 'already queued or running'})
                 continue
@@ -1013,6 +1031,15 @@ def dispatch_pending_legacy_release(api, approved):
 
     package = _validated_package_evidence(api, pending['applicationRevision'])
     if not package.get('reusable'):
+        preflight = _package_backfill_preflight(api, pending['applicationRevision'], approved)
+        if not preflight.get('allowed'):
+            return {
+                'state': 'SUPERSEDED' if preflight.get('reason') == 'application_inputs_changed_since_validated_revision' else 'WAITING_FOR_DEPENDENCY',
+                'packageBackfill': 'not dispatched',
+                'packageReason': preflight.get('reason') or package.get('reason'),
+                'retained': 'Historical release package backfill is ineligible under current approved application lineage',
+                **pending,
+            }
         if _package_backfill_running(api, approved):
             return {
                 'packageBackfill': 'already queued or running',
