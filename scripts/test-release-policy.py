@@ -556,6 +556,10 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        base=workflow.split('      - name: Verify current live base before publication\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('for attempt in range(3):', base)
+        self.assertIn('{408,429,500,502,503,504}', base)
+        self.assertIn("Cache-Control':'no-cache", base)
         self.assertIn('Preserve targets already live at exact candidate', workflow)
         self.assertIn("actual not in {row['revision'], candidate}", workflow)
         self.assertIn('exact candidate already live; preserve and continue reconciliation', workflow)
