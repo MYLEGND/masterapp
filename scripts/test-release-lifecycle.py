@@ -809,7 +809,7 @@ class ResourceAdmission(unittest.TestCase):
             (directory / 'operation.json').write_text(json.dumps(record))
         with patch.object(m.VALIDATION_AUTHORITY, '_download_run_artifact', side_effect=download), \
              patch.object(m, 'ancestor', return_value=True), \
-             patch.object(m.PACKAGE_AUTHORITY, 'package_identity', return_value='f' * 64), \
+             patch.object(m.VALIDATION_AUTHORITY, 'package_inputs_compatible', return_value=True), \
              patch.object(m.VALIDATION_AUTHORITY, 'compute_validated_package_evidence', return_value={
                  'reusable': True, 'revision': revision, 'packageIdentity': 'f' * 64}):
             with self.assertRaisesRegex(RuntimeError, 'resource ownership'):
@@ -817,6 +817,47 @@ class ResourceAdmission(unittest.TestCase):
 
 
 class WorkerAdmissionPackageIdentity(unittest.TestCase):
+    def test_retained_reused_package_checks_inputs_and_exact_producer(self):
+        api = Api()
+        source, producer, authority, merge = ('b' * 40, 'd' * 40, 'a' * 40, 'c' * 40)
+        target = canonical_name('client')
+        paths = ['ClientApp/Program.cs']
+        record = {'schemaVersion': 1, 'phase': 'admission', 'authorizationMode': 'automatic',
+                  'sourcePr': 7, 'authorizedSourceRevision': source,
+                  'applicationRevision': producer, 'packageIdentity': 'e' * 64,
+                  'executionAuthority': authority, 'sourceMergeSha': merge,
+                  'selectedTargets': [target],
+                  'resources': m.VALIDATION_AUTHORITY.release_admission_resources(paths, [target]),
+                  'producingRun': 98, 'producingAttempt': 1}
+        record['admissionId'] = m._admission_identity(record)
+        run = {'id': 98, 'run_attempt': 1, 'event': 'workflow_dispatch',
+               'head_repository': {'full_name': api.repo}}
+        api.api_map['pulls/7'] = {'number': 7, 'merged_at': '2026-10-03',
+            'base': {'ref': m.APPROVED}, 'head': {'sha': source}, 'merge_commit_sha': merge}
+        api.pages_map['pulls/7/files'] = [{'filename': path} for path in paths]
+        api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-admission-' + record['admissionId'], 'expired': False}]
+        def download(repo, run, name, directory):
+            (directory / 'operation.json').write_text(json.dumps(record))
+        with patch.object(m.VALIDATION_AUTHORITY, '_download_run_artifact', side_effect=download), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m.VALIDATION_AUTHORITY, 'package_inputs_compatible', return_value=True) as compatible, \
+             patch.object(m.VALIDATION_AUTHORITY, 'compute_validated_package_evidence', return_value={
+                 'reusable': True, 'revision': producer, 'packageIdentity': 'e' * 64}) as evidence:
+            self.assertEqual([record], m._admission_records(api, run))
+            compatible.assert_called_once_with(producer, source)
+            evidence.assert_called_once_with(api.repo, producer, 'e' * 64, allow_equivalent=False)
+            compatible.return_value = False
+            with self.assertRaisesRegex(RuntimeError, 'not equivalent'):
+                m._admission_records(api, run)
+            compatible.return_value = True
+            evidence.return_value = {'reusable': True, 'revision': source, 'packageIdentity': 'e' * 64}
+            with self.assertRaisesRegex(RuntimeError, 'binding is missing or changed'):
+                m._admission_records(api, run)
+            evidence.return_value = {'reusable': False, 'revision': producer, 'packageIdentity': 'e' * 64}
+            with self.assertRaisesRegex(RuntimeError, 'binding is missing or changed'):
+                m._admission_records(api, run)
+
     def test_lease_binds_authorized_source_and_preserved_package_producer_separately(self):
         api = Api()
         authority, source, merge, producer = ('a' * 40, 'b' * 40, 'c' * 40, 'd' * 40)

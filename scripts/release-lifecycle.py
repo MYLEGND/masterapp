@@ -905,7 +905,12 @@ def _admission_records(api, run):
             or pr.get('merge_commit_sha') != record.get('sourceMergeSha')
             or not ancestor(record['sourceMergeSha'], record['executionAuthority'])):
             raise RuntimeError('Admission source no longer binds its validated approved PR')
-        if PACKAGE_AUTHORITY.package_identity(record['authorizedSourceRevision']) != record.get('packageIdentity'):
+        # Reused immutable bytes retain their producer revision and identity.
+        # Recompute compatibility of the actual producing inputs, not an identity
+        # relabeled with the newer authorized PR revision. The exact retained
+        # producer/artifact binding is independently verified below.
+        if not VALIDATION_AUTHORITY.package_inputs_compatible(
+                record['applicationRevision'], record['authorizedSourceRevision']):
             raise RuntimeError('Admission authorized source is not equivalent to its immutable package inputs')
         package = VALIDATION_AUTHORITY.compute_validated_package_evidence(
             api.repo, record['applicationRevision'], record['packageIdentity'], allow_equivalent=False)
