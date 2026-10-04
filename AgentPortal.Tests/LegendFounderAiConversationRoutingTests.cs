@@ -119,7 +119,15 @@ public sealed class LegendFounderAiConversationRoutingTests
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("ShouldAttemptNativeInference", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
-        Assert.Equal(expected, Assert.IsType<bool>(method!.Invoke(null, new object[] { mode })));
+        var policy = mode == "legend"
+            ? LegendConnectExternalProviderPolicy.IndependentAnswering
+            : LegendConnectExternalProviderPolicy.ProviderEnabled;
+        Assert.Equal(expected, Assert.IsType<bool>(method!.Invoke(null, new object[] { mode, policy })));
+        Assert.False(Assert.IsType<bool>(method.Invoke(null, new object[]
+        {
+            "legend",
+            LegendConnectExternalProviderPolicy.CloudflareFoundation
+        })));
     }
 
     [Fact]
