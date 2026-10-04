@@ -99,4 +99,7 @@ public sealed record UnifiedChannelPerformanceSnapshot(
     IReadOnlyList<ProviderDeliveryMetricRow> ChatGptAdsDelivery,
     CanonicalOutcomeTotals ChatGptAdsOutcomes,
     IReadOnlyList<ChannelPerformanceRow> Channels,
-    IReadOnlyList<string> DataQualityNotes);
+    IReadOnlyList<string> DataQualityNotes)
+{
+    public BlendedGrowthEconomicsSnapshot? Economics { get; init; }
+}
