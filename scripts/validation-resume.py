@@ -539,6 +539,7 @@ def release_targets_for_paths(paths):
     )
 
 LIFECYCLE_AUTHORITY_PATHS = (
+    "AGENTS.md",
     ".github/workflows/legend-release-lifecycle.yml",
     ".github/workflows/all-intentional-direct-release-20260918.yml",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
@@ -577,6 +578,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
 # Application identity excludes release/test/control-only edits. This authority is
 # shared by release baseline resolution and package-canary preservation.
 RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "AGENTS.md",
     "scripts/approved-release-baseline.py",
     "scripts/release-lifecycle.py",
     "scripts/release_policy.py",
