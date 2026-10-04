@@ -1639,20 +1639,62 @@ def _never_admitted(api, run):
     return True
 
 
-def _admission_nonmutating_terminal(api, run):
-    """Prove a completed admitted run never crossed into a mutable release phase.
+def _historical_release_mutation_steps(source):
+    """Return the mutation-capable steps owned by one historical release generation."""
+    blocks = VALIDATION_AUTHORITY.named_step_blocks(
+        VALIDATION_AUTHORITY._job_blocks(source).get('release', '')
+    )
+    prepare = 'Prepare complete immutable release transaction'
+    if prepare not in blocks or '--prepare-only' not in blocks[prepare]:
+        return None
 
-    This is intentionally stricter than workflow failure. Every attempt must show
-    either a skipped release job, or a transaction-preparation failure with every
-    downstream mutation-capable step skipped. Any durable operation intent keeps
-    the lease blocking.
+    mutation = {
+        prepare,
+        'Prepare canonical business website routing authority',
+        'Reconcile complete immutable release transaction',
+        'Reconcile public custom-hostname Cloudflare policy',
+    }
+    mutation.update(
+        gate['step']
+        for child, gate in VALIDATION_AUTHORITY.DIRECT_RELEASE_CHILDREN.items()
+        if child != 'live-proof'
+    )
+    mutation.update(
+        f'Publish canonical target ({key})'
+        for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
+    )
+    if not mutation.issubset(blocks):
+        return None
+    return mutation
+
+
+def _admission_nonmutating_terminal(api, run):
+    """Prove a completed historical admission never crossed into mutation.
+
+    Proof is bound to the exact historical workflow generation that executed.
+    Later workflow edits cannot turn a safely failed old run into a permanent
+    resource lease. Absence alone is never enough: the producer must be trusted,
+    the artifact inventory must contain no durable operation/child intent, and
+    every canonical mutation-capable step must be positively skipped. Transaction
+    preparation may itself fail (or be skipped), but may never have succeeded.
     """
     if run.get('status') != 'completed':
         return False
+    if (run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('head_branch') != APPROVED
+        or run.get('event') != 'workflow_dispatch'
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()):
+        return False
+
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     names = {item.get('name', '') for item in artifacts}
-    if any(name.startswith('legend-release-operation-intent-') for name in names):
+    if any(
+        name.startswith('legend-release-operation-intent-')
+        or name.startswith('legend-release-child-intent-')
+        for name in names
+    ):
         return False
+
     attempts = run.get('run_attempt', 1)
     if type(attempts) is not int or attempts < 1:
         return False
@@ -1661,8 +1703,13 @@ def _admission_nonmutating_terminal(api, run):
     if not SHA.fullmatch(revision):
         return False
     original = git('show', revision + ':' + workflow_path, check=False)
-    if original.returncode or original.stdout != Path(workflow_path).read_text():
-        return False  # unknown execution generation cannot prove non-mutation
+    if original.returncode:
+        return False
+    mutation = _historical_release_mutation_steps(original.stdout)
+    if not mutation:
+        return False
+
+    prepare = 'Prepare complete immutable release transaction'
     for attempt in range(1, attempts + 1):
         jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
         release_jobs = [job for job in jobs if job.get('name') == 'release']
@@ -1671,9 +1718,24 @@ def _admission_nonmutating_terminal(api, run):
         release = release_jobs[0]
         if release.get('conclusion') == 'skipped':
             continue
-        if not VALIDATION_AUTHORITY._failed_transaction_preparation_without_writes(
-                original.stdout, release):
+        if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
             return False
+        steps = release.get('steps')
+        if not isinstance(steps, list):
+            return False
+        outcomes = {}
+        for step in steps:
+            outcomes.setdefault(step.get('name'), []).append(step)
+        for name in mutation:
+            matches = outcomes.get(name, [])
+            if len(matches) != 1:
+                return False
+            conclusion = matches[0].get('conclusion')
+            if name == prepare:
+                if conclusion not in {'failure', 'skipped'}:
+                    return False
+            elif conclusion != 'skipped':
+                return False
     return True
 
 
