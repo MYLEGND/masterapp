@@ -4393,6 +4393,22 @@ def compute_step5_decision(
         decision["reason"] = "no_reusable_candidate_evidence"
         return decision
 
+    prior_run_id = int(candidate_evidence["runId"])
+    prior_head_sha = candidate_evidence["headSha"]
+    candidate_name = candidate_evidence["artifact"]
+
+    decision.update({
+        "priorRunId": prior_run_id,
+        "priorHeadSha": prior_head_sha,
+    })
+
+    # Reject incompatible candidate job definitions before any expensive
+    # historical baseline scan. The baseline is an independent child and will
+    # be produced by the baseline-evidence job when full proof is required.
+    if not _step5_jobs_unchanged(prior_head_sha, workflow_path):
+        decision["reason"] = "candidate_or_baseline_job_changed"
+        return decision
+
     baseline_evidence = compute_step5_baseline_evidence(repository, base_sha)
     # Candidate proof remains valid even when the independent baseline needs
     # fresh execution. The workflow produces that missing child in this run.
@@ -4402,22 +4418,13 @@ def compute_step5_decision(
             "evidenceArtifact": f"step5-baseline-{base_sha}",
         }
 
-    prior_run_id = int(candidate_evidence["runId"])
-    prior_head_sha = candidate_evidence["headSha"]
-    candidate_name = candidate_evidence["artifact"]
     baseline_run_id = int(baseline_evidence["evidenceRunId"])
     baseline_name = baseline_evidence["evidenceArtifact"]
 
     decision.update({
-        "priorRunId": prior_run_id,
-        "priorHeadSha": prior_head_sha,
         "baselineEvidenceRunId": baseline_run_id,
         "baselineEvidenceArtifact": baseline_name,
     })
-
-    if not _step5_jobs_unchanged(prior_head_sha, workflow_path):
-        decision["reason"] = "candidate_or_baseline_job_changed"
-        return decision
     classes = step5_dependency_change(prior_head_sha, current_sha)
     if classes is None:
         decision["reason"] = "changed_or_unproven_suite_dependencies"
