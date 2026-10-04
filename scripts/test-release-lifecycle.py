@@ -44,6 +44,8 @@ class Api:
         self.api_map = {}
         self.dispatched = []
         self.statuses = []
+        self.commit_statuses = {}
+        self._status_id = 0
 
     def ref(self, name):
         return self.refs[name]
@@ -78,15 +80,37 @@ class Api:
         value = self.api_map.get(path)
         if callable(value):
             return value(data, method)
-        if value is None:
-            return {}
-        return value
+        if value is not None:
+            return value
+        if path.startswith("commits/") and path.endswith("/status"):
+            revision = path.split("/", 2)[1]
+            return {"statuses": list(self.commit_statuses.get(revision, []))}
+        if path.startswith("compare/") and "..." in path:
+            approved, _candidate = path[len("compare/"):].split("...", 1)
+            return {
+                "status": "ahead",
+                "merge_base_commit": {"sha": approved},
+            }
+        return {}
 
     def text(self, revision, path):
         return (Path(__file__).resolve().parents[1] / path).read_text()
 
+    def context_status(self, revision, context, state, description):
+        self._status_id += 1
+        row = {
+            "id": self._status_id,
+            "context": context,
+            "state": state,
+            "description": description,
+            "created_at": f"2026-10-04T00:00:{self._status_id:02d}Z",
+            "updated_at": f"2026-10-04T00:00:{self._status_id:02d}Z",
+        }
+        self.commit_statuses.setdefault(revision, []).append(row)
+        self.statuses.append((revision, context, state, description))
+
     def status(self, revision, state, description):
-        self.statuses.append((revision, state, description))
+        self.context_status(revision, "architecture-validation", state, description)
 
     def dispatch(self, workflow, inputs=None):
         self.dispatched.append((workflow, inputs or {}))
@@ -317,97 +341,96 @@ class IntegrationReplaySafety(unittest.TestCase):
             m.integrate(api, 382)
 
 
-class PendingUpdateFairness(unittest.TestCase):
-    @patch.object(m, "staging_only", return_value=False)
-    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
-    @patch.object(m, "ready", return_value=True)
-    @patch.object(m, "merge_validated")
-    def test_retained_older_pr_does_not_starve_later_validated_pr(self, merge_validated, _, __, ___):
-        api = Api()
-        older = {"number": 10}
-        newer = {"number": 11}
-        fresh_older = {"number": 10, "head": {"sha": "a" * 40}}
-        fresh_newer = {"number": 11, "head": {"sha": "b" * 40}}
-        # GitHub returns newer first; lifecycle intentionally scans oldest first.
-        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [newer, older]
-        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
-        api.api_map["pulls/10"] = fresh_older
-        api.api_map["pulls/11"] = fresh_newer
-        merge_validated.side_effect = [
-            {"retained": "Awaiting successful exact-head validation"},
-            {"mergedPr": 11, "sha": "f" * 40},
-        ]
-
-        result = m.pending_updates(api)
-
-        self.assertEqual(11, result["mergedPr"])
-        self.assertEqual(2, merge_validated.call_count)
-        self.assertIs(fresh_older, merge_validated.call_args_list[0].args[1])
-        self.assertIs(fresh_newer, merge_validated.call_args_list[1].args[1])
-
-
-    @patch.object(m, "staging_only", return_value=False)
-    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
-    @patch.object(m, "ready")
-    @patch.object(m, "merge_validated")
-    def test_stale_ready_snapshot_does_not_abort_or_starve_later_validated_pr(
-        self, merge_validated, ready, _, __
-    ):
-        api = Api()
-        older = {"number": 10}
-        newer = {"number": 11}
-        fresh_older = {"number": 10}
-        fresh_newer = {"number": 11}
-        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [newer, older]
-        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
-        api.api_map["pulls/10"] = fresh_older
-        api.api_map["pulls/11"] = fresh_newer
-        # Discovery sees both as ready; the exact older PR changes before mutation.
-        ready.side_effect = [True, False, True, True]
-        merge_validated.return_value = {"mergedPr": 11, "sha": "f" * 40}
-
-        result = m.pending_updates(api)
-
-        self.assertEqual(11, result["mergedPr"])
-        merge_validated.assert_called_once_with(api, fresh_newer)
-        self.assertNotEqual(fresh_older, merge_validated.call_args.args[1])
-
-    @patch.object(m, "staging_only", return_value=False)
-    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
-    @patch.object(m, "ancestor", side_effect=[False, True])
-    def test_blocked_correction_pr_does_not_starve_release_recovery(self, _, __, ___):
-        api = Api()
-        api.refs[m.APPROVED] = "a" * 40
-        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = []
-        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = [{
-            "number": 12,
-            "state": "closed",
-            "merged_at": "2026-10-01T00:00:00Z",
+class ReleaseQueueSerialization(unittest.TestCase):
+    def pr(self, number, sha=None, ref=None):
+        return {
+            "number": number,
+            "state": "open",
+            "draft": False,
             "author_association": "OWNER",
+            "base": {"ref": m.APPROVED},
             "head": {
-                "ref": "retained-work",
-                "sha": "b" * 40,
-                "repo": {"full_name": api.repo},
+                "sha": sha or (hex(number)[2:] * 40)[:40],
+                "ref": ref or f"repair/pr-{number}",
+                "repo": {"full_name": Api.repo},
             },
-        }]
-        api.pages_map["branches"] = [{
-            "name": "retained-work",
-            "commit": {"sha": "c" * 40},
-        }]
+        }
 
-        def blocked_pull(_data, _method):
-            raise RuntimeError("GitHub POST pulls: HTTP 403")
+    def test_first_candidate_owns_queue_and_later_candidate_is_queued(self):
+        api = Api()
+        first = self.pr(442, "b" * 40)
+        later = self.pr(450, "c" * 40)
 
-        api.api_map["pulls"] = blocked_pull
+        claimed = m.claim_release_queue(api, first)
+        queued = m.claim_release_queue(api, later)
+
+        self.assertEqual("RELEASE_QUEUE_OWNER", claimed["state"])
+        self.assertEqual("RELEASE_QUEUED", queued["state"])
+        self.assertEqual(442, queued["ownerPr"])
+        self.assertEqual(442, m.release_queue_lease(api)["ownerPr"])
+
+    def test_owner_head_change_keeps_same_queue_ownership(self):
+        api = Api()
+        first = self.pr(442, "b" * 40)
+        m.claim_release_queue(api, first)
+        updated = self.pr(442, "c" * 40)
+
+        claimed = m.claim_release_queue(api, updated)
+
+        self.assertEqual("RELEASE_QUEUE_OWNER", claimed["state"])
+        self.assertEqual(442, m.release_queue_lease(api)["ownerPr"])
+
+    def test_non_owner_cannot_merge_even_with_green_validation(self):
+        api = Api()
+        owner = self.pr(442, "b" * 40)
+        later = self.pr(450, "c" * 40)
+        m.claim_release_queue(api, owner)
+
+        result = m._release_queue_guard(api, later)
+
+        self.assertEqual("RELEASE_QUEUED", result["state"])
+        self.assertEqual(442, result["ownerPr"])
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    @patch.object(m, "merge_validated")
+    def test_pending_updates_processes_only_active_owner(self, merge_validated, _, __):
+        api = Api()
+        owner = self.pr(442, "b" * 40)
+        later = self.pr(450, "c" * 40)
+        api.api_map["pulls/442"] = owner
+        api.api_map["pulls/450"] = later
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [later, owner]
+        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
+        m.claim_release_queue(api, owner)
+        m._request_release_queue(api, later)
+        merge_validated.return_value = {
+            "state": "VALIDATING",
+            "retained": "Awaiting successful exact-head validation",
+        }
+
         result = m.pending_updates(api)
 
-        self.assertEqual(
-            "no validated ready changes or retained-branch corrections",
-            result["integration"],
-        )
-        self.assertEqual(1, len(result["retainedCandidates"]))
-        self.assertEqual("retained-work", result["retainedCandidates"][0]["branch"])
-        self.assertIn("blocked", result["retainedCandidates"][0]["reason"].lower())
+        self.assertEqual("VALIDATING", result["state"])
+        merge_validated.assert_called_once_with(api, owner)
+
+    def test_released_queue_promotes_next_requested_pr(self):
+        api = Api()
+        owner = self.pr(442, "b" * 40)
+        later = self.pr(450, "c" * 40)
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [later]
+        api.pages_map["pulls/450/files"] = []
+        api.api_map["pulls/450"] = later
+        m.claim_release_queue(api, owner)
+        m._request_release_queue(api, later)
+        m._release_release_queue(api, api.ref(m.APPROVED), 442, "terminal-live-provenance")
+
+        result = m.promote_next_release_queue(api)
+
+        self.assertEqual("RELEASE_QUEUE_PROMOTED", result["state"])
+        self.assertEqual(450, result["pr"])
+        self.assertEqual(450, m.release_queue_lease(api)["ownerPr"])
+
 
 class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
