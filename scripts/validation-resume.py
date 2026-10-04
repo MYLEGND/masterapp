@@ -1362,6 +1362,12 @@ def api_get(repository: str, path: str, token: str):
         except (TimeoutError, urllib.error.URLError) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt == 2:
+                headers = getattr(exc, "headers", None) or {}
+                rate = {key: headers.get(key) for key in (
+                    "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After")
+                    if headers.get(key) is not None}
+                if rate:
+                    print(json.dumps({"evidenceRateLimit": rate}, sort_keys=True))
                 raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None), endpoint=path.split("?", 1)[0]) from exc
             time.sleep(2 ** attempt)
 
