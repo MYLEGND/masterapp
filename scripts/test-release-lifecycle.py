@@ -874,7 +874,9 @@ class ResourceAdmission(unittest.TestCase):
     def setUp(self):
         self.api = Api()
         self.run = {'id': 98, 'run_attempt': 1, 'status': 'in_progress', 'conclusion': None,
-                    'path': '.github/workflows/' + m.DIRECT, 'head_branch': m.APPROVED}
+                    'path': '.github/workflows/' + m.DIRECT, 'head_branch': m.APPROVED,
+                    'event': 'workflow_dispatch',
+                    'head_repository': {'full_name': self.api.repo}}
         self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run]
         self.candidate = {'applicationRevision': 'b' * 40, 'selectedTargets': [canonical_name('client')],
                           'resources': self.resources(['ClientApp/Program.cs'])}
@@ -1009,6 +1011,85 @@ class ResourceAdmission(unittest.TestCase):
             {'name': 'release', 'conclusion': 'skipped', 'steps': []},
         ]
         self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_historical_workflow_generation_can_prove_nonmutation_without_matching_current_text(self):
+        self.run.update(status='completed', conclusion='failure', head_sha='b' * 40)
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        source = Path('.github/workflows/' + m.DIRECT).read_text()
+        historical = source + "\n# historical trusted generation\n"
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(historical)['release'])
+        mutation = m._historical_release_mutation_steps(historical)
+        safe_steps = [
+            {
+                'name': name,
+                'conclusion': (
+                    'failure'
+                    if name == 'Prepare complete immutable release transaction'
+                    else 'skipped' if name in mutation else 'success'
+                ),
+            }
+            for name in blocks
+        ]
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': safe_steps},
+        ]
+        with patch.object(
+            m, 'git',
+            return_value=SimpleNamespace(returncode=0, stdout=historical, stderr=''),
+        ):
+            self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_failure_before_transaction_disposes_lease_when_every_mutation_step_skipped(self):
+        self.run.update(status='completed', conclusion='failure',
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        source = Path('.github/workflows/' + m.DIRECT).read_text()
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(source)['release'])
+        mutation = m._historical_release_mutation_steps(source)
+        failed = 'Verify current live base before publication'
+        safe_steps = [
+            {
+                'name': name,
+                'conclusion': (
+                    'failure' if name == failed
+                    else 'skipped' if name in mutation
+                    else 'success'
+                ),
+            }
+            for name in blocks
+        ]
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': safe_steps},
+        ]
+        self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_historical_child_intent_keeps_lease_blocking_even_when_steps_are_skipped(self):
+        self.run.update(status='completed', conclusion='failure',
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
+        source = Path('.github/workflows/' + m.DIRECT).read_text()
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(source)['release'])
+        mutation = m._historical_release_mutation_steps(source)
+        safe_steps = [
+            {
+                'name': name,
+                'conclusion': (
+                    'failure'
+                    if name == 'Prepare complete immutable release transaction'
+                    else 'skipped' if name in mutation else 'success'
+                ),
+            }
+            for name in blocks
+        ]
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': safe_steps},
+        ]
+        self.api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-child-intent-' + 'a' * 64, 'expired': False},
+        ]
+        self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
 
     def test_failed_transaction_prepare_releases_lease_only_before_any_mutation(self):
         self.run.update(status='completed', conclusion='failure',
