@@ -323,8 +323,10 @@ def candidate_control_plane_integrity(api, pr, names):
             return 'Candidate direct-release workflow lost required invariant: ' + token
 
     architecture = source['architecture_workflow']
-    if 'name: architecture-validation' not in architecture and 'name: candidate-architecture-validation' not in architecture:
-        return 'Candidate architecture workflow lost its canonical validation job'
+    if 'name: candidate-architecture-validation' not in architecture:
+        return 'Candidate architecture workflow lost its canonical candidate validation job'
+    if 'name: architecture-validation' in architecture:
+        return 'Candidate architecture workflow may not publish the trusted aggregate context'
     if 'Run branch lifecycle safety contracts' not in architecture:
         return 'Candidate architecture workflow stopped exercising lifecycle contracts'
 

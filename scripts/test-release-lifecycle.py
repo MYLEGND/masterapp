@@ -125,6 +125,14 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         names = ["scripts/release-lifecycle.py"]
         self.assertIsNone(m.candidate_control_plane_integrity(api, pr, names))
 
+    def test_candidate_architecture_job_cannot_mint_trusted_branch_context(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/masterapp-platform-architecture-validation.yml").read_text()
+        self.assertIn("name: candidate-architecture-validation", workflow)
+        self.assertNotIn("    name: architecture-validation\n", workflow)
+        lifecycle = (Path(__file__).resolve().parent / "release-lifecycle.py").read_text()
+        self.assertIn("Candidate architecture workflow may not publish the trusted aggregate context", lifecycle)
+        self.assertIn("'architecture-validation'", lifecycle)
+
     def test_non_control_change_still_requires_repository_safety_rails_only(self):
         api = Api()
         pr = {"head": {"sha": "b" * 40}}
