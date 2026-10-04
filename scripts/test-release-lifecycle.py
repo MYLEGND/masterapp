@@ -784,7 +784,8 @@ class ResourceAdmission(unittest.TestCase):
             self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=98))
 
     def test_completed_admission_with_skipped_release_is_nonmutating_terminal(self):
-        self.run.update(status='completed', conclusion='failure')
+        self.run.update(status='completed', conclusion='failure',
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
         self.api.pages_map['actions/runs/98/artifacts'] = []
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
             {'name': 'admission', 'conclusion': 'success'},
@@ -794,16 +795,17 @@ class ResourceAdmission(unittest.TestCase):
         self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
 
     def test_failed_transaction_prepare_releases_lease_only_before_any_mutation(self):
-        self.run.update(status='completed', conclusion='failure')
+        self.run.update(status='completed', conclusion='failure',
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
         self.api.pages_map['actions/runs/98/artifacts'] = []
-        safe_steps = [
-            {'name': 'Prepare complete immutable release transaction', 'conclusion': 'failure'},
-            {'name': 'Publish canonical target (client)', 'conclusion': 'skipped'},
-            {'name': 'Apply additive diagnostics migrations before restarting apps', 'conclusion': 'skipped'},
-            {'name': 'Reconcile complete immutable release transaction', 'conclusion': 'skipped'},
-        ]
+        source = Path('.github/workflows/' + m.DIRECT).read_text()
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(source)['release'])
+        safe_steps = [{'name': name, 'conclusion':
+                       'failure' if name == 'Prepare complete immutable release transaction' else 'skipped'}
+                      for name in blocks]
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
-            {'name': 'release', 'conclusion': 'failure', 'steps': safe_steps},
+            {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': safe_steps},
         ]
         self.assertTrue(m._admission_nonmutating_terminal(self.api, self.run))
         self.api.pages_map['actions/runs/98/artifacts'] = [
@@ -812,10 +814,33 @@ class ResourceAdmission(unittest.TestCase):
         self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
         self.api.pages_map['actions/runs/98/artifacts'] = []
         unsafe_steps = list(safe_steps)
-        unsafe_steps[1] = {'name': 'Publish canonical target (client)', 'conclusion': 'success'}
+        unsafe_steps = [dict(step, conclusion='success') if step['name'] == 'Publish canonical target (client)'
+                        else step for step in safe_steps]
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
-            {'name': 'release', 'conclusion': 'failure', 'steps': unsafe_steps},
+            {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': unsafe_steps},
         ]
+        self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_nonmutating_terminal_rejects_missing_steps_and_earlier_writes(self):
+        self.run.update(status='completed', conclusion='failure', run_attempt=2,
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
+        self.api.pages_map['actions/runs/98/attempts/2/jobs'] = [
+            {'name': 'release', 'conclusion': 'skipped'}]
+        for steps in (None, [], [
+                {'name': 'Prepare complete immutable release transaction', 'conclusion': 'failure'}]):
+            self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+                {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': steps}]
+            self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
+
+    def test_nonmutating_terminal_rejects_unknown_source_and_expired_intent(self):
+        self.run.update(status='completed', conclusion='failure',
+                        head_sha=m.git('rev-parse', 'HEAD').stdout.strip())
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'release', 'conclusion': 'skipped'}]
+        with patch.object(m, 'git', return_value=SimpleNamespace(returncode=0, stdout='unknown workflow')):
+            self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
+        self.api.pages_map['actions/runs/98/artifacts'] = [
+            {'name': 'legend-release-operation-intent-' + 'a' * 64, 'expired': True}]
         self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
 
     def test_expired_lease_is_not_absence_proof(self):

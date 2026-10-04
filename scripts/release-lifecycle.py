@@ -969,25 +969,19 @@ def _admission_nonmutating_terminal(api, run):
     if run.get('status') != 'completed':
         return False
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
-    names = {item.get('name', '') for item in artifacts if not item.get('expired')}
+    names = {item.get('name', '') for item in artifacts}
     if any(name.startswith('legend-release-operation-intent-') for name in names):
         return False
     attempts = run.get('run_attempt', 1)
     if type(attempts) is not int or attempts < 1:
         return False
-    mutation_steps = {
-        'Synchronize selected shared authorization and publisher runtimes',
-        'Synchronize selected editor ticket authority',
-        'Prepare canonical business website routing authority',
-        'Audit centralized Cloudflare routing authority',
-        'Diagnose preserve-live routing origin acceptance',
-        'Apply additive diagnostics migrations before restarting apps',
-        'Deploy and activate LEGEND Founder Cloudflare baseline',
-        'Reconcile public custom-hostname Cloudflare policy',
-        'Deploy shared Cloudflare business website router',
-        'Verify custom-domain bridge end to end',
-        'Reconcile complete immutable release transaction',
-    }
+    workflow_path = '.github/workflows/' + DIRECT
+    revision = run.get('head_sha', '')
+    if not SHA.fullmatch(revision):
+        return False
+    original = git('show', revision + ':' + workflow_path, check=False)
+    if original.returncode or original.stdout != Path(workflow_path).read_text():
+        return False  # unknown execution generation cannot prove non-mutation
     for attempt in range(1, attempts + 1):
         jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
         release_jobs = [job for job in jobs if job.get('name') == 'release']
@@ -996,15 +990,9 @@ def _admission_nonmutating_terminal(api, run):
         release = release_jobs[0]
         if release.get('conclusion') == 'skipped':
             continue
-        steps = release.get('steps', [])
-        prepare = [step for step in steps if step.get('name') == 'Prepare complete immutable release transaction']
-        if len(prepare) != 1 or prepare[0].get('conclusion') != 'failure':
+        if not VALIDATION_AUTHORITY._failed_transaction_preparation_without_writes(
+                original.stdout, release):
             return False
-        for step in steps:
-            name = step.get('name', '')
-            if name.startswith('Publish canonical target (') or name in mutation_steps:
-                if step.get('conclusion') != 'skipped':
-                    return False
     return True
 
 
