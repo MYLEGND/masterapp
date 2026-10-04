@@ -47,7 +47,7 @@ public sealed class MarketingDestinationLayerTests
         Assert.Equal(MarketingDestinationKeys.OpenAi, decision.DestinationKey);
         Assert.True(decision.Supported);
         Assert.False(decision.Configured);
-        Assert.False(decision.Eligible);
+        Assert.False(decision.MappingReady);
         Assert.Equal("destination_not_configured", decision.Reason);
     }
 
@@ -79,8 +79,8 @@ public sealed class MarketingDestinationLayerTests
 
         Assert.True(eligible.Supported);
         Assert.True(eligible.Configured);
-        Assert.True(eligible.Eligible);
-        Assert.Equal("eligible", eligible.Reason);
+        Assert.True(eligible.MappingReady);
+        Assert.Equal("mapping_ready", eligible.Reason);
 
         var forged = await adapter.EvaluateAsync(
             owner,
@@ -88,7 +88,7 @@ public sealed class MarketingDestinationLayerTests
 
         Assert.True(forged.Supported);
         Assert.True(forged.Configured);
-        Assert.False(forged.Eligible);
+        Assert.False(forged.MappingReady);
         Assert.Equal("canonical_outcome_not_dispatch_eligible", forged.Reason);
     }
 

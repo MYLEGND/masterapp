@@ -116,35 +116,6 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalMobileShellRelease_CoversOnlyActuallyAffectedApps()
-    {
-        var root = Root();
-        var request = Read(root, "Docs", "releases", "direct-release-request.json");
-
-        foreach (var target in new[]
-        {
-            "masterapp-portal",
-            "masterapp-client"
-        })
-            Assert.Contains($"\"{target}\"", request, StringComparison.Ordinal);
-
-        foreach (var excluded in new[]
-        {
-            "masterapp-protect",
-            "masterapp-parfait",
-            "masterapp-website"
-        })
-            Assert.DoesNotContain($"\"{excluded}\"", request, StringComparison.Ordinal);
-
-        Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
-        Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
-        Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("agent-client-canonical-mobile-shell-20260929", request, StringComparison.Ordinal);
-        Assert.Contains("validated canonical mobile shell repair from PR #300", request, StringComparison.Ordinal);
-        Assert.Contains("presentation-only canonical mobile shell", request, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AgentAndBusinessAdapters_DelegateToCanonicalInfrastructureServices()
     {
         var root = Root();

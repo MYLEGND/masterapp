@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Infrastructure.WebsiteEditing;
 
@@ -56,7 +57,24 @@ public static class WebsiteSiteSource
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = false,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver
+        {
+            Modifiers = { info =>
+            {
+                if (info.Type != typeof(WebsiteCompositionNode)) return;
+                foreach (var property in info.Properties)
+                    if (property.Name is "signals" or "fieldSignals")
+                        property.ShouldSerialize = (_, _) => false;
+            } }
+        }
+    };
+
+    // Cloning canonical state must retain protected fields. Only the outward
+    // Source projection omits them; parsing must still detect attempted writes.
+    private static readonly JsonSerializerOptions CanonicalCloneOptions = new(SourceOptions)
+    {
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     public static string Serialize(WebsiteContentDocument document)
@@ -303,7 +321,8 @@ public static class WebsiteSiteSource
             if (WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey))
             {
                 if (!document.Pages.TryGetValue(pagePath, out var runtimePage) ||
-                    !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey))
+                    !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey) ||
+                    node.SystemKey != WebsiteSystemTemplateAuthority.RuntimeFormKey(pagePath))
                     throw new WebsiteSiteSourceProtectionException("Protected runtime forms are allowed only on server-bound Protect template pages.");
             }
 
@@ -338,6 +357,14 @@ public static class WebsiteSiteSource
                 if (!validActions.Contains(node.ActionKey))
                     throw new WebsiteSiteSourceProtectionException($"Website CTA '{node.Id}' has an invalid action.");
             }
+        }
+
+        foreach (var (path, page) in document.Pages)
+        {
+            if (page.Navigation?.IsDeleted == true || page.SystemTemplateKey is null) continue;
+            var expected = WebsiteSystemTemplateAuthority.RuntimeFormKey(path);
+            if (expected is not null && Flatten(path, page.Composition).Count(item => item.Node.SystemKey == expected) != 1)
+                throw new WebsiteSiteSourceProtectionException("Materialize the protected runtime form before publishing this page.");
         }
 
         if (primaryNavigationCount > 1)
@@ -679,7 +706,7 @@ public static class WebsiteSiteSource
         }
     }
 
-    private static IEnumerable<(string PagePath, WebsiteCompositionNode Node)> Flatten(WebsiteContentDocument document)
+    internal static IEnumerable<(string PagePath, WebsiteCompositionNode Node)> Flatten(WebsiteContentDocument document)
     {
         foreach (var node in Flatten("@shell/header", document.Shell?.Header ?? []))
             yield return node;
@@ -727,7 +754,7 @@ public static class WebsiteSiteSource
 
     private static T Clone<T>(T value)
     {
-        var json = JsonSerializer.Serialize(value, SourceOptions);
-        return JsonSerializer.Deserialize<T>(json, SourceOptions)!;
+        var json = JsonSerializer.Serialize(value, CanonicalCloneOptions);
+        return JsonSerializer.Deserialize<T>(json, CanonicalCloneOptions)!;
     }
 }

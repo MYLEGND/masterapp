@@ -85,6 +85,71 @@ public sealed class WebsitePublishingAuthorityTests
         Page(envelope).GetProperty("composition")[0].GetProperty("text").GetString();
 
     [Fact]
+    public async Task AgentContractUsesCompleteScopedCatalogs_WithoutDependingOnPlacedInstances()
+    {
+        using var f = new Fixture();
+        var payload = Body(await f.Controller.Manage(f.Token));
+        var contract = payload.GetProperty("agentContract");
+        var actions = payload.GetProperty("ctaCatalog").GetProperty("options");
+        Assert.True(actions.GetArrayLength() > 0);
+        Assert.Equal(actions.GetRawText(), contract.GetProperty("availableActions").GetRawText());
+        Assert.Equal(payload.GetProperty("signalCatalog").GetRawText(), contract.GetProperty("signalCatalog").GetRawText());
+        var prompt = contract.GetProperty("promptTemplate").GetString()!;
+        foreach (var action in actions.EnumerateArray())
+            Assert.Contains(action.GetProperty("key").GetString()!, prompt, StringComparison.Ordinal);
+        Assert.Contains("removing an instance never deletes the catalog capability", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProtectRepairSurvivesCanonicalSave_AndRejectsAnotherRoutesRuntime()
+    {
+        using var f = new Fixture();
+        f.Db.AgentTrackingProfiles.Add(new Domain.Entities.AgentTrackingProfile
+        {
+            AgentUserId = "1d43fa52-e36d-4522-9d21-40b3ac260aed", AgentUpn = "founder@example.test",
+            Slug = "repair-agent", Status = "Active"
+        });
+        await f.Db.SaveChangesAsync();
+        var token = f.Tickets.Protect(new(WebsiteEditorSiteKeys.Protect,
+            "1d43fa52-e36d-4522-9d21-40b3ac260aed", "repair-agent", true, DateTime.UtcNow.AddMinutes(10),
+            ActorUserId: "1d43fa52-e36d-4522-9d21-40b3ac260aed"));
+        var draft = Document("Home");
+        draft.Pages["/Quote/Life"] = new WebsitePageDocument
+        {
+            Composition = [new WebsiteCompositionNode { Id = "life.runtime", Type = "container", Tag = "div",
+                SystemKey = "protect_runtime_form:quote_life",
+                FieldLabels = new() { ["FirstName"] = "Your first name" } }]
+        };
+        var saved = Body(await f.Controller.Save(new(token, draft, 0)));
+        Assert.Equal("protect_runtime_form:quote_life", Page(saved, "/Quote/Life").GetProperty("composition")[0].GetProperty("systemKey").GetString());
+        Body(await f.Controller.Publish(new(token, 1)));
+        draft.Pages["/Quote/Life"].Composition[0].SystemKey = "protect_runtime_form:quote_home_form";
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Save(new(token, draft, 2)));
+        Assert.Equal(2, Body(await f.Controller.Manage(token)).GetProperty("revision").GetInt64());
+    }
+
+    [Fact]
+    public async Task RollbackRunsCurrentPreflight_AndCannotRepublishBrokenHistoricalContent()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        Body(await f.Controller.Save(new(token, Document("good"), 0)));
+        var published = Body(await f.Controller.Publish(new(token, 1))).GetProperty("versionId").GetGuid();
+        var state = await f.Db.Set<Domain.Entities.WebsiteContentState>().SingleAsync();
+        var broken = Document("broken");
+        broken.Pages["/"].Composition.Add(new WebsiteCompositionNode { Id = "bad.action", Type = "cta", Tag = "a", ActionKey = "not_in_catalog" });
+        var old = new Domain.Entities.WebsiteContentVersion { StateId = state.Id,
+            DocumentJson = JsonSerializer.Serialize(broken, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            CompiledPagesJson = "stale compiled output", Revision = 0 };
+        f.Db.Add(old);
+        await f.Db.SaveChangesAsync();
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Rollback(new(token, 2, old.Id)));
+        Assert.Equal(published, state.PublishedVersionId);
+        Assert.Equal(2, state.Revision);
+        Assert.Equal("good", TitleText(Body(await f.Controller.Public("legend"))));
+    }
+
+    [Fact]
     public async Task DraftRemainsPrivateUntilPublish_AndStaleWriterCannotOverwrite()
     {
         using var f = new Fixture();

@@ -64,6 +64,36 @@ public static class WebsiteSystemTemplateAuthority
         return document;
     }
 
+    public static string? RuntimeFormKey(string? pagePath)
+    {
+        var path = NormalizeProtectPath(pagePath);
+        if (!TemplatesByRoute.TryGetValue(path, out var template) || template == Prefix + "quote_thank_you")
+            return null;
+        var route = ProtectRouteCatalog.Routes.Single(route => route.Path == path);
+        return "protect_runtime_form:" + route.PageKey +
+               (template == Prefix + "life_wizard" ? "" : "_form");
+    }
+
+    // A repaired browser projection may request only the exact runtime already
+    // owned by this route. Never recover an arbitrary submitted system binding.
+    public static void RestoreRuntimeForms(string siteKey, WebsiteContentDocument proposed, WebsiteContentDocument normalized)
+    {
+        foreach (var (path, page) in proposed.Pages)
+        {
+            var expected = Resolve(siteKey, path) is null ? null : RuntimeFormKey(path);
+            var requested = WebsiteSiteSource.Flatten(proposed)
+                .Where(item => item.PagePath == path && IsRuntimeFormSystemKey(item.Node.SystemKey))
+                .Select(item => item.Node).ToArray();
+            if (requested.Length > 1 || requested.Any(node => node.SystemKey != expected || node.Type != "container"))
+                throw new WebsiteSiteSourceProtectionException("Protected runtime form does not match the server-owned page route.");
+            foreach (var node in requested)
+            {
+                var target = WebsiteSiteSource.Flatten(normalized).Single(item => item.PagePath == path && item.Node.Id == node.Id).Node;
+                target.SystemKey = expected;
+            }
+        }
+    }
+
     private static string NormalizeProtectPath(string? pagePath)
     {
         var path = string.IsNullOrWhiteSpace(pagePath) ? "/" : pagePath.Trim();

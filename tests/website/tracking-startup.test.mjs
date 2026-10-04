@@ -172,6 +172,7 @@ test('late provider projections share one accepted page event and unique signals
   const f=fixture();
   try {
     const w=f.window, pixels=[], openai=[];
+    w.fetch=async(url,options)=>{f.events.push(JSON.parse(options.body));return {ok:true,status:200,json:async()=>({marketingEligibility:{eligible:true,score:95,bucket:'real_human_traffic'}})};};
     w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('PhoneFieldCompleted','meta_browser_event_success');
     w.LEGEND_ANALYTICS_CONFIG.signalAliases={page_view:'ViewContent',form_start:'LeadFormStart',PhoneFieldCompleted:'PhoneFieldCompleted'};
     w.eval(source);

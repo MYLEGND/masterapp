@@ -3,8 +3,15 @@
   if (window.__legendSiteToolsInitialized) return;
   window.__legendSiteToolsInitialized = true;
 
+  function reportWorkConnection(message) {
+    const status = document.querySelector('[data-engineering-work-status]');
+    if (status && status.dataset.enabled === "true") status.textContent = message;
+  }
   const modelContext = document.modelContext;
-  if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") return;
+  if (!modelContext || typeof modelContext.registerTool !== "function" || typeof window.fetch !== "function") {
+    reportWorkConnection("Browser tool transport unavailable");
+    return;
+  }
 
   const registrationController = new AbortController();
   window.addEventListener("pagehide", () => registrationController.abort(), { once: true });
@@ -128,7 +135,8 @@
     try { payload = await response.json(); } catch { return; }
     if (!payload || !Array.isArray(payload.tools)) return;
 
-    for (const tool of payload.tools.slice(0, 24)) {
+    const registered = new Set();
+    for (const tool of payload.tools) {
       if (!tool || tool.type !== "function" || typeof tool.name !== "string" ||
           typeof tool.description !== "string" || !tool.parameters) continue;
       try {
@@ -146,8 +154,13 @@
             return await invoke(tool.name, args);
           }
         }, { signal: registrationController.signal });
+        registered.add(tool.name);
       } catch { }
     }
+    const required = ["legend_engineering_bootstrap", "legend_inspect_repository",
+      "legend_prepare_software_repair", "legend_engineering_renew_turn", "legend_engineering_complete_turn"];
+    reportWorkConnection(required.every(name => registered.has(name))
+      ? "Tools connected · awaiting governed task" : "Engineering tool registration incomplete");
   }
 
   void register();

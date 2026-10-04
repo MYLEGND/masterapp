@@ -290,7 +290,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             DeviceType = Clean(req.DeviceType),
             Browser = Clean(req.Browser),
             OperatingSystem = Clean(req.OperatingSystem),
-            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            UserAgent = Clean(Request.Headers.UserAgent.ToString()) ?? Clean(req.UserAgent),
             IpAddress = Clean(req.IpAddress) ?? ResolveClientIp(),
             TimeZone = Clean(req.TimeZone),
             Language = Clean(req.Language),
@@ -349,9 +349,11 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
         var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
-        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
-            ? Conflict(new { error = "event_id_owner_conflict" })
-            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
+        if (result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict)
+            return Conflict(new { error = "event_id_owner_conflict" });
+        var marketingEligibility = await CanonicalMarketingEligibility.ResolveAsync(db, row, cancellationToken);
+        return Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok",
+            eventId = row.EventId, marketingEligibility });
     }
 
     private async Task<IActionResult> PersistPublicWebsiteEventAsync(
@@ -387,7 +389,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             DeviceType = Clean(req.DeviceType),
             Browser = Clean(req.Browser),
             OperatingSystem = Clean(req.OperatingSystem),
-            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            UserAgent = Clean(Request.Headers.UserAgent.ToString()) ?? Clean(req.UserAgent),
             IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             TimeZone = Clean(req.TimeZone),
             Language = Clean(req.Language),
@@ -446,9 +448,11 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         row.FieldName = Clean(req.FieldName);
         row.ElementId = Clean(req.ElementId);
         var result = await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, row, cancellationToken);
-        return result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict
-            ? Conflict(new { error = "event_id_owner_conflict" })
-            : Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok", eventId = row.EventId });
+        if (result == UnifiedAnalyticsWriter.BrowserWriteResult.Conflict)
+            return Conflict(new { error = "event_id_owner_conflict" });
+        var marketingEligibility = await CanonicalMarketingEligibility.ResolveAsync(db, row, cancellationToken);
+        return Ok(new { status = result == UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate ? "duplicate_ignored" : "ok",
+            eventId = row.EventId, marketingEligibility });
     }
 
     private static string? Clean(string? value) =>

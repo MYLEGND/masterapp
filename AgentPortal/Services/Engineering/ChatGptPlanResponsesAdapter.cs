@@ -450,9 +450,8 @@ internal sealed class ChatGptPlanResponsesAdapter(
                 !string.Equals(currentItem.LeaseIdentity, context.LeaseIdentity, StringComparison.Ordinal))
                 return Failure("engineering_lease_changed");
 
-            return await ApplyOutcomeAsync(
-                context,
-                currentItem,
+            return await orchestrator.CompleteTurnAsync(
+                context.EngineeringContextId,
                 run.ResponseId!,
                 run.Output!.Value,
                 cancellationToken);
@@ -866,154 +865,6 @@ internal sealed class ChatGptPlanResponsesAdapter(
         return result;
     }
 
-    private async Task<object> ApplyOutcomeAsync(
-        EngineeringContextSnapshot context,
-        EngineeringWorkItemSnapshot item,
-        string responseId,
-        JsonElement output,
-        CancellationToken cancellationToken)
-    {
-        var decision = ReadString(output, "decision");
-        if (context.Role == EngineeringRole.TriageWorker)
-        {
-            var next = decision == "ESCALATE_TO_HEAD_GPT"
-                ? ClearLease(item) with
-                {
-                    State = "NEEDS_SUPERVISOR",
-                    AssignedRole = EngineeringRole.HeadGpt,
-                    ModelTier = EngineeringModelTier.DeepReasoning,
-                    UpdatedUtc = DateTime.UtcNow
-                }
-                : ClearLease(item) with
-                {
-                    State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
-                    UpdatedUtc = DateTime.UtcNow
-                };
-            await store.UpdateWorkItemAsync(next, cancellationToken);
-            return Outcome(context, responseId, next.State);
-        }
-
-        if (context.Role == EngineeringRole.HeadGpt)
-        {
-            var next =
-                decision == "PROCEED_TO_CODEX" &&
-                item.FailureClass == EngineeringFailureClass.CodeDefect &&
-                item.RiskClass != EngineeringRiskClass.TierC
-                    ? ClearLease(item) with
-                    {
-                        State = "QUEUED",
-                        AssignedRole = EngineeringRole.CodexImplementer,
-                        ModelTier = EngineeringModelTier.CodeImplementation,
-                        UpdatedUtc = DateTime.UtcNow
-                    }
-                    : ClearLease(item) with
-                    {
-                        State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
-                        UpdatedUtc = DateTime.UtcNow
-                    };
-            await store.UpdateWorkItemAsync(next, cancellationToken);
-            return Outcome(context, responseId, next.State);
-        }
-
-        if (context.Role == EngineeringRole.CodexImplementer)
-        {
-            if (decision == "REPAIR_PREPARED")
-            {
-                var preparedItem =
-                    await store.GetWorkItemAsync(item.WorkItemId, cancellationToken) ?? item;
-                if (preparedItem.State != "CANDIDATE_PREPARED" ||
-                    !LegendEngineeringPolicies.IsImmutableSha(preparedItem.CandidateSha) ||
-                    preparedItem.PullRequestNumber is not > 0)
-                    return Failure("engineering_tool_repair_not_prepared");
-
-                var preparedNext = ClearLease(preparedItem) with
-                {
-                    State = "REVIEW_REQUIRED",
-                    AssignedRole = EngineeringRole.IndependentReviewer,
-                    ModelTier = EngineeringModelTier.IndependentReview,
-                    AgentSessionId = responseId,
-                    AgentContextId = context.EngineeringContextId,
-                    AgentSessionRole = context.Role,
-                    AgentSessionUpdatedUtc = DateTime.UtcNow,
-                    UpdatedUtc = DateTime.UtcNow
-                };
-                await store.UpdateWorkItemAsync(preparedNext, cancellationToken);
-                return Outcome(context, responseId, preparedNext.State);
-            }
-
-            if (decision != "REPAIR")
-            {
-                var stopped = ClearLease(item) with
-                {
-                    State = decision == "STOP" ? "STOPPED" : "FOUNDER_ESCALATION",
-                    UpdatedUtc = DateTime.UtcNow
-                };
-                await store.UpdateWorkItemAsync(stopped, cancellationToken);
-                return Outcome(context, responseId, stopped.State);
-            }
-
-            var proposal = ParseProposal(
-                output,
-                LegendEngineeringPolicies.ResolveRepairBaseSha(item));
-            if (proposal is null)
-                return Failure("codex_repair_proposal_invalid");
-
-            var result = await orchestrator.PrepareRepairAsync(
-                context.EngineeringContextId,
-                proposal,
-                cancellationToken);
-            var prepared = JsonSerializer.SerializeToElement(result, JsonOptions);
-            if (!prepared.TryGetProperty("prepared", out var value) ||
-                value.ValueKind != JsonValueKind.True)
-                return result;
-
-            var current =
-                await store.GetWorkItemAsync(item.WorkItemId, cancellationToken) ?? item;
-            var next = ClearLease(current) with
-            {
-                State = "REVIEW_REQUIRED",
-                AssignedRole = EngineeringRole.IndependentReviewer,
-                ModelTier = EngineeringModelTier.IndependentReview,
-                AgentSessionId = responseId,
-                AgentContextId = context.EngineeringContextId,
-                AgentSessionRole = context.Role,
-                AgentSessionUpdatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            };
-            await store.UpdateWorkItemAsync(next, cancellationToken);
-            return Outcome(context, responseId, next.State);
-        }
-
-        if (context.Role == EngineeringRole.IndependentReviewer)
-        {
-            var next = decision switch
-            {
-                "APPROVE_VALIDATION" => ClearLease(item) with
-                {
-                    State = "REVIEWED",
-                    ValidationState = "READY_FOR_CI",
-                    UpdatedUtc = DateTime.UtcNow
-                },
-                "REJECT" => ClearLease(item) with
-                {
-                    State = "REVIEW_REJECTED",
-                    AssignedRole = EngineeringRole.HeadGpt,
-                    ModelTier = EngineeringModelTier.DeepReasoning,
-                    UpdatedUtc = DateTime.UtcNow
-                },
-                _ => ClearLease(item) with
-                {
-                    State = "FOUNDER_ESCALATION",
-                    UpdatedUtc = DateTime.UtcNow
-                }
-            };
-            await store.UpdateWorkItemAsync(next, cancellationToken);
-            return Outcome(context, responseId, next.State);
-        }
-
-        return Failure("engineering_role_not_supported_by_plan_adapter");
-    }
-
     private async Task<PlanRun> RunWithToolsAsync(
         string accessToken,
         string model,
@@ -1328,7 +1179,7 @@ internal sealed class ChatGptPlanResponsesAdapter(
             {
                 var expectedBaseSha = LegendEngineeringPolicies.ResolveRepairBaseSha(item);
                 var proposalElement = document.RootElement.Clone();
-                var proposal = ParseProposal(proposalElement, expectedBaseSha);
+                var proposal = LegendEngineeringOrchestrator.ParseProposal(proposalElement, expectedBaseSha);
                 if (proposal is null)
                     return JsonSerializer.Serialize(new
                     {
@@ -1618,34 +1469,6 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
     }
 
-    private static FounderSoftwareRepairProposal? ParseProposal(
-        JsonElement output,
-        string expectedBaseSha)
-    {
-        var baseSha = ReadString(output, "base_sha") ?? expectedBaseSha;
-        var title = ReadString(output, "title");
-        var summary = ReadString(output, "summary");
-        if (!string.Equals(baseSha, expectedBaseSha, StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(title) ||
-            string.IsNullOrWhiteSpace(summary) ||
-            !output.TryGetProperty("changes", out var changes) ||
-            changes.ValueKind != JsonValueKind.Array ||
-            changes.GetArrayLength() is < 1 or > 6)
-            return null;
-
-        var result = new List<FounderSoftwareRepairChange>();
-        foreach (var item in changes.EnumerateArray())
-        {
-            var path = ReadString(item, "path");
-            var source = ReadString(item, "content");
-            if (string.IsNullOrWhiteSpace(path) || source is null)
-                return null;
-            result.Add(new(path, source));
-        }
-
-        return new(baseSha, title, summary, result);
-    }
-
     private static object RoleOutputSchema(string role) => role switch
     {
         EngineeringRole.TriageWorker => new
@@ -1737,38 +1560,12 @@ internal sealed class ChatGptPlanResponsesAdapter(
         }
     };
 
-    private static EngineeringWorkItemSnapshot ClearLease(
-        EngineeringWorkItemSnapshot item) =>
-        item with
-        {
-            LeaseOwner = null,
-            LeaseIdentity = null,
-            LeaseExpiresUtc = null
-        };
-
     private static string ResolveEffort(string tier) =>
         tier is EngineeringModelTier.DeepReasoning or EngineeringModelTier.IndependentReview
             ? "high"
             : tier == EngineeringModelTier.FastTriage
                 ? "low"
                 : "medium";
-
-    private static object Outcome(
-        EngineeringContextSnapshot context,
-        string responseId,
-        string state) =>
-        new
-        {
-            ok = true,
-            provider = ProviderName,
-            billingAuthority = "chatgpt_plan_only",
-            apiKeyFallback = false,
-            agentsApiFallback = false,
-            contextId = context.EngineeringContextId,
-            context.Role,
-            responseId,
-            workItemState = state
-        };
 
     private static object Failure(string code) =>
         new
