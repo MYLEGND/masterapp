@@ -1294,6 +1294,14 @@ def release_dispatch_identity(pr_number, revision, execution_sha):
     return f"LEGEND release pr={int(pr_number)} candidate={revision} authority={execution_sha}"
 
 
+def release_run_source_pr(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=([0-9]+) candidate=[a-f0-9]{40} authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return int(match.group(1)) if match else None
+
+
 def automatic_release_admission(pr, approved, runs):
     """Single fail-closed admission predicate; no independent workflow gate map."""
     active = [row for row in runs if row.get('status') != 'completed']
@@ -1449,37 +1457,82 @@ def release_execution_state(api, run):
 
 
 def reconcile(api, trigger=None):
-    """Wake the durable queue on every completion, including failed siblings.
-
-    A failed run is evidence about that candidate, never a veto of all other
-    approved work. Dispatch admission still refuses replay of that exact attempt.
-    """
+    """Wake one serialized validation-to-production queue after terminal events."""
     if staging_only():
         return {'release': 'disabled while validation-only staging hold is active'}
+
     approved = api.ref(APPROVED)
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    runs = direct_release_runs(api)
+
+    if owner is not None:
+        successful = [
+            row for row in runs
+            if release_run_source_pr(row) == owner and successful_release(api, row)
+        ]
+        if successful:
+            _release_release_queue(api, approved, owner, 'terminal-live-provenance')
+            promoted = promote_next_release_queue(api)
+            return promoted or {
+                'state': 'COMPLETE',
+                'pr': owner,
+                'release': 'terminal live provenance released validation-to-production lease',
+            }
+
+        owner_pr = api.api(f"pulls/{owner}")
+        if owner_pr.get('merged_at'):
+            files = api.pages(f"pulls/{owner}/files")
+            names = [row.get('filename') for row in files if row.get('filename')]
+            targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+            control_only = bool(names) and all(
+                VALIDATION_AUTHORITY.release_control_only_path(name)
+                for name in names
+            )
+            if not targets or control_only:
+                _release_release_queue(api, approved, owner, 'no-production-publication-required')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'COMPLETE',
+                    'pr': owner,
+                    'release': 'control-only/no-target merge released validation-to-production lease',
+                }
+
     automatic = dispatch_pending_automatic_release(api, approved)
     if automatic:
         return automatic
-    runs = direct_release_runs(api)
+
     if any(row.get('status') != 'completed' for row in runs):
-        return {'release': 'already queued or running'}
-    # Legacy explicit authorization remains a separately authorized request shape,
-    # not another scheduler. Preserve failed attempts, without blocking the
-    # automatic queue above or replaying an ambiguous historical upload.
+        return {
+            'state': 'RELEASE_QUEUE_WAITING',
+            'release': 'active direct release retains validation-to-production lease',
+        }
+
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
         path = run.get('path', '').split('@')[0]
         if path in {'.github/workflows/' + DIRECT, '.github/workflows/' + PACKAGE_VALIDATION}:
             if run.get('conclusion') != 'success':
-                return {'retained': 'Triggered release or package attempt needs reconciliation or repair; no automatic replay'}
+                return {
+                    'state': 'FAILED_NEEDS_REPAIR',
+                    'retained': 'Triggered release or package attempt needs reconciliation or repair; queue lease retained',
+                }
+
     current = [row for row in runs if row.get('head_sha') == approved]
     if current:
         latest = max(current, key=lambda row: (row.get('id', 0), row.get('run_attempt', 1)))
-        return {'state': release_execution_state(api, latest),
-                'retained': 'Exact approved release already attempted; correction or reconciliation required'}
+        return {
+            'state': release_execution_state(api, latest),
+            'retained': 'Exact approved release already attempted; queue lease retained until terminal proof',
+        }
+
     historical = dispatch_pending_legacy_release(api, approved)
     if historical:
         return historical
+
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
     return {'state': 'READY', 'release': 'no application publication required for exact approved head'}
 
 
