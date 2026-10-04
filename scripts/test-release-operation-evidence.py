@@ -361,5 +361,71 @@ class CanonicalHistoryTests(unittest.TestCase):
             self.history()
 
 
+class TransactionPreflightResumeTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = journal._authority()
+        self.source = Path('.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW).read_text()
+        blocks = self.authority.named_step_blocks(self.authority._job_blocks(self.source)['release'])
+        prepare = 'Prepare complete immutable release transaction'
+        later = list(blocks)[list(blocks).index(prepare) + 1:]
+        self.owner = {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': [
+            {'name': prepare, 'status': 'completed', 'conclusion': 'failure'},
+            *[{'name': name, 'status': 'completed', 'conclusion': 'skipped'} for name in later]]}
+        for row in self.owner['steps']:
+            if row['name'] == 'Refresh Azure OIDC before transactional publication':
+                row['conclusion'] = 'success'
+            if row['name'] == 'Enforce complete direct deployment outcome':
+                row['conclusion'] = 'failure'
+
+    def prove(self):
+        return self.authority._failed_transaction_preparation_without_writes(self.source, self.owner)
+
+    def test_failed_preflight_with_positive_skipped_effects_is_resumable(self):
+        self.assertTrue(self.prove())
+
+    def test_started_or_missing_publication_does_not_authorize_new_baseline(self):
+        target = next(row for row in self.owner['steps'] if row['name'] == 'Publish canonical target (client)')
+        target['conclusion'] = 'failure'
+        self.assertFalse(self.prove())
+        self.owner['steps'].remove(target)
+        self.assertFalse(self.prove())
+
+    def test_configuration_write_or_successful_preparation_still_requires_plan(self):
+        self.owner['steps'][1]['conclusion'] = 'success'
+        self.assertFalse(self.prove())
+        self.owner['steps'][1]['conclusion'] = 'skipped'
+        self.owner['steps'][0]['conclusion'] = 'success'
+        self.assertFalse(self.prove())
+
+    def test_changed_observer_body_cannot_hide_a_write(self):
+        self.source = self.source.replace('Refresh Azure OIDC before transactional publication',
+                                          'Unknown execution after preparation')
+        self.assertFalse(self.prove())
+
+    def test_missing_plan_after_failed_preflight_resumes_but_started_effect_blocks(self):
+        import hashlib
+        revision, digests = 'a' * 40, {'portal': 'b' * 64}
+        identity = hashlib.sha256(json.dumps({'candidateRevision': revision, 'packageDigests': digests},
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        prior = {'id': 9, 'run_attempt': 1, 'head_sha': 'c' * 40,
+                 'head_branch': self.authority.TRUSTED_PR_BASE, 'event': 'workflow_dispatch',
+                 'path': '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                 'head_repository': {'full_name': 'owner/repo'}}
+        def api(repo, path, token):
+            if '/jobs?' in path:
+                return {'jobs': [self.owner], 'total_count': 1}
+            return {'artifacts': [], 'total_count': 0}
+        with patch.object(self.authority, '_release_history_api', side_effect=api), \
+             patch.object(self.authority, '_release_history_runs', return_value=[prior]), \
+             patch.object(self.authority, '_release_history_source', return_value=self.source), \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=revision):
+            self.assertIsNone(self.authority.release_transaction_plan_history(
+                'owner/repo', identity, revision, digests, 10, 1, 'placeholder'))
+            self.owner['steps'][1]['conclusion'] = 'success'
+            with self.assertRaisesRegex(RuntimeError, 'Original transaction plan is missing'):
+                self.authority.release_transaction_plan_history(
+                    'owner/repo', identity, revision, digests, 10, 1, 'placeholder')
+
+
 if __name__ == '__main__':
     unittest.main()

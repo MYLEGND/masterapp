@@ -1556,7 +1556,18 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
 
     def test_release_workflow_only_reruns_its_control_consumers(self):
         self.write(".github/workflows/all-intentional-direct-release-20260918.yml", "changed")
-        self.assertEqual(["AgentPortal.Tests.Release"], m.step5_dependency_change(self.base, self.commit()))
+        head = self.commit()
+        self.assertEqual(["AgentPortal.Tests.Release"], m.step5_dependency_change(self.base, head))
+        self.assertFalse(m._step5_baseline_inputs_equivalent(self.base, head))
+
+    def test_baseline_short_circuit_preserves_dependency_decision(self):
+        for path in ('Docs/releases/direct-release-request.json',
+                     'scripts/release-lifecycle.py', 'AgentPortal/Program.cs'):
+            with self.subTest(path=path):
+                self.write(path, 'changed')
+                head = self.commit()
+                self.assertEqual(m.step5_dependency_change(self.base, head) == [],
+                                 m._step5_baseline_inputs_equivalent(self.base, head))
 
     def test_direct_repository_read_is_not_neutral_documentation(self):
         self.write("Docs/releases/direct-release-request.json", "changed")
