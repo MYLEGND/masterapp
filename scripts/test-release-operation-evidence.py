@@ -247,10 +247,8 @@ class CanonicalHistoryTests(unittest.TestCase):
                '2026-10-02T12:00:00.001Z   APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
                '2026-10-02T12:00:00.002Z [command]/usr/bin/git log -1 --format=%H\n'
                '2026-10-02T12:00:00.003Z ' + 'd' * 40 + '\n')
-        with patch.object(self.authority.subprocess, 'run',
-                return_value=subprocess.CompletedProcess([], 0, log, '')) as download:
+        with patch.object(self.authority, '_release_job_log', return_value=log):
             self.assertIsNone(self.legacy_history())
-        self.assertEqual(180, download.call_args.kwargs['timeout'])
 
     def test_checkout_log_rejects_conflicting_package_and_missing_head(self):
         job = dict(id=123, steps=[dict(name='Run actions/checkout@v4', conclusion='success')])
@@ -258,8 +256,7 @@ class CanonicalHistoryTests(unittest.TestCase):
         valid += '[command]/usr/bin/git log -1 --format=%H\n' + 'd' * 40 + '\n'
         for log in (valid.replace('f' * 40, 'a' * 40), valid.split('[command]')[0],
                     valid + '  RELEASE_SHA: ' + 'c' * 40 + '\n'):
-            with self.subTest(log=log), patch.object(self.authority.subprocess, 'run',
-                    return_value=subprocess.CompletedProcess([], 0, log, '')):
+            with self.subTest(log=log), patch.object(self.authority, '_release_job_log', return_value=log):
                 with self.assertRaisesRegex(RuntimeError, 'missing or contradictory'):
                     self.authority._release_checkout_from_job_log('owner/repo', job, 'f' * 40, 'placeholder')
 
@@ -361,6 +358,54 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.job['steps'][0]['conclusion'] = 'failure'
         with self.assertRaisesRegex(RuntimeError, 'No authenticated legacy package'):
             self.history()
+
+
+class HistoricalLogTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = journal._authority()
+
+    def test_redirect_strips_credentials_and_requires_https(self):
+        request = self.authority.urllib.request.Request('https://api.github.com/repos/owner/repo/actions/jobs/9/logs')
+        request.add_unredirected_header('Authorization', 'Bearer test-placeholder')
+        handler = self.authority._ReleaseLogRedirect()
+        redirected = handler.redirect_request(request, None, 302, 'Found', {}, 'https://logs.example.invalid/log')
+        self.assertIsNone(redirected.get_header('Authorization'))
+        with self.assertRaisesRegex(RuntimeError, 'HTTPS'):
+            handler.redirect_request(request, None, 302, 'Found', {}, 'http://logs.example.invalid/log')
+
+    def test_log_read_retries_transport_failure_and_keeps_auth_on_initial_request(self):
+        import io
+        from unittest.mock import Mock
+        opener = Mock()
+        opener.open.side_effect = [TimeoutError('signed-url-must-stay-private'), io.BytesIO(b'log metadata')]
+        with patch.object(self.authority.urllib.request, 'build_opener', return_value=opener), \
+             patch.object(self.authority.time, 'sleep'):
+            self.assertEqual('log metadata', self.authority._release_job_log('owner/repo', 9, 'test-placeholder'))
+        self.assertEqual(2, opener.open.call_count)
+        request = opener.open.call_args.args[0]
+        self.assertEqual('Bearer test-placeholder', request.get_header('Authorization'))
+        self.assertNotIn('Authorization', request.headers)
+
+    def test_permission_failure_reports_only_job_and_status_without_retry(self):
+        from unittest.mock import Mock
+        opener = Mock()
+        opener.open.side_effect = self.authority.urllib.error.HTTPError(
+            'https://logs.example.invalid/private-signed-url', 403, 'private response', {}, None)
+        with patch.object(self.authority.urllib.request, 'build_opener', return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, 'job 9; HTTP 403') as failure:
+                self.authority._release_job_log('owner/repo', 9, 'test-placeholder')
+        self.assertEqual(1, opener.open.call_count)
+        self.assertNotIn('private', str(failure.exception))
+        self.assertNotIn('test-placeholder', str(failure.exception))
+
+    def test_log_size_is_bounded_before_parsing(self):
+        import io
+        from unittest.mock import Mock
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(b'x' * (32 * 1024 * 1024 + 1))
+        with patch.object(self.authority.urllib.request, 'build_opener', return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, 'exceeds evidence limit'):
+                self.authority._release_job_log('owner/repo', 9, 'test-placeholder')
 
 
 class TransactionPreflightResumeTests(unittest.TestCase):

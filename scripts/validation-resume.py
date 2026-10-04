@@ -3353,6 +3353,42 @@ def _legacy_inline_package_revision(workflow, release_job, target, checkout):
     return checkout
 
 
+class _ReleaseLogRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, url):
+        if urllib.parse.urlparse(url).scheme != 'https':
+            raise ReleaseOperationHistoryUnproven('Historical log redirect must use HTTPS')
+        redirected = super().redirect_request(request, response, code, message, headers, url)
+        if redirected is not None:
+            redirected.remove_header('Authorization')
+        return redirected
+
+
+def _release_job_log(repository, job_id, token):
+    """Read the authenticated log redirect with bounded, credential-safe transport."""
+    request = urllib.request.Request(
+        f'https://api.github.com/repos/{repository}/actions/jobs/{job_id}/logs',
+        headers={'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
+                 'User-Agent': 'legend-validation-resume/1.0'})
+    request.add_unredirected_header('Authorization', f'Bearer {token}')
+    opener = urllib.request.build_opener(_ReleaseLogRedirect())
+    limit = 32 * 1024 * 1024
+    for attempt in range(3):
+        try:
+            with opener.open(request, timeout=30) as response:
+                body = response.read(limit + 1)
+            if len(body) > limit:
+                raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
+            return body.decode('utf-8')
+        except (OSError, urllib.error.URLError, UnicodeError) as exc:
+            status = getattr(exc, 'code', None)
+            retryable = not isinstance(exc, (urllib.error.HTTPError, UnicodeError)) or status in {408, 429, 500, 502, 503, 504}
+            if not retryable or attempt == 2:
+                reason = f'HTTP {status}' if isinstance(status, int) else type(exc).__name__
+                raise ReleaseOperationHistoryUnproven(
+                    f'Historical checkout log unavailable (job {job_id}; {reason})') from None
+            time.sleep(2 ** attempt)
+
+
 def _release_checkout_from_job_log(repository, release_job, application, token):
     """Recover only revision metadata from authenticated retained Actions logs.
 
@@ -3367,19 +3403,9 @@ def _release_checkout_from_job_log(repository, release_job, application, token):
     cache_key = (repository, job_id, application)
     if release_job.get('status') == 'completed' and cache_key in _RELEASE_HISTORY_LOG_BINDINGS:
         return _RELEASE_HISTORY_LOG_BINDINGS[cache_key]
-    env = dict(os.environ, GH_TOKEN=token)
-    try:
-        # Authenticated historical logs can approach the 32 MiB evidence cap.
-        # Keep the bounded size check below, but allow the redirect/download to
-        # complete on a throttled Actions evidence endpoint.
-        result = subprocess.run(['gh', 'api', f'repos/{repository}/actions/jobs/{job_id}/logs'],
-                                capture_output=True, text=True, timeout=180, env=env, check=True)
-    except (OSError, subprocess.SubprocessError):
-        raise ReleaseOperationHistoryUnproven('Historical checkout log unavailable') from None
-    if len(result.stdout) > 32 * 1024 * 1024:
-        raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
+    raw = _release_job_log(repository, job_id, token)
     lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
-             for line in result.stdout.splitlines()]
+             for line in raw.splitlines()]
     text = '\n'.join(lines)
     heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
     authorities = set(re.findall(r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))
