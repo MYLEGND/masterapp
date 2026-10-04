@@ -26,9 +26,10 @@ internal sealed partial class LegendFounderToolAuthority
             return new(false, "cloud_proposal_invalid");
         var json = JsonSerializer.Serialize(new
         {
+            engineering_context_id = (string?)null,
             base_sha = proposal.BaseSha, title = proposal.Title, summary = proposal.Summary,
             changes = proposal.Changes.Select(change => new { path = change.Path, content = change.Content })
-        }, JsonOptions);
+        }); // Strict tool arguments retain required nullable properties.
         if (!TryPrepareCloudAction(sourceScope, CloudRepairTool, json, out var arguments, out _) ||
             !TryReadCloudRepairArguments(arguments, out _) ||
             founder.GetCanonicalTenantId() != sourceScope.TenantId ||

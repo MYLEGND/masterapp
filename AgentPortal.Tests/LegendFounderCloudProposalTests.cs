@@ -310,6 +310,7 @@ public sealed class LegendFounderCloudProposalTests
 
     private static string Arguments(FounderSoftwareRepairProposal patch) => JsonSerializer.Serialize(new
     {
+        engineering_context_id = (string?)null,
         base_sha = patch.BaseSha, title = patch.Title, summary = patch.Summary,
         changes = patch.Changes.Select(change => new { path = change.Path, content = change.Content })
     });

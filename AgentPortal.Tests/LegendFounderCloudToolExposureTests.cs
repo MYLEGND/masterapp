@@ -183,7 +183,7 @@ public sealed class LegendFounderCloudToolExposureTests
         var capabilities = JsonSerializer.SerializeToElement(response.Value).GetProperty("output").EnumerateArray()
             .Select(tool => tool.GetProperty("name").GetString()).ToArray();
         Assert.Equal(names.Order(), capabilities.Order());
-        var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", "{\"path\":null,\"git_reference\":null}"));
+        var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", "{\"path\":null,\"git_reference\":null,\"engineering_context_id\":null}"));
         Assert.Equal(403, denied.StatusCode);
         Assert.Equal("cloud_action_repository_disabled", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
         fixture.Remediation.VerifyNoOtherCalls();
@@ -214,7 +214,7 @@ public sealed class LegendFounderCloudToolExposureTests
         await using var fixture = await Fixture.CreateAsync(enableRepository: true);
         fixture.Remediation.Setup(value => value.InspectRepositoryAsync(null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new { inspected = true, authority = "SyntheticRepositoryRead" });
-        const string arguments = "{\"path\":null,\"git_reference\":null}";
+        const string arguments = "{\"path\":null,\"git_reference\":null,\"engineering_context_id\":null}";
         Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", arguments));
         fixture.Configuration["FounderSoftwareRemediation:Enabled"] = "false";
         var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", arguments));
