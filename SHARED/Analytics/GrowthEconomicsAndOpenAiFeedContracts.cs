@@ -2,11 +2,11 @@ namespace Shared.Analytics;
 
 public sealed record ChannelEconomicsRow(
     string Channel,
-    decimal Spend,
+    decimal? Spend,
     long CustomersAcquired,
-    decimal CostPerCustomer,
+    decimal? CostPerCustomer,
     decimal Revenue,
-    decimal Roas,
+    decimal? Roas,
     decimal PipelineValue,
     string AttributionBasis);
 
@@ -14,11 +14,11 @@ public sealed record BlendedGrowthEconomicsSnapshot(
     MarketingOwnerScope Owner,
     DateTime FromUtc,
     DateTime ToUtc,
-    decimal TotalMarketingSpend,
+    decimal? TotalMarketingSpend,
     long CustomersAcquired,
-    decimal CostPerCustomer,
+    decimal? CostPerCustomer,
     decimal TotalRevenue,
-    decimal BlendedRoas,
+    decimal? BlendedRoas,
     decimal PipelineValue,
     IReadOnlyList<ChannelEconomicsRow> Channels,
     IReadOnlyList<string> Notes);

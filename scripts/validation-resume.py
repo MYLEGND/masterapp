@@ -1338,9 +1338,10 @@ def git_changed(prior: str, current: str) -> list[str]:
 
 class EvidenceLookupUnavailable(RuntimeError):
     """Evidence transport failed; do not infer absence or invalidate proof."""
-    def __init__(self, message="Evidence read unavailable", *, status=None):
+    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None):
         super().__init__(message)
         self.code = status
+        self.endpoint = endpoint
 
 
 def api_get(repository: str, path: str, token: str):
@@ -1361,7 +1362,13 @@ def api_get(repository: str, path: str, token: str):
         except (TimeoutError, urllib.error.URLError) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt == 2:
-                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None)) from exc
+                headers = getattr(exc, "headers", None) or {}
+                rate = {key: headers.get(key) for key in (
+                    "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After")
+                    if headers.get(key) is not None}
+                if rate:
+                    print(json.dumps({"evidenceRateLimit": rate}, sort_keys=True))
+                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None), endpoint=path.split("?", 1)[0]) from exc
             time.sleep(2 ** attempt)
 
 
@@ -1659,8 +1666,8 @@ def _historical_plan_steps(args, run, token):
     """Recover gate proof from the durable validation-plan artifact.
 
     Successful parent completion proves gates the plan actually executed.
-    A failed parent never proves an executed gate; it may only carry forward a
-    gate the plan itself marked preserved from an older successful producer.
+    A failed parent requires an exact recorded child observation for executed
+    gates, or preserved proof from an older successful producer.
     """
     artifact = _validation_resume_artifact_name(args.workflow, run)
     if artifact is None:
@@ -1692,6 +1699,29 @@ def _historical_plan_steps(args, run, token):
         if not isinstance(step, str) or not step:
             continue
         if gate.get("run") is True:
+            receipt = gate.get("receipt") or {}
+            job_id = receipt.get("producerJobId")
+            step_number = receipt.get("producerStepNumber")
+            if (
+                stored.get("receiptSchemaVersion") == 1
+                and stored.get("recordingRunId") == run_id
+                and receipt.get("producingRunId") == run_id
+                and receipt.get("reused") is False
+                and type(job_id) is int and job_id > 0
+                and receipt.get("recordingJobId") == job_id
+                and type(step_number) is int and step_number > 0
+                and receipt.get("stepNumber") == step_number
+                and receipt.get("result") in {"success", "failure", "cancelled", "timed_out"}
+            ):
+                steps[step] = receipt["result"]
+                steps.producers[step] = {
+                    "result": receipt["result"],
+                    "jobId": job_id,
+                    "runId": run_id,
+                    "stepNumber": step_number,
+                    "artifact": artifact,
+                }
+                continue
             if not parent_success:
                 continue
             steps[step] = "success"
@@ -2157,6 +2187,9 @@ def _stop_unresolved_planning(args, exc):
     record = {"schemaVersion": 2, "mode": "blocked",
               "reason": "planner_unavailable_resume_planning_only",
               "plannerError": type(exc).__name__}
+    if isinstance(exc, EvidenceLookupUnavailable):
+        record["evidenceHttpStatus"] = exc.code
+        record["evidenceEndpoint"] = exc.endpoint
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
@@ -2696,6 +2729,10 @@ def cmd_package_backfill_plan(args):
 
 
 
+class MigrationProbeAuthorityMissing(ValueError):
+    """A revision predates the required probe child and cannot supply its evidence."""
+
+
 def migration_probe_identity(tool_revision, application_revision):
     """One dependency model: derive the probe runtime from infrastructure build ownership."""
     if not all(re.fullmatch(r'[0-9a-f]{40}', value or '') for value in (tool_revision, application_revision)):
@@ -2720,7 +2757,7 @@ def migration_probe_identity(tool_revision, application_revision):
     workflow = git_show_file(tool_revision, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW)
     job = _job_blocks(workflow).get('validated-migration-probe')
     if not job:
-        raise ValueError('Validated migration probe child authority missing')
+        raise MigrationProbeAuthorityMissing('Validated migration probe child authority missing')
     payload = {'schemaVersion': 1, 'runtimeIdentity': runtime, 'toolIdentity': tooling,
                'executionIdentity': hashlib.sha256(job.rstrip().encode()).hexdigest()}
     identity = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
@@ -2744,7 +2781,12 @@ def migration_probe_evidence(repository, identity):
             ['git', 'rev-parse', 'HEAD'], text=True).strip()
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision):
             continue
-        producer = migration_probe_identity(run['head_sha'], run['head_sha'])
+        try:
+            producer = migration_probe_identity(run['head_sha'], run['head_sha'])
+        except MigrationProbeAuthorityMissing:
+            # Historical runs before this child existed cannot prove probe reuse.
+            # Continue searching; without a compatible producer the caller builds.
+            continue
         if producer != identity:
             continue
         if identity['artifact'] not in _run_artifact_names(repository, run_id, token):

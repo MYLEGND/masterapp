@@ -156,6 +156,9 @@
     } catch {
       // Optional provider listeners cannot break canonical analytics.
     }
+    if (window.__legendTrackingInitialized && allowedEvents.has('measurement_consent_changed')) {
+      void sendEvent({EventType:'measurement_consent_changed'});
+    }
     return { ...measurementConsent };
   }
 
@@ -630,16 +633,16 @@
     }
   }
 
-  listen(document, 'mousemove', () => {
-    recordHumanInteraction(true);
+  listen(document, 'mousemove', (e) => {
+    if (e.isTrusted) recordHumanInteraction(true);
   }, { passive: true });
 
-  listen(document, 'pointerdown', () => {
-    recordHumanInteraction(false);
+  listen(document, 'pointerdown', (e) => {
+    if (e.isTrusted) recordHumanInteraction(false);
   }, { passive: true });
 
-  listen(document, 'touchstart', () => {
-    recordHumanInteraction(false);
+  listen(document, 'touchstart', (e) => {
+    if (e.isTrusted) recordHumanInteraction(false);
   }, { passive: true });
 
   listen(document, 'click', (e) => {
@@ -763,6 +766,9 @@
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
+    let metadata = {}; try { metadata = JSON.parse(payload.MetadataJson || '{}') || {}; } catch {}
+    metadata = {...metadata, measurementConsentAllowed: measurementAllowed(),
+      measurementConsentState: measurementConsent.state, measurementConsentSource: measurementConsent.source};
     return {
       SchemaVersion: payload.SchemaVersion || payload.schemaVersion || TRACKING_SCHEMA_VERSION,
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
@@ -797,7 +803,7 @@
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
       SubmitOutcome: payload.SubmitOutcome || null,
-      MetadataJson: payload.MetadataJson || null,
+      MetadataJson: JSON.stringify(metadata),
       AgentTrackingProfileId: AGENT_ID,
       AgentSlug: AGENT_SLUG,
       Environment: payload.Environment || null,
@@ -858,6 +864,10 @@
         };
       }
 
+      let receipt = null;
+      try { receipt = await response.json(); } catch {}
+      body.MarketingEligibility = receipt?.marketingEligibility || { eligible: false, reason: 'eligibility_receipt_unavailable' };
+      writeQueuedEvents(readQueuedEvents().filter(item => item.body?.ClientEventId !== body.ClientEventId));
       return {
         ok: true,
         statusCode: response.status,
@@ -940,13 +950,24 @@
   function publishCanonical(body) {
     if (canonicalPublished.has(body.ClientEventId)) return;
     canonicalPublished.add(body.ClientEventId);
-    const envelope = Object.freeze({ ...body });
-    canonicalHistory.push(envelope);
+    canonicalHistory.push(Object.freeze({ ...body }));
     if (canonicalHistory.length > 128) canonicalHistory.shift();
-    for (const listener of canonicalSubscribers.values()) {
-      try { listener(envelope); } catch (error) { debug('optional projection failed', { message: error?.message }); }
+    // Once the server observes sufficient behavior, replay earlier accepted facts in this same session.
+    // Browser heuristics never grant destination eligibility.
+    if (body.MarketingEligibility?.eligible !== true) return;
+    for (let i = 0; i < canonicalHistory.length; i++) {
+      const prior = canonicalHistory[i];
+      if (prior.SessionId !== body.SessionId || prior.VisitorId !== body.VisitorId) continue;
+      let priorMetadata = {}; try { priorMetadata = JSON.parse(prior.MetadataJson || '{}'); } catch {}
+      if (priorMetadata.measurementConsentAllowed !== true) continue;
+      const envelope = Object.freeze({ ...prior, MarketingEligibility: body.MarketingEligibility });
+      canonicalHistory[i] = envelope;
+      for (const listener of canonicalSubscribers.values()) {
+        try { listener(envelope); } catch (error) { debug('optional projection failed', { message: error?.message }); }
+      }
     }
   }
+
   function subscribeCanonical(key, listener) {
     if (canonicalSubscribers.has(key)) return () => {};
     canonicalSubscribers.set(key, listener);
@@ -996,6 +1017,8 @@
         quoteType: body.QuoteType,
         submitOutcome: body.SubmitOutcome
       });
+      // Persist before transport: navigation may terminate the process before a failure callback runs.
+      if (criticalEvents.has(body.EventType)) queueCriticalEvent(body, null, 0, 'awaiting_acknowledgement');
       const maxAttempts = criticalEvents.has(body.EventType) ? TRACKING_MAX_RETRIES : 1;
       let attempt = 0;
       let lastFailure = null;
@@ -1068,6 +1091,7 @@
 
   // ── Beacon send (page-exit and form-abandon — survives navigation/close) ──
   function beaconSend(body) {
+    if (criticalEvents.has(body?.EventType)) queueCriticalEvent(body, null, 0, 'beacon_unacknowledged');
     debug('beaconSend', {
       eventType: body?.EventType,
       formKey: body?.FormKey,
@@ -1089,12 +1113,17 @@
     }
   }
 
+  let queueFlushInProgress = false;
   async function flushQueuedEvents(reason, options = {}) {
+    if (queueFlushInProgress) return false;
+    queueFlushInProgress = true;
+    try {
     const queue = readQueuedEvents();
     if (!Array.isArray(queue) || queue.length === 0) {
       return false;
     }
 
+    const acknowledgedIds = new Set();
     const keep = [];
     const maxItems = Number.isFinite(options.maxItems) ? options.maxItems : queue.length;
 
@@ -1110,8 +1139,8 @@
       }
 
       if (options.useBeacon) {
-        const sent = beaconSend(queued.body);
-        if (!sent) {
+        beaconSend(queued.body);
+        { // A beacon is only browser-queued; retain until a later acknowledged retry.
           keep.push({
             ...queued,
             retryCount: Number(queued.retryCount || 0) + 1,
@@ -1124,6 +1153,7 @@
       const result = await postBody(queued.body);
       if (result.ok) {
         publishCanonical(queued.body);
+        acknowledgedIds.add(queued.body.ClientEventId);
         continue;
       }
       if (!result.ok) {
@@ -1137,8 +1167,11 @@
       }
     }
 
-    writeQueuedEvents(keep);
-    return keep.length !== queue.length;
+    const updates = new Map(keep.map(item => [item.body.ClientEventId, item]));
+    writeQueuedEvents(readQueuedEvents().filter(item => !acknowledgedIds.has(item.body?.ClientEventId))
+      .map(item => updates.get(item.body?.ClientEventId) || item));
+    return acknowledgedIds.size > 0;
+    } finally { queueFlushInProgress = false; }
   }
 
   // ============================================================

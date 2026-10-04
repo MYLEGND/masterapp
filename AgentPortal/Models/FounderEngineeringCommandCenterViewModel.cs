@@ -69,7 +69,7 @@ public sealed class FounderEngineeringCommandCenterViewModel
     public bool ShowManageUsage { get; init; }
     public bool ShowReconnectChatGpt { get; init; }
     public bool ShowRetryRuntime { get; init; }
-    public bool AutonomousRuntimeActive { get; init; }
+    public bool NativeAutonomousRuntimeActive { get; init; }
     public IReadOnlyList<FounderEngineeringModelOption> AvailableModels { get; init; } =
         Array.Empty<FounderEngineeringModelOption>();
 

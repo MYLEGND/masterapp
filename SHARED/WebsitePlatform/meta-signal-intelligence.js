@@ -1126,29 +1126,10 @@
       return payload;
     }
 
-    function hasHumanBehaviorForMetaBrowserEvent(eventName) {
-      if (eventName === 'ViewContent') {
-        return true;
-      }
-
-      return Boolean(
-        state.stayed5Seconds ||
-        state.meaningfulScroll ||
-        state.firstQuestionAnswered ||
-        state.completedSteps['1'] ||
-        state.recommendationViewed ||
-        state.contactStepReached ||
-        state.contactInputStarted ||
-        state.submitAttempted ||
-        state.leadSubmitted
-      );
-    }
-
     function fireBrowserPixel(eventName, eventId, pixelPayload) {
       if (!config.enabled || !config.sendBrowserEvents) return 'disabled';
       if (!measurementConsentAllowed()) return 'consent_denied';
       if (!config.browserEventNames.has(eventName)) return 'not_required';
-      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) return 'human_gate';
       if (typeof window.fbq !== 'function') return 'pixel_unavailable';
 
       try {
@@ -1252,6 +1233,7 @@
       .filter(([source, signal]) => source !== signal).map(([, signal]) => signal));
     const projectedEventIds = new Set();
     function projectCanonical(body) {
+      if (body?.MarketingEligibility?.eligible !== true) return;
       const eventName = signalAliases[body.EventType];
       let bindingMetadata = {}; try { bindingMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
       if ((!eventName && !bindingMetadata.configuredSignalBindings?.length) || projectedEventIds.has(body.ClientEventId)) return;

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Infrastructure.WebsiteEditing;
 
 /// <summary>
@@ -43,6 +45,13 @@ CONVERSION-FIRST EXPERIENCE
 - Use motion only to direct attention. Protect speed, readability, accessibility, trust, and conversion clarity; avoid gratuitous effects that delay understanding or interaction.
 - Never invent testimonials, ratings, results, credentials, scarcity, guarantees, prices, or business facts. Persuasion must come from verified facts and excellent presentation.
 - Avoid generic filler by default. Section count and density should follow the user's intended experience while every major section remains purposeful.
+
+PRESET AVAILABILITY AND FORM BUILDING
+- The scoped preset inventory below is generated from the same live action and signal catalogs enforced by the server. It remains available even when no instance is placed on the page. Never copy this inventory into a competing registry.
+- Select available actions and native experience controls according to intent. Customize copy, visuals, responsive layout, and placement. Ordinary CTA instances may be removed and added again with their exact catalog ActionKey; removing an instance never deletes the catalog capability.
+- Removable custom signal mappings are added/removed only through Analytics. Automatic instrumentation and server-confirmed outcomes remain immutable; removing a visual instance is not permission to suppress, rename, or fabricate backend events.
+- A Protect runtime form is the mounted server template, with fieldLabels and fieldPresentations exposing its editable controls. Never replace it with a free container or manufacture inputs, endpoints, field identities, validation rules, or submission logic. Use native experiences for freely composable new controls and approved CTA references for entry into protected workflows.
+- Apply Selected Source before saving/publishing or navigating. Publishing uses the revision acknowledged by the server. An unapplied editor buffer is not a saved draft.
 
 SIGNAL / INTENT ARCHITECTURE
 - Design the website and its measurement plan as one system. Every major conversion decision should have a clear canonical action or observable interaction, but never add events merely to inflate volume. Maximize truthful signal coverage, not event count.
@@ -260,10 +269,15 @@ If a visual request conflicts with protected behavior, preserve the backend cont
 """;
     }
 
-    public static object Payload => new
+    public static object Payload => ForScope(Array.Empty<WebsiteCallToActionOption>(), null);
+
+    public static object ForScope(IReadOnlyList<WebsiteCallToActionOption> actions, object? signalCatalog) => new
     {
         schema = Schema,
-        promptTemplate = PromptTemplate,
+        promptTemplate = PromptTemplate + "\nSCOPED PRESET INVENTORY (server-owned; complete for this account)\n" +
+            JsonSerializer.Serialize(new { actions, signalCatalog }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        availableActions = actions,
+        signalCatalog,
         protectedEditCorrection = ProtectedEditCorrection,
         authoringModes = new
         {

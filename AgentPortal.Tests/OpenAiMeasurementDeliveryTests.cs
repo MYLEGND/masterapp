@@ -17,6 +17,18 @@ namespace AgentPortal.Tests;
 public sealed class OpenAiMeasurementDeliveryTests
 {
     [Fact]
+    public async Task ValidateOnlyIsNotReportedAsDelivered()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK, "{}");
+        using var client = new HttpClient(handler);
+        var service = new OpenAiConversionsApiService(client);
+        var result = await service.SendAsync("pixel", "test-key", new OpenAiConversionEvent(
+            "validation-event", OpenAiMeasurementEventNames.LeadCreated, 1773892800000,
+            "https://example.test/", "web", new("customer_action")), validateOnly: true);
+        Assert.False(result.Sent); Assert.Equal("validated", result.Status);
+    }
+
+    [Fact]
     public async Task ConversionsApi_UsesDocumentedEndpointBearerKeyAndCanonicalEventId()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK, "{\"received\":1}");

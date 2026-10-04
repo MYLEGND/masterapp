@@ -123,6 +123,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 MetadataJson = BuildBridgeOwnedServerMetadata(dispatchEligible: false)
             });
 
+            await SeedCanonicalSourceAsync(db, db.MetaSignalEvents.Local.Single(x => x.EventId == "eligible-row"));
             await db.SaveChangesAsync();
         }
 
@@ -224,6 +225,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 MetaDeduplicationKey = "Lead:" + leadId.ToString("N"),
                 MetadataJson = BuildBridgeOwnedServerMetadata(true)
             });
+            await SeedCanonicalSourceAsync(db, db.MetaSignalEvents.Local.Single());
             await db.SaveChangesAsync();
         }
 
@@ -322,7 +324,8 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 WebsiteContentVersionId = Guid.NewGuid(), ActionKey = "submit",
                 IsServerAuthority = true, IsBrowserSignal = false, MetaServerAuthorityEligible = true,
                 Host = "protect.mylegnd.com", Url = "https://protect.mylegnd.com/agent/agent-one/Quote/Life",
-                UserAgent = "browser-agent", IpAddress = "1.2.3.4", Metadata = new { LeadId = leadId }
+                UserAgent = "browser-agent", IpAddress = "1.2.3.4", HumanInteractionCount = 3, EngagedMilliseconds = 15000,
+                DwellMilliseconds = 20000, ScrollPercent = 50, Metadata = new { LeadId = leadId, measurementConsentAllowed = true }
             });
             UnifiedAnalyticsWriter.Write(db, source);
             await db.SaveChangesAsync();
@@ -408,6 +411,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                     CreatedUtc = DateTime.UtcNow.AddMinutes(-30).AddSeconds(i),
                     WebDriver = i < 26, MetadataJson = BuildBridgeOwnedServerMetadata(true)
                 });
+            await SeedCanonicalSourceAsync(db, db.MetaSignalEvents.Local.Single(x => x.EventId == "retry-test-26"));
             await db.SaveChangesAsync();
         }
         var service = new MetaSignalOutcomeDispatcherHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
@@ -431,6 +435,25 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         Assert.Equal(new[] { "retry-key-26", "retry-key-26" }, ids);
         await InvokeDispatchBatchAsync(service);
         Assert.Equal(2, ids.Count);
+    }
+
+    private static async Task SeedCanonicalSourceAsync(MasterAppDbContext db, MetaSignalEvent projection)
+    {
+        var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext {
+            EventName = projection.EventName, EventUtc = projection.CreatedUtc,
+            SiteKey = Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend,
+            CommerceBusinessId = projection.CommerceBusinessId, AgentTrackingProfileId = projection.AgentTrackingProfileId,
+            SessionId = projection.SessionId, VisitorId = projection.VisitorId,
+            Host = projection.Host ?? "mylegnd.com", Url = "https://mylegnd.com/contact",
+            WebsiteContentVersionId = projection.WebsiteContentVersionId, WebsiteBindingId = projection.WebsiteBindingId,
+            IsServerAuthority = true, MetaServerAuthorityEligible = true,
+            UserAgent = "browser-agent", IpAddress = "1.2.3.4", HumanInteractionCount = 3,
+            EngagedMilliseconds = 15000, DwellMilliseconds = 20000, ScrollPercent = 50,
+            Metadata = new { LeadId = projection.LeadId, measurementConsentAllowed = true }
+        });
+        UnifiedAnalyticsWriter.Write(db, source); await db.SaveChangesAsync();
+        var metadata = System.Text.Json.Nodes.JsonNode.Parse(projection.MetadataJson!)!;
+        metadata["sourceAnalyticsEventId"] = source.Id; projection.MetadataJson = metadata.ToJsonString();
     }
 
     private static string BuildBridgeOwnedServerMetadata(bool dispatchEligible)

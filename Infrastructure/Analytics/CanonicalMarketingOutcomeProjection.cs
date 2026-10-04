@@ -1,4 +1,3 @@
-using System.Globalization;
 using Domain.Entities;
 using Shared.Analytics;
 
@@ -31,24 +30,52 @@ internal static class CanonicalMarketingOutcomeProjection
         };
     }
 
-    public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events) =>
-        events.Where(CanonicalAdvertisingEventProjection.CanProjectServer)
-            .DistinctBy(row => (row.AgentTrackingProfileId, row.CommerceBusinessId,
-                CanonicalAdvertisingEventProjection.ResolveEventId(row), CanonicalAdvertisingEventProjection.ResolveEventName(row)))
-            .ToArray();
+    public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events)
+    {
+        var facts = events.Where(e => CanonicalAdvertisingEventProjection.CanProjectServer(e) ||
+            e.TrackingVersion == "crm-production-state-v1").ToArray();
+        var production = facts.Where(e => !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
+            .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
+            .Select(g => g.OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).First())
+            .Where(e => CanonicalAdvertisingEventProjection.ReadBoolean(e.MetadataJson, "productionDeleted") != true);
+        var other = facts.Where(e => string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
+            .DistinctBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, CanonicalAdvertisingEventProjection.ResolveEventId(e), OutcomeName(e)));
+        return production.Concat(other).ToArray();
+    }
+
+    public static string CustomerIdentity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|" +
+        (CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "clientUserId") ??
+         CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "workstationLeadId") ??
+         CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "LeadId") ??
+         e.VisitorId ?? "unresolved:" + CanonicalAdvertisingEventProjection.ResolveEventId(e));
+    public static long CustomerCount(IEnumerable<AnalyticsEvent> events) => events.Where(e => IsCustomer(e.EventType))
+        .Select(CustomerIdentity).Where(x => !x.Contains("unresolved:", StringComparison.Ordinal)).Distinct().LongCount();
+    private static string OpportunityIdentity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|" +
+        (CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId") ??
+         CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "workstationLeadId") ??
+         CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "LeadId") ??
+         "event:" + CanonicalAdvertisingEventProjection.ResolveEventId(e));
+    public static decimal PipelineValue(IEnumerable<AnalyticsEvent> events) => events.GroupBy(OpportunityIdentity)
+        .Where(g => !g.Any(e => IsCustomer(e.EventType)))
+        .Select(g => g.Where(e => IsPipeline(e.EventType)).OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).FirstOrDefault())
+        .Where(e => e is not null).Sum(e => ReadMoney(e!.MetadataJson));
+
+    public static CanonicalOutcomeTotals Totals(IEnumerable<AnalyticsEvent> events)
+    {
+        var rows = ConfirmedOutcomes(events);
+        return new(
+            rows.LongCount(e => OutcomeName(e) == "Lead"),
+            rows.LongCount(e => OutcomeName(e) == "QualifiedLead"),
+            rows.Where(e => OutcomeName(e) is "AppointmentBooked" or "AppointmentCompleted")
+                .Select(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "AppointmentId") ??
+                    "event:" + CanonicalAdvertisingEventProjection.ResolveEventId(e)).Distinct().LongCount(),
+            CustomerCount(rows),
+            rows.Where(e => IsCustomer(e.EventType)).Sum(e => ReadMoney(e.MetadataJson)));
+    }
 
     public static string? OutcomeName(AnalyticsEvent row) => CanonicalAdvertisingEventProjection.ResolveEventName(row);
 
-    public static decimal ReadMoney(string? json)
-    {
-        foreach (var key in new[] { "valueCents", "totalCents", "revenueCents" })
-            if (decimal.TryParse(CanonicalAdvertisingEventProjection.ReadString(json, key), NumberStyles.Any, CultureInfo.InvariantCulture, out var cents))
-                return cents / 100m;
-        foreach (var key in new[] { "amount", "personalAmount", "revenue", "value", "paidPremium", "orderTotal" })
-            if (decimal.TryParse(CanonicalAdvertisingEventProjection.ReadString(json, key), NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
-                return value;
-        return 0m;
-    }
+    public static decimal ReadMoney(string? json) => CanonicalConversionValueProjection.Resolve(json)?.AmountMinorUnits / 100m ?? 0m;
 
     public static bool IsCustomer(string? eventName) =>
         IsAny(AnalyticsEventCatalog.ResolveConversionEventName(eventName), "PolicyPaid", "Purchase");

@@ -318,7 +318,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             row.TotalSignalScore = mapping.TotalSignalScore
                 ?? Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore);
             row.ScoreTier = mapping.ScoreTier;
-            row.MetaBrowserSent = ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "BrowserEventSent") ?? false;
+            row.MetaBrowserSent = false; // A browser invocation never establishes provider acceptance.
             row.MetaServerSent = leadDispatchState?.MetaServerSent ?? false;
             row.MetaDeduplicationKey = deduplicationKey;
             row.UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent));

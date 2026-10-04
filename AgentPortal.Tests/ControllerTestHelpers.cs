@@ -209,7 +209,7 @@ internal static class ControllerTestHelpers
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
         var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
-        var metaSignalOutcomes = new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance);
+        var metaSignalOutcomes = new CanonicalCrmOutcomeService(db, NullLogger<CanonicalCrmOutcomeService>.Instance);
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
         var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes, clientBillingWorkspaceService)
         {

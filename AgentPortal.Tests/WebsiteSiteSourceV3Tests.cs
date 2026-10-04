@@ -176,7 +176,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var removed = JsonSerializer.Serialize(
             removedModel,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        var deleteError = Assert.Throws<ArgumentException>(() =>
+        var deleteError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
         Assert.Contains("cannot be removed", deleteError.Message, StringComparison.OrdinalIgnoreCase);
 
@@ -192,7 +192,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var replaced = JsonSerializer.Serialize(
             replacedModel,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        var typeError = Assert.Throws<ArgumentException>(() =>
+        var typeError = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(replaced, baseline, BusinessActions()));
         Assert.Contains("cannot change component type", typeError.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -207,7 +207,7 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"actionKey\": \"business_quote\"",
             "\"actionKey\": \"fake_backend_action\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(fakeAction, source, BusinessActions()));
 
         var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
@@ -221,7 +221,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var fakeForm = JsonSerializer.Serialize(
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(fakeForm, source, BusinessActions()));
     }
 
@@ -235,7 +235,7 @@ public sealed class WebsiteSiteSourceV3Tests
             "\"actionKey\": \"business_quote\"",
             "\"actionKey\": \"business_contact\"",
             StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(retargeted, source, BusinessActions()));
 
         var model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(serialized, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -247,7 +247,7 @@ public sealed class WebsiteSiteSourceV3Tests
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
 
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(removed, source, BusinessActions()));
     }
 
@@ -628,7 +628,9 @@ public sealed class WebsiteSiteSourceV3Tests
 
         Assert.True(restored.FieldSignals.TryGetValue("phone", out var bindings));
         Assert.Single(bindings!);
-        Assert.Equal("ContactInputStarted", bindings![0].EventName);
+        Assert.Equal("form_field_focus", bindings![0].EventName);
+        Assert.Equal("contact_input_started", bindings[0].ActionKey);
+        Assert.Equal("11111111111111111111111111111111", bindings[0].Id);
         Assert.Equal("field_started", bindings[0].Trigger);
     }
 
@@ -690,8 +692,9 @@ public sealed class WebsiteSiteSourceV3Tests
     public void SiteSource_HidesRuntimeSystemAuthorityButRoundTripsPresentationByStableNodeId()
     {
         var baseline = CanonicalDocument();
-        baseline.Pages["/"].SystemTemplateKey = "protect_template:life_wizard";
-        baseline.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        baseline.Pages["/Quote/Life"] = new WebsitePageDocument { Composition = [new WebsiteCompositionNode { Id = "life.section", Type = "section", Tag = "section" }] };
+        baseline.Pages["/Quote/Life"].SystemTemplateKey = "protect_template:life_wizard";
+        baseline.Pages["/Quote/Life"].Composition[0].Children.Add(new WebsiteCompositionNode
         {
             Id = "runtime.form.quote-life",
             Type = "container",
@@ -714,10 +717,10 @@ public sealed class WebsiteSiteSourceV3Tests
         Assert.DoesNotContain("\"href\": \"/Quote/Life\"", serialized, StringComparison.Ordinal);
 
         var parsed = WebsiteSiteSource.Parse(serialized, baseline, BusinessActions());
-        var runtime = parsed.Document.Pages["/"].Composition[0].Children
+        var runtime = parsed.Document.Pages["/Quote/Life"].Composition[0].Children
             .Single(node => node.Id == "runtime.form.quote-life");
 
-        Assert.Equal("protect_template:life_wizard", parsed.Document.Pages["/"].SystemTemplateKey);
+        Assert.Equal("protect_template:life_wizard", parsed.Document.Pages["/Quote/Life"].SystemTemplateKey);
         Assert.Equal("protect_runtime_form:quote_life", runtime.SystemKey);
         Assert.Null(runtime.Href);
         Assert.Equal("protected", runtime.DataBinding?.CollectionId);
@@ -752,7 +755,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var moved = JsonSerializer.Serialize(
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(moved, baseline, BusinessActions()));
 
         model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -760,7 +763,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var removed = JsonSerializer.Serialize(
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(removed, baseline, BusinessActions()));
 
         model = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -774,7 +777,7 @@ public sealed class WebsiteSiteSourceV3Tests
         var invented = JsonSerializer.Serialize(
             model,
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
             WebsiteSiteSource.Parse(invented, baseline, BusinessActions()));
     }
 

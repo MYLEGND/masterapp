@@ -48,7 +48,7 @@ public class ProductionService
             .ToListAsync(ct);
         if (toDelete.Count == 0) return;
         _db.ProductionRecords.RemoveRange(toDelete);
-        await _db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, ct);
         _logger.LogInformation("Production RESET ALL by {Agent} for side {Side}", agentUserId, side);
     }
 
@@ -332,7 +332,7 @@ public class ProductionService
         };
 
         _db.ProductionRecords.Add(record);
-        await _db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, ct);
         _logger.LogInformation("Production add by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
         return record;
     }
@@ -416,7 +416,7 @@ public class ProductionService
         record.PersonalAmount = personalAmount;
         record.Notes = notes?.Trim();
         record.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, ct);
         _logger.LogInformation("Production updated by {Actor} for agent {Agent} record {Record} status {Status} amount {Amount} personal {Personal}", actorUserId, agentUserId, id, status, amount, personalAmount);
     }
 
@@ -471,7 +471,7 @@ public class ProductionService
         if (record == null) throw new InvalidOperationException("Production record not found or not owned by agent.");
 
         _db.ProductionRecords.Remove(record);
-        await _db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, ct);
         _logger.LogInformation("Production deleted by {Actor} for agent {Agent} record {Record}", actorUserId, agentUserId, id);
     }
 
@@ -488,7 +488,7 @@ public class ProductionService
         if (toDelete.Count == 0) return;
 
         _db.ProductionRecords.RemoveRange(toDelete);
-        await _db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveProductionChangesAsync(_db, ct);
         _logger.LogInformation("Production reset by {Actor} for agent {Agent} side {Side} contact lead:{LeadId} client:{ClientUserId}", actorUserId, agentUserId, side, leadId, clientUserId);
     }
 

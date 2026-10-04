@@ -46,19 +46,22 @@ public sealed class CanonicalOpenAiProjectionTests
     }
 
     [Theory]
-    [InlineData("agent", true, null)]
-    [InlineData("agent", false, null)]
-    [InlineData("founder", true, null)]
-    [InlineData("founder", false, null)]
-    [InlineData("business", true, null)]
-    [InlineData("business", false, null)]
-    [InlineData("agent", false, "linked")]
-    [InlineData("agent", false, "first_link")]
-    [InlineData("agent", false, "unverified")]
-    [InlineData("agent", false, "changed_account")]
-    [InlineData("agent", false, "changed_datasource")]
-    [InlineData("agent", false, "changed_pixel")]
-    public async Task OpenAiDispatchDoesNotRequireMetaAndRetainsResultAndRetryIdentity(string ownerType, bool accepted, string? historicalMode)
+    [InlineData("agent", true, null, true)]
+    [InlineData("agent", false, null, true)]
+    [InlineData("founder", true, null, true)]
+    [InlineData("founder", false, null, true)]
+    [InlineData("business", true, null, true)]
+    [InlineData("business", false, null, true)]
+    [InlineData("agent", false, "linked", true)]
+    [InlineData("agent", false, "first_link", true)]
+    [InlineData("agent", false, "unverified", true)]
+    [InlineData("agent", false, "changed_account", true)]
+    [InlineData("agent", false, "changed_datasource", true)]
+    [InlineData("agent", false, "changed_pixel", true)]
+    [InlineData("agent", true, null, false)]
+    [InlineData("founder", true, null, false)]
+    [InlineData("business", true, null, false)]
+    public async Task OpenAiDispatchDoesNotRequireMetaAndRetainsResultAndRetryIdentity(string ownerType, bool accepted, string? historicalMode, bool humanEvidence)
     {
         await using var sqlite = new SqliteConnection("Data Source=:memory:");
         await sqlite.OpenAsync();
@@ -76,10 +79,11 @@ public sealed class CanonicalOpenAiProjectionTests
             AgentSlug = ownerType == "business" ? null : agent.Slug, Host = "shop.example.com", UserAgent = "Mozilla/5.0", IpAddress = "1.2.3.4", IsServerAuthority = true, IsBrowserSignal = false,
             MetaServerAuthorityEligible = true, Oppref = "oppref-first-touch"
         });
+        if (humanEvidence) { source.HumanInteractionCount = 3; source.EngagedMilliseconds = 15000; source.DwellMilliseconds = 20000; source.ScrollPercent = 50; }
         source.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson("Purchase", null, "session", new
         {
             canonicalOutcomeEventId = "original-order-event", canonicalDeduplicationKey = "order:confirmed:1",
-            orderId = "order-1", purchaseId = "purchase-1", valueCents = 8900, currency = "USD",
+            measurementConsentAllowed = true, orderId = "order-1", purchaseId = "purchase-1", valueCents = 8900, currency = "USD",
             items = new[] { new { ProductId = "sku-1", ProductName = "Item", Quantity = 2, ValueCents = 8900 } }
         }, false, true, true, false);
         UnifiedAnalyticsWriter.Write(db, source);
@@ -138,6 +142,13 @@ public sealed class CanonicalOpenAiProjectionTests
             Assert.Empty(conversions);
             Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
             Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.ToListAsync()).EventId);
+            return;
+        }
+        if (!humanEvidence)
+        {
+            Assert.Equal("blocked_human_evidence", receipt.Status);
+            Assert.Equal(0, receipt.AttemptCount); Assert.Empty(conversions);
+            Assert.Null(receipt.ProviderReceiptJson);
             return;
         }
         Assert.Equal(source.Id, receipt.AnalyticsEventId);

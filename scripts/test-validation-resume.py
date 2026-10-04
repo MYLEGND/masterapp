@@ -44,6 +44,22 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 m.api_get("owner/repo", "actions/runs", "fixture")
             self.assertEqual(1, request.call_count)
 
+    def test_denied_evidence_reports_status_and_path_without_credentials(self):
+        denied = m.urllib.error.HTTPError("https://api.github.com", 403, "denied", {}, None)
+        with patch.object(m.urllib.request, "urlopen", side_effect=denied):
+            with self.assertRaises(m.EvidenceLookupUnavailable) as caught:
+                m.api_get("owner/repo", "actions/runs/7/jobs?per_page=100", "secret-fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(output=str(Path(directory) / "plan.json"))
+            with self.assertRaises(SystemExit):
+                m._stop_unresolved_planning(args, caught.exception)
+            content = Path(args.output).read_text()
+            record = m.json.loads(content)
+            self.assertEqual(403, record["evidenceHttpStatus"])
+            self.assertEqual("actions/runs/7/jobs", record["evidenceEndpoint"])
+            self.assertNotIn("secret-fixture", content)
+            self.assertNotIn("per_page", content)
+
     def test_candidate_artifact_transport_failure_is_not_missing_evidence(self):
         run = {"id": 7, "head_sha": "a" * 40}
         with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
@@ -163,7 +179,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
         )
         self.assertNotIn("receipt", recorded["gates"]["diff-check"])
 
-    def historical_plan_steps(self, parent_conclusion, gates):
+    def historical_plan_steps(self, parent_conclusion, gates, **metadata):
         run = {
             "id": 77,
             "run_attempt": 1,
@@ -174,7 +190,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
             repository="MYLEGND/masterapp",
         )
         artifact = "validation-resume-security-77-1"
-        stored = {"workflow": args.workflow, "gates": gates}
+        stored = {"workflow": args.workflow, "gates": gates, **metadata}
         def download(_repo, _run_id, _artifact, directory):
             Path(directory, "validation-resume.json").write_text(
                 __import__("json").dumps(stored)
@@ -195,6 +211,37 @@ class ValidationResumePlannerTests(unittest.TestCase):
             77,
             steps.producers["Verify patch whitespace integrity"]["runId"],
         )
+
+    def test_failed_parent_retains_its_exact_recorded_child_results(self):
+        gates = {}
+        for index, result in enumerate(("success", "failure", "cancelled"), 1):
+            gates[result] = {"step": result, "run": True, "receipt": {
+                "result": result, "producingRunId": 77, "producerJobId": 900,
+                "producerStepNumber": index, "recordingJobId": 900,
+                "stepNumber": index, "reused": False}}
+        steps = self.historical_plan_steps("failure", gates,
+                                          receiptSchemaVersion=1, recordingRunId=77)
+        self.assertEqual({name: name for name in gates}, dict(steps))
+        self.assertEqual(900, steps.producers["success"]["jobId"])
+        self.assertEqual(77, steps.producers["success"]["runId"])
+        self.assertEqual(1, steps.producers["success"]["stepNumber"])
+
+    def test_failed_parent_rejects_mismatched_or_incomplete_executed_receipts(self):
+        valid = {"result": "success", "producingRunId": 77, "producerJobId": 900,
+                 "producerStepNumber": 4, "recordingJobId": 900, "stepNumber": 4, "reused": False}
+        for key, value in (("producingRunId", 78), ("producerJobId", None),
+                           ("recordingJobId", 901), ("stepNumber", 5), ("reused", True),
+                           ("result", "unproven")):
+            with self.subTest(key=key):
+                receipt = dict(valid, **{key: value})
+                steps = self.historical_plan_steps("failure", {
+                    "gate": {"step": "gate", "run": True, "receipt": receipt}},
+                    receiptSchemaVersion=1, recordingRunId=77)
+                self.assertNotIn("gate", steps)
+        steps = self.historical_plan_steps("failure", {
+            "gate": {"step": "gate", "run": True, "receipt": valid}},
+            receiptSchemaVersion=1, recordingRunId=78)
+        self.assertNotIn("gate", steps)
 
     def test_failed_parent_plan_preserves_only_prior_green_child(self):
         steps = self.historical_plan_steps("failure", {
@@ -756,6 +803,46 @@ jobs:
         self.assertEqual(88, result["runId"])
         self.assertFalse(any(path.startswith("actions/artifacts?") for path in seen))
         self.assertFalse(any("/jobs?" in path for path in seen))
+
+    def test_current_probe_identity_still_requires_child_authority(self):
+        with patch.object(m.subprocess, "check_output", return_value=""), \
+             patch.object(m, "git_show_file", return_value="jobs:\n  other:\n    runs-on: ubuntu-latest\n"):
+            with self.assertRaisesRegex(m.MigrationProbeAuthorityMissing, "child authority missing"):
+                m.migration_probe_identity("a" * 40, "a" * 40)
+
+    def test_probe_history_without_child_does_not_abort_new_candidate(self):
+        identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}
+        old = {"id": 88, "head_sha": "e" * 40, "updated_at": "2026-10-03T01:00:00Z"}
+        valid = {"id": 77, "head_sha": "f" * 40, "updated_at": "2026-10-03T00:00:00Z"}
+        with patch.object(m, "api_get", return_value={"workflow_runs": [old, valid]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=[m.MigrationProbeAuthorityMissing("missing"), identity]), \
+             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}) as artifacts, \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        artifacts.assert_called_once_with("MYLEGND/masterapp", 77, "token")
+
+    def test_probe_history_without_child_requires_fresh_build(self):
+        identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}
+        run = {"id": 88, "head_sha": "e" * 40}
+        with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=m.MigrationProbeAuthorityMissing("missing")), \
+             patch.object(m, "_run_artifact_names") as artifacts, \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            self.assertEqual({"reusable": False, "artifact": identity["artifact"]},
+                             m.migration_probe_evidence("MYLEGND/masterapp", identity))
+        artifacts.assert_not_called()
+
+    def test_probe_history_other_identity_errors_remain_fatal(self):
+        with patch.object(m, "api_get", return_value={"workflow_runs": [{"id": 88, "head_sha": "e" * 40}]}), \
+             patch.object(m, "_trusted_lineage_run", return_value=True), \
+             patch.object(m, "migration_probe_identity", side_effect=ValueError("runtime mismatch")), \
+             patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
+            with self.assertRaisesRegex(ValueError, "runtime mismatch"):
+                m.migration_probe_evidence("MYLEGND/masterapp", {})
 
     def test_trusted_lineage_run_requires_same_repo_workflow_and_ancestor(self):
         run = {

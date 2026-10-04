@@ -31,7 +31,7 @@ public class LeadsController : Controller
     private readonly ILogger<LeadsController> _logger;
     private readonly AgentPortal.Models.AppFeatureFlags _featureFlags;
     private readonly AgentPortal.Services.ImportValidation.LeadImportValidator _leadImportValidator;
-    private readonly MetaSignalCrmOutcomeService _metaSignalOutcomes;
+    private readonly CanonicalCrmOutcomeService _canonicalOutcomes;
     private readonly ClientBillingWorkspaceService _clientBillingWorkspaceService;
     private const string CommitmentsUnavailableMessage = "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
     private static readonly string[] ProductBuckets = WorkstationLeadBuckets.ProductBuckets;
@@ -246,7 +246,7 @@ public class LeadsController : Controller
         public bool IsStarred { get; set; }
     }
 
-    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, MetaSignalCrmOutcomeService metaSignalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
+    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, CanonicalCrmOutcomeService canonicalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
     {
         _db = db;
         _agentTimeZoneResolver = agentTimeZoneResolver;
@@ -257,7 +257,7 @@ public class LeadsController : Controller
         _logger = logger;
         _featureFlags = featureFlags.Value;
         _leadImportValidator = leadImportValidator;
-        _metaSignalOutcomes = metaSignalOutcomes;
+        _canonicalOutcomes = canonicalOutcomes;
         _clientBillingWorkspaceService = clientBillingWorkspaceService;
     }
 
@@ -2427,7 +2427,7 @@ public class LeadsController : Controller
         }
         appointment.ApplyStatus(nextStatus, nowUtc);
 
-        await _metaSignalOutcomes.RecordAppointmentOutcomeAsync(
+        await _canonicalOutcomes.RecordAppointmentOutcomeAsync(
             appointment,
             HttpContext.RequestAborted);
 

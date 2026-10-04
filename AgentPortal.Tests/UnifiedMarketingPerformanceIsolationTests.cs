@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,7 +50,7 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ProviderTransportFailuresPreserveCanonicalOpenAiOutcomesWithoutMetaRows(bool timeout)
+    public async Task ProviderTransportFailuresPreserveCanonicalOutcomesAndReportUnknownEconomics(bool timeout)
     {
         var owner = MarketingOwnerScope.Agent(Guid.NewGuid());
         var scope = ScopeContext.ForAgent(owner.AgentTrackingProfileId!.Value);
@@ -65,12 +66,12 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         meta.Setup(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>())).ThrowsAsync(failure);
         var paid = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext {
             EventName = "Purchase", EventUtc = DateTime.UtcNow, AgentTrackingProfileId = owner.AgentTrackingProfileId,
-            IsServerAuthority = true, Oppref = "openai-current-click", Metadata = new { valueCents = 12500 }
+            IsServerAuthority = true, Oppref = "openai-current-click", Metadata = new { valueCents = 12500, clientUserId = "customer-one" }
         });
         paid.Id = 1;
         var direct = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext {
             EventName = "Purchase", EventUtc = DateTime.UtcNow, AgentTrackingProfileId = owner.AgentTrackingProfileId,
-            IsServerAuthority = true, Metadata = new { valueCents = 99900 }
+            IsServerAuthority = true, Metadata = new { valueCents = 99900, clientUserId = "customer-one" }
         });
         direct.Id = 2;
         var analytics = new Mock<IAnalyticsQueryService>();
@@ -80,6 +81,15 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .GetAsync(owner, scope, range);
         Assert.Equal(1, result.ChatGptAdsOutcomes.Customers);
         Assert.Equal(125m, result.ChatGptAdsOutcomes.Revenue);
+        foreach (var row in result.Channels.Where(x => x.Channel is MarketingChannels.ChatGptAds or MarketingChannels.MetaAds))
+        {
+            Assert.Null(row.Spend); Assert.Null(row.Roas);
+        }
+        var performance = new Mock<IUnifiedMarketingPerformanceService>();
+        performance.Setup(x => x.GetAsync(owner, scope, range, It.IsAny<CancellationToken>())).ReturnsAsync(result);
+        var economics = await new BlendedGrowthEconomicsService(performance.Object, analytics.Object).GetAsync(owner, scope, range);
+        Assert.Equal(1, economics.CustomersAcquired);
+        Assert.Null(economics.TotalMarketingSpend); Assert.Null(economics.BlendedRoas); Assert.Null(economics.CostPerCustomer);
         Assert.Equal(2, result.DataQualityNotes.Count);
         meta.Verify(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>()), Times.Once);
     }
