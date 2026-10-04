@@ -1134,6 +1134,28 @@ def _admission_identity(record):
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def _validate_admission_record_scope(record):
+    targets = record.get('selectedTargets')
+    keys = VALIDATION_AUTHORITY.selected_release_target_keys(targets)
+    resources = record.get('resources')
+    if (not isinstance(resources, list) or not resources
+        or len(resources) != len(set(resources))
+        or any(not isinstance(value, str) or not re.fullmatch(
+            r'(?:read|write)/(?:app/masterapp-[a-z0-9-]+|schema/masterapp|cloudflare/(?:founder|router))',
+            value) for value in resources)):
+        raise RuntimeError('Release admission resource ownership is malformed')
+
+    required = {
+        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
+        for key in keys
+    }
+    if any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys):
+        required.add('read/schema/masterapp')
+    if not required.issubset(set(resources)):
+        raise RuntimeError('Release admission record is missing canonical target ownership')
+    return tuple(keys)
+
+
 def _admission_records(api, run):
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     records = []
@@ -1154,9 +1176,10 @@ def _admission_records(api, run):
             or record.get('admissionId') != _admission_identity(record)
             or name != 'legend-release-admission-' + record['admissionId']):
             raise RuntimeError('Release admission identity does not match its durable producer')
-        VALIDATION_AUTHORITY.selected_release_target_keys(record.get('selectedTargets'))
+        _validate_admission_record_scope(record)
         if (run.get('event') != 'workflow_dispatch'
             or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+            or run.get('head_sha') != record.get('executionAuthority')
             or not isinstance(record.get('producingAttempt'), int)
             or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 1)
             or record.get('authorizationMode') not in {'automatic', 'explicit'}):
@@ -1179,19 +1202,15 @@ def _admission_records(api, run):
         if (not package.get('reusable') or package.get('revision') != record.get('applicationRevision')
             or package.get('packageIdentity') != record.get('packageIdentity')):
             raise RuntimeError('Admission immutable package binding is missing or changed')
-        paths = [row['filename'] for row in api.pages(f"pulls/{pr['number']}/files") if row.get('filename')]
-        routing = False
-        if record['authorizationMode'] == 'automatic':
-            expected_targets = list(VALIDATION_AUTHORITY.release_targets_for_paths(paths))
-        else:
-            if not direct_only_request(record['executionAuthority']):
-                raise RuntimeError('Admission lacks exact explicit release authorization')
-            expected_targets = sorted(release_targets(record['executionAuthority']))
-            request = json.loads(git('show', record['executionAuthority'] + ':' + VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH).stdout)
-            routing = request.get('cloudflareWebsiteRouting', False)
-        expected_resources = VALIDATION_AUTHORITY.release_admission_resources(paths, expected_targets, routing=routing)
-        if record['selectedTargets'] != expected_targets or record.get('resources') != expected_resources:
-            raise RuntimeError('Admission resource ownership differs from canonical authorized dependencies')
+        if record['authorizationMode'] == 'explicit' and not direct_only_request(record['executionAuthority']):
+            raise RuntimeError('Admission lacks exact explicit release authorization')
+
+        # selectedTargets/resources are immutable admission output from this exact
+        # trusted approved-branch workflow generation. Re-deriving them through
+        # today's path classifier would reinterpret historical authorization after
+        # policy changes and can deadlock unrelated future releases. The checks
+        # above bind the artifact to its run, execution authority, merged PR,
+        # immutable package, canonical target names and resource structure.
         records.append(record)
     return records
 

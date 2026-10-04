@@ -784,6 +784,26 @@ class ResourceAdmission(unittest.TestCase):
                       'resources': self.resources(['Protect-Website/Program.cs']),
                       'admissionId': 'e' * 64, 'producingAttempt': 1}
 
+    def test_historical_admission_scope_uses_recorded_canonical_lease_not_current_path_classifier(self):
+        record = {
+            'selectedTargets': [canonical_name('client')],
+            'resources': self.resources(['ClientApp/Program.cs']),
+        }
+        with patch.object(
+            m.VALIDATION_AUTHORITY,
+            'release_targets_for_paths',
+            side_effect=AssertionError('historical admission must not be reclassified'),
+        ):
+            self.assertEqual(('client',), m._validate_admission_record_scope(record))
+
+    def test_historical_admission_scope_rejects_missing_selected_target_write(self):
+        record = {
+            'selectedTargets': [canonical_name('client')],
+            'resources': ['read/schema/masterapp'],
+        }
+        with self.assertRaisesRegex(RuntimeError, 'missing canonical target ownership'):
+            m._validate_admission_record_scope(record)
+
     def test_disjoint_apps_read_schema_concurrently_without_conflicting_writes(self):
         self.assertFalse(m.VALIDATION_AUTHORITY.release_resources_overlap(
             self.candidate['resources'], self.prior['resources']))
@@ -989,7 +1009,7 @@ class WorkerAdmissionPackageIdentity(unittest.TestCase):
                   'producingRun': 98, 'producingAttempt': 1}
         record['admissionId'] = m._admission_identity(record)
         run = {'id': 98, 'run_attempt': 1, 'event': 'workflow_dispatch',
-               'head_repository': {'full_name': api.repo}}
+               'head_sha': authority, 'head_repository': {'full_name': api.repo}}
         api.api_map['pulls/7'] = {'number': 7, 'merged_at': '2026-10-03',
             'base': {'ref': m.APPROVED}, 'head': {'sha': source}, 'merge_commit_sha': merge}
         api.pages_map['pulls/7/files'] = [{'filename': path} for path in paths]
