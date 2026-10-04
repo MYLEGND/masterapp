@@ -162,6 +162,87 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
+
+def approved_head_state(api, pr):
+    """Return whether a PR head already contains the exact current approved head."""
+    approved = api.ref(APPROVED)
+    head = (pr.get("head") or {}).get("sha")
+    if not SHA.fullmatch(head or ""):
+        raise RuntimeError("Malformed candidate revision")
+    if head == approved:
+        return {
+            "current": True,
+            "approved": approved,
+            "candidate": head,
+            "mergeBase": approved,
+            "status": "identical",
+        }
+    compare = api.api(
+        "compare/" + urllib.parse.quote(approved, safe="") + "..." +
+        urllib.parse.quote(head, safe="")
+    )
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    status = compare.get("status")
+    return {
+        "current": merge_base == approved and status in {"ahead", "identical"},
+        "approved": approved,
+        "candidate": head,
+        "mergeBase": merge_base,
+        "status": status,
+    }
+
+
+def sync_candidate_to_current_approved(api, pr):
+    """Fast-forward a trusted same-repo candidate by merging approved into it.
+
+    The operation is additive only: no reset, rebase, force-push, or source
+    rewrite. A new PR head causes normal exact-head validation to restart.
+    """
+    state = approved_head_state(api, pr)
+    if state["current"]:
+        return None
+    if not ready(pr, api.repo, APPROVED):
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate is stale but is not eligible for trusted automatic base sync",
+            "pr": pr.get("number"),
+            **state,
+        }
+    try:
+        result = api.api(
+            "merges",
+            {
+                "base": pr["head"]["ref"],
+                "head": state["approved"],
+                "commit_message": (
+                    f"Sync current {APPROVED} into PR #{pr['number']} before validation"
+                ),
+            },
+            method="POST",
+        )
+    except RuntimeError as exc:
+        if any(f"HTTP {code}" in str(exc) for code in (409, 422)):
+            return {
+                "state": "BASE_SYNC_REQUIRED",
+                "retained": "Current approved head could not be merged cleanly into candidate",
+                "pr": pr["number"],
+                **state,
+            }
+        raise
+    fresh = api.api(f"pulls/{pr['number']}")
+    synced = (fresh.get("head") or {}).get("sha")
+    if not SHA.fullmatch(synced or ""):
+        raise RuntimeError("Approved-head synchronization did not produce a candidate revision")
+    return {
+        "state": "BASE_SYNCED",
+        "pr": pr["number"],
+        "previousHead": state["candidate"],
+        "approvedHead": state["approved"],
+        "head": synced,
+        "validation": "new synchronize event must validate the synced exact head",
+    }
+
+
 def _assignment_strings(tree, name):
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -397,6 +478,19 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
+    base_state = approved_head_state(api, pr)
+    if not base_state["current"]:
+        publish_trusted_validation_status(
+            api, pr["head"]["sha"], "pending",
+            "Candidate must contain the current approved head before validation can authorize merge",
+        )
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate does not contain current approved head",
+            "pr": pr["number"],
+            **base_state,
+        }
+
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row.get('filename') for row in files if row.get('filename')]
     head = pr['head']['sha']
@@ -498,6 +592,9 @@ def integrate(api, number):
 
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return synced
     return merge_validated(api, pr)
 
 
@@ -534,6 +631,9 @@ def pending_updates(api):
                     'reason': 'PR readiness changed after discovery; retained without mutation',
                 })
                 continue
+            synced = sync_candidate_to_current_approved(api, fresh)
+            if synced is not None:
+                return synced
             result = merge_validated(api, fresh)
             if 'retained' not in result:
                 return result
