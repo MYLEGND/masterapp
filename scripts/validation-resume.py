@@ -1389,6 +1389,84 @@ def api_get(repository: str, path: str, token: str):
             time.sleep(2 ** attempt)
 
 
+
+def approved_head_preflight(repository: str, current_sha: str, token: str):
+    """Prove the candidate already contains the exact current approved head.
+
+    This is intentionally cheaper than validation planning. It is the first
+    merge-readiness check and may not infer freshness from the PR event's
+    possibly stale base SHA.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", current_sha or ""):
+        raise ValueError("Malformed candidate revision")
+    if not token:
+        raise EvidenceLookupUnavailable(
+            "GitHub token unavailable for approved-head preflight",
+            endpoint="approved-head-preflight",
+        )
+    branch = api_get(
+        repository,
+        "branches/" + urllib.parse.quote(TRUSTED_PR_BASE, safe=""),
+        token,
+    )
+    approved = (branch.get("commit") or {}).get("sha")
+    if not re.fullmatch(r"[0-9a-f]{40}", approved or ""):
+        raise EvidenceLookupUnavailable(
+            "Current approved head is unavailable",
+            endpoint="branches/" + TRUSTED_PR_BASE,
+        )
+    if current_sha == approved:
+        return {
+            "schemaVersion": 1,
+            "candidateSha": current_sha,
+            "approvedHeadSha": approved,
+            "mergeBaseSha": approved,
+            "compareStatus": "identical",
+            "current": True,
+        }
+    compare = api_get(
+        repository,
+        "compare/" + urllib.parse.quote(approved, safe="") + "..." +
+        urllib.parse.quote(current_sha, safe=""),
+        token,
+    )
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    status = compare.get("status")
+    current = (
+        merge_base == approved and
+        status in {"ahead", "identical"}
+    )
+    return {
+        "schemaVersion": 1,
+        "candidateSha": current_sha,
+        "approvedHeadSha": approved,
+        "mergeBaseSha": merge_base,
+        "compareStatus": status,
+        "current": current,
+    }
+
+
+def cmd_approved_head_preflight(args):
+    result = approved_head_preflight(
+        args.repository,
+        args.current_sha,
+        os.environ.get("GITHUB_TOKEN", ""),
+    )
+    if args.output:
+        Path(args.output).write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n"
+        )
+    print(json.dumps(result, sort_keys=True))
+    if not result["current"]:
+        print(
+            "::error::Candidate is not based on the current "
+            f"{TRUSTED_PR_BASE} head {result['approvedHeadSha']}. "
+            "Trusted lifecycle must sync the approved head before validation.",
+            file=sys.stderr,
+        )
+        raise SystemExit(78)
+
+
 class _StepEvidence(dict):
     def __init__(self):
         super().__init__()
@@ -4546,6 +4624,12 @@ def cmd_verify_release_coverage(args):
 def build_parser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
+
+    approved_preflight = sub.add_parser("approved-head-preflight")
+    approved_preflight.add_argument("--repository", required=True)
+    approved_preflight.add_argument("--current-sha", required=True)
+    approved_preflight.add_argument("--output")
+    approved_preflight.set_defaults(func=cmd_approved_head_preflight)
 
     plan = sub.add_parser("plan")
     plan.add_argument("--workflow", required=True)
