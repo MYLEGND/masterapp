@@ -784,6 +784,26 @@ class ResourceAdmission(unittest.TestCase):
                       'resources': self.resources(['Protect-Website/Program.cs']),
                       'admissionId': 'e' * 64, 'producingAttempt': 1}
 
+    def test_historical_admission_scope_uses_recorded_canonical_lease_not_current_path_classifier(self):
+        record = {
+            'selectedTargets': [canonical_name('client')],
+            'resources': self.resources(['ClientApp/Program.cs']),
+        }
+        with patch.object(
+            m.VALIDATION_AUTHORITY,
+            'release_targets_for_paths',
+            side_effect=AssertionError('historical admission must not be reclassified'),
+        ):
+            self.assertEqual(('client',), m._validate_admission_record_scope(record))
+
+    def test_historical_admission_scope_rejects_missing_selected_target_write(self):
+        record = {
+            'selectedTargets': [canonical_name('client')],
+            'resources': ['read/schema/masterapp'],
+        }
+        with self.assertRaisesRegex(RuntimeError, 'missing canonical target ownership'):
+            m._validate_admission_record_scope(record)
+
     def test_disjoint_apps_read_schema_concurrently_without_conflicting_writes(self):
         self.assertFalse(m.VALIDATION_AUTHORITY.release_resources_overlap(
             self.candidate['resources'], self.prior['resources']))
