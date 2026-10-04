@@ -1,5 +1,7 @@
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Shared.Analytics;
 
 namespace Infrastructure.Leads;
@@ -12,8 +14,8 @@ public sealed record WebsiteLeadOwnerResolution(
 
 /// <summary>
 /// Single source of truth for public Protect lead ownership and notification recipient resolution.
-/// The canonical Protect resolver owns route/form/referrer precedence and rejects invalid explicit
-/// scope without falling through to another owner.
+/// Route/form/referrer precedence belongs exclusively to ProtectWebsiteOwnerResolver. Invalid explicit
+/// scope fails closed and never falls through to another owner.
 /// </summary>
 public static class WebsiteLeadOwnerAuthority
 {
@@ -21,11 +23,16 @@ public static class WebsiteLeadOwnerAuthority
         HttpContext? httpContext,
         AgentTrackingResolver resolver,
         WebsiteIntakeRecipientResolver recipients,
-        string? founderUpn,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(recipients);
+
+        var founderUpn = httpContext?.RequestServices.GetService<IConfiguration>()?["Founder:Upn"];
+        if (string.IsNullOrWhiteSpace(founderUpn) &&
+            httpContext?.Items["TrackingProfile"] is Domain.Entities.AgentTrackingProfile profile &&
+            httpContext.Items["IsFounderPath"] as bool? == true)
+            founderUpn = profile.AgentUpn;
 
         var resolved = await ProtectWebsiteOwnerResolver.ResolveAsync(
             httpContext,
