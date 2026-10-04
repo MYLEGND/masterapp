@@ -1338,9 +1338,10 @@ def git_changed(prior: str, current: str) -> list[str]:
 
 class EvidenceLookupUnavailable(RuntimeError):
     """Evidence transport failed; do not infer absence or invalidate proof."""
-    def __init__(self, message="Evidence read unavailable", *, status=None):
+    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None):
         super().__init__(message)
         self.code = status
+        self.endpoint = endpoint
 
 
 def api_get(repository: str, path: str, token: str):
@@ -1361,7 +1362,7 @@ def api_get(repository: str, path: str, token: str):
         except (TimeoutError, urllib.error.URLError) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt == 2:
-                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None)) from exc
+                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None), endpoint=path.split("?", 1)[0]) from exc
             time.sleep(2 ** attempt)
 
 
@@ -2180,6 +2181,9 @@ def _stop_unresolved_planning(args, exc):
     record = {"schemaVersion": 2, "mode": "blocked",
               "reason": "planner_unavailable_resume_planning_only",
               "plannerError": type(exc).__name__}
+    if isinstance(exc, EvidenceLookupUnavailable):
+        record["evidenceHttpStatus"] = exc.code
+        record["evidenceEndpoint"] = exc.endpoint
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")

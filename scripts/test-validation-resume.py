@@ -44,6 +44,22 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 m.api_get("owner/repo", "actions/runs", "fixture")
             self.assertEqual(1, request.call_count)
 
+    def test_denied_evidence_reports_status_and_path_without_credentials(self):
+        denied = m.urllib.error.HTTPError("https://api.github.com", 403, "denied", {}, None)
+        with patch.object(m.urllib.request, "urlopen", side_effect=denied):
+            with self.assertRaises(m.EvidenceLookupUnavailable) as caught:
+                m.api_get("owner/repo", "actions/runs/7/jobs?per_page=100", "secret-fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(output=str(Path(directory) / "plan.json"))
+            with self.assertRaises(SystemExit):
+                m._stop_unresolved_planning(args, caught.exception)
+            content = Path(args.output).read_text()
+            record = m.json.loads(content)
+            self.assertEqual(403, record["evidenceHttpStatus"])
+            self.assertEqual("actions/runs/7/jobs", record["evidenceEndpoint"])
+            self.assertNotIn("secret-fixture", content)
+            self.assertNotIn("per_page", content)
+
     def test_candidate_artifact_transport_failure_is_not_missing_evidence(self):
         run = {"id": 7, "head_sha": "a" * 40}
         with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
