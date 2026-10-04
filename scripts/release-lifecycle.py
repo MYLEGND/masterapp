@@ -51,7 +51,10 @@ PACKAGE_VALIDATION = VALIDATION_AUTHORITY.PACKAGE_VALIDATION_WORKFLOW
 KEEP = {APPROVED}
 RELEASE_QUEUE_CONTEXT = 'legend-release-queue'
 RELEASE_QUEUE_REQUEST_CONTEXT = 'legend-release-queue-request'
-RELEASE_QUEUE_OWNER = re.compile(r'^owner-pr=([0-9]+) validation-to-production
+RELEASE_QUEUE_OWNER = re.compile(r'^owner-pr=([0-9]+) validation-to-production$')
+RELEASE_QUEUE_REQUEST = re.compile(r'^requested-pr=([0-9]+)$')
+
+
 def git(*args, check=True):
     return subprocess.run(['git', *args], check=check, text=True, capture_output=True)
 
