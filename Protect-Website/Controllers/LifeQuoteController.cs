@@ -385,14 +385,15 @@ if (!ModelState.IsValid)
                     RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                 };
 
-                var submittedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var submittedCtx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "website_lead_submitted",
                     eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: lead.CreatedUtc);
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
                 UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
@@ -727,25 +728,27 @@ if (!ModelState.IsValid)
                     ? "paid_landing"
                     : "site_mode";
 
-                var ctx = BuildTrackingContext(
-                    pageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "meta_browser_event_attempt",
                     analyticsMetadata,
-                    pageVariant,
-                    pageMode);
+                    pageKey: pageKey,
+                    pageVariant: pageVariant,
+                    pageMode: pageMode);
                 var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ctxSuccess = BuildTrackingContext(
-                        pageKey,
+                    var ctxSuccess = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext,
                         lead,
                         "meta_browser_event_success",
                         analyticsMetadata,
-                        pageVariant,
-                        pageMode);
+                        pageKey: pageKey,
+                        pageVariant: pageVariant,
+                        pageMode: pageMode);
                     var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
                 }
@@ -2098,51 +2101,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             };
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            string pageVariant,
-            string pageMode,
-            DateTime? eventUtc = null,
-            string? quoteType = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: pageVariant,
-                pageMode: pageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
-                metadata: metadata,
-                websiteContentVersionId: lead.WebsiteContentVersionId,
-                websiteBindingId: lead.WebsiteBindingId);
-        }
-
-        private async Task TryWriteLeadPipelineEventAsync(
+private async Task TryWriteLeadPipelineEventAsync(
             WebsiteLead lead,
             string quoteType,
             WizardPageMode pageMode,
@@ -2153,15 +2112,16 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             AnalyticsEvent? analyticsEvent = null;
             try
             {
-                var ctx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     eventType,
                     metadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    DateTime.UtcNow,
-                    quoteType);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: DateTime.UtcNow,
+                    quoteType: quoteType);
                 analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
