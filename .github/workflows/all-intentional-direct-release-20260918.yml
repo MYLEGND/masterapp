@@ -400,11 +400,24 @@ jobs:
         id: base
         run: |
           python3 - <<'PYBASE'
-          import json, os, subprocess, urllib.request
+          import json, os, subprocess, time, urllib.error, urllib.request
           for row in json.loads(os.environ['LIVE_BASELINES']):
               host=row['host']
-              with urllib.request.urlopen('https://'+host+row['path'],timeout=30) as response:
-                  actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
+              actual=None
+              for attempt in range(3):
+                  try:
+                      request=urllib.request.Request(
+                          'https://'+host+row['path'],
+                          headers={'User-Agent':'LEGEND-release-baseline-proof/1.0','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(request,timeout=30) as response:
+                          actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
+                      break
+                  except (TimeoutError, urllib.error.URLError) as exc:
+                      status=getattr(exc,'code',None)
+                      transient=not isinstance(exc,urllib.error.HTTPError) or status in {408,429,500,502,503,504}
+                      if not transient or attempt == 2:
+                          raise
+                      time.sleep(2 ** attempt)
               print(host,actual)
               candidate=os.environ['APPLICATION_RELEASE_SHA']
               if actual not in {row['revision'], candidate}:
