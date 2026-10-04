@@ -2378,6 +2378,7 @@ test('media library reuses scoped image asset by canonical MediaAssetId only', a
     const image=canonicalNodeById(saved,'home.img.node.1');
     assert.equal(image.mediaAssetId,assetId);
     assert.equal(image.mediaUrl,undefined);
+    assert.equal(image.className ?? null,null);
     assert.equal(JSON.stringify(saved).includes('imageDataUrl'),false);
     assert.equal(JSON.stringify(saved).includes('ticket='),false);
   } finally { f.close(); }
@@ -2398,10 +2399,17 @@ test('media library inserts existing video as canonical composition with MediaAs
     assert.ok(video);
     assert.equal(video.mediaAssetId,assetId);
     assert.equal(video.mediaUrl,undefined);
+    assert.equal(video.className ?? null,null);
     assert.equal(JSON.stringify(saved).includes('videoUrl'),false);
     assert.equal(JSON.stringify(saved).includes('extras'),false);
     assert.equal(JSON.stringify(saved).includes('ticket='),false);
   } finally { f.close(); }
+});
+
+
+test('media insertion never invents reserved legend-cms runtime classes', ()=>{
+  assert.equal(source.includes("className:'legend-cms-image'"),false);
+  assert.equal(source.includes("className:isImage?'legend-cms-image':null"),false);
 });
 
 
