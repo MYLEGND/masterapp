@@ -265,14 +265,15 @@ await TryWriteLeadEventAsync(
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    var ctx = BuildTrackingContext(
-                        effectivePageKey,
+                    var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext,
                         lead,
                         eventType,
                         metadata,
-                        string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                        string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                        eventUtc);
+                        pageKey: effectivePageKey,
+                        pageVariant: string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        pageMode: string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
+                        eventUtc: eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -1338,50 +1339,7 @@ private bool IsAgentContext()
             }
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            string pageVariant,
-            string pageMode,
-            DateTime? eventUtc = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: pageVariant,
-                pageMode: pageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: lead.InterestType,
-                metadata: metadata,
-                websiteContentVersionId: lead.WebsiteContentVersionId,
-                websiteBindingId: lead.WebsiteBindingId);
-        }
-
-        private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
+private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
         {
             var viewModel = model ?? new DentalVisionHearingQuoteFormModel();
             ApplyPageMode(viewModel, isLandingPage);
