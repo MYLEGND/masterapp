@@ -206,7 +206,9 @@ await TryWriteLeadEventAsync(
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    var ctx = BuildTrackingContext("quote_home", lead, eventType, metadata, eventUtc);
+                    var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext, lead, eventType, metadata,
+                        pageKey: "quote_home", pageVariant: "website", pageMode: "site_mode", eventUtc: eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -349,48 +351,7 @@ await TryWriteLeadEventAsync(
             return RedirectToAction("Index", "ThankYou");
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            DateTime? eventUtc = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: "website",
-                pageMode: "site_mode",
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: lead.InterestType,
-                metadata: metadata,
-                websiteContentVersionId: lead.WebsiteContentVersionId,
-                websiteBindingId: lead.WebsiteBindingId);
-        }
-
-        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
+private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
