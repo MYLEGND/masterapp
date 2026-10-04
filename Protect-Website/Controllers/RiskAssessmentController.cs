@@ -97,39 +97,35 @@ namespace Protect_Website.Controllers
                     if (!captured.Captured && captured.Reason != "InternalTestLead")
                         throw new InvalidOperationException("The advisor handoff could not be completed.");
                 lead.Status = captured.Captured ? "New" : "InternalTestLead";
-                var persistedEvent = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
-                {
-                    EventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
-                    EventName = "website_lead_submitted",
-                    EventCategory = "lead",
-                    EventUtc = lead.CreatedUtc,
-                    PageKey = "risk_assessment",
-                    FormKey = "risk_assessment",
-                    QuoteType = "risk_assessment",
-                    SessionId = lead.SessionId,
-                    VisitorId = lead.VisitorId,
-                    Oppref = lead.Oppref,
-                    Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request),
-                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                    AgentSlug = lead.AgentSlug,
-                    Environment = lead.Environment,
-                    Host = lead.Host,
-                    IsInternal = lead.IsInternal,
-                    IsBrowserSignal = false,
-                    IsServerAuthority = true,
-                    MetaServerAuthorityEligible = true,
-                    Metadata = new { LeadId = lead.LeadId, CrmCaptured = captured.Captured }
-                });
-                persistedEvent.MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
-                    eventName: "website_lead_submitted",
-                    leadId: lead.LeadId,
-                    sessionId: lead.SessionId,
-                    payload: new { LeadId = lead.LeadId, canonicalOutcomeEventId = Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead), obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request), CrmCaptured = captured.Captured },
-                    isBrowserSignal: false,
-                    isServerAuthority: true,
-                    metaServerAuthorityEligible: true,
-                    metaSingleTruthDispatchEligible: false,
-                    metaPipelineOrigin: "risk_assessment");
+                var persistedEvent = UnifiedEventMapper.ToAnalytics(
+                    UnifiedEventContextBuilder.Build(
+                        HttpContext,
+                        eventId: Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead),
+                        eventName: "website_lead_submitted",
+                        eventCategory: "lead",
+                        eventUtc: lead.CreatedUtc,
+                        sessionId: lead.SessionId,
+                        visitorId: lead.VisitorId,
+                        pageKey: "risk_assessment",
+                        formKey: "risk_assessment",
+                        oppref: lead.Oppref,
+                        agentTrackingProfileId: lead.AgentTrackingProfileId,
+                        agentSlug: lead.AgentSlug,
+                        isInternal: lead.IsInternal,
+                        environment: lead.Environment,
+                        host: lead.Host,
+                        quoteType: "risk_assessment",
+                        isBrowserSignal: false,
+                        isServerAuthority: true,
+                        metaServerAuthorityEligible: true,
+                        metadata: new
+                        {
+                            LeadId = lead.LeadId,
+                            CrmCaptured = captured.Captured,
+                            metaPipelineOrigin = "risk_assessment"
+                        },
+                        websiteContentVersionId: lead.WebsiteContentVersionId,
+                        websiteBindingId: lead.WebsiteBindingId));
                 UnifiedAnalyticsWriter.Write(_db, persistedEvent);
                 await _db.SaveChangesAsync(ct);
 
