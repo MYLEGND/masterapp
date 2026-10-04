@@ -1508,16 +1508,66 @@ public class WebsitePlatformController : ControllerBase
     }
     [HttpPost("manage/media")]
     [RequestSizeLimit(26_000_000)]
-    public async Task<IActionResult> UploadMedia([FromForm] string ticket, [FromForm] IFormFile file, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> UploadMedia(CancellationToken cancellationToken = default)
     {
-        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        // Parse the one canonical multipart transport inside the action. Keeping IFormFile
+        // out of the action signature prevents ApiController's inferred consumes/model-binding
+        // constraint from rejecting the request before our website authority can validate it.
+        if (!Request.HasFormContentType)
+            return BadRequest(new
+            {
+                error = "website_media_transport_invalid",
+                message = "Website media must be uploaded as multipart form data."
+            });
+
+        IFormCollection form;
+        try
+        {
+            form = await Request.ReadFormAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+        {
+            return BadRequest(new
+            {
+                error = "website_media_transport_invalid",
+                message = "The media upload form could not be read."
+            });
+        }
+
+        var ticket = form["ticket"].FirstOrDefault();
+        var file = form.Files.GetFile("file");
+        var actor = await AuthorizeAsync(ticket ?? string.Empty, cancellationToken);
         if (actor is null) return Unauthorized();
-        if (file is null || file.Length <= 0 || file.Length > 25_000_000) return BadRequest();
+        if (file is null || file.Length <= 0 || file.Length > 25_000_000)
+            return BadRequest(new { error = "website_media_file_invalid" });
+
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, cancellationToken);
         var media = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
-        var asset = await media.StoreAsync(actor.OwnerUserId, Path.GetFileName(file.FileName), file.FileName, buffer.ToArray(), cancellationToken);
-        return Ok(new { id = asset.Id, name = MediaDisplayName(asset), url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id, contentType = asset.ContentType, sizeBytes = asset.SizeBytes, createdUtc = asset.CreatedUtc });
+        WebsiteMediaAsset asset;
+        try
+        {
+            asset = await media.StoreAsync(
+                actor.OwnerUserId,
+                Path.GetFileName(file.FileName),
+                file.FileName,
+                buffer.ToArray(),
+                cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_media_file_invalid", message = ex.Message });
+        }
+
+        return Ok(new
+        {
+            id = asset.Id,
+            name = MediaDisplayName(asset),
+            url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
+            contentType = asset.ContentType,
+            sizeBytes = asset.SizeBytes,
+            createdUtc = asset.CreatedUtc
+        });
     }
 
     [HttpGet("manage/media")]
