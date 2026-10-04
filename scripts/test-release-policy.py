@@ -104,6 +104,8 @@ class ReleaseScopeSelection(unittest.TestCase):
             shared,
         )
         self.assertEqual(tuple(), authority.release_targets_for_paths(['scripts/test-release-policy.py']))
+        self.assertEqual(tuple(), authority.release_targets_for_paths(['AGENTS.md']))
+        self.assertTrue(authority.release_control_authority_path('AGENTS.md'))
 
 
     def test_release_control_only_changes_preserve_live_application_identity(self):
