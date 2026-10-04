@@ -163,7 +163,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
         )
         self.assertNotIn("receipt", recorded["gates"]["diff-check"])
 
-    def historical_plan_steps(self, parent_conclusion, gates):
+    def historical_plan_steps(self, parent_conclusion, gates, **metadata):
         run = {
             "id": 77,
             "run_attempt": 1,
@@ -174,7 +174,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
             repository="MYLEGND/masterapp",
         )
         artifact = "validation-resume-security-77-1"
-        stored = {"workflow": args.workflow, "gates": gates}
+        stored = {"workflow": args.workflow, "gates": gates, **metadata}
         def download(_repo, _run_id, _artifact, directory):
             Path(directory, "validation-resume.json").write_text(
                 __import__("json").dumps(stored)
@@ -195,6 +195,37 @@ class ValidationResumePlannerTests(unittest.TestCase):
             77,
             steps.producers["Verify patch whitespace integrity"]["runId"],
         )
+
+    def test_failed_parent_retains_its_exact_recorded_child_results(self):
+        gates = {}
+        for index, result in enumerate(("success", "failure", "cancelled"), 1):
+            gates[result] = {"step": result, "run": True, "receipt": {
+                "result": result, "producingRunId": 77, "producerJobId": 900,
+                "producerStepNumber": index, "recordingJobId": 900,
+                "stepNumber": index, "reused": False}}
+        steps = self.historical_plan_steps("failure", gates,
+                                          receiptSchemaVersion=1, recordingRunId=77)
+        self.assertEqual({name: name for name in gates}, dict(steps))
+        self.assertEqual(900, steps.producers["success"]["jobId"])
+        self.assertEqual(77, steps.producers["success"]["runId"])
+        self.assertEqual(1, steps.producers["success"]["stepNumber"])
+
+    def test_failed_parent_rejects_mismatched_or_incomplete_executed_receipts(self):
+        valid = {"result": "success", "producingRunId": 77, "producerJobId": 900,
+                 "producerStepNumber": 4, "recordingJobId": 900, "stepNumber": 4, "reused": False}
+        for key, value in (("producingRunId", 78), ("producerJobId", None),
+                           ("recordingJobId", 901), ("stepNumber", 5), ("reused", True),
+                           ("result", "unproven")):
+            with self.subTest(key=key):
+                receipt = dict(valid, **{key: value})
+                steps = self.historical_plan_steps("failure", {
+                    "gate": {"step": "gate", "run": True, "receipt": receipt}},
+                    receiptSchemaVersion=1, recordingRunId=77)
+                self.assertNotIn("gate", steps)
+        steps = self.historical_plan_steps("failure", {
+            "gate": {"step": "gate", "run": True, "receipt": valid}},
+            receiptSchemaVersion=1, recordingRunId=78)
+        self.assertNotIn("gate", steps)
 
     def test_failed_parent_plan_preserves_only_prior_green_child(self):
         steps = self.historical_plan_steps("failure", {

@@ -1659,8 +1659,8 @@ def _historical_plan_steps(args, run, token):
     """Recover gate proof from the durable validation-plan artifact.
 
     Successful parent completion proves gates the plan actually executed.
-    A failed parent never proves an executed gate; it may only carry forward a
-    gate the plan itself marked preserved from an older successful producer.
+    A failed parent requires an exact recorded child observation for executed
+    gates, or preserved proof from an older successful producer.
     """
     artifact = _validation_resume_artifact_name(args.workflow, run)
     if artifact is None:
@@ -1692,6 +1692,29 @@ def _historical_plan_steps(args, run, token):
         if not isinstance(step, str) or not step:
             continue
         if gate.get("run") is True:
+            receipt = gate.get("receipt") or {}
+            job_id = receipt.get("producerJobId")
+            step_number = receipt.get("producerStepNumber")
+            if (
+                stored.get("receiptSchemaVersion") == 1
+                and stored.get("recordingRunId") == run_id
+                and receipt.get("producingRunId") == run_id
+                and receipt.get("reused") is False
+                and type(job_id) is int and job_id > 0
+                and receipt.get("recordingJobId") == job_id
+                and type(step_number) is int and step_number > 0
+                and receipt.get("stepNumber") == step_number
+                and receipt.get("result") in {"success", "failure", "cancelled", "timed_out"}
+            ):
+                steps[step] = receipt["result"]
+                steps.producers[step] = {
+                    "result": receipt["result"],
+                    "jobId": job_id,
+                    "runId": run_id,
+                    "stepNumber": step_number,
+                    "artifact": artifact,
+                }
+                continue
             if not parent_success:
                 continue
             steps[step] = "success"
