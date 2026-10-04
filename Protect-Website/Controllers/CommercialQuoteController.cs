@@ -508,7 +508,9 @@ await TryWriteLeadEventAsync(
                 environment: lead.Environment,
                 host: lead.Host,
                 quoteType: lead.InterestType,
-                metadata: metadata);
+                metadata: metadata,
+                websiteContentVersionId: lead.WebsiteContentVersionId,
+                websiteBindingId: lead.WebsiteBindingId);
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
