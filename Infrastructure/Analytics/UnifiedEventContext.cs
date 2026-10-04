@@ -108,5 +108,10 @@ public sealed record UnifiedEventContext
     public bool? IsServerAuthority { get; init; }
     public bool? MetaServerAuthorityEligible { get; init; }
 
+    // One resolved measurement-consent decision follows the canonical event.
+    public bool? MeasurementConsentAllowed { get; init; }
+    public string? MeasurementConsentState { get; init; }
+    public string? MeasurementConsentSource { get; init; }
+
     public object? Metadata { get; init; }
 }
