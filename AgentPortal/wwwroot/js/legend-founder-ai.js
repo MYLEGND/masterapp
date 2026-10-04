@@ -922,6 +922,10 @@
                     ? 'is-user'
                     : 'is-assistant'
             }`;
+        if (metadata?.pending === true) {
+            message.classList.add('is-pending');
+            message.setAttribute('aria-label', 'Message sent; waiting for Legend AI');
+        }
 
         if (role !== 'user') {
             const mark =
