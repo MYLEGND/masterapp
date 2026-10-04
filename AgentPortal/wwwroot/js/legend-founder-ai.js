@@ -39,7 +39,6 @@
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
     const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
     const modebar = document.getElementById('legendFounderAiModebar');
-    const modebarHome = document.getElementById('legendFounderAiModebarHome');
     const mobileControls = document.getElementById('legendFounderAiMobileControls');
 
     const modeButtons = Array.from(
@@ -160,20 +159,12 @@
         }
     }
 
-    // The same controls have one DOM owner. On a compact viewport, move that
-    // owner into the hamburger drawer instead of rendering a second mobile
-    // mode/native-only implementation.
+    // Conversation/provider controls have one canonical home in the sidebar.
+    // The mobile hamburger exposes that same sidebar; never duplicate controls
+    // across the chat canvas and navigation rail.
     function syncControlPlacement() {
-        if (!modebar) {
-            return;
-        }
-
-        const destination = isMobile()
-            ? mobileControls
-            : modebarHome;
-
-        if (destination && modebar.parentElement !== destination) {
-            destination.appendChild(modebar);
+        if (modebar && mobileControls && modebar.parentElement !== mobileControls) {
+            mobileControls.appendChild(modebar);
         }
     }
 
