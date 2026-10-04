@@ -12,6 +12,60 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+class ApprovedHeadPreflightTests(unittest.TestCase):
+    def test_current_candidate_requires_exact_current_approved_ancestry(self):
+        approved = "a" * 40
+        candidate = "b" * 40
+
+        def api_get(_repository, path, _token):
+            if path.startswith("branches/"):
+                return {"commit": {"sha": approved}}
+            if path.startswith("compare/"):
+                return {
+                    "status": "ahead",
+                    "merge_base_commit": {"sha": approved},
+                }
+            raise AssertionError(path)
+
+        with patch.object(m, "api_get", side_effect=api_get):
+            result = m.approved_head_preflight("owner/repo", candidate, "token")
+        self.assertTrue(result["current"])
+        self.assertEqual(approved, result["approvedHeadSha"])
+
+    def test_diverged_candidate_fails_before_validation_planning(self):
+        approved = "a" * 40
+        candidate = "b" * 40
+
+        def api_get(_repository, path, _token):
+            if path.startswith("branches/"):
+                return {"commit": {"sha": approved}}
+            if path.startswith("compare/"):
+                return {
+                    "status": "diverged",
+                    "merge_base_commit": {"sha": "c" * 40},
+                }
+            raise AssertionError(path)
+
+        with patch.object(m, "api_get", side_effect=api_get):
+            result = m.approved_head_preflight("owner/repo", candidate, "token")
+        self.assertFalse(result["current"])
+
+    def test_non_pr_preflight_is_noop_without_github_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(
+                repository="owner/repo",
+                current_sha="a" * 40,
+                event="workflow_dispatch",
+                output=str(Path(directory) / "preflight.json"),
+            )
+            with patch.object(m, "approved_head_preflight") as check:
+                m.cmd_approved_head_preflight(args)
+            check.assert_not_called()
+            result = m.json.loads(Path(args.output).read_text())
+            self.assertTrue(result["current"])
+            self.assertEqual("not_applicable", result["compareStatus"])
+
+
 class ValidationResumePlannerTests(unittest.TestCase):
     def test_planner_errors_stop_before_expensive_children(self):
         for command, computation in ((m.cmd_plan, "prior_evidence"),
