@@ -76,7 +76,55 @@
                     <div id="legendFounderAiMobileControls"
                          class="legend-founder-ai-mobile-controls"
                          aria-label="Legend® Ai conversation controls">
+<div id="legendFounderAiModebar"
+                             class="legend-founder-ai-modebar">
+                            <div class="legend-founder-ai-mode-tabs"
+                                 role="tablist"
+                                 aria-label="Conversation mode">
+                                <button type="button"
+                                        class="legend-founder-ai-mode is-active"
+                                        data-legend-ai-mode="legend"
+                                        role="tab"
+                                        aria-selected="true">
+                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                    Legend<sup>®</sup> Ai
+                                </button>
+
+                                <button type="button"
+                                        class="legend-founder-ai-mode"
+                                        data-legend-ai-mode="teacher"
+                                        role="tab"
+                                        aria-selected="false">
+                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                    OpenAI
+                                    <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
+                                </button>
+                            </div>
+
+                            <label class="legend-founder-ai-native-only"
+                                   for="legendFounderAiNativeOnly">
+                                <input type="checkbox"
+                                       id="legendFounderAiNativeOnly" />
+                                <span>
+                                    <strong>Block all external providers</strong>
+                                    <small>Disable external answering, research, and Azure translation.</small>
+                                </span>
+                            </label>
+                            <label class="legend-founder-ai-native-only" for="legendFounderAiExternalAnsweringBlocked">
+                                <input type="checkbox" id="legendFounderAiExternalAnsweringBlocked" />
+                                <span>
+                                    <strong>Block external answering</strong>
+                                    <small>Allow authorized research and translation.</small>
+                                </span>
+                            </label>
                     </div>
+
+                    <button type="button"
+                            id="legendFounderAiRetry"
+                            class="legend-founder-ai-sidebar-retry"
+                            hidden>
+                        Check or retry the same request
+                    </button>
 
                     <section class="legend-founder-ai-sidebar-section legend-founder-ai-conversations-section">
                         <div class="legend-founder-ai-sidebar-heading">
@@ -170,52 +218,6 @@
                 </button>
 
                 <section class="legend-founder-ai-main">
-                    <div id="legendFounderAiModebarHome"
-                         class="legend-founder-ai-modebar-home">
-                        <div id="legendFounderAiModebar"
-                             class="legend-founder-ai-modebar">
-                            <div class="legend-founder-ai-mode-tabs"
-                                 role="tablist"
-                                 aria-label="Conversation mode">
-                                <button type="button"
-                                        class="legend-founder-ai-mode is-active"
-                                        data-legend-ai-mode="legend"
-                                        role="tab"
-                                        aria-selected="true">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    Legend<sup>®</sup> Ai
-                                </button>
-
-                                <button type="button"
-                                        class="legend-founder-ai-mode"
-                                        data-legend-ai-mode="teacher"
-                                        role="tab"
-                                        aria-selected="false">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    OpenAI
-                                    <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
-                                </button>
-                            </div>
-
-                            <label class="legend-founder-ai-native-only"
-                                   for="legendFounderAiNativeOnly">
-                                <input type="checkbox"
-                                       id="legendFounderAiNativeOnly" />
-                                <span>
-                                    <strong>Block all external providers</strong>
-                                    <small>Disable external answering, research, and Azure translation.</small>
-                                </span>
-                            </label>
-                            <label class="legend-founder-ai-native-only" for="legendFounderAiExternalAnsweringBlocked">
-                                <input type="checkbox" id="legendFounderAiExternalAnsweringBlocked" />
-                                <span>
-                                    <strong>Block external answering</strong>
-                                    <small>Allow authorized research and translation.</small>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-
                     <main class="legend-founder-ai-transcript"
                           id="legendFounderAiTranscript"
                           aria-live="polite"
@@ -239,7 +241,6 @@
                          id="legendFounderAiStatus"
                          aria-live="polite">
                     </div>
-                    <button type="button" id="legendFounderAiRetry" class="btn btn-sm btn-outline-secondary" hidden>Check or retry the same request</button>
 
                     <footer class="legend-founder-ai-composer">
                         <form id="legendFounderAiForm"
