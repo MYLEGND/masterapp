@@ -59,6 +59,8 @@
     --legend-ai-paper: var(--legend-app-surface-elevated);
     --legend-ai-text: var(--legend-app-on-dark);
     --legend-ai-muted: var(--legend-app-on-dark-muted);
+    --legend-ai-canvas-ink: #10213a;
+    --legend-ai-canvas-muted: #5b687c;
     --legend-ai-native: var(--legend-design-contactConnected, #4ae28b);
     --legend-ai-compact-control: var(--legend-desktop-control-height);
     --legend-ai-control: var(--legend-desktop-control-height);
@@ -673,6 +675,12 @@
     justify-content: center;
 }
 
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-mobile-controls,
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-governed-action-section,
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-sidebar-retry {
+    display: none;
+}
+
 /* ==========================================================
    CHAT CANVAS
    ========================================================== */
@@ -803,7 +811,7 @@
     padding: 26px clamp(20px, 4vw, 62px) 24px;
     scroll-behavior: auto;
     background: #ffffff;
-    color: var(--legend-ai-text);
+    color: var(--legend-ai-canvas-ink);
     border: 1px solid rgba(224,184,83,.42);
     border-radius: 18px 18px 10px 10px;
     box-shadow:
@@ -865,7 +873,7 @@
 .legend-founder-ai-welcome p {
     max-width: 580px;
     margin: 13px auto 0;
-    color: var(--legend-ai-muted);
+    color: var(--legend-ai-canvas-muted);
     font-size: .88rem;
     line-height: 1.65;
     font-weight: 600;
@@ -1012,14 +1020,14 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--legend-ai-text);
+    color: var(--legend-ai-canvas-ink);
     font: inherit;
     font-size: .89rem;
     line-height: 1.48;
 }
 
 .legend-founder-ai-input-wrap textarea::placeholder {
-    color: var(--legend-ai-muted);
+    color: var(--legend-ai-canvas-muted);
 }
 
 .legend-founder-ai-send {
