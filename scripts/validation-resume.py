@@ -2200,7 +2200,7 @@ def cmd_record_evidence(args):
 
 
 def _stop_unresolved_planning(args, exc):
-    """An unavailable planner is not permission to repeat expensive work."""
+    """Non-evidence planner defects remain blocking; never invent success."""
     record = {"schemaVersion": 2, "mode": "blocked",
               "reason": "planner_unavailable_resume_planning_only",
               "plannerError": type(exc).__name__}
@@ -2212,6 +2212,27 @@ def _stop_unresolved_planning(args, exc):
     output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     print(json.dumps(record, sort_keys=True))
     raise SystemExit(1)
+
+
+def _fresh_plan_when_evidence_unavailable(args, exc):
+    """Historical evidence is optional optimization; unavailable proof means run fresh."""
+    plan = compute_plan(
+        args.workflow,
+        args.current_sha,
+        None,
+        {},
+        [],
+        "evidence_unavailable_fresh_validation",
+    )
+    plan["schemaVersion"] = 2
+    plan["evidenceFallback"] = {
+        "reason": "historical_evidence_unavailable_run_fresh",
+        "error": type(exc).__name__,
+        "httpStatus": exc.code,
+        "endpoint": exc.endpoint,
+    }
+    plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    return plan
 
 
 def cmd_plan(args):
@@ -2234,6 +2255,8 @@ def cmd_plan(args):
         plan = _apply_content_equivalent_evidence(args, plan)
         plan["schemaVersion"] = 2
         plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    except EvidenceLookupUnavailable as exc:
+        plan = _fresh_plan_when_evidence_unavailable(args, exc)
     except Exception as exc:
         _stop_unresolved_planning(args, exc)
 
@@ -4334,6 +4357,23 @@ def cmd_step5_decision(args):
             args.current_run_id,
             args.head_branch,
         )
+    except EvidenceLookupUnavailable as exc:
+        decision = {
+            "schemaVersion": 3,
+            "mode": "full",
+            "priorRunId": None,
+            "priorHeadSha": None,
+            "baselineEvidenceRunId": None,
+            "baselineEvidenceArtifact": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "reason": "historical_evidence_unavailable_run_full_step5",
+            "evidenceFallback": {
+                "error": type(exc).__name__,
+                "httpStatus": exc.code,
+                "endpoint": exc.endpoint,
+            },
+        }
     except Exception as exc:
         _stop_unresolved_planning(args, exc)
 
@@ -4459,6 +4499,21 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
 def cmd_step5_baseline(args):
     try:
         result = compute_step5_baseline_evidence(args.repository, args.base_sha)
+    except EvidenceLookupUnavailable as exc:
+        result = {
+            "schemaVersion": 3,
+            "approvedBaseSha": args.base_sha,
+            "reusable": False,
+            "evidenceRunId": None,
+            "evidenceArtifact": None,
+            "evidenceBaseSha": None,
+            "reason": "historical_evidence_unavailable_run_fresh_baseline",
+            "evidenceFallback": {
+                "error": type(exc).__name__,
+                "httpStatus": exc.code,
+                "endpoint": exc.endpoint,
+            },
+        }
     except Exception as exc:
         _stop_unresolved_planning(args, exc)
 
