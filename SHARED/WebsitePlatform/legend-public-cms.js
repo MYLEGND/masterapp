@@ -4854,8 +4854,17 @@
     const status = document.getElementById('legend-cms-status');
     if (status) status.textContent = 'Uploading media…';
     try {
-      const body = new FormData(); body.append('ticket', editorTicket); body.append('file', file);
-      const response = await fetch(`${API_BASE}/api/website-content/manage/media`, { method: 'POST', body });
+      const body = new FormData();
+      body.append('ticket', editorTicket);
+      body.append('file', file, file.name || 'website-media');
+      // Never set Content-Type for FormData. The browser owns the multipart boundary.
+      const response = await fetch(`${API_BASE}/api/website-content/manage/media`, {
+        method: 'POST',
+        body,
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' }
+      });
       const asset = await response.json();
       if (!response.ok || !asset?.id || !asset?.url || !asset?.contentType)
         throw new Error(asset?.message || asset?.error || 'Upload failed.');
