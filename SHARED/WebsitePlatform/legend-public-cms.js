@@ -4906,7 +4906,7 @@
     checkpoint();
     const id=freshStableId();
     const node={
-      id,type:'image',tag:'img',className:'legend-cms-image',
+      id,type:'image',tag:'img',className:null,
       mediaAssetId:asset.id,alt:'',
       signals:[],style:{widthPercent:70,paddingTop:16,paddingBottom:16},
       breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
@@ -5794,7 +5794,7 @@
     const id=freshStableId();
     const node={
       id,type:isImage?'image':'video',tag:isImage?'img':'video',
-      className:isImage?'legend-cms-image':null,
+      className:null,
       mediaAssetId:asset.id,
       alt:isImage?(asset.name||''):null,
       signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},
