@@ -3649,6 +3649,41 @@ def release_operation_history(repository, operation_id, application_revision, ta
 
 
 
+def _failed_transaction_preparation_without_writes(source, owner):
+    """A failed preflight is not a lost plan when every later effect was skipped."""
+    if owner.get('status') != 'completed' or owner.get('conclusion') != 'failure':
+        return False
+    blocks = named_step_blocks(_job_blocks(source).get('release', ''))
+    prepare = 'Prepare complete immutable release transaction'
+    if prepare not in blocks or '--prepare-only' not in blocks[prepare]:
+        return False
+    steps = owner.get('steps')
+    if not isinstance(steps, list):
+        return False
+    outcomes = {}
+    for step in steps:
+        outcomes.setdefault(step.get('name'), []).append(step)
+    failed = outcomes.get(prepare, [])
+    if len(failed) != 1 or failed[0].get('conclusion') != 'failure':
+        return False
+    # These observers may run after failure. Require their original bodies to
+    # match the canonical source before excluding them from execution proof.
+    observers = {'Refresh Azure OIDC before transactional publication',
+                 'Enforce complete direct deployment outcome'}
+    current = named_step_blocks(_job_blocks(
+        Path('.github/workflows/' + DIRECT_RELEASE_WORKFLOW).read_text()).get('release', ''))
+    later = list(blocks)[list(blocks).index(prepare) + 1:]
+    if not all(f'Publish canonical target ({key})' in later for key in RELEASE_TARGETS):
+        return False
+    for name in later:
+        if name in observers and blocks[name] == current.get(name):
+            continue
+        matches = outcomes.get(name, [])
+        if len(matches) != 1 or matches[0].get('conclusion') != 'skipped':
+            return False
+    return True
+
+
 def release_transaction_plan_history(repository, plan_id, revision, target_digests, run, attempt, token):
     """Restore the complete original transaction, including untouched targets.
 
@@ -3750,6 +3785,8 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
             if not isinstance(items, list) or artifacts.get('total_count', 0) > len(items):
                 raise ReleaseOperationHistoryUnproven('Original transaction artifact history is incomplete')
             plans = [row for row in items if re.fullmatch('legend-release-transaction-plan-[a-f0-9]{64}', row.get('name', ''))]
+            if not plans and _failed_transaction_preparation_without_writes(source, owner):
+                continue
             if not plans:
                 raise ReleaseOperationHistoryUnproven('Original transaction plan is missing; untouched target baseline cannot be replaced')
             for item in plans:
