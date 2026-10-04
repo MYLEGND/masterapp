@@ -1009,7 +1009,7 @@ class WorkerAdmissionPackageIdentity(unittest.TestCase):
                   'producingRun': 98, 'producingAttempt': 1}
         record['admissionId'] = m._admission_identity(record)
         run = {'id': 98, 'run_attempt': 1, 'event': 'workflow_dispatch',
-               'head_repository': {'full_name': api.repo}}
+               'head_sha': authority, 'head_repository': {'full_name': api.repo}}
         api.api_map['pulls/7'] = {'number': 7, 'merged_at': '2026-10-03',
             'base': {'ref': m.APPROVED}, 'head': {'sha': source}, 'merge_commit_sha': merge}
         api.pages_map['pulls/7/files'] = [{'filename': path} for path in paths]
