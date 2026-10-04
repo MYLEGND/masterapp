@@ -434,7 +434,8 @@ def candidate_control_plane_integrity(api, pr, names):
         if (
             'approved-head-preflight:' not in workflow
             or 'Verify candidate contains current approved head' not in workflow
-            or 'ref: legend/approved-changes' not in workflow
+            or 'ref: ${{ github.event.pull_request.head.sha || github.sha }}' not in workflow
+            or 'persist-credentials: false' not in workflow
             or 'approved-head-preflight \\' not in workflow
             or 'needs: approved-head-preflight' not in workflow
         ):
