@@ -507,6 +507,30 @@ public sealed class LegendFounderAiContractTests
 
 
     [Fact]
+    public void CloudflareLegendBaseline_BypassesRedundantNativeAnswerGeneration()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("ShouldAttemptNativeInference", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        Assert.False((bool)method!.Invoke(null, new object[]
+        {
+            "legend",
+            LegendConnectExternalProviderPolicy.CloudflareFoundation
+        })!);
+        Assert.True((bool)method.Invoke(null, new object[]
+        {
+            "legend",
+            LegendConnectExternalProviderPolicy.IndependentAnswering
+        })!);
+        Assert.False((bool)method.Invoke(null, new object[]
+        {
+            "teacher",
+            LegendConnectExternalProviderPolicy.ProviderEnabled
+        })!);
+    }
+
+    [Fact]
     public void CloudflareLegendBaseline_ExposesCanonicalProtectedReadsButNoPaygOrMutationTools()
     {
         var configuration = new ConfigurationBuilder()
