@@ -320,12 +320,15 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         [FromQuery] string? preset = null,
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
         try
         {
-            var range = TimeRangeRequest.FromPreset(preset ?? "7d", fromUtc, toUtc, TimeZoneInfo.Utc);
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
+            var range = TimeRangeRequest.FromPreset(preset ?? "7d", fromUtc, toUtc, timezone);
             var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
             return Json(await service.CampaignInsightsAsync(
                 MarketingOwnerScope.Business(businessId),
