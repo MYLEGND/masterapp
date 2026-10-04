@@ -92,6 +92,60 @@ class Api:
         self.dispatched.append((workflow, inputs or {}))
 
 
+class ApprovedHeadSynchronizationTests(unittest.TestCase):
+    def pr(self, sha="b" * 40):
+        return {
+            "number": 42,
+            "state": "open",
+            "draft": False,
+            "base": {"ref": m.APPROVED},
+            "head": {
+                "sha": sha,
+                "ref": "repair/work",
+                "repo": {"full_name": "MYLEGND/masterapp"},
+            },
+            "author_association": "OWNER",
+        }
+
+    def test_current_candidate_does_not_mutate(self):
+        api = Api()
+        approved = api.ref(m.APPROVED)
+        pr = self.pr()
+        api.api_map[f"compare/{approved}...{pr['head']['sha']}"] = {
+            "status": "ahead",
+            "merge_base_commit": {"sha": approved},
+        }
+        self.assertIsNone(m.sync_candidate_to_current_approved(api, pr))
+
+    def test_stale_candidate_merges_current_approved_before_validation(self):
+        api = Api()
+        approved = api.ref(m.APPROVED)
+        pr = self.pr()
+        merged = "d" * 40
+        api.api_map[f"compare/{approved}...{pr['head']['sha']}"] = {
+            "status": "diverged",
+            "merge_base_commit": {"sha": "c" * 40},
+        }
+        writes = []
+
+        def merge(data, method):
+            writes.append((data, method))
+            return {"sha": merged}
+
+        api.api_map["merges"] = merge
+        fresh = self.pr(merged)
+        api.api_map["pulls/42"] = fresh
+
+        result = m.sync_candidate_to_current_approved(api, pr)
+
+        self.assertEqual("BASE_SYNCED", result["state"])
+        self.assertEqual(merged, result["head"])
+        self.assertEqual(1, len(writes))
+        self.assertEqual("repair/work", writes[0][0]["base"])
+        self.assertEqual(approved, writes[0][0]["head"])
+        self.assertEqual("POST", writes[0][1])
+
+
 class ReleaseControlIntegrityGuard(unittest.TestCase):
     def test_repository_ruleset_requires_no_bypass_strict_merge_only_protection(self):
         api = Api()
