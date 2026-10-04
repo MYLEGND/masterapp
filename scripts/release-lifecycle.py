@@ -662,6 +662,24 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
+    queued = _release_queue_guard(api, pr)
+    if queued:
+        return queued
+    base_state = approved_head_state(api, pr)
+    if not base_state['current']:
+        publish_trusted_validation_status(
+            api,
+            pr['head']['sha'],
+            'pending',
+            'Candidate must contain the current approved head before validation can authorize merge',
+        )
+        return {
+            'state': 'BASE_SYNC_REQUIRED',
+            'retained': 'Candidate does not contain current approved head',
+            'pr': pr['number'],
+            **base_state,
+        }
+
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row.get('filename') for row in files if row.get('filename')]
     head = pr['head']['sha']
@@ -697,6 +715,11 @@ def merge_validated(api, pr):
             'retained': 'Merge did not complete; source branch retained',
             'pr': pr['number'],
         }
+
+    # Carry the same queue lease onto the newly approved merge commit before
+    # any later PR can become eligible. Reconcile releases it only after this
+    # candidate reaches terminal publication (or proves no publication is needed).
+    _carry_release_queue(api, result['sha'], pr['number'])
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
@@ -763,6 +786,14 @@ def integrate(api, number):
 
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+
+    queue = claim_release_queue(api, pr)
+    if queue['state'] != 'RELEASE_QUEUE_OWNER':
+        return queue
+
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return {**synced, 'queueOwnerPr': pr['number']}
     return merge_validated(api, pr)
 
 
