@@ -3447,7 +3447,20 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     checkouts = translations | rollbacks
     from_log = not checkouts and receipt is not None
     if from_log:
-        checkout = _release_checkout_from_job_log(repository, release_job, application, token)
+        try:
+            checkout = _release_checkout_from_job_log(repository, release_job, application, token)
+        except ReleaseOperationHistoryUnproven:
+            # Modern automatic releases bind the execution checkout authority in
+            # their immutable display title. Use that title only when it exactly
+            # matches the protected workflow head; the retained state receipt
+            # continues to bind the application package revision separately.
+            modern = re.fullmatch(
+                r"LEGEND release pr=[0-9]+ candidate=[a-f0-9]{40} authority=([a-f0-9]{40})",
+                run.get("display_title", ""),
+            )
+            if modern is None or modern.group(1) != run.get("head_sha"):
+                raise
+            checkout = modern.group(1)
     elif len(checkouts) == 1:
         checkout = checkouts.pop()
     else:
