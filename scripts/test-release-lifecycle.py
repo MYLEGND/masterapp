@@ -1115,10 +1115,11 @@ class HistoricalReleaseRecovery(unittest.TestCase):
             api.dispatched,
         )
 
+    @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
     @patch.object(m, "_package_backfill_running", return_value=False)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
-    def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __):
+    def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __, ___):
         api = Api()
         pending.return_value = [{
             "authorizationSha": "b" * 40,
@@ -1138,10 +1139,11 @@ class HistoricalReleaseRecovery(unittest.TestCase):
             api.dispatched,
         )
 
+    @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
     @patch.object(m, "_package_backfill_running", return_value=True)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
-    def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __):
+    def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __, ___):
         api = Api()
         pending.return_value = [{
             "authorizationSha": "b" * 40,
@@ -1155,10 +1157,11 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual("already queued or running", result["pendingCandidates"][0]["packageBackfill"])
         self.assertEqual([], api.dispatched)
 
+    @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
     @patch.object(m, "_package_backfill_running", return_value=False)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
-    def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __):
+    def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __, ___):
         api = Api()
         target = canonical_name("portal")
         pending.return_value = {
@@ -1176,10 +1179,11 @@ class HistoricalReleaseRecovery(unittest.TestCase):
             api.dispatched,
         )
 
+    @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
     @patch.object(m, "_package_backfill_running", return_value=True)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
-    def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __):
+    def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __, ___):
         api = Api()
         pending.return_value = {
             "authorizationSha": "b" * 40,
@@ -1192,6 +1196,62 @@ class HistoricalReleaseRecovery(unittest.TestCase):
 
         self.assertEqual("already queued or running", result["packageBackfill"])
         self.assertEqual([], api.dispatched)
+    @patch.object(m, "_package_backfill_preflight", return_value={
+        "allowed": False,
+        "reason": "application_inputs_changed_since_validated_revision",
+    })
+    @patch.object(m, "_validated_package_evidence", return_value={
+        "reusable": False,
+        "reason": "exact_validated_package_missing",
+    })
+    @patch.object(m, "pending_legacy_release_authorization")
+    def test_superseded_legacy_revision_never_dispatches_package_backfill(self, pending, _, __):
+        api = Api()
+        pending.return_value = {
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 42,
+        }
+
+        result = m.dispatch_pending_legacy_release(api, "a" * 40)
+
+        self.assertEqual("SUPERSEDED", result["state"])
+        self.assertEqual("not dispatched", result["packageBackfill"])
+        self.assertEqual(
+            "application_inputs_changed_since_validated_revision",
+            result["packageReason"],
+        )
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "_package_backfill_preflight", return_value={
+        "allowed": False,
+        "reason": "application_inputs_changed_since_validated_revision",
+    })
+    @patch.object(m, "_validated_package_evidence", return_value={
+        "reusable": False,
+        "reason": "exact_validated_package_missing",
+    })
+    @patch.object(m, "pending_automatic_releases")
+    def test_superseded_automatic_revision_never_dispatches_package_backfill(self, pending, _, __):
+        api = Api()
+        pending.return_value = [{
+            "authorizationSha": "b" * 40,
+            "applicationRevision": "c" * 40,
+            "targets": [canonical_name("portal")],
+            "sourcePr": 385,
+        }]
+
+        result = m.dispatch_pending_automatic_release(api, "a" * 40)
+
+        self.assertEqual("WAITING_FOR_DEPENDENCY", result["state"])
+        self.assertEqual([], api.dispatched)
+        self.assertEqual(
+            "application_inputs_changed_since_validated_revision",
+            result["pendingCandidates"][0]["packageReason"],
+        )
+        self.assertEqual("not dispatched", result["pendingCandidates"][0]["packageBackfill"])
+
 
 
 class ReconcileSafety(unittest.TestCase):
