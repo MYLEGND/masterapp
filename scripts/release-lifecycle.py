@@ -637,7 +637,10 @@ def pending_automatic_releases(api, approved):
     for pr in api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe='')):
         if pr.get('merged_at') and pr.get('base', {}).get('ref') == APPROVED:
             merges.setdefault(pr.get('merge_commit_sha'), []).append(pr)
+    all_targets = {row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()}
     for sha in history.stdout.splitlines():
+        if covered == all_targets:
+            break  # older authorizations cannot change any target's frontier
         if not SHA.fullmatch(sha):
             continue
         matches = merges.get(sha, [])

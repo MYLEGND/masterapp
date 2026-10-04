@@ -574,6 +574,15 @@ class DurableCandidateQueue(unittest.TestCase):
                 "status": status, "conclusion": conclusion,
                 "display_title": m.release_dispatch_identity(pr["number"], pr["head"]["sha"], self.approved)}
 
+    def test_complete_frontier_does_not_query_superseded_history(self):
+        self.candidate(2, "c" * 40, "e" * 40, ["Infrastructure/Example.cs", "Legend-Website/src/example.ts"])
+        with patch.object(self.api, "pages", wraps=self.api.pages) as pages:
+            queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([2], [row["sourcePr"] for row in queue])
+        self.assertEqual(set(m.VALIDATION_AUTHORITY.RELEASE_TARGETS),
+                         set(m.VALIDATION_AUTHORITY.selected_release_target_keys(queue[0]['targets'])))
+        self.assertNotIn("commits/" + "b" * 40 + "/pulls", [call.args[0] for call in pages.call_args_list])
+
     def test_completed_newer_target_does_not_hide_disjoint_pending_target(self):
         self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
         self.candidate(2, "c" * 40, "e" * 40, ["ClientApp/Program.cs"])
