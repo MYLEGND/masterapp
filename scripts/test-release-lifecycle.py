@@ -704,9 +704,38 @@ class AutomaticReleaseRecovery(unittest.TestCase):
         self.assertEqual([canonical_name("portal")], result["targets"])
 
 
+class DirectReleaseHistoryTests(unittest.TestCase):
+    def test_direct_release_history_uses_repository_feed_and_filters_canonical_workflow(self):
+        api = Api()
+        path = "actions/runs?branch=legend%2Fapproved-changes"
+        api.pages_map[path] = [
+            {
+                "id": 1,
+                "head_branch": m.APPROVED,
+                "path": ".github/workflows/" + m.DIRECT,
+            },
+            {
+                "id": 2,
+                "head_branch": m.APPROVED,
+                "path": ".github/workflows/other.yml",
+            },
+            {
+                "id": 3,
+                "head_branch": "other",
+                "path": ".github/workflows/" + m.DIRECT,
+            },
+        ]
+
+        with patch.object(api, "pages", wraps=api.pages) as pages:
+            rows = m.direct_release_runs(api)
+
+        self.assertEqual([1], [row["id"] for row in rows])
+        pages.assert_called_once_with(path, "workflow_runs")
+
+
 class DurableCandidateQueue(unittest.TestCase):
     closed_path = "pulls?state=closed&base=legend%2Fapproved-changes"
-    runs_path = "actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"
+    runs_path = "actions/runs?branch=legend%2Fapproved-changes"
 
     def setUp(self):
         self.api = Api()
