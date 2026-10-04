@@ -63,7 +63,19 @@ def main():
         manifest(args.directory, args.tool_revision, args.application_revision)
         result = {'artifact': identity['artifact'], 'identity': identity['identity']}
     elif args.command in {'resolve', 'plan'}:
-        result = AUTHORITY.migration_probe_evidence(os.environ['GITHUB_REPOSITORY'], identity)
+        try:
+            result = AUTHORITY.migration_probe_evidence(os.environ['GITHUB_REPOSITORY'], identity)
+        except AUTHORITY.EvidenceLookupUnavailable as exc:
+            if args.command == 'resolve':
+                raise
+            result = {
+                'reusable': False,
+                'artifact': identity['artifact'],
+                'identity': identity['identity'],
+                'reason': 'historical_evidence_unavailable_build_fresh_probe',
+                'evidenceHttpStatus': exc.code,
+                'evidenceEndpoint': exc.endpoint,
+            }
         result['needed'] = str(not result.get('reusable')).lower()
         if args.command == 'resolve' and not result.get('reusable'):
             raise ValueError('Validated migration probe missing; release cannot rebuild it')
