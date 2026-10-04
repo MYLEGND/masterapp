@@ -2407,6 +2407,20 @@ test('media library inserts existing video as canonical composition with MediaAs
 });
 
 
+test('media upload has one multipart transport and bypasses inferred ApiController form binding', ()=>{
+  const uploadStart=source.indexOf('async function uploadMedia(file)');
+  const uploadEnd=source.indexOf('async function insertMediaAsset',uploadStart);
+  const upload=source.slice(uploadStart,uploadEnd);
+  assert.ok(upload.includes('new FormData()'));
+  assert.ok(upload.includes("body.append('file', file, file.name || 'website-media')"));
+  assert.equal(upload.includes("'Content-Type'"),false);
+  assert.ok(upload.includes("headers: { Accept: 'application/json' }"));
+  assert.match(websitePlatformControllerSource,/public async Task<IActionResult> UploadMedia\(CancellationToken/);
+  assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
+  assert.match(websitePlatformControllerSource,/Request\.ReadFormAsync\(cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/GetRequiredService<WebsiteMediaService>\(\)/);
+});
+
 test('media insertion never invents reserved legend-cms runtime classes', ()=>{
   assert.equal(source.includes("className:'legend-cms-image'"),false);
   assert.equal(source.includes("className:isImage?'legend-cms-image':null"),false);
