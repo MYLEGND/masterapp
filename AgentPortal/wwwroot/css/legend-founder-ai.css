@@ -179,7 +179,7 @@
 .legend-founder-ai-title-row sup,
 .legend-founder-ai-mode sup,
 .legend-founder-ai-welcome h3 sup {
-    color: var(--legend-ai-gold-400);
+    color: inherit;
     font-size: .52em;
 }
 
@@ -226,11 +226,75 @@
 }
 
 .legend-founder-ai-mobile-controls {
-    display: none;
+    display: block;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--legend-ai-line);
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-modebar {
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    width: 100%;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode,
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
+    width: 100%;
+    min-height: var(--legend-ai-compact-control);
+    justify-content: flex-start;
+    border-color: color-mix(in srgb, var(--legend-ai-navy-900) 14%, transparent);
+    background: var(--legend-ai-ivory);
+    color: var(--legend-ai-text);
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode.is-active {
+    border-color: var(--legend-ai-navy-850);
+    background: var(--legend-ai-navy-850);
+    color: #fff;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
+    padding: 7px 8px;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only small {
+    display: block;
+    color: inherit;
+}
+
+.legend-founder-ai-sidebar-retry {
+    width: 100%;
+    min-height: var(--legend-ai-compact-control);
+    margin-top: 8px;
+    padding: 7px 9px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 38%, var(--legend-ai-line));
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--legend-ai-gold-500) 10%, var(--legend-ai-paper));
+    color: var(--legend-ai-text);
+    font-size: .66rem;
+    font-weight: 850;
+    text-align: left;
+    cursor: pointer;
+}
+
+.legend-founder-ai-sidebar-retry:hover,
+.legend-founder-ai-sidebar-retry:focus-visible {
+    border-color: var(--legend-ai-gold-700);
+    outline: none;
 }
 
 .legend-founder-ai-modebar-home {
-    display: contents;
+    display: none;
 }
 
 /* ==========================================================
@@ -617,8 +681,8 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: 52px minmax(0,1fr) auto auto;
-    background: var(--legend-app-surface);
+    grid-template-rows: minmax(0,1fr) auto auto;
+    background: var(--legend-ai-ivory);
 }
 
 .legend-founder-ai-modebar {
@@ -735,6 +799,8 @@
     overscroll-behavior: contain;
     padding: 26px clamp(20px, 4vw, 62px) 24px;
     scroll-behavior: auto;
+    background: var(--legend-ai-ivory);
+    color: var(--legend-ai-text);
 }
 
 .legend-founder-ai-transcript::before {
@@ -748,7 +814,7 @@
 
 .legend-founder-ai-welcome {
     width: min(620px, 100%);
-    margin: clamp(52px, 8vh, 100px) auto 0;
+    margin: clamp(24px, 4vh, 52px) auto 0;
     text-align: center;
 }
 
@@ -866,8 +932,8 @@
     display: flex;
     align-items: center;
     padding: 0 24px;
-    color: var(--legend-app-accent-bright);
-    background: var(--legend-app-surface);
+    color: var(--legend-ai-gold-800);
+    background: var(--legend-ai-ivory);
     font-size: .64rem;
     font-weight: 800;
     transition: padding .15s ease, min-height .15s ease;
@@ -882,8 +948,8 @@
 
 .legend-founder-ai-composer {
     padding: 10px 16px 11px;
-    border-top: 1px solid var(--legend-app-control-line);
-    background: var(--legend-app-surface);
+    border-top: 1px solid var(--legend-ai-line);
+    background: var(--legend-ai-paper);
 }
 
 .legend-founder-ai-composer form {
@@ -896,9 +962,9 @@
     align-items: flex-end;
     gap: 8px;
     padding: 6px 6px 6px 14px;
-    border: 1px solid var(--legend-app-control-line);
+    border: 1px solid var(--legend-ai-line);
     border-radius: 18px;
-    background: var(--legend-app-surface-elevated);
+    background: #ffffff;
     box-shadow:
         0 8px 28px rgba(0,0,0,.18),
         inset 0 1px 0 rgba(255,255,255,.05);
@@ -928,7 +994,7 @@
 }
 
 .legend-founder-ai-input-wrap textarea::placeholder {
-    color: var(--legend-app-on-dark-muted);
+    color: var(--legend-ai-muted);
 }
 
 .legend-founder-ai-send {
@@ -972,7 +1038,7 @@
     justify-content: space-between;
     gap: 14px;
     padding: 6px 4px 0;
-    color: var(--legend-app-on-dark-muted);
+    color: var(--legend-ai-muted);
     font-size: .56rem;
     font-weight: 700;
 }
