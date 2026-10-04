@@ -1408,6 +1408,11 @@ def admission_conflicts(api, candidate, *, current_run):
         own_run = run['id'] == current_run
         if run.get('status') == 'completed' and successful_release(api, run):
             continue  # exact terminal live proof discharges this publication lease
+        # A completed run that provably never entered any mutation phase owns no
+        # live release resource. Discharge it before interpreting historical
+        # admission scope through the current target/path inventory.
+        if not own_run and _admission_nonmutating_terminal(api, run):
+            continue
         records = _admission_records(api, run)
         if own_run:
             current_attempt = int(os.environ.get('GITHUB_RUN_ATTEMPT', '1'))
