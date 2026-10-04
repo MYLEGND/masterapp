@@ -541,15 +541,21 @@ def release_targets_for_paths(paths):
 LIFECYCLE_AUTHORITY_PATHS = (
     ".github/workflows/legend-release-lifecycle.yml",
     ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
     ".github/workflows/approved-release-security-validation.yml",
     ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    ".github/workflows/step6-openai-ads-execution-validation.yml",
+    ".github/workflows/steps7-8-governed-advertising-validation.yml",
     "scripts/release-lifecycle.py",
     "scripts/release_policy.py",
     "scripts/approved-release-baseline.py",
+    "scripts/deploy-approved-app.py",
+    "scripts/release-package.py",
     "scripts/validation-resume.py",
     "scripts/test-validation-resume.py",
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
     "scripts/deploy-founder-cloudflare.py",
 )
 
@@ -589,6 +595,15 @@ PACKAGE_AUTHORITY_PATHS = frozenset({
     ".config/dotnet-tools.json",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
 })
+
+
+def release_control_authority_path(path: str) -> bool:
+    """One canonical predicate for code that can change validation or publication truth."""
+    return (
+        path in LIFECYCLE_AUTHORITY_PATHS
+        or path in PACKAGE_AUTHORITY_PATHS
+        or matches(path, RELEASE_EXECUTION_CONTROL_INPUTS)
+    )
 
 
 PACKAGE_BUILD_WORKFLOW = '.github/workflows/masterapp-platform-architecture-validation.yml'
@@ -2318,9 +2333,14 @@ def required_validation_topology(changed_paths):
     security = ".github/workflows/approved-release-security-validation.yml"
 
     required = {architecture}
+    release_control_authority_change = any(release_control_authority_path(name) for name in names)
     step5_release_evidence_change = any(name in STEP5_RELEASE_EVIDENCE_PATHS for name in names)
     security_release_evidence_change = any(name in SECURITY_RELEASE_EVIDENCE_PATHS for name in names)
-    release_evidence_change = step5_release_evidence_change or security_release_evidence_change
+    release_evidence_change = (
+        release_control_authority_change
+        or step5_release_evidence_change
+        or security_release_evidence_change
+    )
 
     scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
         "scripts/deploy-approved-app.py",
@@ -2374,13 +2394,14 @@ def required_validation_topology(changed_paths):
     if broad_product_change and not public_website_only:
         required.add(step5)
         required.add(security)
-    if security in names or security_release_evidence_change:
+    if release_control_authority_change or security in names or security_release_evidence_change:
         required.add(security)
 
     return {
         "required": tuple(sorted(required)),
         "publicWebsiteOnly": public_website_only,
         "releaseEvidenceChange": release_evidence_change,
+        "releaseControlAuthorityChange": release_control_authority_change,
         "broadProductChange": broad_product_change,
     }
 

@@ -43,6 +43,7 @@ class Api:
         self.pages_map = {}
         self.api_map = {}
         self.dispatched = []
+        self.statuses = []
 
     def ref(self, name):
         return self.refs[name]
@@ -54,6 +55,26 @@ class Api:
         return value
 
     def api(self, path, data=None, method=None):
+        if path == "rulesets":
+            return [{"id": 1, "target": "branch", "enforcement": "active"}]
+        if path == "rulesets/1":
+            return {
+                "id": 1,
+                "target": "branch",
+                "enforcement": "active",
+                "conditions": {"ref_name": {"include": ["refs/heads/" + m.APPROVED], "exclude": []}},
+                "bypass_actors": [],
+                "current_user_can_bypass": "never",
+                "rules": [
+                    {"type": "deletion"},
+                    {"type": "non_fast_forward"},
+                    {"type": "pull_request", "parameters": {"allowed_merge_methods": ["merge"]}},
+                    {"type": "required_status_checks", "parameters": {
+                        "strict_required_status_checks_policy": True,
+                        "required_status_checks": [{"context": "architecture-validation"}],
+                    }},
+                ],
+            }
         value = self.api_map.get(path)
         if callable(value):
             return value(data, method)
@@ -61,8 +82,56 @@ class Api:
             return {}
         return value
 
+    def text(self, revision, path):
+        return (Path(__file__).resolve().parents[1] / path).read_text()
+
+    def status(self, revision, state, description):
+        self.statuses.append((revision, state, description))
+
     def dispatch(self, workflow, inputs=None):
         self.dispatched.append((workflow, inputs or {}))
+
+
+class ReleaseControlIntegrityGuard(unittest.TestCase):
+    def test_repository_ruleset_requires_no_bypass_strict_merge_only_protection(self):
+        api = Api()
+        self.assertIsNone(m.repository_ruleset_integrity(api))
+        api.api_map["rulesets/1"] = {
+            "id": 1,
+            "target": "branch",
+            "enforcement": "active",
+            "conditions": {"ref_name": {"include": ["refs/heads/" + m.APPROVED]}},
+            "bypass_actors": [{"actor_id": 1}],
+            "rules": [],
+        }
+        # The canonical Api fixture owns the normal ruleset path; direct helper below
+        # proves the production guard is fail-closed by using a minimal override.
+        class Unsafe(Api):
+            def api(self, path, data=None, method=None):
+                if path == "rulesets":
+                    return [{"id": 2, "target": "branch", "enforcement": "active"}]
+                if path == "rulesets/2":
+                    return {
+                        "conditions": {"ref_name": {"include": ["refs/heads/" + m.APPROVED]}},
+                        "bypass_actors": [{"actor_id": 1}],
+                        "rules": [],
+                    }
+                return super().api(path, data, method)
+        self.assertIn("bypass", m.repository_ruleset_integrity(Unsafe()).lower())
+
+    def test_current_control_plane_satisfies_trusted_outer_guard(self):
+        api = Api()
+        pr = {"head": {"sha": "b" * 40}}
+        names = ["scripts/release-lifecycle.py"]
+        self.assertIsNone(m.candidate_control_plane_integrity(api, pr, names))
+
+    def test_non_control_change_still_requires_repository_safety_rails_only(self):
+        api = Api()
+        pr = {"head": {"sha": "b" * 40}}
+        self.assertIsNone(m.candidate_control_plane_integrity(
+            api, pr, ["AgentPortal/wwwroot/css/legend-app-shell.css"]
+        ))
+
 
 
 class DirectAuthorization(unittest.TestCase):

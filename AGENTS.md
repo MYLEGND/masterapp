@@ -59,6 +59,12 @@ For a live LEGEND defect, prefer governed live evidence over inference from a sc
   structural reproducer to pass through `legend_verify_current_page_repair`.
 - If a write has an ambiguous outcome, reconcile exact remote identity; never blindly
   retry or overwrite it.
+- Treat validation, resume, package, admission, deployment, disposition, and release
+  workflows as one protected control plane. Preserve the known-good resume semantics:
+  compatible successful evidence is reused; only failed or dependency-invalidated work
+  reruns. A control-plane change must pass the trusted approved-branch integrity guard
+  and canonical security validation before merge; do not add a second release authority,
+  alternate resume planner, bypass status, shadow workflow, or direct deployment path.
 
 ## Security
 

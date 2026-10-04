@@ -3,27 +3,6 @@ name: LEGEND approved release security validation
 on:
   pull_request:
     branches: [legend/approved-changes]
-    paths:
-      - 'AgentPortal/**'
-      - 'ClientApp/**'
-      - 'Protect-Website/**'
-      - 'ParfaitApp/**'
-      - 'Infrastructure/**'
-      - 'Domain/**'
-      - 'SHARED/**'
-      - 'AgentPortal.Tests/**'
-      - 'MASTERAPP.sln'
-      - 'global.json'
-      - 'NuGet.config'
-      - 'Directory.Build.*'
-      - 'Directory.Packages.*'
-      - '**/*.csproj'
-      - '**/*.props'
-      - '**/*.targets'
-      - 'scripts/db.sh'
-      - 'scripts/validation-resume.py'
-      - '.github/workflows/approved-release-security-validation.yml'
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

@@ -43,6 +43,7 @@ jobs:
       contents: write
       pull-requests: write
       actions: write
+      statuses: write
     steps:
       # Source branches are never checked out or executed with this token.
       - uses: actions/checkout@v4

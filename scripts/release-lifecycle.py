@@ -6,6 +6,8 @@ protected approved branch is the sole Git release authority; immutable release
 receipts and live provenance replace the retired production-branch promotion path.
 """
 import argparse
+import ast
+import base64
 import importlib.util
 import hashlib
 import tempfile
@@ -119,6 +121,31 @@ class GitHub:
         self.api('actions/workflows/' + workflow + '/dispatches',
                  {'ref': APPROVED, 'inputs': inputs or {}})
 
+    def text(self, revision, path):
+        row = self.api(
+            'contents/' + urllib.parse.quote(path, safe='/') +
+            '?ref=' + urllib.parse.quote(revision, safe='')
+        )
+        if row.get('encoding') != 'base64' or not isinstance(row.get('content'), str):
+            raise RuntimeError('Candidate control-plane source is unavailable')
+        try:
+            return base64.b64decode(row['content'], validate=False).decode('utf-8')
+        except (ValueError, UnicodeError):
+            raise RuntimeError('Candidate control-plane source is malformed') from None
+
+    def status(self, revision, state, description):
+        if not SHA.fullmatch(revision or '') or state not in {'pending', 'success', 'failure', 'error'}:
+            raise ValueError('Malformed trusted validation status')
+        self.api(
+            'statuses/' + revision,
+            {
+                'state': state,
+                'context': 'architecture-validation',
+                'description': description[:140],
+            },
+            method='POST',
+        )
+
 
 def live_revisions():
     spec = importlib.util.spec_from_file_location('release_baseline', Path(__file__).with_name('approved-release-baseline.py'))
@@ -133,6 +160,189 @@ def ready(pr, repo, base):
         and pr['head']['repo'] and pr['head']['repo']['full_name'] == repo
         and pr['head']['ref'] not in KEEP
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
+
+
+def _assignment_strings(tree, name):
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in node.targets
+        ):
+            if isinstance(node.value, (ast.Tuple, ast.List, ast.Set)):
+                return {
+                    item.value for item in node.value.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                }
+    return set()
+
+
+def _function_source(source, tree, name):
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return ast.get_source_segment(source, node) or ''
+    return ''
+
+
+def repository_ruleset_integrity(api):
+    """The protected branch must retain the external safety rails the lifecycle assumes."""
+    rows = api.api('rulesets')
+    if not isinstance(rows, list):
+        return 'Repository ruleset inventory unavailable'
+    for row in rows:
+        if row.get('enforcement') != 'active' or row.get('target') != 'branch':
+            continue
+        ruleset_id = row.get('id')
+        if type(ruleset_id) is not int:
+            continue
+        detail = api.api(f'rulesets/{ruleset_id}')
+        refs = (detail.get('conditions') or {}).get('ref_name') or {}
+        if 'refs/heads/' + APPROVED not in (refs.get('include') or []):
+            continue
+        if detail.get('bypass_actors'):
+            return 'Protected approved branch gained a ruleset bypass actor'
+        if detail.get('current_user_can_bypass') not in {None, 'never'}:
+            return 'Protected approved branch permits ruleset bypass'
+        rules = {rule.get('type'): rule for rule in detail.get('rules') or []}
+        required_types = {'deletion', 'non_fast_forward', 'pull_request', 'required_status_checks'}
+        missing = required_types - set(rules)
+        if missing:
+            return 'Protected approved branch ruleset lost: ' + ', '.join(sorted(missing))
+        checks = (rules['required_status_checks'].get('parameters') or {})
+        contexts = {
+            row.get('context') for row in checks.get('required_status_checks') or []
+            if row.get('context')
+        }
+        if checks.get('strict_required_status_checks_policy') is not True:
+            return 'Protected approved branch no longer requires strict up-to-date checks'
+        if 'architecture-validation' not in contexts:
+            return 'Protected approved branch lost trusted architecture-validation requirement'
+        merge = rules['pull_request'].get('parameters') or {}
+        if merge.get('allowed_merge_methods') != ['merge']:
+            return 'Protected approved branch merge method drifted from canonical merge-only policy'
+        return None
+    return 'Active approved-branch protection ruleset is missing'
+
+
+def candidate_control_plane_integrity(api, pr, names):
+    """Read candidate control files as data from trusted base code; never execute them."""
+    settings = repository_ruleset_integrity(api)
+    if settings:
+        return settings
+    if not any(VALIDATION_AUTHORITY.release_control_authority_path(name) for name in names):
+        return None
+
+    head = pr['head']['sha']
+    paths = {
+        'validation': 'scripts/validation-resume.py',
+        'lifecycle': 'scripts/release-lifecycle.py',
+        'lifecycle_workflow': '.github/workflows/legend-release-lifecycle.yml',
+        'direct_workflow': '.github/workflows/all-intentional-direct-release-20260918.yml',
+        'architecture_workflow': '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'security_workflow': '.github/workflows/approved-release-security-validation.yml',
+    }
+    try:
+        source = {key: api.text(head, path) for key, path in paths.items()}
+        validation_tree = ast.parse(source['validation'])
+        lifecycle_tree = ast.parse(source['lifecycle'])
+    except (RuntimeError, SyntaxError):
+        return 'Candidate release-control authority cannot be parsed from exact head'
+
+    assignments = {}
+    for node in validation_tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
+                    assignments[target.id] = node.value.value
+    if assignments.get('TRUSTED_PR_BASE') != APPROVED:
+        return 'Candidate changed the sole approved release branch authority'
+    if assignments.get('DIRECT_RELEASE_WORKFLOW') != DIRECT:
+        return 'Candidate changed the sole approved direct-release workflow authority'
+
+    candidate_paths = _assignment_strings(validation_tree, 'LIFECYCLE_AUTHORITY_PATHS')
+    required_paths = set(VALIDATION_AUTHORITY.LIFECYCLE_AUTHORITY_PATHS)
+    if not required_paths <= candidate_paths:
+        return 'Candidate removed protected lifecycle authority paths: ' + ', '.join(sorted(required_paths - candidate_paths))
+
+    predicate = _function_source(source['validation'], validation_tree, 'release_control_authority_path')
+    if not all(token in predicate for token in (
+        'LIFECYCLE_AUTHORITY_PATHS', 'PACKAGE_AUTHORITY_PATHS', 'RELEASE_EXECUTION_CONTROL_INPUTS'
+    )):
+        return 'Candidate weakened canonical release-control authority classification'
+
+    topology = _function_source(source['validation'], validation_tree, 'required_validation_topology')
+    if not all(token in topology for token in (
+        'release_control_authority_change',
+        'release_control_authority_path',
+        'required.add(security)',
+    )):
+        return 'Candidate release-control changes no longer require canonical security validation'
+
+    candidate_validation_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_validation')
+    if not all(token in candidate_validation_source for token in (
+        'VALIDATION_AUTHORITY.required_validation_topology(names)',
+        "run.get('event') != 'pull_request'",
+        "latest[path].get('status') != 'completed'",
+        "latest[path].get('conclusion') != 'success'",
+    )):
+        return 'Candidate weakened exact-head merge validation'
+
+    guard_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_control_plane_integrity')
+    merge_source = _function_source(source['lifecycle'], lifecycle_tree, 'merge_validated')
+    if not guard_source or 'candidate_control_plane_integrity(api, pr, names)' not in merge_source:
+        return 'Candidate removed trusted control-plane integrity enforcement'
+    if merge_source.find('candidate_control_plane_integrity(api, pr, names)') > merge_source.find("pulls/{pr['number']}/merge"):
+        return 'Candidate moved control-plane integrity enforcement after merge'
+
+    lifecycle_workflow = source['lifecycle_workflow']
+    if not all(token in lifecycle_workflow for token in (
+        'pull_request_target:',
+        'ref: legend/approved-changes',
+        'contents: write',
+        'pull-requests: write',
+        'actions: write',
+        'statuses: write',
+        'python3 scripts/release-lifecycle.py integrate --pr "$PR_NUMBER"',
+    )):
+        return 'Candidate weakened trusted protected-branch lifecycle execution'
+
+    direct_workflow = source['direct_workflow']
+    for token in (
+        'cancel-in-progress: false',
+        "if: github.ref == 'refs/heads/legend/approved-changes'",
+        'Verify selected authority belongs to protected event history',
+        'Prepare complete immutable release transaction',
+        'Reconcile complete immutable release transaction',
+        'Verify every deployed target and collect all failures',
+        'Enforce complete direct deployment outcome',
+        'Retain exact approved release receipt',
+        'Reconcile terminal release resource disposition',
+        'Preserve terminal release resource disposition',
+        'release-state-receipt:',
+    ):
+        if token not in direct_workflow:
+            return 'Candidate direct-release workflow lost required invariant: ' + token
+
+    architecture = source['architecture_workflow']
+    if 'name: architecture-validation' not in architecture and 'name: candidate-architecture-validation' not in architecture:
+        return 'Candidate architecture workflow lost its canonical validation job'
+    if 'Run branch lifecycle safety contracts' not in architecture:
+        return 'Candidate architecture workflow stopped exercising lifecycle contracts'
+
+    security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
+    if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
+        return 'Candidate security validation no longer covers approved-branch pull requests'
+    if '\n    paths:' in security_trigger or '\n    paths-ignore:' in security_trigger:
+        return 'Candidate security validation can be skipped by release-control path filtering'
+    return None
+
+
+def publish_trusted_validation_status(api, revision, state, detail):
+    descriptions = {
+        'pending': 'Trusted release authority is waiting for exact-head validation',
+        'success': 'Trusted release authority and exact-head validation passed',
+        'failure': 'Trusted release authority blocked unsafe control-plane drift',
+    }
+    api.status(revision, state, descriptions[state] if not detail else detail)
 
 
 def candidate_validation(api, pr):
@@ -187,12 +397,21 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
-    pending = candidate_validation(api, pr)
-    if pending:
-        return {'state': 'VALIDATING', 'retained': pending}
-
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row.get('filename') for row in files if row.get('filename')]
+    head = pr['head']['sha']
+
+    integrity = candidate_control_plane_integrity(api, pr, names)
+    if integrity:
+        publish_trusted_validation_status(api, head, 'failure', integrity)
+        return {'state': 'VALIDATING', 'retained': integrity}
+
+    pending = candidate_validation(api, pr)
+    if pending:
+        publish_trusted_validation_status(api, head, 'pending', '')
+        return {'state': 'VALIDATING', 'retained': pending}
+
+    publish_trusted_validation_status(api, head, 'success', '')
     targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
     control_only = bool(names) and all(
         VALIDATION_AUTHORITY.release_control_only_path(name)
