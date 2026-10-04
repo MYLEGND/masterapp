@@ -642,6 +642,17 @@ def pending_automatic_releases(api, approved):
             continue
         matches = merges.get(sha, [])
         if len(matches) != 1:
+            # Closed-PR collection snapshots can lag immediately after a merge.
+            # Resolve the exact first-parent commit directly before allowing an
+            # older queued candidate to become the apparent frontier.
+            associated = api.pages('commits/' + sha + '/pulls')
+            matches = [
+                candidate for candidate in associated
+                if candidate.get('merged_at')
+                and candidate.get('merge_commit_sha') == sha
+                and candidate.get('base', {}).get('ref') == APPROVED
+            ]
+        if len(matches) != 1:
             continue
         pr = matches[0]
         files = api.pages(f"pulls/{pr['number']}/files")

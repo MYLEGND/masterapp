@@ -2518,23 +2518,33 @@ def compute_lifecycle_evidence(repository: str):
         result["reason"] = "github_token_unavailable"
         return result
     workflow_path = ".github/workflows/legend-release-lifecycle.yml"
-    for artifact in _artifact_rows(repository, result["artifact"], token):
-        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
-        if not run_id:
-            continue
-        run = api_get(repository, f"actions/runs/{run_id}", token)
-        if (
-            run.get("path") == workflow_path
-            and run.get("status") == "completed"
-            and run.get("conclusion") == "success"
-            and (run.get("head_repository") or {}).get("full_name") == repository
-        ):
-            result.update({
-                "runId": run_id,
-                "reusable": True,
-                "reason": "exact_lifecycle_authority_receipt",
-            })
-            return result
+    try:
+        artifacts = _artifact_rows(repository, result["artifact"], token)
+        for artifact in artifacts:
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id:
+                continue
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if (
+                run.get("path") == workflow_path
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+            ):
+                result.update({
+                    "runId": run_id,
+                    "reusable": True,
+                    "reason": "exact_lifecycle_authority_receipt",
+                })
+                return result
+    except Exception as exc:
+        # Evidence lookup failure must disable reuse, not erase the deterministic
+        # local lifecycle identity needed to run and retain fresh safety proof.
+        result.update({
+            "reason": "lifecycle_evidence_lookup_unavailable",
+            "plannerError": type(exc).__name__,
+        })
+        return result
     result["reason"] = "no_exact_lifecycle_authority_receipt"
     return result
 
