@@ -147,7 +147,7 @@ public sealed class AnalyticsCanonicalArchitectureTests
     public void DashboardLoadersHaveOneImplementationAndOneScriptInclude()
     {
         var sources = ProductionSources(".js").ToArray();
-        foreach (var name in new[] { "loadDeviceIntelligence", "loadMarketingPerformance", "loadGrowthEconomics" })
+        foreach (var name in new[] { "loadDeviceIntelligence", "loadMarketingPerformance", "renderGrowthEconomics" })
         {
             var owners = sources.SelectMany(s => Regex.Matches(s.Source,
                 $@"(?:function\s+{name}\s*\(|(?:const|let|var)\s+{name}\s*=)").Select(_ => s.Path)).ToArray();
