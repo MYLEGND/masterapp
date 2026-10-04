@@ -394,41 +394,11 @@ await TryWriteLeadEventAsync(
                 HttpContext,
                 _resolver,
                 _intakeRecipients,
-                ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
-        private static string? ExtractSlugFromPath(string? pathOrUrl)
-        {
-            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-            var value = pathOrUrl.Trim();
-            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            {
-                value = uri.AbsolutePath;
-            }
-
-            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            {
-                return segments[1];
-            }
-
-            return null;
-        }
-
-	        private string? ResolveExplicitAgentSlugFromRequest()
-	        {
-	            var formSlug = Request?.Form["AgentSlug"].ToString();
-	            if (!string.IsNullOrWhiteSpace(formSlug))
-	                return formSlug.Trim();
-
-	            return ExtractSlugFromPath(Request?.Path.Value)
-	                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-	        }
-
-	        private int ResolveStartStep(ModelStateDictionary modelState)
+private int ResolveStartStep(ModelStateDictionary modelState)
 	        {
 	            var postedStep = ResolvePostedStep(1);
 
