@@ -2003,95 +2003,36 @@ namespace AgentPortal.Controllers;
 
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
+        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var buckets = new List<object>();
 
-        // Load all raw events + leads
-        var scopedAgentIds = await _db.AgentTrackingProfiles
-            .Where(p => true)
-            .Select(p => p.Id)
-            .ToArrayAsync();
-
-        var allEvents = await _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => !e.IsInternal && e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
-            .ToListAsync();
-
-        var allLeads = await _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal && !l.IsDeleted && l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
-            .ToListAsync();
-
-        // Compute attributed event rows
-        var attributed = allEvents
-            .Select(e =>
+        foreach (var trafficType in new[]
+        {
+            TrafficType.PaidAds,
+            TrafficType.Organic,
+            TrafficType.Direct,
+            TrafficType.Referral,
+            TrafficType.Unknown
+        })
+        {
+            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType);
+            buckets.Add(new
             {
-                var src  = e.UtmSource?.Trim();
-                var med  = e.UtmMedium?.Trim();
-                var camp = e.UtmCampaign?.Trim();
-                var fb   = e.Fbclid?.Trim();
-                var t    = TrafficAttribution.Classify(
-                    src,
-                    med,
-                    camp,
-                    fb,
-                    referrerHost: e.ReferrerHost,
-                    metaCampaignId: e.MetaCampaignId,
-                    metaAdSetId: e.MetaAdSetId,
-                    metaAdId: e.MetaAdId,
-                    isInternal: e.IsInternal,
-                    environment: e.Environment,
-                    host: e.Host,
-                    oppref: e.Oppref);
-                return new { e.EventType, e.SessionId, t };
-            })
-            .ToList();
-
-        var eventBuckets = attributed
-            .GroupBy(r => r.t)
-            .OrderByDescending(g => g.Count())
-            .Select(g => new
-            {
-                Bucket = g.Key.ToString(),
-                Events = g.Count(),
-                Sessions = g.Where(r => r.SessionId != null).Select(r => r.SessionId!).Distinct().Count()
-            })
-            .ToList();
-
-        var leadBuckets = allLeads
-            .GroupBy(l => TrafficAttribution.Classify(
-                l.UtmSource,
-                l.UtmMedium,
-                l.UtmCampaign,
-                l.Fbclid,
-                metaCampaignId: l.MetaCampaignId,
-                metaAdSetId: l.MetaAdSetId,
-                metaAdId: l.MetaAdId,
-                isInternal: l.IsInternal,
-                environment: l.Environment,
-                host: l.Host,
-                oppref: l.Oppref))
-            .OrderByDescending(g => g.Count())
-            .Select(g => new
-            {
-                Bucket = g.Key.ToString(),
-                Leads = g.Count()
-            })
-            .ToList();
-
-        var zeroDataHints = new List<string>();
-        var paidEvents    = eventBuckets.FirstOrDefault(b => b.Bucket == "PaidAds")?.Events ?? 0;
-        var unknownEvents = eventBuckets.FirstOrDefault(b => b.Bucket == "Unknown")?.Events ?? 0;
-        if (paidEvents == 0 && unknownEvents > 0)
-            zeroDataHints.Add($"All traffic is Unknown/unattributed ({unknownEvents} events). PaidAds filter will return 0 rows. Check that utm_source/utm_medium are being sent on landing page_view events.");
-        if (paidEvents == 0 && allEvents.Count > 0)
-            zeroDataHints.Add("No PaidAds-classified events in range. If you expect paid traffic, verify UTM parameters are present on the first page_view of paid sessions.");
+                Bucket = trafficType.ToString(),
+                summary.Sessions,
+                summary.Leads
+            });
+        }
 
         return Json(new
         {
             Range = range.Label,
-            TotalEvents = allEvents.Count,
-            TotalLeads = allLeads.Count,
-            EventBucketsByDirectAttribution = eventBuckets,
-            LeadBucketsByDirectAttribution = leadBuckets,
-            ZeroDataHints = zeroDataHints,
-            Note = "Attribution shown here is direct-field only (no session fallback). Actual query results use session→visitor fallback and may differ."
+            Scope = await ResolveScopeLabelAsync(scope, team),
+            QualityMode = TrafficQualityBucketFilters.ToClientValue(range.QualityMode),
+            TotalSessions = total.Sessions,
+            TotalLeads = total.Leads,
+            Buckets = buckets,
+            Note = "Uses the same scoped attribution, session/visitor fallback and traffic-quality authority as production analytics."
         });
     }
 
