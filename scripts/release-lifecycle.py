@@ -708,6 +708,9 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
+    queued = _release_queue_guard(api, pr)
+    if queued:
+        return queued
     base_state = approved_head_state(api, pr)
     if not base_state["current"]:
         publish_trusted_validation_status(
@@ -756,6 +759,8 @@ def merge_validated(api, pr):
             'retained': 'Merge did not complete; source branch retained',
             'pr': pr['number'],
         }
+
+    _carry_release_queue(api, result['sha'], pr['number'])
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
@@ -822,9 +827,12 @@ def integrate(api, number):
 
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+    queue = claim_release_queue(api, pr)
+    if queue['state'] != 'RELEASE_QUEUE_OWNER':
+        return queue
     synced = sync_candidate_to_current_approved(api, pr)
     if synced is not None:
-        return synced
+        return {**synced, 'queueOwnerPr': pr['number']}
     return merge_validated(api, pr)
 
 
@@ -838,6 +846,40 @@ def pending_updates(api):
                     f'+refs/heads/{APPROVED}:refs/remotes/origin/{APPROVED}', check=False)
     if refreshed.returncode:
         raise RuntimeError(refreshed.stderr)
+
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    if owner is not None:
+        current = api.api(f"pulls/{owner}")
+        if current.get('state') == 'open':
+            if not ready(current, api.repo, APPROVED):
+                _release_release_queue(api, lease['approved'], owner, 'owner-no-longer-ready')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Previous queue owner is no longer ready; queue released',
+                }
+            synced = sync_candidate_to_current_approved(api, current)
+            if synced is not None:
+                return {**synced, 'queueOwnerPr': owner}
+            return merge_validated(api, current)
+        if current.get('merged_at'):
+            return {
+                'state': 'RELEASE_QUEUE_WAITING_FOR_PRODUCTION',
+                'pr': owner,
+                'retained': 'Merged queue owner retains lease until terminal production provenance',
+            }
+        _release_release_queue(api, lease['approved'], owner, 'owner-closed-without-merge')
+        promoted = promote_next_release_queue(api)
+        return promoted or {
+            'state': 'RELEASE_QUEUE_READY',
+            'retained': 'Closed queue owner released without merge',
+        }
+
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
+
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
     #
@@ -849,27 +891,9 @@ def pending_updates(api):
     retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            # The open-PR collection is only a discovery snapshot. A serialized
-            # lifecycle can wait behind another merge long enough for that PR's
-            # draft/state/association/base/head readiness to change. Re-read the
-            # exact PR before mutation; stale discovery must retain and continue,
-            # never abort reconciliation or starve a later validated candidate.
-            fresh = api.api(f"pulls/{pr['number']}")
-            if not ready(fresh, api.repo, APPROVED):
-                retained_candidates.append({
-                    'pr': pr['number'],
-                    'reason': 'PR readiness changed after discovery; retained without mutation',
-                })
-                continue
-            synced = sync_candidate_to_current_approved(api, fresh)
-            if synced is not None:
-                return synced
-            result = merge_validated(api, fresh)
-            if 'retained' not in result:
-                return result
             retained_candidates.append({
                 'pr': pr['number'],
-                'reason': result['retained'],
+                'reason': 'Ready PR is waiting for canonical release-queue admission',
             })
             continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
