@@ -433,8 +433,9 @@ class ReleaseQueueSerialization(unittest.TestCase):
 
 
 class AutomaticMergeRelease(unittest.TestCase):
+    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _):
+    def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _, __):
         api = Api()
         target = canonical_name("portal")
         pr = {"number": 77, "head": {"sha": "b" * 40}}
@@ -457,8 +458,9 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual(1, len(api.dispatched))
         self.assertEqual('77', api.dispatched[0][1]['source_pr'])
 
+    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _):
+    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _, __):
         api = Api()
         pr = {"number": 78, "head": {"sha": "e" * 40}}
         api.api_map["pulls/78/merge"] = {
@@ -479,8 +481,9 @@ class AutomaticMergeRelease(unittest.TestCase):
         )
 
 
+    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _):
+    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _, __):
         api = Api()
         pr = {"number": 323, "head": {"sha": "b" * 40}}
 
