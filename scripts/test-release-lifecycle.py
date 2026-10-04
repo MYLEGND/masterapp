@@ -159,6 +159,19 @@ class DirectAuthorization(unittest.TestCase):
         m.git("commit", "-m", "authorize release")
         return m.git("rev-parse", "HEAD").stdout.strip()
 
+    def test_legacy_approved_only_request_without_targets_means_full_inventory(self):
+        path = Path("Docs/releases/direct-release-request.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"releaseMode": "approved-only"}))
+        m.git("add", str(path))
+        m.git("commit", "-m", "legacy full-scope release")
+        sha = m.git("rev-parse", "HEAD").stdout.strip()
+
+        self.assertEqual(
+            set(m.VALIDATION_AUTHORITY.release_name_map()),
+            m.release_targets(sha),
+        )
+
     def test_request_only_authorization_is_exact(self):
         sha = self.authorize()
         self.assertTrue(m.direct_only_request(sha))
