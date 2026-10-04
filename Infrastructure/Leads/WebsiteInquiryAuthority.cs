@@ -436,6 +436,8 @@ public class WebsiteInquiryAuthority : ControllerBase
                 WebsiteFormElementId = request.SourceFormElementId,
                 WebsiteSignalBindingId = submissionBinding?.Id,
                 WebsiteSignalDeliveryMode = submissionBinding?.DeliveryMode,
+                MeasurementConsentAllowed = CanUseSubmittedMarketingIdentifiers(request),
+                MeasurementConsentState = Optional(request.MeasurementConsent, 32),
                 Source = scope.SiteKey + "_website_inquiry_saved"
             }
         });
