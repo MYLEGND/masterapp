@@ -252,6 +252,27 @@ class CanonicalHistoryTests(unittest.TestCase):
             self.assertIsNone(self.legacy_history())
         self.assertEqual(180, download.call_args.kwargs['timeout'])
 
+    def test_modern_title_binds_checkout_when_retained_log_is_unavailable(self):
+        self.legacy_fixture()
+        self.run['head_sha'] = 'd' * 40
+        self.run['display_title'] = 'LEGEND release pr=1 candidate=' + 'a' * 40 + ' authority=' + 'd' * 40
+        self.job['id'] = 123
+        self.job['steps'].insert(0, dict(name='Run actions/checkout@v4', status='completed', conclusion='success'))
+        self.legacy_artifacts = self.legacy_artifacts[:1]
+        with patch.object(self.authority.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['gh'], 180)):
+            self.assertIsNone(self.legacy_history())
+
+    def test_modern_title_fallback_rejects_authority_not_equal_to_workflow_head(self):
+        self.legacy_fixture()
+        self.run['head_sha'] = 'e' * 40
+        self.run['display_title'] = 'LEGEND release pr=1 candidate=' + 'a' * 40 + ' authority=' + 'd' * 40
+        self.job['id'] = 123
+        self.job['steps'].insert(0, dict(name='Run actions/checkout@v4', status='completed', conclusion='success'))
+        self.legacy_artifacts = self.legacy_artifacts[:1]
+        with patch.object(self.authority.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['gh'], 180)):
+            with self.assertRaisesRegex(RuntimeError, 'Historical checkout log unavailable'):
+                self.legacy_history()
+
     def test_checkout_log_rejects_conflicting_package_and_missing_head(self):
         job = dict(id=123, steps=[dict(name='Run actions/checkout@v4', conclusion='success')])
         valid = '  RELEASE_SHA: ' + 'd' * 40 + '\n  APPLICATION_RELEASE_SHA: ' + 'f' * 40 + '\n'
