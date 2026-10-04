@@ -398,6 +398,30 @@ public sealed class WebsiteInquiryIsolationTests
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
         Assert.Null(CanonicalAdvertisingEventProjection.ReadString(analytics.MetadataJson, "obref"));
+        Assert.False(CanonicalAdvertisingEventProjection.ReadBoolean(
+            analytics.MetadataJson, "measurementConsentAllowed") == true);
+        Assert.Equal("denied", CanonicalAdvertisingEventProjection.ReadString(
+            analytics.MetadataJson, "measurementConsentState"));
+    }
+
+    [Fact]
+    public async Task GrantedMeasurementConsentIsPreservedOnCanonicalBusinessInquiryConversion()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with { MeasurementConsent = "granted" },
+            CancellationToken.None));
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
+        Assert.True(CanonicalAdvertisingEventProjection.ReadBoolean(
+            analytics.MetadataJson, "measurementConsentAllowed") == true);
+        Assert.Equal("granted", CanonicalAdvertisingEventProjection.ReadString(
+            analytics.MetadataJson, "measurementConsentState"));
+        Assert.True(CanonicalAdvertisingEventProjection.CanProjectServer(analytics));
     }
 
     [Fact]
