@@ -637,10 +637,24 @@ def pending_automatic_releases(api, approved):
     for pr in api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe='')):
         if pr.get('merged_at') and pr.get('base', {}).get('ref') == APPROVED:
             merges.setdefault(pr.get('merge_commit_sha'), []).append(pr)
+    all_targets = {row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()}
     for sha in history.stdout.splitlines():
+        if covered == all_targets:
+            break  # older authorizations cannot change any target's frontier
         if not SHA.fullmatch(sha):
             continue
         matches = merges.get(sha, [])
+        if len(matches) != 1:
+            # Closed-PR collection snapshots can lag immediately after a merge.
+            # Resolve the exact first-parent commit directly before allowing an
+            # older queued candidate to become the apparent frontier.
+            associated = api.pages('commits/' + sha + '/pulls')
+            matches = [
+                candidate for candidate in associated
+                if candidate.get('merged_at')
+                and candidate.get('merge_commit_sha') == sha
+                and candidate.get('base', {}).get('ref') == APPROVED
+            ]
         if len(matches) != 1:
             continue
         pr = matches[0]
@@ -947,6 +961,44 @@ def _never_admitted(api, run):
     return True
 
 
+def _admission_nonmutating_terminal(api, run):
+    """Prove a completed admitted run never crossed into a mutable release phase.
+
+    This is intentionally stricter than workflow failure. Every attempt must show
+    either a skipped release job, or a transaction-preparation failure with every
+    downstream mutation-capable step skipped. Any durable operation intent keeps
+    the lease blocking.
+    """
+    if run.get('status') != 'completed':
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    names = {item.get('name', '') for item in artifacts}
+    if any(name.startswith('legend-release-operation-intent-') for name in names):
+        return False
+    attempts = run.get('run_attempt', 1)
+    if type(attempts) is not int or attempts < 1:
+        return False
+    workflow_path = '.github/workflows/' + DIRECT
+    revision = run.get('head_sha', '')
+    if not SHA.fullmatch(revision):
+        return False
+    original = git('show', revision + ':' + workflow_path, check=False)
+    if original.returncode or original.stdout != Path(workflow_path).read_text():
+        return False  # unknown execution generation cannot prove non-mutation
+    for attempt in range(1, attempts + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        release_jobs = [job for job in jobs if job.get('name') == 'release']
+        if len(release_jobs) != 1:
+            return False
+        release = release_jobs[0]
+        if release.get('conclusion') == 'skipped':
+            continue
+        if not VALIDATION_AUTHORITY._failed_transaction_preparation_without_writes(
+                original.stdout, release):
+            return False
+    return True
+
+
 def _admission_settled(api, run, record):
     if run.get('status') != 'completed':
         return False
@@ -998,7 +1050,7 @@ def admission_conflicts(api, candidate, *, current_run):
             # active legacy workflows always block new admission globally.
             continue
         for record in records:
-            if _admission_settled(api, run, record):
+            if _admission_settled(api, run, record) or _admission_nonmutating_terminal(api, run):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
