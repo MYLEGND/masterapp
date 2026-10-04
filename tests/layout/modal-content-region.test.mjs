@@ -387,7 +387,7 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.match(shell,/--legend-app-panel:var\(--legend-app-surface-elevated\)/);
   assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
   assert.doesNotMatch(aiCss,/--legend-ai-response/);
-  assert.match(aiCss,/background: linear-gradient\(145deg,var\(--legend-app-surface-elevated\),var\(--legend-app-surface\)\)/);
+  assert.match(aiCss,/background: linear-gradient\(145deg,#f8fbff,#eef4fb\)/);
   assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*linear-gradient\(180deg, var\(--legend-ai-navy-925\), var\(--legend-ai-ink\)\)/);
   assert.match(aiCss,/\.legend-founder-ai-transcript[\s\S]*background: #ffffff;[\s\S]*color: var\(--legend-ai-canvas-ink\);[\s\S]*border-radius: 18px/);
   assert.match(aiCss,/\.legend-founder-ai-title-row sup,[\s\S]*color: inherit;/);
