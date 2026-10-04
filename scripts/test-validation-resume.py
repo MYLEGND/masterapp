@@ -671,26 +671,33 @@ jobs:
             rows = m._trusted_historical_runs(args, "token")
         self.assertEqual([77], [row["id"] for row in rows])
 
-    def test_validation_resume_test_change_requires_architecture_only(self):
+    def test_validation_resume_test_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/test-validation-resume.py",
         ])
         self.assertEqual(
-            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
             set(topology["required"]),
         )
 
-    def test_lifecycle_only_change_requires_architecture_only(self):
+    def test_lifecycle_control_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/release-lifecycle.py",
             "scripts/test-release-lifecycle.py",
         ])
         self.assertEqual(
-            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
             set(topology["required"]),
         )
+        self.assertTrue(topology["releaseControlAuthorityChange"])
 
-    def test_release_package_change_requires_step5_but_not_security(self):
+    def test_release_package_change_requires_step5_and_security(self):
         topology = m.required_validation_topology([
             "scripts/release-package.py",
         ])
@@ -698,16 +705,20 @@ jobs:
             {
                 ".github/workflows/masterapp-platform-architecture-validation.yml",
                 ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
             },
             set(topology["required"]),
         )
 
-    def test_deploy_control_test_change_requires_architecture_only(self):
+    def test_deploy_control_test_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/test-deploy-approved-app.py",
         ])
         self.assertEqual(
-            {".github/workflows/masterapp-platform-architecture-validation.yml"},
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
             set(topology["required"]),
         )
 
