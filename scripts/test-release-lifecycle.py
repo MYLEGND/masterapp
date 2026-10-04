@@ -78,9 +78,15 @@ class Api:
         value = self.api_map.get(path)
         if callable(value):
             return value(data, method)
-        if value is None:
-            return {}
-        return value
+        if value is not None:
+            return value
+        if path.startswith("compare/") and "..." in path:
+            approved, _candidate = path[len("compare/"):].split("...", 1)
+            return {
+                "status": "ahead",
+                "merge_base_commit": {"sha": approved},
+            }
+        return {}
 
     def text(self, revision, path):
         return (Path(__file__).resolve().parents[1] / path).read_text()
@@ -397,8 +403,14 @@ class PendingUpdateFairness(unittest.TestCase):
         api = Api()
         older = {"number": 10}
         newer = {"number": 11}
-        fresh_older = {"number": 10}
-        fresh_newer = {"number": 11}
+        fresh_older = {
+            "number": 10,
+            "head": {"sha": "a" * 40, "ref": "older", "repo": {"full_name": api.repo}},
+        }
+        fresh_newer = {
+            "number": 11,
+            "head": {"sha": "b" * 40, "ref": "newer", "repo": {"full_name": api.repo}},
+        }
         api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [newer, older]
         api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
         api.api_map["pulls/10"] = fresh_older
