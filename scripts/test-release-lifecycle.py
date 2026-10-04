@@ -706,7 +706,25 @@ class AutomaticReleaseRecovery(unittest.TestCase):
 
 class DurableCandidateQueue(unittest.TestCase):
     closed_path = "pulls?state=closed&base=legend%2Fapproved-changes"
-    runs_path = "actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"
+    runs_path = "actions/runs?branch=legend%2Fapproved-changes"
+
+    def test_direct_release_history_uses_repository_run_inventory_and_filters_canonical_workflow(self):
+        api = Api()
+        api.pages_map[self.runs_path] = [
+            {"id": 1, "head_branch": m.APPROVED,
+             "path": ".github/workflows/" + m.DIRECT},
+            {"id": 2, "head_branch": m.APPROVED,
+             "path": ".github/workflows/other.yml"},
+            {"id": 3, "head_branch": "other",
+             "path": ".github/workflows/" + m.DIRECT},
+        ]
+        with patch.object(api, "pages", wraps=api.pages) as pages:
+            runs = m.direct_release_runs(api)
+
+        self.assertEqual([1], [row["id"] for row in runs])
+        requested = [call.args[0] for call in pages.call_args_list]
+        self.assertIn(self.runs_path, requested)
+        self.assertFalse(any(path.startswith("actions/workflows/") for path in requested))
 
     def setUp(self):
         self.api = Api()
@@ -1433,7 +1451,7 @@ class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "direct_only_request", return_value=True)
     def test_failed_exact_release_is_not_auto_replayed(self, _, __):
         api = Api()
-        api.pages_map["actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"] = [{
+        api.pages_map[DurableCandidateQueue.runs_path] = [{
             "id": 8,
             "head_sha": "a" * 40,
             "status": "completed",

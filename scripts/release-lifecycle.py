@@ -1284,8 +1284,15 @@ def pending_automatic_releases(api, approved):
 
 
 def direct_release_runs(api):
+    """Read canonical direct-release history from the repository run inventory.
+
+    The workflow-specific runs endpoint returns HTTP 403 to the trusted lifecycle
+    GITHUB_TOKEN in this repository. The repository-wide run inventory is the
+    same Actions authority and is already required elsewhere by the lifecycle;
+    filter it locally to the one canonical workflow and approved branch.
+    """
     return [row for row in api.pages(
-        'actions/workflows/' + DIRECT + '/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
+        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
         'workflow_runs')
         if row.get('head_branch') == APPROVED
         and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT]
