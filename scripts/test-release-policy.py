@@ -532,7 +532,11 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
                 raise AssertionError(path)
 
         pending = self.lifecycle.candidate_validation(Api(), pr)
-        self.assertEqual("Awaiting successful exact-head validation: " + step5, pending)
+        security = ".github/workflows/approved-release-security-validation.yml"
+        self.assertEqual(
+            "Awaiting successful exact-head validation: " + security + ", " + step5,
+            pending,
+        )
 
     def test_direct_release_authorization_rejects_extra_changed_files(self):
         path = 'Docs/releases/direct-release-request.json'
