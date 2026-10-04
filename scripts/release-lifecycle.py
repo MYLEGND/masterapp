@@ -1284,11 +1284,22 @@ def pending_automatic_releases(api, approved):
 
 
 def direct_release_runs(api):
-    return [row for row in api.pages(
-        'actions/workflows/' + DIRECT + '/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
-        'workflow_runs')
+    """Read canonical direct-release history from the repository-wide Actions feed.
+
+    The lifecycle token can be forbidden from the workflow-specific run-list
+    endpoint even though it has repository Actions read/write authority. The
+    repository-wide feed carries the same run identities and is filtered here
+    to the sole canonical direct-release workflow and approved branch.
+    """
+    rows = api.pages(
+        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
+        'workflow_runs',
+    )
+    return [
+        row for row in rows
         if row.get('head_branch') == APPROVED
-        and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT]
+        and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT
+    ]
 
 
 def release_dispatch_identity(pr_number, revision, execution_sha):
