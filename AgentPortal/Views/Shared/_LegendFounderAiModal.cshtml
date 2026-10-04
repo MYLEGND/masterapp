@@ -127,6 +127,18 @@
                         Check or retry the same request
                     </button>
 
+                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-governed-action-section">
+                        <div class="legend-founder-ai-sidebar-heading">
+                            <span class="legend-founder-ai-sidebar-label">Governed action</span>
+                        </div>
+                        <label class="legend-founder-ai-mutation-confirmation"
+                               for="legendFounderAiFounderCommandConfirmed">
+                            <input type="checkbox"
+                                   id="legendFounderAiFounderCommandConfirmed" />
+                            <span>Authorize only the bounded governed action described in this request. Software release approval remains separate.</span>
+                        </label>
+                    </section>
+
                     <section class="legend-founder-ai-sidebar-section legend-founder-ai-conversations-section">
                         <div class="legend-founder-ai-sidebar-heading">
                             <span class="legend-founder-ai-sidebar-label">
@@ -264,13 +276,6 @@
                             </div>
 
                             <div class="legend-founder-ai-composer-meta">
-                                <label class="legend-founder-ai-mutation-confirmation"
-                                       for="legendFounderAiFounderCommandConfirmed">
-                                    <input type="checkbox"
-                                           id="legendFounderAiFounderCommandConfirmed" />
-                                    <span>I explicitly authorize only the bounded governed action described for this request. A software release still requires a separate confirmation for its exact pull request and SHA.</span>
-                                </label>
-
                                 <div class="legend-founder-ai-composer-tools">
                                     <span>Founder-only</span>
                                     <span>◆</span>
