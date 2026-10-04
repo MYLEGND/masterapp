@@ -1462,7 +1462,7 @@ class ReconcileSafety(unittest.TestCase):
     @patch.object(m, "direct_only_request", return_value=True)
     def test_failed_exact_release_is_not_auto_replayed(self, _, __):
         api = Api()
-        api.pages_map["actions/workflows/" + m.DIRECT + "/runs?branch=legend%2Fapproved-changes"] = [{
+        api.pages_map["actions/runs?branch=legend%2Fapproved-changes"] = [{
             "id": 8,
             "head_sha": "a" * 40,
             "status": "completed",
