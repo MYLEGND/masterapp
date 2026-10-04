@@ -217,7 +217,13 @@ public sealed class BusinessAnalyticsCompletionTests
             Assert.Contains("WebsiteLeadOwnerAuthority.ResolveAsync(", text, StringComparison.Ordinal);
             Assert.Contains("WebsiteLeadNotificationAuthority.DeliverAsync(", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveBySlugAsync(slug", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ResolveExplicitAgentSlugFromRequest", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ExtractSlugFromPath", text, StringComparison.Ordinal);
         }
+
+        var ownerAuthority = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadOwnerAuthority.cs"));
+        Assert.Contains("ProtectWebsiteOwnerResolver.ResolveAsync(", ownerAuthority, StringComparison.Ordinal);
+        Assert.DoesNotContain("ResolveBySlugAsync(", ownerAuthority, StringComparison.Ordinal);
 
         var risk = File.ReadAllText(Path.Combine(root, "Protect-Website", "Controllers", "RiskAssessmentController.cs"));
         Assert.Contains("WebsiteLeadOwnerAuthority.ResolveAsync(", risk, StringComparison.Ordinal);
