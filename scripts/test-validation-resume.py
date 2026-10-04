@@ -60,6 +60,113 @@ class ValidationResumePlannerTests(unittest.TestCase):
             self.assertNotIn("secret-fixture", content)
             self.assertNotIn("per_page", content)
 
+    def test_rate_limited_plan_runs_every_unproven_gate_fresh(self):
+        error = m.EvidenceLookupUnavailable(
+            "rate limited", status=403, endpoint="actions/workflows/example/runs"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(
+                output=str(Path(directory) / "plan.json"),
+                workflow="approved-release-security-validation.yml",
+                repository="owner/repo",
+                current_sha="a" * 40,
+                current_run_id=4,
+                run_attempt=1,
+                head_branch="repair",
+                event="pull_request",
+            )
+            with patch.object(m, "prior_evidence", side_effect=error):
+                m.cmd_plan(args)
+            plan = m.json.loads(Path(args.output).read_text())
+        self.assertEqual("evidence_unavailable_fresh_validation", plan["evidenceSource"])
+        self.assertEqual(403, plan["evidenceFallback"]["httpStatus"])
+        self.assertTrue(plan["gates"])
+        self.assertTrue(all(row["run"] for row in plan["gates"].values()))
+        self.assertTrue(all(
+            row["reason"] == "no_prior_success_evidence"
+            for row in plan["gates"].values()
+        ))
+
+    def test_rate_limited_step5_decision_falls_back_to_full_validation(self):
+        error = m.EvidenceLookupUnavailable(
+            "rate limited", status=403, endpoint="actions/workflows/step5/runs"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(
+                output=str(Path(directory) / "decision.json"),
+                repository="owner/repo",
+                current_sha="a" * 40,
+                base_sha="b" * 40,
+                current_run_id=4,
+                head_branch="repair",
+            )
+            with patch.object(m, "compute_step5_decision", side_effect=error):
+                m.cmd_step5_decision(args)
+            decision = m.json.loads(Path(args.output).read_text())
+        self.assertEqual("full", decision["mode"])
+        self.assertEqual(
+            "historical_evidence_unavailable_run_full_step5",
+            decision["reason"],
+        )
+        self.assertEqual(403, decision["evidenceFallback"]["httpStatus"])
+
+    def test_rate_limited_step5_baseline_runs_fresh_baseline(self):
+        error = m.EvidenceLookupUnavailable(
+            "rate limited", status=403, endpoint="actions/artifacts"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(
+                output=str(Path(directory) / "baseline.json"),
+                repository="owner/repo",
+                base_sha="b" * 40,
+            )
+            with patch.object(m, "compute_step5_baseline_evidence", side_effect=error):
+                m.cmd_step5_baseline(args)
+            result = m.json.loads(Path(args.output).read_text())
+        self.assertFalse(result["reusable"])
+        self.assertEqual(
+            "historical_evidence_unavailable_run_fresh_baseline",
+            result["reason"],
+        )
+        self.assertEqual(403, result["evidenceFallback"]["httpStatus"])
+
+    def test_rate_limited_migration_probe_plan_builds_fresh_instead_of_failing(self):
+        probe_spec = importlib.util.spec_from_file_location(
+            "migration_probe_package",
+            ROOT / "scripts" / "migration-probe-package.py",
+        )
+        probe = importlib.util.module_from_spec(probe_spec)
+        probe_spec.loader.exec_module(probe)
+        identity = {
+            "artifact": "legend-migration-probe-" + "d" * 64,
+            "identity": "d" * 64,
+        }
+        error = probe.AUTHORITY.EvidenceLookupUnavailable(
+            "rate limited", status=403, endpoint="actions/workflows/example/runs"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "outputs"
+            args = [
+                "migration-probe-package.py", "plan",
+                "--tool-revision", "a" * 40,
+                "--application-revision", "a" * 40,
+                "--directory", str(Path(directory) / "probe"),
+                "--output", str(output),
+            ]
+            with patch.object(probe.AUTHORITY, "migration_probe_identity", return_value=identity), \
+                 patch.object(probe.AUTHORITY, "migration_probe_evidence", side_effect=error), \
+                 patch.dict(probe.os.environ, {"GITHUB_REPOSITORY": "owner/repo"}), \
+                 patch("sys.argv", args):
+                probe.main()
+            values = dict(
+                line.split("=", 1)
+                for line in output.read_text().splitlines()
+                if "=" in line
+            )
+        self.assertEqual("true", values["needed"])
+        self.assertEqual(identity["artifact"], values["artifact"])
+        self.assertEqual(identity["identity"], values["identity"])
+
     def test_candidate_artifact_transport_failure_is_not_missing_evidence(self):
         run = {"id": 7, "head_sha": "a" * 40}
         with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
