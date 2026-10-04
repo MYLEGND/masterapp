@@ -49,6 +49,10 @@ APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
 DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
 PACKAGE_VALIDATION = VALIDATION_AUTHORITY.PACKAGE_VALIDATION_WORKFLOW
 KEEP = {APPROVED}
+RELEASE_QUEUE_CONTEXT = 'legend-release-queue'
+RELEASE_QUEUE_REQUEST_CONTEXT = 'legend-release-queue-request'
+RELEASE_QUEUE_OWNER = re.compile(r'^owner-pr=([0-9]+) validation-to-production$')
+RELEASE_QUEUE_REQUEST = re.compile(r'^requested-pr=([0-9]+)$')
 
 
 def git(*args, check=True):
@@ -133,18 +137,23 @@ class GitHub:
         except (ValueError, UnicodeError):
             raise RuntimeError('Candidate control-plane source is malformed') from None
 
-    def status(self, revision, state, description):
-        if not SHA.fullmatch(revision or '') or state not in {'pending', 'success', 'failure', 'error'}:
+    def context_status(self, revision, context, state, description):
+        if (not SHA.fullmatch(revision or '')
+            or not isinstance(context, str) or not context
+            or state not in {'pending', 'success', 'failure', 'error'}):
             raise ValueError('Malformed trusted validation status')
         self.api(
             'statuses/' + revision,
             {
                 'state': state,
-                'context': 'architecture-validation',
+                'context': context,
                 'description': description[:140],
             },
             method='POST',
         )
+
+    def status(self, revision, state, description):
+        self.context_status(revision, 'architecture-validation', state, description)
 
 
 def live_revisions():
@@ -160,6 +169,277 @@ def ready(pr, repo, base):
         and pr['head']['repo'] and pr['head']['repo']['full_name'] == repo
         and pr['head']['ref'] not in KEEP
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
+
+
+
+def approved_head_state(api, pr):
+    """Return whether a PR head already contains the exact current approved head."""
+    approved = api.ref(APPROVED)
+    head = (pr.get("head") or {}).get("sha")
+    if not SHA.fullmatch(head or ""):
+        raise RuntimeError("Malformed candidate revision")
+    if head == approved:
+        return {
+            "current": True,
+            "approved": approved,
+            "candidate": head,
+            "mergeBase": approved,
+            "status": "identical",
+        }
+    compare = api.api(
+        "compare/" + urllib.parse.quote(approved, safe="") + "..." +
+        urllib.parse.quote(head, safe="")
+    )
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    status = compare.get("status")
+    return {
+        "current": merge_base == approved and status in {"ahead", "identical"},
+        "approved": approved,
+        "candidate": head,
+        "mergeBase": merge_base,
+        "status": status,
+    }
+
+
+def sync_candidate_to_current_approved(api, pr):
+    """Fast-forward a trusted same-repo candidate by merging approved into it.
+
+    The operation is additive only: no reset, rebase, force-push, or source
+    rewrite. A new PR head causes normal exact-head validation to restart.
+    """
+    state = approved_head_state(api, pr)
+    if state["current"]:
+        return None
+    if not ready(pr, api.repo, APPROVED):
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate is stale but is not eligible for trusted automatic base sync",
+            "pr": pr.get("number"),
+            **state,
+        }
+    try:
+        result = api.api(
+            "merges",
+            {
+                "base": pr["head"]["ref"],
+                "head": state["approved"],
+                "commit_message": (
+                    f"Sync current {APPROVED} into PR #{pr['number']} before validation"
+                ),
+            },
+            method="POST",
+        )
+    except RuntimeError as exc:
+        if any(f"HTTP {code}" in str(exc) for code in (409, 422)):
+            return {
+                "state": "BASE_SYNC_REQUIRED",
+                "retained": "Current approved head could not be merged cleanly into candidate",
+                "pr": pr["number"],
+                **state,
+            }
+        raise
+    fresh = api.api(f"pulls/{pr['number']}")
+    synced = (fresh.get("head") or {}).get("sha")
+    if not SHA.fullmatch(synced or ""):
+        raise RuntimeError("Approved-head synchronization did not produce a candidate revision")
+    return {
+        "state": "BASE_SYNCED",
+        "pr": pr["number"],
+        "previousHead": state["candidate"],
+        "approvedHead": state["approved"],
+        "head": synced,
+        "validation": "new synchronize event must validate the synced exact head",
+    }
+
+
+
+def _latest_commit_status(api, revision, context):
+    payload = api.api('commits/' + revision + '/status')
+    rows = payload.get('statuses') or []
+    matches = [row for row in rows if row.get('context') == context]
+    if not matches:
+        return None
+    return max(matches, key=lambda row: (
+        row.get('updated_at') or row.get('created_at') or '',
+        int(row.get('id') or 0),
+    ))
+
+
+def release_queue_lease(api):
+    approved = api.ref(APPROVED)
+    status = _latest_commit_status(api, approved, RELEASE_QUEUE_CONTEXT)
+    if not status or status.get('state') != 'pending':
+        return {'approved': approved, 'ownerPr': None, 'status': status}
+    match = RELEASE_QUEUE_OWNER.fullmatch(status.get('description') or '')
+    if match is None:
+        raise RuntimeError('Release queue lease on approved head is malformed')
+    return {'approved': approved, 'ownerPr': int(match.group(1)), 'status': status}
+
+
+def _request_release_queue(api, pr):
+    head = pr.get('head', {}).get('sha')
+    if not SHA.fullmatch(head or ''):
+        raise RuntimeError('Release queue request has malformed candidate head')
+    api.context_status(
+        head,
+        RELEASE_QUEUE_REQUEST_CONTEXT,
+        'success',
+        f"requested-pr={pr['number']}",
+    )
+
+
+def claim_release_queue(api, pr):
+    """Acquire one validation-to-production lease; every later PR stays queued."""
+    _request_release_queue(api, pr)
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    if owner is not None:
+        if owner == pr['number']:
+            return {
+                'state': 'RELEASE_QUEUE_OWNER',
+                'pr': pr['number'],
+                'approved': lease['approved'],
+            }
+        return {
+            'state': 'RELEASE_QUEUED',
+            'retained': f"Queued behind active release PR #{owner}",
+            'pr': pr['number'],
+            'ownerPr': owner,
+        }
+
+    active = [row for row in direct_release_runs(api) if row.get('status') != 'completed']
+    if active:
+        return {
+            'state': 'RELEASE_QUEUED',
+            'retained': 'Queued until the active direct release reaches terminal provenance',
+            'pr': pr['number'],
+            'blockingRuns': [row['id'] for row in active],
+        }
+
+    api.context_status(
+        lease['approved'],
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr['number']} validation-to-production",
+    )
+    return {
+        'state': 'RELEASE_QUEUE_OWNER',
+        'pr': pr['number'],
+        'approved': lease['approved'],
+    }
+
+
+def _requested_release_queue(api):
+    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    queued = []
+    for pr in pulls:
+        if not ready(pr, api.repo, APPROVED):
+            continue
+        head = pr.get('head', {}).get('sha')
+        if not SHA.fullmatch(head or ''):
+            continue
+        status = _latest_commit_status(api, head, RELEASE_QUEUE_REQUEST_CONTEXT)
+        match = RELEASE_QUEUE_REQUEST.fullmatch((status or {}).get('description') or '')
+        if ((status or {}).get('state') == 'success'
+            and match is not None
+            and int(match.group(1)) == pr['number']):
+            queued.append(pr)
+    return sorted(queued, key=lambda row: row['number'])
+
+
+def _rerun_required_validations(api, pr):
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in files if row.get('filename')]
+    required = set(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
+    runs = api.pages('actions/runs?head_sha=' + pr['head']['sha'], 'workflow_runs')
+    latest = {}
+    for run in sorted(
+        runs,
+        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+        reverse=True,
+    ):
+        path = run.get('path', '').split('@')[0]
+        if (run.get('head_sha') == pr['head']['sha']
+            and run.get('event') == 'pull_request'
+            and path in required):
+            latest.setdefault(path, run)
+    rerun = []
+    missing = []
+    for path in sorted(required):
+        run = latest.get(path)
+        if run is None:
+            missing.append(path)
+            continue
+        if run.get('status') == 'completed' and run.get('conclusion') != 'success':
+            api.api(f"actions/runs/{run['id']}/rerun", {}, method='POST')
+            rerun.append(run['id'])
+    return {'rerun': rerun, 'missing': missing}
+
+
+def promote_next_release_queue(api):
+    lease = release_queue_lease(api)
+    if lease['ownerPr'] is not None:
+        return None
+    if any(row.get('status') != 'completed' for row in direct_release_runs(api)):
+        return {'state': 'RELEASE_QUEUE_WAITING', 'retained': 'Active direct release still owns publication'}
+    candidates = _requested_release_queue(api)
+    if not candidates:
+        return None
+    pr = api.api(f"pulls/{candidates[0]['number']}")
+    if not ready(pr, api.repo, APPROVED):
+        return None
+    approved = api.ref(APPROVED)
+    api.context_status(
+        approved,
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr['number']} validation-to-production",
+    )
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return {**synced, 'queueOwnerPr': pr['number']}
+    wake = _rerun_required_validations(api, pr)
+    return {
+        'state': 'RELEASE_QUEUE_PROMOTED',
+        'pr': pr['number'],
+        'head': pr['head']['sha'],
+        'rerun': wake['rerun'],
+        'missingValidationRuns': wake['missing'],
+    }
+
+
+def _release_queue_guard(api, pr):
+    lease = release_queue_lease(api)
+    if lease['ownerPr'] != pr['number']:
+        return {
+            'state': 'RELEASE_QUEUED',
+            'retained': (
+                f"Queued behind active release PR #{lease['ownerPr']}"
+                if lease['ownerPr'] is not None
+                else 'Candidate has not acquired the validation-to-production release lease'
+            ),
+            'pr': pr['number'],
+            'ownerPr': lease['ownerPr'],
+        }
+    return None
+
+
+def _carry_release_queue(api, revision, pr_number):
+    api.context_status(
+        revision,
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr_number} validation-to-production",
+    )
+
+
+def _release_release_queue(api, revision, pr_number, reason):
+    api.context_status(
+        revision,
+        RELEASE_QUEUE_CONTEXT,
+        'success',
+        f"released-pr={pr_number} {reason}"[:140],
+    )
 
 
 def _assignment_strings(tree, name):
@@ -238,6 +518,9 @@ def candidate_control_plane_integrity(api, pr, names):
         'lifecycle_workflow': '.github/workflows/legend-release-lifecycle.yml',
         'direct_workflow': '.github/workflows/all-intentional-direct-release-20260918.yml',
         'architecture_workflow': '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'step5_workflow': '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
+        'step6_workflow': '.github/workflows/step6-openai-ads-execution-validation.yml',
+        'step78_workflow': '.github/workflows/steps7-8-governed-advertising-validation.yml',
         'security_workflow': '.github/workflows/approved-release-security-validation.yml',
     }
     try:
@@ -287,11 +570,22 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened exact-head merge validation'
 
     guard_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_control_plane_integrity')
+    sync_source = _function_source(source['lifecycle'], lifecycle_tree, 'sync_candidate_to_current_approved')
     merge_source = _function_source(source['lifecycle'], lifecycle_tree, 'merge_validated')
     if not guard_source or 'candidate_control_plane_integrity(api, pr, names)' not in merge_source:
         return 'Candidate removed trusted control-plane integrity enforcement'
     if merge_source.find('candidate_control_plane_integrity(api, pr, names)') > merge_source.find("pulls/{pr['number']}/merge"):
         return 'Candidate moved control-plane integrity enforcement after merge'
+    if not sync_source or not all(token in sync_source for token in (
+        'approved_head_state(api, pr)',
+        '"merges"',
+        '"base": pr["head"]["ref"]',
+        '"head": state["approved"]',
+        '"state": "BASE_SYNCED"',
+    )):
+        return 'Candidate weakened automatic current-approved-head synchronization'
+    if 'base_state = approved_head_state(api, pr)' not in merge_source:
+        return 'Candidate removed final approved-head freshness guard before merge'
 
     lifecycle_workflow = source['lifecycle_workflow']
     if not all(token in lifecycle_workflow for token in (
@@ -327,6 +621,26 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate architecture workflow lost its canonical validation job'
     if 'Run branch lifecycle safety contracts' not in architecture:
         return 'Candidate architecture workflow stopped exercising lifecycle contracts'
+
+    validation_workflows = {
+        'architecture': architecture,
+        'step5': source['step5_workflow'],
+        'step6': source['step6_workflow'],
+        'step78': source['step78_workflow'],
+        'security': source['security_workflow'],
+    }
+    for label, workflow in validation_workflows.items():
+        if (
+            'approved-head-preflight:' not in workflow
+            or 'Verify candidate contains current approved head' not in workflow
+            or 'ref: ${{ github.event.pull_request.head.sha || github.sha }}' not in workflow
+            or 'persist-credentials: false' not in workflow
+            or 'approved-head-preflight \\' not in workflow
+            or 'needs: approved-head-preflight' not in workflow
+        ):
+            return f'Candidate {label} validator lost canonical approved-head preflight'
+    if architecture.count('needs: approved-head-preflight') < 3:
+        return 'Candidate architecture validator allows package/probe work before approved-head preflight'
 
     security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
     if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
@@ -397,6 +711,22 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
+    queued = _release_queue_guard(api, pr)
+    if queued:
+        return queued
+    base_state = approved_head_state(api, pr)
+    if not base_state["current"]:
+        publish_trusted_validation_status(
+            api, pr["head"]["sha"], "pending",
+            "Candidate must contain the current approved head before validation can authorize merge",
+        )
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate does not contain current approved head",
+            "pr": pr["number"],
+            **base_state,
+        }
+
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row.get('filename') for row in files if row.get('filename')]
     head = pr['head']['sha']
@@ -432,6 +762,8 @@ def merge_validated(api, pr):
             'retained': 'Merge did not complete; source branch retained',
             'pr': pr['number'],
         }
+
+    _carry_release_queue(api, result['sha'], pr['number'])
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
@@ -498,6 +830,12 @@ def integrate(api, number):
 
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+    queue = claim_release_queue(api, pr)
+    if queue['state'] != 'RELEASE_QUEUE_OWNER':
+        return queue
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return {**synced, 'queueOwnerPr': pr['number']}
     return merge_validated(api, pr)
 
 
@@ -511,6 +849,40 @@ def pending_updates(api):
                     f'+refs/heads/{APPROVED}:refs/remotes/origin/{APPROVED}', check=False)
     if refreshed.returncode:
         raise RuntimeError(refreshed.stderr)
+
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    if owner is not None:
+        current = api.api(f"pulls/{owner}")
+        if current.get('state') == 'open':
+            if not ready(current, api.repo, APPROVED):
+                _release_release_queue(api, lease['approved'], owner, 'owner-no-longer-ready')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Previous queue owner is no longer ready; queue released',
+                }
+            synced = sync_candidate_to_current_approved(api, current)
+            if synced is not None:
+                return {**synced, 'queueOwnerPr': owner}
+            return merge_validated(api, current)
+        if current.get('merged_at'):
+            return {
+                'state': 'RELEASE_QUEUE_WAITING_FOR_PRODUCTION',
+                'pr': owner,
+                'retained': 'Merged queue owner retains lease until terminal production provenance',
+            }
+        _release_release_queue(api, lease['approved'], owner, 'owner-closed-without-merge')
+        promoted = promote_next_release_queue(api)
+        return promoted or {
+            'state': 'RELEASE_QUEUE_READY',
+            'retained': 'Closed queue owner released without merge',
+        }
+
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
+
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
     #
@@ -522,24 +894,9 @@ def pending_updates(api):
     retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            # The open-PR collection is only a discovery snapshot. A serialized
-            # lifecycle can wait behind another merge long enough for that PR's
-            # draft/state/association/base/head readiness to change. Re-read the
-            # exact PR before mutation; stale discovery must retain and continue,
-            # never abort reconciliation or starve a later validated candidate.
-            fresh = api.api(f"pulls/{pr['number']}")
-            if not ready(fresh, api.repo, APPROVED):
-                retained_candidates.append({
-                    'pr': pr['number'],
-                    'reason': 'PR readiness changed after discovery; retained without mutation',
-                })
-                continue
-            result = merge_validated(api, fresh)
-            if 'retained' not in result:
-                return result
             retained_candidates.append({
                 'pr': pr['number'],
-                'reason': result['retained'],
+                'reason': 'Ready PR is waiting for canonical release-queue admission',
             })
             continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
@@ -940,6 +1297,14 @@ def release_dispatch_identity(pr_number, revision, execution_sha):
     return f"LEGEND release pr={int(pr_number)} candidate={revision} authority={execution_sha}"
 
 
+def release_run_source_pr(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=([0-9]+) candidate=[a-f0-9]{40} authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return int(match.group(1)) if match else None
+
+
 def automatic_release_admission(pr, approved, runs):
     """Single fail-closed admission predicate; no independent workflow gate map."""
     active = [row for row in runs if row.get('status') != 'completed']
@@ -1095,37 +1460,82 @@ def release_execution_state(api, run):
 
 
 def reconcile(api, trigger=None):
-    """Wake the durable queue on every completion, including failed siblings.
-
-    A failed run is evidence about that candidate, never a veto of all other
-    approved work. Dispatch admission still refuses replay of that exact attempt.
-    """
+    """Wake one serialized validation-to-production queue after terminal events."""
     if staging_only():
         return {'release': 'disabled while validation-only staging hold is active'}
+
     approved = api.ref(APPROVED)
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    runs = direct_release_runs(api)
+
+    if owner is not None:
+        successful = [
+            row for row in runs
+            if release_run_source_pr(row) == owner and successful_release(api, row)
+        ]
+        if successful:
+            _release_release_queue(api, approved, owner, 'terminal-live-provenance')
+            promoted = promote_next_release_queue(api)
+            return promoted or {
+                'state': 'COMPLETE',
+                'pr': owner,
+                'release': 'terminal live provenance released validation-to-production lease',
+            }
+
+        owner_pr = api.api(f"pulls/{owner}")
+        if owner_pr.get('merged_at'):
+            files = api.pages(f"pulls/{owner}/files")
+            names = [row.get('filename') for row in files if row.get('filename')]
+            targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+            control_only = bool(names) and all(
+                VALIDATION_AUTHORITY.release_control_only_path(name)
+                for name in names
+            )
+            if not targets or control_only:
+                _release_release_queue(api, approved, owner, 'no-production-publication-required')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'COMPLETE',
+                    'pr': owner,
+                    'release': 'control-only/no-target merge released validation-to-production lease',
+                }
+
     automatic = dispatch_pending_automatic_release(api, approved)
     if automatic:
         return automatic
-    runs = direct_release_runs(api)
+
     if any(row.get('status') != 'completed' for row in runs):
-        return {'release': 'already queued or running'}
-    # Legacy explicit authorization remains a separately authorized request shape,
-    # not another scheduler. Preserve failed attempts, without blocking the
-    # automatic queue above or replaying an ambiguous historical upload.
+        return {
+            'state': 'RELEASE_QUEUE_WAITING',
+            'release': 'active direct release retains validation-to-production lease',
+        }
+
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
         path = run.get('path', '').split('@')[0]
         if path in {'.github/workflows/' + DIRECT, '.github/workflows/' + PACKAGE_VALIDATION}:
             if run.get('conclusion') != 'success':
-                return {'retained': 'Triggered release or package attempt needs reconciliation or repair; no automatic replay'}
+                return {
+                    'state': 'FAILED_NEEDS_REPAIR',
+                    'retained': 'Triggered release or package attempt needs reconciliation or repair; queue lease retained',
+                }
+
     current = [row for row in runs if row.get('head_sha') == approved]
     if current:
         latest = max(current, key=lambda row: (row.get('id', 0), row.get('run_attempt', 1)))
-        return {'state': release_execution_state(api, latest),
-                'retained': 'Exact approved release already attempted; correction or reconciliation required'}
+        return {
+            'state': release_execution_state(api, latest),
+            'retained': 'Exact approved release already attempted; queue lease retained until terminal proof',
+        }
+
     historical = dispatch_pending_legacy_release(api, approved)
     if historical:
         return historical
+
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
     return {'state': 'READY', 'release': 'no application publication required for exact approved head'}
 
 
@@ -1190,10 +1600,6 @@ def _admission_records(api, run):
             or pr.get('merge_commit_sha') != record.get('sourceMergeSha')
             or not ancestor(record['sourceMergeSha'], record['executionAuthority'])):
             raise RuntimeError('Admission source no longer binds its validated approved PR')
-        # Reused immutable bytes retain their producer revision and identity.
-        # Recompute compatibility of the actual producing inputs, not an identity
-        # relabeled with the newer authorized PR revision. The exact retained
-        # producer/artifact binding is independently verified below.
         if not VALIDATION_AUTHORITY.package_inputs_compatible(
                 record['applicationRevision'], record['authorizedSourceRevision']):
             raise RuntimeError('Admission authorized source is not equivalent to its immutable package inputs')
@@ -1205,12 +1611,10 @@ def _admission_records(api, run):
         if record['authorizationMode'] == 'explicit' and not direct_only_request(record['executionAuthority']):
             raise RuntimeError('Admission lacks exact explicit release authorization')
 
-        # selectedTargets/resources are immutable admission output from this exact
-        # trusted approved-branch workflow generation. Re-deriving them through
-        # today's path classifier would reinterpret historical authorization after
-        # policy changes and can deadlock unrelated future releases. The checks
-        # above bind the artifact to its run, execution authority, merged PR,
-        # immutable package, canonical target names and resource structure.
+        # selectedTargets/resources are immutable output of the exact trusted
+        # historical admission. Re-deriving them with today's path classifier
+        # would reinterpret prior authorization after policy changes and can
+        # deadlock later unrelated releases.
         records.append(record)
     return records
 

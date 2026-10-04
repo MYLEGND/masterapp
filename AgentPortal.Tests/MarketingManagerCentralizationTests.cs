@@ -183,7 +183,8 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("console.error(err);\n      return;", summary, StringComparison.Ordinal);
         Assert.DoesNotContain("renderSummaryUnavailable", summary[supportStart..], StringComparison.Ordinal);
         Assert.Contains("loadMarketingPerformance()", summary[supportStart..], StringComparison.Ordinal);
-        Assert.Contains("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+        Assert.DoesNotContain("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+        Assert.Contains("renderGrowthEconomics(data.economics)", js, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -257,7 +258,7 @@ public sealed class MarketingManagerCentralizationTests
 
         Assert.Contains("async function fetchJson(key, url, params = {}, timeoutMs = 0)", js, StringComparison.Ordinal);
         Assert.Contains("async function fetchPostJson(key, url, body = null, timeoutMs = 0)", js, StringComparison.Ordinal);
-        Assert.Contains("marketingManagerRequestBody(),\n        15000)", js, StringComparison.Ordinal);
+        Assert.Contains("marketingManagerRequestBody(),\n        45000)", js, StringComparison.Ordinal);
         Assert.Contains("marketingManagerRequestBody({ goal }),\n        20000)", js, StringComparison.Ordinal);
         Assert.Contains("Zero activity is valid evidence.", js, StringComparison.Ordinal);
         Assert.Contains("The Growth Plan can still be built from the goal and available canonical evidence.", js, StringComparison.Ordinal);

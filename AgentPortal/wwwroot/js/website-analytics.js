@@ -3016,7 +3016,6 @@ function escapeHtml(value) {
     // canonical summary.
     void Promise.resolve().then(() => loadMarketingHealth()).catch(err => console.error(err));
     void Promise.resolve().then(() => loadMarketingPerformance()).catch(err => console.error(err));
-    void Promise.resolve().then(() => loadGrowthEconomics()).catch(err => console.error(err));
   }
 
   async function loadMarketingHealth() {
@@ -5782,72 +5781,81 @@ function escapeHtml(value) {
     return id ? { agentProfileId: id } : {};
   }
 
+  let marketingPerformanceRequest = 0;
+
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
+    const request = ++marketingPerformanceRequest;
+    grid.textContent = 'Loading current channel performance…';
+    setText('channel-performance-note', '');
+    renderGrowthEconomics(null);
     try {
       const data = await fetchJson(
         'marketingManagerPerformance',
         endpoints.marketingManagerPerformance,
         marketingManagerRequestBody(),
-        15000);
-      if (!data) return false;
+        45000);
+      if (!data || request !== marketingPerformanceRequest) return false;
       renderMarketingPerformance(data);
+      renderGrowthEconomics(data.economics);
       return true;
     } catch (error) {
+      if (request !== marketingPerformanceRequest) return false;
       grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+      renderGrowthEconomics(null);
       return false;
     }
   }
 
-  async function loadGrowthEconomics() {
+  function renderGrowthEconomics(data) {
     const grid = document.getElementById('growth-economics-grid');
     if (!grid) return false;
-    try {
-      const data = await fetchJson('growthEconomics', endpoints.growthEconomics, marketingManagerRequestBody(), 15000);
-      if (!data) return false;
-      setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
-      setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
-      setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
-      setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
-      setText('growth-economics-roas', data.blendedRoas == null ? 'Unavailable' : `${Number(data.blendedRoas).toFixed(2)}x`);
-      setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
-      grid.replaceChildren();
-      for (const row of data.channels || []) {
-        const card = document.createElement('article');
-        card.className = 'wa-growth-economics-card';
-        const title = document.createElement('div');
-        title.className = 'wa-channel-card-head';
-        const strong = document.createElement('strong');
-        strong.textContent = channelLabel(row.channel);
-        const basis = document.createElement('span');
-        basis.className = 'wa-channel-confidence';
-        basis.textContent = row.attributionBasis || 'canonical';
-        title.append(strong, basis);
-        const metrics = document.createElement('div');
-        metrics.className = 'wa-growth-economics-metrics';
-        for (const [label, value] of [
-          ['Spend', marketingManagerMoney(row.spend)],
-          ['Customers', marketingManagerNumber(row.customersAcquired)],
-          ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
-          ['Revenue', marketingManagerMoney(row.revenue)],
-          ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`],
-          ['Pipeline', marketingManagerMoney(row.pipelineValue)]
-        ]) {
-          const item = document.createElement('div');
-          item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
-          metrics.appendChild(item);
-        }
-        card.append(title, metrics);
-        grid.appendChild(card);
-      }
-      const note = document.getElementById('growth-economics-note');
-      if (note) note.textContent = (data.notes || []).join(' ');
-      return true;
-    } catch (error) {
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Growth economics are unavailable.')}</div>`;
+    if (!data) {
+      for (const key of ['spend', 'customers', 'cac', 'revenue', 'roas', 'pipeline'])
+        setText(`growth-economics-${key}`, 'Unavailable');
+      grid.textContent = 'Canonical growth economics are unavailable.';
+      setText('growth-economics-note', 'No current evidence; prior totals are not shown.');
       return false;
     }
+    setText('growth-economics-spend', marketingManagerMoney(data.totalMarketingSpend));
+    setText('growth-economics-customers', marketingManagerNumber(data.customersAcquired));
+    setText('growth-economics-cac', marketingManagerMoney(data.costPerCustomer));
+    setText('growth-economics-revenue', marketingManagerMoney(data.totalRevenue));
+    setText('growth-economics-roas', data.blendedRoas == null ? 'Unavailable' : `${Number(data.blendedRoas).toFixed(2)}x`);
+    setText('growth-economics-pipeline', marketingManagerMoney(data.pipelineValue));
+    grid.replaceChildren();
+    for (const row of data.channels || []) {
+      const card = document.createElement('article');
+      card.className = 'wa-growth-economics-card';
+      const title = document.createElement('div');
+      title.className = 'wa-channel-card-head';
+      const strong = document.createElement('strong');
+      strong.textContent = channelLabel(row.channel);
+      const basis = document.createElement('span');
+      basis.className = 'wa-channel-confidence';
+      basis.textContent = row.attributionBasis || 'canonical';
+      title.append(strong, basis);
+      const metrics = document.createElement('div');
+      metrics.className = 'wa-growth-economics-metrics';
+      for (const [label, value] of [
+        ['Spend', marketingManagerMoney(row.spend)],
+        ['Customers', marketingManagerNumber(row.customersAcquired)],
+        ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
+        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`],
+        ['Pipeline', marketingManagerMoney(row.pipelineValue)]
+      ]) {
+        const item = document.createElement('div');
+        item.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+        metrics.appendChild(item);
+      }
+      card.append(title, metrics);
+      grid.appendChild(card);
+    }
+    const note = document.getElementById('growth-economics-note');
+    if (note) note.textContent = (data.notes || []).join(' ');
+    return true;
   }
 
   async function loadOpenAiOnboarding() {
@@ -6663,7 +6671,7 @@ function escapeHtml(value) {
       bootstrap.Modal.getOrCreateInstance(advertisingModal)?.show();
     });
     document.getElementById('channel-performance-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
-    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadGrowthEconomics());
+    document.getElementById('growth-economics-refresh')?.addEventListener('click', () => void loadMarketingPerformance());
     document.getElementById('marketing-setup-openai-feed-refresh')?.addEventListener('click', () => void loadOpenAiProductFeed());
     document.getElementById('marketing-setup-openai-feed-publish')?.addEventListener('click', () => void publishOpenAiProductFeed());
     window.addEventListener('wa:scope-changed', () => void loadMarketingPerformance());

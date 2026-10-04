@@ -53,6 +53,9 @@ public sealed class CanonicalOpenAiProjectionTests
     [InlineData("business", true, null, true)]
     [InlineData("business", false, null, true)]
     [InlineData("agent", false, "linked", true)]
+    [InlineData("agent", true, "linked", true)]
+    [InlineData("agent", true, "sent", true)]
+    [InlineData("agent", false, "active_claim", true)]
     [InlineData("agent", false, "first_link", true)]
     [InlineData("agent", false, "unverified", true)]
     [InlineData("agent", false, "changed_account", true)]
@@ -97,7 +100,8 @@ public sealed class CanonicalOpenAiProjectionTests
                 OwnerKey = owner.Key, OwnerType = owner.OwnerType, AgentTrackingProfileId = owner.AgentTrackingProfileId,
                 Provider = MarketingDestinationKeys.OpenAi, Channel = "server", CanonicalSource = nameof(MetaSignalEvent),
                 AnalyticsEventId = historicalMode == "first_link" ? null : source.Id, CanonicalEventId = "historical-issued-event", CanonicalEventName = "Purchase",
-                ProviderEventName = "order_created", PixelId = historicalMode == "changed_pixel" ? "previous-pixel" : "openai-pixel", Status = "pending",
+                ProviderEventName = "order_created", PixelId = historicalMode == "changed_pixel" ? "previous-pixel" : "openai-pixel", Status = historicalMode == "sent" ? "sent" : "pending",
+                ClaimExpiresUtc = historicalMode == "active_claim" ? DateTime.UtcNow.AddMinutes(2) : null,
                 AdvertiserAccountId = historicalMode == "unverified" ? null : historicalMode == "changed_account" ? "previous-account" : "openai-account",
                 ConversionDataSourceId = historicalMode == "unverified" ? null : historicalMode == "changed_datasource" ? "previous-datasource" : "openai-datasource"
             });
@@ -127,16 +131,14 @@ public sealed class CanonicalOpenAiProjectionTests
         async Task Dispatch() => await (Task)typeof(OpenAiConversionDispatcherHostedService).GetMethod("DispatchBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dispatcher, new object[] { CancellationToken.None })!;
         await Dispatch();
         var receipt = Assert.Single(await db.MarketingDestinationDeliveries.ToListAsync());
-        Assert.Equal(historicalMode is null ? nameof(AnalyticsEvent) : nameof(MetaSignalEvent), receipt.CanonicalSource);
-        if (historicalMode is not null)
+        var blockedHistory = historicalMode is "unverified" or "changed_account" or "changed_datasource" or "changed_pixel";
+        var terminalHistory = historicalMode is "sent" or "active_claim";
+        Assert.Equal(blockedHistory || terminalHistory ? nameof(MetaSignalEvent) : nameof(AnalyticsEvent), receipt.CanonicalSource);
+        if (blockedHistory || terminalHistory)
         {
-            // Historical rows are a read-only fence, never adopted/retried by the
-            // canonical AnalyticsEvent dispatcher (including uncertain pending receipts).
-            Assert.Equal("pending", receipt.Status);
+            await db.Entry(receipt).ReloadAsync();
+            Assert.Equal(blockedHistory ? "blocked_requires_destination_verification" : historicalMode == "sent" ? "sent" : "pending", receipt.Status);
             Assert.Equal("historical-issued-event", receipt.CanonicalEventId);
-            Assert.Equal(historicalMode == "first_link" ? (long?)null : source.Id, receipt.AnalyticsEventId);
-            Assert.Null(receipt.MetaSignalEventId);
-            Assert.Null(receipt.ProviderReceiptJson);
             Assert.Empty(conversions);
             await Dispatch();
             Assert.Empty(conversions);
@@ -158,9 +160,7 @@ public sealed class CanonicalOpenAiProjectionTests
         Assert.Equal(accepted ? "sent" : "retryable", receipt.Status);
         Assert.NotNull(receipt.ProviderReceiptJson);
         Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.ToListAsync()).EventId);
-        if (historicalMode == "first_link")
-            Assert.Equal(Assert.Single(await db.MetaSignalEvents.ToListAsync()).Id, receipt.MetaSignalEventId);
-        else
+        if (historicalMode != "first_link")
             Assert.Empty(await db.MetaSignalEvents.ToListAsync());
         Assert.Empty(await db.MarketingConnections.ToListAsync());
         var converted = Assert.Single(conversions);

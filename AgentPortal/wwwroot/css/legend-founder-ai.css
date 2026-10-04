@@ -59,6 +59,8 @@
     --legend-ai-paper: var(--legend-app-surface-elevated);
     --legend-ai-text: var(--legend-app-on-dark);
     --legend-ai-muted: var(--legend-app-on-dark-muted);
+    --legend-ai-canvas-ink: #10213a;
+    --legend-ai-canvas-muted: #5b687c;
     --legend-ai-native: var(--legend-design-contactConnected, #4ae28b);
     --legend-ai-compact-control: var(--legend-desktop-control-height);
     --legend-ai-control: var(--legend-desktop-control-height);
@@ -179,7 +181,7 @@
 .legend-founder-ai-title-row sup,
 .legend-founder-ai-mode sup,
 .legend-founder-ai-welcome h3 sup {
-    color: var(--legend-ai-gold-400);
+    color: inherit;
     font-size: .52em;
 }
 
@@ -226,11 +228,75 @@
 }
 
 .legend-founder-ai-mobile-controls {
-    display: none;
+    display: block;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--legend-ai-line);
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-modebar {
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    width: 100%;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode,
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
+    width: 100%;
+    min-height: var(--legend-ai-compact-control);
+    justify-content: flex-start;
+    border-color: color-mix(in srgb, var(--legend-ai-navy-900) 14%, transparent);
+    background: var(--legend-ai-ivory);
+    color: var(--legend-ai-text);
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode.is-active {
+    border-color: var(--legend-ai-navy-850);
+    background: var(--legend-ai-navy-850);
+    color: #fff;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
+    padding: 7px 8px;
+}
+
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only small {
+    display: block;
+    color: inherit;
+}
+
+.legend-founder-ai-sidebar-retry {
+    width: 100%;
+    min-height: var(--legend-ai-compact-control);
+    margin-top: 8px;
+    padding: 7px 9px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 38%, var(--legend-ai-line));
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--legend-ai-gold-500) 10%, var(--legend-ai-paper));
+    color: var(--legend-ai-text);
+    font-size: .66rem;
+    font-weight: 850;
+    text-align: left;
+    cursor: pointer;
+}
+
+.legend-founder-ai-sidebar-retry:hover,
+.legend-founder-ai-sidebar-retry:focus-visible {
+    border-color: var(--legend-ai-gold-700);
+    outline: none;
 }
 
 .legend-founder-ai-modebar-home {
-    display: contents;
+    display: none;
 }
 
 /* ==========================================================
@@ -609,6 +675,12 @@
     justify-content: center;
 }
 
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-mobile-controls,
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-governed-action-section,
+.legend-founder-ai-modal.is-sidebar-collapsed .legend-founder-ai-sidebar-retry {
+    display: none;
+}
+
 /* ==========================================================
    CHAT CANVAS
    ========================================================== */
@@ -617,8 +689,11 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: 52px minmax(0,1fr) auto auto;
-    background: var(--legend-app-surface);
+    grid-template-rows: minmax(0,1fr) auto auto;
+    padding: 14px 14px 0;
+    background:
+        radial-gradient(circle at 86% -12%, rgba(224,184,83,.12), transparent 34%),
+        linear-gradient(180deg, var(--legend-ai-navy-925), var(--legend-ai-ink));
 }
 
 .legend-founder-ai-modebar {
@@ -735,6 +810,13 @@
     overscroll-behavior: contain;
     padding: 26px clamp(20px, 4vw, 62px) 24px;
     scroll-behavior: auto;
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
+    border: 1px solid rgba(224,184,83,.42);
+    border-radius: 18px 18px 10px 10px;
+    box-shadow:
+        0 18px 44px rgba(2,10,28,.28),
+        inset 0 1px 0 rgba(255,255,255,.92);
 }
 
 .legend-founder-ai-transcript::before {
@@ -748,7 +830,7 @@
 
 .legend-founder-ai-welcome {
     width: min(620px, 100%);
-    margin: clamp(52px, 8vh, 100px) auto 0;
+    margin: clamp(24px, 4vh, 52px) auto 0;
     text-align: center;
 }
 
@@ -791,7 +873,7 @@
 .legend-founder-ai-welcome p {
     max-width: 580px;
     margin: 13px auto 0;
-    color: var(--legend-ai-muted);
+    color: var(--legend-ai-canvas-muted);
     font-size: .88rem;
     line-height: 1.65;
     font-weight: 600;
@@ -834,6 +916,22 @@
     line-height: 1.66;
 }
 
+
+.legend-founder-ai-message.is-pending .legend-founder-ai-bubble {
+    position: relative;
+}
+
+.legend-founder-ai-message.is-pending .legend-founder-ai-bubble::after {
+    content: "Sent";
+    display: inline-block;
+    margin-left: 8px;
+    color: rgba(36,21,0,.62);
+    font-size: .60rem;
+    font-weight: 850;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
 .legend-founder-ai-message.is-user .legend-founder-ai-bubble {
     max-width: min(72%, 720px);
     padding: 11px 14px;
@@ -852,13 +950,13 @@
 .legend-founder-ai-message.is-assistant .legend-founder-ai-bubble {
     max-width: min(82%, 860px);
     padding: 12px 14px 13px;
-    border: 1px solid var(--legend-app-control-line);
+    border: 1px solid rgba(32,62,108,.16);
     border-radius: 16px 16px 16px 5px;
-    background: linear-gradient(145deg,var(--legend-app-surface-elevated),var(--legend-app-surface));
-    color: var(--legend-app-on-dark);
+    background: linear-gradient(145deg,#f8fbff,#eef4fb);
+    color: #10213a;
     box-shadow:
-        0 12px 28px rgba(0,0,0,.22),
-        inset 0 1px 0 rgba(255,255,255,.05);
+        0 10px 24px rgba(15,35,68,.10),
+        inset 0 1px 0 rgba(255,255,255,.92);
 }
 
 .legend-founder-ai-status {
@@ -866,8 +964,8 @@
     display: flex;
     align-items: center;
     padding: 0 24px;
-    color: var(--legend-app-accent-bright);
-    background: var(--legend-app-surface);
+    color: var(--legend-ai-gold-300);
+    background: transparent;
     font-size: .64rem;
     font-weight: 800;
     transition: padding .15s ease, min-height .15s ease;
@@ -881,9 +979,10 @@
 }
 
 .legend-founder-ai-composer {
+    margin: 0 -14px;
     padding: 10px 16px 11px;
-    border-top: 1px solid var(--legend-app-control-line);
-    background: var(--legend-app-surface);
+    border-top: 1px solid rgba(224,184,83,.22);
+    background: linear-gradient(180deg, rgba(8,21,45,.98), rgba(5,15,34,.99));
 }
 
 .legend-founder-ai-composer form {
@@ -896,9 +995,9 @@
     align-items: flex-end;
     gap: 8px;
     padding: 6px 6px 6px 14px;
-    border: 1px solid var(--legend-app-control-line);
+    border: 1px solid var(--legend-ai-line);
     border-radius: 18px;
-    background: var(--legend-app-surface-elevated);
+    background: #ffffff;
     box-shadow:
         0 8px 28px rgba(0,0,0,.18),
         inset 0 1px 0 rgba(255,255,255,.05);
@@ -921,14 +1020,14 @@
     border: 0;
     outline: 0;
     background: transparent;
-    color: var(--legend-ai-text);
+    color: var(--legend-ai-canvas-ink);
     font: inherit;
     font-size: .89rem;
     line-height: 1.48;
 }
 
 .legend-founder-ai-input-wrap textarea::placeholder {
-    color: var(--legend-app-on-dark-muted);
+    color: var(--legend-ai-canvas-muted);
 }
 
 .legend-founder-ai-send {
@@ -969,10 +1068,10 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 14px;
     padding: 6px 4px 0;
-    color: var(--legend-app-on-dark-muted);
+    color: rgba(224,232,245,.72);
     font-size: .56rem;
     font-weight: 700;
 }
@@ -1134,7 +1233,8 @@
         width: 100%;
         height: 100%;
         grid-template-rows: minmax(0, 1fr) auto auto;
-        background: var(--legend-app-surface);
+        padding: 0;
+        background: var(--legend-ai-ink);
         transition: grid-template-rows .18s ease;
     }
 
@@ -1202,7 +1302,10 @@
 
     .legend-founder-ai-transcript {
         padding: var(--app-mobile-card-pad) var(--app-mobile-card-pad) max(var(--app-mobile-card-pad), env(safe-area-inset-bottom));
-        background: var(--legend-app-surface);
+        background: #ffffff;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
         -webkit-overflow-scrolling: touch;
     }
 
@@ -1275,9 +1378,10 @@
     }
 
     .legend-founder-ai-composer {
+        margin: 0;
         padding: var(--legend-mobile-gap) var(--legend-mobile-gap) max(var(--legend-mobile-gap), env(safe-area-inset-bottom));
-        background: rgba(255,254,250,.98);
-        box-shadow: 0 -12px 30px rgba(10,22,46,.055);
+        background: var(--legend-ai-ink);
+        box-shadow: 0 -12px 30px rgba(10,22,46,.18);
     }
 
     .legend-founder-ai-input-wrap {

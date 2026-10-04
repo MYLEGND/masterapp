@@ -1,6 +1,6 @@
     :root{
         /* ===== Advanced Markets aligned palette ===== */
-        --bg:var(--legend-app-panel-soft);
+        --bg:#ffffff;
         --surface:var(--legend-app-panel);
         --surface2:var(--legend-app-panel-soft);
         --ink:var(--web-ink);
@@ -45,10 +45,7 @@
     }
 
     body{
-        background:
-            radial-gradient(1200px 800px at 15% -10%, rgba(166,128,35,.04), transparent 60%),
-            radial-gradient(900px 700px at 92% 0%, rgba(15,23,42,.03), transparent 62%),
-            var(--bg) !important;
+        background:#ffffff !important;
         color: var(--ink);
     }
 
@@ -2570,7 +2567,7 @@
 
     .pipeline-board{
         display:grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap:14px;
         padding:16px;
         overflow:visible;
@@ -4065,7 +4062,7 @@
     /* ===== RESPONSIVE ===== */
     @media (max-width: 1260px){
         .kpis{ grid-template-columns: repeat(3, minmax(0,1fr)); }
-        .pipeline-board{ min-height: auto; }
+        .pipeline-board{ grid-template-columns: repeat(2, minmax(0,1fr)); min-height: auto; }
         .bar-grid{ grid-template-columns: 1fr; }
     }
 
@@ -4133,7 +4130,7 @@
             justify-content:center;
         }
         .pipeline-nav-btn{ min-width:160px; max-width:100%; flex:1 1 160px; }
-        .pipeline-board{ padding:var(--app-mobile-card-pad); }
+        .pipeline-board{ grid-template-columns:1fr; padding:var(--app-mobile-card-pad); }
         .pipeline-head{ padding:var(--app-mobile-card-pad); }
         .client-card-metrics{ grid-template-columns: 1fr; }
         thead{ display:none; }

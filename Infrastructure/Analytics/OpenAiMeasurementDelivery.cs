@@ -373,10 +373,34 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 (row.AnalyticsEventId == source.Id || row.CanonicalEventId == conversion.Id) &&
                 row.ProviderEventName == providerEventIdentity, ct);
 
-            // Historical delivery identities are read-only resend fences. They
-            // never become active AnalyticsEvent receipts or a second dispatcher.
-            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, providerEventIdentity, ct) is not null)
-                continue;
+            // Reconcile one existing receipt, never issue a second provider identity.
+            // Completed receipts remain immutable. An unfinished receipt can resume only
+            // with proven canonical lineage and its original, currently verified destination.
+            if (delivery is null && await FindHistoricalReceiptAsync(db, owner, source, providerEventIdentity, ct) is { } historical)
+            {
+                if (historical.Status is "sent" or "permanent_failure" || historical.ClaimExpiresUtc > now) continue;
+                if (!MatchesCurrentDestination(historical, connection))
+                {
+                    await db.MarketingDestinationDeliveries.Where(row => row.Id == historical.Id &&
+                        row.CanonicalSource == nameof(MetaSignalEvent) && row.Status != "sent" &&
+                        row.Status != "permanent_failure" && (row.ClaimExpiresUtc == null || row.ClaimExpiresUtc < now))
+                        .ExecuteUpdateAsync(update => update
+                            .SetProperty(row => row.Status, "blocked_requires_destination_verification")
+                            .SetProperty(row => row.ErrorCode, "historical_destination_binding_unverified")
+                            .SetProperty(row => row.UpdatedUtc, now), ct);
+                    continue;
+                }
+                var reconciled = await db.MarketingDestinationDeliveries.Where(row => row.Id == historical.Id &&
+                    row.CanonicalSource == nameof(MetaSignalEvent) && row.Status != "sent" &&
+                    row.Status != "permanent_failure" && (row.ClaimExpiresUtc == null || row.ClaimExpiresUtc < now))
+                    .ExecuteUpdateAsync(update => update
+                        .SetProperty(row => row.CanonicalSource, nameof(AnalyticsEvent))
+                        .SetProperty(row => row.AnalyticsEventId, (long?)source.Id)
+                        .SetProperty(row => row.UpdatedUtc, now), ct);
+                if (reconciled != 1) continue;
+                delivery = await db.MarketingDestinationDeliveries.SingleAsync(row => row.Id == historical.Id, ct);
+                await db.Entry(delivery).ReloadAsync(ct);
+            }
             if (delivery is not null) conversion = conversion with { Id = delivery.CanonicalEventId };
 
             if (delivery?.Status == "sent") continue;
@@ -531,14 +555,14 @@ public sealed class OpenAiConversionDispatcherHostedService(
         var receipts = await db.MarketingDestinationDeliveries.AsNoTracking().Where(x => x.OwnerKey == owner.Key &&
             x.Provider == MarketingDestinationKeys.OpenAi && x.Channel == "server" && x.CanonicalSource == nameof(MetaSignalEvent) &&
             x.ProviderEventName == providerEventName).ToListAsync(ct);
-        var linked = receipts.FirstOrDefault(x => x.AnalyticsEventId == source.Id);
+        var linked = receipts.SingleOrDefault(x => x.AnalyticsEventId == source.Id);
         if (linked is not null) return linked;
         var ids = receipts.Where(x => x.AnalyticsEventId == null).Select(x => x.CanonicalEventId).ToArray();
         if (ids.Length == 0) return null;
         var historical = await db.MetaSignalEvents.AsNoTracking().Where(x => ids.Contains(x.EventId) &&
             x.CommerceBusinessId == source.CommerceBusinessId && x.AgentTrackingProfileId == source.AgentTrackingProfileId).ToListAsync(ct);
-        var match = historical.FirstOrDefault(x => CanonicalAdvertisingEventProjection.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId") == source.Id);
-        return match is null ? null : receipts.First(x => x.CanonicalEventId == match.EventId);
+        var match = historical.SingleOrDefault(x => CanonicalAdvertisingEventProjection.ReadInt64(x.MetadataJson, "sourceAnalyticsEventId") == source.Id);
+        return match is null ? null : receipts.Single(x => x.CanonicalEventId == match.EventId);
     }
 
     private static TimeSpan RetryDelay(int attempts) => attempts switch
