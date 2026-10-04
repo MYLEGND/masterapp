@@ -1447,11 +1447,22 @@ def approved_head_preflight(repository: str, current_sha: str, token: str):
 
 
 def cmd_approved_head_preflight(args):
-    result = approved_head_preflight(
-        args.repository,
-        args.current_sha,
-        os.environ.get("GITHUB_TOKEN", ""),
-    )
+    if args.event != "pull_request":
+        result = {
+            "schemaVersion": 1,
+            "candidateSha": args.current_sha,
+            "approvedHeadSha": None,
+            "mergeBaseSha": None,
+            "compareStatus": "not_applicable",
+            "current": True,
+            "reason": "approved_head_preflight_applies_to_pull_requests_only",
+        }
+    else:
+        result = approved_head_preflight(
+            args.repository,
+            args.current_sha,
+            os.environ.get("GITHUB_TOKEN", ""),
+        )
     if args.output:
         Path(args.output).write_text(
             json.dumps(result, indent=2, sort_keys=True) + "\n"
@@ -4628,6 +4639,7 @@ def build_parser():
     approved_preflight = sub.add_parser("approved-head-preflight")
     approved_preflight.add_argument("--repository", required=True)
     approved_preflight.add_argument("--current-sha", required=True)
+    approved_preflight.add_argument("--event", required=True)
     approved_preflight.add_argument("--output")
     approved_preflight.set_defaults(func=cmd_approved_head_preflight)
 
