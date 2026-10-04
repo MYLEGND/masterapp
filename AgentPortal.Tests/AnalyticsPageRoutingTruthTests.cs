@@ -111,6 +111,25 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void AnalyticsIncidentAndAiReviewFailureStatesNeverClaimFalseSuccess()
+    {
+        var root = RepoRoot();
+        var ai = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-ai.js"));
+        var incidents = File.ReadAllText(Path.Combine(root, "AgentPortal", "wwwroot", "js", "website-analytics-incidents.js"));
+        var incidentDtos = File.ReadAllText(Path.Combine(root, "AgentPortal", "Models", "Analytics", "AnalyticsIncidentDtos.cs"));
+        var incidentService = File.ReadAllText(Path.Combine(root, "AgentPortal", "Services", "Analytics", "AnalyticsIncidentQueryService.cs"));
+
+        Assert.DoesNotContain("BACKDROP_ID", ai, StringComparison.Ordinal);
+        Assert.Contains("e.target === d", ai, StringComparison.Ordinal);
+        Assert.Contains("public bool IsAvailable { get; set; } = true;", incidentDtos, StringComparison.Ordinal);
+        Assert.Contains("IsAvailable = false", incidentService, StringComparison.Ordinal);
+        Assert.Contains("incident_monitor_metrics_unavailable", incidentService, StringComparison.Ordinal);
+        Assert.Contains("payload?.isAvailable === false", incidents, StringComparison.Ordinal);
+        Assert.Contains("buttonCountEl.textContent = '—'", incidents, StringComparison.Ordinal);
+        Assert.Contains("No zero-incident result has been verified", incidents, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task BusinessMetaSignalFiltersAreActuallyApplied_NotSilentlyIgnored()
     {
         using var db = ControllerTestHelpers.BuildDb();
