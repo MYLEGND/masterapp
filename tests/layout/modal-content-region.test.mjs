@@ -396,7 +396,7 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.ok(aiView.indexOf('id="legendFounderAiModebar"') < aiView.indexOf('legend-founder-ai-conversations-section'));
   assert.ok(aiView.indexOf('id="legendFounderAiRetry"') < aiView.indexOf('legend-founder-ai-conversations-section'));
   assert.doesNotMatch(aiView,/id="legendFounderAiModebarHome"/);
-  assert.match(aiJs,/const destination = isMobile\(\)/);
+  assert.match(aiJs,/modebar\.parentElement !== mobileControls[\s\S]*mobileControls\.appendChild\(modebar\)/);
   assert.doesNotMatch(aiView,/OpenAI Teacher mode is a direct Founder-to-OpenAI channel/);
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
