@@ -1376,7 +1376,9 @@ private bool IsAgentContext()
                 environment: lead.Environment,
                 host: lead.Host,
                 quoteType: lead.InterestType,
-                metadata: metadata);
+                metadata: metadata,
+                websiteContentVersionId: lead.WebsiteContentVersionId,
+                websiteBindingId: lead.WebsiteBindingId);
         }
 
         private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
