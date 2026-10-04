@@ -160,25 +160,24 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         return true;
     }
 
-    public async Task<BusinessWorkspaceModel> AnalyticsAsync(CommerceBusiness business, int days, CancellationToken ct)
+    public async Task<BusinessWorkspaceModel> AnalyticsAsync(
+        CommerceBusiness business,
+        TimeRangeRequest range,
+        CancellationToken ct)
     {
-        days = days is 7 or 30 or 90 ? days : 30;
-        var range = new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-days), ToUtc = DateTime.UtcNow,
-            QualityMode = TrafficQualityMode.RealHumanTraffic, Label = $"Last {days} days", Preset = "custom" };
+        ArgumentNullException.ThrowIfNull(range);
+        var days = range.Preset switch { "7d" => 7, "90d" => 90, _ => 30 };
         var scope = ScopeContext.ForBusiness(business.Id);
         var settings = await SettingsAsync(business.Id, ct);
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Tab = "analytics", Days = days,
             Summary = await analytics.GetSummaryAsync(range, scope), Health = await analytics.GetMarketingHealthAsync(range, scope) };
         model.Preferences = settings.Preferences;
-        // Compatibility DTO only; published configuration and receipt semantics have one authority.
         var entries = await new WebsiteEventMapQuery(db, configuration ?? new ConfigurationBuilder().Build()).ReadAsync(scope, ct);
         model.EventMap = entries.Select(row => new BusinessWebsiteEventMapRow(
             row.Page, row.Element, row.Trigger, row.CanonicalEvent, row.Mode, row.PublishedVersion.HasValue,
             row.PublishedRevision, row.Owner, row.Site, row.VisibleLabel, row.ActionKey, row.Binding, row.BehaviorKey,
             row.Authority, row.Locked, row.MetaMapping, row.OpenAiMapping, row.PublishedVersion,
             row.AnalyticsStatus, row.MetaStatus, row.OpenAiStatus)).ToList();
-        model.RecentEvents = await db.MetaSignalEvents.AsNoTracking().Where(x => x.CommerceBusinessId == business.Id && x.AgentTrackingProfileId == null && x.CreatedUtc >= range.FromUtc)
-            .OrderByDescending(x => x.CreatedUtc).Take(50).Select(x => new BusinessWebsiteEventRow(x.CreatedUtc, x.EventName, x.PageKey, x.MetaServerSent)).ToListAsync(ct);
         return model;
     }
 
