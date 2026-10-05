@@ -104,6 +104,7 @@ namespace AgentPortal.Controllers;
         ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
+        ViewData["InitialSiteKey"] = scope.ScopeType == ScopeType.Founder ? scope.SiteKey : null;
         // Founder Personal must hydrate with the permanent Founder tracking-profile id
         // so the browser preserves the same canonical scope on every AJAX refresh.
         ViewData["InitialScopeProfileId"] =
@@ -1814,9 +1815,27 @@ namespace AgentPortal.Controllers;
         return await ResolveMarketingOwnerAsync(tracking, cancellationToken) == owner;
     }
 
-    private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
-        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
+    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
+    {
+        var resolved = await new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
             .ResolveAsync(HttpContext, requestedAgentId, team);
+
+        if (resolved.ScopeType != ScopeType.Founder)
+            return resolved;
+
+        var requestedSite = Request.Query["siteKey"].ToString().Trim().ToLowerInvariant();
+        if (requestedSite is not ("legend" or "protect"))
+            return resolved;
+
+        return new ScopeContext
+        {
+            ScopeType = resolved.ScopeType,
+            AgentTrackingProfileId = resolved.AgentTrackingProfileId,
+            CommerceBusinessId = resolved.CommerceBusinessId,
+            ReportingOwner = resolved.ReportingOwner,
+            SiteKey = requestedSite
+        };
+    }
 
     private Task<Domain.Entities.AgentTrackingProfile?> GetCallerProfileAsync() =>
         new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger).GetCallerProfileAsync();
