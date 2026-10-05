@@ -18,6 +18,69 @@ public static class WebsiteStudioAgentContract
 
     public static string PromptTemplate { get; } = BuildPromptTemplate();
 
+    public static string CompactPromptTemplate { get; } = """
+LEGEND Website Studio creative contract:
+- WebsiteContentDocument v3 is the only writable website source.
+- Work site-first, not page-by-page. Read the Creative Workspace summary, plan the whole conversion journey, then build/refine in mutation batches.
+- Creative authority is content + presentation + structure + owned media + approved capability references.
+- Protected forms, signal/event identity, attribution, provider delivery, owner scope, checkout/booking/lead execution, and system-template runtime are server-owned and are not writable creative fields.
+- Use the read-only Capability Manifest to place approved actions/forms/runtime capabilities. Never invent an executable capability.
+- Prefer semantic theme tokens and recipes for repeated design grammar; use freeform v3 nodes whenever a unique composition is better.
+- Prefer the highest valid scope: theme/site shell/page/section/node/breakpoint. Avoid repeated node overrides when one semantic token or shared component expresses the intent.
+- Use getSiteSummary/getPageOutline/getNode/listRecipes and applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
+- Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection.
+- Preserve stable protected identities and design freely around them.
+- Review desktop/mobile quality and conversion flow before publishing. Publishing remains a strict whole-site server authority.
+""";
+
+    public static object CompactPayload => new
+    {
+        schema = Schema,
+        promptTemplate = CompactPromptTemplate,
+        protectedEditCorrection = ProtectedEditCorrection,
+        workspace = new
+        {
+            unitOfWork = "whole_site",
+            sourceOfTruth = "WebsiteContentDocument_v3",
+            mutationAuthority = "manage/mutations",
+            designPlanAuthority = "manage/design-plan",
+            masterSourceRole = "diagnostic_read_only",
+            selectedSourceRole = "single_node_mutation",
+            capabilityRole = "read_only_server_resolved_execution"
+        },
+        browserCommands = new[]
+        {
+            "getSiteSummary",
+            "getPageOutline",
+            "getNode",
+            "listRecipes",
+            "listMedia",
+            "applyMutationBatch",
+            "applyDesignPlan",
+            "runQuality"
+        },
+        creativeWritable = new[]
+        {
+            "content",
+            "presentation",
+            "structure",
+            "owned_media_references",
+            "approved_capability_references"
+        },
+        serverOwned = new[]
+        {
+            "protected_form_execution",
+            "signals_and_field_signals",
+            "canonical_event_identity",
+            "attribution_lineage",
+            "provider_delivery",
+            "owner_scope",
+            "lead_booking_checkout_execution",
+            "system_template_runtime",
+            "publish_authority"
+        }
+    };
+
     private static string BuildPromptTemplate()
     {
         var nodeGrammar = WebsiteCompositionSchema.PromptGrammar();
@@ -275,8 +338,9 @@ If a visual request conflicts with protected behavior, preserve the backend cont
     public static object ForScope(IReadOnlyList<WebsiteCallToActionOption> actions, object? signalCatalog) => new
     {
         schema = Schema,
-        promptTemplate = PromptTemplate + "\nSCOPED PRESET INVENTORY (server-owned; complete for this account)\n" +
-            JsonSerializer.Serialize(new { actions, signalCatalog }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        // Inventories stay structured and on-demand. Do not duplicate them inside
+        // the prompt where every browser-agent turn would pay for them again.
+        promptTemplate = PromptTemplate,
         availableActions = actions,
         signalCatalog,
         protectedEditCorrection = ProtectedEditCorrection,
