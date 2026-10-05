@@ -399,6 +399,37 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void PageRecipe_ExpandsIntoOrdinarySectionMutations()
+    {
+        var document = Baseline();
+        var manifest = Capabilities(document);
+        var plan = new WebsiteDesignPlan
+        {
+            Pages =
+            [
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/",
+                    Recipe = "home",
+                    Title = "Home",
+                    NavigationLabel = "Home"
+                }
+            ]
+        };
+
+        var operations = WebsiteDesignPlanResolver.Resolve(
+            document,
+            WebsiteEditorSiteKeys.Business,
+            manifest,
+            plan);
+
+        Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "hero.cinematic");
+        Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "services.grid");
+        Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "cta.closing");
+        Assert.DoesNotContain(operations, value => value.Type == "insertNode" && value.Node?.SystemKey is not null);
+    }
+
+    [Fact]
     public void CompactSource_OmitsDefaultNodeBoilerplate()
     {
         var document = Baseline();
