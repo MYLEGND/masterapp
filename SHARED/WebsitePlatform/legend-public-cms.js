@@ -146,41 +146,6 @@
     return values;
   }
 
-  function constrainHorizontalStyleRecord(style) {
-    if (!style || typeof style !== 'object') return;
-    const rawWidth = Number(style.widthPercent);
-    const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
-    if (hasWidth) style.widthPercent = Math.min(100, rawWidth);
-    const rawOffset = Number(style.offsetXPercent);
-    if (Number.isFinite(rawOffset)) {
-      // Position is independent from stored width. Rendering consumes the
-      // remaining section width so content can move freely without creating
-      // horizontal page overflow.
-      style.offsetXPercent = Math.max(0, Math.min(95, rawOffset));
-    }
-  }
-
-  function constrainCompositionGeometry(model) {
-    if (!model || typeof model !== 'object') return;
-    constrainHorizontalStyleRecord(model.style);
-    if (model.breakpointStyles && typeof model.breakpointStyles === 'object')
-      Object.values(model.breakpointStyles).forEach(constrainHorizontalStyleRecord);
-  }
-
-  function constrainDocumentGeometry(doc) {
-    const visit = nodes => (nodes || []).forEach(node => {
-      constrainCompositionGeometry(node);
-      visit(node?.children);
-    });
-    visit(doc?.shell?.header);
-    visit(doc?.shell?.footer);
-    Object.values(doc?.pages || {}).forEach(page => visit(page?.composition));
-    Object.values(doc?.reusableComponents || {}).forEach(component => visit(component?.composition));
-    constrainCompositionGeometry(doc?.store?.storeNavigation);
-    constrainCompositionGeometry(doc?.store?.cartNavigation);
-    return doc;
-  }
-
   function wordsFromResourceName(value) {
     if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
     let path=value.trim();
@@ -257,13 +222,8 @@
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const rawRoute = normalizePageRoute(key);
-      const route = canonicalSiteRoute(rawRoute);
+      const route = normalizePageRoute(key);
       if (!route) continue;
-      // Protect v2 could persist the browser-owned /a/{slug}/... path. V3 owns
-      // route identity independent of agent URL scope, so collapse those rows
-      // into the one canonical page key and never serialize the prefixed copy.
-      if (pages[route] && rawRoute !== route) continue;
       const title=cleanBusinessPreviewTitle(value.title);
       const navigation=value.navigation && typeof value.navigation === 'object'
         ? {...value.navigation}
@@ -318,7 +278,7 @@
       },
       pages
     };
-    return constrainDocumentGeometry(normalized);
+    return normalized;
   }
 
   function normalizePageRoute(value) {
@@ -1037,6 +997,22 @@
     return candidates[0]?.key || null;
   }
 
+  const RESPONSIVE_MOBILE_HEADER_GEOMETRY_FIELDS=[
+    'widthPercent','heightPx','offsetXPercent','offsetYPx',
+    'minWidthPx','maxWidthPx','minHeightPx','maxHeightPx',
+    'marginTop','marginBottom','marginLeft','marginRight'
+  ];
+
+  function responsiveShellChromeKind(model, el = null) {
+    const tag=String(model?.tag || el?.tagName || '').toLowerCase();
+    const classes=new Set(String(model?.className || el?.className || '').split(/\s+/).filter(Boolean));
+    if(model?.systemKey==='primary_navigation' || (tag==='nav' && classes.has('nav'))) return 'navigation';
+    if(model?.systemBinding==='business_name' ||
+       classes.has('brand') || classes.has('brand-wordmark') || classes.has('business-brand-banner')) return 'brand';
+    if(tag==='header' || classes.has('site-header')) return 'frame';
+    return null;
+  }
+
   function canonicalResponsiveRole(model, el = null) {
     const type=String(model?.type || '').toLowerCase();
     const tag=String(model?.tag || el?.tagName || '').toLowerCase();
@@ -1073,7 +1049,7 @@
     // mobile edit never rewrites or masks desktop/base presentation.
     if(role==='shell'){
       const mobileShellChrome=key==='mobile' && (
-        mobileHeaderChromeKind(model) ||
+        responsiveShellChromeKind(model,el) ||
         el?.matches?.('.site-header,.brand,.brand-wordmark,.business-brand-banner,.nav') ||
         el?.closest?.('.nav,.brand,.brand-wordmark,.business-brand-banner')
       );
@@ -1083,7 +1059,7 @@
         if(!has('offsetXPercent')) style.offsetXPercent=0;
         if(!has('offsetYPx')) style.offsetYPx=0;
         if(mobileShellChrome){
-          MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete style[field]);
+          RESPONSIVE_MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete style[field]);
           style.offsetXPercent=0;
           style.offsetYPx=0;
         }
@@ -1178,8 +1154,8 @@
     const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     const layout=responsive ? { ...base, ...responsive } : { ...base };
     if(key==='mobile' && (
-      mobileHeaderChromeKind(model)==='frame' ||
-      mobileHeaderChromeKind(model)==='navigation' ||
+      responsiveShellChromeKind(model,el)==='frame' ||
+      responsiveShellChromeKind(model,el)==='navigation' ||
       el?.matches?.('.site-header,.nav')
     )) return {mode:'free',direction:'column'};
     if(!key || !canonicalResponsiveBodyElement(el)) return layout;
@@ -2700,7 +2676,7 @@
     return true;
   }
 
-  function patchPageStructuralMutation(operation,route) {
+  function renderPageStructuralMutationIncrementally(operation,route) {
     if(pageUsesSystemTemplate()) return false;
     const main=document.querySelector('main');
     if(!main) return false;
@@ -2833,7 +2809,7 @@
               refreshReusable=true;
               break;
             }
-            if(currentPageChanged && !patchPageStructuralMutation(operation,route))
+            if(currentPageChanged && !renderPageStructuralMutationIncrementally(operation,route))
               renderPage=true;
             break;
           case 'replaceNode':
@@ -3339,7 +3315,7 @@
         parent.children ||= [];
         parent.children.push(instance);
         const insertIndex=parent.children.length-1;
-        if(!patchPageStructuralMutation({
+        if(!renderPageStructuralMutationIncrementally({
           type:'insertNode',
           scope:'page',
           pagePath:currentPageRoute(),
@@ -4788,9 +4764,6 @@
 
   function selectedWebsiteModel(create = true) {
     const model = editableWebsiteModelForElement(selected, create);
-    const composition=selected?.dataset?.cmsCompositionId ? compositionNodeForElement(selected,create) : null;
-    if (create && composition && selected?.dataset.websiteActionKey && !Object.hasOwn(composition, 'actionKey'))
-      composition.actionKey = selected.dataset.websiteActionKey;
     return model;
   }
 
@@ -5010,8 +4983,11 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,true) : null;
-    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
+    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
+    const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
+      !!selected?.closest?.('form[data-cms-composition-id]') &&
+      !!formFieldKey(selected);
+    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (inlineHelp) inlineHelp.hidden = true;
@@ -5223,7 +5199,7 @@
     checkpoint();
     const [node]=roots.splice(index,1);
     roots.splice(target,0,node);
-    if(!patchPageStructuralMutation({
+    if(!renderPageStructuralMutationIncrementally({
       type:'moveNode',
       nodeId:id,
       scope:'page',
@@ -5257,7 +5233,7 @@
     parent.children ||= [];
     parent.children.push(node);
     const insertIndex=parent.children.length-1;
-    if(!patchPageStructuralMutation({
+    if(!renderPageStructuralMutationIncrementally({
       type:'insertNode',
       scope:'page',
       pagePath:currentPageRoute(),
@@ -5292,7 +5268,7 @@
     checkpoint();
     if(!removeCompositionNode(current.id)) return;
     if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-    else if(!patchPageStructuralMutation({
+    else if(!renderPageStructuralMutationIncrementally({
       type:'removeNode',
       nodeId:current.id,
       scope:'page',
@@ -6412,7 +6388,7 @@
     parent.children ||= [];
     parent.children.push(node);
     const insertIndex=parent.children.length-1;
-    if(!patchPageStructuralMutation({
+    if(!renderPageStructuralMutationIncrementally({
       type:'insertNode',
       scope:'page',
       pagePath:currentPageRoute(),
@@ -6947,7 +6923,7 @@
       const insertIndex=index+1;
       siblings.splice(insertIndex,0,copy);
       if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-      else if(!patchPageStructuralMutation({
+      else if(!renderPageStructuralMutationIncrementally({
         type:'insertNode',
         scope:'page',
         pagePath:currentPageRoute(),
@@ -7224,7 +7200,7 @@
       parent.children.push(node);
     }
 
-    if(!patchPageStructuralMutation({
+    if(!renderPageStructuralMutationIncrementally({
       type:'insertNode',
       scope:'page',
       pagePath:currentPageRoute(),
