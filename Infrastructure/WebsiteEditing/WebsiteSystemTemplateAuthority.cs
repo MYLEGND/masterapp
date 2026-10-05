@@ -61,6 +61,10 @@ public static class WebsiteSystemTemplateAuthority
 
     public static WebsiteContentDocument Apply(string siteKey, WebsiteContentDocument document)
     {
+        if (string.Equals(siteKey, WebsiteEditorSiteKeys.Business, StringComparison.Ordinal) &&
+            document.LegacyMigration is null)
+            WebsiteContentSanitizer.ValidateBusinessPagePaths(document);
+
         foreach (var (path, page) in document.Pages)
             page.SystemTemplateKey = Resolve(siteKey, path);
 
