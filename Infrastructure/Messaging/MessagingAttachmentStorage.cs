@@ -36,6 +36,8 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
         var safeOriginalName = Path.GetFileName(originalFileName?.Trim() ?? string.Empty);
         if (string.IsNullOrWhiteSpace(safeOriginalName) || safeOriginalName.Length > MaximumOriginalFileNameLength)
             return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_NAME_INVALID", "The attachment name is invalid.");
+        if (UploadValidator.IsDangerousExtension(Path.GetExtension(safeOriginalName)))
+            return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
 
         byte[] bytes;
         try
@@ -64,6 +66,15 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
         {
             if (!UploadValidator.TryResolveAttachmentContentType(safeOriginalName, out contentType))
                 return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
+
+            var signatureRequired =
+                contentType.StartsWith("image/", StringComparison.Ordinal) ||
+                contentType.StartsWith("video/", StringComparison.Ordinal) ||
+                contentType.StartsWith("audio/", StringComparison.Ordinal) ||
+                string.Equals(contentType, "application/pdf", StringComparison.Ordinal);
+            if (signatureRequired)
+                return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_SIGNATURE_INVALID", "The attachment bytes do not match the selected media type.");
+
             extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
         }
 
