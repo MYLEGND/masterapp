@@ -745,12 +745,14 @@ public class WebsitePlatformController : ControllerBase
         var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         var structural = WebsiteDraftQualityInspector.Inspect(document);
         var design = WebsiteDesignQualityInspector.Inspect(document, capabilities);
+        var media = await BuildMediaPerformanceQualityAsync(actor, document, cancellationToken);
         return Ok(new
         {
             schema = "legend-design-quality/v1",
             revision = state.Revision,
             structural,
-            design
+            design,
+            media
         });
     }
 
@@ -2366,6 +2368,60 @@ public class WebsitePlatformController : ControllerBase
         WebsiteSiteSource.ValidateCanonical(reconciled, actions);
         await ValidateCompositionMediaOwnershipAsync(actor, reconciled, cancellationToken);
         return reconciled;
+    }
+
+    private async Task<object> BuildMediaPerformanceQualityAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument document,
+        CancellationToken cancellationToken)
+    {
+        var ids = WebsiteMediaReferenceCatalog.Collect(document);
+        if (ids.Count == 0)
+            return new { referencedAssetCount = 0, referencedBytes = 0L, checks = Array.Empty<object>() };
+
+        var assets = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId && ids.Contains(asset.Id))
+            .ToListAsync(cancellationToken);
+        var loopingVideos = WebsiteSiteSource.Flatten(document)
+            .Where(entry =>
+                entry.Node.Type == "video" &&
+                entry.Node.VideoLoop == true &&
+                entry.Node.MediaAssetId.HasValue)
+            .Select(entry => entry.Node.MediaAssetId!.Value)
+            .ToHashSet();
+
+        var checks = new List<object>();
+        foreach (var asset in assets)
+        {
+            var name = MediaDisplayName(asset);
+            if (asset.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+                asset.SizeBytes > 1_500_000)
+                checks.Add(new
+                {
+                    code = "performance_heavy_image",
+                    severity = "warning",
+                    assetId = asset.Id,
+                    message = $"Image '{name}' is {Math.Round(asset.SizeBytes / 1_000_000m, 1)} MB. Replace it with a lighter owned image for faster page load."
+                });
+
+            if (asset.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) &&
+                loopingVideos.Contains(asset.Id) &&
+                asset.SizeBytes > 8_000_000)
+                checks.Add(new
+                {
+                    code = "performance_heavy_loop_video",
+                    severity = "warning",
+                    assetId = asset.Id,
+                    message = $"Looping video '{name}' is {Math.Round(asset.SizeBytes / 1_000_000m, 1)} MB and preloads for playback. Use a lighter clip to protect first interaction speed."
+                });
+        }
+
+        return new
+        {
+            referencedAssetCount = assets.Count,
+            referencedBytes = assets.Sum(asset => (long)asset.SizeBytes),
+            checks
+        };
     }
 
     private async Task ValidateCompositionMediaOwnershipAsync(
