@@ -585,6 +585,22 @@ public class WebsitePlatformController : ControllerBase
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
         var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
         var quality = WebsiteDraftQualityInspector.Inspect(document);
+        var designQuality = WebsiteDesignQualityInspector.Inspect(document, capabilities);
+        var identity = business is null
+            ? new
+            {
+                siteKey = actor.SiteKey,
+                agentSlug = actor.AgentSlug
+            }
+            : new
+            {
+                siteKey = actor.SiteKey,
+                businessId = (Guid?)business.Id,
+                displayName = business.DisplayName,
+                legalName = business.LegalName,
+                businessType = business.BusinessType,
+                agentSlug = actor.AgentSlug
+            };
         var mediaRows = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
             .Where(value => value.OwnerKey == actor.OwnerUserId)
             .OrderByDescending(value => value.CreatedUtc)
@@ -610,9 +626,11 @@ public class WebsitePlatformController : ControllerBase
             actor.SiteKey,
             state.Revision,
             document,
+            identity,
             facts,
             capabilities,
             quality,
+            designQuality,
             media));
     }
 
