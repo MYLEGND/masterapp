@@ -3576,7 +3576,15 @@
         };
         parent.children ||= [];
         parent.children.push(instance);
-        renderCanonicalCompositionPage();
+        const insertIndex=parent.children.length-1;
+        if(!patchPageStructuralMutation({
+          type:'insertNode',
+          scope:'page',
+          pagePath:currentPageRoute(),
+          parentId,
+          index:insertIndex,
+          node:instance
+        },currentPageRoute())) renderCanonicalCompositionPage();
         setSelected(findEditableElement(id));
         markDirty();
         renderReusableComponents();
@@ -5473,7 +5481,14 @@
     checkpoint();
     const [node]=roots.splice(index,1);
     roots.splice(target,0,node);
-    renderCanonicalCompositionPage();
+    if(!patchPageStructuralMutation({
+      type:'moveNode',
+      nodeId:id,
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId:null,
+      index:target
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
     refreshLayers();
@@ -5499,7 +5514,15 @@
     };
     parent.children ||= [];
     parent.children.push(node);
-    renderCanonicalCompositionPage();
+    const insertIndex=parent.children.length-1;
+    if(!patchPageStructuralMutation({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId,
+      index:insertIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
   }
@@ -5527,7 +5550,12 @@
     checkpoint();
     if(!removeCompositionNode(current.id)) return;
     if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-    else renderCanonicalCompositionPage();
+    else if(!patchPageStructuralMutation({
+      type:'removeNode',
+      nodeId:current.id,
+      scope:'page',
+      pagePath:currentPageRoute()
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(null);
     markDirty();
   }
@@ -6643,7 +6671,15 @@
     };
     parent.children ||= [];
     parent.children.push(node);
-    renderCanonicalCompositionPage();
+    const insertIndex=parent.children.length-1;
+    if(!patchPageStructuralMutation({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId,
+      index:insertIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
   }
@@ -7168,9 +7204,17 @@
       const copy=cloneCanonicalNodeFresh(entry.node,{offsetY:16});
       const siblings=compositionChildren(entry.parent,entry.root);
       const index=siblings.findIndex(node=>node.id===entry.node.id);
-      siblings.splice(index+1,0,copy);
+      const insertIndex=index+1;
+      siblings.splice(insertIndex,0,copy);
       if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-      else renderCanonicalCompositionPage();
+      else if(!patchPageStructuralMutation({
+        type:'insertNode',
+        scope:'page',
+        pagePath:currentPageRoute(),
+        parentId:entry.parent?.id || null,
+        index:insertIndex,
+        node:copy
+      },currentPageRoute())) renderCanonicalCompositionPage();
       setSelected(findEditableElement(copy.id));
       markDirty();
     });
@@ -7421,21 +7465,33 @@
       }:null
     };
 
+    let mutationParentId=null;
+    let mutationIndex=0;
     if(nodeType==='section'){
       const roots=pageState().composition ||= [];
       const selectedId=sectionEl?.dataset?.cmsCompositionId;
       const index=selectedId ? roots.findIndex(value=>value.id===selectedId) : -1;
-      if(index>=0) roots.splice(index+1,0,node); else roots.push(node);
+      mutationIndex=index>=0 ? index+1 : roots.length;
+      roots.splice(mutationIndex,0,node);
     } else {
       const flowContainer=selectedFlowContainer(sectionEl);
       const parentId=flowContainer?.dataset?.cmsCompositionId || sectionEl?.dataset?.cmsCompositionId;
       const parent=parentId ? compositionNode(parentId) : (pageState().composition || []).find(value=>value.type==='section');
       if(!parent){ alert('Select a section before adding content.'); return; }
+      mutationParentId=parent.id;
       parent.children ||= [];
+      mutationIndex=parent.children.length;
       parent.children.push(node);
     }
 
-    renderCanonicalCompositionPage();
+    if(!patchPageStructuralMutation({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId:mutationParentId,
+      index:mutationIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     const created=document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]');
     setSelected(created,{openContent:nodeType==='cta'});
     markDirty();
