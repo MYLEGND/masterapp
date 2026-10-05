@@ -2011,7 +2011,8 @@ public class WebsitePlatformController : ControllerBase
         var asset = await _db.Set<WebsiteMediaAsset>().AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
         if (asset is null) return NotFound();
         var actor = string.IsNullOrWhiteSpace(ticket) ? null : await AuthorizeAsync(ticket, cancellationToken);
-        if (actor?.OwnerUserId != asset.OwnerKey)
+        var ownerPreview = actor?.OwnerUserId == asset.OwnerKey;
+        if (!ownerPreview)
         {
             var versions = await (from state in _db.Set<WebsiteContentState>().AsNoTracking()
                                   join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
@@ -2020,6 +2021,15 @@ public class WebsitePlatformController : ControllerBase
             if (!versions.Any(json => WebsiteMediaReferenceCatalog.References(Read(json), id)))
                 return NotFound();
         }
+
+        var etag = "\"" + asset.Sha256 + "\"";
+        Response.Headers.ETag = etag;
+        Response.Headers.CacheControl = ownerPreview
+            ? "private, max-age=3600"
+            : "public, max-age=86400";
+        if (Request.Headers.IfNoneMatch.Any(value => string.Equals(value, etag, StringComparison.Ordinal)))
+            return StatusCode(StatusCodes.Status304NotModified);
+
         var media = await HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>().OpenAsync(asset.OwnerKey, id, cancellationToken);
         return media is null ? NotFound() : File(media.Value.Content, media.Value.Asset.ContentType, enableRangeProcessing: true);
     }
