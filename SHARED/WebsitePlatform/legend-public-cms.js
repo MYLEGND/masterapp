@@ -87,6 +87,8 @@
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
   const studioPerformance = [];
+  let websiteStudioWebMcpStatus = 'not_connected';
+  let websiteStudioWebMcpController = null;
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
@@ -2659,6 +2661,7 @@
       'revision='+(revision ?? 'unsaved'),
       'selected='+(selectedId || 'none'),
       'canonicalActions='+actionCount,
+      'browserTools='+websiteStudioWebMcpStatus,
       'externalAiApi=false'
     ].join(' · ');
   }
@@ -3053,6 +3056,138 @@
     }
   }
 
+  async function installWebsiteStudioWebMcpTools() {
+    if(!editorMode || websiteStudioWebMcpController) return;
+
+    const controller=new AbortController();
+    websiteStudioWebMcpController=controller;
+    window.addEventListener('pagehide',()=>controller.abort(),{once:true});
+
+    let modelContext=null;
+    for(let attempt=0;attempt<40 && !controller.signal.aborted;attempt++){
+      const candidate=document.modelContext;
+      if(candidate && typeof candidate.registerTool==='function'){
+        modelContext=candidate;
+        break;
+      }
+      if(attempt===0){
+        websiteStudioWebMcpStatus='connecting';
+        refreshBrowserAgentWorkspace();
+      }
+      await new Promise(resolve=>window.setTimeout(resolve,100));
+    }
+
+    const api=window.LEGEND_WEBSITE_STUDIO_AGENT;
+    if(!modelContext || !api){
+      websiteStudioWebMcpStatus='unavailable';
+      refreshBrowserAgentWorkspace();
+      return;
+    }
+
+    const objectSchema=(properties={},required=[])=>({
+      type:'object',
+      properties,
+      required,
+      additionalProperties:false
+    });
+    const tools=[
+      {
+        name:'legend_website_workspace',
+        description:'Read the authorized Website Studio workspace efficiently. Start with summary, then recipes, and fetch page/node/media/signal/conversion detail only when needed.',
+        readOnly:true,
+        schema:objectSchema({
+          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','signal_catalog','conversion_health']},
+          page:{type:'string',maxLength:2048},
+          id:{type:'string',maxLength:240},
+          q:{type:'string',maxLength:200},
+          kind:{type:'string',enum:['all','image','video']},
+          take:{type:'integer',minimum:1,maximum:24}
+        },['operation']),
+        execute:async args=>{
+          switch(args?.operation){
+            case 'summary': return await api.getSiteSummary();
+            case 'recipes': return await api.listRecipes();
+            case 'page_outline': return await api.getPageOutline(args.page || undefined);
+            case 'node': return await api.getNode(args.id);
+            case 'media': return await api.listMedia({q:args.q || undefined,kind:args.kind || 'all',take:args.take || 12,designMetadata:true});
+            case 'signal_catalog': return await api.getSignalCatalog();
+            case 'conversion_health': return await api.inspectConversionHealth();
+            default: throw new Error('Choose a supported Website Studio read operation.');
+          }
+        }
+      },
+      {
+        name:'legend_website_apply_design_plan',
+        description:'Apply one whole-site WebsiteDesignPlan through the canonical typed mutation authority. Use this for the main build instead of editing page-by-page.',
+        readOnly:false,
+        schema:objectSchema({plan:{type:'object'}},['plan']),
+        execute:args=>api.applyDesignPlan(args.plan)
+      },
+      {
+        name:'legend_website_apply_mutations',
+        description:'Apply a bounded batch of canonical Website Studio mutations for targeted refinement after the main design plan.',
+        readOnly:false,
+        schema:objectSchema({
+          operations:{type:'array',minItems:1,maxItems:400,items:{type:'object'}}
+        },['operations']),
+        execute:args=>api.applyMutationBatch(args.operations)
+      },
+      {
+        name:'legend_website_set_signal_mappings',
+        description:'Attach approved custom intent mappings to one existing authorable element/control through the canonical Analytics authority. Never use this for verified server outcomes.',
+        readOnly:false,
+        schema:objectSchema({
+          pagePath:{type:'string',maxLength:2048},
+          elementId:{type:'string',maxLength:240},
+          fieldKey:{type:['string','null'],maxLength:160},
+          signals:{type:'array',maxItems:8,items:{type:'object'}}
+        },['pagePath','elementId','signals']),
+        execute:args=>api.setSignalMappings(args)
+      },
+      {
+        name:'legend_website_import_image',
+        description:'Copy one public image into this website owner’s canonical media library through the bounded safe media-ingress authority.',
+        readOnly:false,
+        schema:objectSchema({sourceUrl:{type:'string',maxLength:4096}},['sourceUrl']),
+        execute:args=>api.importImage(args.sourceUrl)
+      },
+      {
+        name:'legend_website_preflight',
+        description:'Run the final exact-revision whole-site preflight: saved structural/design/media quality, every active page across breakpoints, and canonical conversion/delivery readiness.',
+        readOnly:false,
+        schema:objectSchema(),
+        execute:()=>api.runPreflight()
+      }
+    ];
+
+    const registered=[];
+    for(const tool of tools){
+      if(controller.signal.aborted) break;
+      try{
+        await modelContext.registerTool({
+          name:tool.name,
+          description:tool.description,
+          inputSchema:tool.schema,
+          annotations:{
+            readOnlyHint:tool.readOnly,
+            consequentialHint:!tool.readOnly,
+            untrustedContentHint:true
+          },
+          execute:async(args,options)=>{
+            if(options?.signal?.aborted) throw new DOMException('Aborted','AbortError');
+            return await tool.execute(args || {});
+          }
+        },{signal:controller.signal});
+        registered.push(tool.name);
+      }catch{}
+    }
+
+    websiteStudioWebMcpStatus=registered.length===tools.length
+      ? 'connected'
+      : registered.length>0 ? 'partial' : 'unavailable';
+    refreshBrowserAgentWorkspace();
+  }
+
   function installCreativeAgentWorkspaceApi() {
     if(!editorMode) return;
     const api={
@@ -3105,6 +3240,7 @@
       performance:()=>studioPerformance.map(value=>({...value}))
     };
     Object.defineProperty(window,'LEGEND_WEBSITE_STUDIO_AGENT',{value:Object.freeze(api),configurable:true});
+    void installWebsiteStudioWebMcpTools();
   }
 
   function openBrowserAgentSource(scope='site') {
