@@ -1724,7 +1724,17 @@ public static class WebsiteRecipeCatalog
 
         var children = new List<WebsiteCompositionNode> { copy };
         if (media.HasValue)
-            children.Add(new WebsiteCompositionNode { Id=id+".media", Type="image", Tag="img", MediaAssetId=media, Alt=Get(c,"alt",""), ClassName="legend-recipe-hero-media" });
+            children.Add(new WebsiteCompositionNode
+            {
+                Id=id+".media",
+                Type="image",
+                Tag="img",
+                MediaAssetId=media,
+                Alt=Get(c,"alt",""),
+                ClassName=split
+                    ? "legend-recipe-hero-media legend-recipe-hero-split-media"
+                    : "legend-recipe-hero-media legend-recipe-hero-cinematic-media"
+            });
 
         var useSplit = split && media.HasValue;
         return Section(
@@ -1767,11 +1777,11 @@ public static class WebsiteRecipeCatalog
         [
             Text(id+".headline","heading","h2",Get(c,"headline","Everything important, without the clutter."),"legend-recipe-heading"),
             Container(id+".grid","legend-recipe-bento-grid",[
-                Card(id+".item1",Get(c,"item1","Core advantage")),
+                Card(id+".item1",Get(c,"item1","Core advantage"),"legend-recipe-bento-lead"),
                 Card(id+".item2",Get(c,"item2","Fast and focused")),
                 Card(id+".item3",Get(c,"item3","Built to scale")),
-                Card(id+".item4",Get(c,"item4","Clear by design"))
-            ],new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=18 })
+                Card(id+".item4",Get(c,"item4","Clear by design"),"legend-recipe-bento-tail")
+            ],new WebsiteCompositionLayout { Mode="grid", Columns=3, GapPx=18 })
         ]);
 
     private static WebsiteCompositionNode FeatureSplit(string id, IReadOnlyDictionary<string,string> c, Guid? media)
@@ -1861,8 +1871,12 @@ public static class WebsiteRecipeCatalog
     private static WebsiteCompositionNode Text(string id,string type,string tag,string text,string className) =>
         new() { Id=id,Type=type,Tag=tag,Text=text,ClassName=className };
 
-    private static WebsiteCompositionNode Card(string id,string text) =>
-        Container(id,"legend-recipe-card",[Text(id+".title","heading","h3",text,"legend-recipe-card-title")],new WebsiteCompositionLayout{Mode="stack",Direction="column",GapPx=10});
+    private static WebsiteCompositionNode Card(string id,string text,string? extraClass=null) =>
+        Container(
+            id,
+            string.IsNullOrWhiteSpace(extraClass) ? "legend-recipe-card" : "legend-recipe-card " + extraClass,
+            [Text(id+".title","heading","h3",text,"legend-recipe-card-title")],
+            new WebsiteCompositionLayout{Mode="stack",Direction="column",GapPx=10});
 
     private static WebsiteCompositionNode Quote(string id,string text) =>
         Text(id,"text","blockquote",text,"legend-recipe-quote");
