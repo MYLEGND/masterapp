@@ -1284,6 +1284,20 @@ public static class WebsiteDesignPlanResolver
         WebsiteDesignPlan plan)
     {
         var operations = new List<WebsiteMutationOperation>();
+
+        if (plan.ReplaceBusinessPages && siteKey == WebsiteEditorSiteKeys.Business)
+        {
+            var planned = plan.Pages
+                .Select(value => NormalizePath(value.Path))
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var (path, page) in baseline.Pages)
+            {
+                if (path == "/" || planned.Contains(path) || page.Navigation?.IsDeleted == true || page.SystemTemplateKey is not null)
+                    continue;
+                operations.Add(new WebsiteMutationOperation { Type = "removePage", PagePath = path });
+            }
+        }
+
         var preset = WebsiteArtDirectionPresets.Resolve(plan.ArtDirection);
         if (preset is not null || plan.Theme is not null)
             operations.Add(new WebsiteMutationOperation { Type="setTheme", Theme=MergeTheme(preset, plan.Theme) });
