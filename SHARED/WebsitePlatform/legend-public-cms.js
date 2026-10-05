@@ -298,6 +298,45 @@
       .filter(node => !isRetiredTemplateDecorationNode(node));
   }
 
+  const MOBILE_HEADER_GEOMETRY_FIELDS=[
+    'widthPercent','heightPx','offsetXPercent','offsetYPx',
+    'minWidthPx','maxWidthPx','minHeightPx','maxHeightPx',
+    'marginTop','marginBottom','marginLeft','marginRight'
+  ];
+
+  function mobileHeaderChromeKind(node) {
+    if (!node || typeof node!=='object') return null;
+    const tag=String(node.tag || '').toLowerCase();
+    const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
+    if(node.systemKey==='primary_navigation' || (tag==='nav' && classes.has('nav'))) return 'navigation';
+    if(node.systemBinding==='business_name' ||
+       classes.has('brand') || classes.has('brand-wordmark') || classes.has('business-brand-banner')) return 'brand';
+    if(tag==='header' || classes.has('site-header')) return 'frame';
+    return null;
+  }
+
+  function canonicalizeMobileHeaderChrome(node) {
+    const kind=mobileHeaderChromeKind(node);
+    if(!kind) return node;
+    node.breakpointStyles ||= {};
+    const mobile=node.breakpointStyles.mobile && typeof node.breakpointStyles.mobile==='object'
+      ? {...node.breakpointStyles.mobile}
+      : {};
+    MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete mobile[field]);
+    if(kind==='brand' && positiveNumber(mobile.fontScale))
+      mobile.fontScale=Math.min(1.35,Number(mobile.fontScale));
+    if(kind==='navigation' && positiveNumber(mobile.fontScale))
+      mobile.fontScale=Math.min(1,Number(mobile.fontScale));
+    if(Object.keys(mobile).length) node.breakpointStyles.mobile=mobile;
+    else delete node.breakpointStyles.mobile;
+
+    if(kind==='frame' || kind==='navigation'){
+      node.breakpointLayouts ||= {};
+      node.breakpointLayouts.mobile={mode:'free',direction:'column'};
+    }
+    return node;
+  }
+
   function applyCanonicalHeaderTypographyDefaults(node) {
     if (!node || typeof node!=='object') return node;
     node.style ||= {};
@@ -349,6 +388,7 @@
     const clean=nodes => {
       const result=[];
       for(const node of nodes || []) {
+        canonicalizeMobileHeaderChrome(node);
         applyCanonicalHeaderTypographyDefaults(node);
         const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
         const primary=node?.systemKey==='primary_navigation';
@@ -360,6 +400,7 @@
           // Page links are a projection of versioned page navigation metadata,
           // not a second persisted list inside the shell.
           if(SITE_KEY==='business') node.children=[];
+          else node.children=clean(node.children);
         } else {
           node.children=clean(node.children);
         }
@@ -1208,28 +1249,33 @@
     // defaults only fill fields that are absent at the active breakpoint, so a
     // mobile edit never rewrites or masks desktop/base presentation.
     if(role==='shell'){
+      const mobileShellChrome=key==='mobile' && (
+        mobileHeaderChromeKind(model) ||
+        el?.matches?.('.site-header,.brand,.brand-wordmark,.business-brand-banner,.nav') ||
+        el?.closest?.('.nav,.brand,.brand-wordmark,.business-brand-banner')
+      );
       if(key==='mobile'){
         if(!has('widthPercent')) delete style.widthPercent;
         if(!has('heightPx')) delete style.heightPx;
         if(!has('offsetXPercent')) style.offsetXPercent=0;
         if(!has('offsetYPx')) style.offsetYPx=0;
+        if(mobileShellChrome){
+          MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete style[field]);
+          style.offsetXPercent=0;
+          style.offsetYPx=0;
+        }
       }
       const brand=model?.systemBinding==='business_name' ||
         (SITE_KEY==='legend' && String(model?.tag || '').toLowerCase()==='strong' && String(model?.text || '').trim()==='LEGEND®');
       if(brand){
-        if(key==='mobile'){
-          if(!has('widthPercent')) delete style.widthPercent;
-          if(!has('offsetXPercent')) style.offsetXPercent=0;
-          if(!has('offsetYPx')) style.offsetYPx=0;
-        }
-        if(!has('fontScale')){
-          const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        if(key==='mobile' || !has('fontScale'))
           style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
-        }
       }
-      if(model?.systemKey==='primary_navigation' && !has('fontScale')){
+      if(model?.systemKey==='primary_navigation'){
         const ceiling=key==='mobile' ? 1 : key==='tablet' ? 1.15 : 1.6;
-        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+        if(key==='mobile' || !has('fontScale'))
+          style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
       }
       return style;
     }
@@ -1308,6 +1354,11 @@
     const key = activeBreakpoint();
     const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     const layout=responsive ? { ...base, ...responsive } : { ...base };
+    if(key==='mobile' && (
+      mobileHeaderChromeKind(model)==='frame' ||
+      mobileHeaderChromeKind(model)==='navigation' ||
+      el?.matches?.('.site-header,.nav')
+    )) return {mode:'free',direction:'column'};
     if(!key || !canonicalResponsiveBodyElement(el)) return layout;
     const explicit=responsive && typeof responsive==='object' ? responsive : {};
     const has=field=>Object.hasOwn(explicit,field);
