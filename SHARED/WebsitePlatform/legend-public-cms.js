@@ -3889,8 +3889,9 @@
     url.searchParams.set('legendAudit','1');
     return await new Promise((resolve,reject)=>{
       const frame=document.createElement('iframe');
-      frame.hidden=true;
       frame.setAttribute('aria-hidden','true');
+      frame.setAttribute('tabindex','-1');
+      frame.style.cssText='position:fixed;left:-100000px;top:0;width:1440px;height:1200px;border:0;visibility:hidden;pointer-events:none;';
       frame.src=url.toString();
       const timeout=setTimeout(()=>finish(new Error('Timed out while auditing '+route+'.')),30000);
       const onMessage=event=>{
