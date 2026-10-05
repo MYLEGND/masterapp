@@ -126,7 +126,7 @@ public static class UploadValidator
     public static IReadOnlySet<string> VisualMediaContentTypes(bool imagesOnly = false) =>
         CanonicalVisualMedia
             .Where(pair => !imagesOnly || pair.Value.MediaKind == "Image")
-            .Select(pair => pair.Value.ContentType == "video/quicktime" ? "video/mp4" : pair.Value.ContentType)
+            .Select(pair => pair.Value.ContentType)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static readonly IReadOnlyDictionary<string, string> CanonicalAttachmentTypes =
@@ -358,6 +358,8 @@ public static class UploadValidator
                 return "image/heic";
             if (brands.Overlaps(new[] { "heif", "mif1", "msf1" }))
                 return "image/heif";
+            if (brands.Contains("qt  "))
+                return "video/quicktime";
 
             return "video/mp4";
         }
@@ -401,7 +403,9 @@ public static class UploadValidator
             "image/heic" or "image/heic-sequence" => ".heic",
             "image/heif" or "image/heif-sequence" => ".heif",
             "image/avif" => ".avif",
-            "video/mp4" or "video/quicktime" or "video/x-m4v" => ".mp4",
+            "video/mp4" => ".mp4",
+            "video/quicktime" => ".mov",
+            "video/x-m4v" or "video/m4v" => ".m4v",
             "video/webm" => ".webm",
             "application/pdf" => ".pdf",
             _ => null
@@ -419,6 +423,7 @@ public static class UploadValidator
             "image/avif" => extension is ".avif",
             "application/pdf" => extension is ".pdf",
             "video/mp4" => extension is ".mp4" or ".m4v" or ".mov",
+            "video/quicktime" => extension is ".mov",
             "video/webm" => extension is ".webm",
             _ => true
         };
