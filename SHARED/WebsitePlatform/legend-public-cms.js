@@ -28,6 +28,7 @@
 
   const editorTicket = params.get('legendEdit') || '';
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
+  const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
   const studioIsolationMode = editorMode || materializeMode;
   if (studioIsolationMode) {
@@ -2950,6 +2951,7 @@
         responsive:await runResponsiveQualityAudit()
       }),
       runResponsiveQuality:runResponsiveQualityAudit,
+      runSiteResponsiveQuality:runSiteResponsiveQualityAudit,
       planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
       applySafeQualityRepairs:async()=>{
         const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
@@ -2959,9 +2961,10 @@
         return {applied:true,repairs:plan?.repairs || [],result};
       },
       inspectConversionPath:async()=>{
-        const quality=await creativeWorkspaceRequest('manage/agent/design-quality');
-        return quality?.design?.conversionPaths || quality?.design?.ConversionPaths || [];
+        const readiness=await creativeWorkspaceRequest('manage/agent/conversion-readiness');
+        return readiness?.draft?.conversionPaths || [];
       },
+      inspectConversionHealth:()=>creativeWorkspaceRequest('manage/agent/conversion-readiness'),
       current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()}),
       performance:()=>studioPerformance.map(value=>({...value}))
     };
@@ -3870,6 +3873,40 @@
       window.addEventListener('message',onMessage);
       document.body.appendChild(frame);
     });
+  }
+
+  async function requestResponsiveAuditPage(route) {
+    const url=editorUrlForRoute(route);
+    if(!url) throw new Error('Unable to resolve page '+route+' for responsive quality.');
+    url.searchParams.set('legendAudit','1');
+    return await new Promise((resolve,reject)=>{
+      const frame=document.createElement('iframe');
+      frame.hidden=true;
+      frame.setAttribute('aria-hidden','true');
+      frame.src=url.toString();
+      const timeout=setTimeout(()=>finish(new Error('Timed out while auditing '+route+'.')),30000);
+      const onMessage=event=>{
+        if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
+        if(event.data?.type!=='legend-site-responsive-audit') return;
+        if(normalizePageRoute(event.data.route)!==route) return;
+        finish(null,{route,results:Array.isArray(event.data.results)?event.data.results:[]});
+      };
+      const finish=(error,value)=>{
+        clearTimeout(timeout); window.removeEventListener('message',onMessage); frame.remove();
+        error ? reject(error) : resolve(value);
+      };
+      window.addEventListener('message',onMessage);
+      document.body.appendChild(frame);
+    });
+  }
+
+  async function runSiteResponsiveQualityAudit() {
+    if(!editorMode || auditMode) return [];
+    const routes=websitePageEntries(false)
+      .filter(entry=>!entry.deleted)
+      .map(entry=>entry.route)
+      .filter(Boolean);
+    return await mapWithConcurrency([...new Set(routes)],2,route=>requestResponsiveAuditPage(route));
   }
 
   function materializeLegacyReusableDefinitions() {
@@ -8016,6 +8053,17 @@
       if(materializeMode){
         const snapshot=currentMaterializedPage();
         window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
+        document.documentElement.hidden=false;
+        return;
+      }
+
+      if(auditMode){
+        const results=await runResponsiveQualityAudit();
+        window.parent?.postMessage({
+          type:'legend-site-responsive-audit',
+          route:currentPageRoute(),
+          results
+        },location.origin);
         document.documentElement.hidden=false;
         return;
       }
