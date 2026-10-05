@@ -2040,7 +2040,7 @@ public static class WebsitePageRecipeCatalog
                 string.Equals(primaryCapabilityKey, "contact.inquiry.submit", StringComparison.Ordinal) ||
                 (primaryCapabilityKey?.StartsWith("runtime.", StringComparison.Ordinal) ?? false);
             var capability = recipe == "contact.inquiry"
-                ? primaryCapabilityKey
+                ? formLikeCapability ? primaryCapabilityKey : null
                 : !formLikeCapability && (index == 0 || index == definition.SectionRecipes.Count - 1)
                     ? primaryCapabilityKey
                     : null;
