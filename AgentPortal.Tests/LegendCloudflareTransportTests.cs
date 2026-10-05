@@ -178,7 +178,7 @@ public sealed class LegendCloudflareTransportTests
         public int Calls;
         public JsonElement Payload;
         public Func<string, string>? MutateResponse;
-        public object[]? ToolResults;
+        public object[] ToolResults = Array.Empty<object>();
         public string ResponseId = "request1";
         public HttpClient CreateClient(string name)
         {
