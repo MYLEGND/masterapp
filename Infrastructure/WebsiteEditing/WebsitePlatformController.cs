@@ -1209,15 +1209,11 @@ public class WebsitePlatformController : ControllerBase
             var openAi = openAiRows.Where(value => value.AnalyticsEventId == row.Id).ToArray();
 
             bool MetaAccepted(MetaSignalEvent value) =>
-                value.MetaServerSent &&
-                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(
-                    value.MetadataJson, "metaServerEventsReceived") > 0;
+                Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.MetaProviderAccepted(value);
             bool MetaAttempted(MetaSignalEvent value) =>
-                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadBoolean(
-                    value.MetadataJson, "metaServerAttempted") == true;
+                Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.MetaAttempted(value);
             bool MetaRetryable(MetaSignalEvent value) =>
-                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadBoolean(
-                    value.MetadataJson, "metaServerRetryable") == true;
+                Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.MetaRetryable(value);
 
             var latestMetaStatus = meta
                 .Select(value => Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
@@ -1297,8 +1293,8 @@ public class WebsitePlatformController : ControllerBase
                         value.Status,
                         value.AttemptCount,
                         value.LastHttpStatusCode,
-                        httpAccepted = value.Status == "sent" &&
-                            value.LastHttpStatusCode is >= 200 and < 300,
+                        httpAccepted = Infrastructure.Analytics.MarketingDeliveryEvidencePolicy
+                            .HttpTransportAccepted(value),
                         value.SentUtc,
                         value.UpdatedUtc,
                         destination = new
