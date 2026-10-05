@@ -62,10 +62,28 @@ public static class WebsiteSiteSource
         {
             Modifiers = { info =>
             {
-                if (info.Type != typeof(WebsiteCompositionNode)) return;
-                foreach (var property in info.Properties)
-                    if (property.Name is "signals" or "fieldSignals")
-                        property.ShouldSerialize = (_, _) => false;
+                if (info.Type == typeof(WebsiteCompositionNode))
+                {
+                    foreach (var property in info.Properties)
+                    {
+                        if (property.Name is "signals" or "fieldSignals")
+                            property.ShouldSerialize = (_, _) => false;
+                        else if (property.Name is "children" or "animations")
+                            property.ShouldSerialize = (_, value) => value is System.Collections.ICollection collection && collection.Count > 0;
+                        else if (property.Name is "breakpointStyles" or "breakpointLayouts" or "fieldPresentations" or "fieldLabels")
+                            property.ShouldSerialize = (_, value) => value is System.Collections.IDictionary dictionary && dictionary.Count > 0;
+                        else if (property.Name == "style")
+                            property.ShouldSerialize = (_, value) => value is WebsiteVisualStyle style && !IsDefaultStyle(style);
+                        else if (property.Name == "layout")
+                            property.ShouldSerialize = (_, value) => value is WebsiteCompositionLayout layout && !IsDefaultLayout(layout);
+                    }
+                }
+                else if (info.Type == typeof(WebsiteSiteSourceDocument))
+                {
+                    foreach (var property in info.Properties)
+                        if (property.Name == "breakpoints")
+                            property.ShouldSerialize = (_, value) => value is not List<WebsiteBreakpointDefinition> breakpoints || !AreDefaultBreakpoints(breakpoints);
+                }
             } }
         }
     };
@@ -76,6 +94,30 @@ public static class WebsiteSiteSource
     {
         TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
+
+    private static bool IsDefaultStyle(WebsiteVisualStyle style) =>
+        WebsiteCreativeFingerprint.For(style) == WebsiteCreativeFingerprint.For(new WebsiteVisualStyle());
+
+    private static bool IsDefaultLayout(WebsiteCompositionLayout layout) =>
+        string.Equals(layout.Mode, "free", StringComparison.Ordinal) &&
+        string.Equals(layout.Direction, "column", StringComparison.Ordinal) &&
+        layout.GapPx is null && layout.Columns is null && layout.MinItemWidthPx is null &&
+        layout.AlignItems is null && layout.JustifyContent is null && layout.Wrap is null;
+
+    private static bool AreDefaultBreakpoints(IReadOnlyList<WebsiteBreakpointDefinition> values)
+    {
+        var defaults = WebsiteStudioContract.DefaultBreakpoints();
+        if (values.Count != defaults.Count) return false;
+        for (var index = 0; index < values.Count; index++)
+        {
+            var left = values[index];
+            var right = defaults[index];
+            if (left.Key != right.Key || left.Label != right.Label || left.MinWidth != right.MinWidth ||
+                left.MaxWidth != right.MaxWidth || left.IsSystem != right.IsSystem)
+                return false;
+        }
+        return true;
+    }
 
     public static string Serialize(WebsiteContentDocument document)
     {
