@@ -229,6 +229,196 @@ public static class WebsiteDocumentIndex
     }
 }
 
+internal sealed class WebsiteMutationIndex
+{
+    private sealed record Entry(
+        WebsiteCompositionNode Node,
+        List<WebsiteCompositionNode> Siblings,
+        string Scope,
+        string? PagePath,
+        string? ReusableComponentId,
+        string? ParentId);
+
+    private readonly WebsiteContentDocument _document;
+    private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+
+    public WebsiteMutationIndex(WebsiteContentDocument document)
+    {
+        _document = document;
+        Rebuild();
+    }
+
+    public bool Contains(string id) => _entries.ContainsKey(id);
+
+    public bool TryFind(
+        string id,
+        out WebsiteCompositionNode node,
+        out WebsiteCreativeNodeLocation location)
+    {
+        if (!_entries.TryGetValue(id, out var entry))
+        {
+            node = null!;
+            location = null!;
+            return false;
+        }
+
+        var index = entry.Siblings.FindIndex(value => ReferenceEquals(value, entry.Node));
+        if (index < 0)
+            index = entry.Siblings.FindIndex(value => string.Equals(value.Id, id, StringComparison.Ordinal));
+        if (index < 0)
+            throw new InvalidOperationException($"Website mutation index lost node '{id}'.");
+
+        node = entry.Node;
+        location = new(
+            entry.Scope,
+            entry.PagePath,
+            entry.ReusableComponentId,
+            entry.ParentId,
+            index);
+        return true;
+    }
+
+    public List<WebsiteCompositionNode> ResolveChildren(
+        string scope,
+        string? pagePath,
+        string? reusableComponentId,
+        string? parentId)
+    {
+        if (!string.IsNullOrWhiteSpace(parentId))
+        {
+            if (!_entries.TryGetValue(parentId, out var parent))
+                throw new ArgumentException($"Parent node '{parentId}' was not found.");
+            return parent.Node.Children;
+        }
+
+        return scope switch
+        {
+            "shell.header" => _document.Shell.Header,
+            "shell.footer" => _document.Shell.Footer,
+            "page" when pagePath is not null && _document.Pages.TryGetValue(pagePath, out var page) => page.Composition,
+            "component" when reusableComponentId is not null &&
+                             _document.ReusableComponents.TryGetValue(reusableComponentId, out var component) =>
+                component.Composition,
+            _ => throw new ArgumentException("A valid mutation scope is required.")
+        };
+    }
+
+    public void Insert(
+        WebsiteCompositionNode node,
+        string scope,
+        string? pagePath,
+        string? reusableComponentId,
+        string? parentId,
+        int? requestedIndex)
+    {
+        var siblings = ResolveChildren(scope, pagePath, reusableComponentId, parentId);
+        var index = Math.Clamp(requestedIndex ?? siblings.Count, 0, siblings.Count);
+        siblings.Insert(index, node);
+        try
+        {
+            RegisterSubtree(node, siblings, scope, pagePath, reusableComponentId, parentId);
+        }
+        catch
+        {
+            siblings.RemoveAt(index);
+            throw;
+        }
+    }
+
+    public bool Remove(
+        string id,
+        out WebsiteCompositionNode removed,
+        out WebsiteCreativeNodeLocation location)
+    {
+        if (!TryFind(id, out removed, out location))
+            return false;
+        var entry = _entries[id];
+        var index = entry.Siblings.FindIndex(value => ReferenceEquals(value, entry.Node));
+        if (index < 0) return false;
+        entry.Siblings.RemoveAt(index);
+        UnregisterSubtree(removed);
+        return true;
+    }
+
+    public void Replace(string id, WebsiteCompositionNode replacement)
+    {
+        if (!_entries.TryGetValue(id, out var entry))
+            throw new ArgumentException($"Node '{id}' was not found.");
+        var index = entry.Siblings.FindIndex(value => ReferenceEquals(value, entry.Node));
+        if (index < 0)
+            throw new InvalidOperationException($"Website mutation index lost node '{id}'.");
+
+        var previous = entry.Node;
+        UnregisterSubtree(previous);
+        entry.Siblings[index] = replacement;
+        try
+        {
+            RegisterSubtree(
+                replacement,
+                entry.Siblings,
+                entry.Scope,
+                entry.PagePath,
+                entry.ReusableComponentId,
+                entry.ParentId);
+        }
+        catch
+        {
+            entry.Siblings[index] = previous;
+            RegisterSubtree(
+                previous,
+                entry.Siblings,
+                entry.Scope,
+                entry.PagePath,
+                entry.ReusableComponentId,
+                entry.ParentId);
+            throw;
+        }
+    }
+
+    public void Rebuild()
+    {
+        _entries.Clear();
+        RegisterRoots(_document.Shell?.Header, "shell.header", null, null);
+        RegisterRoots(_document.Shell?.Footer, "shell.footer", null, null);
+        foreach (var (path, page) in _document.Pages)
+            RegisterRoots(page.Composition, "page", path, null);
+        foreach (var (id, component) in _document.ReusableComponents)
+            RegisterRoots(component.Composition, "component", null, id);
+    }
+
+    private void RegisterRoots(
+        List<WebsiteCompositionNode>? nodes,
+        string scope,
+        string? pagePath,
+        string? reusableComponentId)
+    {
+        foreach (var node in nodes ?? [])
+            RegisterSubtree(node, nodes!, scope, pagePath, reusableComponentId, null);
+    }
+
+    private void RegisterSubtree(
+        WebsiteCompositionNode node,
+        List<WebsiteCompositionNode> siblings,
+        string scope,
+        string? pagePath,
+        string? reusableComponentId,
+        string? parentId)
+    {
+        if (string.IsNullOrWhiteSpace(node.Id) || _entries.ContainsKey(node.Id))
+            throw new ArgumentException($"Duplicate website node ID '{node.Id}'.");
+        _entries[node.Id] = new(node, siblings, scope, pagePath, reusableComponentId, parentId);
+        foreach (var child in node.Children ?? [])
+            RegisterSubtree(child, node.Children, scope, pagePath, reusableComponentId, node.Id);
+    }
+
+    private void UnregisterSubtree(WebsiteCompositionNode node)
+    {
+        foreach (var child in node.Children ?? [])
+            UnregisterSubtree(child);
+        _entries.Remove(node.Id);
+    }
+}
+
 public static class WebsiteStyleIntelligenceProjection
 {
     private static readonly System.Reflection.PropertyInfo[] VisualStyleProperties =
