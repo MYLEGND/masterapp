@@ -30,7 +30,7 @@ LEGEND Website Studio creative contract:
 - Use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
 - Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection.
 - Preserve stable protected identities and design freely around them.
-- Review whole-site responsive quality and inspectConversionHealth before publishing. Publishing remains a strict whole-site server authority.
+- After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
 """;
 
     public static object CompactPayload => new
@@ -60,6 +60,7 @@ LEGEND Website Studio creative contract:
             "importImage",
             "inspectConversionHealth",
             "runSiteResponsiveQuality",
+            "runPreflight",
             "applyMutationBatch",
             "applyDesignPlan",
             "runQuality"
