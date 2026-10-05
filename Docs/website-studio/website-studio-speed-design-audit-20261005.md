@@ -625,3 +625,890 @@ Do not:
 - move final live compilation into the iterative editing loop.
 
 The speed objective must come from **smaller context, smaller mutations, stronger reusable design primitives, and fewer full-site passes**, not bypassing canonical protection.
+
+---
+
+# Final audit completion pass — verified 2026-10-05
+
+The following findings were verified directly against the current branch head after the initial audit above. They complete the speed/quality architecture picture and refine the implementation plan.
+
+## 28. There is no single client mutation authority
+
+The editor currently has roughly fifty direct \`checkpoint()\` / \`markDirty()\` mutation call sites.
+
+That means text editing, page metadata, layout controls, media insertion, duplication, source edits, theme controls, and other authoring actions mutate \`documentState\` directly and only converge later through autosave/normalization.
+
+Consequences:
+
+- there is no compact operation journal,
+- undo has to snapshot the whole document,
+- autosave cannot know the minimum changed scope,
+- DOM rendering cannot reliably patch only the changed subtree,
+- shared-component synchronization has to rediscover relationships by scanning,
+- browser-agent operations have no deterministic command surface to call,
+- conflict handling operates at whole-site revision granularity instead of the actual changed scope.
+
+**Canonical replacement:** every authorable browser action must dispatch a typed mutation operation through one client command dispatcher. The dispatcher may optimistically update the local view, but persistence must flow through one server mutation authority over \`WebsiteContentDocument v3\`.
+
+## 29. One ordinary save repeats global work on both sides of the wire
+
+The current browser save path:
+
+1. synchronizes shared presentation globally,
+2. serializes the complete \`documentState\`,
+3. POSTs the complete document,
+4. receives the complete protected document,
+5. normalizes that complete document again in the browser.
+
+The server save path then:
+
+1. sanitizes the complete candidate,
+2. applies system template authority,
+3. sanitizes the complete current baseline,
+4. rebuilds the CTA catalog,
+5. serializes the complete candidate through \`WebsiteSiteSource\`,
+6. parses that complete source back against the baseline to restore protected authority,
+7. scans the complete document for media references,
+8. serializes the complete document for persistence.
+
+This is correct-by-brute-force, but expensive for a one-field visual edit.
+
+**Canonical replacement:** mutation commands should change only bounded authorable fields while invoking the same protected-semantic restoration service directly. Full-document validation remains mandatory at publish and can remain available as a periodic checkpoint, but it must not be the routine unit of work for every drag, text edit, spacing adjustment, or GPT refinement.
+
+## 30. Shared presentation synchronization is repeatedly rediscovered by traversal
+
+\`synchronizeCanonicalSharedPresentation()\` walks every page composition to rebuild groups every time it runs. \`markDirty()\` invokes it, normalization invokes it, and save invokes it again.
+
+Today the only canonical shared-presentation group handled here is the canonical inquiry form, so a global traversal is disproportionate to the mutation.
+
+**Canonical replacement:** maintain a transient sync index:
+
+\`sync key → stable node IDs / locations\`
+
+Update that index only when structure changes. Presentation mutations then copy to the indexed peers directly. The index is derived runtime state, never persisted authority.
+
+## 31. Site-wide revision conflicts are too coarse for bounded edits
+
+Selected Source and management writes reject on one global \`state.Revision\`. A change anywhere in the site can force a re-fetch/rebase even when the node being edited did not change.
+
+Selected Source partly compensates by comparing the node after a conflict, but only after reloading the complete Source and rebuilding the complete proposed site.
+
+**Canonical replacement:** keep the global persisted revision, but add scope fingerprints to mutation commands.
+
+A mutation request carries:
+
+- last known global revision,
+- target stable IDs / page keys,
+- expected fingerprint for each changed scope.
+
+If the global revision changed but the target fingerprints are unchanged, the server can safely rebase the authorable mutation onto the latest canonical document. If the same target changed, return a precise conflict list.
+
+This preserves optimistic concurrency without making unrelated edits block each other.
+
+## 32. The authoring Source projection is still token-heavy
+
+\`WebsiteSiteSource\` omits protected signals, but it serializes the typed model with \`DefaultIgnoreCondition.WhenWritingNull\`. Empty/default collections and objects are still emitted.
+
+A simple node can therefore carry repeated boilerplate such as empty style dictionaries, breakpoint dictionaries, default layout objects, empty animation arrays, presentation maps, and child arrays.
+
+That makes both Master Source and Selected Source larger than necessary even before the whole-site expansion problem.
+
+**Canonical replacement:** keep \`WebsiteContentDocument v3\` unchanged and introduce a **compact reversible Site Source projection** that omits canonical defaults and empty collections.
+
+Examples:
+
+- omit \`style\` when empty,
+- omit \`breakpointStyles\` when empty,
+- omit default \`layout\`,
+- omit \`breakpointLayouts\` when empty,
+- omit \`animations\` when empty,
+- omit empty field presentation maps,
+- omit \`children\` for leaf nodes.
+
+The parser supplies the defaults. This is a projection-format optimization, not another website source.
+
+## 33. Source protection validates a complete reconstructed graph for a one-node change
+
+Selected Source currently reconstructs the complete projected document in the browser, POSTs it to \`manage/source/validate\`, parses/protects the complete graph on the server, validates media for the complete graph, then returns a complete proposed document. The browser then POSTs that complete proposed document through the ordinary save path, which protects it again.
+
+**Canonical replacement:** Selected Source becomes a node projection over the mutation service:
+
+- GET selected node projection + node fingerprint,
+- PATCH selected node authorable fields,
+- one server protection/mutation transaction,
+- return protected changed node + new revision/fingerprint.
+
+Master Source remains a diagnostic/audit surface only.
+
+## 34. The browser-agent workspace is descriptive, not operational
+
+The GPT Workspace currently exposes the full operating contract plus buttons that open Master Source, Selected Source, Media, Quality, and Publish.
+
+The agent still has to:
+
+- navigate panels,
+- inspect large source,
+- type low-level JSON,
+- click apply,
+- wait for full validation/save,
+- manually repeat section/page construction.
+
+There is no compact deterministic browser-agent command surface for high-level design work.
+
+**Canonical replacement:** expose a browser-safe command surface backed by the same mutation/query services. Recommended commands:
+
+- \`getSiteSummary()\`
+- \`getPageOutline(page)\`
+- \`getNode(id)\`
+- \`listRecipes(filter)\`
+- \`listMedia(query,cursor)\`
+- \`applyMutationBatch(batch)\`
+- \`applyDesignPlan(plan)\`
+- \`runDesignQuality(scope)\`
+
+The browser workspace remains human-readable, but agents should not need to manually operate the low-level Source editor for normal builds.
+
+## 35. Media discovery is bounded but not design-aware
+
+The current media library returns at most 200 records and exposes roughly:
+
+- ID,
+- display name,
+- URL,
+- content type,
+- bytes,
+- created time.
+
+The persisted media entity itself has no design metadata such as width, height, aspect ratio, orientation, focal point, semantic role, alt description, or usage index.
+
+For GPT, that means choosing the right hero/logo/gallery asset still requires extra visual browsing.
+
+**Canonical replacement:** preserve the same owner-scoped media authority, but add derived design metadata. At minimum:
+
+- pixel width/height where known,
+- aspect ratio/orientation,
+- canonical media kind,
+- optional user/GPT-authored semantic tags,
+- optional focal point,
+- alt/description suggestion,
+- current usage locations.
+
+Do not infer trust-sensitive identity from images. These fields are composition metadata only.
+
+Media listing should be cursor-paged and filterable rather than a fixed \`Take(200)\`.
+
+## 36. Quality inspection is structurally useful but visually shallow
+
+The saved-draft inspector currently checks metadata, navigation labels, collection/data bindings, duplicate IDs, alt text, destinations, canonical form authority, and reusable-component references.
+
+The live canvas adds only a small set of rendered checks.
+
+It does not currently provide the visual evidence needed for premium autonomous refinement.
+
+**Canonical replacement:** add deterministic design-quality checks for:
+
+- text/background contrast,
+- minimum readable text,
+- heading hierarchy,
+- maximum readable line length,
+- touch target size,
+- section rhythm,
+- inconsistent card/button/input treatments,
+- empty/placeholder sections,
+- hero CTA visibility,
+- breakpoint clipping/overflow,
+- image crop resilience,
+- mobile navigation usability,
+- excessive animation,
+- oversized media,
+- competing/repeated CTAs,
+- excessive per-node overrides compared with theme tokens.
+
+The inspector should return stable node IDs and safe-fix eligibility so GPT can repair only the affected scopes.
+
+## 37. New pages and new blocks start too close to zero
+
+Business page creation produces one section containing one H1. The Add menu is atom-oriented.
+
+That is maximally flexible but forces repeated low-value construction work.
+
+**Canonical replacement:** keep low-level atoms for freeform authoring, but make semantic recipes the fast path. A newly requested page should be constructible from a page recipe plus section recipes in one batch.
+
+## 38. Full-document response bodies create unnecessary client normalization work
+
+Routine save returns the complete protected document. The browser compares the full serialized local document, then can normalize the full returned document again.
+
+Once typed mutation responses exist, routine writes should return only:
+
+- new global revision,
+- changed scopes,
+- protected changed nodes/page metadata,
+- updated fingerprints,
+- any canonical corrections/warnings.
+
+A full document refresh becomes an explicit recovery/checkpoint operation, not the normal response.
+
+## 39. Protection and media validation should be scope-aware during editing
+
+The existing protection boundary is correct: protected signals, forms, action authority, runtime template identity, and media ownership must remain server-owned.
+
+The inefficiency is traversal granularity.
+
+For routine mutations:
+
+- protected semantic restoration should operate on changed nodes plus the relevant protected baseline nodes,
+- media ownership should check newly referenced/changed media IDs,
+- global unique-ID/navigation invariants should be maintained through indexes/targeted checks,
+- a complete whole-site validation should still execute before publish.
+
+This preserves safety while removing repeated whole-site scans from the interactive loop.
+
+## 40. Build-speed telemetry is missing
+
+The platform cannot enforce a 10–15 minute build target if it does not measure the expensive boundaries.
+
+Add instrumentation for:
+
+- management/bootstrap response bytes,
+- agent-context characters,
+- Site Source characters,
+- mutation request/response bytes,
+- mutation operation count,
+- protection/sanitize milliseconds,
+- DB load/save milliseconds,
+- changed node count,
+- rendered node count,
+- full-page render count,
+- quality pass duration,
+- publish compile duration,
+- browser-agent command count per completed site.
+
+Log aggregates only; never log customer website bodies or protected form payloads.
+
+---
+
+# Canonical replacement architecture
+
+## Architectural invariant
+
+**There remains exactly one writable website source: \`WebsiteContentDocument v3\`.**
+
+Everything added below is one of:
+
+- a read projection of v3,
+- a typed command that mutates v3,
+- a code-owned constructor that produces v3 nodes,
+- transient derived runtime state,
+- final immutable publish output.
+
+There is no second website document, no parallel JSON store, no page-specific override database, no duplicate signal authority, and no GPT-owned backend wiring.
+
+## Layer 1 — Protected platform authority (existing, hardened)
+
+Protected runtime semantics stay outside authorable mutation fields.
+
+The command layer must never allow GPT/browser edits to directly create or rewrite:
+
+- \`signals\`,
+- \`fieldSignals\`,
+- protected runtime form execution,
+- protected form field keys/validation/submission routing,
+- system-template identity,
+- provider delivery wiring,
+- analytics destination semantics,
+- store enable/remove authority,
+- server-owned commerce/lead/booking execution.
+
+Allowed presentation/content remains free:
+
+- copy,
+- visual styling,
+- layout,
+- responsive presentation,
+- media selection,
+- motion,
+- free content structure,
+- approved CTA/action selection,
+- field labels/presentation where the current protected form contract allows it.
+
+Protected semantics continue to be restored/validated by stable identity.
+
+## Layer 2 — One mutation engine over v3
+
+Introduce one internal service, conceptually:
+
+\`WebsiteDocumentMutationService\`
+
+It receives a canonical document + actor scope + typed mutation batch and returns:
+
+- protected next document,
+- changed scope list,
+- inverse operations for transient undo,
+- warnings/corrections,
+- fingerprints.
+
+All Canvas, Selected Source, GPT, page manager, theme editor, media assignment, recipes, and design-plan generation use this same service.
+
+Recommended operation family:
+
+- \`setText\`
+- \`setNodePresentation\`
+- \`setBreakpointPresentation\`
+- \`setLayout\`
+- \`setMedia\`
+- \`setApprovedAction\`
+- \`insertNode\`
+- \`removeNode\`
+- \`moveNode\`
+- \`duplicateNode\`
+- \`insertRecipe\`
+- \`createPage\`
+- \`duplicatePage\`
+- \`updatePageMetadata\`
+- \`movePageRoute\`
+- \`setThemeTokens\`
+- \`setDataBinding\`
+- \`saveReusableComponent\`
+- \`insertReusableReference\`
+
+Do not create one endpoint/service per UI button. Buttons dispatch operations.
+
+## Layer 3 — Compact read projections
+
+Add read-only projections designed around what the agent/user is doing.
+
+### \`site.summary\`
+
+Typical contents:
+
+- site key + revision,
+- business/brand facts required for copy,
+- design token summary,
+- page list + roles,
+- shell summary,
+- protected component IDs/types,
+- action catalog summary/hash,
+- media summary,
+- quality summary,
+- capabilities.
+
+### \`page.outline\`
+
+For one page:
+
+- page metadata,
+- section order,
+- section IDs,
+- semantic roles,
+- recipe identity if applicable,
+- key CTA/media references,
+- warnings.
+
+### \`node.source\`
+
+For one node/subtree:
+
+- compact reversible authoring projection,
+- location,
+- stable ID,
+- scope fingerprint,
+- applicable protected constraints.
+
+These projections are not persisted.
+
+## Layer 4 — Compact agent contract
+
+Split the current large contract into:
+
+1. **small immutable core rules** — always available,
+2. **capability/version hashes** — prove which rule/catalog versions apply,
+3. **on-demand schemas** — node/recipe/mutation details fetched only when needed,
+4. **scoped inventories** — only the actions/media/data records required by the current task.
+
+The operating contract should stop embedding the complete action/signal inventory inside \`promptTemplate\` when those records are already returned structurally.
+
+## Layer 5 — Premium recipe constructors, not templates that constrain creativity
+
+Recipes are accelerators, not a mandatory visual template system.
+
+Each recipe is a code-owned constructor that produces ordinary v3 nodes with fresh stable IDs. Once inserted, the nodes remain normally authorable.
+
+Recommended section recipes:
+
+- cinematic hero,
+- editorial split hero,
+- product/service hero,
+- trust/logo strip,
+- metric/proof band,
+- service grid,
+- bento feature grid,
+- editorial feature split,
+- product showcase,
+- process/timeline,
+- comparison,
+- social proof/testimonials,
+- case-study proof,
+- offer/pricing,
+- FAQ,
+- gallery,
+- team,
+- contact/inquiry,
+- closing conversion band.
+
+Each recipe declares:
+
+- semantic slots,
+- allowed content types,
+- responsive layout defaults,
+- theme-token references,
+- optional media slots,
+- optional approved CTA slots,
+- quality expectations.
+
+**Creativity rule:** GPT may freely combine recipes, heavily restyle them, or build freeform typed node batches from atoms. Recipes remove repetitive scaffolding; they do not define the only allowed look.
+
+## Layer 6 — Page recipes
+
+Page recipes compose section constructors.
+
+Examples:
+
+- Home,
+- Services,
+- Service Detail,
+- About,
+- Contact,
+- Landing/Lead Gen,
+- Offer,
+- Team,
+- FAQ,
+- Gallery/Portfolio,
+- Case Study.
+
+A page recipe defines semantic sequence, not final copy or fixed visual branding.
+
+## Layer 7 — Rich semantic theme system
+
+Extend \`WebsiteDesignTheme\` into a compact token system.
+
+Recommended categories:
+
+### Typography
+- display,
+- h1,
+- h2,
+- h3,
+- body,
+- small,
+- weights,
+- line-height,
+- tracking.
+
+### Space
+- spacing scale,
+- section block spacing,
+- content gap scale,
+- desktop/mobile gutters.
+
+### Geometry
+- narrow/standard/wide content widths,
+- card radius,
+- button radius,
+- input radius,
+- border strength.
+
+### Surface
+- canvas,
+- elevated surface,
+- muted surface,
+- glass/scrim,
+- elevation/shadow levels.
+
+### Components
+- primary/secondary/ghost button geometry,
+- card treatment,
+- input treatment,
+- navigation density,
+- footer density.
+
+### Motion
+- fast/standard/slow durations,
+- easing families,
+- bounded entrance distance.
+
+Prefer fluid typography/layout where possible so GPT does not need duplicated breakpoint values for every node.
+
+Nodes should store intentional exceptions only.
+
+## Layer 8 — Art-direction presets as optional token constructors
+
+For fast premium setup, code-owned presets may initialize theme tokens without becoming persisted template authority.
+
+Examples:
+
+- **Roadster Precision** — high contrast, deep surfaces, disciplined whitespace, large cinematic type, thin technical borders, restrained gold/accent, fast clean motion.
+- Editorial Luxe.
+- Modern Minimal.
+- Warm Craft.
+- Clinical Precision.
+- High-Energy Performance.
+
+A preset resolves into ordinary theme tokens. GPT may change any authorable token afterward.
+
+## Layer 9 — Transient \`WebsiteDesignPlan\`
+
+For a full build, GPT should be able to emit one concise plan containing:
+
+- art direction,
+- theme/preset + token overrides,
+- page list,
+- page roles,
+- section recipe sequence,
+- copy/content slots,
+- media IDs,
+- approved action keys,
+- data bindings,
+- responsive emphasis.
+
+The server validates the plan and resolves it through recipe constructors + the mutation service into \`WebsiteContentDocument v3\` in one transaction.
+
+**Do not persist the plan as a second website source.**
+
+## Layer 10 — Operation-based undo + targeted rendering
+
+The client dispatcher records inverse operations transiently.
+
+Undo/redo then applies inverse operations rather than parsing 80 whole-document JSON snapshots.
+
+Stable IDs allow targeted DOM changes:
+
+- text/style mutation → update one mounted element,
+- node insertion/removal → patch one parent subtree,
+- section move → move mounted section,
+- theme mutation → reapply token CSS,
+- page load/switch → full page render,
+- explicit recovery → full render.
+
+Full \`main.replaceChildren()\` should not be routine after a bounded structural mutation.
+
+## Layer 11 — Derived indexes
+
+Maintain transient indexes rebuilt on initial load and structural mutations:
+
+- \`nodeId → location\`,
+- \`syncKey → node IDs\`,
+- \`mediaId → usage locations\`,
+- \`page → section IDs\`,
+- \`reusable component → instances\`.
+
+These indexes are derived from v3 and never become competing persisted state.
+
+## Layer 12 — Final publication remains strict and whole-site
+
+Do not weaken the publish boundary.
+
+Publish should still:
+
+1. load the authoritative draft,
+2. run complete sanitizer/protection/invariant checks,
+3. run complete media ownership checks,
+4. validate protected forms/actions/signals,
+5. run full quality/publication gates,
+6. compile immutable public output through the canonical renderer,
+7. commit the published version atomically.
+
+The optimization is to remove final-publish work from the iterative edit loop, not to make publication less strict.
+
+---
+
+# Canonical API shape
+
+Exact naming can change during implementation, but the architecture should converge on this behavior.
+
+## Read projections
+
+- \`GET manage/agent/summary\`
+- \`GET manage/agent/page-outline?page=/...\`
+- \`GET manage/agent/node?id=...\`
+- \`GET manage/recipes?kind=...\`
+- \`GET manage/media?cursor=...&q=...&kind=...\`
+- \`GET manage/quality?scope=...\`
+
+## Writes
+
+Primary write:
+
+- \`POST manage/mutations\`
+
+Request concept:
+
+- ticket,
+- known revision,
+- target fingerprints,
+- array of typed authorable operations.
+
+Response concept:
+
+- new revision,
+- changed scopes,
+- protected changed values,
+- new fingerprints,
+- warnings/corrections,
+- precise conflicts when present.
+
+High-level design-plan endpoint may exist as a thin facade:
+
+- \`POST manage/design-plan\`
+
+but it must resolve internally into the same mutation service. It cannot own separate persistence or protection logic.
+
+Selected Source PATCH should also be a facade over the same mutation service.
+
+---
+
+# Target agent context budgets
+
+These are engineering targets, not security limits.
+
+For a normal build turn, aim for:
+
+- core agent rules: **≤ 8 KB**,
+- site summary: **≤ 12 KB typical**,
+- one page outline: **≤ 6 KB typical**,
+- selected node/subtree: **bounded and compact; no whole-site source**,
+- requested recipe schemas only,
+- requested media/action records only.
+
+Master Source is allowed for diagnostics but should contribute **zero characters** to routine build turns.
+
+A normal agent write should return changed scopes, not the entire site.
+
+---
+
+# Target mutation behavior
+
+For an ordinary one-node edit:
+
+- zero Master Source GETs,
+- zero whole-site Source reconstruction,
+- one mutation request,
+- one protected server mutation transaction,
+- one DB save,
+- one changed-node response,
+- one targeted DOM patch.
+
+For an initial 4–6 page premium build:
+
+- one compact summary read,
+- one plan,
+- one or two large bounded mutation batches,
+- one responsive visual review,
+- one quality pass,
+- one repair batch,
+- user review.
+
+This is the path to a repeatable 10–15 minute build. The target must be measured in production-like test fixtures before claiming it as achieved.
+
+---
+
+# Protection matrix for the new mutation engine
+
+| Domain | GPT/browser may author | Server must own/protect |
+| --- | --- | --- |
+| Copy | visible content, headings, labels | protected execution messages where required |
+| Layout/style | full allowed presentation | sanitizer bounds, shell safety rules |
+| Responsive | allowed breakpoint presentation | global mobile shell/navigation geometry rules |
+| Media | choose owned asset, crop/focal presentation | ownership, byte/type validation |
+| CTA | visible text/style, approved action selection | action destination/behavior catalog |
+| Inquiry/protected forms | container/field presentation, allowed labels | fields, keys, validation, submission, lead/event routing |
+| Analytics/signals | review approved mappings; allowed explicit catalog selection where policy permits | canonical event identities, provider delivery, server outcomes |
+| Commerce | presentation and approved navigation placement | store enable/remove, checkout authority |
+| System templates | presentation around stable protected nodes | template identity/runtime execution |
+| Publish | request publish | complete validation/compiler/version transaction |
+
+---
+
+# Implementation map — no duplicate authorities
+
+## New internal services/classes
+
+Names are illustrative:
+
+- \`WebsiteDocumentMutationService\`
+- \`WebsiteMutationContracts\`
+- \`WebsiteAgentProjectionService\`
+- \`WebsiteRecipeCatalog\`
+- \`WebsiteDesignPlanResolver\`
+- \`WebsiteDesignQualityInspector\`
+- \`WebsiteDocumentIndex\` (transient/derived)
+
+## Refactor existing authorities
+
+### \`WebsitePlatformController\`
+
+Keep the route authority, but delegate:
+
+- manage bootstrap/query,
+- mutation,
+- source/node projection,
+- media,
+- quality,
+- publish.
+
+Do not duplicate controller routes in application-specific controllers.
+
+### \`WebsiteSiteSource\`
+
+Keep Master Source as a deterministic audit projection.
+
+Add compact omission of defaults.
+
+Selected Source should use the node projection/mutation authority instead of rebuilding Master Source.
+
+### \`WebsiteStudioAgentContract\`
+
+Reduce to compact invariant rules + capability versions. Move scoped records out of duplicated prompt text.
+
+### \`legend-public-cms.js\`
+
+Source-split for maintainability, then ship one bundled runtime.
+
+The important behavioral refactor is:
+
+\`direct document mutations → client mutation dispatcher → server mutation service → targeted DOM patch\`.
+
+### \`WebsiteDraftQualityInspector\`
+
+Keep structural checks. Add a separate or extended design-quality layer that can consume rendered measurements across breakpoints.
+
+### \`WebsitePageCompiler\`
+
+Leave as the strict final compiler first. Measure after P1/P2/P3 before adding a warm process or worker pool.
+
+---
+
+# Revised implementation order
+
+## P0 — branch correctness before validation
+
+1. Remove the stale default \`legend-cms-image\` insertion.
+2. Reconcile current mobile-shell/media regression contracts with current implementation.
+3. Sweep stale reserved runtime class paths.
+4. Do not touch analytics/lead/provider authority.
+
+## P1 — establish one mutation path
+
+5. Add typed mutation contracts.
+6. Add \`WebsiteDocumentMutationService\` using the current protection authorities.
+7. Add transient node/location fingerprints and derived indexes.
+8. Route Canvas/page/theme/media/reusable authoring through a client mutation dispatcher.
+9. Replace full-document autosave with coalesced mutation batches.
+10. Replace routine full-document responses with changed-scope responses.
+11. Replace whole-document undo snapshots with inverse operations.
+
+**Stop condition:** all ordinary editor writes use one mutation service before recipes/design plans are added.
+
+## P2 — remove GPT/source waste
+
+12. Compact \`WebsiteStudioAgentContract\`.
+13. Add \`site.summary\`, \`page.outline\`, and node projections.
+14. Make Site Source omit defaults/empty structures.
+15. Convert Selected Source to node GET/PATCH over the mutation service.
+16. Expose deterministic browser-agent query/mutation commands.
+17. Lazy-load advanced catalogs/history/collections/media.
+
+**Stop condition:** a normal GPT edit never needs Master Source.
+
+## P3 — premium generation system
+
+18. Expand semantic theme tokens.
+19. Add optional art-direction presets.
+20. Add section recipe catalog.
+21. Add page recipes.
+22. Add \`WebsiteDesignPlan\` resolver that emits mutation batches.
+23. Add semantic media metadata/index.
+
+**Stop condition:** a complete multi-page first draft can be constructed in one or two mutation transactions without hand-building every node.
+
+## P4 — visual refinement efficiency
+
+24. Add multi-breakpoint design-quality checks.
+25. Add deterministic safe-fix mutations.
+26. Add targeted DOM insert/replace/remove/move.
+27. Replace global shared-presentation traversal with derived sync index.
+28. Add build telemetry.
+
+## P5 — structural cleanup after behavior is proven
+
+29. Batch/server-side legacy materialization.
+30. Source-split/bundle the CMS runtime.
+31. Split controller internals.
+32. Split website regression tests by behavior domain.
+33. Measure compiler latency; only then decide whether a warm compiler worker is justified.
+
+---
+
+# Acceptance gates
+
+The replacement is not complete until these are true.
+
+## Authority
+
+- \`WebsiteContentDocument v3\` is still the only writable persisted website source.
+- no mutation API accepts direct provider/lead/event delivery configuration,
+- protected form execution remains server-owned,
+- stable protected node identities survive every authorable mutation,
+- publish still runs complete authority validation.
+
+## Efficiency
+
+- normal Selected Source edit sends no whole-site Source,
+- normal Canvas edit sends no whole-site document,
+- routine mutation response does not return the whole site,
+- autosave coalesces operations rather than serializing the full graph,
+- unrelated revisions can rebase when target fingerprints did not change,
+- initial management/GPT context no longer eagerly includes every catalog/history payload.
+
+## Design speed
+
+- premium section/page recipes exist but freeform typed authoring remains available,
+- a 4–6 page first draft can be generated through one plan + one/two batches,
+- theme tokens eliminate most repeated per-node style fields,
+- media selection exposes enough metadata for fast composition,
+- GPT can operate through deterministic commands rather than manual low-level Source editing.
+
+## Visual quality
+
+- quality checks run across desktop/mobile and return stable node IDs,
+- deterministic fixes can be batched,
+- no routine structural edit requires a complete page rebuild,
+- mobile shell safety remains canonical and cannot be displaced by ordinary content edits.
+
+## Measurement
+
+Performance evidence must report at least:
+
+- context characters,
+- request/response bytes,
+- mutation count,
+- changed-node count,
+- server mutation duration,
+- rendered-node count,
+- quality duration,
+- final compile duration,
+- end-to-end first-draft and final-review time.
+
+The desired 10–15 minute build target is accepted only when measured repeatedly on representative 4–6 page business websites.
+
+---
+
+# Final architecture decision
+
+Do **not** improve the current system by adding another GPT-specific website representation that becomes state.
+
+The correct design is:
+
+\`GPT/user intent → compact projections → optional design plan/recipes → typed mutation batch → ONE v3 document authority → protected semantic restoration → targeted preview → design-quality repair → strict whole-site publish\`
+
+That architecture removes double work while increasing GPT freedom: the model spends its context on art direction, hierarchy, copy, visual composition, and refinement instead of repeatedly reconstructing the same JSON plumbing.
+
