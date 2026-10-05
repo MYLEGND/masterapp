@@ -2409,7 +2409,7 @@ test('media library inserts existing video as canonical composition with MediaAs
 
 test('media upload has one multipart transport and bypasses inferred ApiController form binding', ()=>{
   const uploadStart=source.indexOf('async function uploadMedia(file)');
-  const uploadEnd=source.indexOf('async function insertMediaAsset',uploadStart);
+  const uploadEnd=source.indexOf('async function uploadImageAsset',uploadStart);
   const upload=source.slice(uploadStart,uploadEnd);
   assert.ok(upload.includes('new FormData()'));
   assert.ok(upload.includes("body.append('file', file, file.name || 'website-media')"));
