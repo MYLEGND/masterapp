@@ -514,7 +514,7 @@ public static class WebsiteDocumentMutationService
 
             case "setBreakpoints":
                 document.Breakpoints = WebsiteContentSanitizer.SanitizeMutationBreakpoints(operation.Breakpoints);
-                ReconcileBreakpointReferences(document);
+                ReconcileBreakpointReferences(document, changed);
                 changed.Add("@breakpoints");
                 return;
 
@@ -1195,6 +1195,206 @@ public static class WebsiteDocumentMutationService
 
         foreach (var child in node.Children)
             PrepareNewNodeAuthority(child, actions);
+    }
+
+    private static void ValidateMutationSubtree(
+        WebsiteContentDocument document,
+        WebsiteCompositionNode node,
+        IReadOnlyList<WebsiteCallToActionOption>? actions,
+        string scope,
+        string? pagePath,
+        string? reusableComponentId)
+    {
+        var validActions = actions?.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+
+        void Visit(WebsiteCompositionNode current)
+        {
+            if (!string.IsNullOrWhiteSpace(current.ActionKey) &&
+                validActions is not null &&
+                !validActions.Contains(current.ActionKey))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Website action '{current.ActionKey}' is not available for this website.");
+
+            if (current.Type == "experience")
+            {
+                if (current.Experience is null)
+                    throw new ArgumentException($"Website experience '{current.Id}' requires a native experience definition.");
+                if (validActions is not null)
+                    WebsiteExperiencePolicy.ValidateForPublish(current.Experience, validActions);
+                WebsiteSiteSource.ValidateMutationExperienceFieldSignals(current);
+            }
+
+            if (current.Type == "form" &&
+                !string.Equals(current.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException(
+                    "Website forms must use the canonical inquiry authority.");
+
+            if (WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(current.SystemKey))
+            {
+                if (scope != "page" ||
+                    string.IsNullOrWhiteSpace(pagePath) ||
+                    !document.Pages.TryGetValue(pagePath, out var runtimePage) ||
+                    !WebsiteSystemTemplateAuthority.IsKnownTemplateKey(runtimePage.SystemTemplateKey) ||
+                    current.SystemKey != WebsiteSystemTemplateAuthority.RuntimeFormKey(pagePath))
+                    throw new WebsiteSiteSourceProtectionException(
+                        "Protected runtime forms are allowed only on their server-bound Protect template page.");
+            }
+
+            if (string.Equals(current.SystemKey, "primary_navigation", StringComparison.Ordinal) &&
+                (scope != "shell.header" ||
+                 current.Type != "container" ||
+                 !string.Equals(current.Tag, "nav", StringComparison.Ordinal)))
+                throw new WebsiteSiteSourceProtectionException(
+                    "Primary navigation must remain the protected nav component in the shared website header.");
+
+            if (current.Type == "reusable" &&
+                (string.IsNullOrWhiteSpace(current.SyncSourceId) ||
+                 !document.ReusableComponents.ContainsKey(current.SyncSourceId)))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Reusable component '{current.Id}' must reference an existing synchronized component definition.");
+
+            if (current.Type is "cta" or "link" &&
+                string.IsNullOrWhiteSpace(current.ActionKey) &&
+                string.IsNullOrWhiteSpace(WebsiteContentSanitizer.SanitizeUrl(current.Href)))
+                throw new ArgumentException(
+                    $"Website link '{current.Id}' requires a canonical action or safe destination.");
+
+            foreach (var child in current.Children ?? [])
+                Visit(child);
+        }
+
+        Visit(node);
+    }
+
+    private static HashSet<string> CollectSubtreeIds(IEnumerable<WebsiteCompositionNode>? nodes)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        void Visit(IEnumerable<WebsiteCompositionNode>? values)
+        {
+            foreach (var node in values ?? [])
+            {
+                if (!ids.Add(node.Id))
+                    throw new ArgumentException($"Duplicate website node ID '{node.Id}' inside one mutation subtree.");
+                Visit(node.Children);
+            }
+        }
+        Visit(nodes);
+        return ids;
+    }
+
+    private static HashSet<string> CollectSubtreeIds(WebsiteCompositionNode node) =>
+        CollectSubtreeIds([node]);
+
+    private static Dictionary<string, int> CollectDocumentIdCounts(WebsiteContentDocument document)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (_, node) in WebsiteSiteSource.Flatten(document))
+            counts[node.Id] = counts.GetValueOrDefault(node.Id) + 1;
+        return counts;
+    }
+
+    private static void EnsureDocumentNodeIdentitiesUnique(WebsiteContentDocument document)
+    {
+        var duplicate = CollectDocumentIdCounts(document)
+            .FirstOrDefault(pair => pair.Value > 1);
+        if (!string.IsNullOrWhiteSpace(duplicate.Key))
+            throw new ArgumentException($"Duplicate website node ID '{duplicate.Key}'.");
+    }
+
+    private static void EnsureSubtreeIdentitiesAvailable(
+        WebsiteContentDocument document,
+        IEnumerable<WebsiteCompositionNode> nodes,
+        IReadOnlySet<string> ignoredExistingIds)
+    {
+        var proposed = CollectSubtreeIds(nodes);
+        var counts = CollectDocumentIdCounts(document);
+        foreach (var id in proposed)
+        {
+            var existing = counts.GetValueOrDefault(id);
+            var allowed = ignoredExistingIds.Contains(id) ? 1 : 0;
+            if (existing > allowed)
+                throw new ArgumentException($"Node '{id}' already exists elsewhere in this website.");
+        }
+    }
+
+    private static void EnsureNewSubtreeIdentitiesAvailable(
+        WebsiteContentDocument document,
+        WebsiteCompositionNode node) =>
+        EnsureSubtreeIdentitiesAvailable(
+            document,
+            [node],
+            new HashSet<string>(StringComparer.Ordinal));
+
+    private static void EnsureReplacementSubtreeIdentitiesAvailable(
+        WebsiteContentDocument document,
+        WebsiteCompositionNode existing,
+        WebsiteCompositionNode replacement) =>
+        EnsureSubtreeIdentitiesAvailable(
+            document,
+            [replacement],
+            CollectSubtreeIds(existing));
+
+    private static void EnsureReplacementRootIdentitiesAvailable(
+        WebsiteContentDocument document,
+        string scope,
+        IEnumerable<WebsiteCompositionNode> nodes)
+    {
+        _ = scope;
+        _ = CollectSubtreeIds(nodes);
+        EnsureDocumentNodeIdentitiesUnique(document);
+    }
+
+    private static void ReconcileBreakpointReferences(
+        WebsiteContentDocument document,
+        HashSet<string> changed)
+    {
+        var valid = document.Breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+
+        static bool FilterMap<T>(Dictionary<string, T>? map, IReadOnlySet<string> validKeys)
+        {
+            if (map is null || map.Count == 0) return false;
+            var removed = map.Keys.Where(key => !validKeys.Contains(key)).ToArray();
+            foreach (var key in removed) map.Remove(key);
+            return removed.Length > 0;
+        }
+
+        static bool ReconcileControl(
+            WebsiteControlPresentation? control,
+            IReadOnlySet<string> validKeys)
+        {
+            if (control is null) return false;
+            return FilterMap(control.BreakpointStyles, validKeys) |
+                   FilterMap(control.BreakpointLayouts, validKeys);
+        }
+
+        bool ReconcileNode(WebsiteCompositionNode node)
+        {
+            var nodeChanged =
+                FilterMap(node.BreakpointStyles, valid) |
+                FilterMap(node.BreakpointLayouts, valid);
+            foreach (var presentation in node.FieldPresentations?.Values ?? [])
+                nodeChanged |= ReconcileControl(presentation, valid);
+            foreach (var child in node.Children ?? [])
+                nodeChanged |= ReconcileNode(child);
+            return nodeChanged;
+        }
+
+        if (ReconcileControl(document.Store?.StoreNavigation, valid) |
+            ReconcileControl(document.Store?.CartNavigation, valid))
+            changed.Add("@store-presentation");
+
+        if ((document.Shell?.Header ?? []).Any(ReconcileNode))
+            changed.Add("@shell/header");
+        if ((document.Shell?.Footer ?? []).Any(ReconcileNode))
+            changed.Add("@shell/footer");
+
+        foreach (var (path, page) in document.Pages)
+            if ((page.Composition ?? []).Any(ReconcileNode))
+                changed.Add(path);
+
+        foreach (var (id, component) in document.ReusableComponents)
+            if ((component.Composition ?? []).Any(ReconcileNode))
+                changed.Add("@component/" + id);
     }
 
     private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
