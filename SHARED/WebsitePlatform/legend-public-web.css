@@ -428,10 +428,8 @@ main :is(img,video)[data-legend-content-role="media"]{
   .legend-recipe-section,.legend-recipe-hero{
     min-height:auto;padding:clamp(48px,12vw,72px) max(18px,env(safe-area-inset-left)) clamp(48px,12vw,72px) max(18px,env(safe-area-inset-right))
   }
-  .legend-recipe-hero-split,.legend-recipe-feature-split{grid-template-columns:1fr!important}
   .legend-recipe-display{font-size:clamp(40px,12vw,58px);max-width:16ch}
   .legend-recipe-heading{font-size:clamp(30px,9vw,42px)}
-  .legend-recipe-card-grid,.legend-recipe-stat-grid,.legend-recipe-step-grid,.legend-recipe-bento-grid{grid-template-columns:1fr!important}
   .legend-recipe-hero-media,.legend-recipe-feature-media{height:min(50vh,480px)}
   .legend-capability-slot{max-width:100%}
 }
