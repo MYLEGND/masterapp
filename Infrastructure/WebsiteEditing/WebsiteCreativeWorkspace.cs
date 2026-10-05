@@ -852,6 +852,21 @@ public static class WebsiteDocumentMutationService
         IReadOnlyList<WebsiteCallToActionOption> actions)
     {
         var protectedIdentity = HasProtectedSemantics(current);
+        if (protectedIdentity)
+        {
+            if (!string.IsNullOrWhiteSpace(proposed.SystemKey) &&
+                !string.Equals(proposed.SystemKey, current.SystemKey, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException("Protected system identity cannot be changed by a creative mutation.");
+            if (!string.IsNullOrWhiteSpace(proposed.SystemBinding) &&
+                !string.Equals(proposed.SystemBinding, current.SystemBinding, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException("Protected system binding cannot be changed by a creative mutation.");
+            if ((proposed.Signals?.Count ?? 0) > 0 &&
+                WebsiteCreativeFingerprint.For(proposed.Signals) != WebsiteCreativeFingerprint.For(current.Signals))
+                throw new WebsiteSiteSourceProtectionException("Protected signal bindings are not writable creative fields.");
+            if ((proposed.FieldSignals?.Count ?? 0) > 0 &&
+                WebsiteCreativeFingerprint.For(proposed.FieldSignals) != WebsiteCreativeFingerprint.For(current.FieldSignals))
+                throw new WebsiteSiteSourceProtectionException("Protected field signal bindings are not writable creative fields.");
+        }
         var next = Clone(current);
 
         next.ClassName = proposed.ClassName;
