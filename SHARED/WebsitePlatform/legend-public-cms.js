@@ -2882,7 +2882,74 @@
     return payload;
   }
 
-  function mergeCreativeMutationDelta(payload) {
+  function applyCreativeMutationVisuals(operations,payload,selectedId=null) {
+    const changes=payload?.changes || {};
+    const route=currentPageRoute();
+    let renderPage=false, renderShell=false, refreshReusable=false, metadata=false, responsive=false;
+
+    if(!Array.isArray(operations)){
+      renderPage=!!changes.pages?.[route];
+      renderShell=!!changes.shellHeader || !!changes.shellFooter;
+      refreshReusable=Object.keys(changes.reusableComponents || {}).length>0 || (changes.removedComponents || []).length>0;
+      metadata=renderPage;
+      responsive=!!changes.theme || !!changes.breakpoints;
+    }else{
+      for(const operation of operations){
+        switch(operation?.type){
+          case 'setTheme': applyTheme(documentState.theme); responsive=true; break;
+          case 'setFavicon': applyFavicon(documentState.faviconImageDataUrl); break;
+          case 'setBreakpoints': responsive=true; break;
+          case 'setStorePresentation': applyStoreNavigation(); break;
+          case 'replaceShellHeader':
+          case 'replaceShellFooter': renderShell=true; break;
+          case 'upsertReusable':
+          case 'removeReusable': refreshReusable=true; break;
+          case 'createPage':
+          case 'removePage':
+          case 'movePageRoute':
+          case 'updatePage':
+            if(operation.pagePath===route || operation.targetPath===route) { renderPage=true; metadata=true; }
+            break;
+          case 'insertNode':
+          case 'insertRecipe':
+          case 'insertCapability':
+          case 'removeNode':
+          case 'moveNode':
+            renderPage=true;
+            break;
+          case 'replaceNode':
+          case 'setApprovedCapability': {
+            const id=operation.nodeId;
+            const model=id ? compositionNode(id) : null;
+            const el=id ? findEditableElement(id) : null;
+            if(pageUsesSystemTemplate() || !model || !el) { renderPage=true; break; }
+            const replacement=buildCompositionNode(model);
+            if(!replacement){renderPage=true;break;}
+            el.replaceWith(replacement);
+            break;
+          }
+        }
+      }
+    }
+
+    if(renderShell) renderCanonicalShell();
+    if(renderPage) renderCanonicalCompositionPage();
+    if(refreshReusable) refreshReusableInstances();
+    if(metadata){
+      const page=pageState();
+      document.title=page.title ?? originalTitle;
+      const description=document.querySelector('meta[name="description"]');
+      if(description) description.setAttribute('content',page.description ?? originalDescription);
+      syncPageControls();
+    }
+    if(responsive) refreshResponsiveComposition();
+    preservePreviewNavigation();
+    if(selectedId) setSelected(findEditableElement(selectedId));
+    else updateDirectCanvasUi();
+  }
+
+  function mergeCreativeMutationDelta(payload,operations=null) {
+    const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
     documentState=applyCreativeMutationDeltaToState(documentState,payload);
     persistedDocumentState=cloneCanonicalValue(documentState);
     revision=payload?.revision ?? revision;
@@ -2892,7 +2959,7 @@
     canonicalSourceRevision=null;
     sourceEditorBaseNode=null;
     sourceEditorBaseFingerprint=null;
-    applyDocument(documentState);
+    applyCreativeMutationVisuals(operations,payload,selectedId);
     refreshBrowserAgentWorkspace();
     return payload;
   }
@@ -2909,7 +2976,7 @@
         draftName:options?.draftName || null
       }
     });
-    return mergeCreativeMutationDelta(payload);
+    return mergeCreativeMutationDelta(payload,operations);
   }
 
   async function creativeApplyDesignPlan(plan) {
@@ -2918,7 +2985,7 @@
       method:'POST',
       body:{ticket:editorTicket,expectedRevision:revision,plan}
     });
-    return mergeCreativeMutationDelta(payload);
+    return mergeCreativeMutationDelta(payload,null);
   }
 
   function installCreativeAgentWorkspaceApi() {
@@ -5547,7 +5614,7 @@
       canonicalSourceRevision=null;
       if(!changedDuringSave){
         documentState=serverState;
-        applyDocument(documentState);
+        applyCreativeMutationVisuals(operations,payload,selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null);
       }
       dirty=changedDuringSave;
       saved=true;
