@@ -224,7 +224,7 @@
       if (!value || typeof value !== 'object') continue;
       const route = normalizePageRoute(key);
       if (!route) continue;
-      const title=cleanBusinessPreviewTitle(value.title);
+      const title=typeof value.title === 'string' ? value.title : null;
       const navigation=value.navigation && typeof value.navigation === 'object'
         ? {...value.navigation}
         : {showInNavigation:true,order:0,isDeleted:false};
