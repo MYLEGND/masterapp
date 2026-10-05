@@ -1,4 +1,5 @@
 using Domain.Messaging;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -8,33 +9,6 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
 {
     private const long DefaultMaximumAttachmentBytes = 10 * 1024 * 1024;
     private const int MaximumOriginalFileNameLength = 255;
-    private static readonly IReadOnlyDictionary<string, string> AllowedContentTypes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            [".pdf"] = "application/pdf",
-            [".png"] = "image/png",
-            [".jpg"] = "image/jpeg",
-            [".jpeg"] = "image/jpeg",
-            [".gif"] = "image/gif",
-            [".webp"] = "image/webp",
-            [".heic"] = "image/heic",
-            [".heif"] = "image/heif",
-            [".avif"] = "image/avif",
-            [".mp4"] = "video/mp4",
-            [".m4v"] = "video/mp4",
-            [".mov"] = "video/quicktime",
-            [".webm"] = "video/webm",
-            [".mp3"] = "audio/mpeg",
-            [".m4a"] = "audio/mp4",
-            [".aac"] = "audio/aac",
-            [".wav"] = "audio/wav",
-            [".txt"] = "text/plain",
-            [".doc"] = "application/msword",
-            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            [".xls"] = "application/vnd.ms-excel",
-            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        };
-
     private readonly string _rootPath;
     private readonly long _maximumAttachmentBytes;
     private readonly ILogger<MessagingAttachmentStorage> _logger;
@@ -64,7 +38,7 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
             return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_NAME_INVALID", "The attachment name is invalid.");
 
         var extension = Path.GetExtension(safeOriginalName);
-        if (!AllowedContentTypes.TryGetValue(extension, out var contentType))
+        if (!UploadValidator.TryResolveAttachmentContentType(safeOriginalName, out var contentType))
             return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
 
         var storedFileName = $"{attachmentId:N}{extension.ToLowerInvariant()}";
