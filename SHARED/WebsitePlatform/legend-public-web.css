@@ -395,7 +395,16 @@ main :is(img,video)[data-legend-content-role="media"]{
   color:var(--web-surface,#fff)
 }
 .legend-recipe-hero-split{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr)}
-.legend-recipe-hero-copy{width:100%;max-width:var(--web-narrow-max)}
+.legend-recipe-hero-copy{width:100%;max-width:var(--web-narrow-max);position:relative;z-index:2}
+.legend-recipe-hero-cinematic{isolation:isolate}
+.legend-recipe-hero-cinematic::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--web-navy-deep,#07152d) 94%,transparent) 0%,color-mix(in srgb,var(--web-navy-deep,#07152d) 72%,transparent) 52%,color-mix(in srgb,var(--web-navy,#0b2652) 34%,transparent) 100%)
+}
+.legend-recipe-hero-cinematic-media{
+  position:absolute;inset:0;z-index:0;width:100%;max-width:none;height:100%;margin:0;
+  border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center;opacity:.58;filter:saturate(.82) contrast(1.06)
+}
 .legend-recipe-hero-media,.legend-recipe-feature-media{
   width:100%;height:min(58vh,620px);object-fit:cover;object-position:center;border-radius:var(--web-card-radius);
   box-shadow:var(--web-shadow-strong);border:var(--web-border-width) solid color-mix(in srgb,var(--web-gold,#bc8e10) 42%,transparent)
@@ -406,6 +415,8 @@ main :is(img,video)[data-legend-content-role="media"]{
 .legend-recipe-lead,.legend-recipe-copy{max-width:var(--web-narrow-max);margin:0;font-size:var(--web-body-size);line-height:var(--web-body-line-height)}
 .legend-recipe-eyebrow{margin:0;color:var(--web-gold-strong,#d4ad45);font-size:var(--web-small-size);font-weight:800;letter-spacing:.15em;text-transform:uppercase}
 .legend-recipe-card-grid,.legend-recipe-stat-grid,.legend-recipe-step-grid,.legend-recipe-bento-grid{width:100%}
+.legend-recipe-bento-lead{grid-column:span 2;min-height:clamp(220px,30vw,360px)}
+.legend-recipe-bento-tail{grid-column:span 2}
 .legend-recipe-card,.legend-recipe-stat,.legend-recipe-quote,.legend-recipe-faq-item{
   min-width:0;padding:clamp(20px,3vw,32px);border:var(--web-border-width) solid var(--web-border-color);
   border-radius:var(--web-card-radius);background:var(--web-surface-elevated);box-shadow:var(--web-shadow-soft)
@@ -431,7 +442,8 @@ main :is(img,video)[data-legend-content-role="media"]{
   }
   .legend-recipe-display{font-size:clamp(40px,12vw,58px);max-width:16ch}
   .legend-recipe-heading{font-size:clamp(30px,9vw,42px)}
-  .legend-recipe-hero-media,.legend-recipe-feature-media{height:min(50vh,480px)}
+  .legend-recipe-hero-media:not(.legend-recipe-hero-cinematic-media),.legend-recipe-feature-media{height:min(50vh,480px)}
+  .legend-recipe-bento-lead,.legend-recipe-bento-tail{grid-column:auto;min-height:0}
   .legend-capability-slot{max-width:100%}
 }
 
