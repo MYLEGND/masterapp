@@ -2965,6 +2965,8 @@
   }
 
   async function runWholeSitePreflight() {
+    if(sourceEditorDirty)
+      throw new Error('Apply or discard Selected Source changes before running whole-site preflight.');
     await flushLocalCreativeEdits();
     const checkedRevision=revision;
     const [quality,responsive,conversion]=await Promise.all([
