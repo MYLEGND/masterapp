@@ -141,6 +141,46 @@ class ReconciliationTests(unittest.TestCase):
             deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
         self.assertEqual(0, azure.uploads)
 
+    def test_reconcile_carries_exact_idle_baseline_proof_into_fresh_intent(self):
+        class Journal:
+            baseline = 'b' * 40
+            intent = None
+            history_error = RuntimeError('missing historical intent')
+            def __init__(self):
+                self.allowed = []
+            def before_submit(self, baseline_ids, *, allow_recovered_baseline=False):
+                self.allowed.append((set(baseline_ids), allow_recovered_baseline))
+                if not allow_recovered_baseline:
+                    raise self.history_error
+                self.intent = {'baselineDeploymentIds': sorted(baseline_ids)}
+                self.history_error = None
+                return True
+            def record_success(self, deployment_ids):
+                return None
+
+        azure = FakeAzure(
+            [[row('old', 4)], [row('old', 4), row('fresh', 4)]],
+            [False])
+        azure.revision = 'a' * 40
+        observed = iter(['b' * 40, 'a' * 40, 'a' * 40])
+        azure.observed_revision = lambda: next(observed)
+        journal = Journal()
+
+        self.assertEqual(
+            'deployed',
+            deploy.reconcile(
+                azure,
+                baseline='b' * 40,
+                journal=journal,
+                clock=lambda: azure.now,
+                sleep=azure.sleep,
+                interval=1,
+                timeout=10,
+            ),
+        )
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual([({'old'}, True)], journal.allowed)
+
     def test_history_gap_never_allows_replay_from_active_or_unknown_state(self):
         from types import SimpleNamespace
         journal = SimpleNamespace(intent=None, history_error=RuntimeError('missing intent'))
