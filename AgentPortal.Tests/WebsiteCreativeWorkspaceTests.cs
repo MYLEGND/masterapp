@@ -514,6 +514,9 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Equal("Precision Home", result.Document.Pages["/"].Title);
         Assert.True(result.Document.Pages["/old"].Navigation.IsDeleted);
         Assert.True(result.Document.Pages.ContainsKey("/services"));
+        Assert.Equal(
+            ["home.hero.new", "home.close"],
+            result.Document.Pages["/"].Composition.Select(value => value.Id).ToArray());
         Assert.Contains(result.Document.Pages["/"].Composition, value => value.Id == "home.hero.new");
         Assert.Contains(result.Document.Pages["/"].Composition, value => value.Id == "home.close");
         Assert.Contains(WebsiteSiteSource.Flatten(result.Document),
@@ -550,7 +553,108 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "hero.cinematic");
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "services.grid");
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "cta.closing");
+        var inserts = operations.Where(value => value.Type == "insertRecipe").ToArray();
+        Assert.Equal(Enumerable.Range(0, inserts.Length), inserts.Select(value => value.Index!.Value));
         Assert.DoesNotContain(operations, value => value.Type == "insertNode" && value.Node?.SystemKey is not null);
+    }
+
+    [Fact]
+    public void DesignPlan_MovesProtectedRuntimeIntoNewComposition_ThenRemovesStaleWrapper()
+    {
+        var path = "/Quote/Life";
+        var runtimeKey = WebsiteSystemTemplateAuthority.RuntimeFormKey(path)!;
+        var document = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                [path] = new WebsitePageDocument
+                {
+                    Title = "Life Quote",
+                    Navigation = new WebsitePageNavigation { Label = "Life Quote", Order = 0 },
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "legacy.wrapper",
+                            Type = "section",
+                            Tag = "section",
+                            Children =
+                            [
+                                new WebsiteCompositionNode { Id = "legacy.copy", Type = "text", Tag = "p", Text = "Old wrapper copy" },
+                                new WebsiteCompositionNode
+                                {
+                                    Id = "runtime.life",
+                                    Type = "container",
+                                    Tag = "div",
+                                    SystemKey = runtimeKey
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        };
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
+        var actions = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
+        var manifest = WebsiteCreativeCapabilityResolver.Resolve(
+            WebsiteEditorSiteKeys.Protect,
+            "protect-owner",
+            document,
+            actions);
+        var plan = new WebsiteDesignPlan
+        {
+            Pages =
+            [
+                new WebsiteDesignPlanPage
+                {
+                    Path = path,
+                    Title = "Life Protection",
+                    NavigationLabel = "Life",
+                    ReplaceFreeComposition = true,
+                    Sections =
+                    [
+                        new WebsiteDesignPlanSection
+                        {
+                            Recipe = "hero.cinematic",
+                            Key = "life.hero",
+                            Content = new(StringComparer.Ordinal) { ["headline"] = "Protect what matters." }
+                        },
+                        new WebsiteDesignPlanSection
+                        {
+                            Recipe = "feature.split",
+                            Key = "life.quote",
+                            CapabilityNodeId = "runtime.life",
+                            Content = new(StringComparer.Ordinal) { ["headline"] = "Build your plan." }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var operations = WebsiteDesignPlanResolver.Resolve(
+            document,
+            WebsiteEditorSiteKeys.Protect,
+            manifest,
+            plan);
+        var moveIndex = operations.ToList().FindIndex(value => value.Type == "moveNode" && value.NodeId == "runtime.life");
+        var removeIndex = operations.ToList().FindIndex(value => value.Type == "removeNode" && value.NodeId == "legacy.wrapper");
+        Assert.True(moveIndex >= 0);
+        Assert.True(removeIndex > moveIndex);
+
+        var result = WebsiteDocumentMutationService.Apply(
+            document,
+            WebsiteEditorSiteKeys.Protect,
+            actions,
+            manifest,
+            operations);
+
+        Assert.DoesNotContain(result.Document.Pages[path].Composition, value => value.Id == "legacy.wrapper");
+        var runtime = WebsiteSiteSource.Flatten(result.Document)
+            .Single(value => value.Node.Id == "runtime.life");
+        Assert.Equal(path, runtime.PagePath);
+        Assert.Equal(runtimeKey, runtime.Node.SystemKey);
+        Assert.Contains(result.Document.Pages[path].Composition, value => value.Id == "life.hero");
+        Assert.Contains(result.Document.Pages[path].Composition, value => value.Id == "life.quote");
     }
 
     [Fact]
