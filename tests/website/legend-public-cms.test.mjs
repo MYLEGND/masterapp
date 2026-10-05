@@ -2036,15 +2036,18 @@ for(const siteKey of ['legend','protect']) {
     } finally {f.close();}
   });
 }
-test('autosave persists edits before domain connection and panel can collapse to a full-page preview', async()=>{
+test('autosave persists changed scopes through canonical mutations before domain connection', async()=>{
   const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
   try {
     f.click('main h1');
     f.editSelected('Persisted before domain');
     await new Promise(resolve=>setTimeout(resolve,1000));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    assert.equal(canonicalNodeById(JSON.parse(saveCall.body).document,'home.h1.node.1').text,'Persisted before domain');
+    const operations=JSON.parse(saveCall.body).operations;
+    assert.ok(operations.some(operation=>operation.type==='replaceNode' && operation.nodeId==='home.h1.node.1'));
+    assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Persisted before domain');
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body || '{}').document),false);
     const toggle=f.w.document.querySelector('#legend-cms-panel-toggle');
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
@@ -2486,8 +2489,16 @@ test('store cart icon is persisted in the canonical website document and sanitiz
   assert.match(businessRenderSource,/cartIcon:storeCartIcon/);
 });
 
-test('publish saves unsaved draft first then calls the explicit publish action',async()=>{
- const f=await domFixture();try{f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
+test('publish flushes unsaved mutations first then calls the explicit publish action',async()=>{
+ const f=await domFixture();try{
+   f.click('main h1');f.editSelected('New draft');f.click('#legend-cms-publish');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   const mutationIndex=f.calls.findIndex(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+   const publishIndex=f.calls.findIndex(call=>call.method==='POST' && call.url.endsWith('/manage/publish'));
+   assert.ok(mutationIndex>0);assert.ok(publishIndex>mutationIndex);
+   assert.equal(JSON.parse(f.calls[publishIndex].body).expectedRevision,'r2');
+   assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage') && JSON.parse(call.body || '{}').document),false);
+ }finally{f.close();}
 });
 test('editing current page preserves independent canonical page composition',async()=>{
  const doc=canonicalDocument();
@@ -2506,8 +2517,20 @@ test('editing current page preserves independent canonical page composition',asy
    assert.equal(canonicalNodeById(saved,'home.h1.node.1').text,'Home edit');
  }finally{f.close();}
 });
-test('undo and redo restore content and leave other page drafts intact',async()=>{
- const f=await domFixture();try{f.click('main h1');f.editSelected('First edit');f.editSelected('Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
+test('undo and redo replay inverse canonical mutation batches without document snapshots',async()=>{
+ const f=await domFixture();try{
+   f.click('main h1');f.editSelected('First edit');await f.save();
+   f.click('main h1');f.editSelected('Second edit');
+   f.click('#legend-cms-undo');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');
+   f.click('#legend-cms-redo');
+   await new Promise(r=>setTimeout(r,0));await new Promise(r=>setTimeout(r,0));
+   assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');
+   assert.equal(source.includes('function historySnapshot'),false);
+   assert.match(source,/undoStack\.push\(\{undo,redo\}\)/);
+   assert.match(source,/creativeApplyMutationBatch\(operations\)/);
+ }finally{f.close();}
 });
 test('selected blocks expose a dedicated move control plus independent resize zones and a quiet snap grid',async()=>{
  const f=await domFixture();try {
@@ -2628,50 +2651,82 @@ test('business Pages manager stores navigation metadata in the canonical documen
   } finally { f.close(); }
 });
 
-test('business Pages manager creates a real custom page draft and saves before navigation', async()=>{
+test('business page selector switches existing canonical routes without a second manage bootstrap', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/about']={title:'About',description:'About',navigation:{label:'About',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[
+    canonicalNode('about.section','section','section',{children:[canonicalNode('about.h1','heading','h1',{text:'About us'})]})
+  ]};
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
+  try{
+    const before=f.calls.filter(call=>(call.method||'GET')==='GET' && new URL(call.url).pathname.endsWith('/manage')).length;
+    f.change('#legend-cms-page-select','/about');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(f.w.document.querySelector('main h1')?.textContent,'About us');
+    assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/about');
+    assert.equal(new URL(f.w.location.href).searchParams.get('cmsPage'),'/about');
+    const after=f.calls.filter(call=>(call.method||'GET')==='GET' && new URL(call.url).pathname.endsWith('/manage')).length;
+    assert.equal(after,before);
+  }finally{f.close();}
+});
+
+test('Studio bootstrap uses the compact agent contract and lazy advanced catalogs',()=>{
+  assert.match(websitePlatformControllerSource,/signalCatalog = \(object\?\)null, agentContract = WebsiteStudioAgentContract\.CompactPayload/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/contract"\)\]/);
+  assert.match(source,/async function ensureSignalCatalog\(\)/);
+  assert.match(source,/getFullContract:\(\)=>creativeWorkspaceRequest\('manage\/agent\/contract'\)/);
+});
+
+test('business Pages manager creates a canonical page by mutation and switches in place', async()=>{
   const f=await domFixture({
     siteKey:'business',
     business:{id:'business-id',displayName:'Fixture business'},
     pages:[{path:'/',label:'Home'},{path:'/about',label:'About'}]
   });
   try {
+    const bootstrapCount=f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length;
     f.click('[data-open="page"]');
     f.input('#legend-cms-page-nav-label','Team');
     f.input('#legend-cms-page-slug','/team');
     f.click('#legend-cms-page-create');
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    const saved=JSON.parse(saveCall.body).document;
+    const saved=f.serverDocument();
     assert.equal(saved.pages['/team'].title,'Team');
     assert.equal(saved.pages['/team'].navigation.label,'Team');
     assert.equal(saved.pages['/team'].navigation.isDeleted,false);
     assert.ok(saved.pages['/team'].composition.some(node=>node.type==='section'));
     assert.ok(canonicalNodes(saved,'/team').some(node=>node.type==='heading'&&node.text==='Team'));
+    assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/team');
+    assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
     assert.equal(Object.hasOwn(saved.pages['/team'],'extras'),false);
   } finally { f.close(); }
 });
 
-test('business Pages manager renames the canonical page record without retaining a shadow route', async()=>{
-  const html='<!doctype html><html><head></head><body data-page-key="services"><main><section><h1>Services</h1></section></main></body></html>';
+test('business Pages manager renames the canonical page by mutation without a shadow route or rebootstrap', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/services']={title:'Services',description:'',navigation:{label:'Services',showInNavigation:true,order:10,isDeleted:false},dynamicBinding:null,composition:[
+    canonicalNode('services.section','section','section',{children:[canonicalNode('services.h1','heading','h1',{text:'Services'})]})
+  ]};
   const f=await domFixture({
-    siteKey:'business',
+    siteKey:'business',doc,
     business:{id:'business-id',displayName:'Fixture business'},
-    pathname:'/business-preview/services/',
-    pages:[{path:'/',label:'Home'},{path:'/services',label:'Services'}],
-    html
+    search:'?legendEdit=ticket&cmsPage=/services',
+    pages:[{path:'/',label:'Home'},{path:'/services',label:'Services'}]
   });
   try {
+    const bootstrapCount=f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length;
     f.click('[data-open="page"]');
     f.input('#legend-cms-page-slug','/work');
     f.click('#legend-cms-page-rename');
-    await new Promise(resolve=>setTimeout(resolve,0));
-    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
-    const saved=JSON.parse(saveCall.body).document;
+    const saved=f.serverDocument();
     assert.ok(saved.pages['/work']);
     assert.equal(saved.pages['/services'],undefined);
     assert.equal(Object.hasOwn(saved.pages['/work'],'templatePath'),false);
+    assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
   } finally { f.close(); }
 });
 
@@ -2684,7 +2739,7 @@ test('business Pages manager cannot delete or rename the home route', async()=>{
     f.input('#legend-cms-page-slug','/new-home');
     f.click('#legend-cms-page-rename');
     await new Promise(resolve=>setTimeout(resolve,0));
-    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage')),false);
+    assert.equal(f.calls.some(call=>call.method==='POST' && call.url.endsWith('/manage/mutations')),false);
   } finally { f.close(); }
 });
 
