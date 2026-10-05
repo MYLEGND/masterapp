@@ -1066,6 +1066,10 @@
     const explicit=responsive && typeof responsive==='object' ? responsive : {};
     const has=field=>Object.hasOwn(explicit,field);
     const role=canonicalResponsiveRole(model,el);
+    const fullBleedMedia=
+      role==='media' &&
+      (String(model?.className || '').split(/\s+/).includes('legend-recipe-hero-cinematic-media') ||
+       el?.classList?.contains('legend-recipe-hero-cinematic-media'));
 
     // Breakpoint values are authoritative when explicitly authored. Responsive
     // defaults only fill fields that are absent at the active breakpoint, so a
@@ -1137,13 +1141,16 @@
         const ceiling=role==='heading' ? 1.35 : role==='kicker' ? 1.05 : role==='action' ? 1.05 : 1.15;
         style.fontScale=Math.min(ceiling,Number(style.fontScale));
       }
-      if(mediaRole){
+      if(mediaRole && !fullBleedMedia){
         if(!has('maxWidthPx')){
           const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
           style.maxWidthPx=Math.min(560,requestedMax);
         }
         if(!has('maxHeightPx') && positiveNumber(style.maxHeightPx))
           style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
+      } else if(fullBleedMedia){
+        if(!has('maxWidthPx')) delete style.maxWidthPx;
+        if(!has('maxHeightPx')) delete style.maxHeightPx;
       }
     } else if(key==='tablet'){
       if(!has('offsetXPercent')) style.offsetXPercent=0;
