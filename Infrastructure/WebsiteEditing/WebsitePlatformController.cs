@@ -1551,7 +1551,45 @@ public class WebsitePlatformController : ControllerBase
         if (delete) drafts.Remove(draft);
         else
         {
-            state.DraftJson = draft.DocumentJson;
+            WebsiteContentDocument restored;
+            try
+            {
+                restored = Read(draft.DocumentJson);
+                if (restored.LegacyMigration is null)
+                {
+                    var baseline = Read(state.DraftJson);
+                    var facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+                        ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+                        : null;
+                    var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+                    var source = WebsiteSiteSource.Serialize(restored);
+                    restored = WebsiteSiteSource.Parse(source, baseline, actions).Document;
+                    WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, restored);
+                    WebsiteSiteSource.ValidateCanonical(restored, actions);
+                    await ValidateCompositionMediaOwnershipAsync(actor, restored, cancellationToken);
+                    state.DraftJson = JsonSerializer.Serialize(restored, JsonOptions);
+                }
+                else
+                {
+                    // Historical pre-v3 named drafts remain eligible only for the
+                    // existing explicit one-way materialization boundary.
+                    state.DraftJson = draft.DocumentJson;
+                }
+            }
+            catch (WebsiteSiteSourceProtectionException ex)
+            {
+                return BadRequest(new
+                {
+                    error = "website_draft_restore_protected",
+                    message = ex.Message,
+                    canonicalProtectionViolation = true
+                });
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or JsonException)
+            {
+                return BadRequest(new { error = "website_draft_restore_invalid", message = ex.Message });
+            }
+
             state.ScheduledPublishUtc = null; state.ScheduledRevision = null;
             state.ScheduledActorJson = null; state.ScheduleError = null;
         }
