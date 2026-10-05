@@ -2979,7 +2979,16 @@
       runSiteResponsiveQualityAudit(),
       creativeWorkspaceRequest('manage/agent/conversion-readiness')
     ]);
-    if(revision!==checkedRevision)
+    const responsiveRevisions=(Array.isArray(responsive)?responsive:[])
+      .map(page=>page?.revision)
+      .filter(value=>value!=null);
+    const evidenceMatches =
+      revision===checkedRevision &&
+      quality?.revision===checkedRevision &&
+      conversion?.revision===checkedRevision &&
+      responsiveRevisions.length===(Array.isArray(responsive)?responsive.length:0) &&
+      responsiveRevisions.every(value=>value===checkedRevision);
+    if(!evidenceMatches)
       throw new Error('Website revision changed during preflight. Run preflight again on the current draft.');
     return {revision:checkedRevision,quality,responsive,conversion};
   }
@@ -4022,7 +4031,11 @@
         if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
         if(event.data?.type!=='legend-site-responsive-audit') return;
         if(normalizePageRoute(event.data.route)!==route) return;
-        finish(null,{route,results:Array.isArray(event.data.results)?event.data.results:[]});
+        finish(null,{
+          route,
+          revision:event.data.revision ?? null,
+          results:Array.isArray(event.data.results)?event.data.results:[]
+        });
       };
       const finish=(error,value)=>{
         clearTimeout(timeout); window.removeEventListener('message',onMessage); frame.remove();
@@ -8171,6 +8184,7 @@
         window.parent?.postMessage({
           type:'legend-site-responsive-audit',
           route:currentPageRoute(),
+          revision,
           results
         },location.origin);
         document.documentElement.hidden=false;
