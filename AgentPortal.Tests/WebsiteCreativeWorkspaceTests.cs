@@ -788,6 +788,36 @@ public sealed class WebsiteCreativeWorkspaceTests
         };
         Assert.Throws<ArgumentException>(() =>
             WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, tooMany));
+
+        foreach (var invalidRoute in new[]
+        {
+            "/Bad-Route",
+            "/has space",
+            "/slash\\escape",
+            "/" + new string('a', 161)
+        })
+        {
+            var invalid = new WebsiteDesignPlan
+            {
+                Pages = [new WebsiteDesignPlanPage { Path = invalidRoute }]
+            };
+            Assert.Throws<ArgumentException>(() =>
+                WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, invalid));
+        }
+
+        var protect = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/Quote/Life"] = new WebsitePageDocument
+                {
+                    Title = "Life",
+                    Navigation = new WebsitePageNavigation { Label = "Life", Order = 0 }
+                }
+            }
+        };
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, protect);
+        Assert.True(protect.Pages.ContainsKey("/Quote/Life"));
     }
 
     [Fact]
