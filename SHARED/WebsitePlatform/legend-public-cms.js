@@ -8340,6 +8340,7 @@
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage`);
       url.searchParams.set('ticket', editorTicket);
+      if(auditMode) url.searchParams.set('audit','true');
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         if ((response.status===401 || response.status===403) &&
