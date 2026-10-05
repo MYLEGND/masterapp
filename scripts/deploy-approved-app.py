@@ -76,6 +76,30 @@ class DeploymentStatusUnavailable(DeploymentReconciliationRequired):
     """Azure deployment state could not be read within the bounded outage budget."""
 
 
+def read_deployments_bounded(azure, *, attempts=3, interval=15, sleep=None, phase='before any upload'):
+    """Read Azure deployment state with one canonical bounded read-only retry policy."""
+    if attempts < 1:
+        raise ValueError('Deployment status attempts must be positive')
+    sleeper = sleep or time.sleep
+    for attempt in range(1, attempts + 1):
+        try:
+            return azure.deployments()
+        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            if attempt >= attempts:
+                raise DeploymentStatusUnavailable(
+                    f'Azure deployment status remained unavailable for {attempts} consecutive reads '
+                    f'({phase}). No deployment or rollback write was replayed; '
+                    'resume by reconciling the exact revision.'
+                ) from exc
+            print(
+                f'Deployment status temporarily unavailable; bounded read-only retry '
+                f'{attempt}/{attempts}.',
+                flush=True,
+            )
+            sleeper(interval)
+    raise AssertionError('Unreachable Azure deployment read state')
+
+
 class Azure:
     def __init__(self, app, package, url, revision, static=False):
         self.app, self.package, self.url, self.revision = app, package, url, revision
@@ -146,26 +170,14 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
             baseline_ids = set(journal.intent['baselineDeploymentIds'])
     stable = 0
     previous = None
-    consecutive_status_failures = 0
     while clock() - started < timeout:
-        try:
-            rows = azure.deployments()
-        except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
-            stable = 0
-            consecutive_status_failures += 1
-            if consecutive_status_failures >= max_status_failures:
-                phase = 'after immutable upload' if submitted else 'before any upload'
-                raise DeploymentStatusUnavailable(
-                    f'Azure deployment status remained unavailable for {consecutive_status_failures} consecutive reads '
-                    f'({phase}). No deployment or rollback write was replayed; resume by reconciling the exact revision.'
-                ) from exc
-            print(
-                f'Deployment status temporarily unavailable; bounded read-only retry '
-                f'{consecutive_status_failures}/{max_status_failures}.',
-                flush=True)
-            sleep(interval)
-            continue
-        consecutive_status_failures = 0
+        rows = read_deployments_bounded(
+            azure,
+            attempts=max_status_failures,
+            interval=interval,
+            sleep=sleep,
+            phase='after immutable upload' if submitted else 'before any upload',
+        )
         active = [row for row in rows if row['status'] in (0, 1, 2)]
         new = [row for row in rows if row['id'] not in baseline_ids] if submitted else []
         state = (submitted, tuple(sorted((row['id'], row['status']) for row in (new if submitted else active))))
@@ -316,8 +328,10 @@ def preflight_target(key, package, revision, baseline, journal):
         reconcile(azure, baseline=baseline, reconcile_only=True, journal=journal)
         return
     try:
-        rows = azure.deployments()
+        rows = read_deployments_bounded(azure, phase='before any upload')
         observed = azure.observed_revision()
+    except DeploymentStatusUnavailable:
+        raise
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         raise DeploymentReconciliationRequired('Pre-publication Azure state unavailable') from exc
     if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:

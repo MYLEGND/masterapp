@@ -119,6 +119,18 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual('deployed', azure.run())
         self.assertEqual(1, azure.uploads)
 
+    def test_preflight_retries_transient_azure_history_timeout_without_upload(self):
+        azure = FakeAzure(
+            [subprocess.TimeoutExpired(['az', 'webapp', 'log', 'deployment', 'list'], 20), [row('old', 4)]],
+            [False])
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'b' * 40
+        with patch.object(deploy, 'target_azure', return_value=azure), \
+             patch.object(deploy.time, 'sleep') as sleeper:
+            deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, None)
+        sleeper.assert_called_once_with(15)
+        self.assertEqual(0, azure.uploads)
+
     def test_live_revision_alone_cannot_override_active_deployment(self):
         azure = FakeAzure([[row('still-running', 2)]], [True])
         with self.assertRaisesRegex(RuntimeError, 'deadline'):
