@@ -58,6 +58,13 @@ public static class WebsiteLeadEmailTemplate
     public static string Build(string title, WebsiteLead lead) =>
         Build(title, lead.FirstName, lead.LastName, lead.Email, lead.Phone, lead.Notes, lead.SourcePageKey);
 
+    public static string SubjectFor(WebsiteLead lead) =>
+        string.Equals(lead.InterestType, "ProtectionInquiry", StringComparison.OrdinalIgnoreCase)
+            ? "New LEGEND Legacy Protection inquiry"
+            : string.Equals(lead.InterestType, "BusinessInquiry", StringComparison.OrdinalIgnoreCase)
+                ? "New website inquiry"
+                : "New LEGEND® website inquiry";
+
     private static void Row(StringBuilder rows, string label, string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
