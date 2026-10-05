@@ -1234,6 +1234,8 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/applySafeQualityRepairs:async\(\)=>/);
   assert.match(source,/runResponsiveQuality:runResponsiveQualityAudit/);
   assert.match(source,/runSiteResponsiveQuality:runSiteResponsiveQualityAudit/);
+  assert.match(source,/fullBleedMedia=[\s\S]*legend-recipe-hero-cinematic-media/);
+  assert.match(source,/else if\(fullBleedMedia\)[\s\S]*delete style\.maxWidthPx[\s\S]*delete style\.maxHeightPx/);
   assert.match(source,/runPreflight:async\(\)=>/);
   assert.match(source,/inspectConversionHealth:\(\)=>creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
   assert.match(source,/getSignalCatalog:\(\)=>creativeWorkspaceRequest\('manage\/signal-catalog'\)/);
