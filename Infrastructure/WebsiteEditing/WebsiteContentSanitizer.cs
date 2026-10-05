@@ -219,6 +219,86 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
+    internal static List<WebsiteBreakpointDefinition> SanitizeMutationBreakpoints(
+        IEnumerable<WebsiteBreakpointDefinition>? source) =>
+        SanitizeBreakpoints(source);
+
+    internal static WebsiteDesignTheme SanitizeMutationTheme(WebsiteDesignTheme? source) =>
+        SanitizeTheme(source);
+
+    internal static string? SanitizeMutationFavicon(string? value) =>
+        SanitizeImage(value);
+
+    internal static WebsiteStoreSettings SanitizeMutationStore(
+        WebsiteStoreSettings? source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+    {
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        return SanitizeStore(source, keys);
+    }
+
+    internal static WebsitePageDocument SanitizeMutationPageMetadata(
+        string pagePath,
+        WebsitePageDocument? source)
+    {
+        source ??= new WebsitePageDocument();
+        return new WebsitePageDocument
+        {
+            Title = ClampText(source.Title),
+            Description = ClampText(source.Description),
+            Navigation = SanitizeNavigation(pagePath, source.Navigation, source.Title),
+            DynamicBinding = SanitizeDynamicBinding(source.DynamicBinding),
+            SystemTemplateKey = WebsiteSystemTemplateAuthority.IsKnownTemplateKey(source.SystemTemplateKey)
+                ? source.SystemTemplateKey!.Trim()
+                : null,
+            Composition = []
+        };
+    }
+
+    internal static WebsiteCompositionNode SanitizeMutationNode(
+        WebsiteCompositionNode source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true)
+    {
+        RejectUnexpectedMutationNodeFields(source, "mutation/" + source.Id);
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        var result = SanitizeComposition([source], keys, mobileFlowSafety);
+        if (result.Count != 1)
+            throw new ArgumentException($"Website component '{source.Id}' is not valid canonical v3 content.");
+        return result[0];
+    }
+
+    internal static WebsiteReusableComponentDefinition SanitizeMutationReusableComponent(
+        WebsiteReusableComponentDefinition source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+    {
+        if (source is null || string.IsNullOrWhiteSpace(source.Id))
+            throw new ArgumentException("Reusable component identity is required.");
+        if (source.UnexpectedFields is { Count: > 0 })
+            throw new ArgumentException(
+                $"Unsupported website field(s) at component:{source.Id}: {string.Join(", ", source.UnexpectedFields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        foreach (var node in source.Composition ?? [])
+            RejectUnexpectedMutationNodeFields(node, "component:" + source.Id + "/" + node.Id);
+
+        var id = SanitizeId(source.Id);
+        if (id.Length == 0 || !string.Equals(id, source.Id, StringComparison.Ordinal))
+            throw new ArgumentException("Reusable component identity is invalid.");
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        return SanitizeReusableComponent(source, keys, id)
+            ?? throw new ArgumentException("Reusable component is invalid.");
+    }
+
+    private static void RejectUnexpectedMutationNodeFields(
+        WebsiteCompositionNode node,
+        string location)
+    {
+        if (node.UnexpectedFields is { Count: > 0 })
+            throw new ArgumentException(
+                $"Unsupported website field(s) at {location}: {string.Join(", ", node.UnexpectedFields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        foreach (var child in node.Children ?? [])
+            RejectUnexpectedMutationNodeFields(child, location + "/" + child.Id);
+    }
+
     private static void RejectUnexpectedCanonicalFields(WebsiteContentDocument source)
     {
         static void Reject(
