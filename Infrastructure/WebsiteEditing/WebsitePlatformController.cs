@@ -1693,20 +1693,32 @@ public class WebsitePlatformController : ControllerBase
         if (!request.Authorized) return BadRequest(new { error = "import_authorization_required" });
         var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        var baseline = Read(state.DraftJson);
         var importer = HttpContext.RequestServices.GetRequiredService<WebsiteImportService>();
         WebsiteImportResult result;
         if (request.Document is not null)
         {
             using var input = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(request.Document, JsonOptions));
-            result = await importer.PrepareExportAsync(input, false, Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
+            result = await importer.PrepareExportAsync(input, false, baseline, true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
         }
-        else result = await importer.PrepareAsync(request.SourceUrl ?? "", Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
+        else result = await importer.PrepareAsync(request.SourceUrl ?? "", baseline, true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;
         state.ScheduledRevision = null;
         state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
-        var importedDocument = WebsiteContentSanitizer.Sanitize(result.Document);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, importedDocument);
+        WebsiteContentDocument importedDocument;
+        try
+        {
+            importedDocument = await ReconcileImportedDocumentAsync(actor, baseline, result.Document, cancellationToken);
+        }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new { error = "website_import_protected", message = ex.Message, canonicalProtectionViolation = true });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_import_invalid", message = ex.Message });
+        }
         state.DraftJson = JsonSerializer.Serialize(importedDocument, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
@@ -2093,11 +2105,23 @@ public class WebsitePlatformController : ControllerBase
         if (!authorized || file is null || file.Length <= 0 || file.Length > 50_000_000) return BadRequest();
         var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != expectedRevision) return Conflict(new { error = "revision_conflict" });
+        var baseline = Read(state.DraftJson);
         await using var input = file.OpenReadStream();
-        var result = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>().PrepareExportAsync(input, Path.GetExtension(file.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase), Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
+        var result = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>().PrepareExportAsync(input, Path.GetExtension(file.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase), baseline, true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
         state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
-        var importedDocument = WebsiteContentSanitizer.Sanitize(result.Document);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, importedDocument);
+        WebsiteContentDocument importedDocument;
+        try
+        {
+            importedDocument = await ReconcileImportedDocumentAsync(actor, baseline, result.Document, cancellationToken);
+        }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new { error = "website_import_protected", message = ex.Message, canonicalProtectionViolation = true });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_import_invalid", message = ex.Message });
+        }
         state.DraftJson = JsonSerializer.Serialize(importedDocument, JsonOptions);
         state.Revision++;
         state.ScheduledPublishUtc = null;
@@ -2107,6 +2131,34 @@ public class WebsitePlatformController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
     }
+    private async Task<WebsiteContentDocument> ReconcileImportedDocumentAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument baseline,
+        WebsiteContentDocument imported,
+        CancellationToken cancellationToken)
+    {
+        var facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+
+        // Import is an ingestion boundary, never a second behavior authority.
+        // Projecting through Site Source strips incoming provider/system wiring,
+        // restores protected baseline behavior by stable ID, validates scoped
+        // actions/runtime classes, and leaves presentation as the import payload.
+        var protectedProjection = WebsiteSiteSource.Serialize(
+            WebsiteContentSanitizer.Sanitize(imported));
+        var reconciled = WebsiteSiteSource.Parse(
+            protectedProjection,
+            baseline,
+            actions).Document;
+
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, reconciled);
+        WebsiteSiteSource.ValidateCanonical(reconciled, actions);
+        await ValidateCompositionMediaOwnershipAsync(actor, reconciled, cancellationToken);
+        return reconciled;
+    }
+
     private async Task ValidateCompositionMediaOwnershipAsync(
         WebsiteEditorTicket actor,
         WebsiteContentDocument document,
