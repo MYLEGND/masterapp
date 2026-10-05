@@ -2048,9 +2048,30 @@ public class WebsitePlatformController : ControllerBase
         if (designMetadata)
         {
             var mediaService = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
-            foreach (var asset in assets)
-                if (asset.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                    visualMetadata[asset.Id] = await mediaService.InspectVisualMetadataAsync(asset, cancellationToken);
+            var images = assets.Where(asset =>
+                asset.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)).ToArray();
+            const gate = new SemaphoreSlim(4, 4);
+            try
+            {
+                var inspections = images.Select(async asset =>
+                {
+                    await gate.WaitAsync(cancellationToken);
+                    try
+                    {
+                        return (asset.Id, Metadata: await mediaService.InspectVisualMetadataAsync(asset, cancellationToken));
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                });
+                foreach (var (id, metadata) in await Task.WhenAll(inspections))
+                    visualMetadata[id] = metadata;
+            }
+            finally
+            {
+                gate.Dispose();
+            }
         }
 
         var state = await StateAsync(actor, cancellationToken);
