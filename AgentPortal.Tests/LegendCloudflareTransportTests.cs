@@ -89,17 +89,32 @@ public sealed class LegendCloudflareTransportTests
     }
 
     [Fact]
-    public async Task ToolExposureDoesNotSatisfyMandatoryEvidenceGate()
+    public async Task MandatoryEvidenceRequiresVerifiedCloudToolReceipt()
     {
-        var handler = new Handler();
         var task = TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation) with
         {
             AllowTools = true, RequireToolCall = true,
             Tools = JsonSerializer.SerializeToElement(new[] { new { type = "function", name = "legend_calculate" } })
         };
-        var result = await Transport(handler, callbackEnabled: true).GenerateAsync("cloudflare:registry", task);
-        Assert.Equal("cloudflare_required_tool_receipt_not_qualified", result.ErrorCode);
-        Assert.Equal(0, handler.Calls);
+
+        var missingReceipt = new Handler();
+        var missing = await Transport(missingReceipt, callbackEnabled: true).GenerateAsync("cloudflare:registry", task);
+        Assert.False(missing.Succeeded);
+        Assert.Equal("cloudflare_required_tool_receipt_missing", missing.ErrorCode);
+        Assert.Equal(1, missingReceipt.Calls);
+        Assert.True(missingReceipt.Payload.GetProperty("task").GetProperty("requireToolCall").GetBoolean());
+
+        var verifiedReceipt = new Handler
+        {
+            ToolResults = new object[]
+            {
+                new { id = "call1", name = "legend_calculate", output = new { value = 4 } }
+            }
+        };
+        var completed = await Transport(verifiedReceipt, callbackEnabled: true).GenerateAsync("cloudflare:registry", task);
+        Assert.True(completed.Succeeded);
+        Assert.Equal(1, verifiedReceipt.Calls);
+        Assert.Contains("toolResults", completed.InferenceSettings);
     }
 
     [Fact]
@@ -163,6 +178,7 @@ public sealed class LegendCloudflareTransportTests
         public int Calls;
         public JsonElement Payload;
         public Func<string, string>? MutateResponse;
+        public object[]? ToolResults;
         public string ResponseId = "request1";
         public HttpClient CreateClient(string name)
         {
@@ -185,7 +201,8 @@ public sealed class LegendCloudflareTransportTests
             {
                 version = "legend-cloudflare.v1", requestId = ResponseId, status = "completed", text = "Fixture answer",
                 provider = new { name = "cloudflare-workers-ai", modelId = "@cf/fixture", hosting = "cloudflare" },
-                usage = new { costMicrousd = 50, costEvidence = "provider_usage" }
+                usage = new { costMicrousd = 50, costEvidence = "provider_usage" },
+                toolResults = ToolResults
             });
             return new(HttpStatusCode.OK) { Content = new StringContent(MutateResponse?.Invoke(json) ?? json) };
         }
