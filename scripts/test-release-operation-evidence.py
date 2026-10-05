@@ -428,6 +428,35 @@ class HistoricalLogTransportTests(unittest.TestCase):
         self.assertEqual('Bearer test-placeholder', request.get_header('Authorization'))
         self.assertNotIn('Authorization', request.headers)
 
+    def test_operation_journal_recovered_baseline_can_publish_one_fresh_intent(self):
+        authority = self.authority
+        env = {
+            'GITHUB_RUN_ID': '10',
+            'GITHUB_RUN_ATTEMPT': '1',
+            'PACKAGE_PRODUCER_RUN': '11',
+            'GITHUB_REPOSITORY': 'owner/repo',
+            'GITHUB_TOKEN': 'placeholder',
+        }
+        published = []
+        with patch.object(
+            authority,
+            'release_operation_history',
+            side_effect=authority.ReleaseOperationHistoryUnproven('missing intent'),
+        ):
+            operation = journal.OperationJournal(
+                target='portal',
+                application_revision='a' * 40,
+                package_digest='b' * 64,
+                baseline='c' * 40,
+                authority=authority,
+                publisher=lambda name, record: published.append((name, record)),
+                environment=env,
+            )
+        self.assertTrue(operation.before_submit({'old'}, allow_recovered_baseline=True))
+        self.assertIsNone(operation.history_error)
+        self.assertEqual(1, len(published))
+        self.assertFalse(operation.before_submit({'old'}, allow_recovered_baseline=True))
+
     def test_permission_failure_reports_only_job_and_status_without_retry(self):
         from unittest.mock import Mock
         opener = Mock()
