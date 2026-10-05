@@ -438,7 +438,7 @@
             await loadConversationPage(active, request.signal, older, newer);
             if (!request.signal.aborted && state.activeConversationId === active.id) renderAll();
         } catch (error) {
-            if (!request.signal.aborted && status) status.textContent = error.message;
+            if (!request.signal.aborted && status) updateThinkingStatus(error.message || '', false);
         } finally {
             if (historyRequest === request) historyRequest = null;
         }
@@ -491,8 +491,7 @@
             nextMode !== 'teacher'
         ) {
             if (status) {
-                status.textContent =
-                    'Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.';
+                updateThinkingStatus('Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.', false);
             }
             return;
         }
@@ -1053,6 +1052,7 @@
         if (!status) return;
         if (visible && transcript && status.parentElement !== transcript) transcript.appendChild(status);
         status.hidden = !visible;
+        status.dataset.message = message;
         if (statusDetail) statusDetail.textContent = message;
         if (visible) scrollToBottom();
     }
@@ -1446,19 +1446,25 @@
                 // A definite rejection is not an invitation to resubmit actions.
                 conversation.pendingOperation = null;
             }
-            if (status) status.textContent = result.succeeded
-                ? (result.messageId ? '' : 'The response is missing its saved conversation receipt.')
-                : structuredFailureMessage(result);
+            if (status) updateThinkingStatus(
+                result.succeeded
+                    ? (result.messageId ? '' : 'The response is missing its saved conversation receipt.')
+                    : structuredFailureMessage(result),
+                false
+            );
             renderAll({ forceBottom: true });
         } catch (error) {
-            if (activeRequest === request && status) status.textContent = request.signal.aborted
-                ? 'Response stopped. Check the saved outcome before sending again.'
-                : error.message || 'The response could not be received. Check the saved outcome.';
+            if (activeRequest === request && status) updateThinkingStatus(
+                request.signal.aborted
+                    ? 'Response stopped. Check the saved outcome before sending again.'
+                    : error.message || 'The response could not be received. Check the saved outcome.',
+                false
+            );
         } finally {
             if (epoch !== accountGeneration) return;
             if (activeRequest === request) {
                 activeRequest = null;
-                setBusy(false, status?.textContent || '');
+                setBusy(false);
             }
             if (founderCommandConfirmed) founderCommandConfirmed.checked = false;
             await refreshHistory();
@@ -1473,11 +1479,11 @@
         if (!text) return;
         const conversation = activeConversation();
         if (conversation.hasNewer) {
-            if (status) status.textContent = 'Load newer messages before sending a reply.';
+            if (status) updateThinkingStatus('Load newer messages before sending a reply.', false);
             return;
         }
         if (conversation.pendingOperation) {
-            if (status) status.textContent = 'Check the pending request before sending another message.';
+            if (status) updateThinkingStatus('Check the pending request before sending another message.', false);
             return;
         }
         // Only the current Human turn is submitted. Prior Assistant content,
