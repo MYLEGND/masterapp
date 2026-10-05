@@ -1470,8 +1470,10 @@ public class WebsitePlatformController : ControllerBase
         {
             var versions = await (from state in _db.Set<WebsiteContentState>().AsNoTracking()
                                   join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
-                                  where state.OwnerKey == asset.OwnerKey select version.DocumentJson).ToListAsync(cancellationToken);
-            if (!versions.Any(json => json.Contains("/api/website-content/media/" + id, StringComparison.OrdinalIgnoreCase))) return NotFound();
+                                  where state.OwnerKey == asset.OwnerKey
+                                  select version.DocumentJson).ToListAsync(cancellationToken);
+            if (!versions.Any(json => WebsiteMediaReferenceCatalog.References(Read(json), id)))
+                return NotFound();
         }
         var media = await HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>().OpenAsync(asset.OwnerKey, id, cancellationToken);
         return media is null ? NotFound() : File(media.Value.Content, media.Value.Asset.ContentType, enableRangeProcessing: true);
@@ -1642,34 +1644,7 @@ public class WebsitePlatformController : ControllerBase
         WebsiteContentDocument document,
         CancellationToken cancellationToken)
     {
-        var ids = new HashSet<Guid>();
-        void Visit(IEnumerable<WebsiteCompositionNode> nodes)
-        {
-            foreach (var node in nodes ?? [])
-            {
-                if (node.MediaAssetId.HasValue && node.MediaAssetId.Value != Guid.Empty)
-                    ids.Add(node.MediaAssetId.Value);
-
-                if (!node.MediaAssetId.HasValue &&
-                    !string.IsNullOrWhiteSpace(node.MediaUrl) &&
-                    Uri.TryCreate(node.MediaUrl, UriKind.RelativeOrAbsolute, out var mediaUri))
-                {
-                    var path = mediaUri.IsAbsoluteUri ? mediaUri.AbsolutePath : node.MediaUrl.Split('?', '#')[0];
-                    const string marker = "/api/website-content/media/";
-                    var index = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-                    if (index >= 0 && Guid.TryParse(path[(index + marker.Length)..].Trim('/'), out var parsed))
-                        ids.Add(parsed);
-                }
-
-                Visit(node.Children);
-            }
-        }
-
-        Visit(document.Shell.Header);
-        Visit(document.Shell.Footer);
-        foreach (var page in document.Pages.Values) Visit(page.Composition);
-        foreach (var component in document.ReusableComponents.Values) Visit(component.Composition);
-
+        var ids = WebsiteMediaReferenceCatalog.Collect(document);
         if (ids.Count == 0) return;
 
         var owned = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
