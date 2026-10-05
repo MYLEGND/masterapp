@@ -820,7 +820,7 @@ public sealed class WebsiteCreativeWorkspaceTests
                         },"action.business_schedule"),
                         Section("services.grid","services.grid",new(StringComparer.Ordinal)
                         {
-                            ["eyebrow"]="What we do",
+                            ["eyebrow"]="Core services",
                             ["headline"]="Focused expertise from first move to finish.",
                             ["body"]="Each service supports one coherent growth system.",
                             ["item1"]="Positioning",
