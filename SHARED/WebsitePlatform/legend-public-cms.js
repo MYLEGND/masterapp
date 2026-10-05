@@ -2925,52 +2925,165 @@
     }
   }
 
+  function directCompositionChildren(parent,exclude=null) {
+    return [...(parent?.children || [])].filter(child=>
+      child!==exclude && child?.dataset?.cmsCompositionId);
+  }
+
+  function insertCompositionElementAt(parent,element,index) {
+    if(!parent || !element) return false;
+    const siblings=directCompositionChildren(parent,element);
+    const targetIndex=Math.max(0,Math.min(Number.isFinite(Number(index))?Number(index):siblings.length,siblings.length));
+    parent.insertBefore(element,siblings[targetIndex] || null);
+    return true;
+  }
+
+  function patchPageStructuralMutation(operation,route) {
+    if(pageUsesSystemTemplate()) return false;
+    const main=document.querySelector('main');
+    if(!main) return false;
+
+    if(operation.type==='removeNode'){
+      const el=findEditableElement(operation.nodeId);
+      if(!el) return true;
+      if(selected && (selected===el || el.contains(selected))) setSelected(null);
+      el.remove();
+      return true;
+    }
+
+    if(operation.type==='moveNode'){
+      const targetRoute=operation.pagePath || route;
+      let el=findEditableElement(operation.nodeId);
+      if(targetRoute!==route){
+        if(el){
+          if(selected && (selected===el || el.contains(selected))) setSelected(null);
+          el.remove();
+        }
+        return true;
+      }
+
+      const model=compositionNode(operation.nodeId);
+      const parent=operation.parentId ? findEditableElement(operation.parentId) : main;
+      if(!model || !parent) return false;
+      el ||= buildCompositionNode(model);
+      if(!el) return false;
+      insertCompositionElementAt(parent,el,operation.index);
+      walkComposition([model],node=>applyCompositionNode(findEditableElement(node.id),node));
+      return true;
+    }
+
+    if(operation.type==='insertNode' || operation.type==='insertRecipe' || operation.type==='insertCapability'){
+      const targetRoute=operation.pagePath || route;
+      if(targetRoute!==route) return true;
+      const id=operation.type==='insertNode' ? operation.node?.id : operation.instanceKey;
+      if(!id) return false;
+      const model=compositionNode(id);
+      const parent=operation.parentId ? findEditableElement(operation.parentId) : main;
+      if(!model || !parent) return false;
+
+      let buildModel=model;
+      if(operation.type==='insertNode' && operation.node && (!operation.node.children || operation.node.children.length===0))
+        buildModel={...model,children:[]};
+
+      const existing=findEditableElement(id);
+      const el=existing || buildCompositionNode(buildModel);
+      if(!el) return false;
+      insertCompositionElementAt(parent,el,operation.index);
+      walkComposition([buildModel],node=>applyCompositionNode(findEditableElement(node.id),node));
+      return true;
+    }
+
+    return false;
+  }
+
   function applyCreativeMutationVisuals(operations,payload,selectedId=null) {
     const changes=payload?.changes || {};
     const changedScopes=Array.isArray(payload?.changedScopes)?payload.changedScopes:[];
     const route=currentPageRoute();
     const currentPageChanged=changedScopes.some(scope=>scope===route || String(scope).startsWith(route+'#')) || !!changes.pages?.[route];
+    const shellChanged=changedScopes.some(scope=>String(scope).startsWith('@shell/')) || !!changes.shellHeader || !!changes.shellFooter;
+    const componentChanged=changedScopes.some(scope=>String(scope).startsWith('@component/')) ||
+      Object.keys(changes.reusableComponents || {}).length>0 || (changes.removedComponents || []).length>0;
     let renderPage=false, renderShell=false, refreshReusable=false, metadata=false, responsive=false;
 
     if(!Array.isArray(operations)){
       renderPage=!!changes.pages?.[route];
-      renderShell=!!changes.shellHeader || !!changes.shellFooter;
-      refreshReusable=Object.keys(changes.reusableComponents || {}).length>0 || (changes.removedComponents || []).length>0;
+      renderShell=shellChanged;
+      refreshReusable=componentChanged;
       metadata=renderPage;
       responsive=!!changes.theme || !!changes.breakpoints;
     }else{
       for(const operation of operations){
         switch(operation?.type){
-          case 'setTheme': applyTheme(documentState.theme); responsive=true; break;
-          case 'setFavicon': applyFavicon(documentState.faviconImageDataUrl); break;
-          case 'setBreakpoints': responsive=true; break;
-          case 'setStorePresentation': applyStoreNavigation(); break;
+          case 'setTheme':
+            applyTheme(documentState.theme);
+            responsive=true;
+            break;
+          case 'setFavicon':
+            applyFavicon(documentState.faviconImageDataUrl);
+            break;
+          case 'setBreakpoints':
+            responsive=true;
+            break;
+          case 'setStorePresentation':
+            applyStoreNavigation();
+            break;
           case 'replaceShellHeader':
-          case 'replaceShellFooter': renderShell=true; break;
+          case 'replaceShellFooter':
+            renderShell=true;
+            break;
           case 'upsertReusable':
-          case 'removeReusable': refreshReusable=true; break;
+          case 'removeReusable':
+            refreshReusable=true;
+            break;
           case 'createPage':
           case 'removePage':
           case 'movePageRoute':
           case 'updatePage':
-            if(operation.pagePath===route || operation.targetPath===route) { renderPage=true; metadata=true; }
+            if(operation.pagePath===route || operation.targetPath===route) {
+              renderPage=true;
+              metadata=true;
+            }
             break;
           case 'insertNode':
           case 'insertRecipe':
           case 'insertCapability':
           case 'removeNode':
           case 'moveNode':
-            if(currentPageChanged) renderPage=true;
+            if(shellChanged && !currentPageChanged) {
+              renderShell=true;
+              break;
+            }
+            if(componentChanged && !currentPageChanged) {
+              refreshReusable=true;
+              break;
+            }
+            if(currentPageChanged && !patchPageStructuralMutation(operation,route))
+              renderPage=true;
             break;
           case 'replaceNode':
           case 'setApprovedCapability': {
+            if(shellChanged && !currentPageChanged) {
+              renderShell=true;
+              break;
+            }
+            if(componentChanged && !currentPageChanged) {
+              refreshReusable=true;
+              break;
+            }
             if(!currentPageChanged) break;
             const id=operation.nodeId;
             const model=id ? compositionNode(id) : null;
             const el=id ? findEditableElement(id) : null;
-            if(pageUsesSystemTemplate() || !model || !el) { renderPage=true; break; }
+            if(pageUsesSystemTemplate() || !model || !el) {
+              renderPage=true;
+              break;
+            }
             const replacement=buildCompositionNode(model);
-            if(!replacement){renderPage=true;break;}
+            if(!replacement){
+              renderPage=true;
+              break;
+            }
             el.replaceWith(replacement);
             break;
           }
