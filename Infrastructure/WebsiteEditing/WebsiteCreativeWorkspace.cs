@@ -342,6 +342,7 @@ public sealed class WebsiteMutationOperation
     public WebsitePageNavigation? Navigation { get; set; }
     public WebsiteDesignTheme? Theme { get; set; }
     public WebsiteStoreSettings? Store { get; set; }
+    public List<WebsiteBreakpointDefinition>? Breakpoints { get; set; }
     public WebsiteReusableComponentDefinition? ReusableComponent { get; set; }
     public string? Text { get; set; }
     public string? Title { get; set; }
@@ -409,6 +410,11 @@ public static class WebsiteDocumentMutationService
             case "setFavicon":
                 document.FaviconImageDataUrl = operation.FaviconImageDataUrl;
                 changed.Add("@favicon");
+                return;
+
+            case "setBreakpoints":
+                document.Breakpoints = operation.Breakpoints ?? WebsiteStudioContract.DefaultBreakpoints();
+                changed.Add("@breakpoints");
                 return;
 
             case "setStorePresentation":
@@ -519,9 +525,19 @@ public static class WebsiteDocumentMutationService
         if (!document.Pages.TryGetValue(path, out var page))
             throw new ArgumentException($"Page '{path}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Page(page), "page", path);
-        if (operation.Title is not null) page.Title = operation.Title;
-        if (operation.Description is not null) page.Description = operation.Description;
-        if (operation.Navigation is not null) page.Navigation = operation.Navigation;
+        if (operation.Page is not null)
+        {
+            page.Title = operation.Page.Title;
+            page.Description = operation.Page.Description;
+            page.Navigation = operation.Page.Navigation ?? new WebsitePageNavigation();
+            page.DynamicBinding = operation.Page.DynamicBinding;
+        }
+        else
+        {
+            if (operation.Title is not null) page.Title = operation.Title;
+            if (operation.Description is not null) page.Description = operation.Description;
+            if (operation.Navigation is not null) page.Navigation = operation.Navigation;
+        }
         changed.Add(path);
     }
 
@@ -963,6 +979,7 @@ public static class WebsiteDocumentMutationService
     {
         if (scope == "@theme") return WebsiteCreativeFingerprint.For(document.Theme);
         if (scope == "@favicon") return WebsiteCreativeFingerprint.For(document.FaviconImageDataUrl);
+        if (scope == "@breakpoints") return WebsiteCreativeFingerprint.For(document.Breakpoints);
         if (scope == "@shell/header") return WebsiteCreativeFingerprint.For(document.Shell.Header.Select(WebsiteCreativeProjection.Node));
         if (scope == "@shell/footer") return WebsiteCreativeFingerprint.For(document.Shell.Footer.Select(WebsiteCreativeProjection.Node));
         if (scope.StartsWith("@component/", StringComparison.Ordinal))
