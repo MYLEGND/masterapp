@@ -290,7 +290,8 @@ public class WebsitePlatformController : ControllerBase
             ? null
             : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
         var history = await _db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => v.StateId == state.Id)
-            .OrderByDescending(v => v.Revision).Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
+            .OrderByDescending(v => v.Revision).Take(20)
+            .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var draft = Read(state.DraftJson);
@@ -299,6 +300,16 @@ public class WebsitePlatformController : ControllerBase
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
             : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
+        var canPublish = await CanPublishAsync(actor, cancellationToken);
+        var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(a => a.OwnerKey == actor.OwnerUserId)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                MediaBytes = group.Sum(value => value.SizeBytes),
+                MediaCount = group.Count()
+            })
+            .SingleOrDefaultAsync(cancellationToken);
         return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft, legacyMigration = draft.LegacyMigration,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
@@ -308,16 +319,16 @@ public class WebsitePlatformController : ControllerBase
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
             store = await StorePayloadAsync(actor.SiteKey, draft, commerceScope, ticket, cancellationToken),
-            usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
+            usage = new { mediaBytes = mediaUsage?.MediaBytes ?? 0, mediaCount = mediaUsage?.MediaCount ?? 0, publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), agentContract = WebsiteStudioAgentContract.ForScope(ctaOptions, SignalCatalogPayload()), capabilities = new {
-                canPublish = await CanPublishAsync(actor, cancellationToken),
-                canManageDomains = await CanPublishAsync(actor, cancellationToken),
+            history, signalCatalog = (object?)null, agentContract = WebsiteStudioAgentContract.CompactPayload, capabilities = new {
+                canPublish,
+                canManageDomains = canPublish,
                 canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
-                canSchedule = await CanPublishAsync(actor, cancellationToken),
-                canDelete = await CanPublishAsync(actor, cancellationToken),
-                canPromote = await CanPublishAsync(actor, cancellationToken),
+                canSchedule = canPublish,
+                canDelete = canPublish,
+                canPromote = canPublish,
                 compositionV3 = true,
                 browserAgentWorkspace = true,
                 externalAiApi = false,
@@ -595,6 +606,24 @@ public class WebsitePlatformController : ControllerBase
     {
         if (await AuthorizeAsync(ticket, cancellationToken) is null) return Unauthorized();
         return Ok(SignalCatalogPayload());
+    }
+
+    [HttpGet("manage/agent/contract")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeAgentContract(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        return Ok(WebsiteStudioAgentContract.ForScope(actions, SignalCatalogPayload()));
     }
 
 
