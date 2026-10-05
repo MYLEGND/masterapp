@@ -2055,7 +2055,7 @@ public static class WebsitePageRecipeCatalog
                 string.Equals(primaryCapabilityKey, "contact.inquiry.submit", StringComparison.Ordinal) ||
                 (primaryCapabilityKey?.StartsWith("runtime.", StringComparison.Ordinal) ?? false);
             var capability = recipe == "contact.inquiry"
-                ? formLikeCapability ? primaryCapabilityKey : null
+                ? "contact.inquiry.submit"
                 : !formLikeCapability && (index == 0 || index == definition.SectionRecipes.Count - 1)
                     ? primaryCapabilityKey
                     : null;
@@ -2152,10 +2152,9 @@ public static class WebsiteDesignPlanResolver
         WebsiteDesignPlan plan)
     {
         var operations = new List<WebsiteMutationOperation>();
-        var planPrimaryCapability = plan.PrimaryCapabilityKey;
-        if (string.IsNullOrWhiteSpace(planPrimaryCapability) &&
-            capabilities.Capabilities.Any(value => value.Key == "contact.inquiry.submit"))
-            planPrimaryCapability = "contact.inquiry.submit";
+        var planPrimaryCapability = string.IsNullOrWhiteSpace(plan.PrimaryCapabilityKey)
+            ? ResolveDefaultPrimaryCapability(siteKey, capabilities)
+            : plan.PrimaryCapabilityKey;
 
         if (plan.ReplaceBusinessPages && siteKey == WebsiteEditorSiteKeys.Business)
         {
@@ -2294,6 +2293,49 @@ public static class WebsiteDesignPlanResolver
         }
 
         return operations;
+    }
+
+    private static string? ResolveDefaultPrimaryCapability(
+        string siteKey,
+        WebsiteCapabilityManifest capabilities)
+    {
+        string[] preferred = siteKey switch
+        {
+            WebsiteEditorSiteKeys.Business =>
+            [
+                "action.business_schedule",
+                "action.business_quote",
+                "action.business_contact",
+                "action.business_call",
+                "action.business_email"
+            ],
+            WebsiteEditorSiteKeys.Protect =>
+            [
+                "action.protect_quote",
+                "action.protect_risk_assessment",
+                "action.protect_schedule",
+                "action.protect_contact",
+                "action.protect_call"
+            ],
+            WebsiteEditorSiteKeys.Legend =>
+            [
+                "action.legend_contact",
+                "action.legend_protect",
+                "action.legend_about"
+            ],
+            _ => []
+        };
+
+        foreach (var key in preferred)
+            if (capabilities.Capabilities.Any(value =>
+                    value.Kind == "action" &&
+                    string.Equals(value.Key, key, StringComparison.Ordinal)))
+                return key;
+
+        return capabilities.Capabilities.Any(value =>
+            string.Equals(value.Key, "contact.inquiry.submit", StringComparison.Ordinal))
+            ? "contact.inquiry.submit"
+            : null;
     }
 
     private static WebsiteDesignTheme MergeTheme(WebsiteDesignTheme? basis, WebsiteDesignTheme? overlay)
