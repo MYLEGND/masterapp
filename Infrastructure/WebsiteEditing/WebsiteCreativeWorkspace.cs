@@ -1749,7 +1749,7 @@ public static class WebsiteRecipeCatalog
             useSplit ? "legend-recipe-hero legend-recipe-hero-split" : "legend-recipe-hero legend-recipe-hero-cinematic",
             children,
             useSplit
-                ? new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=48, AlignItems="center" }
+                ? new WebsiteCompositionLayout { Mode="free" }
                 : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=24, AlignItems="start" });
     }
 
@@ -1809,7 +1809,7 @@ public static class WebsiteRecipeCatalog
             media.HasValue ? "legend-recipe-section legend-recipe-feature-split" : "legend-recipe-section legend-recipe-feature",
             children,
             media.HasValue
-                ? new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=44, AlignItems="center" }
+                ? new WebsiteCompositionLayout { Mode="free" }
                 : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=20, AlignItems="start" });
     }
 
