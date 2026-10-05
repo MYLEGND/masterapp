@@ -235,7 +235,7 @@
       if (!value || typeof value !== 'object') continue;
       const route = normalizePageRoute(key);
       if (!route) continue;
-      const title=typeof value.title === 'string' ? value.title : null;
+      const title=cleanBusinessPreviewTitle(typeof value.title === 'string' ? value.title : null);
       const navigation=value.navigation && typeof value.navigation === 'object'
         ? {...value.navigation}
         : {showInNavigation:true,order:0,isDeleted:false};
@@ -827,9 +827,8 @@
     if(!signalCatalog.runtimeEnabled)
       paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
 
-    const selectedModel=selectedWebsiteModel(false);
-    const managedActionKey=selected.dataset.websiteActionKey || selectedModel?.actionKey || '';
-    const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
+    const managedActionKey=context.model?.actionKey || selected.dataset.websiteActionKey || '';
+    const managedAction=(managedActionKey && (ctaCatalog || []).find(option=>option.key===managedActionKey)) || null;
     if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
       const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
       const help=document.createElement('p');
