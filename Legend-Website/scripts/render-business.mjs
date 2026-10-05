@@ -137,7 +137,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       CSS:{escape:value=>String(value).replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c)},
       getComputedStyle:el=>new Proxy(el.style,{get:(style,name)=>name==='fontSize'?'16px':style[name]||''}),
       requestAnimationFrame:()=>0,cancelAnimationFrame(){},setTimeout:()=>0,clearTimeout(){}};
-    window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:'https://website.invalid',businessId:input.business.id};
+    window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:publicApiBase,businessId:input.business.id};
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
       document:currentDocument,
