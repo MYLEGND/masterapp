@@ -83,6 +83,8 @@
   let autoSaveTimer = null;
   let checkpointBaseline = null;
   let suppressHistoryCapture = false;
+  let sharedPresentationIndex = new Map();
+  let sharedPresentationIndexReady = false;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -519,16 +521,30 @@
     }
   }
 
-  function synchronizeCanonicalSharedPresentation(doc, preferredId=null) {
-    if (!doc || typeof doc!=='object') return doc;
+  function buildCanonicalSharedPresentationIndex(doc) {
     const groups=new Map();
+    if(!doc || typeof doc!=='object') return groups;
     const visit=nodes=>walkComposition(nodes,node=>{
       const key=canonicalSharedPresentationKey(node);
-      if (!key) return;
-      if (!groups.has(key)) groups.set(key,[]);
+      if(!key) return;
+      if(!groups.has(key)) groups.set(key,[]);
       groups.get(key).push(node);
     });
     Object.values(doc.pages || {}).forEach(page=>visit(page?.composition || []));
+    return groups;
+  }
+
+  function rebuildCanonicalSharedPresentationIndex(doc=documentState) {
+    sharedPresentationIndex=buildCanonicalSharedPresentationIndex(doc);
+    sharedPresentationIndexReady=doc===documentState;
+    return sharedPresentationIndex;
+  }
+
+  function synchronizeCanonicalSharedPresentation(doc, preferredId=null) {
+    if (!doc || typeof doc!=='object') return doc;
+    const groups=doc===documentState && sharedPresentationIndexReady
+      ? sharedPresentationIndex
+      : buildCanonicalSharedPresentationIndex(doc);
     for (const nodes of groups.values()) {
       if (nodes.length < 2) continue;
       const source=nodes.find(node=>node.id===preferredId) || nodes[0];
@@ -2648,6 +2664,7 @@
   }
 
   function renderCanonicalCompositionPage() {
+    rebuildCanonicalSharedPresentationIndex(documentState);
     // Template runtimes own their DOM and event listeners. All structural editor
     // paths must preserve that mounted runtime and apply presentation only.
     if(pageUsesSystemTemplate()) { applyTemplateBackedCompositionPage(); return; }
@@ -2955,6 +2972,7 @@
   function mergeCreativeMutationDelta(payload,operations=null) {
     const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
     documentState=applyCreativeMutationDeltaToState(documentState,payload);
+    rebuildCanonicalSharedPresentationIndex(documentState);
     persistedDocumentState=cloneCanonicalValue(documentState);
     revision=payload?.revision ?? revision;
     namedDrafts=payload?.drafts || namedDrafts;
@@ -3557,6 +3575,7 @@
 
   function applyDocument(doc) {
     documentState=normalizeDocument(doc);
+    rebuildCanonicalSharedPresentationIndex(documentState);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
 
