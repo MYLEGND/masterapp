@@ -59,6 +59,7 @@
   let storePreviewActive = false;
   let collaborationReplyTo = null;
   let collectionData = new Map();
+  let fullDataCatalogLoaded = false;
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
   let selectedSection = null;
@@ -3001,6 +3002,7 @@
       listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
       getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
       listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query}),
+      listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
       runQuality:async()=>({
@@ -5733,6 +5735,15 @@
     const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
     el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
   }
+  async function ensureBusinessDataCatalog() {
+    if(SITE_KEY!=='business' || fullDataCatalogLoaded) return;
+    const payload=await creativeWorkspaceRequest('manage/data-catalog');
+    managementPayload ||= {};
+    managementPayload.dataCatalog=Array.isArray(payload?.dataCatalog)?payload.dataCatalog:[];
+    updateCollectionData(payload);
+    fullDataCatalogLoaded=true;
+  }
+
   function approvedDataSources() {
     return SITE_KEY === 'business' && Array.isArray(managementPayload?.dataCatalog) ? managementPayload.dataCatalog : [];
   }
@@ -6136,7 +6147,10 @@
       void refreshSiteSourceEditor();
     }
     if (name === 'components') renderReusableComponents();
-    if (name === 'data') renderDataControls();
+    if (name === 'data') void ensureBusinessDataCatalog().then(renderDataControls).catch(error=>{
+      const status=document.getElementById('legend-cms-data-status');
+      if(status) status.textContent=error?.message || 'Unable to load business data.';
+    });
     if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
