@@ -141,7 +141,10 @@ public static class UploadValidator
             [".mp3"] = "audio/mpeg",
             [".m4a"] = "audio/mp4",
             [".aac"] = "audio/aac",
-            [".wav"] = "audio/wav"
+            [".wav"] = "audio/wav",
+            [".ogg"] = "audio/ogg",
+            [".oga"] = "audio/ogg",
+            [".flac"] = "audio/flac"
         };
 
     public static bool TryResolveAttachmentContentType(string? fileName, out string contentType)
@@ -337,6 +340,33 @@ public static class UploadValidator
             content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50)
             return "image/webp";
 
+        // WAV: RIFF....WAVE
+        if (content.Length >= 12 &&
+            content[0] == 0x52 && content[1] == 0x49 && content[2] == 0x46 && content[3] == 0x46 &&
+            content[8] == 0x57 && content[9] == 0x41 && content[10] == 0x56 && content[11] == 0x45)
+            return "audio/wav";
+
+        // MP3: ID3 tag or MPEG audio frame sync.
+        if ((content.Length >= 3 &&
+             content[0] == 0x49 && content[1] == 0x44 && content[2] == 0x33) ||
+            (content.Length >= 2 && content[0] == 0xFF && (content[1] & 0xE0) == 0xE0))
+            return "audio/mpeg";
+
+        // AAC ADTS frame sync.
+        if (content.Length >= 2 &&
+            content[0] == 0xFF && (content[1] & 0xF6) == 0xF0)
+            return "audio/aac";
+
+        // Ogg container.
+        if (content.Length >= 4 &&
+            content[0] == 0x4F && content[1] == 0x67 && content[2] == 0x67 && content[3] == 0x53)
+            return "audio/ogg";
+
+        // FLAC.
+        if (content.Length >= 4 &&
+            content[0] == 0x66 && content[1] == 0x4C && content[2] == 0x61 && content[3] == 0x43)
+            return "audio/flac";
+
         // WebM: EBML container signature with an explicit WebM document type.
         if (content.Length >= 12 && content[0] == 0x1A && content[1] == 0x45 && content[2] == 0xDF && content[3] == 0xA3 &&
             content.AsSpan(4, Math.Min(content.Length - 4, 4096)).IndexOf(new byte[] { 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D }) >= 0)
@@ -358,6 +388,8 @@ public static class UploadValidator
                 return "image/heic";
             if (brands.Overlaps(new[] { "heif", "mif1", "msf1" }))
                 return "image/heif";
+            if (brands.Overlaps(new[] { "M4A ", "M4B ", "M4P " }))
+                return "audio/mp4";
             if (brands.Contains("qt  "))
                 return "video/quicktime";
 
@@ -384,6 +416,8 @@ public static class UploadValidator
             "audio/mp4" or "audio/x-m4a" => "audio/mp4",
             "audio/aac" => "audio/aac",
             "audio/wav" or "audio/x-wav" => "audio/wav",
+            "audio/ogg" or "application/ogg" => "audio/ogg",
+            "audio/flac" or "audio/x-flac" => "audio/flac",
             "application/pdf" => "application/pdf",
             "text/plain" => "text/plain",
             "application/msword" => "application/msword",
@@ -407,6 +441,12 @@ public static class UploadValidator
             "video/quicktime" => ".mov",
             "video/x-m4v" or "video/m4v" => ".m4v",
             "video/webm" => ".webm",
+            "audio/mpeg" => ".mp3",
+            "audio/mp4" => ".m4a",
+            "audio/aac" => ".aac",
+            "audio/wav" => ".wav",
+            "audio/ogg" => ".ogg",
+            "audio/flac" => ".flac",
             "application/pdf" => ".pdf",
             _ => null
         };
@@ -425,6 +465,12 @@ public static class UploadValidator
             "video/mp4" => extension is ".mp4" or ".m4v" or ".mov",
             "video/quicktime" => extension is ".mov",
             "video/webm" => extension is ".webm",
+            "audio/mpeg" => extension is ".mp3",
+            "audio/mp4" => extension is ".m4a",
+            "audio/aac" => extension is ".aac",
+            "audio/wav" => extension is ".wav",
+            "audio/ogg" => extension is ".ogg" or ".oga",
+            "audio/flac" => extension is ".flac",
             _ => true
         };
     }
