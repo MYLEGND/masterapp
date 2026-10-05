@@ -154,6 +154,183 @@ function sourceProjectionDocument(doc) {
   };
 }
 
+function fixtureFindNodeLocation(document,id) {
+  const visit=(nodes,scope,pagePath=null,reusableComponentId=null,parentId=null)=>{
+    for(let index=0;index<(nodes || []).length;index++){
+      const node=nodes[index];
+      if(node.id===id) return {node,nodes,index,scope,pagePath,reusableComponentId,parentId};
+      const child=visit(node.children,scope,pagePath,reusableComponentId,node.id);
+      if(child) return child;
+    }
+    return null;
+  };
+  let found=visit(document.shell?.header || [],'shell.header'); if(found) return found;
+  found=visit(document.shell?.footer || [],'shell.footer'); if(found) return found;
+  for(const [pagePath,page] of Object.entries(document.pages || {})){
+    found=visit(page.composition || [],'page',pagePath); if(found) return found;
+  }
+  for(const [reusableComponentId,component] of Object.entries(document.reusableComponents || {})){
+    found=visit(component.composition || [],'component',null,reusableComponentId); if(found) return found;
+  }
+  return null;
+}
+
+function fixtureMutationChildren(document,operation) {
+  if(operation.parentId){
+    const parent=fixtureFindNodeLocation(document,operation.parentId);
+    if(!parent) throw new Error('fixture parent not found: '+operation.parentId);
+    parent.node.children ||= [];
+    return parent.node.children;
+  }
+  if(operation.scope==='shell.header') return document.shell.header;
+  if(operation.scope==='shell.footer') return document.shell.footer;
+  if(operation.scope==='component') return document.reusableComponents[operation.reusableComponentId].composition;
+  const path=operation.pagePath || '/';
+  return document.pages[path].composition;
+}
+
+function fixtureApplyMutations(document,operations,ctaCatalog=[]) {
+  for(const operation of operations || []){
+    switch(operation.type){
+      case 'setTheme': document.theme=structuredClone(operation.theme || {}); break;
+      case 'setBreakpoints': document.breakpoints=structuredClone(operation.breakpoints || canonicalBreakpoints()); break;
+      case 'setFavicon': document.faviconImageDataUrl=operation.faviconImageDataUrl ?? null; break;
+      case 'setStorePresentation':
+        document.store={...(document.store || {}),...structuredClone(operation.store || {})}; break;
+      case 'createPage':
+        document.pages[operation.pagePath]=structuredClone(operation.page || {navigation:{showInNavigation:true,order:0,isDeleted:false},composition:[]});
+        document.pages[operation.pagePath].composition ||= [];
+        break;
+      case 'updatePage': {
+        const page=document.pages[operation.pagePath];
+        if(operation.page){
+          page.title=operation.page.title ?? null;
+          page.description=operation.page.description ?? null;
+          page.navigation=structuredClone(operation.page.navigation || {});
+          page.dynamicBinding=structuredClone(operation.page.dynamicBinding || null);
+        }else{
+          if(Object.hasOwn(operation,'title')) page.title=operation.title;
+          if(Object.hasOwn(operation,'description')) page.description=operation.description;
+          if(operation.navigation) page.navigation=structuredClone(operation.navigation);
+        }
+        break;
+      }
+      case 'movePageRoute':
+        document.pages[operation.targetPath]=document.pages[operation.pagePath];
+        delete document.pages[operation.pagePath];
+        break;
+      case 'removePage':
+        if(document.pages[operation.pagePath]) {
+          document.pages[operation.pagePath].navigation ||= {};
+          document.pages[operation.pagePath].navigation.isDeleted=true;
+        }
+        break;
+      case 'insertNode': {
+        const children=fixtureMutationChildren(document,operation);
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,structuredClone(operation.node));
+        break;
+      }
+      case 'replaceNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) throw new Error('fixture node not found: '+operation.nodeId);
+        const protectedFields={
+          systemKey:found.node.systemKey,systemBinding:found.node.systemBinding,
+          signals:structuredClone(found.node.signals || []),
+          fieldSignals:structuredClone(found.node.fieldSignals || {})
+        };
+        const replacement={...structuredClone(found.node),...structuredClone(operation.node),id:found.node.id};
+        if(protectedFields.systemKey) replacement.systemKey=protectedFields.systemKey; else delete replacement.systemKey;
+        if(protectedFields.systemBinding) replacement.systemBinding=protectedFields.systemBinding; else delete replacement.systemBinding;
+        replacement.signals=protectedFields.signals;
+        replacement.fieldSignals=protectedFields.fieldSignals;
+        found.nodes[found.index]=replacement;
+        break;
+      }
+      case 'removeNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(found) found.nodes.splice(found.index,1);
+        break;
+      }
+      case 'moveNode': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) break;
+        const [node]=found.nodes.splice(found.index,1);
+        const children=fixtureMutationChildren(document,operation);
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,node);
+        break;
+      }
+      case 'setApprovedCapability': {
+        const found=fixtureFindNodeLocation(document,operation.nodeId);
+        if(!found) break;
+        if(operation.capabilityKey==='experience.lead_capture'){
+          found.node.experience ||= {};
+          found.node.experience.submitCapability='lead_capture';
+          break;
+        }
+        const key=String(operation.capabilityKey || '').replace(/^action\./,'');
+        const action=ctaCatalog.find(value=>value.key===key);
+        if(action){found.node.actionKey=action.key;found.node.href=action.href;found.node.target=action.openInNewTab?'_blank':'_self';}
+        break;
+      }
+      case 'insertCapability': {
+        const children=fixtureMutationChildren(document,operation);
+        let node;
+        if(operation.capabilityKey==='contact.inquiry.submit'){
+          node={...(structuredClone(operation.node || {})),id:operation.instanceKey || 'form.fixture',type:'form',tag:'form',systemKey:'canonical_inquiry',
+            text:operation.content?.submit || operation.node?.text || 'Send inquiry',
+            title:operation.content?.title || operation.node?.title || 'Send an inquiry',
+            signals:[],fieldSignals:{},children:structuredClone(operation.node?.children || [])};
+        }else if(String(operation.capabilityKey || '').startsWith('action.')){
+          const key=operation.capabilityKey.slice('action.'.length);
+          const action=ctaCatalog.find(value=>value.key===key);
+          node={id:operation.instanceKey || 'action.fixture',type:'cta',tag:'a',text:operation.content?.label || action?.defaultText || 'Continue',
+            actionKey:key,href:action?.href || '#',target:action?.openInNewTab?'_blank':'_self',signals:[],children:[]};
+        }else{
+          const systemKey=String(operation.capabilityKey || '').replace(/^runtime\./,'');
+          const found=[...Object.values(document.pages || {})].flatMap(page=>canonicalNodes({pages:{'/':page}},'/')).find(value=>value.systemKey===systemKey);
+          if(found){ fixtureApplyMutations(document,[{type:'moveNode',nodeId:found.id,...operation}],ctaCatalog); }
+          break;
+        }
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,node);
+        break;
+      }
+      case 'upsertReusable':
+        document.reusableComponents[operation.reusableComponent.id]=structuredClone(operation.reusableComponent);
+        break;
+      case 'removeReusable':
+        delete document.reusableComponents[operation.reusableComponentId];
+        break;
+      case 'insertRecipe': {
+        const children=fixtureMutationChildren(document,operation);
+        children.splice(Math.max(0,Math.min(operation.index ?? children.length,children.length)),0,
+          canonicalNode(operation.instanceKey || 'recipe.fixture','section','section',{className:'legend-recipe-section',children:[]}));
+        break;
+      }
+    }
+  }
+}
+
+function fixtureMutationResponse(before,after,serverRevision) {
+  const removedPages=Object.keys(before.pages || {}).filter(path=>!Object.hasOwn(after.pages || {},path));
+  const removedComponents=Object.keys(before.reusableComponents || {}).filter(id=>!Object.hasOwn(after.reusableComponents || {},id));
+  const changedScopes=[...new Set([
+    ...Object.keys(after.pages || {}),...removedPages,'@theme','@breakpoints','@favicon','@shell/header','@shell/footer','@store-presentation',
+    ...Object.keys(after.reusableComponents || {}).map(id=>'@component/'+id),
+    ...removedComponents.map(id=>'@component/'+id)
+  ])];
+  return {
+    source:'canonical_v3_mutation',revision:'r'+serverRevision,changedScopes,fingerprints:{},
+    changes:{
+      pages:structuredClone(after.pages || {}),removedPages,
+      theme:structuredClone(after.theme || {}),breakpoints:structuredClone(after.breakpoints || []),
+      faviconChanged:true,faviconImageDataUrl:after.faviconImageDataUrl ?? null,
+      shellHeader:structuredClone(after.shell?.header || []),shellFooter:structuredClone(after.shell?.footer || []),
+      reusableComponents:structuredClone(after.reusableComponents || {}),removedComponents,
+      store:structuredClone(after.store || {})
+    },drafts:[]
+  };
+}
+
 async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
@@ -164,7 +341,86 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   const alerts=[]; let sourceValidationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=typeof init.body==='string'?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/media') && init.method==='POST'){ const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333'; return {ok:!denied,status:denied?401:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}}; } if(parsed.pathname.endsWith('/manage/source') && (!init.method || init.method==='GET')) { const projected=sourceProjectionDocument(serverDoc); return {ok:!denied,status:denied?401:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})}; } if(parsed.pathname.endsWith('/manage/source/validate')) { const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null; const status=denied?401:(step?.status ?? sourceValidationStatus); const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r'+serverRevision,persisted:false,published:false,proposedDocument:serverDoc,sourceMap:{}}; if(status===409 && payload?.error==='revision_conflict') serverRevision++; return {ok:status>=200&&status<300,status,json:async()=>payload}; } if(parsed.pathname.endsWith('/manage/signals') && init.method==='POST') { const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/'); if(!target) return {ok:false,status:404,json:async()=>({error:'website_signal_target_not_found'})}; const signals=structuredClone(body?.signals || []); const fieldKey=body?.fieldKey ? String(body.fieldKey).toLowerCase() : null; if(fieldKey){ target.fieldSignals ||= {}; if(signals.length) target.fieldSignals[fieldKey]=signals; else delete target.fieldSignals[fieldKey]; } else target.signals=signals; serverRevision++; return {ok:true,status:200,json:async()=>({source:'website_signal_configuration',revision:'r'+serverRevision,document:structuredClone(serverDoc),elementId:body.elementId,fieldKey,signals})}; } if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; if(parsed.pathname.endsWith('/manage') && init.method==='POST' && body?.document){ serverDoc=structuredClone(body.document); serverRevision++; } return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:parsed.pathname.endsWith('/manage')?serverDoc:(body?.document || serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined})}; };
+  w.fetch=async(url,init={})=> {
+    calls.push({url:String(url),...init});
+    const parsed=new URL(String(url));
+    const body=typeof init.body==='string'?JSON.parse(init.body):null;
+    const method=init.method || 'GET';
+    const reject=payload=>({ok:false,status:denied?401:400,json:async()=>payload});
+    if(denied) return {ok:false,status:401,json:async()=>({error:'unauthorized'})};
+
+    if(parsed.pathname.endsWith('/manage/agent/node') && method==='GET'){
+      const id=parsed.searchParams.get('id');
+      const found=fixtureFindNodeLocation(serverDoc,id);
+      if(!found) return {ok:false,status:404,json:async()=>({error:'website_node_not_found'})};
+      return {ok:true,status:200,json:async()=>({schema:'legend-node-source/v1',revision:'r'+serverRevision,fingerprint:'fp-'+serverRevision+'-'+id,location:{scope:found.scope,pagePath:found.pagePath,reusableComponentId:found.reusableComponentId,parentId:found.parentId,index:found.index},node:sourceProjectionNode(found.node)})};
+    }
+    if(parsed.pathname.endsWith('/manage/agent/summary') && method==='GET')
+      return {ok:true,status:200,json:async()=>({schema:'legend-creative-workspace/v1',siteKey,revision:'r'+serverRevision,pages:Object.keys(serverDoc.pages || {}).map(path=>({path})),capabilities:{capabilities:[]}})};
+    if(parsed.pathname.endsWith('/manage/agent/recipes') && method==='GET')
+      return {ok:true,status:200,json:async()=>({schema:'legend-website-recipes/v1',recipes:[],artDirections:['roadster-precision'],capabilities:{capabilities:[]}})};
+    if(parsed.pathname.endsWith('/manage/agent/contract') && method==='GET')
+      return {ok:true,status:200,json:async()=>agentContract || {schema:'legend-website-studio-agent/v1',promptTemplate:'compact'}};
+    if(parsed.pathname.endsWith('/manage/agent/design-quality') && method==='GET')
+      return {ok:true,status:200,json:async()=>({schema:'legend-design-quality/v1',revision:'r'+serverRevision,structural:{checks:[]},design:{checks:[],conversionPaths:[]}})};
+    if(parsed.pathname.endsWith('/manage/signal-catalog') && method==='GET')
+      return {ok:true,status:200,json:async()=>signalCatalog || {events:[],matchingFields:[],runtimeEnabled:true}};
+    if(parsed.pathname.endsWith('/manage/quality'))
+      return {ok:true,status:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:serverRevision,errorCount:0,warningCount:0,checks:[]}};
+    if(parsed.pathname.endsWith('/manage/media') && method==='GET')
+      return {ok:true,status:200,json:async()=>mediaPayload || {assets:[]}};
+    if(parsed.pathname.endsWith('/manage/media') && method==='POST'){
+      const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333';
+      return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
+    }
+    if(parsed.pathname.endsWith('/manage/mutations') && method==='POST'){
+      const before=structuredClone(serverDoc);
+      fixtureApplyMutations(serverDoc,body?.operations || [],ctaCatalog);
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>fixtureMutationResponse(before,serverDoc,serverRevision)};
+    }
+    if(parsed.pathname.endsWith('/manage/design-plan') && method==='POST'){
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>fixtureMutationResponse(serverDoc,serverDoc,serverRevision)};
+    }
+    if(parsed.pathname.endsWith('/manage/source') && method==='GET'){
+      const projected=sourceProjectionDocument(serverDoc);
+      return {ok:true,status:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})};
+    }
+    if(parsed.pathname.endsWith('/manage/source/validate')){
+      const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null;
+      const status=step?.status ?? sourceValidationStatus;
+      const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r'+serverRevision,persisted:false,published:false,proposedDocument:serverDoc,sourceMap:{}};
+      if(status===409 && payload?.error==='revision_conflict') serverRevision++;
+      return {ok:status>=200&&status<300,status,json:async()=>payload};
+    }
+    if(parsed.pathname.endsWith('/manage/signals') && method==='POST'){
+      const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/');
+      if(!target) return {ok:false,status:404,json:async()=>({error:'website_signal_target_not_found'})};
+      const signals=structuredClone(body?.signals || []); const fieldKey=body?.fieldKey ? String(body.fieldKey).toLowerCase() : null;
+      if(fieldKey){ target.fieldSignals ||= {}; if(signals.length) target.fieldSignals[fieldKey]=signals; else delete target.fieldSignals[fieldKey]; }
+      else target.signals=signals;
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({source:'website_signal_configuration',revision:'r'+serverRevision,document:structuredClone(serverDoc),elementId:body.elementId,fieldKey,signals})};
+    }
+    if(parsed.pathname.endsWith('/manage/signals/test'))
+      return {ok:true,status:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}};
+    if(parsed.pathname.endsWith('/manage/signals/health'))
+      return {ok:true,status:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}};
+    if(parsed.pathname.endsWith('/manage/collaboration') && method==='GET')
+      return {ok:true,status:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r'+serverRevision,role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}};
+    if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status'))
+      return {ok:true,status:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}};
+    if(parsed.pathname.endsWith('/manage/publish') && method==='POST'){
+      serverRevision++;
+      return {ok:true,status:200,json:async()=>({revision:'r'+serverRevision,publishedRevision:serverRevision,document:structuredClone(serverDoc)})};
+    }
+    if(parsed.pathname.endsWith('/manage') && method==='POST' && body?.document){
+      serverDoc=structuredClone(body.document); serverRevision++;
+      return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+    }
+    return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+  };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -172,7 +428,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
-  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
+  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));return structuredClone(serverDoc);};
   return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),close:()=>w.close()};
 }
 
