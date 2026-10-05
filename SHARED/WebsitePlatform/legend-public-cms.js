@@ -5670,6 +5670,7 @@
 
     saving=true;
     let saved=false;
+    let captureHistory=false;
     try {
       if(publish) {
         if(status) status.textContent='Publishing…';
@@ -5723,7 +5724,7 @@
       }
 
       const operations=buildCreativeMutationOperations(persistedDocumentState,submittedState);
-      const captureHistory=historyCheckpointPending && !suppressHistoryCapture && operations.length>0;
+      captureHistory=historyCheckpointPending && !suppressHistoryCapture && operations.length>0;
       const inverseOperations=captureHistory
         ? buildCreativeMutationOperations(submittedState,persistedDocumentState)
         : [];
@@ -5759,7 +5760,7 @@
       saved=true;
       if(status) status.textContent=changedDuringSave?'Changed scopes saved; newer edits remain unsaved':'Draft saved';
     } catch(error) {
-      if(typeof captureHistory!=='undefined' && captureHistory) historyCheckpointPending=true;
+      if(captureHistory) historyCheckpointPending=true;
       if((error?.status===401 || error?.status===403) &&
           showEditorAuthorizationRecovery('Website Studio authorization expired before this change could be saved.')) return false;
       const payload=error?.payload || {};
