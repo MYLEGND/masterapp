@@ -423,6 +423,27 @@ class PreparedTransactionTests(unittest.TestCase):
         self.assertTrue(all(call.args[3] is rollback for call in restore.call_args_list))
         self.assertTrue(all(call.args[3] == 'b' * 40 for call in preflight.call_args_list))
 
+    def test_terminal_disposition_retries_transient_azure_history_timeout_without_writes(self):
+        from types import SimpleNamespace
+        plan = self.plan(['parfait'])
+        journal = SimpleNamespace(intent={'baselineDeploymentIds': ['old']}, history_error=None)
+        azure = FakeAzure(
+            [subprocess.TimeoutExpired(['az', 'webapp', 'log', 'deployment', 'list'], 20),
+             [row('old', 4), row('ours', 4)]],
+            [False])
+        azure.observed_revision = lambda: 'a' * 40
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=journal), \
+             patch.object(deploy, 'target_azure', return_value=azure), \
+             patch.object(deploy.time, 'sleep') as sleeper:
+            result = deploy.transaction_disposition(plan, Path('/packages'), 'a' * 40)
+
+        self.assertTrue(result['terminal'])
+        self.assertEqual([{'target': 'parfait', 'revision': 'a' * 40, 'idle': True}], result['targets'])
+        sleeper.assert_called_once_with(15)
+        self.assertEqual(0, azure.uploads)
+        self.assertEqual(0, azure.recovery_uploads)
+
     def test_idle_baseline_cannot_discharge_an_ambiguous_prior_upload(self):
         from types import SimpleNamespace
         plan = self.plan(['portal'])
