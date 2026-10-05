@@ -1938,6 +1938,13 @@ public static class WebsiteDesignPlanContract
         schema = "legend-website-design-plan/v1",
         persistence = "transient_only",
         sourceOfTruth = "WebsiteContentDocument_v3",
+        limits = new
+        {
+            maximumPages = 24,
+            maximumSectionsPerPage = 32,
+            maximumContentSlotsPerSection = 48,
+            mutationBatchMaximum = 400
+        },
         recommendedFlow = new[]
         {
             "define conversion goal and audience",
@@ -2151,6 +2158,7 @@ public static class WebsiteDesignPlanResolver
         WebsiteCapabilityManifest capabilities,
         WebsiteDesignPlan plan)
     {
+        ValidatePlan(siteKey, plan);
         var operations = new List<WebsiteMutationOperation>();
         var planPrimaryCapability = string.IsNullOrWhiteSpace(plan.PrimaryCapabilityKey)
             ? ResolveDefaultPrimaryCapability(siteKey, capabilities)
@@ -2170,6 +2178,8 @@ public static class WebsiteDesignPlanResolver
         }
 
         var preset = WebsiteArtDirectionPresets.Resolve(plan.ArtDirection);
+        if (!string.IsNullOrWhiteSpace(plan.ArtDirection) && preset is null)
+            throw new ArgumentException($"Unknown website art direction '{plan.ArtDirection}'.");
         if (preset is not null || plan.Theme is not null)
             operations.Add(new WebsiteMutationOperation { Type="setTheme", Theme=MergeTheme(preset, plan.Theme) });
 
@@ -2293,6 +2303,41 @@ public static class WebsiteDesignPlanResolver
         }
 
         return operations;
+    }
+
+    private static void ValidatePlan(string siteKey, WebsiteDesignPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var pages = plan.Pages ?? [];
+        if (pages.Count > 24)
+            throw new ArgumentException("A whole-site design plan may contain at most 24 pages.");
+        if (plan.ReplaceBusinessPages && siteKey != WebsiteEditorSiteKeys.Business)
+            throw new WebsiteSiteSourceProtectionException("Only scoped Business websites may replace the free page catalog.");
+        if (plan.ReplaceBusinessPages && pages.Count == 0)
+            throw new ArgumentException("Replacing Business pages requires at least one planned page.");
+
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        var sectionIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var page in pages)
+        {
+            if (page is null) throw new ArgumentException("Website design-plan pages cannot be null.");
+            var path = NormalizePath(page.Path);
+            if (path.Length > 2048 || !paths.Add(path))
+                throw new ArgumentException($"Website design plan contains a duplicate or invalid page path '{path}'.");
+
+            var sections = page.Sections ?? [];
+            if (sections.Count > 32)
+                throw new ArgumentException($"Page '{path}' may contain at most 32 planned sections.");
+            foreach (var section in sections)
+            {
+                if (section is null || string.IsNullOrWhiteSpace(section.Recipe))
+                    throw new ArgumentException($"Page '{path}' contains a section without a recipe.");
+                if (!string.IsNullOrWhiteSpace(section.Key) && !sectionIds.Add(section.Key))
+                    throw new ArgumentException($"Website design plan contains duplicate section identity '{section.Key}'.");
+                if ((section.Content?.Count ?? 0) > 48)
+                    throw new ArgumentException($"Section '{section.Key ?? section.Recipe}' contains too many content slots.");
+            }
+        }
     }
 
     private static string? ResolveDefaultPrimaryCapability(
