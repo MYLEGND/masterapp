@@ -72,6 +72,8 @@ public sealed class BusinessAnalyticsDetailTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Business, document);
         var state = new WebsiteContentState
         {
             OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),

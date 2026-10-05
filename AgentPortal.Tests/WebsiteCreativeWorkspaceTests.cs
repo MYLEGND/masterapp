@@ -400,6 +400,15 @@ public sealed class WebsiteCreativeWorkspaceTests
                 }]));
 
         experience.Experience!.SubmitCapability = null;
+        experience.Experience.Controls =
+        [
+            new() { Key = "first_name", Type = "text", Required = true, ContactRole = "first_name" },
+            new() { Key = "last_name", Type = "text", Required = true, ContactRole = "last_name" },
+            new() { Key = "phone", Type = "tel", Required = true, ContactRole = "phone" },
+            new() { Key = "email", Type = "email", Required = true, ContactRole = "email" },
+            new() { Key = "consent", Type = "checkbox", Required = true, ContactRole = "consent" },
+            new() { Key = "submit", Type = "button", Action = new() { Type = "submit" } }
+        ];
         var result = WebsiteDocumentMutationService.Apply(
             document,
             WebsiteEditorSiteKeys.Business,

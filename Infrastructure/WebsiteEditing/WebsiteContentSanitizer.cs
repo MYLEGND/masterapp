@@ -471,6 +471,11 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
+    private static List<WebsiteSignalBinding> SanitizeLegacySignals(IEnumerable<WebsiteSignalBinding>? bindings) =>
+        WebsiteSignalBindingPolicy.Validate((bindings ?? [])
+            .Where(binding => binding is not null &&
+                !Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(binding.EventName)));
+
     private static LegacyWebsiteExtraComponent? SanitizeLegacyExtra(LegacyWebsiteExtraComponent? extra, HashSet<string> breakpointKeys)
     {
         if (extra is null) return null;
@@ -486,7 +491,7 @@ public static class WebsiteContentSanitizer
             SectionId = sectionId,
             Type = type,
             TemplateSectionId = type == "section" ? NullIfEmpty(SanitizeId(extra.TemplateSectionId)) : null,
-            Signals = type == "reusable" ? [] : WebsiteSignalBindingPolicy.Validate(extra.Signals),
+            Signals = type == "reusable" ? [] : SanitizeLegacySignals(extra.Signals),
             ActionKey = SanitizeActionKey(extra.ActionKey),
             Title = ClampContentText(extra.Title),
             Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
@@ -508,7 +513,7 @@ public static class WebsiteContentSanitizer
 
     private static LegacyWebsiteElementRecord SanitizeElement(LegacyWebsiteElementRecord source, HashSet<string> breakpointKeys) => new()
     {
-        Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
+        Signals = SanitizeLegacySignals(source.Signals),
         ActionKey = SanitizeActionKey(source.ActionKey),
         Text = ClampContentText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),

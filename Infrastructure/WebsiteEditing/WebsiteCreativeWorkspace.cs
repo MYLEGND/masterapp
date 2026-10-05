@@ -1194,7 +1194,7 @@ public static class WebsiteDocumentMutationService
                 ParentId = slot?.Id ?? node.Id,
                 CapabilityKey = operation.CapabilityKey,
                 Content = operation.Content,
-                InstanceKey = operation.InstanceKey + ".capability"
+                InstanceKey = operation.InstanceKey + ".capability.instance"
             }, capabilities, actions, changed);
         }
     }

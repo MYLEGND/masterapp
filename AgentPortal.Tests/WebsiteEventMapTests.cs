@@ -41,6 +41,8 @@ public sealed class WebsiteEventMapTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
         var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
         state.PublishedVersionId = version.Id;
         db.AddRange(state, version, new WebsiteContentState { OwnerKey = "other", SiteKey = WebsiteEditorSiteKeys.Protect });
@@ -131,6 +133,8 @@ public sealed class WebsiteEventMapTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
         var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
         state.PublishedVersionId = version.Id;
         db.AddRange(profile, other, state, version);

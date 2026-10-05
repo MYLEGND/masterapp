@@ -66,22 +66,28 @@ public static class WebsiteSiteSource
                 {
                     foreach (var property in info.Properties)
                     {
-                        if (property.Name is "signals" or "fieldSignals")
+                        var name = property.Name;
+                        if (name.Equals("signals", StringComparison.OrdinalIgnoreCase) ||
+                            name.Equals("fieldSignals", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, _) => false;
-                        else if (property.Name is "children" or "animations")
+                        else if (name.Equals("children", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("animations", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, value) => value is System.Collections.ICollection collection && collection.Count > 0;
-                        else if (property.Name is "breakpointStyles" or "breakpointLayouts" or "fieldPresentations" or "fieldLabels")
+                        else if (name.Equals("breakpointStyles", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("breakpointLayouts", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("fieldPresentations", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("fieldLabels", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, value) => value is System.Collections.IDictionary dictionary && dictionary.Count > 0;
-                        else if (property.Name == "style")
+                        else if (name.Equals("style", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, value) => value is WebsiteVisualStyle style && !IsDefaultStyle(style);
-                        else if (property.Name == "layout")
+                        else if (name.Equals("layout", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, value) => value is WebsiteCompositionLayout layout && !IsDefaultLayout(layout);
                     }
                 }
                 else if (info.Type == typeof(WebsiteSiteSourceDocument))
                 {
                     foreach (var property in info.Properties)
-                        if (property.Name == "breakpoints")
+                        if (property.Name.Equals("breakpoints", StringComparison.OrdinalIgnoreCase))
                             property.ShouldSerialize = (_, value) => value is not List<WebsiteBreakpointDefinition> breakpoints || !AreDefaultBreakpoints(breakpoints);
                 }
             } }
