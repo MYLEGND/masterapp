@@ -1447,7 +1447,8 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
         var baseline = preparedBaseline ?? Read(state.DraftJson);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
+        if (preparedBaseline is null)
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
         if (baseline.LegacyMigration is not null)
             return Conflict(new { error = "website_materialization_required" });
 
