@@ -2964,6 +2964,78 @@
     return result;
   }
 
+  async function runWholeSitePreflight() {
+    await flushLocalCreativeEdits();
+    const checkedRevision=revision;
+    const [quality,responsive,conversion]=await Promise.all([
+      creativeWorkspaceRequest('manage/agent/design-quality'),
+      runSiteResponsiveQualityAudit(),
+      creativeWorkspaceRequest('manage/agent/conversion-readiness')
+    ]);
+    if(revision!==checkedRevision)
+      throw new Error('Website revision changed during preflight. Run preflight again on the current draft.');
+    return {revision:checkedRevision,quality,responsive,conversion};
+  }
+
+  function renderWholeSitePreflight(payload) {
+    const savedHost=document.getElementById('legend-cms-quality-saved');
+    const liveHost=document.getElementById('legend-cms-quality-live');
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    const structural=Array.isArray(payload?.quality?.structural?.checks)?payload.quality.structural.checks:[];
+    const design=Array.isArray(payload?.quality?.design?.checks)?payload.quality.design.checks:[];
+    const delivery=[];
+    const conversion=payload?.conversion || {};
+    if(conversion?.currentDraftIsPublished===false && conversion?.publishedRevision!=null)
+      delivery.push({
+        severity:'info',
+        code:'conversion_evidence_previous_revision',
+        message:`Published delivery evidence is from revision ${conversion.publishedRevision}; this draft is revision ${payload?.revision}.`
+      });
+    else if(Number(conversion?.published?.problemRows||0)>0)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_delivery_problem',
+        message:`${conversion.published.problemRows} published conversion mapping or delivery row(s) need attention.`
+      });
+    const serverChecks=[...structural,...design,...delivery];
+    renderQualityChecks(savedHost,serverChecks,'No saved structural, design, conversion, or delivery issues detected.');
+
+    const responsiveChecks=[];
+    for(const page of Array.isArray(payload?.responsive)?payload.responsive:[])
+      for(const breakpoint of Array.isArray(page?.results)?page.results:[])
+        for(const check of Array.isArray(breakpoint?.checks)?breakpoint.checks:[])
+          responsiveChecks.push({
+            ...check,
+            message:`${page.route} · ${breakpoint.label || breakpoint.key} · ${check.message || check.code || 'Responsive observation'}`
+          });
+    renderQualityChecks(liveHost,responsiveChecks,'No rendered responsive issues detected across active pages and breakpoints.');
+
+    const serverErrors=serverChecks.filter(check=>check.severity==='error').length;
+    const serverWarnings=serverChecks.filter(check=>check.severity==='warning').length;
+    if(savedMeta) savedMeta.textContent=
+      `Whole-site preflight · revision ${payload?.revision ?? revision} · ${serverErrors} errors · ${serverWarnings} warnings · ${payload?.quality?.design?.conversionPaths?.length || 0} conversion paths`;
+    if(liveMeta) liveMeta.textContent=
+      `Rendered responsive preflight · ${Array.isArray(payload?.responsive)?payload.responsive.length:0} active pages · ${responsiveChecks.length} observation${responsiveChecks.length===1?'':'s'}`;
+  }
+
+  async function runWholeSitePreflightAndRender() {
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    if(savedMeta) savedMeta.textContent='Running saved structural, design, conversion, and delivery checks…';
+    if(liveMeta) liveMeta.textContent='Rendering every active page across canonical breakpoints…';
+    try{
+      const result=await runWholeSitePreflight();
+      renderWholeSitePreflight(result);
+      return result;
+    }catch(error){
+      renderQualityChecks(document.getElementById('legend-cms-quality-saved'),
+        [{severity:'error',message:error?.payload?.message || error?.message || 'Whole-site preflight failed.'}],'');
+      if(savedMeta) savedMeta.textContent='Whole-site preflight unavailable';
+      throw error;
+    }
+  }
+
   function installCreativeAgentWorkspaceApi() {
     if(!editorMode) return;
     const api={
@@ -3002,14 +3074,7 @@
       }),
       runResponsiveQuality:runResponsiveQualityAudit,
       runSiteResponsiveQuality:runSiteResponsiveQualityAudit,
-      runPreflight:async()=>{
-        const [quality,responsive,conversion]=await Promise.all([
-          creativeWorkspaceRequest('manage/agent/design-quality'),
-          runSiteResponsiveQualityAudit(),
-          creativeWorkspaceRequest('manage/agent/conversion-readiness')
-        ]);
-        return {revision,quality,responsive,conversion};
-      },
+      runPreflight:runWholeSitePreflight,
       planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
       applySafeQualityRepairs:async()=>{
         const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
@@ -6259,7 +6324,7 @@
     }
   }
 
-  function showPanel(name) {
+  function showPanel(name,options={}) {
     activeEditorPanel = name;
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
@@ -6279,7 +6344,7 @@
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') void ensureSignalCatalog().then(renderSignalControls);
-    if (name === 'quality') void refreshQualityInspector();
+    if (name === 'quality' && options.refresh!==false) void refreshQualityInspector();
     if (name === 'collaboration') void refreshCollaboration();
   }
 
@@ -7398,7 +7463,10 @@
     document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
     document.getElementById('legend-cms-agent-selection-source')?.addEventListener('click',()=>openBrowserAgentSource('selection'));
     document.getElementById('legend-cms-agent-media')?.addEventListener('click',()=>showPanel('media'));
-    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{showPanel('quality');void refreshQualityInspector();});
+    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{
+      showPanel('quality',{refresh:false});
+      void runWholeSitePreflightAndRender().catch(()=>{});
+    });
     document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
@@ -7430,8 +7498,8 @@
     document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
     document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
     document.getElementById('legend-cms-publish-quality')?.addEventListener('click',()=>{
-      showPanel('quality');
-      void refreshQualityInspector();
+      showPanel('quality',{refresh:false});
+      void runWholeSitePreflightAndRender().catch(()=>{});
     });
     syncBreakpointControls();
     document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
@@ -7483,7 +7551,7 @@
     document.getElementById('legend-cms-media-search')?.addEventListener('input',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-kind')?.addEventListener('change',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const asset=await uploadMedia(file); event.target.value=''; if(asset) await refreshMediaLibrary(); });
-    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
+    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void runWholeSitePreflightAndRender().catch(()=>{}));
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     panel.querySelectorAll('[data-editor-viewport]').forEach(button=>button.addEventListener('click',()=>{
       editorBreakpointKey=button.dataset.editorViewport==='mobile' ? 'mobile' : 'base';
