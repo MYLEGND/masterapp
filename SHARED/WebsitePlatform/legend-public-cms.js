@@ -2403,7 +2403,6 @@
   }
 
   function renderCanonicalCompositionPage() {
-    rebuildCanonicalSharedPresentationIndex(documentState);
     // Template runtimes own their DOM and event listeners. All structural editor
     // paths must preserve that mounted runtime and apply presentation only.
     if(pageUsesSystemTemplate()) { applyTemplateBackedCompositionPage(); return; }
@@ -2861,7 +2860,6 @@
   function mergeCreativeMutationDelta(payload,operations=null) {
     const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
     documentState=applyCreativeMutationDeltaToState(documentState,payload);
-    rebuildCanonicalSharedPresentationIndex(documentState);
     persistedDocumentState=cloneCanonicalValue(documentState);
     revision=payload?.revision ?? revision;
     namedDrafts=payload?.drafts || namedDrafts;
@@ -3507,7 +3505,6 @@
 
   function applyDocument(doc) {
     documentState=normalizeDocument(doc);
-    rebuildCanonicalSharedPresentationIndex(documentState);
     applyTheme(documentState.theme);
     applyFavicon(documentState.faviconImageDataUrl);
 
