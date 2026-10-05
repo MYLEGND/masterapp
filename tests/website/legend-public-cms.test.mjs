@@ -377,12 +377,38 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       })};
     if(parsed.pathname.endsWith('/manage/agent/conversion-readiness') && method==='GET')
       return {ok:true,status:200,json:async()=>({
-        schema:'legend-conversion-readiness/v1',
+        schema:'legend-conversion-readiness/v2',
         revision:'r'+serverRevision,
         publishedRevision:null,
         currentDraftIsPublished:false,
         draft:{conversionPaths:qualityPayload?.conversionPaths || [],checks:[]},
-        published:{windowDays:30,evidenceRows:0,analyticsObserved:0,metaAccepted:0,openAiAccepted:0,problemRows:0,entries:[]}
+        destinations:{
+          meta:{ownerType:'none',browserPixelConfigured:false,serverCapiConfigured:false,testEventCodeConfigured:false},
+          openai:{browserPixelConfigured:false,accountApproved:false,serverConversionsConfigured:false}
+        },
+        measurementEvidence:null,
+        measurementEvidenceError:null,
+        published:{
+          windowDays:30,evidenceRows:0,returnedRows:0,resultLimit:80,analyticsObserved:0,
+          metaAccepted:0,openAiAccepted:0,
+          acceptanceSemantics:{meta:'provider_events_received',openai:'http_2xx_transport_only'},
+          acceptance:{meta:{providerAccepted:0,httpAccepted:0},openai:{providerAccepted:0,httpAccepted:0}},
+          inFlightRows:0,problemRows:0,entries:[]
+        }
+      })};
+    if(parsed.pathname.endsWith('/manage/agent/conversion-trace') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-conversion-trace/v1',
+        source:'canonical_analytics_event_lineage',
+        revision:'r'+serverRevision,
+        publishedVersionId:null,
+        currentDraftIsPublished:false,
+        windowDays:30,
+        matchedEvents:0,
+        returnedEvents:0,
+        resultLimit:Number(parsed.searchParams.get('take') || 20),
+        privacy:{piiIncluded:false,rawClickReferencesIncluded:false,providerCredentialsIncluded:false},
+        events:[]
       })};
     if(parsed.pathname.endsWith('/manage/data-catalog') && method==='GET')
       return {ok:true,status:200,json:async()=>({
@@ -1295,6 +1321,13 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/function applyBreakpointPreview\(\)[\s\S]*refreshResponsiveComposition\(\)[\s\S]*if\(editorPreview\) syncEditorControls\(\)/);
   assert.doesNotMatch(source,/function applyBreakpointPreview\(\) \{\s*if \(!editorPreview\) return;/);
   assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-readiness"\)\]/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-trace"\)\]/);
+  assert.match(websitePlatformControllerSource,/legend-conversion-readiness\/v2/);
+  assert.match(websitePlatformControllerSource,/legend-conversion-trace\/v1/);
+  assert.match(websitePlatformControllerSource,/provider_events_received/);
+  assert.match(websitePlatformControllerSource,/http_2xx_transport_only/);
+  assert.match(websitePlatformControllerSource,/piiIncluded = false/);
+  assert.match(websitePlatformControllerSource,/providerCredentialsIncluded = false/);
   assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/media\/import"\)\]/);
   assert.match(websiteImportServiceSource,/ImportImageAsync/);
   assert.match(websiteImportServiceSource,/LegendConnectResearchNetworkPolicy\.CreatePublicReadOnlyHandler/);
@@ -1328,6 +1361,14 @@ test('Website Studio WebMCP adapter registers and executes through the canonical
     assert.ok(workspace);
     const summary=await workspace.execute({operation:'summary'},{});
     assert.equal(summary.schema,'legend-creative-workspace/v1');
+    const trace=await workspace.execute({operation:'conversion_trace',take:5,eventName:'Lead'},{});
+    assert.equal(trace.schema,'legend-conversion-trace/v1');
+    assert.equal(trace.resultLimit,5);
+    assert.equal(trace.privacy.piiIncluded,false);
+    const traceCall=f.calls.find(call=>String(call.url).includes('/manage/agent/conversion-trace'));
+    assert.ok(traceCall);
+    assert.match(String(traceCall.url),/take=5/);
+    assert.match(String(traceCall.url),/eventName=Lead/);
     assert.equal(new URL(f.w.location.href).searchParams.has('legendEdit'),false);
     assert.equal(f.w.history.state?.legendStudioTicket,'ticket');
 
@@ -1358,6 +1399,8 @@ test('Website Studio registers bounded editor-only browser tools without exposin
     'legend_website_preflight'
   ]) assert.ok(bridge.includes(name),name);
   assert.match(bridge,/business_data/);
+  assert.match(bridge,/conversion_trace/);
+  assert.match(bridge,/traceConversions/);
   assert.match(bridge,/privateTests=await Promise\.all/);
   assert.match(bridge,/readOnlyHint:tool\.readOnly/);
   assert.match(bridge,/consequentialHint:!tool\.readOnly/);
