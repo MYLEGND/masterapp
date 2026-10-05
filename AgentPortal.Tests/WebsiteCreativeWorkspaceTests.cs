@@ -1060,6 +1060,55 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void DesignQuality_FlagsOrphanedFormActions_AndContactPagesWithoutCapture()
+    {
+        var document = Baseline();
+        document.Pages["/contact"] = new WebsitePageDocument
+        {
+            Title = "Contact",
+            Navigation = new WebsitePageNavigation { Label = "Contact", Order = 20 },
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "contact.hero",
+                    Type = "section",
+                    Tag = "section",
+                    Children =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact.title",
+                            Type = "heading",
+                            Tag = "h1",
+                            Text = "Contact us"
+                        },
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact.start",
+                            Type = "cta",
+                            Tag = "a",
+                            Text = "Get started",
+                            ActionKey = "form_start",
+                            Href = "#website-form"
+                        }
+                    ]
+                }
+            ]
+        };
+        var manifest = Capabilities(document);
+
+        var report = WebsiteDesignQualityInspector.Inspect(document, manifest);
+
+        Assert.Contains(report.Checks, value =>
+            value.Code == "conversion_orphan_form_action" &&
+            value.PagePath == "/contact");
+        Assert.Contains(report.Checks, value =>
+            value.Code == "conversion_contact_capture_missing" &&
+            value.PagePath == "/contact");
+    }
+
+    [Fact]
     public void DesignQuality_FindsPlaceholderCopy_AndReportsConversionPath()
     {
         var document = Baseline();
