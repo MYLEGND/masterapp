@@ -3,36 +3,13 @@ namespace Infrastructure.WebsiteEditing;
 public static class WebsiteContentSanitizer
 {
     /// <summary>
-    /// Read-only compatibility for persisted documents. Retired browser mappings
-    /// of verified outcomes are inactive; their original JSON remains available
-    /// to the Event Map. New saves always use strict Sanitize validation.
+    /// Persisted canonical v3 is never self-healed during reads. Historical
+    /// pre-v3 JSON is projected only through the explicit one-way materialization
+    /// boundary; canonical v3 must already satisfy the canonical contract.
     /// </summary>
     public static WebsiteContentDocument ReadPersisted(string json, System.Text.Json.JsonSerializerOptions options)
     {
         var root = System.Text.Json.Nodes.JsonNode.Parse(json);
-        void RemoveRetiredMappings(System.Text.Json.Nodes.JsonNode? node)
-        {
-            if (node is System.Text.Json.Nodes.JsonObject obj)
-            {
-                foreach (var property in obj.ToArray())
-                {
-                    if (property.Key.Equals("signals", StringComparison.OrdinalIgnoreCase) &&
-                        property.Value is System.Text.Json.Nodes.JsonArray bindings)
-                    {
-                        for (var i = bindings.Count - 1; i >= 0; i--)
-                        {
-                            var name = bindings[i]?["eventName"]?.ToString() ?? bindings[i]?["EventName"]?.ToString();
-                            if (Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(name)) bindings.RemoveAt(i);
-                        }
-                    }
-                    RemoveRetiredMappings(property.Value);
-                }
-            }
-            else if (node is System.Text.Json.Nodes.JsonArray array)
-                foreach (var child in array) RemoveRetiredMappings(child);
-        }
-
-        RemoveRetiredMappings(root);
         var raw = root?.ToJsonString() ?? "{}";
         var version = 0;
         if (root is System.Text.Json.Nodes.JsonObject rootObject &&
@@ -45,8 +22,9 @@ public static class WebsiteContentSanitizer
             if (ContainsLegacyAuthority(root))
                 throw new InvalidOperationException("website_v3_parallel_authority_detected");
             var canonical = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(raw, options) ?? new();
-            RepairPersistedDuplicateNodeIdentities(canonical);
-            return Sanitize(canonical);
+            var sanitized = Sanitize(canonical);
+            EnsureUniqueCanonicalNodeIds(sanitized);
+            return sanitized;
         }
 
         var legacy = System.Text.Json.JsonSerializer.Deserialize<LegacyWebsiteContentDocument>(raw, options) ?? new();
@@ -71,7 +49,9 @@ public static class WebsiteContentSanitizer
 
         var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root.ToJsonString(), options)
             ?? throw new ArgumentException("Canonical website document is invalid.");
-        return Sanitize(document);
+        var sanitized = Sanitize(document);
+        EnsureUniqueCanonicalNodeIds(sanitized);
+        return sanitized;
     }
 
     private static bool ContainsLegacyAuthority(System.Text.Json.Nodes.JsonNode? root)
@@ -104,58 +84,26 @@ public static class WebsiteContentSanitizer
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
 
-    private static void RepairPersistedDuplicateNodeIdentities(WebsiteContentDocument document)
+    private static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
     {
-        var nodes = new List<WebsiteCompositionNode>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
 
-        void Visit(IEnumerable<WebsiteCompositionNode>? values)
+        void Visit(IEnumerable<WebsiteCompositionNode>? nodes)
         {
-            foreach (var node in values ?? [])
+            foreach (var node in nodes ?? [])
             {
-                if (node is null) continue;
-                nodes.Add(node);
+                if (!ids.Add(node.Id))
+                    throw new InvalidOperationException($"website_duplicate_node_identity:{node.Id}");
                 Visit(node.Children);
             }
         }
 
         Visit(document.Shell?.Header);
         Visit(document.Shell?.Footer);
-        foreach (var page in (document.Pages ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(page.Value?.Composition);
-        foreach (var component in (document.ReusableComponents ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(component.Value?.Composition);
-
-        var normalized = nodes
-            .Select(node => (Node: node, Id: SanitizeId(node.Id)))
-            .Where(entry => entry.Id.Length > 0)
-            .ToList();
-        var reserved = normalized.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-
-        foreach (var group in normalized.GroupBy(entry => entry.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
-        {
-            var entries = group.ToList();
-            var protectedEntries = entries.Where(entry => WebsiteSiteSource.HasProtectedSemantics(entry.Node)).ToList();
-            if (protectedEntries.Count > 1)
-                throw new InvalidOperationException($"website_duplicate_protected_node_identity:{group.Key}");
-
-            var keeper = protectedEntries.Count == 1 ? protectedEntries[0] : entries[0];
-            keeper.Node.Id = group.Key;
-
-            var suffix = 2;
-            foreach (var entry in entries.Where(entry => !ReferenceEquals(entry.Node, keeper.Node)))
-            {
-                string repaired;
-                do
-                {
-                    var suffixText = $".repair.{suffix++}";
-                    var prefixLength = Math.Max(1, 160 - suffixText.Length);
-                    repaired = SanitizeId(group.Key[..Math.Min(group.Key.Length, prefixLength)] + suffixText);
-                }
-                while (repaired.Length == 0 || !reserved.Add(repaired));
-
-                entry.Node.Id = repaired;
-            }
-        }
+        foreach (var page in document.Pages.Values)
+            Visit(page.Composition);
+        foreach (var component in document.ReusableComponents.Values)
+            Visit(component.Composition);
     }
 
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
