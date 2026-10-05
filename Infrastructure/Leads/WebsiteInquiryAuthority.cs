@@ -223,6 +223,7 @@ public class WebsiteInquiryAuthority : ControllerBase
                 ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
                 : null,
             PublishedWebsiteVersionId = scope.PublishedVersion?.Id,
+            ReportingOwner = ReportingOwnerFor(scope),
             ExperienceId = Optional(request.ExperienceId, 160)
         });
         lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
@@ -445,6 +446,7 @@ public class WebsiteInquiryAuthority : ControllerBase
                 WebsiteFormElementId = request.SourceFormElementId,
                 WebsiteSignalBindingId = submissionBinding?.Id,
                 WebsiteSignalDeliveryMode = submissionBinding?.DeliveryMode,
+                ReportingOwner = ReportingOwnerFor(scope),
                 Source = scope.SiteKey + "_website_inquiry_saved"
             }
         });
@@ -521,12 +523,7 @@ public class WebsiteInquiryAuthority : ControllerBase
             return false;
         }
 
-        var name = $"{trackedLead.FirstName} {trackedLead.LastName}".Trim();
-        var html =
-            $"<p><strong>{WebUtility.HtmlEncode(name)}</strong></p>" +
-            $"<p>{WebUtility.HtmlEncode(trackedLead.Email)} · {WebUtility.HtmlEncode(trackedLead.Phone)}</p>" +
-            $"<p>{WebUtility.HtmlEncode(trackedLead.Notes ?? "").Replace("\n", "<br>")}</p>" +
-            $"<p>Page: {WebUtility.HtmlEncode(trackedLead.SourcePageKey)}</p>";
+        var html = WebsiteLeadEmailTemplate.Build(subject, trackedLead);
 
         var result = await WebsiteLeadNotificationAuthority.DeliverAsync(
             _db,
@@ -557,6 +554,13 @@ public class WebsiteInquiryAuthority : ControllerBase
 
         return null;
     }
+
+    private static string ReportingOwnerFor(PublicWebsiteRuntimeScope scope) =>
+        scope.IsFounder || scope.SiteKey == WebsiteEditorSiteKeys.Legend
+            ? "founder"
+            : scope.CommerceBusinessId.HasValue
+                ? "business"
+                : "agent";
 
     private static InquiryDescriptor InquiryDescriptorFor(PublicWebsiteRuntimeScope scope)
     {

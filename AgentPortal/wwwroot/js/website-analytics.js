@@ -67,7 +67,8 @@
       preset: initialPreset,
       from: initialFrom,
       to: initialTo,
-      agentProfileId: null
+      agentProfileId: null,
+      siteKey: null
     },
     trafficType: {
       trafficModal: 'all',
@@ -101,6 +102,7 @@
   const isFounder = agentOptions.length > 0;
   const callerProfileId = shell?.dataset.callerProfileId || null;
   const initialScopeProfileId = shell?.dataset.initialScopeProfileId || null;
+  const initialSiteKey = asTrimmed(shell?.dataset.initialSiteKey || '').toLowerCase();
   const initialFounderAgentProfileId = (() => {
     if (!isFounder) return null;
     if (initialScopeProfileId) return initialScopeProfileId;
@@ -116,6 +118,7 @@
     // Founder scope is hydrated by the server so personal/global selection survives refreshes.
     state.agentProfileId = initialFounderAgentProfileId;
     state.scope.agentProfileId = initialFounderAgentProfileId;
+    state.scope.siteKey = initialSiteKey === 'protect' ? 'protect' : 'legend';
   } else {
     // Agent → scoped to caller
     state.agentProfileId = callerProfileId;
@@ -354,6 +357,8 @@
     if (!isFounder) return;
     try {
       const url = new URL(window.location.href);
+      if (state.scope.siteKey) url.searchParams.set('siteKey', state.scope.siteKey);
+      else url.searchParams.delete('siteKey');
       if (agentId) {
         url.searchParams.set('agentProfileId', agentId);
         url.searchParams.delete('team');
@@ -510,6 +515,33 @@
     });
   }
 
+  function initFounderSiteSwitch() {
+    if (!isFounder) return;
+    const buttons = Array.from(document.querySelectorAll('.wa-site-switch-btn'));
+    if (!buttons.length) return;
+
+    const apply = () => {
+      buttons.forEach(button => {
+        const active = button.dataset.siteKey === state.scope.siteKey;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    };
+
+    apply();
+    buttons.forEach(button => button.addEventListener('click', () => {
+      const siteKey = button.dataset.siteKey;
+      if (siteKey !== 'legend' && siteKey !== 'protect') return;
+      if (state.scope.siteKey === siteKey) return;
+      state.scope.siteKey = siteKey;
+      syncScopeQueryParam(state.scope.agentProfileId);
+      apply();
+      loadSummary();
+      refreshOpenModal();
+      void loadMetaConnectionStatus();
+    }));
+  }
+
   function notifyScopeChange() {
     if (!isFounder) return;
 
@@ -550,6 +582,7 @@
   function rangeParams({ team = false, modal = null, trafficType = null } = {}) {
     const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes, qualityMode: mapQualityMode(state.qualityMode) };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
+    if (isFounder && state.scope.siteKey) p.siteKey = state.scope.siteKey;
     const customRange = resolveCustomRangeUtc();
     if (customRange) {
       p.fromUtc = customRange.fromUtc;
@@ -4443,6 +4476,7 @@ function escapeHtml(value) {
     }
     showMetaCallbackBanner();
     initScopeControls();
+  initFounderSiteSwitch();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
     const initial = shell?.dataset.initialSummary;

@@ -207,6 +207,7 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.True(lead.TermsAccepted);
         Assert.False(lead.MarketingEmailConsent);
         Assert.False(lead.CallTextConsent);
+        Assert.Contains("\"ReportingOwner\":\"founder\"", lead.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
         var founderCrm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
         Assert.Equal("founder-user", founderCrm.AgentUserId);
@@ -222,11 +223,94 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Null(analytics.CommerceBusinessId);
         Assert.Equal(f.VersionId, analytics.WebsiteContentVersionId);
         Assert.Contains("\"siteKey\":\"legend\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "founder@example.org",
             It.Is<string>(subject => subject.Contains("LEGEND", StringComparison.OrdinalIgnoreCase)),
-            It.IsAny<string>(),
+            It.Is<string>(html => html.Contains("#0f172a", StringComparison.OrdinalIgnoreCase) &&
+                                  html.Contains("Visitor Example", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FounderProtectContactUsesSameCanonicalLeadCrmAnalyticsEmailAndOwnerLineage()
+    {
+        using var f = new Fixture("https://protect.mylegnd.com");
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "founder-user",
+            AgentUpn = "founder@example.org",
+            Slug = "founder",
+            DisplayName = "Founder",
+            Status = "active",
+            UpdatedUtc = DateTime.UtcNow
+        };
+        f.Db.Add(tracking);
+        f.Db.Add(new AgentProfile
+        {
+            AgentUserId = tracking.AgentUserId,
+            AgentUpn = "founder@example.org",
+            NormalizedEmail = "founder@example.org",
+            FullName = "Founder",
+            IsActive = true,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        var state = new WebsiteContentState
+        {
+            OwnerKey = tracking.AgentUserId,
+            SiteKey = WebsiteEditorSiteKeys.Protect,
+            PublishedVersionId = f.VersionId
+        };
+        f.Db.Add(state);
+        f.Db.Add(new WebsiteContentVersion
+        {
+            Id = f.VersionId,
+            StateId = state.Id,
+            CompiledPagesJson = "{\"pages\":{\"/contact\":{\"html\":\"published\"}}}"
+        });
+        await f.Db.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new AgentTrackingResolver(f.Db, NullLogger<AgentTrackingResolver>.Instance));
+        f.Controller.HttpContext.RequestServices = services.BuildServiceProvider();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with
+            {
+                SourcePath = "/contact",
+                SourceActionKey = "protect_founder_contact",
+                SessionId = "protect-founder-session",
+                VisitorId = "protect-founder-visitor"
+            },
+            CancellationToken.None));
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(tracking.Id, lead.AgentTrackingProfileId);
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Equal("ProtectionInquiry", lead.InterestType);
+        Assert.Contains("\"ReportingOwner\":\"founder\"", lead.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+
+        var crm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal("founder-user", crm.AgentUserId);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(tracking.Id, analytics.AgentTrackingProfileId);
+        Assert.Contains("\"siteKey\":\"protect\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "founder@example.org",
+            It.Is<string>(subject => subject.Contains("Protection", StringComparison.OrdinalIgnoreCase)),
+            It.Is<string>(html => html.Contains("#0f172a", StringComparison.OrdinalIgnoreCase) &&
+                                  html.Contains("Visitor Example", StringComparison.OrdinalIgnoreCase)),
             It.IsAny<string?>(),
             "visitor@example.org",
             It.IsAny<bool>(),

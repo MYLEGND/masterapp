@@ -22,6 +22,7 @@
     var analyticsCanAgentPerformance = (ViewData["AnalyticsCanAgentPerformance"] as bool?) ?? true;
     var analyticsCanIncidentMonitor = (ViewData["AnalyticsCanIncidentMonitor"] as bool?) ?? true;
     var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
+    var initialSiteKey = ViewData["InitialSiteKey"] as string ?? string.Empty;
     var isFounder = agentOptionsJson != "[]";
     var landingRoutesJson = ViewData["LandingRoutesJson"] as string ?? "[]";
     var landingRoutesBaseUrl = ViewData["LandingRoutesBaseUrl"] as string ?? string.Empty;
@@ -29,7 +30,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">
@@ -504,6 +505,16 @@
                                 <span class="wa-scope-chip-value" id="wa-scope-label">@initialScopeLabel</span>
                             </div>
                         </div>
+                        @if (canViewFounderTeamUi)
+                        {
+                        <div class="wa-site-switch wa-header-stack" aria-label="Founder website selector">
+                            <span class="wa-scope-picker-label">Website</span>
+                            <div class="wa-site-switch-buttons" role="group" aria-label="Website analytics">
+                                <button type="button" class="btn btn-sm wa-site-switch-btn" data-site-key="legend">Legend</button>
+                                <button type="button" class="btn btn-sm wa-site-switch-btn" data-site-key="protect">Protect</button>
+                            </div>
+                        </div>
+                        }
                         @if (canViewFounderTeamUi)
                         {
                         <div class="wa-scope-picker wa-header-stack" aria-label="Analytics scope selector">

@@ -20,8 +20,10 @@ public static class WebsiteLeadServiceRegistration
     {
         services.AddWebsiteLeadNotificationTransport();
         services.TryAddScoped<BusinessInquiryNotificationService>();
+        services.TryAddScoped<WebsiteLeadAppNotificationService>();
         services.AddHostedService<BusinessInquiryNotificationWorker>();
         services.AddHostedService<WebsiteLeadNotificationRecoveryWorker>();
+        services.AddHostedService<WebsiteLeadAppNotificationWorker>();
         return services;
     }
 }

@@ -146,8 +146,8 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
                         recipient,
                         ct => sender.TrySendAsync(
                             recipient,
-                            "Recovered website lead notification",
-                            "<p>A previously captured website lead is ready for follow-up in the CRM.</p>",
+                            WebsiteLeadEmailTemplate.SubjectFor(lead),
+                            WebsiteLeadEmailTemplate.Build(WebsiteLeadEmailTemplate.SubjectFor(lead), lead),
                             replyToEmail: string.IsNullOrWhiteSpace(lead.Email) ? null : lead.Email,
                             saveToSentItems: true,
                             cancellationToken: ct),
