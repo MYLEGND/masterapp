@@ -213,6 +213,104 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void Mutation_ParentContainingProtectedCapability_CannotBeRemovedOrMovedAcrossPage()
+    {
+        var document = Baseline();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "home.protected-section",
+            Type = "section",
+            Tag = "section",
+            Children =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.inquiry",
+                    Type = "form",
+                    Tag = "form",
+                    SystemKey = "canonical_inquiry"
+                }
+            ]
+        });
+        document.Pages["/other"] = new WebsitePageDocument
+        {
+            Title = "Other",
+            Navigation = new WebsitePageNavigation { Label = "Other", Order = 20 },
+            Composition = []
+        };
+        var manifest = Capabilities(document);
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteDocumentMutationService.Apply(
+                document,
+                WebsiteEditorSiteKeys.Business,
+                Actions(),
+                manifest,
+                [new WebsiteMutationOperation
+                {
+                    Type = "removeNode",
+                    NodeId = "home.protected-section"
+                }]));
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteDocumentMutationService.Apply(
+                document,
+                WebsiteEditorSiteKeys.Business,
+                Actions(),
+                manifest,
+                [new WebsiteMutationOperation
+                {
+                    Type = "moveNode",
+                    NodeId = "home.protected-section",
+                    Scope = "page",
+                    PagePath = "/other"
+                }]));
+    }
+
+    [Fact]
+    public void Mutation_ProtectedSignalNode_CannotBeRetargetedToAnotherCapability()
+    {
+        var document = Baseline();
+        var action = Actions().First(value => value.Key == "business_contact");
+        document.Pages["/"].Composition[0].Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.tracked-cta",
+            Type = "cta",
+            Tag = "a",
+            Text = "Contact",
+            ActionKey = action.Key,
+            Href = action.Href,
+            Signals =
+            [
+                new WebsiteSignalBinding
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Trigger = "click",
+                    EventName = "cta_click",
+                    ActionKey = "cta_click",
+                    DeliveryMode = "analytics"
+                }
+            ]
+        });
+        var manifest = Capabilities(document);
+        var other = manifest.Capabilities.First(value =>
+            value.Kind == "action" && value.ActionKey != action.Key);
+
+        Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteDocumentMutationService.Apply(
+                document,
+                WebsiteEditorSiteKeys.Business,
+                Actions(),
+                manifest,
+                [new WebsiteMutationOperation
+                {
+                    Type = "setApprovedCapability",
+                    NodeId = "home.tracked-cta",
+                    CapabilityKey = other.Key
+                }]));
+    }
+
+    [Fact]
     public void Mutation_CanonicalInquiry_IsCreatedOnlyThroughCapabilityAuthority()
     {
         var document = Baseline();
