@@ -14,25 +14,26 @@ public sealed class WebsiteMediaService(MasterAppDbContext db, ISocialMediaStora
     {
         var validation = UploadValidator.ValidateImageContent(bytes, UploadValidationPolicy.Images(5_000_000));
         if (!validation.IsValid) throw new ArgumentException(validation.ErrorMessage ?? "Unsupported image.");
-        var extension = validation.DetectedContentType switch { "image/png" => ".png", "image/webp" => ".webp", _ => ".jpg" };
+        var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType)
+            ?? throw new ArgumentException("The uploaded image container is not recognized.");
         return StoreAsync(ownerKey, sourceUrl, "image" + extension, bytes, ct);
     }
 
     public async Task<WebsiteMediaAsset> StoreAsync(string ownerKey, string sourceUrl, string fileName, byte[] bytes, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(ownerKey) || ownerKey.Length > 200) throw new ArgumentException("Website owner required.");
-        var validation = UploadValidator.ValidateContent(bytes, fileName, null, new UploadValidationPolicy
-        {
-            MaxSizeBytes = 25_000_000,
-            AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".m4v", ".mov", ".webm" },
-            AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm" }
-        });
+        var validation = UploadValidator.ValidateContent(
+            bytes,
+            fileName,
+            null,
+            UploadValidationPolicy.Media(25_000_000));
         if (!validation.IsValid) throw new ArgumentException(validation.ErrorMessage ?? "Unsupported media.");
         if (validation.DetectedContentType!.StartsWith("image/", StringComparison.Ordinal) && bytes.Length > 5_000_000) throw new ArgumentException("Image exceeds 5 MB.");
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         var existing = await db.Set<WebsiteMediaAsset>().SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.Sha256 == hash, ct);
         if (existing is not null) return existing;
-        var extension = validation.DetectedContentType switch { "image/png" => ".png", "image/webp" => ".webp", "video/mp4" => ".mp4", "video/webm" => ".webm", _ => ".jpg" };
+        var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType)
+            ?? throw new ArgumentException("The uploaded media container is not recognized.");
         var asset = new WebsiteMediaAsset { OwnerKey = ownerKey, SourceUrl = sourceUrl, Sha256 = hash, ContentType = validation.DetectedContentType!, SizeBytes = bytes.Length };
         using var content = new MemoryStream(bytes, writable: false);
         var stored = await storage.StoreAsync(asset.Id, hash + extension, bytes.Length, content, ct);
