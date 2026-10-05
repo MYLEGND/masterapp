@@ -1980,6 +1980,8 @@ public class WebsitePlatformController : ControllerBase
 
         if (cursor.HasValue)
         {
+            if (cursor.Value < DateTime.MinValue.Ticks || cursor.Value > DateTime.MaxValue.Ticks)
+                return BadRequest(new { error = "invalid_media_cursor" });
             var before = new DateTime(cursor.Value, DateTimeKind.Utc);
             query = query.Where(asset => asset.CreatedUtc < before);
         }
