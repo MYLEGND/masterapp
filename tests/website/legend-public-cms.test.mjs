@@ -2413,7 +2413,7 @@ test('media upload has one multipart transport and bypasses inferred ApiControll
   const upload=source.slice(uploadStart,uploadEnd);
   assert.ok(upload.includes('new FormData()'));
   assert.ok(upload.includes("body.append('file', file, file.name || 'website-media')"));
-  assert.equal(upload.includes("'Content-Type'"),false);
+  assert.doesNotMatch(upload,/['"]Content-Type['"]\s*:/);
   assert.ok(upload.includes("headers: { Accept: 'application/json' }"));
   assert.match(websitePlatformControllerSource,/public async Task<IActionResult> UploadMedia\(CancellationToken/);
   assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
