@@ -555,7 +555,87 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "cta.closing");
         var inserts = operations.Where(value => value.Type == "insertRecipe").ToArray();
         Assert.Equal(Enumerable.Range(0, inserts.Length), inserts.Select(value => value.Index!.Value));
+        Assert.DoesNotContain(inserts, value => value.CapabilityKey == "contact.inquiry.submit");
         Assert.DoesNotContain(operations, value => value.Type == "insertNode" && value.Node?.SystemKey is not null);
+    }
+
+    [Fact]
+    public void ContactPageRecipe_DefaultsInquiryOnlyIntoTheInquirySection()
+    {
+        var sections = WebsitePageRecipeCatalog.Build(
+            "contact",
+            "contact",
+            "contact.inquiry.submit");
+
+        Assert.Single(sections.Where(value => value.CapabilityKey == "contact.inquiry.submit"));
+        Assert.Equal(
+            "contact.inquiry",
+            sections.Single(value => value.CapabilityKey == "contact.inquiry.submit").Recipe);
+    }
+
+    [Fact]
+    public void PremiumSplitRecipes_UseCoherentCopyAndMediaColumns_AndCollapseWithoutMedia()
+    {
+        var mediaId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var split = WebsiteRecipeCatalog.Build(
+            "hero.split",
+            "hero",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["headline"] = "Precision at first glance.",
+                ["body"] = "A focused premium opening."
+            },
+            mediaId);
+
+        Assert.Equal("grid", split.Layout.Mode);
+        Assert.Equal(2, split.Layout.Columns);
+        Assert.Equal(2, split.Children.Count);
+        Assert.Equal("hero.copy", split.Children[0].Id);
+        Assert.Equal("container", split.Children[0].Type);
+        Assert.Equal(mediaId, split.Children[1].MediaAssetId);
+
+        var withoutMedia = WebsiteRecipeCatalog.Build(
+            "hero.split",
+            "hero-no-media",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["headline"] = "Precision without filler."
+            });
+        Assert.Equal("stack", withoutMedia.Layout.Mode);
+        Assert.DoesNotContain("legend-recipe-hero-split", withoutMedia.ClassName ?? string.Empty, StringComparison.Ordinal);
+
+        var featureWithoutMedia = WebsiteRecipeCatalog.Build(
+            "feature.split",
+            "feature-no-media",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["headline"] = "One clean column until media exists."
+            });
+        Assert.Equal("stack", featureWithoutMedia.Layout.Mode);
+        Assert.DoesNotContain("legend-recipe-feature-split", featureWithoutMedia.ClassName ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Testimonials_RequireVerifiedQuoteContent()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteRecipeCatalog.Build(
+                "testimonials",
+                "proof",
+                new Dictionary<string, string>(StringComparer.Ordinal)));
+
+        var section = WebsiteRecipeCatalog.Build(
+            "testimonials",
+            "proof",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["headline"] = "What clients say",
+                ["quote1"] = "Verified customer quote."
+            });
+
+        var quotes = section.Children.Single(value => value.Id == "proof.quotes");
+        Assert.Single(quotes.Children);
+        Assert.Equal("Verified customer quote.", quotes.Children[0].Text);
     }
 
     [Fact]
