@@ -37,7 +37,7 @@ public interface IMetaSignalAnalyticsService
 
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
-    private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
+    private const string LearningScopeNoteText = "Meta Paid Signal Intelligence is a derived learning projection for paid Meta-attributed traffic. Its Submitted Leads value is a funnel-signal count, not the canonical CRM lead total. Use Analytics Verified Leads and canonical channel outcomes for business truth; non-paid/manual tests are excluded from Meta learning readiness.";
     private const int DispatcherGraceMinutes = 10;
 
     private static readonly HashSet<string> BrowserPixelEventNames = new(
