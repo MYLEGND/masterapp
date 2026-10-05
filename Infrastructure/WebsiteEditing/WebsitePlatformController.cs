@@ -1204,22 +1204,44 @@ public class WebsitePlatformController : ControllerBase
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
-        if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict", revision = state.Revision });
+        if (request.ExpectedRevision != state.Revision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var baseline = Read(state.DraftJson);
+        if (baseline.LegacyMigration is null)
+            return BadRequest(new
+            {
+                error = "website_full_document_write_retired",
+                message = "Canonical v3 websites are written only through typed Website Studio mutations."
+            });
+        if (request.DraftId.HasValue || request.DraftName is not null)
+            return BadRequest(new
+            {
+                error = "website_materialization_draft_not_supported",
+                message = "Complete canonical materialization before saving named drafts."
+            });
+
         WebsiteContentDocument document;
         try
         {
-            var baseline = Read(state.DraftJson);
-            document = await NormalizeAuthorableDocumentAsync(
-                actor,
-                baseline,
-                request.Document,
-                cancellationToken);
+            document = WebsiteContentSanitizer.Sanitize(request.Document);
+            if (document.LegacyMigration is not null ||
+                document.Version != WebsiteStudioContract.CurrentDocumentVersion)
+                return BadRequest(new
+                {
+                    error = "website_materialization_invalid",
+                    message = "Legacy materialization must produce one canonical v3 website document."
+                });
+
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+            WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, document, document);
+            await ValidateCompositionMediaOwnershipAsync(actor, document, cancellationToken);
         }
         catch (WebsiteSiteSourceProtectionException ex)
         {
             return BadRequest(new
             {
-                error = "website_document_protected",
+                error = "website_materialization_protected",
                 message = ex.Message,
                 canonicalProtectionViolation = true,
                 correction = WebsiteStudioAgentContract.ProtectedEditCorrection
@@ -1229,36 +1251,13 @@ public class WebsitePlatformController : ControllerBase
         {
             return BadRequest(new
             {
-                error = "invalid_website_document",
+                error = "website_materialization_invalid",
                 message = ex.Message,
                 canonicalProtectionViolation = false
             });
         }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new
-            {
-                error = ex.Message,
-                message = "Materialize the website into the canonical v3 graph before saving."
-            });
-        }
+
         document.UpdatedUtc = DateTime.UtcNow;
-        if (request.DraftId.HasValue || request.DraftName is not null)
-        {
-            var name = request.DraftName?.Trim();
-            if (string.IsNullOrWhiteSpace(name) || name.Length > 100) return BadRequest(new { message = "Enter a draft name of 1–100 characters." });
-            var drafts = ReadDrafts(state);
-            var draft = request.DraftId.HasValue ? drafts.SingleOrDefault(d => d.Id == request.DraftId) : null;
-            if (request.DraftId.HasValue && draft is null) return NotFound();
-            if (draft is null && drafts.Count >= 20) return BadRequest(new { message = "You can keep up to 20 drafts. Delete a draft before creating another." });
-            if (drafts.Any(d => d.Id != draft?.Id && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
-                return Conflict(new { message = "That name already exists. Select the existing draft to update it, or choose another name." });
-            if (draft is null) { draft = new WebsiteNamedDraft(); drafts.Add(draft); }
-            draft.Name = name;
-            draft.DocumentJson = JsonSerializer.Serialize(document, JsonOptions);
-            draft.UpdatedUtc = DateTime.UtcNow;
-            state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
-        }
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;
         state.ScheduledRevision = null;
@@ -1266,9 +1265,18 @@ public class WebsitePlatformController : ControllerBase
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
+
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+
+        return Ok(new
+        {
+            source = "canonical_v3_materialization",
+            document,
+            revision = state.Revision,
+            savedUtc = state.UpdatedUtc,
+            drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc })
+        });
     }
 
     private async Task<IActionResult> ApplyMutationBatchAsync(
@@ -1447,70 +1455,6 @@ public class WebsitePlatformController : ControllerBase
             savedUtc = state.UpdatedUtc,
             drafts = ReadDrafts(state).Select(value => new { value.Id, value.Name, value.UpdatedUtc })
         });
-    }
-
-    private async Task<WebsiteContentDocument> NormalizeAuthorableDocumentAsync(
-        WebsiteEditorTicket actor,
-        WebsiteContentDocument baseline,
-        WebsiteContentDocument proposed,
-        CancellationToken cancellationToken)
-    {
-        var candidate = WebsiteContentSanitizer.Sanitize(proposed);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, candidate);
-
-        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business &&
-                                     actor.CommerceBusinessId.HasValue
-            ? await WebsiteBusinessFacts.LoadAsync(
-                _db,
-                actor.CommerceBusinessId.Value,
-                cancellationToken)
-            : null;
-
-        // A pre-v3 persisted document is a read-only migration envelope, not a
-        // competing canonical baseline. Its one permitted write is replacement
-        // by the browser-materialized v3 document. From that save forward the
-        // strict v3 protection path below owns every mutation.
-        if (baseline.LegacyMigration is not null)
-        {
-            WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, candidate, candidate);
-            await ValidateCompositionMediaOwnershipAsync(
-                actor,
-                candidate,
-                cancellationToken);
-            return candidate;
-        }
-
-        var current = WebsiteContentSanitizer.Sanitize(baseline);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, current);
-
-        var actions = await BuildCallToActionCatalogAsync(
-            actor,
-            facts,
-            cancellationToken,
-            current);
-
-        // One protection authority for Canvas, Selected Source, GPT, autosave,
-        // and named drafts. Project the candidate through the same public
-        // authoring representation used by Source, then parse it against the
-        // current canonical baseline. The parser restores server-owned signals,
-        // system/form/data authority and approved action destinations by stable
-        // node ID while preserving authorable presentation and free structure.
-        var source = WebsiteSiteSource.Serialize(candidate);
-        var protectedDocument = WebsiteSiteSource.Parse(
-            source,
-            current,
-            actions,
-            validateCanonical: false,
-            requireActiveHomePage: false).Document;
-
-        WebsiteSystemTemplateAuthority.RestoreRuntimeForms(actor.SiteKey, candidate, protectedDocument);
-
-        await ValidateCompositionMediaOwnershipAsync(
-            actor,
-            protectedDocument,
-            cancellationToken);
-
-        return protectedDocument;
     }
 
     private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state)
