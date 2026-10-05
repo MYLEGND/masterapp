@@ -27,7 +27,8 @@ LEGEND Website Studio creative contract:
 - Use the read-only Capability Manifest to place approved actions/forms/runtime capabilities. Never invent an executable capability.
 - Prefer semantic theme tokens and recipes for repeated design grammar; use freeform v3 nodes whenever a unique composition is better.
 - Prefer the highest valid scope: theme/site shell/page/section/node/breakpoint. Avoid repeated node overrides when one semantic token or shared component expresses the intent.
-- Use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
+- In the local Studio API use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan.
+- In ChatGPT Work/WebMCP use legend_website_workspace (summary -> recipes -> only needed detail), legend_website_apply_design_plan for the main build, legend_website_apply_mutations for targeted refinement, legend_website_set_signal_mappings only for meaningful custom intent, legend_website_import_image for safe public imagery, and legend_website_preflight to finish. Master Source is diagnostic only.
 - Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection; use getSignalCatalog + setSignalMappings, then testSignalMapping/getSignalHealth when a genuinely meaningful custom interaction needs canonical intent reporting.
 - Preserve stable protected identities and design freely around them.
 - After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
@@ -47,6 +48,15 @@ LEGEND Website Studio creative contract:
             masterSourceRole = "diagnostic_read_only",
             selectedSourceRole = "single_node_mutation",
             capabilityRole = "read_only_server_resolved_execution"
+        },
+        webMcpTools = new[]
+        {
+            "legend_website_workspace",
+            "legend_website_apply_design_plan",
+            "legend_website_apply_mutations",
+            "legend_website_set_signal_mappings",
+            "legend_website_import_image",
+            "legend_website_preflight"
         },
         browserCommands = new[]
         {
