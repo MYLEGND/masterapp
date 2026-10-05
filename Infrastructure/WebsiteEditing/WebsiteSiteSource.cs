@@ -515,6 +515,9 @@ public static class WebsiteSiteSource
         "site-header",
         "site-footer",
         "nav-toggle",
+        "legend-platform-attribution",
+        "legend-platform-attribution-powered-label",
+        "legend-platform-attribution-designed-label",
         "public-form",
         "legend-cms-inquiry-form",
         "legend-cms-embed",
@@ -540,11 +543,20 @@ public static class WebsiteSiteSource
         WebsiteCompositionNode? previous)
     {
         var previousTokens = ClassTokens(previous?.ClassName);
-        foreach (var token in ClassTokens(node.ClassName))
+        var proposedTokens = ClassTokens(node.ClassName);
+
+        foreach (var token in proposedTokens)
         {
             if (IsReservedRuntimeClass(token) && !previousTokens.Contains(token))
                 throw new WebsiteSiteSourceProtectionException(
                     $"Component '{node.Id}' cannot invent platform runtime class '{token}'. Use author-owned presentation classes instead.");
+        }
+
+        foreach (var token in previousTokens)
+        {
+            if (IsReservedRuntimeClass(token) && !proposedTokens.Contains(token))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Component '{node.Id}' cannot remove platform runtime class '{token}'.");
         }
     }
 
