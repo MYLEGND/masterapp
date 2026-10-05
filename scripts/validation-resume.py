@@ -3413,6 +3413,55 @@ def _release_history_source(repository, revision, path, token):
     return source
 
 
+def _ast_function_contract(source, name):
+    """Return one top-level function AST or fail closed on ambiguous source."""
+    tree = ast.parse(source)
+    matches = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name]
+    if len(matches) != 1:
+        raise ReleaseOperationHistoryUnproven(f"Historical release function {name} is unavailable or ambiguous")
+    return ast.dump(matches[0], include_attributes=False)
+
+
+def _ast_method_contract(source, class_name, method_name):
+    """Return one class method AST or fail closed on ambiguous source."""
+    tree = ast.parse(source)
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name]
+    if len(classes) != 1:
+        raise ReleaseOperationHistoryUnproven(f"Historical release class {class_name} is unavailable or ambiguous")
+    matches = [node for node in classes[0].body
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == method_name]
+    if len(matches) != 1:
+        raise ReleaseOperationHistoryUnproven(
+            f"Historical release method {class_name}.{method_name} is unavailable or ambiguous")
+    return ast.dump(matches[0], include_attributes=False)
+
+
+def _historical_intent_before_upload_contract(repository, revision, token):
+    """Prove a historical uploader could not POST before durable intent readback.
+
+    This is deliberately exact and narrow. Missing intent may prove no write only
+    for generations whose critical uploader/evidence functions are AST-identical
+    to the current canonical anti-replay contract. Any drift remains unproven.
+    """
+    historical_deploy = _release_history_source(
+        repository, revision, 'scripts/deploy-approved-app.py', token)
+    historical_evidence = _release_history_source(
+        repository, revision, 'scripts/release-operation-evidence.py', token)
+    current_deploy = Path(__file__).with_name('deploy-approved-app.py').read_text()
+    current_evidence = Path(__file__).with_name('release-operation-evidence.py').read_text()
+
+    for name in ('operation_journal', 'deploy_one', 'reconcile'):
+        if _ast_function_contract(historical_deploy, name) != _ast_function_contract(current_deploy, name):
+            return False
+    if _ast_function_contract(historical_evidence, 'publish_record') != _ast_function_contract(current_evidence, 'publish_record'):
+        return False
+    for method in ('__init__', 'before_submit'):
+        if (_ast_method_contract(historical_evidence, 'OperationJournal', method) !=
+                _ast_method_contract(current_evidence, 'OperationJournal', method)):
+            return False
+    return True
+
+
 def _release_history_json(repository, run_id, artifact, filename):
     import tempfile
     if artifact.get("expired"):
@@ -3859,6 +3908,13 @@ def release_operation_history(repository, operation_id, application_revision, ta
             except (OSError, subprocess.SubprocessError) as exc:
                 raise ReleaseOperationHistoryUnproven('Historical package proof provider unavailable') from exc
             if prior_revision == application_revision:
+                if _historical_intent_before_upload_contract(repository, run['head_sha'], token):
+                    # This exact historical source could not call Azure submit until
+                    # the operation intent artifact had been synchronously published
+                    # and read back. Complete artifact enumeration found no intent,
+                    # therefore this target did not write in that generation.
+                    _remember_release_exclusion(application_revision, run, target)
+                    continue
                 raise ReleaseOperationHistoryUnproven('Prior publication may have written this immutable package; missing intent is not absence proof')
         _remember_release_exclusion(application_revision, run, target)
     return None
