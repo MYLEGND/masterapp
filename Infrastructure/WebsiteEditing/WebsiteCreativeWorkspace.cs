@@ -161,44 +161,6 @@ public static class WebsiteDocumentIndex
         return false;
     }
 
-    public static List<WebsiteCompositionNode> ResolveChildren(
-        WebsiteContentDocument document,
-        string scope,
-        string? pagePath,
-        string? reusableComponentId,
-        string? parentId)
-    {
-        if (!string.IsNullOrWhiteSpace(parentId))
-        {
-            if (!TryFind(document, parentId, out var parent, out _))
-                throw new ArgumentException($"Parent node '{parentId}' was not found.");
-            return parent.Children;
-        }
-
-        return scope switch
-        {
-            "shell.header" => document.Shell.Header,
-            "shell.footer" => document.Shell.Footer,
-            "page" when pagePath is not null && document.Pages.TryGetValue(pagePath, out var page) => page.Composition,
-            "component" when reusableComponentId is not null && document.ReusableComponents.TryGetValue(reusableComponentId, out var component) => component.Composition,
-            _ => throw new ArgumentException("A valid mutation scope is required.")
-        };
-    }
-
-    public static bool Remove(
-        WebsiteContentDocument document,
-        string nodeId,
-        out WebsiteCompositionNode removed,
-        out WebsiteCreativeNodeLocation location)
-    {
-        if (!TryFind(document, nodeId, out removed, out location)) return false;
-        var siblings = ResolveChildren(document, location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId);
-        var index = siblings.FindIndex(value => value.Id == nodeId);
-        if (index < 0) return false;
-        siblings.RemoveAt(index);
-        return true;
-    }
-
     private static bool TryFindInList(
         List<WebsiteCompositionNode> nodes,
         string nodeId,
@@ -247,8 +209,6 @@ internal sealed class WebsiteMutationIndex
         _document = document;
         Rebuild();
     }
-
-    public bool Contains(string id) => _entries.ContainsKey(id);
 
     public bool TryFind(
         string id,
@@ -664,11 +624,12 @@ public static class WebsiteDocumentMutationService
         var document = Clone(baseline);
         WebsiteSystemTemplateAuthority.Apply(siteKey, document);
         var changed = new HashSet<string>(StringComparer.Ordinal);
+        var index = new WebsiteMutationIndex(document);
 
         foreach (var operation in operations ?? [])
         {
             if (operation is null) throw new ArgumentException("Website mutation entries cannot be null.");
-            ApplyOne(document, siteKey, actions, capabilities, operation, changed);
+            ApplyOne(document, index, siteKey, actions, capabilities, operation, changed);
         }
 
         WebsiteSystemTemplateAuthority.Apply(siteKey, document);
@@ -684,6 +645,7 @@ public static class WebsiteDocumentMutationService
 
     private static void ApplyOne(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         string siteKey,
         IReadOnlyList<WebsiteCallToActionOption> actions,
         WebsiteCapabilityManifest capabilities,
@@ -721,6 +683,7 @@ public static class WebsiteDocumentMutationService
 
             case "createPage":
                 CreatePage(document, siteKey, operation, actions, changed);
+                index.Rebuild();
                 return;
 
             case "updatePage":
@@ -729,10 +692,12 @@ public static class WebsiteDocumentMutationService
 
             case "movePageRoute":
                 MovePage(document, siteKey, operation, changed);
+                index.Rebuild();
                 return;
 
             case "removePage":
                 RemovePage(document, siteKey, operation, changed);
+                index.Rebuild();
                 return;
 
             case "replaceShellHeader":
@@ -746,6 +711,7 @@ public static class WebsiteDocumentMutationService
                 foreach (var node in document.Shell.Header)
                     ValidateMutationSubtree(document, node, actions, "shell.header", null, null);
                 changed.Add("@shell/header");
+                index.Rebuild();
                 return;
 
             case "replaceShellFooter":
@@ -759,42 +725,45 @@ public static class WebsiteDocumentMutationService
                 foreach (var node in document.Shell.Footer)
                     ValidateMutationSubtree(document, node, actions, "shell.footer", null, null);
                 changed.Add("@shell/footer");
+                index.Rebuild();
                 return;
 
             case "upsertReusable":
                 UpsertReusable(document, operation, actions, changed);
+                index.Rebuild();
                 return;
 
             case "removeReusable":
                 RemoveReusable(document, operation, changed);
+                index.Rebuild();
                 return;
 
             case "insertNode":
-                InsertNode(document, operation, actions, changed);
+                InsertNode(document, index, operation, actions, changed);
                 return;
 
             case "replaceNode":
-                ReplaceNode(document, operation, actions, changed);
+                ReplaceNode(document, index, operation, actions, changed);
                 return;
 
             case "removeNode":
-                RemoveNode(document, operation, changed);
+                RemoveNode(index, operation, changed);
                 return;
 
             case "moveNode":
-                MoveNode(document, operation, changed);
+                MoveNode(document, index, operation, changed);
                 return;
 
             case "setApprovedCapability":
-                SetApprovedCapability(document, operation, capabilities, actions, changed);
+                SetApprovedCapability(document, index, operation, capabilities, actions, changed);
                 return;
 
             case "insertCapability":
-                InsertCapability(document, operation, capabilities, actions, changed);
+                InsertCapability(document, index, operation, capabilities, actions, changed);
                 return;
 
             case "insertRecipe":
-                InsertRecipe(document, operation, capabilities, actions, changed);
+                InsertRecipe(document, index, operation, capabilities, actions, changed);
                 return;
 
             default:
@@ -901,11 +870,11 @@ public static class WebsiteDocumentMutationService
     }
 
     private static void EnsureAuthorableParent(
-        WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         string? parentId)
     {
         if (string.IsNullOrWhiteSpace(parentId)) return;
-        if (!WebsiteDocumentIndex.TryFind(document, parentId, out var parent, out _))
+        if (!index.TryFind(parentId, out var parent, out _))
             throw new ArgumentException($"Parent node '{parentId}' was not found.");
         if (HasProtectedSemantics(parent))
             throw new WebsiteSiteSourceProtectionException(
@@ -914,6 +883,7 @@ public static class WebsiteDocumentMutationService
 
     private static void InsertNode(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         IReadOnlyList<WebsiteCallToActionOption> actions,
         HashSet<string> changed)
@@ -921,7 +891,7 @@ public static class WebsiteDocumentMutationService
         if (operation.Node is null) throw new ArgumentException("A node is required.");
         var node = PrepareNewNode(operation.Node, actions, document.Breakpoints);
         EnsureNewSubtreeIdentitiesAvailable(document, node);
-        EnsureAuthorableParent(document, operation.ParentId);
+        EnsureAuthorableParent(index, operation.ParentId);
         ValidateMutationSubtree(
             document,
             node,
@@ -929,26 +899,26 @@ public static class WebsiteDocumentMutationService
             operation.Scope ?? "page",
             operation.PagePath,
             operation.ReusableComponentId);
-        var siblings = WebsiteDocumentIndex.ResolveChildren(
-            document,
+        index.Insert(
+            node,
             operation.Scope ?? "page",
             operation.PagePath,
             operation.ReusableComponentId,
-            operation.ParentId);
-        var index = Math.Clamp(operation.Index ?? siblings.Count, 0, siblings.Count);
-        siblings.Insert(index, node);
+            operation.ParentId,
+            operation.Index);
         changed.Add(ScopeKey(operation.Scope ?? "page", operation.PagePath, operation.ReusableComponentId, operation.ParentId ?? node.Id));
     }
 
     private static void ReplaceNode(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         IReadOnlyList<WebsiteCallToActionOption> actions,
         HashSet<string> changed)
     {
         if (operation.Node is null || string.IsNullOrWhiteSpace(operation.NodeId))
             throw new ArgumentException("Node identity and replacement are required.");
-        if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var existing, out var location))
+        if (!index.TryFind(operation.NodeId, out var existing, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
         var replacement = MergeAuthorable(existing, operation.Node, actions, document.Breakpoints);
@@ -960,35 +930,35 @@ public static class WebsiteDocumentMutationService
             location.Scope,
             location.PagePath,
             location.ReusableComponentId);
-        var siblings = WebsiteDocumentIndex.ResolveChildren(document, location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId);
-        siblings[location.Index] = replacement;
+        index.Replace(existing.Id, replacement);
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, replacement.Id));
     }
 
     private static void RemoveNode(
-        WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         HashSet<string> changed)
     {
         if (string.IsNullOrWhiteSpace(operation.NodeId))
             throw new ArgumentException("Node identity is required.");
-        if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var existing, out var location))
+        if (!index.TryFind(operation.NodeId, out var existing, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
         if (ContainsProtectedSemantics(existing))
             throw new WebsiteSiteSourceProtectionException($"Component '{existing.Id}' contains protected platform authority and cannot be removed by the creative mutation authority.");
-        WebsiteDocumentIndex.Remove(document, existing.Id, out _, out _);
+        index.Remove(existing.Id, out _, out _);
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId ?? existing.Id));
     }
 
     private static void MoveNode(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         HashSet<string> changed)
     {
         if (string.IsNullOrWhiteSpace(operation.NodeId))
             throw new ArgumentException("Node identity is required.");
-        if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var existing, out var oldLocation))
+        if (!index.TryFind(operation.NodeId, out var existing, out var oldLocation))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
 
@@ -997,17 +967,16 @@ public static class WebsiteDocumentMutationService
              oldLocation.Scope != (operation.Scope ?? oldLocation.Scope)))
             throw new WebsiteSiteSourceProtectionException("Components containing protected platform authority may be repositioned only within their existing page/scope.");
 
-        EnsureAuthorableParent(document, operation.ParentId);
-        if (!WebsiteDocumentIndex.Remove(document, existing.Id, out var removed, out _))
+        EnsureAuthorableParent(index, operation.ParentId);
+        if (!index.Remove(existing.Id, out var removed, out _))
             throw new ArgumentException("The component could not be moved.");
-        var siblings = WebsiteDocumentIndex.ResolveChildren(
-            document,
+        index.Insert(
+            removed,
             operation.Scope ?? oldLocation.Scope,
             operation.PagePath ?? oldLocation.PagePath,
             operation.ReusableComponentId ?? oldLocation.ReusableComponentId,
-            operation.ParentId);
-        var index = Math.Clamp(operation.Index ?? siblings.Count, 0, siblings.Count);
-        siblings.Insert(index, removed);
+            operation.ParentId,
+            operation.Index);
         ValidateMutationSubtree(
             document,
             removed,
@@ -1021,6 +990,7 @@ public static class WebsiteDocumentMutationService
 
     private static void SetApprovedCapability(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         WebsiteCapabilityManifest capabilities,
         IReadOnlyList<WebsiteCallToActionOption> actions,
@@ -1029,7 +999,7 @@ public static class WebsiteDocumentMutationService
         if (string.IsNullOrWhiteSpace(operation.NodeId))
             throw new ArgumentException("Node identity is required.");
         var capability = WebsiteCreativeCapabilityResolver.Require(capabilities, operation.CapabilityKey);
-        if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var node, out var location))
+        if (!index.TryFind(operation.NodeId, out var node, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
 
         if (HasProtectedSemantics(node))
@@ -1060,6 +1030,7 @@ public static class WebsiteDocumentMutationService
 
     private static void InsertCapability(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         WebsiteCapabilityManifest capabilities,
         IReadOnlyList<WebsiteCallToActionOption> actions,
@@ -1080,7 +1051,7 @@ public static class WebsiteDocumentMutationService
                 Href = action.Href,
                 Target = action.OpenInNewTab ? "_blank" : "_self"
             };
-            InsertNode(document, new WebsiteMutationOperation
+            InsertNode(document, index, new WebsiteMutationOperation
             {
                 Type = "insertNode",
                 Scope = operation.Scope,
@@ -1095,7 +1066,7 @@ public static class WebsiteDocumentMutationService
 
         if (capability.Key == "contact.inquiry.submit")
         {
-            EnsureAuthorableParent(document, operation.ParentId);
+            EnsureAuthorableParent(index, operation.ParentId);
             var node = new WebsiteCompositionNode
             {
                 Id = operation.InstanceKey ?? FreshId("form.canonical_inquiry"),
@@ -1120,21 +1091,20 @@ public static class WebsiteDocumentMutationService
                 operation.Scope ?? "page",
                 operation.PagePath,
                 operation.ReusableComponentId);
-            var siblings = WebsiteDocumentIndex.ResolveChildren(
-                document,
+            index.Insert(
+                node,
                 operation.Scope ?? "page",
                 operation.PagePath,
                 operation.ReusableComponentId,
-                operation.ParentId);
-            var index = Math.Clamp(operation.Index ?? siblings.Count, 0, siblings.Count);
-            siblings.Insert(index, node);
+                operation.ParentId,
+                operation.Index);
             changed.Add(ScopeKey(operation.Scope ?? "page", operation.PagePath, operation.ReusableComponentId, node.Id));
             return;
         }
 
         if (capability.Kind == "protected_runtime" && capability.NodeId is not null)
         {
-            MoveNode(document, new WebsiteMutationOperation
+            MoveNode(document, index, new WebsiteMutationOperation
             {
                 Type = "moveNode",
                 NodeId = capability.NodeId,
@@ -1151,6 +1121,7 @@ public static class WebsiteDocumentMutationService
 
     private static void InsertRecipe(
         WebsiteContentDocument document,
+        WebsiteMutationIndex index,
         WebsiteMutationOperation operation,
         WebsiteCapabilityManifest capabilities,
         IReadOnlyList<WebsiteCallToActionOption> actions,
@@ -1161,7 +1132,7 @@ public static class WebsiteDocumentMutationService
             operation.InstanceKey ?? FreshId("section"),
             operation.Content ?? new Dictionary<string, string>(StringComparer.Ordinal),
             operation.MediaAssetId);
-        InsertNode(document, new WebsiteMutationOperation
+        InsertNode(document, index, new WebsiteMutationOperation
         {
             Type = "insertNode",
             Scope = operation.Scope,
@@ -1175,7 +1146,7 @@ public static class WebsiteDocumentMutationService
         if (!string.IsNullOrWhiteSpace(operation.CapabilityKey))
         {
             var slot = node.Children.FirstOrDefault(value => value.ClassName?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("legend-capability-slot") == true);
-            InsertCapability(document, new WebsiteMutationOperation
+            InsertCapability(document, index, new WebsiteMutationOperation
             {
                 Type = "insertCapability",
                 Scope = operation.Scope,
