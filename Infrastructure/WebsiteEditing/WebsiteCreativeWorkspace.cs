@@ -483,7 +483,6 @@ public static class WebsiteDocumentMutationService
 
         WebsiteSystemTemplateAuthority.Apply(siteKey, document);
         WebsiteSystemTemplateAuthority.RestoreRuntimeForms(siteKey, document, document);
-        ValidateMutationInvariants(document, actions);
 
         var fingerprints = changed
             .Select(scope => (scope, hash: FingerprintScope(document, scope)))
@@ -547,12 +546,28 @@ public static class WebsiteDocumentMutationService
                 return;
 
             case "replaceShellHeader":
-                document.Shell.Header = PrepareNewNodes(operation.Node?.Children ?? [], actions, document.Breakpoints, mobileFlowSafety: false);
+                document.Shell.Header = PrepareReplacementChildren(
+                    document.Shell.Header ?? [],
+                    operation.Node?.Children ?? [],
+                    actions,
+                    document.Breakpoints,
+                    mobileFlowSafety: false);
+                EnsureReplacementRootIdentitiesAvailable(document, "@shell/header", document.Shell.Header);
+                foreach (var node in document.Shell.Header)
+                    ValidateMutationSubtree(document, node, actions, "shell.header", null, null);
                 changed.Add("@shell/header");
                 return;
 
             case "replaceShellFooter":
-                document.Shell.Footer = PrepareNewNodes(operation.Node?.Children ?? [], actions, document.Breakpoints, mobileFlowSafety: false);
+                document.Shell.Footer = PrepareReplacementChildren(
+                    document.Shell.Footer ?? [],
+                    operation.Node?.Children ?? [],
+                    actions,
+                    document.Breakpoints,
+                    mobileFlowSafety: false);
+                EnsureReplacementRootIdentitiesAvailable(document, "@shell/footer", document.Shell.Footer);
+                foreach (var node in document.Shell.Footer)
+                    ValidateMutationSubtree(document, node, actions, "shell.footer", null, null);
                 changed.Add("@shell/footer");
                 return;
 
@@ -620,7 +635,10 @@ public static class WebsiteDocumentMutationService
             requested.Composition ?? [],
             actions,
             document.Breakpoints);
+        EnsureSubtreeIdentitiesAvailable(document, page.Composition, new HashSet<string>(StringComparer.Ordinal));
         document.Pages[path] = page;
+        foreach (var node in page.Composition)
+            ValidateMutationSubtree(document, node, actions, "page", path, null);
         changed.Add(path);
     }
 
@@ -714,6 +732,13 @@ public static class WebsiteDocumentMutationService
         var node = PrepareNewNode(operation.Node, actions, document.Breakpoints);
         EnsureNewSubtreeIdentitiesAvailable(document, node);
         EnsureAuthorableParent(document, operation.ParentId);
+        ValidateMutationSubtree(
+            document,
+            node,
+            actions,
+            operation.Scope ?? "page",
+            operation.PagePath,
+            operation.ReusableComponentId);
         var siblings = WebsiteDocumentIndex.ResolveChildren(
             document,
             operation.Scope ?? "page",
@@ -738,6 +763,13 @@ public static class WebsiteDocumentMutationService
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
         var replacement = MergeAuthorable(existing, operation.Node, actions, document.Breakpoints);
         EnsureReplacementSubtreeIdentitiesAvailable(document, existing, replacement);
+        ValidateMutationSubtree(
+            document,
+            replacement,
+            actions,
+            location.Scope,
+            location.PagePath,
+            location.ReusableComponentId);
         var siblings = WebsiteDocumentIndex.ResolveChildren(document, location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId);
         siblings[location.Index] = replacement;
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, replacement.Id));
@@ -786,6 +818,13 @@ public static class WebsiteDocumentMutationService
             operation.ParentId);
         var index = Math.Clamp(operation.Index ?? siblings.Count, 0, siblings.Count);
         siblings.Insert(index, removed);
+        ValidateMutationSubtree(
+            document,
+            removed,
+            actions: null,
+            operation.Scope ?? oldLocation.Scope,
+            operation.PagePath ?? oldLocation.PagePath,
+            operation.ReusableComponentId ?? oldLocation.ReusableComponentId);
         changed.Add(ScopeKey(oldLocation.Scope, oldLocation.PagePath, oldLocation.ReusableComponentId, existing.Id));
         changed.Add(ScopeKey(operation.Scope ?? oldLocation.Scope, operation.PagePath ?? oldLocation.PagePath, operation.ReusableComponentId ?? oldLocation.ReusableComponentId, operation.ParentId ?? existing.Id));
     }
@@ -811,6 +850,7 @@ public static class WebsiteDocumentMutationService
             if (node.Type != "experience" || node.Experience is null)
                 throw new ArgumentException("Canonical lead capture may be assigned only to a native experience.");
             node.Experience.SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability;
+            ValidateMutationSubtree(document, node, actions, location.Scope, location.PagePath, location.ReusableComponentId);
             changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, node.Id));
             return;
         }
@@ -824,6 +864,7 @@ public static class WebsiteDocumentMutationService
         node.ActionKey = action.Key;
         node.Href = action.Href;
         node.Target = action.OpenInNewTab ? "_blank" : "_self";
+        ValidateMutationSubtree(document, node, actions, location.Scope, location.PagePath, location.ReusableComponentId);
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, node.Id));
     }
 
@@ -882,6 +923,13 @@ public static class WebsiteDocumentMutationService
             else
                 node = WebsiteContentSanitizer.SanitizeMutationNode(node, document.Breakpoints);
             EnsureNewSubtreeIdentitiesAvailable(document, node);
+            ValidateMutationSubtree(
+                document,
+                node,
+                actions,
+                operation.Scope ?? "page",
+                operation.PagePath,
+                operation.ReusableComponentId);
             var siblings = WebsiteDocumentIndex.ResolveChildren(
                 document,
                 operation.Scope ?? "page",
@@ -974,6 +1022,8 @@ public static class WebsiteDocumentMutationService
             : new HashSet<string>(StringComparer.Ordinal);
         EnsureSubtreeIdentitiesAvailable(document, prepared.Composition, ignored);
         document.ReusableComponents[prepared.Id] = prepared;
+        foreach (var node in prepared.Composition)
+            ValidateMutationSubtree(document, node, actions, "component", null, prepared.Id);
         changed.Add("@component/" + prepared.Id);
     }
 
@@ -993,7 +1043,8 @@ public static class WebsiteDocumentMutationService
         WebsiteCompositionNode current,
         WebsiteCompositionNode proposed,
         IReadOnlyList<WebsiteCallToActionOption> actions,
-        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true)
     {
         var protectedIdentity = HasProtectedSemantics(current);
         if (protectedIdentity)
@@ -1055,7 +1106,7 @@ public static class WebsiteDocumentMutationService
 
         if (!protectedIdentity &&
             ((proposed.Children?.Count ?? 0) > 0 || (current.Children?.Count ?? 0) == 0))
-            next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions, breakpoints);
+            next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions, breakpoints, mobileFlowSafety);
 
         next.Id = current.Id;
         next.SystemKey = current.SystemKey;
@@ -1075,23 +1126,24 @@ public static class WebsiteDocumentMutationService
         }
 
         WebsiteSiteSource.ValidateMutationRuntimeClasses(next, current);
-        return WebsiteContentSanitizer.SanitizeMutationNode(next, breakpoints);
+        return WebsiteContentSanitizer.SanitizeMutationNode(next, breakpoints, mobileFlowSafety);
     }
 
     private static List<WebsiteCompositionNode> PrepareReplacementChildren(
         IReadOnlyList<WebsiteCompositionNode> current,
         IReadOnlyList<WebsiteCompositionNode> proposed,
         IReadOnlyList<WebsiteCallToActionOption> actions,
-        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true)
     {
         var currentById = current.ToDictionary(value => value.Id, StringComparer.Ordinal);
         var next = new List<WebsiteCompositionNode>();
         foreach (var child in proposed)
         {
             if (currentById.TryGetValue(child.Id, out var existing))
-                next.Add(MergeAuthorable(existing, child, actions, breakpoints));
+                next.Add(MergeAuthorable(existing, child, actions, breakpoints, mobileFlowSafety));
             else
-                next.Add(PrepareNewNode(child, actions, breakpoints));
+                next.Add(PrepareNewNode(child, actions, breakpoints, mobileFlowSafety));
         }
 
         foreach (var existing in current)
