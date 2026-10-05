@@ -619,19 +619,19 @@ public class WebsitePlatformController : ControllerBase
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
         var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
         var quality = WebsiteDraftQualityInspector.Inspect(document);
-        var media = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+        var mediaRows = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
             .Where(value => value.OwnerKey == actor.OwnerUserId)
             .OrderByDescending(value => value.CreatedUtc)
             .Take(48)
-            .Select(value => new
-            {
-                value.Id,
-                name = MediaDisplayName(value),
-                value.ContentType,
-                value.SizeBytes,
-                value.CreatedUtc
-            })
             .ToListAsync(cancellationToken);
+        var media = mediaRows.Select(value => (object)new
+        {
+            value.Id,
+            name = MediaDisplayName(value),
+            value.ContentType,
+            value.SizeBytes,
+            value.CreatedUtc
+        }).ToArray();
 
         return Ok(WebsiteCreativeProjection.SiteSummary(
             actor.SiteKey,
@@ -640,7 +640,7 @@ public class WebsitePlatformController : ControllerBase
             facts,
             capabilities,
             quality,
-            media.Cast<object>()));
+            media));
     }
 
     [HttpGet("manage/agent/page-outline")]
