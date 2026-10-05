@@ -1916,6 +1916,42 @@ public class WebsitePlatformController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { details, revision = state.Revision });
     }
+    public sealed record WebsiteMediaImportRequest(string Ticket, string SourceUrl);
+
+    [HttpPost("manage/media/import")]
+    public async Task<IActionResult> ImportMedia(
+        [FromBody] WebsiteMediaImportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        WebsiteMediaAsset asset;
+        try
+        {
+            asset = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>()
+                .ImportImageAsync(request.SourceUrl, actor.OwnerUserId, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_media_import_invalid", message = ex.Message });
+        }
+        catch (HttpRequestException)
+        {
+            return BadRequest(new { error = "website_media_import_unavailable", message = "The public image could not be retrieved safely." });
+        }
+
+        return Ok(new
+        {
+            id = asset.Id,
+            name = MediaDisplayName(asset),
+            url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
+            contentType = asset.ContentType,
+            sizeBytes = asset.SizeBytes,
+            createdUtc = asset.CreatedUtc
+        });
+    }
+
     [HttpPost("manage/media")]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadMedia(CancellationToken cancellationToken = default)
