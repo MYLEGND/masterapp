@@ -997,6 +997,68 @@ public sealed class WebsiteContentEditorRoundTripTests
             CancellationToken.None));
     }
 
+    private static async Task<WebsiteContentDocument> SeedCanonicalDraftAsync(
+        Fixture fixture,
+        string ticket,
+        WebsiteContentDocument document,
+        long revision = 1)
+    {
+        _ = await fixture.Controller.Manage(ticket);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(fixture.SiteKey, canonical);
+        canonical.UpdatedUtc = DateTime.UtcNow;
+        state.DraftJson = JsonSerializer.Serialize(canonical, JsonOptions);
+        state.Revision = revision;
+        state.PublishedVersionId = null;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.UpdatedUtc = DateTime.UtcNow;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        return canonical;
+    }
+
+    private static async Task<WebsiteContentDocument> ApplyMutationsAndReadAsync(
+        Fixture fixture,
+        string ticket,
+        long expectedRevision,
+        IReadOnlyList<WebsiteMutationOperation> operations,
+        Guid? draftId = null,
+        string? draftName = null)
+    {
+        var result = await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(
+                ticket,
+                expectedRevision,
+                operations.ToList(),
+                draftId,
+                draftName));
+        Assert.IsType<OkObjectResult>(result);
+        fixture.Db.ChangeTracker.Clear();
+        return ReadDocument(await fixture.CreateController().Manage(ticket));
+    }
+
+    private static WebsiteMutationOperation ReplaceNodeOperation(
+        WebsiteContentDocument document,
+        Action<WebsiteCompositionNode> mutate)
+    {
+        var node = Node(document);
+        var replacement = JsonSerializer.Deserialize<WebsiteCompositionNode>(
+            JsonSerializer.Serialize(node, JsonOptions),
+            JsonOptions)!;
+        mutate(replacement);
+        return new WebsiteMutationOperation
+        {
+            Type = "replaceNode",
+            NodeId = node.Id,
+            ExpectedFingerprint = WebsiteCreativeFingerprint.Node(node),
+            Node = replacement
+        };
+    }
+
     private static WebsiteContentDocument ReadDocument(IActionResult result)
     {
         var value = Assert.IsType<OkObjectResult>(result).Value;
@@ -1026,6 +1088,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         public const string AgentSlug = "editor-test-agent";
         public Guid? BusinessId { get; private set; }
         public string OwnerKey => _owner;
+        public string SiteKey => _siteKey;
         private readonly string _siteKey;
         private readonly string _owner;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
