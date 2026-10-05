@@ -281,25 +281,69 @@ public class WebsitePlatformController : ControllerBase
 
     [HttpGet("manage")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<IActionResult> Manage([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Manage(
+        [FromQuery] string ticket,
+        [FromQuery] bool audit = false,
+        CancellationToken cancellationToken = default)
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
-        var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService)) as WebsiteCommerceScopeService;
-        var commerceScope = commerceService is null
+        var business = actor.CommerceBusinessId.HasValue
+            ? await _db.CommerceBusinesses.AsNoTracking()
+                .SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken)
+            : null;
+        var facts = business is null
             ? null
-            : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
-        var history = await _db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => v.StateId == state.Id)
-            .OrderByDescending(v => v.Revision).Take(20)
-            .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
-        var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
-        var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
+            : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var draft = Read(state.DraftJson);
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
-        IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
-            ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
-            : await new WebsiteCollectionProjectionService(_db).LoadAsync(draft, business.Id, cancellationToken);
+        IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData =
+            business is null || (draft.Collections?.Count ?? 0) == 0
+                ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
+                : await new WebsiteCollectionProjectionService(_db)
+                    .LoadAsync(draft, business.Id, cancellationToken);
+
+        var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService))
+            as WebsiteCommerceScopeService;
+        var commerceScope = commerceService is null || draft.Store?.Enabled != true
+            ? null
+            : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
+        var storePayload = await StorePayloadAsync(
+            actor.SiteKey,
+            draft,
+            commerceScope,
+            ticket,
+            cancellationToken);
+
+        if (audit)
+        {
+            return Ok(new
+            {
+                source = "website_studio_audit_render",
+                business = business is null
+                    ? null
+                    : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
+                siteKey = actor.SiteKey,
+                agentSlug = actor.AgentSlug,
+                commerceBusinessId = actor.CommerceBusinessId,
+                document = draft,
+                legacyMigration = draft.LegacyMigration,
+                revision = state.Revision,
+                facts,
+                collections = collectionData.Values,
+                ctaCatalog = new { options = Array.Empty<object>() },
+                store = storePayload,
+                drafts = Array.Empty<object>()
+            });
+        }
+
+        var history = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(v => v.StateId == state.Id)
+            .OrderByDescending(v => v.Revision)
+            .Take(20)
+            .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
+            .ToListAsync(cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
         var canPublish = await CanPublishAsync(actor, cancellationToken);
         var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
@@ -311,19 +355,42 @@ public class WebsitePlatformController : ControllerBase
                 MediaCount = group.Count()
             })
             .SingleOrDefaultAsync(cancellationToken);
-        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft, legacyMigration = draft.LegacyMigration,
-            revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
+
+        return Ok(new
+        {
+            business = business is null
+                ? null
+                : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
+            siteKey = actor.SiteKey,
+            agentSlug = actor.AgentSlug,
+            commerceBusinessId = actor.CommerceBusinessId,
+            document = draft,
+            legacyMigration = draft.LegacyMigration,
+            revision = state.Revision,
+            publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
             editorBaseUrl = actor.SiteKey == WebsiteEditorSiteKeys.Business
-                ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/') : null,
+                ? (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/')
+                : null,
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
-            store = await StorePayloadAsync(actor.SiteKey, draft, commerceScope, ticket, cancellationToken),
-            usage = new { mediaBytes = mediaUsage?.MediaBytes ?? 0, mediaCount = mediaUsage?.MediaCount ?? 0, publishedVersions = history.Count },
-            importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
+            store = storePayload,
+            usage = new
+            {
+                mediaBytes = mediaUsage?.MediaBytes ?? 0,
+                mediaCount = mediaUsage?.MediaCount ?? 0,
+                publishedVersions = history.Count
+            },
+            importReport = string.IsNullOrEmpty(state.ImportReportJson)
+                ? (JsonElement?)null
+                : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = (object?)null, agentContract = WebsiteStudioAgentContract.CompactPayload, capabilities = new {
+            history,
+            signalCatalog = (object?)null,
+            agentContract = WebsiteStudioAgentContract.CompactPayload,
+            capabilities = new
+            {
                 canPublish,
                 canManageDomains = canPublish,
                 canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business,
@@ -336,7 +403,18 @@ public class WebsitePlatformController : ControllerBase
                 requiresCompositionMaterialization = draft.LegacyMigration is not null
             },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
-            readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
+            readiness = new
+            {
+                checks = new[]
+                {
+                    new
+                    {
+                        passed = true,
+                        message = "Draft is isolated from published content. Publishing validates and compiles the complete website."
+                    }
+                }
+            }
+        });
     }
 
     [HttpGet("manage/data-catalog")]
