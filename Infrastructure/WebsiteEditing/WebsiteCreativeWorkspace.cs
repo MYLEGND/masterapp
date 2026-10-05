@@ -492,17 +492,10 @@ public static class WebsiteCreativeProjection
         Children = node.Children.Select(Node).ToArray()
     };
 
-    private static string? PreviewText(string? value, int maximum)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return value;
-        var text=value.Trim();
-        return text.Length<=maximum ? text : text[..maximum]+"…";
-    }
-
     public static object Page(WebsitePageDocument page) => new
     {
         page.Title,
-        Description = PreviewText(page.Description, 320),
+        page.Description,
         page.Navigation,
         page.DynamicBinding,
         page.SystemTemplateKey,
