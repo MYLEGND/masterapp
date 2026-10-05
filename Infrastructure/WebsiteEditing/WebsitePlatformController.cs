@@ -746,6 +746,34 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
+
+    [HttpGet("manage/agent/design-quality")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeDesignQuality(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var structural = WebsiteDraftQualityInspector.Inspect(document);
+        var design = WebsiteDesignQualityInspector.Inspect(document, capabilities);
+        return Ok(new
+        {
+            schema = "legend-design-quality/v1",
+            revision = state.Revision,
+            structural,
+            design
+        });
+    }
+
     [HttpPost("manage/mutations")]
     [RequestSizeLimit(2_500_000)]
     public async Task<IActionResult> ApplyMutations(
@@ -1307,7 +1335,7 @@ public class WebsitePlatformController : ControllerBase
                 actions,
                 capabilities,
                 request.Operations);
-            await ValidateCompositionMediaOwnershipAsync(actor, result.Document, cancellationToken);
+            await ValidateNewCompositionMediaOwnershipAsync(actor, baseline, result.Document, cancellationToken);
         }
         catch (WebsiteMutationConflictException ex)
         {
@@ -1933,6 +1961,8 @@ public class WebsitePlatformController : ControllerBase
         [FromQuery] string ticket,
         [FromQuery] string? q = null,
         [FromQuery] string? kind = null,
+        [FromQuery] long? cursor = null,
+        [FromQuery] int take = 100,
         CancellationToken cancellationToken = default)
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
@@ -1948,7 +1978,20 @@ public class WebsitePlatformController : ControllerBase
         else if (!string.IsNullOrWhiteSpace(kind) && !string.Equals(kind, "all", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "invalid_media_kind" });
 
-        var assets = await query.OrderByDescending(asset => asset.CreatedUtc).ThenByDescending(asset => asset.Id).Take(200).ToListAsync(cancellationToken);
+        if (cursor.HasValue)
+        {
+            var before = new DateTime(cursor.Value, DateTimeKind.Utc);
+            query = query.Where(asset => asset.CreatedUtc < before);
+        }
+        take = Math.Clamp(take, 1, 100);
+        var assets = await query.OrderByDescending(asset => asset.CreatedUtc).ThenByDescending(asset => asset.Id)
+            .Take(take).ToListAsync(cancellationToken);
+
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        var usage = BuildMediaUsageIndex(document);
+
         return Ok(new
         {
             assets = assets.Select(asset => new
@@ -1956,10 +1999,14 @@ public class WebsitePlatformController : ControllerBase
                 asset.Id,
                 name = MediaDisplayName(asset),
                 url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
+                kind = asset.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "video" : "image",
                 asset.ContentType,
                 asset.SizeBytes,
-                asset.CreatedUtc
-            })
+                asset.CreatedUtc,
+                usageLocations = usage.TryGetValue(asset.Id, out var locations) ? locations.Select(value => value.Scope).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string>(),
+                roles = usage.TryGetValue(asset.Id, out var roles) ? roles.Select(value => value.Role).Where(value => value is not null).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string?>()
+            }),
+            nextCursor = assets.Count == take ? assets[^1].CreatedUtc.Ticks : (long?)null
         });
     }
 
