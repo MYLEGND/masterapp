@@ -334,6 +334,32 @@ public static class UploadValidator
         return null;
     }
 
+    public static string? CanonicalContentType(string? contentType) =>
+        contentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/png" => "image/png",
+            "image/jpeg" or "image/jpg" or "image/pjpeg" => "image/jpeg",
+            "image/gif" => "image/gif",
+            "image/webp" => "image/webp",
+            "image/heic" or "image/heic-sequence" => "image/heic",
+            "image/heif" or "image/heif-sequence" => "image/heif",
+            "image/avif" => "image/avif",
+            "video/mp4" or "video/x-mp4" or "video/m4v" or "video/x-m4v" => "video/mp4",
+            "video/quicktime" => "video/quicktime",
+            "video/webm" => "video/webm",
+            "audio/mpeg" or "audio/mp3" => "audio/mpeg",
+            "audio/mp4" or "audio/x-m4a" => "audio/mp4",
+            "audio/aac" => "audio/aac",
+            "audio/wav" or "audio/x-wav" => "audio/wav",
+            "application/pdf" => "application/pdf",
+            "text/plain" => "text/plain",
+            "application/msword" => "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel" => "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => null
+        };
+
     public static string? CanonicalExtensionForContentType(string? contentType) =>
         contentType?.Trim().ToLowerInvariant() switch
         {
