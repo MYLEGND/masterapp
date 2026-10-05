@@ -399,85 +399,6 @@ public class WebsitePlatformController : ControllerBase
         }
     }
 
-    [HttpPost("manage/source/validate")]
-    [RequestSizeLimit(2_500_000)]
-    public async Task<IActionResult> ValidateSiteSource(
-        [FromBody] WebsiteSiteSourceRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
-        if (actor is null) return Unauthorized();
-
-        var state = await StateAsync(actor, cancellationToken);
-        if (state.Revision != request.ExpectedRevision)
-            return Conflict(new { error = "revision_conflict", revision = state.Revision });
-
-        var baseline = Read(state.DraftJson);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
-        if (baseline.LegacyMigration is not null)
-            return Conflict(new
-            {
-                error = "website_site_source_materialization_required",
-                message = "Materialize the current website into the canonical v3 composition graph before editing Site Source."
-            });
-
-        CommerceBusiness? business = null;
-        WebsiteBusinessFacts? facts = null;
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
-        {
-            business = await _db.CommerceBusinesses.AsNoTracking()
-                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
-            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
-        }
-
-        try
-        {
-            var options = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
-            var parsed = WebsiteSiteSource.Parse(request.Source, baseline, options);
-            WebsiteSiteSource.EnsureSelectedNodeOnly(baseline, parsed.Document, request.SelectedNodeId);
-            await ValidateCompositionMediaOwnershipAsync(actor, parsed.Document, cancellationToken);
-            var normalized = WebsiteSiteSource.Serialize(parsed.Document);
-            return Ok(new
-            {
-                source = "legend_site_source_validation",
-                baseRevision = state.Revision,
-                persisted = false,
-                published = false,
-                text = normalized,
-                proposedDocument = parsed.Document,
-                sourceMap = parsed.SourceMap
-            });
-        }
-        catch (WebsiteSiteSourceProtectionException ex)
-        {
-            return BadRequest(new
-            {
-                error = "website_site_source_protected",
-                message = ex.Message,
-                canonicalProtectionViolation = true,
-                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new
-            {
-                error = "website_site_source_invalid",
-                message = ex.Message,
-                canonicalProtectionViolation = false
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new
-            {
-                error = ex.Message,
-                message = "LEGEND Site Source could not be validated. No draft changes were saved.",
-                canonicalProtectionViolation = false
-            });
-        }
-    }
-
     public sealed record StoreActionRequest(
         string Ticket,
         long ExpectedRevision,
@@ -570,12 +491,6 @@ public class WebsitePlatformController : ControllerBase
             store = await StorePayloadAsync(actor.SiteKey, document, scope, request.Ticket, cancellationToken)
         });
     }
-
-    public sealed record WebsiteSiteSourceRequest(
-        string Ticket,
-        long ExpectedRevision,
-        string Source,
-        string? SelectedNodeId = null);
 
     public sealed record WebsiteSignalUpdateRequest(
         string Ticket,
