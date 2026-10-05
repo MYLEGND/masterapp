@@ -27,6 +27,7 @@ const websiteCreativeWorkspaceSource = readFileSync(new URL('../../Infrastructur
 const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
 const websiteImportServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteImportService.cs', import.meta.url), 'utf8');
 const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
+const legendSiteToolsBridgeSource = readFileSync(new URL('../../SHARED/wwwroot/js/legend-site-tools.js', import.meta.url), 'utf8');
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
@@ -373,6 +374,15 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
         structural:{checks:qualityPayload?.checks || []},
         design:{checks:qualityPayload?.designChecks || [],conversionPaths:qualityPayload?.conversionPaths || []}
       })};
+    if(parsed.pathname.endsWith('/manage/agent/conversion-readiness') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-conversion-readiness/v1',
+        revision:'r'+serverRevision,
+        publishedRevision:null,
+        currentDraftIsPublished:false,
+        draft:{conversionPaths:qualityPayload?.conversionPaths || [],checks:[]},
+        published:{windowDays:30,evidenceRows:0,analyticsObserved:0,metaAccepted:0,openAiAccepted:0,problemRows:0,entries:[]}
+      })};
     if(parsed.pathname.endsWith('/manage/data-catalog') && method==='GET')
       return {ok:true,status:200,json:async()=>({
         source:'website_business_data_catalog',
@@ -388,6 +398,13 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       return {ok:true,status:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:serverRevision,errorCount:0,warningCount:0,checks:[]}};
     if(parsed.pathname.endsWith('/manage/media') && method==='GET')
       return {ok:true,status:200,json:async()=>mediaPayload || {assets:[]}};
+    if(parsed.pathname.endsWith('/manage/media/import') && method==='POST'){
+      const id='44444444-4444-4444-4444-444444444444';
+      return {ok:true,status:200,json:async()=>({
+        id,name:'imported-image',url:'https://site.example/api/website-content/media/'+id,
+        contentType:'image/webp',sizeBytes:2048,createdUtc:'2026-10-05T00:00:00Z'
+      })};
+    }
     if(parsed.pathname.endsWith('/manage/media') && method==='POST'){
       const file=init.body?.get?.('file'); const id='33333333-3333-3333-3333-333333333333';
       return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
@@ -416,7 +433,16 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       if(fieldKey){ target.fieldSignals ||= {}; if(signals.length) target.fieldSignals[fieldKey]=signals; else delete target.fieldSignals[fieldKey]; }
       else target.signals=signals;
       serverRevision++;
-      return {ok:true,status:200,json:async()=>({source:'website_signal_configuration',revision:'r'+serverRevision,document:structuredClone(serverDoc),elementId:body.elementId,fieldKey,signals})};
+      return {ok:true,status:200,json:async()=>({
+        source:'website_signal_configuration',
+        revision:'r'+serverRevision,
+        pagePath:body.pagePath || '/',
+        elementId:body.elementId,
+        fieldKey,
+        signals,
+        nodeSignals:structuredClone(target.signals || []),
+        fieldSignals:structuredClone(target.fieldSignals || {})
+      })};
     }
     if(parsed.pathname.endsWith('/manage/signals/test'))
       return {ok:true,status:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}};
@@ -1285,7 +1311,10 @@ test('Website Studio registers bounded editor-only browser tools without exposin
   assert.ok(start>=0 && end>start);
   const bridge=source.slice(start,end);
   assert.match(bridge,/document\.modelContext/);
+  assert.match(bridge,/legend:model-context-ready/);
+  assert.doesNotMatch(bridge,/for\(let attempt=0;attempt<40/);
   assert.match(bridge,/registerTool/);
+  assert.match(legendSiteToolsBridgeSource,/dispatchEvent\(new CustomEvent\("legend:model-context-ready"\)\)/);
   assert.match(bridge,/pagehide[\s\S]*controller\.abort/);
   for(const name of [
     'legend_website_workspace',
@@ -1302,6 +1331,19 @@ test('Website Studio registers bounded editor-only browser tools without exposin
   assert.match(bridge,/untrustedContentHint:true/);
   assert.doesNotMatch(bridge,/editorTicket|legendEdit|authorization|cookie|localStorage|sessionStorage/i);
   assert.match(source,/Object\.defineProperty\(window,'LEGEND_WEBSITE_STUDIO_AGENT'[\s\S]*installWebsiteStudioWebMcpTools\(\)/);
+});
+
+test('authorized Studio conceals the edit ticket from the visible document and restores it only from history state',async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
+  try{
+    const url=new URL(f.w.location.href);
+    assert.equal(url.searchParams.has('legendEdit'),false);
+    assert.equal(f.w.history.state?.legendStudioTicket,'ticket');
+    assert.match(source,/function credentialFreeEditorUrl\(value\)/);
+    assert.match(source,/concealEditorTicketFromDocumentUrl\(\)/);
+    assert.match(source,/el\.href=credentialFreeEditorUrl\(scoped\)\.toString\(\)/);
+    assert.doesNotMatch(source,/history\[method\]\(\{legendStudioRoute:route\},'',url\.toString\(\)\)/);
+  }finally{f.close();}
 });
 
 test('LEGEND static host permits only same-origin Website Studio materialization frames',()=>{
