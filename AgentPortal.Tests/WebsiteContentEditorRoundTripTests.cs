@@ -884,8 +884,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument("Collaborative heading");
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
 
         var collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
