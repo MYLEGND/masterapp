@@ -321,8 +321,18 @@ public sealed partial class MobileSocialController : MobileApiControllerBase
         return string.IsNullOrEmpty(value) ? null : value;
     }
 
-    private static bool? FormBool(IFormCollection form, string key) =>
-        bool.TryParse(FormValue(form, key), out var value) ? value : null;
+    private static bool? FormBool(IFormCollection form, string key)
+    {
+        var raw = FormValue(form, key);
+        if (bool.TryParse(raw, out var value))
+            return value;
+        return raw?.Trim().ToLowerInvariant() switch
+        {
+            "1" or "on" or "yes" => true,
+            "0" or "off" or "no" => false,
+            _ => null
+        };
+    }
 
     private static decimal? FormDecimal(IFormCollection form, string key) =>
         decimal.TryParse(FormValue(form, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
