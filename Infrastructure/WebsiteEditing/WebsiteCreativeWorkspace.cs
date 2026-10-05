@@ -2016,9 +2016,14 @@ public static class WebsitePageRecipeCatalog
         for (var index = 0; index < definition.SectionRecipes.Count; index++)
         {
             var recipe = definition.SectionRecipes[index];
-            var capability = (index == 0 || index == definition.SectionRecipes.Count - 1 || recipe == "contact.inquiry")
+            var formLikeCapability =
+                string.Equals(primaryCapabilityKey, "contact.inquiry.submit", StringComparison.Ordinal) ||
+                (primaryCapabilityKey?.StartsWith("runtime.", StringComparison.Ordinal) ?? false);
+            var capability = recipe == "contact.inquiry"
                 ? primaryCapabilityKey
-                : null;
+                : !formLikeCapability && (index == 0 || index == definition.SectionRecipes.Count - 1)
+                    ? primaryCapabilityKey
+                    : null;
             result.Add(new WebsiteDesignPlanSection
             {
                 Recipe = recipe,
