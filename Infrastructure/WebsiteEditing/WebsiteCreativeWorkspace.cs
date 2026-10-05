@@ -1243,6 +1243,7 @@ public sealed class WebsiteDesignPlan
 public sealed class WebsiteDesignPlanPage
 {
     public string Path { get; set; } = "/";
+    public string? Recipe { get; set; }
     public string? Title { get; set; }
     public string? Description { get; set; }
     public string? NavigationLabel { get; set; }
@@ -1260,6 +1261,59 @@ public sealed class WebsiteDesignPlanSection
     public Guid? MediaAssetId { get; set; }
     public string? CapabilityKey { get; set; }
     public string? CapabilityNodeId { get; set; }
+}
+
+public sealed record WebsitePageRecipeDefinition(
+    string Key,
+    string Label,
+    string Purpose,
+    IReadOnlyList<string> SectionRecipes);
+
+public static class WebsitePageRecipeCatalog
+{
+    public static readonly IReadOnlyList<WebsitePageRecipeDefinition> Definitions =
+    [
+        new("home", "Home", "Primary brand, trust, offer, proof, and conversion narrative.",
+            ["hero.cinematic","proof.stats","services.grid","feature.split","testimonials","cta.closing"]),
+        new("services", "Services", "Clarify the service architecture, differentiators, process, proof, and next step.",
+            ["hero.split","services.grid","comparison","process.steps","testimonials","cta.closing"]),
+        new("service-detail", "Service detail", "Focus one offer with benefits, proof, process, objections, and conversion.",
+            ["hero.split","feature.split","proof.stats","process.steps","faq","cta.closing"]),
+        new("about", "About", "Build authority and affinity through story, principles, proof, and a confident next step.",
+            ["hero.split","feature.split","proof.stats","testimonials","cta.closing"]),
+        new("contact", "Contact", "Establish trust and expectations before the canonical inquiry conversion.",
+            ["hero.split","proof.stats","contact.inquiry"]),
+        new("landing", "Lead landing", "Paid-traffic message match with concentrated proof and minimal competing choices.",
+            ["hero.cinematic","proof.stats","feature.split","testimonials","faq","contact.inquiry"]),
+        new("offer", "Offer", "Present one focused offer, value comparison, proof, objections, and decisive conversion.",
+            ["hero.cinematic","proof.stats","comparison","testimonials","faq","cta.closing"]),
+        new("faq", "FAQ", "Resolve objections with a concise opening, focused answers, and closing conversion.",
+            ["hero.split","faq","cta.closing"]),
+        new("team", "Team", "Introduce people and trust signals without losing the business conversion path.",
+            ["hero.split","proof.stats","features.bento","cta.closing"]),
+        new("gallery", "Gallery / portfolio", "Lead with visual proof, context, credibility, and a clear next action.",
+            ["hero.split","features.bento","proof.stats","testimonials","cta.closing"]),
+        new("case-study", "Case study", "Tell a problem-to-result story with evidence and a relevant conversion close.",
+            ["hero.split","proof.stats","feature.split","process.steps","testimonials","cta.closing"])
+    ];
+
+    public static IReadOnlyList<WebsiteDesignPlanSection> Build(string key, string pageKey)
+    {
+        var definition = Definitions.SingleOrDefault(value => value.Key == key)
+            ?? throw new ArgumentException($"Unknown website page recipe '{key}'.");
+        var result = new List<WebsiteDesignPlanSection>(definition.SectionRecipes.Count);
+        for (var index = 0; index < definition.SectionRecipes.Count; index++)
+        {
+            var recipe = definition.SectionRecipes[index];
+            result.Add(new WebsiteDesignPlanSection
+            {
+                Recipe = recipe,
+                Key = $"{pageKey}.{recipe.Replace('.', '-')}.{index + 1}",
+                Content = new Dictionary<string, string>(StringComparer.Ordinal)
+            });
+        }
+        return result;
+    }
 }
 
 public static class WebsiteArtDirectionPresets
@@ -1358,8 +1412,15 @@ public static class WebsiteDesignPlanResolver
                 }
             }
 
+            var plannedSections = (pagePlan.Sections?.Count ?? 0) > 0
+                ? pagePlan.Sections
+                : !string.IsNullOrWhiteSpace(pagePlan.Recipe)
+                    ? WebsitePageRecipeCatalog.Build(
+                        pagePlan.Recipe,
+                        path == "/" ? "home" : string.Join('.', path.Split('/', StringSplitOptions.RemoveEmptyEntries)))
+                    : [];
             var sectionIndex = 0;
-            foreach (var section in pagePlan.Sections ?? [])
+            foreach (var section in plannedSections)
             {
                 var id = string.IsNullOrWhiteSpace(section.Key)
                     ? StableSectionId(path, section.Recipe, ++sectionIndex)
