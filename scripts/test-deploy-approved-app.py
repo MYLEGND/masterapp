@@ -131,6 +131,33 @@ class ReconciliationTests(unittest.TestCase):
         sleeper.assert_called_once_with(15)
         self.assertEqual(0, azure.uploads)
 
+    def test_history_gap_allows_one_fresh_upload_only_from_exact_idle_baseline(self):
+        from types import SimpleNamespace
+        azure = FakeAzure([[row('old', 4)]], [False])
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'b' * 40
+        journal = SimpleNamespace(intent=None, history_error=RuntimeError('missing intent'))
+        with patch.object(deploy, 'target_azure', return_value=azure):
+            deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
+        self.assertEqual(0, azure.uploads)
+
+    def test_history_gap_never_allows_replay_from_active_or_unknown_state(self):
+        from types import SimpleNamespace
+        journal = SimpleNamespace(intent=None, history_error=RuntimeError('missing intent'))
+        for states, observed in (
+            ([[row('pending', 1)]], 'b' * 40),
+            ([[row('old', 4)]], None),
+            ([[row('other', 4)]], 'c' * 40),
+        ):
+            azure = FakeAzure(states, [False])
+            azure.revision = 'a' * 40
+            azure.observed_revision = lambda value=observed: value
+            with self.subTest(states=states, observed=observed), \
+                 patch.object(deploy, 'target_azure', return_value=azure):
+                with self.assertRaises(deploy.DeploymentReconciliationRequired):
+                    deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
+            self.assertEqual(0, azure.uploads)
+
     def test_live_revision_alone_cannot_override_active_deployment(self):
         azure = FakeAzure([[row('still-running', 2)]], [True])
         with self.assertRaisesRegex(RuntimeError, 'deadline'):
