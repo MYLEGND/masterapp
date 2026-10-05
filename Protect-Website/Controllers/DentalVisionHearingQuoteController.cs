@@ -110,7 +110,6 @@ namespace Protect_Website.Controllers
                 correlationId, model.Email);
 
             var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
-            var isAgentContext = IsAgentContext();
             _logger.LogInformation(
                 "DentalVisionHearingQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
                 correlationId, agentSlug, agentProfileId, leadRecipientEmail);
@@ -1099,17 +1098,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
-private bool IsAgentContext()
-        {
-            string? slug = null;
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-            return !string.IsNullOrWhiteSpace(slug);
-        }
-
-        private bool IsAjax()
+private bool IsAjax()
         {
             var hdr = Request?.Headers["X-Requested-With"].ToString();
             return !string.IsNullOrWhiteSpace(hdr) &&
