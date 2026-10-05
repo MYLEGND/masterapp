@@ -63,7 +63,201 @@ public static class WebsiteSystemTemplateAuthority
     {
         foreach (var (path, page) in document.Pages)
             page.SystemTemplateKey = Resolve(siteKey, path);
+
+        ApplySharedShellAuthority(siteKey, document);
         return document;
+    }
+
+    private static void ApplySharedShellAuthority(string siteKey, WebsiteContentDocument document)
+    {
+        foreach (var page in document.Pages.Values)
+        {
+            page.Composition = (page.Composition ?? [])
+                .Where(node => !IsPageLocalShellCopy(node))
+                .ToList();
+        }
+
+        var primarySeen = false;
+        document.Shell.Header = CanonicalizeHeader(document.Shell?.Header ?? [], siteKey, ref primarySeen);
+    }
+
+    private static List<WebsiteCompositionNode> CanonicalizeHeader(
+        IEnumerable<WebsiteCompositionNode> source,
+        string siteKey,
+        ref bool primarySeen)
+    {
+        var result = new List<WebsiteCompositionNode>();
+        foreach (var node in source)
+        {
+            var classes = ClassTokens(node.ClassName);
+            var tag = (node.Tag ?? string.Empty).Trim().ToLowerInvariant();
+            var primary = string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal);
+            var templateNavigation = !primary &&
+                                     tag == "nav" &&
+                                     classes.Contains("nav");
+
+            if (templateNavigation &&
+                string.Equals(siteKey, WebsiteEditorSiteKeys.Business, StringComparison.Ordinal))
+                continue;
+
+            if (primary)
+            {
+                if (primarySeen) continue;
+                primarySeen = true;
+            }
+
+            CanonicalizePlatformAttribution(node);
+            CanonicalizeMobileHeaderChrome(node, classes, tag);
+            ApplyHeaderTypographyDefaults(node, siteKey, tag);
+
+            if (primary && string.Equals(siteKey, WebsiteEditorSiteKeys.Business, StringComparison.Ordinal))
+                node.Children = [];
+            else
+                node.Children = CanonicalizeHeader(node.Children ?? [], siteKey, ref primarySeen);
+
+            result.Add(node);
+        }
+
+        return result;
+    }
+
+    private static bool IsPageLocalShellCopy(WebsiteCompositionNode node)
+    {
+        var tag = (node.Tag ?? string.Empty).Trim().ToLowerInvariant();
+        var classes = ClassTokens(node.ClassName);
+        return tag is "header" or "footer" ||
+               string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) ||
+               classes.Contains("site-header") ||
+               classes.Contains("site-footer");
+    }
+
+    private static HashSet<string> ClassTokens(string? value) =>
+        (value ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static void CanonicalizePlatformAttribution(WebsiteCompositionNode node)
+    {
+        var classes = ClassTokens(node.ClassName);
+        if (classes.Contains("legend-platform-attribution"))
+        {
+            node.Type = "link";
+            node.Tag = "a";
+            node.Text = "Legend®";
+            node.Href = "https://www.mylegnd.com/";
+            node.Target = "_self";
+        }
+        else if (classes.Contains("legend-platform-attribution-powered-label"))
+        {
+            node.Text = "Powered by";
+        }
+        else if (classes.Contains("legend-platform-attribution-designed-label"))
+        {
+            node.Text = "Website Designed by";
+        }
+    }
+
+    private static void CanonicalizeMobileHeaderChrome(
+        WebsiteCompositionNode node,
+        HashSet<string> classes,
+        string tag)
+    {
+        var kind =
+            string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal) ||
+            (tag == "nav" && classes.Contains("nav"))
+                ? "navigation"
+                : string.Equals(node.SystemBinding, "business_name", StringComparison.Ordinal) ||
+                  classes.Contains("brand") ||
+                  classes.Contains("brand-wordmark") ||
+                  classes.Contains("business-brand-banner")
+                    ? "brand"
+                    : tag == "header" || classes.Contains("site-header")
+                        ? "frame"
+                        : null;
+
+        if (kind is null) return;
+
+        node.BreakpointStyles ??= new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal);
+        if (node.BreakpointStyles.TryGetValue("mobile", out var mobile))
+        {
+            mobile.WidthPercent = null;
+            mobile.HeightPx = null;
+            mobile.OffsetXPercent = null;
+            mobile.OffsetYPx = null;
+            mobile.MinWidthPx = null;
+            mobile.MaxWidthPx = null;
+            mobile.MinHeightPx = null;
+            mobile.MaxHeightPx = null;
+            mobile.MarginTop = null;
+            mobile.MarginBottom = null;
+            mobile.MarginLeft = null;
+            mobile.MarginRight = null;
+
+            if (kind == "brand" && mobile.FontScale is > 1.35m)
+                mobile.FontScale = 1.35m;
+            if (kind == "navigation" && mobile.FontScale is > 1m)
+                mobile.FontScale = 1m;
+        }
+
+        if (kind is "frame" or "navigation")
+        {
+            node.BreakpointLayouts ??= new Dictionary<string, WebsiteCompositionLayout>(StringComparer.Ordinal);
+            node.BreakpointLayouts["mobile"] = new WebsiteCompositionLayout
+            {
+                Mode = "free",
+                Direction = "column"
+            };
+        }
+    }
+
+    private static void ApplyHeaderTypographyDefaults(
+        WebsiteCompositionNode node,
+        string siteKey,
+        string tag)
+    {
+        node.Style ??= new WebsiteVisualStyle();
+        node.BreakpointStyles ??= new Dictionary<string, WebsiteVisualStyle>(StringComparer.Ordinal);
+
+        var isBrandTitle =
+            string.Equals(node.SystemBinding, "business_name", StringComparison.Ordinal) ||
+            (string.Equals(siteKey, WebsiteEditorSiteKeys.Legend, StringComparison.Ordinal) &&
+             tag == "strong" &&
+             string.Equals((node.Text ?? string.Empty).Trim(), "LEGEND®", StringComparison.Ordinal));
+
+        if (isBrandTitle)
+        {
+            if (node.Style.FontScale is null or <= 0) node.Style.FontScale = 3.5m;
+            if (node.Style.FontWeight is null or <= 0) node.Style.FontWeight = 800;
+            var mobile = GetOrCreateBreakpointStyle(node, "mobile");
+            var tablet = GetOrCreateBreakpointStyle(node, "tablet");
+            if (mobile.FontScale is null or <= 0) mobile.FontScale = 1.35m;
+            if (mobile.FontWeight is null or <= 0) mobile.FontWeight = 800;
+            if (tablet.FontScale is null or <= 0) tablet.FontScale = 1.8m;
+            if (tablet.FontWeight is null or <= 0) tablet.FontWeight = 800;
+        }
+
+        if (string.Equals(node.SystemKey, "primary_navigation", StringComparison.Ordinal))
+        {
+            if (node.Style.FontScale is null or <= 0) node.Style.FontScale = 1.6m;
+            if (node.Style.FontWeight is null or <= 0) node.Style.FontWeight = 800;
+            var mobile = GetOrCreateBreakpointStyle(node, "mobile");
+            var tablet = GetOrCreateBreakpointStyle(node, "tablet");
+            if (mobile.FontScale is null or <= 0) mobile.FontScale = 1m;
+            if (mobile.FontWeight is null or <= 0) mobile.FontWeight = 800;
+            if (tablet.FontScale is null or <= 0) tablet.FontScale = 1.15m;
+            if (tablet.FontWeight is null or <= 0) tablet.FontWeight = 800;
+        }
+    }
+
+    private static WebsiteVisualStyle GetOrCreateBreakpointStyle(WebsiteCompositionNode node, string key)
+    {
+        if (!node.BreakpointStyles.TryGetValue(key, out var style))
+        {
+            style = new WebsiteVisualStyle();
+            node.BreakpointStyles[key] = style;
+        }
+
+        return style;
     }
 
     public static string? RuntimeFormKey(string? pagePath)
@@ -121,7 +315,7 @@ public static class WebsiteSystemTemplateAuthority
         return route is null || RuntimeFormKey(route.Path) is null ? null : route.Path;
     }
 
-    // A repaired browser projection may request only the exact runtime already
+    // A submitted presentation may request only the exact runtime already
     // owned by this route. Never recover an arbitrary submitted system binding.
     public static void RestoreRuntimeForms(string siteKey, WebsiteContentDocument proposed, WebsiteContentDocument normalized)
     {
