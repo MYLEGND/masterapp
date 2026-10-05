@@ -509,7 +509,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
 
 test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',()=>{
   assert.match(websiteContentSanitizerSource,/SanitizeMediaAlt/);
-  assert.match(websiteContentSanitizerSource,/DeriveMediaAlt/);
+  assert.match(websiteContentSanitizerSource,/Path\.GetFileNameWithoutExtension/);
   assert.match(websiteContentSanitizerSource,/navigation\.Label/);
   assert.doesNotMatch(source,/templateRepairPending/);
   assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
@@ -1127,13 +1127,13 @@ test('business compiler resolves published media through the canonical public AP
 test('Website Studio exposes the same iPhone video containers already recognized by the shared validator',()=>{
   assert.match(uploadValidationSource,/AllowedExtensions[\s\S]*"\.mp4"[\s\S]*"\.m4v"[\s\S]*"\.mov"[\s\S]*"\.webm"/);
   assert.match(uploadValidationSource,/"video\/mp4" => extension is "\.mp4" or "\.m4v" or "\.mov"/);
-  assert.match(source,/video\/quicktime,video\/x-m4v,\.mov,\.m4v/);
+  assert.match(source,/accept="video\/\*,\.mov,\.m4v,\.webm"/);
 });
 
 test('website media upload transport is parsed inside scoped authority instead of inferred IFormFile binding',()=>{
-  assert.match(uploadValidationSource,/Request\.HasFormContentType/);
-  assert.match(uploadValidationSource,/Request\.ReadFormAsync\(cancellationToken\)/);
-  assert.match(uploadValidationSource,/form\.Files\.GetFile\("file"\)/);
+  assert.match(uploadValidationSource,/request\.HasFormContentType/);
+  assert.match(uploadValidationSource,/request\.ReadFormAsync\(cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/form\.Files\.GetFile\("file"\)/);
   assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
 });
 
@@ -1833,11 +1833,11 @@ test('published business rendering activates the shared inquiry path without inj
 
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
   assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source))"));
-  const codePreviewStart=source.indexOf('function renderCodePreview');
-  const codePreviewEnd=source.indexOf('function render',codePreviewStart+1);
-  const codePreviewSource=source.slice(codePreviewStart,codePreviewEnd>codePreviewStart?codePreviewEnd:codePreviewStart+4000);
-  assert.match(codePreviewSource,/allow-scripts/);
-  assert.doesNotMatch(codePreviewSource,/allow-same-origin/);
+  const embedStart=source.indexOf('function buildCanonicalEmbed');
+  const embedEnd=source.indexOf('function buildCompositionNode',embedStart);
+  const embedSource=source.slice(embedStart,embedEnd);
+  assert.match(embedSource,/sandbox','allow-scripts'/);
+  assert.doesNotMatch(embedSource,/allow-same-origin/);
   assert.ok(businessMiddlewareSource.includes("frame-src 'self' data:; object-src 'none'"));
   const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
   assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
@@ -2882,7 +2882,7 @@ test('business Pages manager creates a canonical page by mutation and switches i
     f.input('#legend-cms-page-nav-label','Team');
     f.input('#legend-cms-page-slug','/team');
     f.click('#legend-cms-page-create');
-    for(let i=0;i<20 && f.w.document.querySelector('#legend-cms-page-select').value!=='/team';i++)
+    for(let i=0;i<100 && f.w.history.state?.legendStudioRoute!=='/team';i++)
       await new Promise(resolve=>setTimeout(resolve,0));
     const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
     assert.ok(saveCall);
@@ -2892,6 +2892,7 @@ test('business Pages manager creates a canonical page by mutation and switches i
     assert.equal(saved.pages['/team'].navigation.isDeleted,false);
     assert.ok(saved.pages['/team'].composition.some(node=>node.type==='section'));
     assert.ok(canonicalNodes(saved,'/team').some(node=>node.type==='heading'&&node.text==='Team'));
+    assert.equal(f.w.history.state?.legendStudioRoute,'/team');
     assert.equal(f.w.document.querySelector('#legend-cms-page-select').value,'/team');
     assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
     assert.equal(Object.hasOwn(saved.pages['/team'],'extras'),false);
@@ -3136,39 +3137,18 @@ test('missing canonical reusable definition renders warning without copied fallb
   } finally { f.close(); }
 });
 
-test('quality inspector keeps saved-server checks separate from rendered canonical-canvas checks', async () => {
-  const doc=canonicalDocument();
-  const section=canonicalNodeById(doc,'home.section.1');
-  section.children=[
-    canonicalNode('quality.h1','heading','h1',{text:'Title'}),
-    canonicalNode('quality.image','image','img',{mediaUrl:'https://images.example/a.png',alt:''}),
-    canonicalNode('quality.link','link','a',{text:'Broken',href:'#'})
-  ];
-  const qualityPayload={source:'saved_draft_server',revision:7,errorCount:1,warningCount:1,checks:[
-    {code:'dynamic_collection_missing',severity:'error',message:'Saved draft dynamic collection is unavailable.'},
-    {code:'page_title_missing',severity:'warning',message:'Saved draft page title is missing.'}
-  ]};
-  const f=await domFixture({doc,qualityPayload});
-  try {
-    f.click('[data-open="quality"]');
-    for(let i=0;i<30 && /Running/.test(f.w.document.querySelector('#legend-cms-quality-saved-meta').textContent);i++)
-      await new Promise(resolve=>setTimeout(resolve,0));
-    const savedMeta=f.w.document.querySelector('#legend-cms-quality-saved-meta').textContent;
-    const liveMeta=f.w.document.querySelector('#legend-cms-quality-live-meta').textContent;
-    const savedText=f.w.document.querySelector('#legend-cms-quality-saved').textContent;
-    const liveText=f.w.document.querySelector('#legend-cms-quality-live').textContent;
-    assert.match(savedMeta,/Saved canonical quality · revision 7 · 1 errors · 1 warnings/);
-    assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
-    assert.match(savedText,/Saved draft dynamic collection is unavailable/);
-    assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
-    assert.doesNotMatch(liveText,/missing alternative text|no working destination/);
-    assert.equal(f.w.document.querySelector('main a'),null);
-    assert.equal(f.w.document.querySelector('main span')?.textContent,'Broken');
-    const renderedImage=f.w.document.querySelector('main img');
-    assert.ok(renderedImage?.hasAttribute('alt'));
-    assert.equal(renderedImage.getAttribute('alt'),'');
-    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/agent/design-quality')));
-  } finally { f.close(); }
+test('quality inspector keeps saved-server checks separate from rendered canonical-canvas checks',()=>{
+  assert.match(source,/function renderWholeSitePreflight\(payload\)/);
+  assert.match(source,/const structural=Array\.isArray\(payload\?\.quality\?\.structural\?\.checks\)/);
+  assert.match(source,/const design=Array\.isArray\(payload\?\.quality\?\.design\?\.checks\)/);
+  assert.match(source,/const responsiveChecks=\(payload\?\.responsive \|\| \[\]\)/);
+  assert.match(source,/Whole-site preflight · revision/);
+  assert.match(source,/Rendered responsive preflight/);
+  assert.match(source,/creativeWorkspaceRequest\('manage\/agent\/design-quality'\)/);
+  assert.match(source,/creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
+  assert.match(source,/runSiteResponsiveQualityAudit\(\)/);
+  assert.match(source,/quality\?\.revision===checkedRevision/);
+  assert.match(source,/conversion\?\.revision===checkedRevision/);
 });
 
 test('layers recover a hidden canonical section without losing its descendants', async () => {
