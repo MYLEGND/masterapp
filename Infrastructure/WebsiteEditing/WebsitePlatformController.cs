@@ -606,7 +606,7 @@ public class WebsitePlatformController : ControllerBase
         var mediaRows = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
             .Where(value => value.OwnerKey == actor.OwnerUserId)
             .OrderByDescending(value => value.CreatedUtc)
-            .Take(48)
+            .Take(12)
             .ToListAsync(cancellationToken);
         var media = mediaRows.Select(value => (object)new
         {
@@ -629,11 +629,25 @@ public class WebsitePlatformController : ControllerBase
             state.Revision,
             document,
             identity,
-            facts,
+            facts is null ? null : new
+            {
+                facts.ContactEmail,
+                facts.Phone,
+                hours = PreviewAgentFact(facts.Hours, 800),
+                locations = PreviewAgentFact(facts.Locations, 1200),
+                services = PreviewAgentFact(facts.Services, 2500),
+                fullBusinessDataAvailable = true
+            },
             capabilities,
             quality,
             designQuality,
             media));
+    }
+
+    private static string PreviewAgentFact(string? value, int maximum)
+    {
+        var text = (value ?? string.Empty).Trim();
+        return text.Length <= maximum ? text : text[..maximum] + "…";
     }
 
     [HttpGet("manage/agent/page-outline")]
