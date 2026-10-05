@@ -957,6 +957,24 @@ public class WebsitePlatformController : ControllerBase
             .GetRequiredService<Infrastructure.Analytics.MarketingBrowserConfigurationService>()
             .GetAsync(advertisingOwner, cancellationToken);
 
+        Infrastructure.Analytics.MarketingMeasurementEvidenceSnapshot? measurementEvidence = null;
+        string? measurementEvidenceError = null;
+        if (advertisingOwner is not null)
+        {
+            try
+            {
+                measurementEvidence = await HttpContext.RequestServices
+                    .GetRequiredService<Infrastructure.Analytics.MarketingMeasurementEvidenceService>()
+                    .GetAsync(advertisingOwner, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch
+            {
+                // Readiness must remain useful when one optional provider read is unavailable.
+                measurementEvidenceError = "measurement_evidence_unavailable";
+            }
+        }
+
         var eventMap = await new WebsiteEventMapQuery(_db, _configuration)
             .ReadTicketAsync(actor, cancellationToken);
         var relevant = eventMap
@@ -964,17 +982,34 @@ public class WebsitePlatformController : ControllerBase
                 string.Equals(entry.Authority, "verified_server", StringComparison.Ordinal) ||
                 !string.IsNullOrWhiteSpace(entry.ActionKey) ||
                 !string.IsNullOrWhiteSpace(entry.Binding))
+            .ToArray();
+
+        static bool ProviderAccepted(string status) => status == "provider_accepted";
+        static bool HttpAccepted(string status) => status == "http_accepted";
+        static bool InFlight(string status) =>
+            status is "pending" or "retryable" or "projected";
+        static bool Problem(string status) =>
+            status is "blocked" or "failed" or "permanent_failure" or "requires_reconciliation"
+                or "partial_delivery" or "receipt_unverified";
+        static bool RowProblem(WebsiteEventMapQuery.Entry entry) =>
+            Problem(entry.AnalyticsStatus) || Problem(entry.MetaStatus) || Problem(entry.OpenAiStatus);
+
+        var returned = relevant
+            .OrderByDescending(RowProblem)
+            .ThenByDescending(entry => entry.PublishRevision)
+            .ThenBy(entry => entry.Page, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Element, StringComparer.Ordinal)
             .Take(80)
             .ToArray();
 
-        static bool Accepted(string status) =>
-            status is "provider_accepted" or "http_accepted";
-        static bool Problem(string status) =>
-            status is "blocked" or "failed" or "requires_reconciliation" or "partial_delivery";
+        var metaProviderAccepted = relevant.Count(entry => ProviderAccepted(entry.MetaStatus));
+        var metaHttpAccepted = relevant.Count(entry => HttpAccepted(entry.MetaStatus));
+        var openAiProviderAccepted = relevant.Count(entry => ProviderAccepted(entry.OpenAiStatus));
+        var openAiHttpAccepted = relevant.Count(entry => HttpAccepted(entry.OpenAiStatus));
 
         return Ok(new
         {
-            schema = "legend-conversion-readiness/v1",
+            schema = "legend-conversion-readiness/v2",
             revision = state.Revision,
             publishedRevision,
             currentDraftIsPublished = publishedRevision.HasValue && publishedRevision.Value == state.Revision,
@@ -994,16 +1029,39 @@ public class WebsitePlatformController : ControllerBase
                     serverConversionsConfigured = browserDestination.OpenAiConversionsApiConfigured
                 }
             },
+            measurementEvidence,
+            measurementEvidenceError,
             published = new
             {
                 windowDays = 30,
                 evidenceRows = relevant.Length,
+                returnedRows = returned.Length,
+                resultLimit = 80,
                 analyticsObserved = relevant.Count(entry => entry.AnalyticsStatus == "observed"),
-                metaAccepted = relevant.Count(entry => Accepted(entry.MetaStatus)),
-                openAiAccepted = relevant.Count(entry => Accepted(entry.OpenAiStatus)),
-                problemRows = relevant.Count(entry =>
-                    Problem(entry.AnalyticsStatus) || Problem(entry.MetaStatus) || Problem(entry.OpenAiStatus)),
-                entries = relevant.Select(entry => new
+                metaAccepted = metaProviderAccepted,
+                openAiAccepted = openAiHttpAccepted,
+                acceptanceSemantics = new
+                {
+                    meta = "provider_events_received",
+                    openai = "http_2xx_transport_only"
+                },
+                acceptance = new
+                {
+                    meta = new
+                    {
+                        providerAccepted = metaProviderAccepted,
+                        httpAccepted = metaHttpAccepted
+                    },
+                    openai = new
+                    {
+                        providerAccepted = openAiProviderAccepted,
+                        httpAccepted = openAiHttpAccepted
+                    }
+                },
+                inFlightRows = relevant.Count(entry =>
+                    InFlight(entry.MetaStatus) || InFlight(entry.OpenAiStatus)),
+                problemRows = relevant.Count(RowProblem),
+                entries = returned.Select(entry => new
                 {
                     entry.Site,
                     entry.Page,
@@ -1024,6 +1082,257 @@ public class WebsitePlatformController : ControllerBase
                     entry.PublishRevision
                 }).ToArray()
             }
+        });
+    }
+
+    [HttpGet("manage/agent/conversion-trace")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeConversionTrace(
+        [FromQuery] string ticket,
+        [FromQuery] int take = 20,
+        [FromQuery] string? eventName = null,
+        [FromQuery] string? page = null,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        var owner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            _db, _configuration, actor, cancellationToken);
+        if (owner is null)
+            return Ok(new
+            {
+                schema = "legend-conversion-trace/v1",
+                source = "canonical_analytics_event_lineage",
+                revision = state.Revision,
+                publishedVersionId = state.PublishedVersionId,
+                windowDays = 30,
+                matchedEvents = 0,
+                returnedEvents = 0,
+                events = Array.Empty<object>()
+            });
+
+        take = Math.Clamp(take, 1, 50);
+        var fromUtc = DateTime.UtcNow.AddDays(-30);
+        var ownerEvents = await new Infrastructure.Analytics.AnalyticsQueryService(_db, _configuration)
+            .LoadOwnerEventsAsync(fromUtc, owner, cancellationToken);
+        var publishedEvents = ownerEvents
+            .Where(row => state.PublishedVersionId.HasValue &&
+                          row.WebsiteContentVersionId == state.PublishedVersionId)
+            .ToArray();
+
+        if (!string.IsNullOrWhiteSpace(eventName))
+        {
+            var normalizedEvent = eventName.Trim();
+            publishedEvents = publishedEvents.Where(row =>
+                    string.Equals(row.EventType, normalizedEvent, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveEventName(row),
+                        normalizedEvent,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+        if (!string.IsNullOrWhiteSpace(page))
+        {
+            var normalizedPage = page.Trim();
+            publishedEvents = publishedEvents.Where(row =>
+                    string.Equals(row.Path, normalizedPage, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(row.PageKey, normalizedPage, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        var matchedEvents = publishedEvents.Length;
+        var selected = publishedEvents
+            .OrderByDescending(row => row.EventUtc)
+            .ThenByDescending(row => row.Id)
+            .Take(take)
+            .ToArray();
+        var selectedIds = selected.Select(row => row.Id).ToArray();
+
+        var metaRows = selectedIds.Length == 0
+            ? []
+            : await _db.MetaSignalEvents.AsNoTracking()
+                .Where(row => row.WebsiteContentVersionId == state.PublishedVersionId)
+                .OrderByDescending(row => row.Id)
+                .ToListAsync(cancellationToken);
+        metaRows = metaRows.Where(row =>
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(
+                    row.MetadataJson, "sourceAnalyticsEventId") is { } sourceId &&
+                selectedIds.Contains(sourceId))
+            .ToList();
+
+        var openAiRows = selectedIds.Length == 0
+            ? []
+            : await _db.MarketingDestinationDeliveries.AsNoTracking()
+                .Where(row =>
+                    row.OwnerKey == owner.Key &&
+                    row.Provider == Shared.Analytics.MarketingDestinationKeys.OpenAi &&
+                    row.AnalyticsEventId.HasValue &&
+                    selectedIds.Contains(row.AnalyticsEventId.Value))
+                .OrderByDescending(row => row.UpdatedUtc)
+                .ToListAsync(cancellationToken);
+
+        static Guid? ReadLeadId(AnalyticsEvent row)
+        {
+            var raw =
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "LeadId") ??
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "leadId");
+            return Guid.TryParse(raw, out var parsed) && parsed != Guid.Empty ? parsed : null;
+        }
+
+        var leadIds = selected.Select(ReadLeadId).Where(value => value.HasValue)
+            .Select(value => value!.Value).Distinct().ToArray();
+        var leads = leadIds.Length == 0
+            ? []
+            : await _db.WebsiteLeads.AsNoTracking()
+                .Where(row =>
+                    leadIds.Contains(row.LeadId) &&
+                    row.WebsiteContentVersionId == state.PublishedVersionId &&
+                    !row.IsDeleted)
+                .ToListAsync(cancellationToken);
+
+        object Trace(AnalyticsEvent row)
+        {
+            var leadId = ReadLeadId(row);
+            var linkedLead = leadId.HasValue
+                ? leads.SingleOrDefault(value =>
+                    value.LeadId == leadId.Value &&
+                    value.AgentTrackingProfileId == row.AgentTrackingProfileId &&
+                    value.CommerceBusinessId == row.CommerceBusinessId)
+                : null;
+            var meta = metaRows.Where(value =>
+                    Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(
+                        value.MetadataJson, "sourceAnalyticsEventId") == row.Id &&
+                    value.AgentTrackingProfileId == row.AgentTrackingProfileId &&
+                    value.CommerceBusinessId == row.CommerceBusinessId)
+                .ToArray();
+            var openAi = openAiRows.Where(value => value.AnalyticsEventId == row.Id).ToArray();
+
+            bool MetaAccepted(MetaSignalEvent value) =>
+                value.MetaServerSent &&
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(
+                    value.MetadataJson, "metaServerEventsReceived") > 0;
+            bool MetaAttempted(MetaSignalEvent value) =>
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadBoolean(
+                    value.MetadataJson, "metaServerAttempted") == true;
+            bool MetaRetryable(MetaSignalEvent value) =>
+                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadBoolean(
+                    value.MetadataJson, "metaServerRetryable") == true;
+
+            var latestMetaStatus = meta
+                .Select(value => Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
+                    value.MetadataJson, "metaServerStatus"))
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+            return new
+            {
+                analytics = new
+                {
+                    id = row.Id,
+                    row.EventId,
+                    row.ClientEventId,
+                    row.EventType,
+                    canonicalEvent = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveEventName(row),
+                    authority = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.CanProjectServer(row)
+                        ? "verified_server"
+                        : "browser_observation",
+                    row.EventUtc,
+                    row.ReceivedUtc,
+                    row.Path,
+                    row.PageKey,
+                    row.ElementKey,
+                    row.ElementId,
+                    row.FormKey,
+                    row.WebsiteBindingId,
+                    actionKey = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
+                        row.MetadataJson, "actionKey"),
+                    row.SubmitOutcome
+                },
+                attribution = new
+                {
+                    channel = Infrastructure.Analytics.CanonicalMarketingOutcomeProjection.ChannelFor(row),
+                    row.UtmSource,
+                    row.UtmMedium,
+                    row.UtmCampaign,
+                    row.UtmId,
+                    row.MetaCampaignId,
+                    row.MetaAdSetId,
+                    row.MetaAdId,
+                    fbclidPresent = !string.IsNullOrWhiteSpace(row.Fbclid),
+                    opprefPresent = !string.IsNullOrWhiteSpace(row.Oppref)
+                },
+                crm = new
+                {
+                    leadId,
+                    linked = linkedLead is not null,
+                    status = linkedLead?.Status,
+                    createdUtc = linkedLead?.CreatedUtc,
+                    productionRecordId = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
+                        row.MetadataJson, "productionRecordId"),
+                    workstationLeadId = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
+                        row.MetadataJson, "workstationLeadId")
+                },
+                meta = new
+                {
+                    projected = meta.Length,
+                    browserSent = meta.Count(value => value.MetaBrowserSent),
+                    serverSent = meta.Count(value => value.MetaServerSent),
+                    attempted = meta.Count(MetaAttempted),
+                    providerAccepted = meta.Count(MetaAccepted),
+                    retryable = meta.Count(MetaRetryable),
+                    latestStatus = latestMetaStatus,
+                    acceptanceSemantics = "provider_events_received"
+                },
+                openai = new
+                {
+                    receipts = openAi.Select(value => new
+                    {
+                        deliveryId = value.Id,
+                        value.ProviderEventName,
+                        value.Status,
+                        value.AttemptCount,
+                        value.LastHttpStatusCode,
+                        httpAccepted = value.Status == "sent" &&
+                            value.LastHttpStatusCode is >= 200 and < 300,
+                        value.SentUtc,
+                        value.UpdatedUtc,
+                        destination = new
+                        {
+                            value.AdvertiserAccountId,
+                            value.ConversionDataSourceId,
+                            value.PixelId
+                        }
+                    }).ToArray(),
+                    acceptanceSemantics = "http_2xx_transport_only"
+                }
+            };
+        }
+
+        return Ok(new
+        {
+            schema = "legend-conversion-trace/v1",
+            source = "canonical_analytics_event_lineage",
+            revision = state.Revision,
+            publishedVersionId = state.PublishedVersionId,
+            currentDraftIsPublished = state.PublishedVersionId.HasValue &&
+                await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                    .AnyAsync(value =>
+                        value.Id == state.PublishedVersionId &&
+                        value.StateId == state.Id &&
+                        value.Revision == state.Revision,
+                        cancellationToken),
+            windowDays = 30,
+            matchedEvents,
+            returnedEvents = selected.Length,
+            resultLimit = take,
+            privacy = new
+            {
+                piiIncluded = false,
+                rawClickReferencesIncluded = false,
+                providerCredentialsIncluded = false
+            },
+            events = selected.Select(Trace).ToArray()
         });
     }
 
