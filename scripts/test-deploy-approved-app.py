@@ -85,6 +85,50 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(1, azure.uploads)
 
+    def test_retained_failed_upload_preserves_exact_live_candidate_without_replay(self):
+        class Journal:
+            baseline = 'b' * 40
+            history_error = None
+            intent = {'baselineDeploymentIds': ['old']}
+            def __init__(self):
+                self.successes = []
+            def record_success(self, deployment_ids):
+                self.successes.append(list(deployment_ids))
+
+        azure = FakeAzure(
+            [[row('old', 4), row('failed', 3)]],
+            [True],
+        )
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'a' * 40
+        journal = Journal()
+
+        self.assertEqual(
+            'preserved',
+            azure.run(baseline='b' * 40, reconcile_only=True, journal=journal),
+        )
+        self.assertEqual(0, azure.uploads)
+        self.assertEqual([[]], journal.successes)
+
+    def test_retained_failed_upload_still_fails_when_candidate_not_live(self):
+        class Journal:
+            baseline = 'b' * 40
+            history_error = None
+            intent = {'baselineDeploymentIds': ['old']}
+            def record_success(self, deployment_ids):
+                raise AssertionError('must not record success')
+
+        azure = FakeAzure(
+            [[row('old', 4), row('failed', 3)]],
+            [False],
+        )
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'b' * 40
+
+        with self.assertRaisesRegex(RuntimeError, 'failed'):
+            azure.run(baseline='b' * 40, reconcile_only=True, journal=Journal())
+        self.assertEqual(0, azure.uploads)
+
     def test_static_terminal_failure_has_no_alternate_upload_path(self):
         azure = FakeAzure([[], [row('failed', 3)]], [False, False], static=True)
         with self.assertRaisesRegex(RuntimeError, 'failed'):
