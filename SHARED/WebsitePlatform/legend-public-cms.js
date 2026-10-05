@@ -26,7 +26,9 @@
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
 
-  const editorTicket = params.get('legendEdit') || '';
+  const historyEditorTicket =
+    typeof history.state?.legendStudioTicket === 'string' ? history.state.legendStudioTicket : '';
+  const editorTicket = params.get('legendEdit') || historyEditorTicket;
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
@@ -2832,7 +2834,7 @@
               activeEditorRoute=operation.targetPath;
               pageKey=operation.targetPath==='/'?'home':operation.targetPath.slice(1).replace(/\//g,'-');
               const url=editorUrlForRoute(operation.targetPath);
-              if(url) history.replaceState({legendStudioRoute:operation.targetPath},'',url.toString());
+              if(url) writeEditorHistory('replaceState',url,operation.targetPath);
               renderPage=true;
               metadata=true;
               refreshPageSelector();
@@ -4064,6 +4066,32 @@
     return page;
   }
 
+  function credentialFreeEditorUrl(value) {
+    const url=value instanceof URL ? new URL(value.toString()) : new URL(String(value),location.origin);
+    url.searchParams.delete('legendEdit');
+    url.searchParams.delete('legendMaterialize');
+    url.searchParams.delete('legendAudit');
+    return url;
+  }
+
+  function editorHistoryState(route=currentPageRoute()) {
+    const prior=history.state && typeof history.state==='object' ? history.state : {};
+    return {...prior,legendStudioTicket:editorTicket,legendStudioRoute:route};
+  }
+
+  function writeEditorHistory(method,url,route=currentPageRoute()) {
+    const safe=credentialFreeEditorUrl(url);
+    history[method](editorHistoryState(route),'',safe.toString());
+  }
+
+  function concealEditorTicketFromDocumentUrl() {
+    if(!editorMode || !editorTicket) return;
+    const current=new URL(location.href);
+    if(!current.searchParams.has('legendEdit') &&
+       history.state?.legendStudioTicket===editorTicket) return;
+    writeEditorHistory('replaceState',current,currentPageRoute());
+  }
+
   function editorUrlForRoute(route, materialize = false) {
     route=canonicalSiteRoute(route); if(!route) return null;
     const entry=websitePageEntries(true).find(value=>value.route===route);
@@ -4115,7 +4143,7 @@
       const url=editorUrlForRoute(route);
       if(url){
         const method=replaceHistory?'replaceState':'pushState';
-        history[method]({legendStudioRoute:route},'',url.toString());
+        writeEditorHistory(method,url,route);
       }
       refreshBrowserAgentWorkspace();
       return;
@@ -4604,7 +4632,22 @@
       if(!routes.has(route)) return;
       const scoped=editorUrlForRoute(route);
       scoped.hash=url.hash;
-      el.href=scoped.toString();
+      if(editorMode){
+        el.href=credentialFreeEditorUrl(scoped).toString();
+        el.dataset.legendEditorRoute=route;
+        if(el.dataset.legendEditorNavigationBound!=='true'){
+          el.dataset.legendEditorNavigationBound='true';
+          el.addEventListener('click',event=>{
+            const next=normalizePageRoute(el.dataset.legendEditorRoute);
+            if(!next) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void navigateToEditorPage(next);
+          });
+        }
+      }else{
+        el.href=scoped.toString();
+      }
     });
   }
   function canonicalProtectedEditCorrection() {
@@ -8281,8 +8324,11 @@
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
       if (dirty && !confirm('Exit with unsaved changes?')) return;
-      const url = new URL(location.href);
-      url.searchParams.delete('legendEdit');
+      const url = credentialFreeEditorUrl(location.href);
+      const state=history.state && typeof history.state==='object' ? {...history.state} : {};
+      delete state.legendStudioTicket;
+      delete state.legendStudioRoute;
+      history.replaceState(state,'',url.toString());
       location.href = url.toString();
     });
   }
@@ -8302,6 +8348,7 @@
         if (showEditorAuthorizationRecovery('This Website Studio authorization belongs to a different website scope.')) return;
         throw new Error('This edit session belongs to a different website. Open it from your profile.');
       }
+      concealEditorTicketFromDocumentUrl();
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
