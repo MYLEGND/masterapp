@@ -794,9 +794,9 @@ public class WebsitePlatformController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         if (request?.Plan is null) return BadRequest(new { error = "website_design_plan_required" });
-        var actor = authorizedActor ?? await AuthorizeAsync(request.Ticket, cancellationToken);
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
-        var state = authorizedState ?? await StateAsync(actor, cancellationToken);
+        var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != request.ExpectedRevision)
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
@@ -1436,9 +1436,9 @@ public class WebsitePlatformController : ControllerBase
         if (request.Operations.Count > 400)
             return BadRequest(new { error = "website_mutation_limit" });
 
-        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        var actor = authorizedActor ?? await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
+        var state = authorizedState ?? await StateAsync(actor, cancellationToken);
 
         var canScopedRebase = request.Operations.Count > 0 && request.Operations.All(operation =>
             (operation.Type is "replaceNode" or "removeNode" or "moveNode" or "updatePage" or "setApprovedCapability") &&
