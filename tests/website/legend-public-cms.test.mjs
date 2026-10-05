@@ -20,6 +20,8 @@ const businessMiddlewareSource = readFileSync(new URL('../../Infrastructure/Webs
 const legendWebConfigSource = readFileSync(new URL('../../Legend-Website/public/web.config', import.meta.url), 'utf8');
 const agentContractSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs', import.meta.url), 'utf8');
 const websitePlatformControllerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsitePlatformController.cs', import.meta.url), 'utf8');
+const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
+const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
@@ -220,10 +222,10 @@ test('canonical startup repairs dead placeholder links while preserving dynamic 
     assert.equal(dynamic.type,'link');
     assert.equal(dynamic.dataBinding.target,'href');
     const brand=saved.shell.header[0].children.find(node=>node.id==='shell.brand');
-    assert.equal(brand.style.widthPercent,undefined);
-    assert.equal(brand.style.offsetXPercent,undefined);
-    assert.equal(brand.breakpointStyles.mobile.widthPercent,undefined);
-    assert.equal(brand.breakpointStyles.mobile.offsetXPercent,undefined);
+    assert.equal(brand.style.widthPercent,4);
+    assert.equal(brand.style.offsetXPercent,91);
+    assert.equal(brand.breakpointStyles.mobile.widthPercent,3);
+    assert.equal(brand.breakpointStyles.mobile.offsetXPercent,95);
   }finally{f.close();}
 });
 
@@ -720,7 +722,7 @@ test('canonical responsive hierarchy resets inherited desktop geometry on mobile
   }finally{f.close();}
 });
 
-test('explicit mobile styling remains editable inside canonical flow-safety geometry',async()=>{
+test('explicit mobile styling renders independently from desktop base geometry',async()=>{
   const doc=canonicalDocument();
   const action=canonicalNodeById(doc,'home.a.node.1');
   action.type='cta';
@@ -735,23 +737,24 @@ test('explicit mobile styling remains editable inside canonical flow-safety geom
     await new Promise(resolve=>setTimeout(resolve,0));
     const a=f.w.document.querySelector('main a');
     const root=f.w.document.querySelector('main section');
-    assert.equal(a.style.width,'100%');
-    assert.equal(a.style.left,'0%');
+    assert.equal(a.style.width,'72%');
+    assert.equal(a.style.left,'8%');
     assert.equal(a.style.top,'0px');
     assert.equal(a.style.fontSize,'18px');
-    assert.equal(a.style.height,'');
+    assert.equal(a.style.height,'64px');
     assert.equal(root.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))');
     assert.equal(root.style.gap,'14px');
   }finally{f.close();}
 });
 
-test('published mobile flow neutralizes stale explicit free-canvas offsets and fixed geometry',async()=>{
+test('published mobile presentation preserves explicit free-canvas geometry without mutating desktop base',async()=>{
   const doc=canonicalDocument();
   const section=canonicalNodeById(doc,'home.section.1');
   section.layout={mode:'free',gapPx:8};
   section.breakpointStyles.mobile={heightPx:980,offsetYPx:-100,marginTop:-50,minHeightPx:900,maxHeightPx:1200};
   section.breakpointLayouts.mobile={mode:'free',gapPx:16};
   const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:70,offsetXPercent:4,fontSize:64};
   heading.breakpointStyles.mobile={widthPercent:36,offsetXPercent:58,offsetYPx:-180,heightPx:150,fontSize:88};
   const action=canonicalNodeById(doc,'home.a.node.1');
   action.type='cta';
@@ -766,24 +769,99 @@ test('published mobile flow neutralizes stale explicit free-canvas offsets and f
     const h=f.w.document.querySelector('main h1');
     const a=f.w.document.querySelector('main a');
     const img=f.w.document.querySelector('main img');
-    assert.equal(root.style.display,'flex');
-    assert.equal(root.style.flexDirection,'column');
-    assert.equal(root.style.alignItems,'stretch');
-    assert.equal(root.style.height,'');
-    assert.equal(root.style.top,'');
-    assert.equal(root.style.marginTop,'0px');
-    assert.equal(root.style.minHeight,'');
-    assert.equal(root.style.maxHeight,'');
-    for(const el of [h,a,img]){
-      assert.equal(el.style.left,'0%');
-      assert.equal(el.style.top,'0px');
-      assert.equal(el.style.width,'100%');
-      assert.equal(el.style.height,'');
-    }
-    assert.equal(h.style.fontSize,'54px');
-    assert.equal(a.style.fontSize,'20px');
-    assert.equal(img.style.maxWidth,'560px');
+    assert.notEqual(root.style.display,'flex');
+    assert.equal(root.style.height,'980px');
+    assert.equal(root.style.marginTop,'-50px');
+    assert.equal(root.style.minHeight,'900px');
+    assert.equal(root.style.maxHeight,'1200px');
+    assert.equal(h.style.left,'58%');
+    assert.equal(h.style.top,'-180px');
+    assert.equal(h.style.width,'36%');
+    assert.equal(h.style.height,'150px');
+    assert.equal(h.style.fontSize,'88px');
+    assert.equal(a.style.left,'5%');
+    assert.equal(a.style.top,'-260px');
+    assert.equal(a.style.width,'24%');
+    assert.equal(a.style.height,'150px');
+    assert.equal(a.style.fontSize,'28px');
+    assert.equal(img.style.left,'12%');
+    assert.equal(img.style.top,'-420px');
+    assert.equal(img.style.width,'88%');
+    assert.equal(img.style.height,'760px');
+    assert.equal(img.style.maxWidth,'900px');
+
+    f.click('[data-editor-viewport="base"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.equal(h.style.width,'70%');
+    assert.equal(h.style.left,'4%');
+    assert.equal(h.style.fontSize,'64px');
   }finally{f.close();}
+});
+
+test('Desktop and Mobile viewport buttons write to separate presentation layers',async()=>{
+  const doc=canonicalDocument();
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:80,textAlign:'left',backgroundColor:'#111111'};
+  heading.breakpointStyles.mobile={widthPercent:64,textAlign:'center',backgroundColor:'#222222'};
+  const f=await domFixture({doc,viewportWidth:1024});
+  try{
+    f.click('main h1');
+    f.click('[data-editor-viewport="mobile"]');
+    f.input('#legend-cms-width','44');
+    f.input('#legend-cms-align','right');
+    f.input('[data-style-key="backgroundColor"]','#333333');
+    const mobileSaved=await f.save();
+    const mobileHeading=canonicalNodeById(mobileSaved,'home.h1.node.1');
+    assert.equal(mobileHeading.style.widthPercent,80);
+    assert.equal(mobileHeading.style.textAlign,'left');
+    assert.equal(mobileHeading.style.backgroundColor,'#111111');
+    assert.equal(mobileHeading.breakpointStyles.mobile.widthPercent,44);
+    assert.equal(mobileHeading.breakpointStyles.mobile.textAlign,'right');
+    assert.equal(mobileHeading.breakpointStyles.mobile.backgroundColor,'#333333');
+    assert.doesNotMatch(source,/data-color-hex/);
+
+    f.click('[data-editor-viewport="base"]');
+    assert.equal(f.w.document.querySelector('[data-editor-viewport="base"]').getAttribute('aria-pressed'),'true');
+    assert.equal(f.w.document.querySelector('[data-editor-viewport="mobile"]').getAttribute('aria-pressed'),'false');
+  }finally{f.close();}
+});
+
+test('looped uploaded video hides native controls while preserving source audio',async()=>{
+  const doc=canonicalDocument();
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.children.push(canonicalNode('home.video.node.1','video','video',{
+    mediaUrl:'https://media.example/clip.mp4',
+    videoLoop:true
+  }));
+  const f=await domFixture({doc,search:'',viewportWidth:1024});
+  try{
+    const video=f.w.document.querySelector('main video');
+    assert.ok(video);
+    assert.equal(video.loop,true);
+    assert.equal(video.autoplay,true);
+    assert.equal(video.controls,false);
+    assert.equal(video.muted,false);
+    assert.equal(video.playsInline,true);
+    assert.equal(video.preload,'auto');
+  }finally{f.close();}
+});
+
+test('business compiler resolves published media through the canonical public API instead of the invalid placeholder origin',()=>{
+  assert.match(businessRenderSource,/apiBase:publicApiBase/);
+  assert.doesNotMatch(businessRenderSource,/apiBase:'https:\/\/website\.invalid'/);
+});
+
+test('Website Studio exposes the same iPhone video containers already recognized by the shared validator',()=>{
+  assert.match(websiteMediaServiceSource,/AllowedExtensions[\s\S]*"\.mp4"[\s\S]*"\.m4v"[\s\S]*"\.mov"[\s\S]*"\.webm"/);
+  assert.match(uploadValidationSource,/"video\/mp4" => extension is "\.mp4" or "\.m4v" or "\.mov"/);
+  assert.match(source,/video\/quicktime,video\/x-m4v,\.mov,\.m4v/);
+});
+
+test('website media upload transport is parsed inside scoped authority instead of inferred IFormFile binding',()=>{
+  assert.match(websitePlatformControllerSource,/Request\.HasFormContentType/);
+  assert.match(websitePlatformControllerSource,/Request\.ReadFormAsync\(cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/form\.Files\.GetFile\("file"\)/);
+  assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
 });
 
 test('canonical page first paint reapplies responsive hierarchy after the page graph is mounted',()=>{
@@ -825,18 +903,20 @@ test('business banner and shell typography use canonical shared responsive token
   }finally{f.close();}
 });
 
-test('mobile shell scale is bounded even when an older explicit breakpoint value is oversized',()=>{
-  assert.match(source,/if\(brand\)\{[\s\S]*const ceiling=key==='mobile' \? 1\.35 : key==='tablet' \? 1\.8 : 3\.5;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
-  assert.match(source,/if\(model\?\.systemKey==='primary_navigation'\)\{[\s\S]*const ceiling=key==='mobile' \? 1 : key==='tablet' \? 1\.15 : 1\.6;[\s\S]*Math\.min\(ceiling,Number\(style\.fontScale\)\)/);
+test('explicit mobile shell presentation outranks inherited desktop defaults',()=>{
+  assert.match(source,/if\(brand\)\{[\s\S]*if\(!has\('fontScale'\)\)[\s\S]*const ceiling=key==='mobile' \? 1\.35 : key==='tablet' \? 1\.8 : 3\.5/);
+  assert.match(source,/model\?\.systemKey==='primary_navigation' && !has\('fontScale'\)/);
+  assert.doesNotMatch(source,/function canonicalizePlatformBrandGeometry/);
 });
 
-test('Website Studio and GPT contract expose the same canonical responsive hierarchy',()=>{
+test('Website Studio and GPT contract expose the same isolated responsive authority',()=>{
   assert.match(source,/Canonical responsive hierarchy/);
-  assert.match(source,/Mobile uses a conversion-first stack: context → headline → supporting copy\/proof → action\/form → media → deeper content/);
-  assert.match(source,/mobile flow safety keeps content in-frame and prevents stored X\/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page/);
-  assert.match(agentContractSource,/Default decision order is: context\/kicker -> headline -> concise supporting copy or proof -> primary action\/form -> supporting image\/video -> deeper cards\/content/);
-  assert.match(agentContractSource,/Mobile flow safety is canonical and non-negotiable for published content/);
-  assert.match(agentContractSource,/Explicit breakpoint values outrank inherited responsive defaults only when they do not violate the canonical mobile flow-safety constraints above/);
+  assert.match(source,/Desktop\/Base and Mobile are independent authoring surfaces/);
+  assert.match(source,/Explicit Mobile width, alignment, offsets, height, spacing, typography, and layout are preserved exactly/);
+  assert.match(agentContractSource,/Mobile is an independent first-class editing surface/);
+  assert.match(agentContractSource,/A Mobile edit must write only breakpointStyles\.mobile or breakpointLayouts\.mobile/);
+  assert.match(agentContractSource,/Explicit mobile width, height, alignment, offsets, margins, spacing, typography, sizing, media geometry, and layout mode outrank inherited Desktop\/Base defaults/);
+  assert.doesNotMatch(agentContractSource,/Mobile flow safety is canonical and non-negotiable/);
 });
 
 test('public startup styling has one responsive authority and one palette authority',()=>{
@@ -2067,7 +2147,8 @@ test('business entity name remains profile-owned while canonical shell typograph
     assert.match(businessBuildSource,/brand-wordmark business-brand-banner/);
     assert.match(publicCss,/\.business-brand-banner\{[\s\S]*border:1px solid color-mix\(in srgb,var\(--gold\) 42%,transparent\)[\s\S]*background:linear-gradient\(110deg/);
     assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-family:var\(--font\)[\s\S]*font-weight:var\(--public-banner-title-weight\)[\s\S]*letter-spacing:var\(--public-banner-title-tracking\)/);
-    assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.business-brand-banner\{max-width:calc\(100vw - 92px\)/);
+    assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.brand\{flex:1 1 auto;max-width:calc\(100% - 58px\)\}[\s\S]*\.business-brand-banner\{width:100%;max-width:100%/);
+    assert.match(publicCss,/\.nav-toggle\{[^}]*flex:0 0 auto[^}]*white-space:nowrap/);
   }finally{f.close();}
 });
 

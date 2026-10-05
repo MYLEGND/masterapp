@@ -104,7 +104,7 @@ public sealed class WebsiteStudioV3ContractTests
         var node = clean.Pages["/"].Composition.Single(value => value.Id == "home.title");
         Assert.Equal("Existing text", node.Text);
         Assert.Equal(80m, node.Style.WidthPercent);
-        Assert.Null(node.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Equal(100m, node.BreakpointStyles["mobile"].WidthPercent);
         Assert.Equal(0.9m, node.BreakpointStyles["mobile"].FontScale);
         Assert.Equal(70m, node.BreakpointStyles["wide"].WidthPercent);
         Assert.DoesNotContain("unknown", node.BreakpointStyles.Keys);
@@ -121,7 +121,7 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
-    public void Sanitize_RemovesUnsafePublishedMobileGeometryWhilePreservingDesktopAndVisualIntent()
+    public void Sanitize_PreservesAuthoredMobileGeometryAndLayoutWithoutChangingDesktop()
     {
         var source = new WebsiteContentDocument();
         source.Pages["/"] = new WebsitePageDocument
@@ -214,47 +214,47 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Equal(12m, hero.Style.OffsetXPercent);
 
         var heroMobile = hero.BreakpointStyles["mobile"];
-        Assert.Null(heroMobile.WidthPercent);
-        Assert.Null(heroMobile.HeightPx);
-        Assert.Null(heroMobile.OffsetXPercent);
-        Assert.Null(heroMobile.OffsetYPx);
-        Assert.Null(heroMobile.MarginTop);
-        Assert.Null(heroMobile.MarginBottom);
-        Assert.Null(heroMobile.MarginLeft);
-        Assert.Null(heroMobile.MarginRight);
-        Assert.Null(heroMobile.MinWidthPx);
-        Assert.Null(heroMobile.MaxWidthPx);
-        Assert.Null(heroMobile.MinHeightPx);
-        Assert.Null(heroMobile.MaxHeightPx);
+        Assert.Equal(70m, heroMobile.WidthPercent);
+        Assert.Equal(700m, heroMobile.HeightPx);
+        Assert.Equal(30m, heroMobile.OffsetXPercent);
+        Assert.Equal(-200m, heroMobile.OffsetYPx);
+        Assert.Equal(-100m, heroMobile.MarginTop);
+        Assert.Equal(-80m, heroMobile.MarginBottom);
+        Assert.Equal(40m, heroMobile.MarginLeft);
+        Assert.Equal(20m, heroMobile.MarginRight);
+        Assert.Equal(500m, heroMobile.MinWidthPx);
+        Assert.Equal(900m, heroMobile.MaxWidthPx);
+        Assert.Equal(400m, heroMobile.MinHeightPx);
+        Assert.Equal(1200m, heroMobile.MaxHeightPx);
         Assert.Equal(30m, heroMobile.BorderRadius);
 
         var mobileLayout = hero.BreakpointLayouts["mobile"];
-        Assert.Equal("stack", mobileLayout.Mode);
-        Assert.Equal("column", mobileLayout.Direction);
-        Assert.Equal("stretch", mobileLayout.AlignItems);
+        Assert.Equal("free", mobileLayout.Mode);
+        Assert.Equal("row", mobileLayout.Direction);
+        Assert.Null(mobileLayout.AlignItems);
         Assert.Equal(16m, mobileLayout.GapPx);
 
         var heading = hero.Children.Single(node => node.Id == "home.hero.title");
         Assert.Equal(45m, heading.Style.WidthPercent);
         Assert.Equal(50m, heading.Style.OffsetXPercent);
         var headingMobile = heading.BreakpointStyles["mobile"];
-        Assert.Null(headingMobile.WidthPercent);
-        Assert.Null(headingMobile.HeightPx);
-        Assert.Null(headingMobile.OffsetXPercent);
-        Assert.Null(headingMobile.OffsetYPx);
-        Assert.Null(headingMobile.MarginTop);
-        Assert.Null(headingMobile.MaxWidthPx);
+        Assert.Equal(36m, headingMobile.WidthPercent);
+        Assert.Equal(150m, headingMobile.HeightPx);
+        Assert.Equal(58m, headingMobile.OffsetXPercent);
+        Assert.Equal(-180m, headingMobile.OffsetYPx);
+        Assert.Equal(-60m, headingMobile.MarginTop);
+        Assert.Equal(480m, headingMobile.MaxWidthPx);
         Assert.Equal(48m, headingMobile.FontSize);
         Assert.Equal(999m, headingMobile.BorderRadius);
 
         var image = hero.Children.Single(node => node.Id == "home.hero.image");
         var imageMobile = image.BreakpointStyles["mobile"];
-        Assert.Null(imageMobile.WidthPercent);
-        Assert.Null(imageMobile.HeightPx);
-        Assert.Null(imageMobile.OffsetXPercent);
-        Assert.Null(imageMobile.OffsetYPx);
-        Assert.Equal(560m, imageMobile.MaxWidthPx);
-        Assert.Equal(520m, imageMobile.MaxHeightPx);
+        Assert.Equal(92m, imageMobile.WidthPercent);
+        Assert.Equal(760m, imageMobile.HeightPx);
+        Assert.Equal(12m, imageMobile.OffsetXPercent);
+        Assert.Equal(-420m, imageMobile.OffsetYPx);
+        Assert.Equal(900m, imageMobile.MaxWidthPx);
+        Assert.Equal(1000m, imageMobile.MaxHeightPx);
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public sealed class WebsiteStudioV3ContractTests
     }
 
     [Fact]
-    public void Sanitize_RepairsDeadLinksAndCorruptBrandGeometryWithoutBreakingDynamicHrefBindings()
+    public void Sanitize_RepairsDeadLinksWithoutRewritingResponsiveBrandPresentation()
     {
         var source = new WebsiteContentDocument
         {
@@ -391,13 +391,13 @@ public sealed class WebsiteStudioV3ContractTests
         Assert.Equal("href", dynamic.DataBinding?.Target);
 
         var brand = Assert.Single(clean.Shell.Header);
-        Assert.Null(brand.Style.WidthPercent);
-        Assert.Null(brand.Style.OffsetXPercent);
-        Assert.Null(brand.BreakpointStyles["mobile"].WidthPercent);
-        Assert.Null(brand.BreakpointStyles["mobile"].OffsetXPercent);
+        Assert.Equal(4m, brand.Style.WidthPercent);
+        Assert.Equal(91m, brand.Style.OffsetXPercent);
+        Assert.Equal(3m, brand.BreakpointStyles["mobile"].WidthPercent);
+        Assert.Equal(95m, brand.BreakpointStyles["mobile"].OffsetXPercent);
         var brandCopy = Assert.Single(brand.Children);
-        Assert.Equal(1.35m, brandCopy.BreakpointStyles["mobile"].FontScale);
-        Assert.Equal(1.8m, brandCopy.BreakpointStyles["tablet"].FontScale);
+        Assert.Equal(4.5m, brandCopy.BreakpointStyles["mobile"].FontScale);
+        Assert.Equal(3.5m, brandCopy.BreakpointStyles["tablet"].FontScale);
 
         var report = WebsiteDraftQualityInspector.Inspect(clean);
         Assert.DoesNotContain(report.Checks, check =>

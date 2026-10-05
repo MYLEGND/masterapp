@@ -122,7 +122,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         using var fixture = new Fixture(siteKey);
         var document = new WebsiteContentDocument
         {
-            FaviconImageDataUrl = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111",
+            FaviconImageDataUrl = "https://cdn.example.test/favicon.png",
             Pages = new(StringComparer.Ordinal)
             {
                 ["/"] = new WebsitePageDocument
@@ -248,6 +248,31 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         const string first = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111";
         const string second = "https://masterapp-protect.azurewebsites.net/api/website-content/media/22222222-2222-2222-2222-222222222222";
+        var firstId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var secondId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        fixture.Db.Set<WebsiteMediaAsset>().AddRange(
+            new WebsiteMediaAsset
+            {
+                Id = firstId,
+                OwnerKey = fixture.OwnerKey,
+                SourceUrl = "favicon-one.png",
+                Sha256 = new string('d', 64),
+                StorageKey = "website/favicon-one.png",
+                ContentType = "image/png",
+                SizeBytes = 1000
+            },
+            new WebsiteMediaAsset
+            {
+                Id = secondId,
+                OwnerKey = fixture.OwnerKey,
+                SourceUrl = "favicon-two.png",
+                Sha256 = new string('e', 64),
+                StorageKey = "website/favicon-two.png",
+                ContentType = "image/png",
+                SizeBytes = 1000
+            });
+        await fixture.Db.SaveChangesAsync();
+
         var document = new WebsiteContentDocument { FaviconImageDataUrl = first };
         var slug = siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null;
 
@@ -458,6 +483,128 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.DoesNotContain("Foreign Active Product", serialized, StringComparison.Ordinal);
         Assert.Contains(json.GetProperty("dataCatalog").EnumerateArray(),
             source => source.GetProperty("key").GetString() == "commerce_products");
+    }
+
+    [Fact]
+    public void MediaReferenceCatalog_UsesOneGraphForAssetIdsCanonicalUrlsReusableShellAndFavicon()
+    {
+        var direct = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var url = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var shell = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var reusable = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var favicon = Guid.Parse("55555555-5555-5555-5555-555555555555");
+
+        var document = CanonicalDocument();
+        document.FaviconImageDataUrl = $"https://masterapp-protect.azurewebsites.net/api/website-content/media/{favicon}";
+        document.Shell.Header =
+        [
+            new WebsiteCompositionNode
+            {
+                Id = "shell.logo",
+                Type = "image",
+                Tag = "img",
+                MediaAssetId = shell
+            }
+        ];
+        document.Pages["/"].Composition.Add(
+            new WebsiteCompositionNode
+            {
+                Id = "home.photo",
+                Type = "image",
+                Tag = "img",
+                MediaAssetId = direct
+            });
+        document.Pages["/"].Composition.Add(
+            new WebsiteCompositionNode
+            {
+                Id = "home.video",
+                Type = "video",
+                Tag = "video",
+                MediaUrl = $"/api/website-content/media/{url}"
+            });
+        document.ReusableComponents["media-card"] = new WebsiteReusableComponentDefinition
+        {
+            Id = "media-card",
+            Name = "Media card",
+            Kind = "block",
+            Composition =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "reusable.photo",
+                    Type = "image",
+                    Tag = "img",
+                    MediaAssetId = reusable
+                }
+            ]
+        };
+
+        var ids = WebsiteMediaReferenceCatalog.Collect(document);
+
+        Assert.Equal(5, ids.Count);
+        Assert.Contains(direct, ids);
+        Assert.Contains(url, ids);
+        Assert.Contains(shell, ids);
+        Assert.Contains(reusable, ids);
+        Assert.Contains(favicon, ids);
+        Assert.True(WebsiteMediaReferenceCatalog.References(document, direct));
+        Assert.False(WebsiteMediaReferenceCatalog.References(document, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task Save_RequiresCanonicalMediaReferencesToBelongToWebsiteOwner()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var owned = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var foreign = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        fixture.Db.Set<WebsiteMediaAsset>().AddRange(
+            new WebsiteMediaAsset
+            {
+                Id = owned,
+                OwnerKey = fixture.OwnerKey,
+                SourceUrl = "owned.png",
+                Sha256 = new string('f', 64),
+                StorageKey = "website/owned.png",
+                ContentType = "image/png",
+                SizeBytes = 1200
+            },
+            new WebsiteMediaAsset
+            {
+                Id = foreign,
+                OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.NewGuid()),
+                SourceUrl = "foreign.png",
+                Sha256 = new string('1', 64),
+                StorageKey = "website/foreign.png",
+                ContentType = "image/png",
+                SizeBytes = 1200
+            });
+        await fixture.Db.SaveChangesAsync();
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "home.owned-photo",
+            Type = "image",
+            Tag = "img",
+            MediaAssetId = owned
+        });
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
+        {
+            Id = "home.foreign-photo",
+            Type = "image",
+            Tag = "img",
+            MediaAssetId = foreign
+        });
+
+        var rejected = Assert.IsType<BadRequestObjectResult>(
+            await fixture.CreateController().Save(new(ticket, document, 1)));
+        var json = JsonSerializer.SerializeToElement(rejected.Value, JsonOptions);
+        Assert.Equal("invalid_website_document", json.GetProperty("error").GetString());
+        Assert.False(json.GetProperty("canonicalProtectionViolation").GetBoolean());
     }
 
     [Fact]
@@ -878,6 +1025,7 @@ public sealed class WebsiteContentEditorRoundTripTests
     {
         public const string AgentSlug = "editor-test-agent";
         public Guid? BusinessId { get; private set; }
+        public string OwnerKey => _owner;
         private readonly string _siteKey;
         private readonly string _owner;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());

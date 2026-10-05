@@ -24,7 +24,7 @@ public sealed class WebsiteMediaService(MasterAppDbContext db, ISocialMediaStora
         var validation = UploadValidator.ValidateContent(bytes, fileName, null, new UploadValidationPolicy
         {
             MaxSizeBytes = 25_000_000,
-            AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm" },
+            AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".m4v", ".mov", ".webm" },
             AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm" }
         });
         if (!validation.IsValid) throw new ArgumentException(validation.ErrorMessage ?? "Unsupported media.");
@@ -36,7 +36,7 @@ public sealed class WebsiteMediaService(MasterAppDbContext db, ISocialMediaStora
         var asset = new WebsiteMediaAsset { OwnerKey = ownerKey, SourceUrl = sourceUrl, Sha256 = hash, ContentType = validation.DetectedContentType!, SizeBytes = bytes.Length };
         using var content = new MemoryStream(bytes, writable: false);
         var stored = await storage.StoreAsync(asset.Id, hash + extension, bytes.Length, content, ct);
-        if (!stored.Succeeded || stored.Media is null) throw new InvalidOperationException("Website image storage is unavailable.");
+        if (!stored.Succeeded || stored.Media is null) throw new InvalidOperationException("Website media storage is unavailable.");
         asset.StorageKey = stored.Media.StorageKey;
         db.Add(asset);
         try { await db.SaveChangesAsync(ct); }
