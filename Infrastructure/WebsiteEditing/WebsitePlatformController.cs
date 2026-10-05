@@ -2017,6 +2017,7 @@ public class WebsitePlatformController : ControllerBase
         [FromQuery] string? kind = null,
         [FromQuery] long? cursor = null,
         [FromQuery] int take = 100,
+        [FromQuery] bool designMetadata = false,
         CancellationToken cancellationToken = default)
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
@@ -2039,9 +2040,18 @@ public class WebsitePlatformController : ControllerBase
             var before = new DateTime(cursor.Value, DateTimeKind.Utc);
             query = query.Where(asset => asset.CreatedUtc < before);
         }
-        take = Math.Clamp(take, 1, 100);
+        take = Math.Clamp(take, 1, designMetadata ? 24 : 100);
         var assets = await query.OrderByDescending(asset => asset.CreatedUtc).ThenByDescending(asset => asset.Id)
             .Take(take).ToListAsync(cancellationToken);
+
+        var visualMetadata = new Dictionary<Guid, WebsiteMediaVisualMetadata>();
+        if (designMetadata)
+        {
+            var mediaService = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
+            foreach (var asset in assets)
+                if (asset.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                    visualMetadata[asset.Id] = await mediaService.InspectVisualMetadataAsync(asset, cancellationToken);
+        }
 
         var state = await StateAsync(actor, cancellationToken);
         var document = Read(state.DraftJson);
@@ -2059,8 +2069,14 @@ public class WebsitePlatformController : ControllerBase
                 asset.ContentType,
                 asset.SizeBytes,
                 asset.CreatedUtc,
+                widthPx = visualMetadata.TryGetValue(asset.Id, out var visual) ? visual.WidthPx : null,
+                heightPx = visualMetadata.TryGetValue(asset.Id, out visual) ? visual.HeightPx : null,
+                aspectRatio = visualMetadata.TryGetValue(asset.Id, out visual) ? visual.AspectRatio : null,
+                orientation = visualMetadata.TryGetValue(asset.Id, out visual) ? visual.Orientation : null,
                 usageLocations = usage.TryGetValue(asset.Id, out var locations) ? locations.Select(value => value.Scope).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string>(),
-                roles = usage.TryGetValue(asset.Id, out var roles) ? roles.Select(value => value.Role).Where(value => value is not null).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string?>()
+                roles = usage.TryGetValue(asset.Id, out var roles) ? roles.Select(value => value.Role).Where(value => value is not null).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string?>(),
+                altDescriptions = usage.TryGetValue(asset.Id, out var alts) ? alts.Select(value => value.Alt).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string?>(),
+                objectPositions = usage.TryGetValue(asset.Id, out var positions) ? positions.Select(value => value.ObjectPosition).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.Ordinal).ToArray() : Array.Empty<string?>()
             }),
             nextCursor = assets.Count == take ? assets[^1].CreatedUtc.Ticks : (long?)null
         });
