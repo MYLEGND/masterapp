@@ -33,6 +33,9 @@
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
   const studioIsolationMode = editorMode || materializeMode;
+  // Capture the signed Studio authorization into non-visible history state and
+  // remove it from the document URL before browser-tool discovery evaluates the page.
+  if(editorMode) concealEditorTicketFromDocumentUrl();
   if (studioIsolationMode) {
     window.LEGEND_WEBSITE_STUDIO_MODE = true;
     // Block production form mutations from the browser while Studio is active.
