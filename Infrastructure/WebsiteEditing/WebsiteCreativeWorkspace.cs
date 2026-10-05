@@ -1932,9 +1932,10 @@ public static class WebsiteDesignPlanContract
             "choose one approved primary capability",
             "define page purpose and section narrative",
             "resolve page/section recipes or freeform nodes",
-            "apply one or two mutation batches",
-            "run responsive/design/conversion quality",
-            "repair only deficient scopes"
+            "apply one whole-site design plan batch",
+            "use scoped mutations only for targeted refinement",
+            "run one combined responsive/design/conversion preflight",
+            "repair only deficient scopes and re-run preflight"
         },
         fields = new
         {
