@@ -1235,6 +1235,7 @@ public static class WebsiteRecipeCatalog
 public sealed class WebsiteDesignPlan
 {
     public string? ArtDirection { get; set; }
+    public string? PrimaryCapabilityKey { get; set; }
     public WebsiteDesignTheme? Theme { get; set; }
     public bool ReplaceBusinessPages { get; set; }
     public List<WebsiteDesignPlanPage> Pages { get; set; } = [];
@@ -1244,6 +1245,7 @@ public sealed class WebsiteDesignPlanPage
 {
     public string Path { get; set; } = "/";
     public string? Recipe { get; set; }
+    public string? PrimaryCapabilityKey { get; set; }
     public string? Title { get; set; }
     public string? Description { get; set; }
     public string? NavigationLabel { get; set; }
@@ -1297,7 +1299,10 @@ public static class WebsitePageRecipeCatalog
             ["hero.split","proof.stats","feature.split","process.steps","testimonials","cta.closing"])
     ];
 
-    public static IReadOnlyList<WebsiteDesignPlanSection> Build(string key, string pageKey)
+    public static IReadOnlyList<WebsiteDesignPlanSection> Build(
+        string key,
+        string pageKey,
+        string? primaryCapabilityKey = null)
     {
         var definition = Definitions.SingleOrDefault(value => value.Key == key)
             ?? throw new ArgumentException($"Unknown website page recipe '{key}'.");
@@ -1305,10 +1310,14 @@ public static class WebsitePageRecipeCatalog
         for (var index = 0; index < definition.SectionRecipes.Count; index++)
         {
             var recipe = definition.SectionRecipes[index];
+            var capability = recipe == "contact.inquiry"
+                ? primaryCapabilityKey == "contact.inquiry.submit" ? primaryCapabilityKey : "contact.inquiry.submit"
+                : (index == 0 || index == definition.SectionRecipes.Count - 1) ? primaryCapabilityKey : null;
             result.Add(new WebsiteDesignPlanSection
             {
                 Recipe = recipe,
                 Key = $"{pageKey}.{recipe.Replace('.', '-')}.{index + 1}",
+                CapabilityKey = capability,
                 Content = new Dictionary<string, string>(StringComparer.Ordinal)
             });
         }
@@ -1463,17 +1472,26 @@ public static class WebsiteDesignPlanResolver
                 }
             }
 
+            var primaryCapability = pagePlan.PrimaryCapabilityKey ?? plan.PrimaryCapabilityKey;
+            if (!string.IsNullOrWhiteSpace(primaryCapability))
+                WebsiteCreativeCapabilityResolver.Require(capabilities, primaryCapability);
+
             IReadOnlyList<WebsiteDesignPlanSection> plannedSections =
                 (pagePlan.Sections?.Count ?? 0) > 0
                     ? pagePlan.Sections
                     : !string.IsNullOrWhiteSpace(pagePlan.Recipe)
                         ? WebsitePageRecipeCatalog.Build(
                             pagePlan.Recipe,
-                            path == "/" ? "home" : string.Join('.', path.Split('/', StringSplitOptions.RemoveEmptyEntries)))
+                            path == "/" ? "home" : string.Join('.', path.Split('/', StringSplitOptions.RemoveEmptyEntries)),
+                            primaryCapability)
                         : Array.Empty<WebsiteDesignPlanSection>();
             var sectionIndex = 0;
             foreach (var section in plannedSections)
             {
+                if (!string.IsNullOrWhiteSpace(section.CapabilityKey) &&
+                    !string.IsNullOrWhiteSpace(section.CapabilityNodeId))
+                    throw new ArgumentException("A design section may reference either one approved capability or one existing protected capability node, not both.");
+
                 var id = string.IsNullOrWhiteSpace(section.Key)
                     ? StableSectionId(path, section.Recipe, ++sectionIndex)
                     : section.Key!;
