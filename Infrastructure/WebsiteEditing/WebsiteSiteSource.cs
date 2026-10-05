@@ -95,8 +95,11 @@ public static class WebsiteSiteSource
         TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
+    private static readonly System.Reflection.PropertyInfo[] VisualStyleProperties =
+        typeof(WebsiteVisualStyle).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
     private static bool IsDefaultStyle(WebsiteVisualStyle style) =>
-        WebsiteCreativeFingerprint.For(style) == WebsiteCreativeFingerprint.For(new WebsiteVisualStyle());
+        VisualStyleProperties.All(property => property.GetValue(style) is null);
 
     private static bool IsDefaultLayout(WebsiteCompositionLayout layout) =>
         string.Equals(layout.Mode, "free", StringComparison.Ordinal) &&
