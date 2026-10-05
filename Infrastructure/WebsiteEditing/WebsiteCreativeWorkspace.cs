@@ -1716,17 +1716,26 @@ public static class WebsiteRecipeCatalog
 
     private static WebsiteCompositionNode Hero(string id, IReadOnlyDictionary<string,string> c, Guid? media, bool split)
     {
-        var children = new List<WebsiteCompositionNode>
-        {
+        var copy = Container(id+".copy","legend-recipe-hero-copy",
+        [
             Text(id+".eyebrow","text","p",Get(c,"eyebrow","Built for what comes next"),"legend-recipe-eyebrow"),
             Text(id+".headline","heading","h1",Get(c,"headline","A sharper way forward."),"legend-recipe-display"),
             Text(id+".body","text","p",Get(c,"body","Clear value, confident presentation, and one obvious next step."),"legend-recipe-lead"),
             Slot(id+".capability")
-        };
+        ], new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=20, AlignItems="start" });
+
+        var children = new List<WebsiteCompositionNode> { copy };
         if (media.HasValue)
             children.Add(new WebsiteCompositionNode { Id=id+".media", Type="image", Tag="img", MediaAssetId=media, Alt=Get(c,"alt",""), ClassName="legend-recipe-hero-media" });
-        return Section(id, split ? "legend-recipe-hero legend-recipe-hero-split" : "legend-recipe-hero legend-recipe-hero-cinematic", children,
-            split ? new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=48, AlignItems="center" } : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=20, AlignItems="start" });
+
+        var useSplit = split && media.HasValue;
+        return Section(
+            id,
+            useSplit ? "legend-recipe-hero legend-recipe-hero-split" : "legend-recipe-hero legend-recipe-hero-cinematic",
+            children,
+            useSplit
+                ? new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=48, AlignItems="center" }
+                : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=24, AlignItems="start" });
     }
 
     private static WebsiteCompositionNode Stats(string id, IReadOnlyDictionary<string,string> c) =>
@@ -1780,7 +1789,13 @@ public static class WebsiteRecipeCatalog
         };
         if (media.HasValue)
             children.Add(new WebsiteCompositionNode { Id=id+".media",Type="image",Tag="img",MediaAssetId=media,Alt=Get(c,"alt",""),ClassName="legend-recipe-feature-media" });
-        return Section(id,"legend-recipe-section legend-recipe-feature-split",children,new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=44, AlignItems="center" });
+        return Section(
+            id,
+            media.HasValue ? "legend-recipe-section legend-recipe-feature-split" : "legend-recipe-section legend-recipe-feature",
+            children,
+            media.HasValue
+                ? new WebsiteCompositionLayout { Mode="grid", Columns=2, GapPx=44, AlignItems="center" }
+                : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=20, AlignItems="start" });
     }
 
     private static WebsiteCompositionNode Steps(string id, IReadOnlyDictionary<string,string> c) =>
@@ -1794,16 +1809,23 @@ public static class WebsiteRecipeCatalog
             ],new WebsiteCompositionLayout { Mode="grid", Columns=3, GapPx=18 })
         ]);
 
-    private static WebsiteCompositionNode Testimonials(string id, IReadOnlyDictionary<string,string> c) =>
-        Section(id,"legend-recipe-section legend-recipe-testimonials",
+    private static WebsiteCompositionNode Testimonials(string id, IReadOnlyDictionary<string,string> c)
+    {
+        var quotes = new[] { "quote1", "quote2", "quote3" }
+            .Select(key => c.TryGetValue(key, out var value) ? value?.Trim() : null)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select((value,index) => Quote(id+".quote"+(index+1), value!))
+            .ToArray();
+        if (quotes.Length == 0)
+            throw new ArgumentException("Testimonials require verified quote content; Website Studio will not invent social proof.");
+
+        return Section(id,"legend-recipe-section legend-recipe-testimonials",
         [
-            Text(id+".headline","heading","h2",Get(c,"headline","Trusted when it matters."),"legend-recipe-heading"),
-            Container(id+".quotes","legend-recipe-card-grid",[
-                Quote(id+".quote1",Get(c,"quote1","“Clear, responsive, and easy to work with.”")),
-                Quote(id+".quote2",Get(c,"quote2","“A noticeably better experience from start to finish.”")),
-                Quote(id+".quote3",Get(c,"quote3","“Professional, thoughtful, and focused on the right outcome.”"))
-            ],new WebsiteCompositionLayout { Mode="grid", Columns=3, GapPx=18 })
+            Text(id+".headline","heading","h2",Get(c,"headline","What clients say"),"legend-recipe-heading"),
+            Container(id+".quotes","legend-recipe-card-grid",quotes,
+                new WebsiteCompositionLayout { Mode="grid", Columns=Math.Min(3, quotes.Length), GapPx=18 })
         ]);
+    }
 
     private static WebsiteCompositionNode Faq(string id, IReadOnlyDictionary<string,string> c) =>
         Section(id,"legend-recipe-section legend-recipe-faq",
@@ -1982,27 +2004,27 @@ public static class WebsitePageRecipeCatalog
     public static readonly IReadOnlyList<WebsitePageRecipeDefinition> Definitions =
     [
         new("home", "Home", "Primary brand, trust, offer, proof, and conversion narrative.",
-            ["hero.cinematic","proof.stats","services.grid","feature.split","testimonials","cta.closing"]),
+            ["hero.cinematic","proof.stats","services.grid","feature.split","cta.closing"]),
         new("services", "Services", "Clarify the service architecture, differentiators, process, proof, and next step.",
-            ["hero.split","services.grid","comparison","process.steps","testimonials","cta.closing"]),
+            ["hero.split","services.grid","comparison","process.steps","cta.closing"]),
         new("service-detail", "Service detail", "Focus one offer with benefits, proof, process, objections, and conversion.",
             ["hero.split","feature.split","proof.stats","process.steps","faq","cta.closing"]),
         new("about", "About", "Build authority and affinity through story, principles, proof, and a confident next step.",
-            ["hero.split","feature.split","proof.stats","testimonials","cta.closing"]),
+            ["hero.split","feature.split","proof.stats","cta.closing"]),
         new("contact", "Contact", "Establish trust and expectations before the canonical inquiry conversion.",
             ["hero.split","proof.stats","contact.inquiry"]),
         new("landing", "Lead landing", "Paid-traffic message match with concentrated proof and minimal competing choices.",
-            ["hero.cinematic","proof.stats","feature.split","testimonials","faq","contact.inquiry"]),
+            ["hero.cinematic","proof.stats","feature.split","faq","contact.inquiry"]),
         new("offer", "Offer", "Present one focused offer, value comparison, proof, objections, and decisive conversion.",
-            ["hero.cinematic","proof.stats","comparison","testimonials","faq","cta.closing"]),
+            ["hero.cinematic","proof.stats","comparison","faq","cta.closing"]),
         new("faq", "FAQ", "Resolve objections with a concise opening, focused answers, and closing conversion.",
             ["hero.split","faq","cta.closing"]),
         new("team", "Team", "Introduce people and trust signals without losing the business conversion path.",
             ["hero.split","proof.stats","features.bento","cta.closing"]),
         new("gallery", "Gallery / portfolio", "Lead with visual proof, context, credibility, and a clear next action.",
-            ["hero.split","features.bento","proof.stats","testimonials","cta.closing"]),
+            ["hero.split","features.bento","proof.stats","cta.closing"]),
         new("case-study", "Case study", "Tell a problem-to-result story with evidence and a relevant conversion close.",
-            ["hero.split","proof.stats","feature.split","process.steps","testimonials","cta.closing"])
+            ["hero.split","proof.stats","feature.split","process.steps","cta.closing"])
     ];
 
     public static IReadOnlyList<WebsiteDesignPlanSection> Build(
