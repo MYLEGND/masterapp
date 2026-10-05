@@ -443,6 +443,23 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task MediaMetadata_UsesVerifiedBytesForIntrinsicDimensions()
+    {
+        var png = new byte[24];
+        png[0] = 0x89; png[1] = 0x50; png[2] = 0x4e; png[3] = 0x47;
+        png[16] = 0x00; png[17] = 0x00; png[18] = 0x07; png[19] = 0x80; // 1920
+        png[20] = 0x00; png[21] = 0x00; png[22] = 0x04; png[23] = 0x38; // 1080
+
+        await using var stream = new System.IO.MemoryStream(png, writable: false);
+        var metadata = await WebsiteMediaVisualMetadataInspector.InspectAsync(stream, "image/png");
+
+        Assert.Equal(1920, metadata.WidthPx);
+        Assert.Equal(1080, metadata.HeightPx);
+        Assert.Equal("landscape", metadata.Orientation);
+        Assert.Equal(1.7778m, metadata.AspectRatio);
+    }
+
+    [Fact]
     public void DesignQuality_FindsPlaceholderCopy_AndReportsConversionPath()
     {
         var document = Baseline();
