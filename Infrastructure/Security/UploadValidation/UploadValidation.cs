@@ -129,6 +129,37 @@ public static class UploadValidator
             .Select(pair => pair.Value.ContentType == "video/quicktime" ? "video/mp4" : pair.Value.ContentType)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly IReadOnlyDictionary<string, string> CanonicalAttachmentTypes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".pdf"] = "application/pdf",
+            [".txt"] = "text/plain",
+            [".doc"] = "application/msword",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".xls"] = "application/vnd.ms-excel",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            [".mp3"] = "audio/mpeg",
+            [".m4a"] = "audio/mp4",
+            [".aac"] = "audio/aac",
+            [".wav"] = "audio/wav"
+        };
+
+    public static bool TryResolveAttachmentContentType(string? fileName, out string contentType)
+    {
+        if (TryResolveVisualMediaType(fileName, out _, out contentType))
+            return true;
+
+        var extension = Path.GetExtension(SanitizeFileName(fileName)).ToLowerInvariant();
+        if (CanonicalAttachmentTypes.TryGetValue(extension, out var resolved))
+        {
+            contentType = resolved;
+            return true;
+        }
+
+        contentType = string.Empty;
+        return false;
+    }
+
     // Extensions that must never be accepted regardless of policy (executable or
     // browser-scriptable content that could enable stored-XSS / RCE if served).
     private static readonly HashSet<string> DangerousExtensions =
