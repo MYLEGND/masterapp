@@ -2105,6 +2105,7 @@ public static class WebsiteDesignPlanResolver
         foreach (var pagePlan in plan.Pages ?? [])
         {
             var path = NormalizePath(pagePlan.Path);
+            var deferredRootRemovals = new List<string>();
             var exists = baseline.Pages.TryGetValue(path, out var existing);
             if (!exists)
             {
@@ -2145,8 +2146,30 @@ public static class WebsiteDesignPlanResolver
 
                 if (pagePlan.ReplaceFreeComposition)
                 {
-                    foreach (var root in existing!.Composition.Where(root => !ContainsProtected(root)).ToArray())
-                        operations.Add(new WebsiteMutationOperation { Type="removeNode", NodeId=root.Id });
+                    var plannedCapabilityNodeIds = (pagePlan.Sections ?? [])
+                        .Where(section => !string.IsNullOrWhiteSpace(section.CapabilityNodeId))
+                        .Select(section => section.CapabilityNodeId!)
+                        .ToArray();
+                    if (plannedCapabilityNodeIds.Length != plannedCapabilityNodeIds.Distinct(StringComparer.Ordinal).Count())
+                        throw new ArgumentException($"Page '{path}' references the same protected capability node more than once.");
+
+                    foreach (var root in existing!.Composition.ToArray())
+                    {
+                        var protectedIds = CollectProtectedNodeIds(root).ToArray();
+                        if (protectedIds.Length == 0)
+                        {
+                            operations.Add(new WebsiteMutationOperation { Type="removeNode", NodeId=root.Id });
+                            continue;
+                        }
+
+                        // A wrapper whose only protected descendants are explicitly
+                        // being moved into the new design becomes removable after
+                        // those move operations complete. Directly protected roots,
+                        // or roots carrying any unplanned protected authority, stay.
+                        if (!HasDirectProtectedSemantics(root) &&
+                            protectedIds.All(id => plannedCapabilityNodeIds.Contains(id, StringComparer.Ordinal)))
+                            deferredRootRemovals.Add(root.Id);
+                    }
                 }
             }
 
@@ -2170,8 +2193,9 @@ public static class WebsiteDesignPlanResolver
                     !string.IsNullOrWhiteSpace(section.CapabilityNodeId))
                     throw new ArgumentException("A design section may reference either one approved capability or one existing protected capability node, not both.");
 
+                sectionIndex++;
                 var id = string.IsNullOrWhiteSpace(section.Key)
-                    ? StableSectionId(path, section.Recipe, ++sectionIndex)
+                    ? StableSectionId(path, section.Recipe, sectionIndex)
                     : section.Key!;
                 operations.Add(new WebsiteMutationOperation
                 {
@@ -2192,6 +2216,9 @@ public static class WebsiteDesignPlanResolver
                     });
                 }
             }
+
+            foreach (var rootId in deferredRootRemovals)
+                operations.Add(new WebsiteMutationOperation { Type="removeNode", NodeId=rootId });
         }
 
         return operations;
@@ -2211,9 +2238,18 @@ public static class WebsiteDesignPlanResolver
         return merged;
     }
 
-    private static bool ContainsProtected(WebsiteCompositionNode node) =>
+    private static bool HasDirectProtectedSemantics(WebsiteCompositionNode node) =>
         node.Type=="form" || !string.IsNullOrWhiteSpace(node.SystemKey) || !string.IsNullOrWhiteSpace(node.SystemBinding) ||
-        node.Signals.Count>0 || node.FieldSignals.Values.Any(value=>value.Count>0) || node.Children.Any(ContainsProtected);
+        node.Signals.Count>0 || node.FieldSignals.Values.Any(value=>value.Count>0);
+
+    private static IEnumerable<string> CollectProtectedNodeIds(WebsiteCompositionNode node)
+    {
+        if (HasDirectProtectedSemantics(node))
+            yield return node.Id;
+        foreach (var child in node.Children)
+            foreach (var id in CollectProtectedNodeIds(child))
+                yield return id;
+    }
 
     private static string StableSectionId(string path,string recipe,int index)
     {
