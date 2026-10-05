@@ -2598,7 +2598,7 @@ public class WebsitePlatformController : ControllerBase
             var mediaService = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
             var images = assets.Where(asset =>
                 asset.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)).ToArray();
-            const gate = new SemaphoreSlim(4, 4);
+            var gate = new SemaphoreSlim(4, 4);
             try
             {
                 var inspections = images.Select(async asset =>
