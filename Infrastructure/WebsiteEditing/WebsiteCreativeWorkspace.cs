@@ -726,6 +726,8 @@ public static class WebsiteDocumentMutationService
                 Style = new WebsiteVisualStyle { WidthPercent = 100 },
                 Layout = new WebsiteCompositionLayout { Mode = "stack", Direction = "column", GapPx = 14 }
             };
+            if (operation.Node is not null)
+                node = MergeAuthorable(node, operation.Node, actions);
             var siblings = WebsiteDocumentIndex.ResolveChildren(
                 document,
                 operation.Scope ?? "page",
@@ -855,6 +857,8 @@ public static class WebsiteDocumentMutationService
                 !string.Equals(proposed.Experience.SubmitCapability, current.Experience?.SubmitCapability, StringComparison.Ordinal))
                 throw new WebsiteSiteSourceProtectionException("Native experience submission capabilities must be selected through the canonical capability authority.");
             next.Experience = proposed.Experience;
+            if (next.Experience is not null && current.Experience?.SubmitCapability is not null)
+                next.Experience.SubmitCapability = current.Experience.SubmitCapability;
             next.SyncSourceId = proposed.SyncSourceId;
             next.Href = proposed.Href;
             next.Target = proposed.Target;
