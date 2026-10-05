@@ -89,26 +89,37 @@ public sealed class WebsiteContentEditorRoundTripTests
         using var fixture = new Fixture(siteKey);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument("Black variation");
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 0);
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0, null, "Black")));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 0, [], null, "Black")));
+        fixture.Db.ChangeTracker.Clear();
         var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         var draft = Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
         Assert.Null(state.PublishedVersionId);
 
-        Node(document).Text = "Second variation";
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 1, null, "Second")));
+        var current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var second = ReplaceNodeOperation(current, node => node.Text = "Second variation");
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 1, [second], null, "Second")));
+        fixture.Db.ChangeTracker.Clear();
+        state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Equal(2, JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!.Count);
 
-        Assert.IsType<ConflictObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 1, draft.Id)));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 2, draft.Id)));
-        Assert.Equal("Black variation", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().LoadDraft(new(ticket, 1, draft.Id)));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().LoadDraft(new(ticket, 2, draft.Id)));
+        Assert.Equal("Black variation", Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Text);
 
-        Node(document).Text = "Updated black";
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 3, draft.Id, "Black")));
-        Assert.IsType<NotFoundResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, Guid.NewGuid())));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, draft.Id)));
+        current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var updated = ReplaceNodeOperation(current, node => node.Text = "Updated black");
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 3, [updated], draft.Id, "Black")));
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().DeleteDraft(new(ticket, 4, Guid.NewGuid())));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(new(ticket, 4, draft.Id)));
+        fixture.Db.ChangeTracker.Clear();
+        state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
-        Assert.Equal("Updated black", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
+        Assert.Equal("Updated black", Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Text);
         Assert.Null(state.PublishedVersionId);
     }
 
