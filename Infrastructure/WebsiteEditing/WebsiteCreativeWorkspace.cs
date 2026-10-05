@@ -586,12 +586,17 @@ public static class WebsiteCreativeProjection
             capabilities,
             quality = new
             {
-                structural = new { quality.ErrorCount, quality.WarningCount, quality.Checks },
+                structural = new
+                {
+                    quality.ErrorCount,
+                    quality.WarningCount,
+                    topChecks = quality.Checks.Take(10).ToArray()
+                },
                 design = new
                 {
                     designQuality.ErrorCount,
                     designQuality.WarningCount,
-                    designQuality.Checks,
+                    topChecks = designQuality.Checks.Take(10).ToArray(),
                     designQuality.ConversionPaths
                 }
             },
