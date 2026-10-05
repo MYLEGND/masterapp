@@ -138,7 +138,8 @@ class ReconciliationTests(unittest.TestCase):
         azure.observed_revision = lambda: 'b' * 40
         journal = SimpleNamespace(intent=None, history_error=RuntimeError('missing intent'))
         with patch.object(deploy, 'target_azure', return_value=azure):
-            deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
+            allowed = deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
+        self.assertTrue(allowed)
         self.assertEqual(0, azure.uploads)
 
     def test_history_gap_never_allows_replay_from_active_or_unknown_state(self):
@@ -157,6 +158,73 @@ class ReconciliationTests(unittest.TestCase):
                 with self.assertRaises(deploy.DeploymentReconciliationRequired):
                     deploy.preflight_target('website', Path('/immutable.zip'), 'a' * 40, 'b' * 40, journal)
             self.assertEqual(0, azure.uploads)
+
+    def test_authorized_history_gap_is_reproven_and_journaled_before_single_submit(self):
+        class Journal:
+            baseline = 'b' * 40
+            intent = None
+            history_error = RuntimeError('missing intent')
+            def __init__(self):
+                self.authorized = 0
+                self.before = 0
+                self.success = 0
+            def authorize_first_write_after_baseline_proof(self):
+                self.authorized += 1
+                self.history_error = None
+            def before_submit(self, baseline_ids):
+                self.before += 1
+                self.intent = {'baselineDeploymentIds': sorted(baseline_ids)}
+                return True
+            def record_success(self, deployment_ids):
+                self.success += 1
+
+        azure = FakeAzure(
+            [[row('old', 4)], [row('old', 4), row('new', 4)]],
+            [False])
+        azure.revision = 'a' * 40
+        observed = iter(['b' * 40, 'a' * 40, 'a' * 40])
+        azure.observed_revision = lambda: next(observed)
+        journal = Journal()
+        result = deploy.reconcile(
+            azure,
+            baseline='b' * 40,
+            journal=journal,
+            allow_history_gap_from_baseline=True,
+            clock=lambda: azure.now,
+            sleep=azure.sleep,
+            interval=1,
+            timeout=10,
+        )
+        self.assertEqual('deployed', result)
+        self.assertEqual(1, azure.uploads)
+        self.assertEqual(1, journal.authorized)
+        self.assertEqual(1, journal.before)
+        self.assertEqual(1, journal.success)
+
+    def test_history_gap_cannot_reach_submit_without_explicit_plan_authorization(self):
+        class Journal:
+            baseline = 'b' * 40
+            intent = None
+            history_error = RuntimeError('missing intent')
+            def authorize_first_write_after_baseline_proof(self):
+                raise AssertionError('must not authorize')
+            def before_submit(self, baseline_ids):
+                raise self.history_error
+
+        azure = FakeAzure([[row('old', 4)]], [False])
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'b' * 40
+        with self.assertRaises(deploy.DeploymentReconciliationRequired):
+            deploy.reconcile(
+                azure,
+                baseline='b' * 40,
+                journal=Journal(),
+                clock=lambda: azure.now,
+                sleep=azure.sleep,
+                interval=1,
+                timeout=3,
+            )
+        self.assertEqual(0, azure.uploads)
 
     def test_live_revision_alone_cannot_override_active_deployment(self):
         azure = FakeAzure([[row('still-running', 2)]], [True])
@@ -429,6 +497,40 @@ class PreparedTransactionTests(unittest.TestCase):
         with patch.object(deploy, 'verify_package', return_value='c' * 64), patch.object(deploy, 'deploy_one') as publish:
             deploy.publish_prepared_target(plan['targets'][0]['app'], 'a' * 40, Path('/packages'), plan, reconcile_only=True)
         self.assertTrue(publish.call_args.kwargs['reconcile_only'])
+
+    def test_prepared_target_carries_only_explicit_history_recovery_marker(self):
+        plan = self.plan(['website'])
+        plan['targets'][0]['historyRecovery'] = True
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'deploy_one') as publish:
+            deploy.publish_prepared_target('website', 'a' * 40, Path('/packages'), plan)
+        self.assertTrue(publish.call_args.kwargs['allow_history_gap_from_baseline'])
+
+        plan['targets'][0]['historyRecovery'] = 'true'
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'deploy_one') as publish:
+            with self.assertRaisesRegex(ValueError, 'marker is malformed'):
+                deploy.publish_prepared_target('website', 'a' * 40, Path('/packages'), plan)
+        publish.assert_not_called()
+
+    def test_reused_transaction_plan_refreshes_history_recovery_from_current_preflight(self):
+        prior = self.plan(['portal', 'website'])
+        for row in prior['targets']:
+            row['rollbackEvidence'] = {'artifact': 'rollback', 'runId': 17, 'revision': 'b' * 40, 'packageDigest': 'd' * 64}
+        env = {'GITHUB_ACTIONS': 'true', 'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
+               'GITHUB_RUN_ID': '22', 'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_TOKEN': 'test-token'}
+        names = [deploy.TARGETS[row['app']]['releaseName'] for row in prior['targets']]
+        observed = json.dumps([{'app': row['app'], 'revision': 'b' * 40} for row in prior['targets']])
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, env), \
+             patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'release_transaction_plan_history', return_value=prior), \
+             patch.object(deploy, 'operation_journal', return_value=None), \
+             patch.object(deploy, 'retained_rollback_package', return_value=prior['targets'][0]['rollbackEvidence']), \
+             patch.object(deploy, 'preflight_target', side_effect=[False, True]):
+            plan = deploy.prepare_transaction(
+                names, observed, Path('/packages'), Path('/rollback'), 'a' * 40, Path(folder) / 'plan.json')
+        recovery = {row['app']: row['historyRecovery'] for row in plan['targets']}
+        self.assertEqual({'portal': False, 'website': True}, recovery)
 
     def test_prepare_restores_original_untouched_target_baseline_and_rollback_reference(self):
         prior = self.plan(['portal', 'client'])
