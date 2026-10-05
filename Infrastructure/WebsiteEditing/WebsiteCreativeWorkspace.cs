@@ -376,7 +376,10 @@ public static class WebsiteDocumentMutationService
         var changed = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var operation in operations ?? [])
+        {
+            if (operation is null) throw new ArgumentException("Website mutation entries cannot be null.");
             ApplyOne(document, siteKey, actions, capabilities, operation, changed);
+        }
 
         var proposed = Clone(document);
         document = WebsiteContentSanitizer.Sanitize(document);
@@ -888,8 +891,8 @@ public static class WebsiteDocumentMutationService
             }
         }
 
-        if (proposed.Children.Count > 0 || current.Children.Count == 0)
-            next.Children = PrepareReplacementChildren(current.Children, proposed.Children, actions);
+        if ((proposed.Children?.Count ?? 0) > 0 || (current.Children?.Count ?? 0) == 0)
+            next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions);
 
         next.Id = current.Id;
         next.SystemKey = current.SystemKey;
@@ -942,8 +945,11 @@ public static class WebsiteDocumentMutationService
     {
         var node = Clone(source);
         if (string.IsNullOrWhiteSpace(node.Id)) node.Id = FreshId("node");
+        node.Signals ??= [];
+        node.FieldSignals ??= new(StringComparer.Ordinal);
+        node.Children ??= [];
         if (node.Type == "form" || !string.IsNullOrWhiteSpace(node.SystemKey) || !string.IsNullOrWhiteSpace(node.SystemBinding) ||
-            node.Signals.Count > 0 || node.FieldSignals.Values.Any(value => value.Count > 0) ||
+            node.Signals.Count > 0 || node.FieldSignals.Values.Any(value => value?.Count > 0) ||
             node.Experience?.SubmitCapability is not null)
             throw new WebsiteSiteSourceProtectionException("Protected capabilities must be inserted through the server capability authority, not as free nodes.");
 
@@ -955,7 +961,7 @@ public static class WebsiteDocumentMutationService
             node.Target = action.OpenInNewTab ? "_blank" : "_self";
         }
 
-        node.Children = PrepareNewNodes(node.Children, actions);
+        node.Children = PrepareNewNodes(node.Children ?? [], actions);
         return node;
     }
 
@@ -963,11 +969,11 @@ public static class WebsiteDocumentMutationService
         node.Type == "form" ||
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
-        node.Signals.Count > 0 ||
-        node.FieldSignals.Values.Any(value => value.Count > 0);
+        (node.Signals?.Count ?? 0) > 0 ||
+        (node.FieldSignals?.Values.Any(value => value?.Count > 0) ?? false);
 
     private static bool ContainsProtectedSemantics(WebsiteCompositionNode node) =>
-        HasProtectedSemantics(node) || node.Children.Any(ContainsProtectedSemantics);
+        HasProtectedSemantics(node) || (node.Children?.Any(ContainsProtectedSemantics) ?? false);
 
     private static void VerifyFingerprint(string? expected, string actual, string kind, string id)
     {
@@ -1287,7 +1293,7 @@ public static class WebsiteDesignPlanResolver
 
         if (plan.ReplaceBusinessPages && siteKey == WebsiteEditorSiteKeys.Business)
         {
-            var planned = plan.Pages
+            var planned = (plan.Pages ?? [])
                 .Select(value => NormalizePath(value.Path))
                 .ToHashSet(StringComparer.Ordinal);
             foreach (var (path, page) in baseline.Pages)
@@ -1302,7 +1308,7 @@ public static class WebsiteDesignPlanResolver
         if (preset is not null || plan.Theme is not null)
             operations.Add(new WebsiteMutationOperation { Type="setTheme", Theme=MergeTheme(preset, plan.Theme) });
 
-        foreach (var pagePlan in plan.Pages)
+        foreach (var pagePlan in plan.Pages ?? [])
         {
             var path = NormalizePath(pagePlan.Path);
             var exists = baseline.Pages.TryGetValue(path, out var existing);
@@ -1351,7 +1357,7 @@ public static class WebsiteDesignPlanResolver
             }
 
             var sectionIndex = 0;
-            foreach (var section in pagePlan.Sections)
+            foreach (var section in pagePlan.Sections ?? [])
             {
                 var id = string.IsNullOrWhiteSpace(section.Key)
                     ? StableSectionId(path, section.Recipe, ++sectionIndex)
@@ -1359,7 +1365,7 @@ public static class WebsiteDesignPlanResolver
                 operations.Add(new WebsiteMutationOperation
                 {
                     Type="insertRecipe", Scope="page", PagePath=path, Index=sectionIndex-1,
-                    RecipeKey=section.Recipe, InstanceKey=id, Content=section.Content,
+                    RecipeKey=section.Recipe, InstanceKey=id, Content=section.Content ?? new Dictionary<string,string>(StringComparer.Ordinal),
                     MediaAssetId=section.MediaAssetId, CapabilityKey=section.CapabilityKey
                 });
 
