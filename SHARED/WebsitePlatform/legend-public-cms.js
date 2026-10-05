@@ -348,17 +348,6 @@
       page.systemTemplateKey.startsWith('protect_template:');
   }
 
-  function containsProtectedRuntimeForm(nodes) {
-    let found=false;
-    walkComposition(nodes,node=>{
-      if(String(node?.systemKey || '').startsWith('protect_runtime_form:')) {
-        found=true;
-        return false;
-      }
-    });
-    return found;
-  }
-
   function applyTemplateBackedCompositionPage() {
     const page=pageState();
     const mounted=new Map();
@@ -391,10 +380,6 @@
       }
     };
     reconcile(page.composition,document.querySelector('main'));
-  }
-
-  function usesCanonicalComposition() {
-    return legacyMigration == null;
   }
 
   function walkComposition(nodes, visit, parent = null) {
@@ -586,10 +571,6 @@
       ? (model.fieldSignals?.[fieldKey] || [])
       : (model.signals || []);
     return {elementId,fieldKey,model,bindings};
-  }
-
-  function selectedSignalElementId() {
-    return selectedSignalContext()?.elementId || null;
   }
 
   function compositionNodeOnPage(pagePath,id) {
@@ -6222,15 +6203,6 @@
     return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
-  function sourceFindNodeInDocument(sourceDocument,id) {
-    if(!sourceDocument || !id) return null;
-    return sourceFindNode(sourceDocument.shell?.header,id) ||
-      sourceFindNode(sourceDocument.shell?.footer,id) ||
-      (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
-      Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
-      null;
-  }
-
   function syncSelectedSourcePresentationFromCanvas() {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
@@ -6948,10 +6920,6 @@
     }
 
     return checks;
-  }
-
-  function liveQualityChecks() {
-    return liveQualityChecksForDocument(document,responsiveViewportWidth(),{includeAnimation:true});
   }
 
   function representativeBreakpointWidth(breakpoint) {
