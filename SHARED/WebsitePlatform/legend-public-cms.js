@@ -27,7 +27,9 @@
     || 'home';
 
   const historyEditorTicket =
-    typeof history.state?.legendStudioTicket === 'string' ? history.state.legendStudioTicket : '';
+    typeof history !== 'undefined' && typeof history.state?.legendStudioTicket === 'string'
+      ? history.state.legendStudioTicket
+      : '';
   const editorTicket = params.get('legendEdit') || historyEditorTicket;
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
@@ -179,7 +181,8 @@
   }
 
   function defaultNavigationLabel(route,title) {
-    if(typeof title==='string' && title.trim()) return title.trim().slice(0,120);
+    const cleanTitle=cleanBusinessPreviewTitle(title);
+    if(typeof cleanTitle==='string' && cleanTitle.trim()) return cleanTitle.trim().slice(0,120);
     if(route==='/') return 'Home';
     const segment=String(route||'/').split('/').filter(Boolean).pop() || 'Page';
     let value=segment;
@@ -824,7 +827,8 @@
     if(!signalCatalog.runtimeEnabled)
       paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
 
-    const managedActionKey=selected.dataset.websiteActionKey;
+    const selectedModel=selectedWebsiteModel(false);
+    const managedActionKey=selected.dataset.websiteActionKey || selectedModel?.actionKey || '';
     const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
     if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
       const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
@@ -7909,7 +7913,7 @@
     });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreCanonicalV3History(undoStack, redoStack));
-    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack));
+    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack, 'redo'));
     installDirectCanvasControls(preview);
     showPanel('gpt');
   }
