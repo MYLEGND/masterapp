@@ -934,6 +934,28 @@ class ResourceAdmission(unittest.TestCase):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
         records.assert_not_called()
 
+    def test_later_exact_terminal_success_discharges_same_immutable_failed_lease(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            sourcePr=462,
+            authorizedSourceRevision='a' * 40,
+            applicationRevision='b' * 40,
+            selectedTargets=self.candidate['selectedTargets'],
+            resources=self.candidate['resources'],
+        )
+        later = dict(self.run, id=100, status='completed', conclusion='success')
+        later_record = dict(self.prior, admissionId='f' * 64)
+        self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
+
+        def records(_api, run):
+            return [later_record] if run['id'] == 100 else [self.prior]
+
+        with patch.object(m, '_admission_records', side_effect=records), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, 'successful_release', side_effect=lambda _api, run: run['id'] == 100):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
     def test_failed_parent_does_not_release_unsettled_resources(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior['resources'] = self.candidate['resources']
