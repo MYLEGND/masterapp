@@ -1,5 +1,7 @@
 # Website Studio North-Star GPT Creative Workspace — 2026-10-05
 
+**Status: active canonical Website Studio architecture for this repair branch.** This document is the engineering design authority for the creative workspace. It must be interpreted with the executable `Infrastructure/WebsiteEditing` contracts; no older audit, route proposal, compatibility writer, browser repair path, or page-specific workaround may override it.
+
 Working branch: `repair/canonical-mobile-public-nav-shell-20261005`
 
 This document defines the preferred end-state for Website Studio if the workspace is optimized specifically for an AI website designer that must maximize design quality, conversion effectiveness, speed, and freedom without ever being able to break protected backend event/form/tracking authority.
