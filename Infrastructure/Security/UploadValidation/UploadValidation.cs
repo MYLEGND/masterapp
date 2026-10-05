@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using Microsoft.AspNetCore.Http;
 
 namespace Infrastructure.Security.UploadValidation;
 
@@ -41,14 +43,25 @@ public sealed class UploadValidationPolicy
     /// <summary>When true, the actual bytes must match a recognized signature.</summary>
     public bool RequireKnownSignature { get; init; } = true;
 
-    /// <summary>Standard image policy (PNG/JPEG/WEBP) with a byte-signature requirement.</summary>
+    /// <summary>Standard browser/device image policy with a byte-signature requirement.</summary>
     public static UploadValidationPolicy Images(long maxSizeBytes) => new()
     {
         MaxSizeBytes = maxSizeBytes,
         AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".png", ".jpg", ".jpeg", ".webp" },
+            { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".avif" },
         AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "image/png", "image/jpeg", "image/jpg", "image/webp" },
+            { "image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif" },
+        RequireKnownSignature = true
+    };
+
+    /// <summary>Canonical image/video policy used by product, website, and other visual media ingress.</summary>
+    public static UploadValidationPolicy Media(long maxSizeBytes) => new()
+    {
+        MaxSizeBytes = maxSizeBytes,
+        AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".avif", ".mp4", ".m4v", ".mov", ".webm" },
+        AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif", "video/mp4", "video/webm" },
         RequireKnownSignature = true
     };
 
@@ -253,13 +266,44 @@ public static class UploadValidator
             content.AsSpan(4, Math.Min(content.Length - 4, 4096)).IndexOf(new byte[] { 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D }) >= 0)
             return "video/webm";
 
-        // MP4 / MOV / other ISO base media: bytes 4..8 == "ftyp"
+        // ISO base media: inspect brands before deciding whether ftyp is an
+        // image container (HEIC/HEIF/AVIF) or a video container (MP4/MOV/M4V).
         if (content.Length >= 12 &&
             content[4] == 0x66 && content[5] == 0x74 && content[6] == 0x79 && content[7] == 0x70)
+        {
+            var brandWindow = Math.Min(content.Length, 64);
+            var brands = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var offset = 8; offset + 4 <= brandWindow; offset += 4)
+                brands.Add(Encoding.ASCII.GetString(content, offset, 4));
+
+            if (brands.Overlaps(new[] { "avif", "avis" }))
+                return "image/avif";
+            if (brands.Overlaps(new[] { "heic", "heix", "hevc", "hevx" }))
+                return "image/heic";
+            if (brands.Overlaps(new[] { "heif", "mif1", "msf1" }))
+                return "image/heif";
+
             return "video/mp4";
+        }
 
         return null;
     }
+
+    public static string? CanonicalExtensionForContentType(string? contentType) =>
+        contentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" or "image/jpg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "image/heic" or "image/heic-sequence" => ".heic",
+            "image/heif" or "image/heif-sequence" => ".heif",
+            "image/avif" => ".avif",
+            "video/mp4" or "video/quicktime" or "video/x-m4v" => ".mp4",
+            "video/webm" => ".webm",
+            "application/pdf" => ".pdf",
+            _ => null
+        };
 
     private static bool ExtensionMatchesContentType(string extension, string detectedContentType)
     {
@@ -269,10 +313,59 @@ public static class UploadValidator
             "image/jpeg" => extension is ".jpg" or ".jpeg",
             "image/gif" => extension is ".gif",
             "image/webp" => extension is ".webp",
+            "image/heic" or "image/heif" => extension is ".heic" or ".heif",
+            "image/avif" => extension is ".avif",
             "application/pdf" => extension is ".pdf",
             "video/mp4" => extension is ".mp4" or ".m4v" or ".mov",
             "video/webm" => extension is ".webm",
             _ => true
         };
     }
+}
+
+/// <summary>
+/// One transport reader for every multipart upload endpoint. Actions call this
+/// before model binding so malformed or mislabeled media requests are handled by
+/// application code instead of escaping as framework-generated HTTP 415 responses.
+/// </summary>
+public static class MultipartUploadTransport
+{
+    public static async Task<MultipartUploadReadResult> ReadAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.HasFormContentType)
+        {
+            return MultipartUploadReadResult.Invalid(
+                "UPLOAD_MULTIPART_REQUIRED",
+                "Upload content must be sent as multipart form data.");
+        }
+
+        try
+        {
+            return MultipartUploadReadResult.Valid(
+                await request.ReadFormAsync(cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or IOException)
+        {
+            return MultipartUploadReadResult.Invalid(
+                "UPLOAD_MULTIPART_INVALID",
+                "The upload form could not be read.");
+        }
+    }
+}
+
+public sealed record MultipartUploadReadResult(
+    bool IsValid,
+    IFormCollection? Form,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public static MultipartUploadReadResult Valid(IFormCollection form) =>
+        new(true, form, null, null);
+
+    public static MultipartUploadReadResult Invalid(string errorCode, string errorMessage) =>
+        new(false, null, errorCode, errorMessage);
 }
