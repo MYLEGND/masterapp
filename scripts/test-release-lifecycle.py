@@ -950,11 +950,13 @@ class ResourceAdmission(unittest.TestCase):
 
     def test_later_successful_same_validated_pr_discharges_stale_historical_lease(self):
         source = 'a' * 40
+        authority_one = '1' * 40
+        authority_two = '2' * 40
         self.run.update(
             status='completed',
             conclusion='failure',
             id=98,
-            display_title=f'LEGEND release pr=462 candidate={source} authority={'1' * 40}',
+            display_title=f'LEGEND release pr=462 candidate={source} authority={authority_one}',
         )
         self.prior.update(
             authorizedSourceRevision=source,
@@ -965,7 +967,7 @@ class ResourceAdmission(unittest.TestCase):
             'id': 120,
             'status': 'completed',
             'conclusion': 'success',
-            'display_title': f'LEGEND release pr=462 candidate={source} authority={'2' * 40}',
+            'display_title': f'LEGEND release pr=462 candidate={source} authority={authority_two}',
         }
         self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
 
@@ -981,11 +983,13 @@ class ResourceAdmission(unittest.TestCase):
     def test_later_success_of_different_candidate_does_not_discharge_stale_lease(self):
         source = 'a' * 40
         other = 'd' * 40
+        authority_one = '1' * 40
+        authority_two = '2' * 40
         self.run.update(
             status='completed',
             conclusion='failure',
             id=98,
-            display_title=f'LEGEND release pr=462 candidate={source} authority={'1' * 40}',
+            display_title=f'LEGEND release pr=462 candidate={source} authority={authority_one}',
         )
         self.prior.update(
             authorizedSourceRevision=source,
@@ -996,7 +1000,7 @@ class ResourceAdmission(unittest.TestCase):
             'id': 120,
             'status': 'completed',
             'conclusion': 'success',
-            'display_title': f'LEGEND release pr=462 candidate={other} authority={'2' * 40}',
+            'display_title': f'LEGEND release pr=462 candidate={other} authority={authority_two}',
         }
         self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
 
