@@ -585,58 +585,80 @@
     return selectedSignalContext()?.elementId || null;
   }
 
+  function compositionNodeOnPage(pagePath,id) {
+    const route=normalizePageRoute(pagePath);
+    const page=route ? documentState.pages?.[route] : null;
+    let found=null;
+    walkComposition(page?.composition || [],node=>{
+      if(node.id!==id) return;
+      found=node;
+      return false;
+    });
+    return found;
+  }
+
+  function applySignalConfigurationDelta(payload) {
+    if(payload?.source!=='website_signal_configuration')
+      throw new Error('Signal update response was invalid.');
+    const target=compositionNodeOnPage(payload.pagePath,payload.elementId);
+    if(!target)
+      throw new Error('The updated Analytics target is no longer present in the canonical draft.');
+    target.signals=cloneCanonicalValue(payload.nodeSignals || []);
+    target.fieldSignals=cloneCanonicalValue(payload.fieldSignals || {});
+    revision=payload.revision ?? revision;
+    persistedDocumentState=cloneCanonicalValue(documentState);
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    dirty=false;
+    return payload;
+  }
+
+  async function updateSignalMappings({pagePath=currentPageRoute(),elementId,fieldKey=null,signals=[]}={}) {
+    if(!elementId) throw new Error('A canonical website element is required for Analytics mapping.');
+    await flushLocalCreativeEdits();
+    const payload=await creativeWorkspaceRequest('manage/signals',{
+      method:'POST',
+      body:{
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath,
+        elementId,
+        fieldKey,
+        signals:Array.isArray(signals)?signals:[]
+      }
+    });
+    return applySignalConfigurationDelta(payload);
+  }
+
   async function persistSelectedSignals(nextSignals) {
     const context=selectedSignalContext();
     if(!context) return false;
     const status=document.getElementById('legend-cms-status');
-
-    if(dirty){
-      if(status) status.textContent='Saving design changes before updating Analytics mapping…';
-      const saved=await save(false);
-      if(!saved || dirty) return false;
-    }
-
-    const response=await fetch(`${API_BASE}/api/website-content/manage/signals`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        ticket:editorTicket,
-        expectedRevision:revision,
+    try{
+      await updateSignalMappings({
         pagePath:currentPageRoute(),
         elementId:context.elementId,
         fieldKey:context.fieldKey,
         signals:nextSignals
-      })
-    });
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok){
-      if((response.status===401 || response.status===403) &&
+      });
+
+      let refreshed=findEditableElement(context.elementId);
+      if(context.fieldKey && refreshed){
+        refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
+          .find(control=>formFieldKey(control)===context.fieldKey) || null;
+      }
+      if(refreshed) setSelected(refreshed);
+      else setSelected(null);
+      renderSignalControls();
+      if(status) status.textContent='Analytics mapping saved to the canonical draft.';
+      return true;
+    }catch(error){
+      if((error?.status===401 || error?.status===403) &&
           showEditorAuthorizationRecovery('Website Studio authorization expired while updating this Analytics mapping.'))
         return false;
-      if(status) status.textContent=payload.message || payload.error || `Signal update failed (${response.status}).`;
+      if(status) status.textContent=error?.payload?.message || error?.message || 'Signal update failed.';
       return false;
     }
-    if(payload.source!=='website_signal_configuration'){
-      if(status) status.textContent='Signal update response was invalid.';
-      return false;
-    }
-
-    documentState=normalizeDocument(payload.document || documentState);
-    revision=payload.revision ?? revision;
-    canonicalSourceDocument=null;
-    canonicalSourceRevision=null;
-    dirty=false;
-    applyDocument(documentState);
-
-    let refreshed=findEditableElement(context.elementId);
-    if(context.fieldKey && refreshed){
-      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
-        .find(control=>formFieldKey(control)===context.fieldKey) || null;
-    }
-    if(refreshed) setSelected(refreshed);
-    else setSelected(null);
-    if(status) status.textContent='Analytics mapping saved to the canonical draft.';
-    return true;
   }
 
   async function mutateSelectedSignals(bindingId, mutation) {
@@ -2932,6 +2954,14 @@
       listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
       getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
       getSignalCatalog:()=>creativeWorkspaceRequest('manage/signal-catalog'),
+      setSignalMappings:updateSignalMappings,
+      testSignalMapping:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
+        creativeWorkspaceRequest('manage/signals/test',{
+          method:'POST',
+          body:{ticket:editorTicket,expectedRevision:revision,pagePath,elementId,bindingId,fieldKey}
+        }),
+      getSignalHealth:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
+        creativeWorkspaceRequest('manage/signals/health',{query:{pagePath,elementId,bindingId,fieldKey}}),
       listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
       uploadMedia:async file=>{
         const asset=await uploadMedia(file);
