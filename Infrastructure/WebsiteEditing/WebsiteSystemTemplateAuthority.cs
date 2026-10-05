@@ -79,6 +79,7 @@ public static class WebsiteSystemTemplateAuthority
 
         var primarySeen = false;
         document.Shell.Header = CanonicalizeHeader(document.Shell?.Header ?? [], siteKey, ref primarySeen);
+        CanonicalizePlatformAttributionTree(document.Shell?.Footer);
     }
 
     private static List<WebsiteCompositionNode> CanonicalizeHeader(
@@ -135,6 +136,15 @@ public static class WebsiteSystemTemplateAuthority
         (value ?? string.Empty)
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
             .ToHashSet(StringComparer.Ordinal);
+
+    private static void CanonicalizePlatformAttributionTree(IEnumerable<WebsiteCompositionNode>? nodes)
+    {
+        foreach (var node in nodes ?? [])
+        {
+            CanonicalizePlatformAttribution(node);
+            CanonicalizePlatformAttributionTree(node.Children);
+        }
+    }
 
     private static void CanonicalizePlatformAttribution(WebsiteCompositionNode node)
     {
