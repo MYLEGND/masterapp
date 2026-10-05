@@ -172,9 +172,11 @@ internal sealed partial class LegendConnectModelInferenceTransport
                     return new(false, null, "cloudflare_tool_receipt_invalid", CostMicrounits: charged, InferenceSettings: observedUsage);
                 verifiedToolResults = toolResults.Clone();
             }
-            if (task.RequireToolCall && verifiedToolResults is not { } requiredToolResults ||
-                task.RequireToolCall && requiredToolResults.GetArrayLength() == 0)
-                return new(false, null, "cloudflare_required_tool_receipt_missing", CostMicrounits: charged, InferenceSettings: observedUsage);
+            if (task.RequireToolCall)
+            {
+                if (verifiedToolResults is not { } requiredToolResults || requiredToolResults.GetArrayLength() == 0)
+                    return new(false, null, "cloudflare_required_tool_receipt_missing", CostMicrounits: charged, InferenceSettings: observedUsage);
+            }
             var text = root.GetProperty("text").GetString();
             if (string.IsNullOrWhiteSpace(text)) return new(false, null, "cloudflare_empty_response", CostMicrounits: charged, InferenceSettings: observedUsage);
             var output = JsonSerializer.SerializeToElement(new { model = modelId, status = "completed",
