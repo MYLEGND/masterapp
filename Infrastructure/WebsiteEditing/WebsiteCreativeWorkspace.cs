@@ -1463,13 +1463,14 @@ public static class WebsiteDesignPlanResolver
                 }
             }
 
-            var plannedSections = (pagePlan.Sections?.Count ?? 0) > 0
-                ? pagePlan.Sections
-                : !string.IsNullOrWhiteSpace(pagePlan.Recipe)
-                    ? WebsitePageRecipeCatalog.Build(
-                        pagePlan.Recipe,
-                        path == "/" ? "home" : string.Join('.', path.Split('/', StringSplitOptions.RemoveEmptyEntries)))
-                    : [];
+            IReadOnlyList<WebsiteDesignPlanSection> plannedSections =
+                (pagePlan.Sections?.Count ?? 0) > 0
+                    ? pagePlan.Sections
+                    : !string.IsNullOrWhiteSpace(pagePlan.Recipe)
+                        ? WebsitePageRecipeCatalog.Build(
+                            pagePlan.Recipe,
+                            path == "/" ? "home" : string.Join('.', path.Split('/', StringSplitOptions.RemoveEmptyEntries)))
+                        : Array.Empty<WebsiteDesignPlanSection>();
             var sectionIndex = 0;
             foreach (var section in plannedSections)
             {
