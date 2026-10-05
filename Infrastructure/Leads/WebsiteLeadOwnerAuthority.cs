@@ -28,7 +28,9 @@ public static class WebsiteLeadOwnerAuthority
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(recipients);
 
-        var founderUpn = httpContext?.RequestServices.GetService<IConfiguration>()?["Founder:Upn"];
+        var founderUpn = httpContext?.RequestServices is { } services
+            ? services.GetService<IConfiguration>()?["Founder:Upn"]
+            : null;
         if (string.IsNullOrWhiteSpace(founderUpn) &&
             httpContext?.Items["TrackingProfile"] is Domain.Entities.AgentTrackingProfile profile &&
             httpContext.Items["IsFounderPath"] as bool? == true)
