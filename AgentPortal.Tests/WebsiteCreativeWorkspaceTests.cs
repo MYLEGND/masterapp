@@ -595,6 +595,19 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Equal("container", split.Children[0].Type);
         Assert.Equal(mediaId, split.Children[1].MediaAssetId);
 
+        var featureWithMedia = WebsiteRecipeCatalog.Build(
+            "feature.split",
+            "feature",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["headline"] = "Asymmetric by design."
+            },
+            mediaId);
+        Assert.Equal("free", featureWithMedia.Layout.Mode);
+        Assert.Null(featureWithMedia.Layout.Columns);
+        Assert.Contains("legend-recipe-feature-split", featureWithMedia.ClassName ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(2, featureWithMedia.Children.Count);
+
         var withoutMedia = WebsiteRecipeCatalog.Build(
             "hero.split",
             "hero-no-media",
