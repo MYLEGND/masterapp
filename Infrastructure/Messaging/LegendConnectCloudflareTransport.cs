@@ -70,10 +70,6 @@ internal sealed partial class LegendConnectModelInferenceTransport
             if ((task.AllowTools || task.RequireToolCall || hasTools) &&
                 (!_configuration.GetValue<bool>(prefix + "Cloudflare:ToolCallbackEnabled") || !task.AllowTools || !hasTools))
                 return new(false, null, "cloudflare_tool_callback_not_qualified");
-            // Mandatory evidence needs an application-verified execution receipt;
-            // exposing a tool is not proof that the required read occurred.
-            if (task.RequireToolCall)
-                return new(false, null, "cloudflare_required_tool_receipt_not_qualified");
             var messages = new List<object> { new { role = "system", content = task.Instructions } };
             if (task.ConversationInput is { } history)
             {
@@ -104,6 +100,7 @@ internal sealed partial class LegendConnectModelInferenceTransport
                     kind = "general",
                     messages,
                     tools = toolSchemas,
+                    requireToolCall = task.RequireToolCall,
                     requiredCapabilities = hasTools ? new[] { "text", "tools" } : new[] { "text" },
                     cognition = cognition is null ? null : new
                     {
@@ -168,6 +165,18 @@ internal sealed partial class LegendConnectModelInferenceTransport
                 return new(false, null, "cloudflare_provider_receipt_invalid", CostMicrounits: charged, InferenceSettings: observedUsage);
             if (usage.GetProperty("costEvidence").GetString() is not ("provider_usage" or "reserved_upper_bound"))
                 return new(false, null, "cloudflare_usage_unverified", CostMicrounits: charged, InferenceSettings: observedUsage);
+            JsonElement? verifiedToolResults = null;
+            if (root.TryGetProperty("toolResults", out var toolResults))
+            {
+                if (toolResults.ValueKind != JsonValueKind.Array)
+                    return new(false, null, "cloudflare_tool_receipt_invalid", CostMicrounits: charged, InferenceSettings: observedUsage);
+                verifiedToolResults = toolResults.Clone();
+            }
+            if (task.RequireToolCall)
+            {
+                if (verifiedToolResults is not { } requiredToolResults || requiredToolResults.GetArrayLength() == 0)
+                    return new(false, null, "cloudflare_required_tool_receipt_missing", CostMicrounits: charged, InferenceSettings: observedUsage);
+            }
             var text = root.GetProperty("text").GetString();
             if (string.IsNullOrWhiteSpace(text)) return new(false, null, "cloudflare_empty_response", CostMicrounits: charged, InferenceSettings: observedUsage);
             var output = JsonSerializer.SerializeToElement(new { model = modelId, status = "completed",
@@ -176,7 +185,7 @@ internal sealed partial class LegendConnectModelInferenceTransport
                 InferenceSettings: JsonSerializer.Serialize(new
                 {
                     usage = usage.Clone(),
-                    toolResults = root.TryGetProperty("toolResults", out var toolResults) ? toolResults.Clone() : (JsonElement?)null,
+                    toolResults = verifiedToolResults,
                     modelSettings = root.TryGetProperty("modelSettings", out var settings) ? settings.Clone() : (JsonElement?)null,
                     cognition = root.TryGetProperty("cognition", out var cognitionReceipt) ? cognitionReceipt.Clone() : (JsonElement?)null,
                     executionMode = root.TryGetProperty("executionMode", out var executionMode) ? executionMode.GetString() : null

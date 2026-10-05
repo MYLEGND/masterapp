@@ -40,6 +40,12 @@
     const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
     const modebar = document.getElementById('legendFounderAiModebar');
     const mobileControls = document.getElementById('legendFounderAiMobileControls');
+    const statusDetail = status?.querySelector('.legend-founder-ai-thinking-detail');
+    const settingsPanel = document.getElementById('legendFounderAiSettingsPanel');
+    const settingsBody = document.getElementById('legendFounderAiSettingsBody');
+    const settingsTitle = document.getElementById('legendFounderAiSettingsTitle');
+    const settingsClose = document.getElementById('legendFounderAiSettingsClose');
+    const settingButtons = Array.from(modalElement.querySelectorAll('[data-legend-ai-setting]'));
 
     const modeButtons = Array.from(
         modalElement.querySelectorAll('[data-legend-ai-mode]')
@@ -263,6 +269,7 @@
     modalElement.addEventListener('hidden.bs.modal', () => {
         stopHistoryRefresh();
         setSidebarOpen(false);
+        closeSettingsPanel();
         input?.blur();
     });
 
@@ -431,7 +438,7 @@
             await loadConversationPage(active, request.signal, older, newer);
             if (!request.signal.aborted && state.activeConversationId === active.id) renderAll();
         } catch (error) {
-            if (!request.signal.aborted && status) status.textContent = error.message;
+            if (!request.signal.aborted && status) updateThinkingStatus(error.message || '', false);
         } finally {
             if (historyRequest === request) historyRequest = null;
         }
@@ -484,8 +491,7 @@
             nextMode !== 'teacher'
         ) {
             if (status) {
-                status.textContent =
-                    'Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.';
+                updateThinkingStatus('Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.', false);
             }
             return;
         }
@@ -516,7 +522,7 @@
         renderAll({ forceBottom: true });
 
         if (status) {
-            status.textContent = '';
+            updateThinkingStatus('', false);
         }
 
         focusComposer();
@@ -545,7 +551,7 @@
         renderAll({ forceBottom: true });
 
         if (status) {
-            status.textContent = '';
+            updateThinkingStatus('', false);
         }
 
         focusComposer();
@@ -899,6 +905,11 @@
                 conversation.title ||
                 'New conversation';
         }
+
+        if (status && busy) {
+            transcript.appendChild(status);
+            status.hidden = false;
+        }
     }
 
     function appendBubble(
@@ -1034,9 +1045,16 @@
         if (externalAnsweringBlocked) {
             externalAnsweringBlocked.disabled = value || activeConversation().mode !== 'legend' || activeConversation().nativeOnly === true;
         }
-        if (status) {
-            status.textContent = message;
-        }
+        updateThinkingStatus(message, value);
+    }
+
+    function updateThinkingStatus(message = '', visible = busy) {
+        if (!status) return;
+        if (visible && transcript && status.parentElement !== transcript) transcript.appendChild(status);
+        status.hidden = !visible;
+        status.dataset.message = message;
+        if (statusDetail) statusDetail.textContent = message;
+        if (visible) scrollToBottom();
     }
 
     function abortActiveRequest() {
@@ -1044,18 +1062,17 @@
             return;
         }
 
-        status && (status.textContent =
-            'Stopping the current response. Your next message remains in the composer.');
+        updateThinkingStatus('Stopping the current response. Your next message remains in the composer.', true);
         activeRequest.abort();
     }
 
     function applyOperationalProgress(payload) {
         const update = payload?.progress;
-        if (!status || !update?.message) return;
-        status.textContent =
-            payload.type === 'heartbeat' && Number.isFinite(payload.elapsedSeconds)
-                ? `${update.message} · ${payload.elapsedSeconds}s`
-                : update.message;
+        if (!update?.message) return;
+        const detail = payload.type === 'heartbeat' && Number.isFinite(payload.elapsedSeconds)
+            ? update.message + ' · ' + payload.elapsedSeconds + 's'
+            : update.message;
+        updateThinkingStatus(detail, true);
     }
 
     function structuredFailureMessage(result, fallback = '') {
@@ -1100,8 +1117,7 @@
 
             if (payload?.type === 'heartbeat') {
                 if (status && Number.isFinite(payload.elapsedSeconds)) {
-                    status.textContent =
-                        `Continuing the governed request · ${payload.elapsedSeconds}s`;
+                    updateThinkingStatus('Continuing the governed request · ' + payload.elapsedSeconds + 's', true);
                 }
                 return;
             }
@@ -1224,6 +1240,92 @@
             setSidebarOpen(false)
     );
 
+    function closeSettingsPanel() {
+        if (settingsPanel) settingsPanel.hidden = true;
+    }
+
+    function settingsAction(label, detail, action) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'legend-founder-ai-settings-action';
+        const copy = document.createElement('span');
+        const strong = document.createElement('strong');
+        const small = document.createElement('small');
+        strong.textContent = label;
+        small.textContent = detail;
+        copy.append(strong, small);
+        button.appendChild(copy);
+        button.addEventListener('click', action);
+        return button;
+    }
+
+    function openSettingsPanel(kind) {
+        if (!settingsPanel || !settingsBody || !settingsTitle) return;
+        settingsBody.replaceChildren();
+        const current = activeConversation();
+
+        if (kind === 'model') {
+            settingsTitle.textContent = 'Model';
+            settingsBody.append(
+                settingsAction('Legend® Ai', 'Use LEGEND hosted foundation and governed tools.', () => { closeSettingsPanel(); setMode('legend'); }),
+                settingsAction('OpenAI', 'Use the direct OpenAI teacher conversation mode.', () => { closeSettingsPanel(); setMode('teacher'); })
+            );
+        } else if (kind === 'tools') {
+            settingsTitle.textContent = 'Tools & data';
+            settingsBody.append(
+                settingsAction(
+                    current.nativeOnly ? 'Allow governed providers' : 'Block all external providers',
+                    current.nativeOnly ? 'Start a clean LEGEND conversation with governed provider access restored.' : 'Start a clean native-only conversation with external answering, research, and translation disabled.',
+                    () => {
+                        closeSettingsPanel();
+                        if (!nativeOnly || current.mode !== 'legend') return;
+                        nativeOnly.checked = !current.nativeOnly;
+                        nativeOnly.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                ),
+                settingsAction(
+                    current.externalAnsweringBlocked ? 'Allow external answering' : 'Block external answering',
+                    'Keep authorized research and translation available while controlling external answer generation.',
+                    () => {
+                        closeSettingsPanel();
+                        if (!externalAnsweringBlocked || current.mode !== 'legend' || current.nativeOnly) return;
+                        externalAnsweringBlocked.checked = !current.externalAnsweringBlocked;
+                        externalAnsweringBlocked.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                )
+            );
+        } else if (kind === 'behavior') {
+            settingsTitle.textContent = 'Behavior';
+            settingsBody.append(
+                settingsAction(
+                    founderCommandConfirmed?.checked ? 'Disable governed action permission' : 'Allow governed action',
+                    'Authorize only this request’s bounded governed action. Release approval remains separate.',
+                    () => {
+                        if (!founderCommandConfirmed) return;
+                        founderCommandConfirmed.checked = !founderCommandConfirmed.checked;
+                        closeSettingsPanel();
+                    }
+                )
+            );
+        } else {
+            settingsTitle.textContent = 'History';
+            settingsBody.append(
+                settingsAction('New conversation', 'Start a clean conversation while preserving prior account history.', () => {
+                    closeSettingsPanel();
+                    startNewConversation();
+                })
+            );
+        }
+
+        settingsPanel.hidden = false;
+        settingsClose?.focus({ preventScroll: true });
+    }
+
+    settingButtons.forEach(button => {
+        button.addEventListener('click', () => openSettingsPanel(button.dataset.legendAiSetting || 'history'));
+    });
+    settingsClose?.addEventListener('click', closeSettingsPanel);
+
     for (const button of modeButtons) {
         button.addEventListener(
             'click',
@@ -1284,9 +1386,12 @@
             renderAll({ forceBottom: true });
 
             if (status) {
-                status.textContent = conversation.nativeOnly
-                    ? 'All external providers are blocked for this clean conversation.'
-                    : 'Strict provider blocking is disabled for this clean conversation.';
+                updateThinkingStatus(
+                    conversation.nativeOnly
+                        ? 'All external providers are blocked for this clean conversation.'
+                        : 'Strict provider blocking is disabled for this clean conversation.',
+                    false
+                );
             }
 
             focusComposer();
@@ -1341,19 +1446,25 @@
                 // A definite rejection is not an invitation to resubmit actions.
                 conversation.pendingOperation = null;
             }
-            if (status) status.textContent = result.succeeded
-                ? (result.messageId ? '' : 'The response is missing its saved conversation receipt.')
-                : structuredFailureMessage(result);
+            if (status) updateThinkingStatus(
+                result.succeeded
+                    ? (result.messageId ? '' : 'The response is missing its saved conversation receipt.')
+                    : structuredFailureMessage(result),
+                false
+            );
             renderAll({ forceBottom: true });
         } catch (error) {
-            if (activeRequest === request && status) status.textContent = request.signal.aborted
-                ? 'Response stopped. Check the saved outcome before sending again.'
-                : error.message || 'The response could not be received. Check the saved outcome.';
+            if (activeRequest === request && status) updateThinkingStatus(
+                request.signal.aborted
+                    ? 'Response stopped. Check the saved outcome before sending again.'
+                    : error.message || 'The response could not be received. Check the saved outcome.',
+                false
+            );
         } finally {
             if (epoch !== accountGeneration) return;
             if (activeRequest === request) {
                 activeRequest = null;
-                setBusy(false, status?.textContent || '');
+                setBusy(false);
             }
             if (founderCommandConfirmed) founderCommandConfirmed.checked = false;
             await refreshHistory();
@@ -1368,11 +1479,11 @@
         if (!text) return;
         const conversation = activeConversation();
         if (conversation.hasNewer) {
-            if (status) status.textContent = 'Load newer messages before sending a reply.';
+            if (status) updateThinkingStatus('Load newer messages before sending a reply.', false);
             return;
         }
         if (conversation.pendingOperation) {
-            if (status) status.textContent = 'Check the pending request before sending another message.';
+            if (status) updateThinkingStatus('Check the pending request before sending another message.', false);
             return;
         }
         // Only the current Human turn is submitted. Prior Assistant content,

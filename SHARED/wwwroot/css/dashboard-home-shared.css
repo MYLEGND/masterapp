@@ -2497,7 +2497,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 
 .legend-connect-focus-note {
     margin: 0;
-    color: var(--dash-text-soft);
+    color: #5b687c;
     font-size: 0.76rem;
     line-height: 1.4;
 }
@@ -6443,12 +6443,11 @@ header .legend-global-nav .container-fluid {
     height: min(820px, calc(100dvh - 2rem));
     min-height: 600px;
     overflow: hidden;
-    border: 1px solid var(--legend-app-control-line);
+    border: 1px solid rgba(224,184,83,.58);
     border-radius: var(--legend-app-radius);
-    background:
-        radial-gradient(circle at 84% 0%, color-mix(in srgb,var(--legend-app-accent) 17%,transparent), transparent 30%),
-        linear-gradient(145deg, var(--legend-app-surface-elevated), var(--legend-app-surface));
-    box-shadow: 0 34px 88px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+    background: #ffffff;
+    color: #10213a;
+    box-shadow: 0 34px 88px rgba(2,10,28,.42), inset 0 1px 0 rgba(255,255,255,.96);
     outline: none;
 }
 
@@ -6458,8 +6457,10 @@ header .legend-global-nav .container-fluid {
     flex-direction: column;
     gap: 1rem;
     padding: 1.1rem 1.35rem;
-    border-bottom: 1px solid var(--legend-app-control-line);
-    background: rgba(5, 15, 36, 0.44);
+    border-bottom: 1px solid rgba(224,184,83,.45);
+    background:
+        radial-gradient(circle at 84% -80%, rgba(224,184,83,.22), transparent 42%),
+        linear-gradient(120deg, var(--legend-app-surface-elevated), var(--legend-app-surface));
 }
 
 
@@ -6467,10 +6468,16 @@ header .legend-global-nav .container-fluid {
 .messaging-thread-header h3,
 .messaging-thread-empty h3 {
     margin: 0;
-    color: var(--legend-app-on-dark);
     font-size: clamp(1.2rem, 2vw, 1.65rem);
     font-weight: 900;
     letter-spacing: -0.04em;
+}
+.messaging-command-center-header h2 {
+    color: var(--legend-app-on-dark);
+}
+.messaging-thread-header h3,
+.messaging-thread-empty h3 {
+    color: #10213a;
 }
 
 
@@ -7508,19 +7515,26 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
     min-height: 0;
     padding: 1rem;
-    border-right: 1px solid var(--legend-app-control-line);
-    background: var(--legend-app-surface);
+    border-right: 1px solid #ead39e;
+    background: #fffaf0;
+    color: #10213a;
 }
 
 .messaging-command-center-search,
 .messaging-send-form textarea {
     width: 100%;
-    border: 1px solid var(--legend-app-control-line);
+    border: 1px solid #d9a53a;
     border-radius: 13px;
-    background: var(--legend-app-surface-elevated);
-    color: var(--legend-app-on-dark);
+    appearance: none;
+    background: #ffffff;
+    color: #10213a;
+    caret-color: #10213a;
     font: inherit;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
+}
+.messaging-command-center-search::placeholder,
+.messaging-send-form textarea::placeholder {
+    color: #68758a;
 }
 
 .messaging-command-center-search {
@@ -7544,10 +7558,11 @@ header .legend-global-nav .container-fluid {
     max-height: min(360px, 56dvh);
     overflow-y: auto;
     padding: 0.4rem;
-    border: 1px solid rgba(212, 170, 71, 0.48);
+    border: 1px solid rgba(211,159,45,.58);
     border-radius: 14px;
-    background: #0b1c40;
-    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.36);
+    background: #ffffff;
+    color: #10213a;
+    box-shadow: 0 18px 34px rgba(15,35,68,.16);
 }
 
 .messaging-search-result {
@@ -7559,7 +7574,7 @@ header .legend-global-nav .container-fluid {
     border: 0;
     border-radius: 10px;
     background: transparent;
-    color: var(--dash-text);
+    color: #10213a;
     text-align: left;
     cursor: pointer;
 }
@@ -7579,14 +7594,14 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-search-result strong {
-    color: var(--legend-app-on-dark);
+    color: #10213a;
     font-size: 0.84rem;
 }
 
 .messaging-search-result small,
 .messaging-search-empty,
 .messaging-list-empty {
-    color: var(--dash-text-soft);
+    color: #5b687c;
     font-size: 0.75rem;
 }
 
@@ -7615,22 +7630,32 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(212, 170, 71, 0.35);
     border-radius: var(--messaging-card-radius);
     margin-bottom: 0.5rem;
-    background: transparent;
-    color: var(--dash-text);
+    background: #ffffff;
+    color: #10213a;
     text-align: left;
     cursor: pointer;
     transition: background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.messaging-conversation-item:hover,
+.messaging-conversation-item:hover {
+    background: #fff8e8;
+    box-shadow: inset 3px 0 0 #d9a53a;
+}
 .messaging-conversation-item.is-active {
-    background: rgba(212, 170, 71, 0.13);
-    box-shadow: inset 3px 0 0 #e5bd55;
+    border-color: #b77d12;
+    background: linear-gradient(135deg, #f2ce72, #d79a2b);
+    color: #2b1a03;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.62), 0 7px 18px rgba(145,87,8,.12);
+}
+.messaging-conversation-item.is-active :is(.messaging-conversation-title,.messaging-conversation-preview,.messaging-conversation-time) {
+    color: #2b1a03;
 }
 
-.messaging-conversation-item.is-unread .messaging-conversation-title,
+.messaging-conversation-item.is-unread .messaging-conversation-title {
+    color: #10213a;
+}
 .messaging-conversation-item.is-unread .messaging-conversation-preview {
-    color: var(--legend-app-on-dark);
+    color: #39485f;
 }
 
 .messaging-conversation-identity {
@@ -7648,7 +7673,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-title {
     overflow: hidden;
-    color: var(--legend-app-on-dark);
+    color: #10213a;
     font-size: 0.86rem;
     font-weight: 850;
     text-overflow: ellipsis;
@@ -7754,6 +7779,8 @@ header .legend-global-nav .container-fluid {
     min-height: 0;
     overflow: hidden;
     padding: 1.15rem 1.3rem 1rem;
+    background: #ffffff;
+    color: #10213a;
 }
 
 .messaging-thread-empty {
@@ -7762,7 +7789,7 @@ header .legend-global-nav .container-fluid {
     place-content: center;
     min-height: 0;
     padding: 2rem;
-    color: var(--dash-text-soft);
+    color: #5b687c;
     text-align: center;
 }
 
@@ -7775,7 +7802,7 @@ header .legend-global-nav .container-fluid {
 .messaging-attachment-note,
 .messaging-draft-intro {
     margin: 0;
-    color: var(--dash-text-soft);
+    color: #5b687c;
     font-size: 0.8rem;
 }
 
@@ -7844,8 +7871,10 @@ header .legend-global-nav .container-fluid {
     gap: 0.75rem;
     overflow-y: auto;
     padding: 1rem;
-    background: var(--messaging-surface);
+    border: 1px solid rgba(211,159,45,.42);
+    background: #ffffff;
     border-radius: var(--messaging-bubble-radius);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
@@ -8073,7 +8102,8 @@ header .legend-global-nav .container-fluid {
     display: grid;
     gap: 0.6rem;
     padding-top: 0.9rem;
-    border-top: 1px solid rgba(212, 170, 71, 0.25);
+    border-top: 1px solid #ead39e;
+    background: #ffffff;
     transition: background 0.16s ease, outline-color 0.16s ease;
 }
 
@@ -8084,7 +8114,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-compose-target {
     overflow: hidden;
-    color: var(--legend-app-accent-bright);
+    color: #8b5c08;
     font-size: 0.76rem;
     font-weight: 780;
     text-overflow: ellipsis;

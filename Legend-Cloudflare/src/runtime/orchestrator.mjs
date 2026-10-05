@@ -220,6 +220,8 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
       result.modelSettings = modelSettings;
       result.provider = { name: model.provider, modelId: model.id, hosting: model.hosting };
       if (!output.toolCalls.length) {
+        if (envelope.task.requireToolCall === true && result.toolResults.length === 0)
+          throw new RuntimeFailure('required_tool_not_executed');
         result.status = 'completed';
         result.text = output.text;
         result.cognition = { ...result.cognition, calls: [...cognitiveCalls] };
