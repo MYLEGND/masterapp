@@ -1761,6 +1761,30 @@ def _admission_settled(api, run, record):
             and value.get('resources') == record['resources'] and targets == expected)
 
 
+
+def _admission_superseded_by_terminal_success(api, run, record, runs):
+    """Discharge an older failed lease only after a later terminal success of the exact same immutable release."""
+    if run.get('status') != 'completed':
+        return False
+    required = (
+        'sourcePr',
+        'authorizedSourceRevision',
+        'applicationRevision',
+        'selectedTargets',
+        'resources',
+    )
+    if any(record.get(key) is None for key in required):
+        return False
+    for later in runs:
+        if later.get('id', 0) <= run.get('id', 0):
+            continue
+        if later.get('status') != 'completed' or not successful_release(api, later):
+            continue
+        for later_record in _admission_records(api, later):
+            if all(later_record.get(key) == record.get(key) for key in required):
+                return True
+    return False
+
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
     conflicts = []
@@ -1796,6 +1820,8 @@ def admission_conflicts(api, candidate, *, current_run):
             continue
         for record in records:
             if _admission_settled(api, run, record) or _admission_nonmutating_terminal(api, run):
+                continue
+            if _admission_superseded_by_terminal_success(api, run, record, runs):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
