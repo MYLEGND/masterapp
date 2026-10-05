@@ -504,8 +504,8 @@ public static class WebsiteCreativeProjection
 
     public static object PageOutline(WebsitePageDocument page) => new
     {
-        page.Title,
-        page.Description,
+        title = Preview(page.Title, 180),
+        description = Preview(page.Description, 420),
         page.Navigation,
         page.DynamicBinding,
         page.SystemTemplateKey,
@@ -514,7 +514,7 @@ public static class WebsiteCreativeProjection
             root.Id,
             root.Type,
             root.ClassName,
-            label = root.Title ?? root.Text,
+            label = Preview(root.Title ?? root.Text, 180),
             childCount = root.Children?.Count ?? 0,
             fingerprint = WebsiteCreativeFingerprint.Node(root),
             children = (root.Children ?? []).Select(child => new
@@ -522,12 +522,19 @@ public static class WebsiteCreativeProjection
                 child.Id,
                 child.Type,
                 child.ClassName,
-                label = child.Title ?? child.Text,
+                label = Preview(child.Title ?? child.Text, 180),
                 child.ActionKey,
                 childCount = child.Children?.Count ?? 0
             }).ToArray()
         }).ToArray()
     };
+
+    private static string? Preview(string? value, int maximum)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+        var text = value.Trim();
+        return text.Length <= maximum ? text : text[..maximum] + "…";
+    }
 
     public static object SiteSummary(
         string siteKey,
@@ -546,8 +553,8 @@ public static class WebsiteCreativeProjection
             .Select(pair => new
             {
                 path = pair.Key,
-                pair.Value.Title,
-                pair.Value.Description,
+                title = Preview(pair.Value.Title, 180),
+                description = Preview(pair.Value.Description, 420),
                 navigation = pair.Value.Navigation,
                 systemTemplateKey = pair.Value.SystemTemplateKey,
                 sectionCount = pair.Value.Composition.Count,
@@ -556,7 +563,7 @@ public static class WebsiteCreativeProjection
                     node.Id,
                     node.Type,
                     node.ClassName,
-                    label = node.Title ?? node.Text,
+                    label = Preview(node.Title ?? node.Text, 180),
                     fingerprint = WebsiteCreativeFingerprint.Node(node)
                 }).ToArray(),
                 fingerprint = WebsiteCreativeFingerprint.Page(pair.Value)
