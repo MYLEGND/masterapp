@@ -815,10 +815,10 @@ public static class WebsiteDocumentMutationService
         IReadOnlyList<WebsiteCallToActionOption> actions,
         HashSet<string> changed)
     {
-        var path = NormalizePath(operation.PagePath);
-        if (path == "/") throw new ArgumentException("The home page already exists.");
         if (siteKey != WebsiteEditorSiteKeys.Business)
             throw new WebsiteSiteSourceProtectionException("Arbitrary route creation is available only for scoped Business websites.");
+        var path = WebsiteContentSanitizer.NormalizeBusinessPagePath(operation.PagePath);
+        if (path == "/") throw new ArgumentException("The home page already exists.");
         if (document.Pages.ContainsKey(path))
             throw new ArgumentException($"Page '{path}' already exists.");
         var requested = operation.Page ?? new WebsitePageDocument();
@@ -873,7 +873,7 @@ public static class WebsiteDocumentMutationService
         if (siteKey != WebsiteEditorSiteKeys.Business)
             throw new WebsiteSiteSourceProtectionException("Route moves are available only for scoped Business websites.");
         var source = NormalizePath(operation.PagePath);
-        var target = NormalizePath(operation.TargetPath);
+        var target = WebsiteContentSanitizer.NormalizeBusinessPagePath(operation.TargetPath);
         if (source == "/" || target == "/") throw new ArgumentException("The home page route cannot be moved.");
         if (!document.Pages.Remove(source, out var page)) throw new ArgumentException($"Page '{source}' was not found.");
         if (document.Pages.ContainsKey(target)) throw new ArgumentException($"Page '{target}' already exists.");
@@ -2329,8 +2329,10 @@ public static class WebsiteDesignPlanResolver
         {
             if (page is null) throw new ArgumentException("Website design-plan pages cannot be null.");
             var path = NormalizePath(page.Path);
-            if (path.Length > 2048 || !paths.Add(path))
-                throw new ArgumentException($"Website design plan contains a duplicate or invalid page path '{path}'.");
+            if (siteKey == WebsiteEditorSiteKeys.Business)
+                path = WebsiteContentSanitizer.NormalizeBusinessPagePath(path);
+            if (!paths.Add(path))
+                throw new ArgumentException($"Website design plan contains a duplicate page path '{path}'.");
 
             var sections = page.Sections ?? [];
             if (sections.Count > 32)
