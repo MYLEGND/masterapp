@@ -85,7 +85,7 @@ public static class WebsiteDesignQualityInspector
                     path));
 
             var actionKeys = nodes
-                .Where(value => value.Type is "cta" or "link" && !string.IsNullOrWhiteSpace(value.ActionKey))
+                .Where(value => (value.Type is "cta" or "link") && !string.IsNullOrWhiteSpace(value.ActionKey))
                 .Select(value => value.ActionKey!)
                 .ToArray();
             foreach (var group in actionKeys.GroupBy(value => value, StringComparer.Ordinal).Where(group => group.Count() > 4))
@@ -100,9 +100,9 @@ public static class WebsiteDesignQualityInspector
                 value.Type == "experience" &&
                 string.Equals(value.Experience?.SubmitCapability, WebsiteExperiencePolicy.LeadCaptureCapability, StringComparison.Ordinal));
             var conversionNodes = nodes.Where(value =>
-                value.Type is "cta" or "link" && !string.IsNullOrWhiteSpace(value.ActionKey) ||
+                ((value.Type is "cta" or "link") && !string.IsNullOrWhiteSpace(value.ActionKey)) ||
                 value.Type == "form" ||
-                value.Type == "experience" && value.Experience?.SubmitCapability is not null).ToArray();
+                (value.Type == "experience" && value.Experience?.SubmitCapability is not null)).ToArray();
 
             var firstSectionIds = page.Composition
                 .Where(value => value.Hidden != true)
@@ -167,7 +167,7 @@ public static class WebsiteDesignQualityInspector
         if (node.Type is "image" or "video" or "form" or "experience" or "cta" or "link") return true;
         if (!string.IsNullOrWhiteSpace(node.Text) || !string.IsNullOrWhiteSpace(node.Title)) return true;
         if (!string.IsNullOrWhiteSpace(node.SystemKey)) return true;
-        return node.Children.Any(ContainsMeaningfulContent);
+        return node.Children?.Any(ContainsMeaningfulContent) == true;
     }
 
     private static bool HasStrongNodeOverride(WebsiteCompositionNode node)
@@ -187,7 +187,7 @@ public static class WebsiteDesignQualityInspector
         foreach (var node in roots ?? [])
         {
             yield return node;
-            foreach (var child in Flatten(node.Children))
+            foreach (var child in Flatten(node.Children ?? []))
                 yield return child;
         }
     }
@@ -206,5 +206,5 @@ public static class WebsiteDesignQualityInspector
     }
 
     private static bool ContainsId(WebsiteCompositionNode node, string id) =>
-        string.Equals(node.Id, id, StringComparison.Ordinal) || node.Children.Any(child => ContainsId(child, id));
+        string.Equals(node.Id, id, StringComparison.Ordinal) || (node.Children?.Any(child => ContainsId(child, id)) ?? false);
 }
