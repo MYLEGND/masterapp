@@ -23,6 +23,7 @@ const websitePlatformControllerSource = readFileSync(new URL('../../Infrastructu
 const websiteSystemTemplateAuthoritySource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSystemTemplateAuthority.cs', import.meta.url), 'utf8');
 const websiteContentSanitizerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs', import.meta.url), 'utf8');
 const websiteSiteSourceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSiteSource.cs', import.meta.url), 'utf8');
+const websiteCreativeWorkspaceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteCreativeWorkspace.cs', import.meta.url), 'utf8');
 const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
 const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
 
@@ -796,6 +797,17 @@ test('named draft restore is a governed restore, never a canonical v3 snapshot w
   assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\(actor, restored/);
   assert.match(websitePlatformControllerSource,/Historical pre-v3 named drafts remain eligible only for the[\s\S]*existing explicit one-way materialization boundary/);
 });
+
+test('creative mutations use one per-batch indexed mutation path',()=>{
+  assert.match(websiteCreativeWorkspaceSource,/var index = new WebsiteMutationIndex\(document\)/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Insert\(/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Replace\(/);
+  assert.match(websiteCreativeWorkspaceSource,/index\.Remove\(/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/WebsiteDocumentIndex\.ResolveChildren/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/WebsiteDocumentIndex\.Remove\(/);
+  assert.doesNotMatch(websiteCreativeWorkspaceSource,/public static List<WebsiteCompositionNode> ResolveChildren\(/);
+});
+
 
 
 test('source protection UI separates protected authority failures from exact scope conflicts',()=>{
