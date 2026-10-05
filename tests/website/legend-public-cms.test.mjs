@@ -1236,6 +1236,11 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/runSiteResponsiveQuality:runSiteResponsiveQualityAudit/);
   assert.match(source,/fullBleedMedia=[\s\S]*legend-recipe-hero-cinematic-media/);
   assert.match(source,/else if\(fullBleedMedia\)[\s\S]*delete style\.maxWidthPx[\s\S]*delete style\.maxHeightPx/);
+  assert.match(publicCss,/\.legend-recipe-hero-media:not\(\.legend-recipe-hero-cinematic-media\),\.legend-recipe-feature-media/);
+  assert.match(publicCss,/\.legend-recipe-hero-cinematic-media\{[\s\S]*position:absolute[\s\S]*height:100%[\s\S]*border:0[\s\S]*border-radius:0[\s\S]*box-shadow:none/);
+  assert.match(source,/const priorityMedia=classes\.has\('legend-recipe-hero-media'\) \|\| classes\.has\('legend-recipe-hero-cinematic-media'\)/);
+  assert.match(source,/el\.loading=priorityMedia \? 'eager' : 'lazy'/);
+  assert.match(source,/if\(priorityMedia\) el\.setAttribute\('fetchpriority','high'\)/);
   assert.match(source,/runPreflight:runWholeSitePreflight/);
   assert.match(source,/runQuality:runWholeSitePreflight/);
   assert.match(source,/quality\?\.revision===checkedRevision/);
