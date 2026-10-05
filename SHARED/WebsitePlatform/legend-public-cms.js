@@ -5360,6 +5360,7 @@
   function pushInsertMutation(operations,entry) {
     const node=entry.node;
     const location=mutationLocation(entry);
+
     if(node.type==='form' && node.systemKey==='canonical_inquiry') {
       operations.push({
         type:'insertCapability',
@@ -5371,6 +5372,7 @@
       });
       return;
     }
+
     if(String(node.systemKey || '').startsWith('protect_runtime_form:')) {
       operations.push({
         type:'insertCapability',
@@ -5380,7 +5382,32 @@
       });
       return;
     }
-    operations.push({type:'insertNode',...location,node:cloneCanonicalValue(node)});
+
+    // New creative subtrees are emitted one semantic node at a time. This keeps
+    // protected capability nodes out of ordinary insertNode payloads while still
+    // preserving exact hierarchy/order in one mutation transaction.
+    const projected=creativeNodeForMutation(node);
+    projected.children=[];
+    operations.push({type:'insertNode',...location,node:projected});
+
+    if(node.type==='experience' && node.experience?.submitCapability==='lead_capture') {
+      operations.push({
+        type:'setApprovedCapability',
+        nodeId:node.id,
+        capabilityKey:'experience.lead_capture'
+      });
+    }
+
+    (node.children || []).forEach((child,index)=>{
+      pushInsertMutation(operations,{
+        node:child,
+        parentId:node.id,
+        index,
+        scope:entry.scope,
+        pagePath:entry.pagePath,
+        reusableComponentId:entry.reusableComponentId
+      });
+    });
   }
 
   function diffCreativeNodeTrees(beforeNodes,afterNodes,scope,pagePath,reusableComponentId,operations) {
