@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using System.Diagnostics;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -653,6 +654,7 @@ public class WebsitePlatformController : ControllerBase
         [FromQuery] string ticket,
         CancellationToken cancellationToken = default)
     {
+        var performance = Stopwatch.StartNew();
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
@@ -682,6 +684,13 @@ public class WebsitePlatformController : ControllerBase
             value.CreatedUtc
         }).ToArray();
 
+        performance.Stop();
+        HttpContext?.RequestServices.GetService<ILogger<WebsitePlatformController>>()?.LogInformation(
+            "WebsiteStudio summary completed SiteKey={SiteKey} Pages={Pages} MediaRows={MediaRows} DurationMs={DurationMs}",
+            actor.SiteKey,
+            document.Pages.Count,
+            media.Length,
+            performance.ElapsedMilliseconds);
         return Ok(WebsiteCreativeProjection.SiteSummary(
             actor.SiteKey,
             state.Revision,
@@ -825,6 +834,7 @@ public class WebsitePlatformController : ControllerBase
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
         var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, baseline, actions);
         IReadOnlyList<WebsiteMutationOperation> operations;
+        var planPerformance = Stopwatch.StartNew();
         try
         {
             operations = WebsiteDesignPlanResolver.Resolve(baseline, actor.SiteKey, capabilities, request.Plan);
@@ -838,6 +848,13 @@ public class WebsitePlatformController : ControllerBase
             return BadRequest(new { error = "website_design_plan_invalid", message = ex.Message });
         }
 
+        planPerformance.Stop();
+        HttpContext?.RequestServices.GetService<ILogger<WebsitePlatformController>>()?.LogInformation(
+            "WebsiteStudio design plan resolved SiteKey={SiteKey} Pages={Pages} Operations={Operations} DurationMs={DurationMs}",
+            actor.SiteKey,
+            request.Plan.Pages?.Count ?? 0,
+            operations.Count,
+            planPerformance.ElapsedMilliseconds);
         return await ApplyMutationBatchAsync(
             new WebsiteMutationRequest(request.Ticket, request.ExpectedRevision, operations.ToList()),
             cancellationToken);
@@ -1319,6 +1336,7 @@ public class WebsitePlatformController : ControllerBase
         WebsiteMutationRequest request,
         CancellationToken cancellationToken)
     {
+        var performance = Stopwatch.StartNew();
         if (request is null || request.Operations is null)
             return BadRequest(new { error = "website_mutations_required" });
         if (request.Operations.Count == 0 && !request.DraftId.HasValue && request.DraftName is null)
@@ -1452,10 +1470,25 @@ public class WebsitePlatformController : ControllerBase
             .ToArray();
         var removedComponents = allChangedComponents.Where(value => !document.ReusableComponents.ContainsKey(value)).ToArray();
 
+        performance.Stop();
+        HttpContext?.RequestServices.GetService<ILogger<WebsitePlatformController>>()?.LogInformation(
+            "WebsiteStudio mutation completed SiteKey={SiteKey} Operations={Operations} ChangedScopes={ChangedScopes} RequestBytes={RequestBytes} DurationMs={DurationMs}",
+            actor.SiteKey,
+            request.Operations.Count,
+            result.ChangedScopes.Count,
+            Request.ContentLength ?? 0,
+            performance.ElapsedMilliseconds);
+
         return Ok(new
         {
             source = "canonical_v3_mutation",
             revision = state.Revision,
+            performance = new
+            {
+                durationMs = performance.ElapsedMilliseconds,
+                operationCount = request.Operations.Count,
+                changedScopeCount = result.ChangedScopes.Count
+            },
             changedScopes = result.ChangedScopes,
             fingerprints = result.Fingerprints,
             changes = new
