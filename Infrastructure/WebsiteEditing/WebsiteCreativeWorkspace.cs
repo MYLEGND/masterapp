@@ -471,7 +471,7 @@ public static class WebsiteDocumentMutationService
         if (baseline.LegacyMigration is not null)
             throw new InvalidOperationException("website_materialization_required");
 
-        var document = Clone(WebsiteContentSanitizer.Sanitize(baseline));
+        var document = Clone(baseline);
         WebsiteSystemTemplateAuthority.Apply(siteKey, document);
         var changed = new HashSet<string>(StringComparer.Ordinal);
 
@@ -481,11 +481,9 @@ public static class WebsiteDocumentMutationService
             ApplyOne(document, siteKey, actions, capabilities, operation, changed);
         }
 
-        var proposed = Clone(document);
-        document = WebsiteContentSanitizer.Sanitize(document);
         WebsiteSystemTemplateAuthority.Apply(siteKey, document);
-        WebsiteSystemTemplateAuthority.RestoreRuntimeForms(siteKey, proposed, document);
-        WebsiteSiteSource.ValidateCanonical(document, actions);
+        WebsiteSystemTemplateAuthority.RestoreRuntimeForms(siteKey, document, document);
+        ValidateMutationInvariants(document, actions);
 
         var fingerprints = changed
             .Select(scope => (scope, hash: FingerprintScope(document, scope)))
@@ -506,27 +504,29 @@ public static class WebsiteDocumentMutationService
         switch (operation.Type)
         {
             case "setTheme":
-                document.Theme = operation.Theme ?? new WebsiteDesignTheme();
+                document.Theme = WebsiteContentSanitizer.SanitizeMutationTheme(operation.Theme);
                 changed.Add("@theme");
                 return;
 
             case "setFavicon":
-                document.FaviconImageDataUrl = operation.FaviconImageDataUrl;
+                document.FaviconImageDataUrl = WebsiteContentSanitizer.SanitizeMutationFavicon(operation.FaviconImageDataUrl);
                 changed.Add("@favicon");
                 return;
 
             case "setBreakpoints":
-                document.Breakpoints = operation.Breakpoints ?? WebsiteStudioContract.DefaultBreakpoints();
+                document.Breakpoints = WebsiteContentSanitizer.SanitizeMutationBreakpoints(operation.Breakpoints);
+                ReconcileBreakpointReferences(document);
                 changed.Add("@breakpoints");
                 return;
 
             case "setStorePresentation":
                 if (operation.Store is null) throw new ArgumentException("Store presentation is required.");
-                document.Store.NavigationLabel = operation.Store.NavigationLabel;
-                document.Store.CartIcon = operation.Store.CartIcon;
-                document.Store.CartIconSizePx = operation.Store.CartIconSizePx;
-                document.Store.StoreNavigation = operation.Store.StoreNavigation;
-                document.Store.CartNavigation = operation.Store.CartNavigation;
+                var store = WebsiteContentSanitizer.SanitizeMutationStore(operation.Store, document.Breakpoints);
+                document.Store.NavigationLabel = store.NavigationLabel;
+                document.Store.CartIcon = store.CartIcon;
+                document.Store.CartIconSizePx = store.CartIconSizePx;
+                document.Store.StoreNavigation = store.StoreNavigation;
+                document.Store.CartNavigation = store.CartNavigation;
                 changed.Add("@store-presentation");
                 return;
 
@@ -547,12 +547,12 @@ public static class WebsiteDocumentMutationService
                 return;
 
             case "replaceShellHeader":
-                document.Shell.Header = PrepareNewNodes(operation.Node?.Children ?? [], actions);
+                document.Shell.Header = PrepareNewNodes(operation.Node?.Children ?? [], actions, document.Breakpoints, mobileFlowSafety: false);
                 changed.Add("@shell/header");
                 return;
 
             case "replaceShellFooter":
-                document.Shell.Footer = PrepareNewNodes(operation.Node?.Children ?? [], actions);
+                document.Shell.Footer = PrepareNewNodes(operation.Node?.Children ?? [], actions, document.Breakpoints, mobileFlowSafety: false);
                 changed.Add("@shell/footer");
                 return;
 
