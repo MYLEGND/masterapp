@@ -89,6 +89,20 @@ public class Phase5CrossPlatformSecurityTests
     }
 
     [Fact]
+    public void Upload_QuickTimeBrand_PreservesQuickTimeContainerIdentity()
+    {
+        var result = UploadValidator.ValidateContent(
+            IsoBaseMedia("qt  "),
+            "movie.mov",
+            "video/quicktime",
+            UploadValidationPolicy.Media(25 * 1024 * 1024));
+
+        Assert.True(result.IsValid);
+        Assert.Equal("video/quicktime", result.DetectedContentType);
+        Assert.Equal(".mov", UploadValidator.CanonicalExtensionForContentType(result.DetectedContentType));
+    }
+
+    [Fact]
     public void Upload_VisualMediaAndAttachmentCatalogs_ShareOneTypeAuthority()
     {
         Assert.True(UploadValidator.TryResolveVisualMediaType(
