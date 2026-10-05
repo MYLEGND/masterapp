@@ -146,7 +146,7 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Equal("nav", navigation.Tag);
         Assert.Equal("primary_navigation", navigation.SystemKey);
         Assert.Equal("premium-nav", navigation.ClassName);
-        Assert.Equal(18, navigation.Style.FontSize);
+        Assert.Equal(18m, navigation.Style.FontSize);
         Assert.Equal("#ffffff", navigation.Style.Color);
     }
 
@@ -395,7 +395,7 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(WebsiteSiteSource.Flatten(result.Document),
             value => value.Node.Type == "form" && value.Node.SystemKey == "canonical_inquiry");
         Assert.Equal("#07152d", result.Document.Theme.Navy);
-        Assert.Equal(72, result.Document.Theme.DisplaySize);
+        Assert.Equal(72m, result.Document.Theme.DisplaySize);
     }
 
     [Fact]
