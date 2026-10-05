@@ -2868,21 +2868,8 @@
   }
 
   function mergeCreativeMutationDelta(payload) {
-    const changes=payload?.changes || {};
-    const next=cloneCanonicalValue(documentState);
-    next.pages ||= {};
-    next.reusableComponents ||= {};
-    for(const path of Array.isArray(changes.removedPages)?changes.removedPages:[]) delete next.pages[path];
-    for(const [path,page] of Object.entries(changes.pages || {})) next.pages[path]=page;
-    for(const id of Array.isArray(changes.removedComponents)?changes.removedComponents:[]) delete next.reusableComponents[id];
-    for(const [id,component] of Object.entries(changes.reusableComponents || {})) next.reusableComponents[id]=component;
-    if(changes.theme) next.theme=changes.theme;
-    if(Object.prototype.hasOwnProperty.call(changes,'faviconImageDataUrl') && changes.faviconImageDataUrl!==null)
-      next.faviconImageDataUrl=changes.faviconImageDataUrl;
-    if(changes.shellHeader) next.shell.header=changes.shellHeader;
-    if(changes.shellFooter) next.shell.footer=changes.shellFooter;
-    if(changes.store) next.store=changes.store;
-    documentState=normalizeDocument(next);
+    documentState=applyCreativeMutationDeltaToState(documentState,payload);
+    persistedDocumentState=cloneCanonicalValue(documentState);
     revision=payload?.revision ?? revision;
     namedDrafts=payload?.drafts || namedDrafts;
     dirty=false;
