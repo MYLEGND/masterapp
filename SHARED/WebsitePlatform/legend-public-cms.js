@@ -2884,7 +2884,9 @@
 
   function applyCreativeMutationVisuals(operations,payload,selectedId=null) {
     const changes=payload?.changes || {};
+    const changedScopes=Array.isArray(payload?.changedScopes)?payload.changedScopes:[];
     const route=currentPageRoute();
+    const currentPageChanged=changedScopes.some(scope=>scope===route || String(scope).startsWith(route+'#')) || !!changes.pages?.[route];
     let renderPage=false, renderShell=false, refreshReusable=false, metadata=false, responsive=false;
 
     if(!Array.isArray(operations)){
@@ -2915,10 +2917,11 @@
           case 'insertCapability':
           case 'removeNode':
           case 'moveNode':
-            renderPage=true;
+            if(currentPageChanged) renderPage=true;
             break;
           case 'replaceNode':
           case 'setApprovedCapability': {
+            if(!currentPageChanged) break;
             const id=operation.nodeId;
             const model=id ? compositionNode(id) : null;
             const el=id ? findEditableElement(id) : null;
@@ -3000,7 +3003,14 @@
       listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query}),
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
-      runQuality:()=>creativeWorkspaceRequest('manage/quality'),
+      runQuality:async()=>({
+        server:await creativeWorkspaceRequest('manage/agent/design-quality'),
+        rendered:{page:currentPageRoute(),viewport:responsiveViewportWidth(),checks:liveQualityChecks()}
+      }),
+      inspectConversionPath:async()=>{
+        const quality=await creativeWorkspaceRequest('manage/agent/design-quality');
+        return quality?.design?.conversionPaths || quality?.design?.ConversionPaths || [];
+      },
       current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()})
     };
     Object.defineProperty(window,'LEGEND_WEBSITE_STUDIO_AGENT',{value:Object.freeze(api),configurable:true});
@@ -6352,6 +6362,30 @@
     markDirty();
   }
 
+  function parseComputedRgb(value) {
+    const match=String(value || '').match(/rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)(?:\s*[,/]\s*([\d.]+))?/i);
+    if(!match) return null;
+    return {r:Number(match[1]),g:Number(match[2]),b:Number(match[3]),a:match[4]==null?1:Number(match[4])};
+  }
+
+  function relativeLuminance(rgb) {
+    const channel=value=>{
+      const normalized=Math.max(0,Math.min(255,value))/255;
+      return normalized<=.03928 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
+    };
+    return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
+  }
+
+  function effectiveBackgroundColor(el) {
+    let current=el;
+    while(current && current!==document.documentElement){
+      const parsed=parseComputedRgb(getComputedStyle(current).backgroundColor);
+      if(parsed && parsed.a>.08) return parsed;
+      current=current.parentElement;
+    }
+    return parseComputedRgb(getComputedStyle(document.body).backgroundColor) || {r:255,g:255,b:255,a:1};
+  }
+
   function liveQualityChecks() {
     const checks = [];
     const main = document.querySelector('main');
@@ -6395,6 +6429,92 @@
       if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
     });
+
+    const headingLevels=[];
+    main?.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(node=>{
+      if(node.hidden || node.getClientRects().length===0) return;
+      const level=Number(node.tagName.slice(1));
+      const previous=headingLevels.at(-1);
+      if(previous && level>previous+1)
+        checks.push({code:'live_heading_skip',severity:'info',message:`Heading hierarchy jumps from H${previous} to H${level}.`,elementId:node.dataset.cmsId || null});
+      headingLevels.push(level);
+    });
+
+    const textNodes=main ? [...main.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button,label,small,blockquote,span')] : [];
+    let contrastWarnings=0, typeWarnings=0, lineWarnings=0;
+    for(const node of textNodes){
+      if(node.closest('.legend-cms-editor') || node.hidden || node.getClientRects().length===0 || !node.textContent?.trim()) continue;
+      const style=getComputedStyle(node);
+      const fontSize=parseFloat(style.fontSize);
+      if(Number.isFinite(fontSize) && fontSize<14 && typeWarnings++<8)
+        checks.push({code:'live_type_too_small',severity:'warning',message:`Rendered text is ${Math.round(fontSize)}px; increase it for comfortable reading.`,elementId:node.dataset.cmsId || null});
+      const width=node.getBoundingClientRect().width;
+      if(Number.isFinite(fontSize) && fontSize>0 && width/fontSize>46 && node.textContent.trim().length>120 && lineWarnings++<6)
+        checks.push({code:'live_line_length',severity:'info',message:'This text block is visually wide. Shorter line length may improve scanning.',elementId:node.dataset.cmsId || null});
+      if(contrastWarnings<8){
+        const fg=parseComputedRgb(style.color);
+        const bg=effectiveBackgroundColor(node);
+        if(fg && bg && fg.a>.8){
+          const high=Math.max(relativeLuminance(fg),relativeLuminance(bg));
+          const low=Math.min(relativeLuminance(fg),relativeLuminance(bg));
+          const ratio=(high+.05)/(low+.05);
+          const bold=Number(style.fontWeight)>=700;
+          const threshold=fontSize>=24 || (bold && fontSize>=18.66) ? 3 : 4.5;
+          if(ratio<threshold){
+            contrastWarnings++;
+            checks.push({code:'live_contrast_low',severity:'warning',message:`Text contrast is about ${ratio.toFixed(1)}:1; strengthen foreground/background contrast.`,elementId:node.dataset.cmsId || null});
+          }
+        }
+      }
+    }
+
+    let touchWarnings=0;
+    main?.querySelectorAll('a,button,input[type="button"],input[type="submit"]').forEach(node=>{
+      if(node.hidden || node.getClientRects().length===0 || touchWarnings>=8) return;
+      const rect=node.getBoundingClientRect();
+      if(rect.width<44 || rect.height<44){
+        touchWarnings++;
+        checks.push({code:'live_touch_target_small',severity:'warning',message:`Interactive target is ${Math.round(rect.width)}×${Math.round(rect.height)}px; target at least 44×44px.`,elementId:node.dataset.cmsId || node.id || null});
+      }
+    });
+
+    const sectionNodes=main ? [...main.children].filter(node=>node.matches?.('section,.section,.page-hero,.cta,.container-narrow')) : [];
+    sectionNodes.forEach(section=>{
+      if(section.hidden) return;
+      const meaningful=section.querySelector('h1,h2,h3,p,img,video,a,button,form,[data-website-experience-form]');
+      if(!meaningful && !section.textContent?.trim())
+        checks.push({code:'live_empty_section',severity:'warning',message:'A visible section has no meaningful content.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
+      const computed=getComputedStyle(section);
+      const top=parseFloat(computed.paddingTop), bottom=parseFloat(computed.paddingBottom);
+      if(Number.isFinite(top) && Number.isFinite(bottom) && top<20 && bottom<20)
+        checks.push({code:'live_section_rhythm_tight',severity:'info',message:'This section has very little vertical breathing room.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
+    });
+
+    const firstSection=sectionNodes.find(node=>!node.hidden);
+    if(firstSection && !firstSection.querySelector('a[data-website-action-key],button[data-website-action-key],form,[data-submit-capability]'))
+      checks.push({code:'live_first_decision_no_action',severity:'info',message:'The opening section has no approved action or conversion capability. Confirm that this is intentional.',elementId:firstSection.dataset.cmsId || firstSection.dataset.cmsSection || null});
+
+    main?.querySelectorAll('img:not([hidden])').forEach(image=>{
+      if(image.complete && image.currentSrc && (!image.naturalWidth || !image.naturalHeight))
+        checks.push({code:'live_image_render_failed',severity:'warning',message:'An image source did not render successfully.',elementId:image.dataset.cmsId || image.id || null});
+    });
+
+    if(responsiveViewportWidth()<=767){
+      const toggle=document.querySelector('.nav-toggle');
+      if(!toggle || toggle.getClientRects().length===0)
+        checks.push({code:'live_mobile_nav_toggle_missing',severity:'error',message:'The mobile primary navigation has no usable Menu trigger.'});
+      else{
+        const rect=toggle.getBoundingClientRect();
+        if(rect.width<44 || rect.height<44)
+          checks.push({code:'live_mobile_nav_touch_target',severity:'warning',message:'The mobile Menu trigger is smaller than 44×44px.'});
+      }
+    }
+
+    let animationCount=0;
+    walkComposition(pageState().composition || [],node=>{animationCount+=(node.animations || []).length;});
+    if(animationCount>18)
+      checks.push({code:'live_animation_excess',severity:'warning',message:`This page has ${animationCount} motion bindings. Reduce motion to keep the experience focused.`});
+
     return checks;
   }
 
