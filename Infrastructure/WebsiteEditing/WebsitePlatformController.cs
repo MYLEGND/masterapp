@@ -576,6 +576,16 @@ public class WebsitePlatformController : ControllerBase
 
 
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
+    public sealed record WebsiteMutationRequest(
+        string Ticket,
+        long ExpectedRevision,
+        List<WebsiteMutationOperation>? Operations,
+        Guid? DraftId = null,
+        string? DraftName = null);
+    public sealed record WebsiteDesignPlanRequest(
+        string Ticket,
+        long ExpectedRevision,
+        WebsiteDesignPlan Plan);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, automaticBehaviors = Shared.Analytics.AnalyticsEventCatalog.Behaviors.Where(behavior => !string.IsNullOrWhiteSpace(behavior.AutomaticTrigger)), matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
 
@@ -585,6 +595,174 @@ public class WebsitePlatformController : ControllerBase
     {
         if (await AuthorizeAsync(ticket, cancellationToken) is null) return Unauthorized();
         return Ok(SignalCatalogPayload());
+    }
+
+
+    [HttpGet("manage/agent/summary")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeWorkspaceSummary(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required" });
+
+        CommerceBusiness? business = actor.CommerceBusinessId.HasValue
+            ? await _db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var quality = WebsiteDraftQualityInspector.Inspect(document);
+        var media = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(value => value.OwnerKey == actor.OwnerUserId)
+            .OrderByDescending(value => value.CreatedUtc)
+            .Take(48)
+            .Select(value => new
+            {
+                value.Id,
+                name = MediaDisplayName(value),
+                value.ContentType,
+                value.SizeBytes,
+                value.CreatedUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(WebsiteCreativeProjection.SiteSummary(
+            actor.SiteKey,
+            state.Revision,
+            document,
+            facts,
+            capabilities,
+            quality,
+            media.Cast<object>()));
+    }
+
+    [HttpGet("manage/agent/page-outline")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativePageOutline(
+        [FromQuery] string ticket,
+        [FromQuery] string page,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        if (!document.Pages.TryGetValue(page, out var value)) return NotFound(new { error = "website_page_not_found" });
+
+        return Ok(new
+        {
+            schema = "legend-page-outline/v1",
+            revision = state.Revision,
+            path = page,
+            fingerprint = WebsiteCreativeFingerprint.Page(value),
+            page = WebsiteCreativeProjection.Page(value)
+        });
+    }
+
+    [HttpGet("manage/agent/node")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeNode(
+        [FromQuery] string ticket,
+        [FromQuery] string id,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        if (!WebsiteDocumentIndex.TryFind(document, id, out var node, out var location))
+            return NotFound(new { error = "website_node_not_found" });
+
+        return Ok(new
+        {
+            schema = "legend-node-source/v1",
+            revision = state.Revision,
+            fingerprint = WebsiteCreativeFingerprint.Node(node),
+            location,
+            node = WebsiteCreativeProjection.Node(node)
+        });
+    }
+
+    [HttpGet("manage/agent/recipes")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeRecipes(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        return Ok(new
+        {
+            schema = "legend-website-recipes/v1",
+            recipes = WebsiteRecipeCatalog.Definitions,
+            artDirections = new[] { "roadster-precision" },
+            capabilities
+        });
+    }
+
+    [HttpPost("manage/mutations")]
+    [RequestSizeLimit(2_500_000)]
+    public async Task<IActionResult> ApplyMutations(
+        [FromBody] WebsiteMutationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return await ApplyMutationBatchAsync(request, cancellationToken);
+    }
+
+    [HttpPost("manage/design-plan")]
+    [RequestSizeLimit(2_500_000)]
+    public async Task<IActionResult> ApplyDesignPlan(
+        [FromBody] WebsiteDesignPlanRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request?.Plan is null) return BadRequest(new { error = "website_design_plan_required" });
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var baseline = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, baseline, actions);
+        IReadOnlyList<WebsiteMutationOperation> operations;
+        try
+        {
+            operations = WebsiteDesignPlanResolver.Resolve(baseline, actor.SiteKey, capabilities, request.Plan);
+        }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new { error = "website_design_plan_protected", message = ex.Message, canonicalProtectionViolation = true });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_design_plan_invalid", message = ex.Message });
+        }
+
+        return await ApplyMutationBatchAsync(
+            new WebsiteMutationRequest(request.Ticket, request.ExpectedRevision, operations.ToList()),
+            cancellationToken);
     }
 
     [HttpGet("manage/event-map")]
@@ -1057,6 +1235,119 @@ public class WebsitePlatformController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    private async Task<IActionResult> ApplyMutationBatchAsync(
+        WebsiteMutationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || request.Operations is null || request.Operations.Count == 0)
+            return BadRequest(new { error = "website_mutations_required" });
+        if (request.Operations.Count > 400)
+            return BadRequest(new { error = "website_mutation_limit" });
+
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+
+        var canScopedRebase = request.Operations.All(operation =>
+            operation.Type is "replaceNode" or "removeNode" or "moveNode" or "updatePage" or "setApprovedCapability" &&
+            !string.IsNullOrWhiteSpace(operation.ExpectedFingerprint));
+        if (state.Revision != request.ExpectedRevision && !canScopedRebase)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var baseline = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
+        if (baseline.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required" });
+
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, baseline, actions);
+
+        WebsiteMutationApplyResult result;
+        try
+        {
+            result = WebsiteDocumentMutationService.Apply(
+                baseline,
+                actor.SiteKey,
+                actions,
+                capabilities,
+                request.Operations);
+            await ValidateCompositionMediaOwnershipAsync(actor, result.Document, cancellationToken);
+        }
+        catch (WebsiteMutationConflictException ex)
+        {
+            return Conflict(new
+            {
+                error = "scope_revision_conflict",
+                revision = state.Revision,
+                kind = ex.Kind,
+                targetId = ex.TargetId,
+                fingerprint = ex.ActualFingerprint
+            });
+        }
+        catch (WebsiteSiteSourceProtectionException ex)
+        {
+            return BadRequest(new
+            {
+                error = "website_mutation_protected",
+                message = ex.Message,
+                canonicalProtectionViolation = true,
+                correction = WebsiteStudioAgentContract.ProtectedEditCorrection
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "website_mutation_invalid", message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
+
+        var document = result.Document;
+        document.UpdatedUtc = DateTime.UtcNow;
+        if (request.DraftId.HasValue || request.DraftName is not null)
+        {
+            var named = request.DraftName?.Trim();
+            if (string.IsNullOrWhiteSpace(named) || named.Length > 100)
+                return BadRequest(new { message = "Enter a draft name of 1–100 characters." });
+            var drafts = ReadDrafts(state);
+            var draft = request.DraftId.HasValue ? drafts.SingleOrDefault(value => value.Id == request.DraftId) : null;
+            if (request.DraftId.HasValue && draft is null) return NotFound();
+            if (draft is null && drafts.Count >= 20)
+                return BadRequest(new { message = "You can keep up to 20 drafts. Delete a draft before creating another." });
+            if (drafts.Any(value => value.Id != draft?.Id && string.Equals(value.Name, named, StringComparison.OrdinalIgnoreCase)))
+                return Conflict(new { message = "That name already exists. Select the existing draft to update it, or choose another name." });
+            if (draft is null) { draft = new WebsiteNamedDraft(); drafts.Add(draft); }
+            draft.Name = named;
+            draft.DocumentJson = JsonSerializer.Serialize(document, JsonOptions);
+            draft.UpdatedUtc = DateTime.UtcNow;
+            state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
+        }
+
+        state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+
+        return Ok(new
+        {
+            source = "canonical_v3_mutation",
+            revision = state.Revision,
+            changedScopes = result.ChangedScopes,
+            fingerprints = result.Fingerprints,
+            savedUtc = state.UpdatedUtc,
+            drafts = ReadDrafts(state).Select(value => new { value.Id, value.Name, value.UpdatedUtc })
+        });
     }
 
     private async Task<WebsiteContentDocument> NormalizeAuthorableDocumentAsync(
