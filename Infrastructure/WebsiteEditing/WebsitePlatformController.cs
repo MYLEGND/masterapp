@@ -298,7 +298,7 @@ public class WebsitePlatformController : ControllerBase
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, draft);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
-            : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
+            : await new WebsiteCollectionProjectionService(_db).LoadAsync(draft, business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
         var canPublish = await CanPublishAsync(actor, cancellationToken);
         var mediaUsage = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
@@ -336,6 +336,26 @@ public class WebsitePlatformController : ControllerBase
             },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
+    }
+
+    [HttpGet("manage/data-catalog")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> DataCatalog(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business || !actor.CommerceBusinessId.HasValue)
+            return Unauthorized();
+
+        var data = await new WebsiteCollectionProjectionService(_db)
+            .LoadCatalogAsync(actor.CommerceBusinessId.Value, cancellationToken);
+        return Ok(new
+        {
+            source = "website_business_data_catalog",
+            dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
+            collections = data.Values
+        });
     }
 
     [HttpGet("manage/source")]
