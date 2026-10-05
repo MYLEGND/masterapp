@@ -615,8 +615,9 @@ public sealed class WebsiteCreativeWorkspaceTests
             {
                 ["headline"] = "Precision without filler."
             });
-        Assert.Equal("stack", withoutMedia.Layout.Mode);
+        Assert.Equal("free", withoutMedia.Layout.Mode);
         Assert.DoesNotContain("legend-recipe-hero-split", withoutMedia.ClassName ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("legend-recipe-hero-cinematic", withoutMedia.ClassName ?? string.Empty, StringComparison.Ordinal);
 
         var featureWithoutMedia = WebsiteRecipeCatalog.Build(
             "feature.split",
