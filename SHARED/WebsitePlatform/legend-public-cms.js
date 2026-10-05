@@ -250,19 +250,6 @@
     return node;
   }
 
-  function canonicalizePlatformBrandGeometry(node) {
-    if (!node || typeof node!=='object') return node;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    if (!classes.includes('brand') && !classes.includes('brand-wordmark')) return node;
-    const clear=style=>{
-      if (!style || typeof style!=='object') return;
-      delete style.widthPercent;
-      delete style.offsetXPercent;
-    };
-    clear(node.style);
-    Object.values(node.breakpointStyles || {}).forEach(clear);
-    return node;
-  }
 
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
@@ -281,7 +268,6 @@
         };
         if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
         canonicalizePassiveLinkNode(normalized);
-        canonicalizePlatformBrandGeometry(normalized);
         return normalized;
       })
       // Menu toggles are reconstructed runtime chrome. They were accidentally
@@ -1151,16 +1137,30 @@
     const has=field=>Object.hasOwn(explicit,field);
     const role=canonicalResponsiveRole(model,el);
 
-    // Header typography has its own bounded responsive defaults so the strong
-    // desktop brand/navigation scale never consumes the mobile viewport.
+    // Breakpoint values are authoritative when explicitly authored. Responsive
+    // defaults only fill fields that are absent at the active breakpoint, so a
+    // mobile edit never rewrites or masks desktop/base presentation.
     if(role==='shell'){
+      if(key==='mobile'){
+        if(!has('widthPercent')) delete style.widthPercent;
+        if(!has('heightPx')) delete style.heightPx;
+        if(!has('offsetXPercent')) style.offsetXPercent=0;
+        if(!has('offsetYPx')) style.offsetYPx=0;
+      }
       const brand=model?.systemBinding==='business_name' ||
         (SITE_KEY==='legend' && String(model?.tag || '').toLowerCase()==='strong' && String(model?.text || '').trim()==='LEGEND®');
       if(brand){
-        const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
-        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+        if(key==='mobile'){
+          if(!has('widthPercent')) delete style.widthPercent;
+          if(!has('offsetXPercent')) style.offsetXPercent=0;
+          if(!has('offsetYPx')) style.offsetYPx=0;
+        }
+        if(!has('fontScale')){
+          const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+          style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+        }
       }
-      if(model?.systemKey==='primary_navigation'){
+      if(model?.systemKey==='primary_navigation' && !has('fontScale')){
         const ceiling=key==='mobile' ? 1 : key==='tablet' ? 1.15 : 1.6;
         style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
       }
@@ -1173,43 +1173,42 @@
       const flowRole=['section','kicker','heading','narrative','copy','proof','actions','action','form','collection','group','content'].includes(role);
       const mediaRole=role==='media';
 
-      // Mobile flow geometry is a canonical safety invariant. Historical or
-      // explicit breakpoint values may still control visual styling, but they
-      // cannot push primary content out of frame, overlap adjacent content, or
-      // turn conversion actions into fixed-size floating shapes.
       if(flowRole || mediaRole){
-        style.offsetXPercent=0;
-        style.offsetYPx=0;
-        style.widthPercent=100;
-        if(role!=='embed') delete style.heightPx;
-        delete style.minWidthPx;
-        if(!mediaRole) delete style.maxWidthPx;
-        style.marginTop=0;
-        style.marginBottom=0;
-        style.marginLeft=0;
-        style.marginRight=0;
-        delete style.minHeightPx;
-        if(!mediaRole) delete style.maxHeightPx;
+        if(!has('offsetXPercent')) style.offsetXPercent=0;
+        if(!has('offsetYPx')) style.offsetYPx=0;
+        if(!has('widthPercent')) style.widthPercent=100;
+        if(role!=='embed' && !has('heightPx')) delete style.heightPx;
+        if(!has('minWidthPx')) delete style.minWidthPx;
+        if(!has('marginTop')) style.marginTop=0;
+        if(!has('marginBottom')) style.marginBottom=0;
+        if(!has('marginLeft')) style.marginLeft=0;
+        if(!has('marginRight')) style.marginRight=0;
+        if(!has('minHeightPx')) delete style.minHeightPx;
+        if(!mediaRole && !has('maxWidthPx')) delete style.maxWidthPx;
+        if(!mediaRole && !has('maxHeightPx')) delete style.maxHeightPx;
       } else {
         if(!has('offsetXPercent')) style.offsetXPercent=0;
         if(!has('offsetYPx')) style.offsetYPx=0;
       }
-      if(spacingNumber(style.paddingLeft)) style.paddingLeft=Math.min(28,Number(style.paddingLeft));
-      if(spacingNumber(style.paddingRight)) style.paddingRight=Math.min(28,Number(style.paddingRight));
-      if(spacingNumber(style.paddingTop)) style.paddingTop=Math.min(40,Number(style.paddingTop));
-      if(spacingNumber(style.paddingBottom)) style.paddingBottom=Math.min(40,Number(style.paddingBottom));
-      if(spacingNumber(style.fontSize)){
+      if(!has('paddingLeft') && spacingNumber(style.paddingLeft)) style.paddingLeft=Math.min(28,Number(style.paddingLeft));
+      if(!has('paddingRight') && spacingNumber(style.paddingRight)) style.paddingRight=Math.min(28,Number(style.paddingRight));
+      if(!has('paddingTop') && spacingNumber(style.paddingTop)) style.paddingTop=Math.min(40,Number(style.paddingTop));
+      if(!has('paddingBottom') && spacingNumber(style.paddingBottom)) style.paddingBottom=Math.min(40,Number(style.paddingBottom));
+      if(!has('fontSize') && spacingNumber(style.fontSize)){
         const ceiling=role==='heading' ? 54 : role==='kicker' ? 14 : role==='action' ? 20 : 22;
         style.fontSize=Math.min(ceiling,Number(style.fontSize));
       }
-      if(positiveNumber(style.fontScale)){
+      if(!has('fontScale') && positiveNumber(style.fontScale)){
         const ceiling=role==='heading' ? 1.35 : role==='kicker' ? 1.05 : role==='action' ? 1.05 : 1.15;
         style.fontScale=Math.min(ceiling,Number(style.fontScale));
       }
       if(mediaRole){
-        const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
-        style.maxWidthPx=Math.min(560,requestedMax);
-        if(positiveNumber(style.maxHeightPx)) style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
+        if(!has('maxWidthPx')){
+          const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
+          style.maxWidthPx=Math.min(560,requestedMax);
+        }
+        if(!has('maxHeightPx') && positiveNumber(style.maxHeightPx))
+          style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
       }
     } else if(key==='tablet'){
       if(!has('offsetXPercent')) style.offsetXPercent=0;
@@ -1248,20 +1247,17 @@
     const hasChildren=Array.isArray(model?.children) && model.children.length>0;
 
     if(key==='mobile' && hasChildren){
-      if(layout.mode==='free' || !layout.mode){
-        // Free-canvas positioning remains a desktop/base authoring capability.
-        // Published mobile content always participates in document flow so
-        // stored offsets cannot overlap or hide conversion content.
+      if(!has('mode') && (layout.mode==='free' || !layout.mode)){
         layout.mode='stack';
         layout.direction='column';
       } else if(layout.mode==='grid'){
         if(!has('columns')) layout.columns=1;
       } else if(layout.mode==='stack'){
-        layout.direction='column';
+        if(!has('direction')) layout.direction='column';
       } else if(layout.mode==='flex' && !has('direction')){
         layout.direction='column';
       }
-      if(!has('gapPx')) layout.gapPx=Math.max(12,Math.min(28,Number(layout.gapPx)||18));
+      if(layout.mode!=='free' && !has('gapPx')) layout.gapPx=Math.max(12,Math.min(28,Number(layout.gapPx)||18));
       if((layout.mode==='stack' || (layout.mode==='flex' && layout.direction!=='row')) && !has('alignItems')) layout.alignItems='stretch';
       if(layout.mode==='flex' && !has('wrap')) layout.wrap='nowrap';
     } else if(key==='tablet' && hasChildren){
@@ -1348,6 +1344,12 @@
     }
     if (![...select.options].some(option => option.value === editorBreakpointKey)) editorBreakpointKey='base';
     select.value=editorBreakpointKey;
+    document.querySelectorAll('[data-editor-viewport]').forEach(button=>{
+      const target=button.dataset.editorViewport;
+      const pressed=target === (editorBreakpointKey==='mobile' ? 'mobile' : 'base');
+      button.setAttribute('aria-pressed',pressed?'true':'false');
+      button.classList.toggle('primary',pressed);
+    });
     const current=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
     if (remove) remove.disabled=!current || !!current.isSystem;
   }
@@ -2440,7 +2442,8 @@
       } else if (node.type === 'video') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
-        el.controls = true; el.preload = 'metadata';
+        el.playsInline = true;
+        el.preload = node.videoLoop === true ? 'auto' : 'metadata';
       } else if (node.type === 'cta' || node.type === 'link') {
         if (node.actionKey) el.dataset.websiteActionKey = node.actionKey;
         if (el.tagName === 'A' && node.href && safeUrl(node.href)) el.setAttribute('href',node.href);
@@ -2797,6 +2800,16 @@
     if (el.tagName === 'VIDEO') {
       const media = model.mediaAssetId ? API_BASE + '/api/website-content/media/' + model.mediaAssetId : model.mediaUrl;
       if (media && safeUrl(media, true)) el.src = mediaUrl(media);
+      const looped=model.videoLoop === true;
+      el.loop=looped;
+      el.autoplay=looped;
+      el.controls=!looped;
+      el.playsInline=true;
+      // Never strip or mute the uploaded audio track. Audible autoplay remains
+      // subject to the browser's user-gesture policy, but loop mode has no
+      // playback chrome and retains the source audio exactly as uploaded.
+      el.muted=false;
+      el.preload=looped ? 'auto' : 'metadata';
     }
     applyDataBinding(el, model.dataBinding);
     applyCanonicalResponsiveAttributes(el,model);
@@ -4769,12 +4782,13 @@
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
-    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const isCommerceControl = !!selected.dataset.legendStoreNav;
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A' || isCommerceControl;
     if (selected.tagName === 'A' && !isCommerceControl) syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group');
     if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
+    const videoLoop = document.getElementById('legend-cms-video-loop');
+    if (videoLoop) videoLoop.checked = selected.tagName === 'VIDEO' && ov.videoLoop === true;
     const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
     const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
     const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
@@ -5806,6 +5820,7 @@
       className:null,
       mediaAssetId:asset.id,
       alt:isImage?(asset.name||''):null,
+      videoLoop:isVideo?false:null,
       signals:[],style:{widthPercent:isImage?70:100},breakpointStyles:{},
       layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[],children:[]
     };
@@ -6376,6 +6391,7 @@
     };
     const node={
       id,type:nodeType,tag:tags[nodeType] || 'div',className:defaultClasses[nodeType] || null,
+      videoLoop:nodeType==='video'?false:null,
       text:nodeType==='cta'?'Button':nodeType==='text'?'Your text':nodeType==='form'?'Send inquiry':nodeType==='embed'?defaultCodeBlock:'',
       title:nodeType==='form'?'Send an inquiry':null,
       actionKey:null,href:null,target:nodeType==='cta'?'_self':null,
@@ -6421,14 +6437,14 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="base" aria-pressed="true">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Mobile edits are stored only in the mobile breakpoint and never write into Desktop/Base.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint values inherit every unset value from the base design.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Mobile uses a conversion-first stack: context → headline → supporting copy/proof → action/form → media → deeper content. Visual breakpoint choices remain editable, while mobile flow safety keeps content in-frame and prevents stored X/Y offsets, fixed heights, or free-canvas geometry from overlapping the published page. Desktop preserves intentional side-by-side composition.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. X/Y offsets remain a base/desktop composition tool; published mobile flow neutralizes them for primary content so it cannot overlap or leave the viewport.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit Desktop/Base or explicitly target one breakpoint. Breakpoint values inherit only fields you leave unset.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Desktop/Base and Mobile are independent authoring surfaces. Explicit Mobile width, alignment, offsets, height, spacing, typography, and layout are preserved exactly within normal validated bounds; inherited defaults are used only for fields you have not set.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. When Mobile is selected, these controls write only to the mobile breakpoint; Desktop/Base remains unchanged.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
@@ -6481,7 +6497,7 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v"><label><input id="legend-cms-video-loop" type="checkbox"> Loop continuously · hide playback controls</label><small>Loop mode preserves the uploaded audio track. Browsers may require the first user gesture before audible autoplay begins.</small></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
@@ -6574,6 +6590,11 @@
     document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const asset=await uploadMedia(file); event.target.value=''; if(asset) await refreshMediaLibrary(); });
     document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
+    panel.querySelectorAll('[data-editor-viewport]').forEach(button=>button.addEventListener('click',()=>{
+      editorBreakpointKey=button.dataset.editorViewport==='mobile' ? 'mobile' : 'base';
+      applyBreakpointPreview();
+      syncBreakpointControls();
+    }));
     document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
       const key=safeId(document.getElementById('legend-cms-breakpoint-key')?.value);
       const label=(document.getElementById('legend-cms-breakpoint-label')?.value || key).trim();
@@ -6666,15 +6687,15 @@
       syncEditorControls();
       markDirty();
     }));
-    panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
-      if (!selected) return;
-      if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
-      input.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
-      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
-    }));
     panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
-      if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); if (ov.style) delete ov.style[button.dataset.colorReset];
-      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
+      if (!selected) return;
+      checkpoint();
+      const ov=selectedWebsiteModel(); if(!ov) return;
+      const style=editingStyle(ov,true);
+      delete style[button.dataset.colorReset];
+      applyStyle(selected,effectiveStyle(ov));
+      syncEditorControls();
+      markDirty();
     }));
     ['href','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key === 'href' && !safeUrl(value)) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedWebsiteModel(); if (key === 'href' && ov.actionKey) { syncEditorControls(); return; } ov[key] = value; if (key === 'href') { const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; const wiring = document.getElementById('legend-cms-action-wiring'); if (wiring) wiring.textContent = 'Custom link. Preset actions above are the backend-wired choices.'; } applyCompositionNode(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => {
@@ -6690,6 +6711,14 @@
       delete node.mediaUrl;
       applyCompositionNode(video, node);
       syncEditorControls();
+      markDirty();
+    });
+    document.getElementById('legend-cms-video-loop')?.addEventListener('input', event => {
+      if(selected?.tagName!=='VIDEO') return;
+      const ov=selectedWebsiteModel(); if(!ov) return;
+      checkpoint();
+      ov.videoLoop=event.target.checked === true;
+      applyCompositionNode(selected,ov);
       markDirty();
     });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
@@ -6794,7 +6823,7 @@
       .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}.legend-cms-protection-warning{white-space:pre-wrap;margin:10px 0;padding:12px 14px;border:1px solid #ff6b6b;border-left:5px solid #ff4d4d;border-radius:10px;background:#35191c;color:#ff8f8f!important;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
-      .legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
+      .legend-cms-device-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:0 0 5px}.legend-cms-device-switch button{min-height:36px;font-weight:850}.legend-cms-device-switch button[aria-pressed="true"]{border-color:#d4ad45;background:#d4ad45;color:#081a3a}.legend-cms-device-note{display:block;margin:0 0 8px;color:#b8c5d8}.legend-cms-primary-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}.legend-cms-primary-tabs button{font-weight:800}.legend-cms-agent-contract{min-width:0;max-width:100%;overflow:hidden;padding:12px 14px;border:1px solid #d4ad45;border-radius:12px;background:#10284a;color:#f7f6f2}.legend-cms-agent-contract strong{display:block;margin-bottom:8px}.legend-cms-agent-contract pre{display:block;width:100%;max-width:100%;min-width:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:500 12px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:inherit}.legend-cms-agent-contract ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
       .legend-cms-source-key{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.legend-cms-source-key span{padding:4px 7px;border:1px solid currentColor;border-radius:999px;background:#07162b;font:800 9px/1.2 Inter,system-ui,sans-serif;letter-spacing:.025em}.legend-cms-source-key [data-tone="content"],.legend-cms-source-content{color:#78e2a7}.legend-cms-source-key [data-tone="style"],.legend-cms-source-style{color:#7fb5ff}.legend-cms-source-key [data-tone="color"],.legend-cms-source-color{color:#ff8fa8}.legend-cms-source-key [data-tone="size"],.legend-cms-source-size{color:#ffb86b}.legend-cms-source-key [data-tone="layout"],.legend-cms-source-layout{color:#6fdce8}.legend-cms-source-key [data-tone="media"],.legend-cms-source-media{color:#c4a7ff}.legend-cms-source-key [data-tone="behavior"],.legend-cms-source-behavior{color:#d9a6ff}.legend-cms-source-key [data-tone="structure"],.legend-cms-source-structure{color:#9bd67d}.legend-cms-source-key [data-tone="protected"],.legend-cms-source-protected{color:#f0cf78}.legend-cms-source-default{color:#dce6f4}
       .legend-cms-source-editor{position:relative;width:100%;min-height:52vh;border:1px solid #3f5271;border-radius:10px;background:#07162b;overflow:hidden}.legend-cms-source-highlight,.legend-cms-site-source{width:100%;min-height:52vh;margin:0;padding:14px;font:500 13px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;tab-size:2;white-space:pre-wrap;overflow:auto;overflow-wrap:anywhere;word-break:normal}.legend-cms-source-highlight{position:absolute;inset:0;pointer-events:none;background:#07162b}.legend-cms-source-highlight span{display:inline}.legend-cms-site-source{position:relative;z-index:1;resize:vertical;border:0!important;border-radius:0!important;background:#07162b!important;color:#dce6f4!important;-webkit-text-fill-color:currentColor;caret-color:#fff;line-height:1.6}.legend-cms-site-source::selection{background:#4f77aa66}.legend-cms-site-source:focus{outline:2px solid #d4ad45;outline-offset:-2px}.legend-cms-site-source[readonly]{cursor:default;caret-color:transparent;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent}.legend-cms-source-editor:has(.legend-cms-site-source[readonly]){border-color:#344766}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])){border-color:#d4ad45;box-shadow:inset 0 0 0 1px color-mix(in srgb,#d4ad45 22%,transparent)}.legend-cms-source-editor:has(.legend-cms-site-source:not([readonly])) .legend-cms-source-highlight{display:none}
       [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
