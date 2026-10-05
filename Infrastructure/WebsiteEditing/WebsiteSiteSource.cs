@@ -62,7 +62,8 @@ public static class WebsiteSiteSource
         {
             Modifiers = { info =>
             {
-                if (info.Type == typeof(WebsiteCompositionNode))
+                if (info.Type == typeof(WebsiteCompositionNode) ||
+                    info.Type == typeof(WebsiteControlPresentation))
                 {
                     foreach (var property in info.Properties)
                     {
