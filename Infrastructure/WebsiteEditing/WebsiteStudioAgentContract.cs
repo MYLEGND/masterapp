@@ -121,16 +121,16 @@ STABLE NODE IDs
 - A duplicated subtree receives new IDs for every duplicated node; never reuse an existing ID.
 
 RESPONSIVE AUTHORING
-- style and layout are the base presentation.
-- breakpointStyles and breakpointLayouts are overrides for the same node at mobile/tablet/desktop/custom breakpoints.
-- Do not create duplicate desktop/mobile copies to solve responsive layout. Keep one semantic node and override its presentation.
-- The shared renderer supplies one inherited responsive hierarchy when a breakpoint property is unset. Never fight it with duplicate nodes, one-off classes, arbitrary negative offsets, or per-page CSS.
-- Mobile is a first-class conversion canvas. Default decision order is: context/kicker -> headline -> concise supporting copy or proof -> primary action/form -> supporting image/video -> deeper cards/content. Keep primary actions full-width or comfortably tappable, never let button copy wrap one word per line, and never inherit desktop X/Y offsets or fixed content heights that make nodes overlap.
-- Mobile flow safety is canonical and non-negotiable for published content: primary flow nodes stay in-frame, X/Y offsets resolve to normal document flow, fixed heights are removed from ordinary content, and free-canvas containers resolve to a vertical stack. Do not use breakpoint overrides to recreate overlapping or off-canvas mobile geometry.
-- On mobile, mixed-content sections become a single vertical stack by default; grids collapse to one column; media stays inside the viewport and follows the primary decision/action. Explicit mobile visual styling remains valid only within those safe geometry constraints.
-- Tablet should normally use no more than two grid columns and wrapping row layouts unless an explicit tablet composition is required.
-- Desktop should preserve deliberate side-by-side composition, readable line lengths, strong whitespace, visible trust context, and a clear primary action without scattering equal-priority controls across the viewport.
-- Explicit breakpoint values outrank inherited responsive defaults only when they do not violate the canonical mobile flow-safety constraints above. Preserve mobile and desktop as equivalent semantic content with different presentation, never separate content sources.
+- style and layout are the Desktop/Base presentation.
+- breakpointStyles and breakpointLayouts are presentation overrides for the same semantic node at mobile/tablet/desktop/custom breakpoints.
+- Do not create duplicate desktop/mobile copies to solve responsive layout. Keep one semantic node and author its presentation per breakpoint.
+- Mobile is an independent first-class editing surface. A Mobile edit must write only breakpointStyles.mobile or breakpointLayouts.mobile; it must never mutate, normalize, copy into, or delete Desktop/Base style or layout.
+- The shared renderer supplies inherited responsive defaults only when a property is unset at the active breakpoint. Explicit mobile width, height, alignment, offsets, margins, spacing, typography, sizing, media geometry, and layout mode outrank inherited Desktop/Base defaults after ordinary type/range validation.
+- Mobile should begin from a useful conversion-first inherited layout: context/kicker -> headline -> concise supporting copy or proof -> primary action/form -> supporting image/video -> deeper cards/content. Those are defaults, not a license to discard an explicit Mobile composition selected by the user.
+- Keep primary actions comfortably tappable, media inside the viewport when not explicitly resized otherwise, and avoid accidental one-word-per-line copy. When the user explicitly authors Mobile presentation, preserve it exactly as the responsive source of truth instead of silently repairing it back to a platform layout.
+- Tablet should normally use no more than two grid columns and wrapping row layouts unless an explicit tablet composition is authored.
+- Desktop/Base should preserve deliberate side-by-side composition, readable line lengths, strong whitespace, visible trust context, and a clear primary action without scattering equal-priority controls across the viewport.
+- Preserve mobile and desktop as equivalent semantic content with independent presentation layers, never separate content sources and never competing rendering authorities.
 
 NODE SELECTION
 - section: major page region.
