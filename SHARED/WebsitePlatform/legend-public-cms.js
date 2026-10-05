@@ -3096,7 +3096,7 @@
         description:'Read the authorized Website Studio workspace efficiently. Start with summary, then recipes, and fetch page/node/media/signal/conversion detail only when needed.',
         readOnly:true,
         schema:objectSchema({
-          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','signal_catalog','conversion_health']},
+          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','business_data','signal_catalog','conversion_health']},
           page:{type:'string',maxLength:2048},
           id:{type:'string',maxLength:240},
           q:{type:'string',maxLength:200},
@@ -3110,6 +3110,7 @@
             case 'page_outline': return await api.getPageOutline(args.page || undefined);
             case 'node': return await api.getNode(args.id);
             case 'media': return await api.listMedia({q:args.q || undefined,kind:args.kind || 'all',take:args.take || 12,designMetadata:true});
+            case 'business_data': return await api.listBusinessData();
             case 'signal_catalog': return await api.getSignalCatalog();
             case 'conversion_health': return await api.inspectConversionHealth();
             default: throw new Error('Choose a supported Website Studio read operation.');
@@ -3134,7 +3135,7 @@
       },
       {
         name:'legend_website_set_signal_mappings',
-        description:'Attach approved custom intent mappings to one existing authorable element/control through the canonical Analytics authority. Never use this for verified server outcomes.',
+        description:'Attach approved custom intent mappings through the canonical Analytics authority and immediately run private no-dispatch validation for each saved mapping. Never use this for verified server outcomes.',
         readOnly:false,
         schema:objectSchema({
           pagePath:{type:'string',maxLength:2048},
@@ -3142,7 +3143,20 @@
           fieldKey:{type:['string','null'],maxLength:160},
           signals:{type:'array',maxItems:8,items:{type:'object'}}
         },['pagePath','elementId','signals']),
-        execute:args=>api.setSignalMappings(args)
+        execute:async args=>{
+          const saved=await api.setSignalMappings(args);
+          const privateTests=await Promise.all(
+            (Array.isArray(args?.signals)?args.signals:[])
+              .filter(signal=>signal?.id)
+              .map(signal=>api.testSignalMapping({
+                pagePath:args.pagePath,
+                elementId:args.elementId,
+                fieldKey:args.fieldKey || null,
+                bindingId:signal.id
+              }))
+          );
+          return {saved,privateTests};
+        }
       },
       {
         name:'legend_website_import_image',
