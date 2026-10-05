@@ -77,14 +77,11 @@
   let sourceEditorBaseFingerprint = null;
   let canonicalSourceDocument = null;
   let canonicalSourceRevision = null;
-  let templateRepairPending = false;
   let materializationSavePending = false;
   let persistedDocumentState = null;
   let autoSaveTimer = null;
   let historyCheckpointPending = false;
   let suppressHistoryCapture = false;
-  let sharedPresentationIndex = new Map();
-  let sharedPresentationIndexReady = false;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -184,14 +181,6 @@
     return doc;
   }
 
-  function isRuntimeShellChromeNode(node) {
-    if (!node || typeof node !== 'object') return false;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    return String(node.tag || '').toLowerCase()==='button' &&
-      classes.includes('nav-toggle') &&
-      !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
-  }
-
   function wordsFromResourceName(value) {
     if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
     let path=value.trim();
@@ -227,59 +216,6 @@
     return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
   }
 
-  function isRetiredTemplateDecorationNode(node) {
-    if (!node || typeof node !== 'object') return false;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    const hasMeaning=
-      String(node.text || '').trim() ||
-      String(node.title || '').trim() ||
-      node.actionKey || node.href || node.alt ||
-      node.mediaAssetId || node.mediaUrl ||
-      node.systemKey || node.systemBinding || node.syncSourceId ||
-      node.dataBinding ||
-      (Array.isArray(node.signals) && node.signals.length) ||
-      (Array.isArray(node.children) && node.children.length);
-    if(hasMeaning) return false;
-    if(classes.includes('icon') || classes.includes('halo') || classes.includes('hero-mark')) return true;
-    return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
-  }
-
-  function canonicalizePassiveLinkNode(node) {
-    if (!node || isRuntimeShellChromeNode(node) || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
-    const href=String(node.href || '').trim();
-    if (href && href!=='#') return node;
-    // A destination-less anchor is presentation, not navigation. Converting it
-    // here repairs already-persisted early-v3 placeholder links instead of
-    // teaching readiness checks to ignore dead interactions.
-    node.type='text';
-    node.tag='span';
-    node.actionKey=null;
-    node.href=null;
-    node.target=null;
-    node.signals=[];
-    return node;
-  }
-
-
-  const LEGEND_ATTRIBUTION_URL='https://www.mylegnd.com/';
-
-  function enforceLegendAttributionNode(node) {
-    if (!node || typeof node !== 'object') return node;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    if (classes.includes('legend-platform-attribution')) {
-      node.type='link';
-      node.tag='a';
-      node.text='Legend®';
-      node.href=LEGEND_ATTRIBUTION_URL;
-      node.target='_self';
-    } else if (classes.includes('legend-platform-attribution-powered-label')) {
-      node.text='Powered by';
-    } else if (classes.includes('legend-platform-attribution-designed-label')) {
-      node.text='Website Designed by';
-    }
-    return node;
-  }
-
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
@@ -295,130 +231,8 @@
           animations: Array.isArray(node.animations) ? node.animations : [],
           signals: Array.isArray(node.signals) ? node.signals : []
         };
-        if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
-        enforceLegendAttributionNode(normalized);
-        canonicalizePassiveLinkNode(normalized);
         return normalized;
-      })
-      // Menu toggles are reconstructed runtime chrome. They were accidentally
-      // persisted by early v3 materialization and have no website destination.
-      .filter(node => !isRuntimeShellChromeNode(node))
-      // Repair early v3 drafts that persisted presentation-only template wrappers
-      // after their SVG/pseudo-element contents were deliberately excluded.
-      .filter(node => !isRetiredTemplateDecorationNode(node));
-  }
-
-  const MOBILE_HEADER_GEOMETRY_FIELDS=[
-    'widthPercent','heightPx','offsetXPercent','offsetYPx',
-    'minWidthPx','maxWidthPx','minHeightPx','maxHeightPx',
-    'marginTop','marginBottom','marginLeft','marginRight'
-  ];
-
-  function mobileHeaderChromeKind(node) {
-    if (!node || typeof node!=='object') return null;
-    const tag=String(node.tag || '').toLowerCase();
-    const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
-    if(node.systemKey==='primary_navigation' || (tag==='nav' && classes.has('nav'))) return 'navigation';
-    if(node.systemBinding==='business_name' ||
-       classes.has('brand') || classes.has('brand-wordmark') || classes.has('business-brand-banner')) return 'brand';
-    if(tag==='header' || classes.has('site-header')) return 'frame';
-    return null;
-  }
-
-  function canonicalizeMobileHeaderChrome(node) {
-    const kind=mobileHeaderChromeKind(node);
-    if(!kind) return node;
-    node.breakpointStyles ||= {};
-    const mobile=node.breakpointStyles.mobile && typeof node.breakpointStyles.mobile==='object'
-      ? {...node.breakpointStyles.mobile}
-      : {};
-    MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete mobile[field]);
-    if(kind==='brand' && positiveNumber(mobile.fontScale))
-      mobile.fontScale=Math.min(1.35,Number(mobile.fontScale));
-    if(kind==='navigation' && positiveNumber(mobile.fontScale))
-      mobile.fontScale=Math.min(1,Number(mobile.fontScale));
-    if(Object.keys(mobile).length) node.breakpointStyles.mobile=mobile;
-    else delete node.breakpointStyles.mobile;
-
-    if(kind==='frame' || kind==='navigation'){
-      node.breakpointLayouts ||= {};
-      node.breakpointLayouts.mobile={mode:'free',direction:'column'};
-    }
-    return node;
-  }
-
-  function applyCanonicalHeaderTypographyDefaults(node) {
-    if (!node || typeof node!=='object') return node;
-    node.style ||= {};
-    const tag=String(node.tag || '').toLowerCase();
-    const isBrandTitle=
-      node.systemBinding==='business_name' ||
-      (SITE_KEY==='legend' && tag==='strong' && String(node.text || '').trim()==='LEGEND®');
-    if(isBrandTitle){
-      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=3.5;
-      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
-      node.breakpointStyles ||= {};
-      node.breakpointStyles.mobile ||= {};
-      node.breakpointStyles.tablet ||= {};
-      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1.35;
-      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.8;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
-    }
-    if(node.systemKey==='primary_navigation'){
-      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=1.6;
-      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
-      node.breakpointStyles ||= {};
-      node.breakpointStyles.mobile ||= {};
-      node.breakpointStyles.tablet ||= {};
-      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1;
-      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.15;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
-    }
-    return node;
-  }
-
-  function normalizePageCompositionNodes(input) {
-    // Global website chrome has one source: shell.header / shell.footer.
-    // Repair stale drafts by refusing page-local copies of those authorities.
-    return normalizeCompositionNodes(input).filter(node=>{
-      const tag=String(node?.tag || '').toLowerCase();
-      const classes=new Set(String(node?.className || '').split(/\s+/).filter(Boolean));
-      if(tag==='header' || tag==='footer') return false;
-      if(node?.systemKey==='primary_navigation') return false;
-      if(classes.has('site-header') || classes.has('site-footer')) return false;
-      return true;
-    });
-  }
-
-  function normalizeHeaderComposition(input) {
-    const roots=normalizeCompositionNodes(input);
-    let primarySeen=false;
-    const clean=nodes => {
-      const result=[];
-      for(const node of nodes || []) {
-        canonicalizeMobileHeaderChrome(node);
-        applyCanonicalHeaderTypographyDefaults(node);
-        const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
-        const primary=node?.systemKey==='primary_navigation';
-        const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
-        if(templateNav && SITE_KEY==='business') continue;
-        if(primary) {
-          if(primarySeen) continue;
-          primarySeen=true;
-          // Page links are a projection of versioned page navigation metadata,
-          // not a second persisted list inside the shell.
-          if(SITE_KEY==='business') node.children=[];
-          else node.children=clean(node.children);
-        } else {
-          node.children=clean(node.children);
-        }
-        result.push(node);
-      }
-      return result;
-    };
-    return clean(roots);
+      });
   }
 
   function normalizeControlPresentation(input) {
@@ -465,7 +279,7 @@
         navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
         systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
-        composition: normalizePageCompositionNodes(value.composition)
+        composition: normalizeCompositionNodes(value.composition)
       };
     }
 
@@ -485,7 +299,7 @@
       faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
       breakpoints:normalizeBreakpoints(input?.breakpoints),
       shell:{
-        header:normalizeHeaderComposition(input?.shell?.header),
+        header:normalizeCompositionNodes(input?.shell?.header),
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
@@ -504,56 +318,8 @@
       },
       pages
     };
-    synchronizeCanonicalSharedPresentation(normalized);
     return constrainDocumentGeometry(normalized);
   }
-
-  function canonicalSharedPresentationKey(node) {
-    if (!node || typeof node !== 'object') return null;
-    if (node.type==='form' && node.systemKey==='canonical_inquiry') return 'form:canonical_inquiry';
-    return null;
-  }
-
-  function copyCanonicalSharedPresentation(target, source) {
-    if (!target || !source || target===source) return;
-    for (const key of ['className','text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations']) {
-      if (Object.hasOwn(source,key)) target[key]=cloneCanonicalValue(source[key]);
-      else delete target[key];
-    }
-  }
-
-  function buildCanonicalSharedPresentationIndex(doc) {
-    const groups=new Map();
-    if(!doc || typeof doc!=='object') return groups;
-    const visit=nodes=>walkComposition(nodes,node=>{
-      const key=canonicalSharedPresentationKey(node);
-      if(!key) return;
-      if(!groups.has(key)) groups.set(key,[]);
-      groups.get(key).push(node);
-    });
-    Object.values(doc.pages || {}).forEach(page=>visit(page?.composition || []));
-    return groups;
-  }
-
-  function rebuildCanonicalSharedPresentationIndex(doc=documentState) {
-    sharedPresentationIndex=buildCanonicalSharedPresentationIndex(doc);
-    sharedPresentationIndexReady=doc===documentState;
-    return sharedPresentationIndex;
-  }
-
-  function synchronizeCanonicalSharedPresentation(doc, preferredId=null) {
-    if (!doc || typeof doc!=='object') return doc;
-    const groups=doc===documentState && sharedPresentationIndexReady
-      ? sharedPresentationIndex
-      : buildCanonicalSharedPresentationIndex(doc);
-    for (const nodes of groups.values()) {
-      if (nodes.length < 2) continue;
-      const source=nodes.find(node=>node.id===preferredId) || nodes[0];
-      nodes.forEach(node=>copyCanonicalSharedPresentation(node,source));
-    }
-    return doc;
-  }
-
 
   function normalizePageRoute(value) {
     if (typeof value !== 'string') return null;
@@ -2184,14 +1950,10 @@
     controls.forEach((control,index)=>{
       const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
       if(!key) return;
-      if(String(node.systemKey || '').startsWith('protect_runtime_form:') && !Object.hasOwn(presentations,key)) {
-        presentations[key]=normalizeControlPresentation(null);
-        if(editorMode) { templateRepairPending=true; dirty=true; }
-      }
       control.dataset.cmsFieldKey=key;
       control.dataset.cmsSignalOnly='true';
       control.dataset.cmsEditable='true';
-      const presentation=presentations[key];
+      const presentation=presentations[key] || normalizeControlPresentation(null);
       if(presentation){
         applyStyle(control,effectiveStyle(presentation));
         applyLayout(control,effectiveLayout(presentation));
@@ -3785,23 +3547,6 @@
       renderCanonicalShell();
       const page=pageState();
       if(pageUsesSystemTemplate(page)){
-        const liveRuntime=document.querySelector('form[data-form-key]:not([data-website-inquiry])');
-        if(liveRuntime && !containsProtectedRuntimeForm(page.composition)){
-          // Repair early v3 drafts that flattened an executable form into generic
-          // content. Re-materialize presentation from the still-mounted server
-          // template, while the form execution stays outside WebsiteContentDocument.
-          const previous=new Map();
-          walkComposition(page.composition || [],node=>previous.set(node.id,node));
-          page.composition=materializeCurrentPageComposition();
-          walkComposition(page.composition,node=>{
-            const saved=previous.get(node.id);
-            if(!saved) return;
-            for(const key of ['text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations'])
-              if(saved[key] != null) node[key]=cloneCanonicalValue(saved[key]);
-          });
-          templateRepairPending=true;
-          dirty=true;
-        }
         applyTemplateBackedCompositionPage();
       }else{
         renderCanonicalCompositionPage();
@@ -5005,9 +4750,6 @@
   }
 
   function markDirty() {
-    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
-    const preferredId=selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null;
-    synchronizeCanonicalSharedPresentation(documentState,preferredId);
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
@@ -5847,8 +5589,6 @@
         return true;
       }
 
-      const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
-      synchronizeCanonicalSharedPresentation(documentState,selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null);
       const submittedState=normalizeDocument(cloneCanonicalValue(documentState));
       const submitted=JSON.stringify(submittedState);
 
@@ -8299,12 +8039,6 @@
 
       if(legacyMigration && payload.capabilities?.compositionV3===true){
         await materializeCanonicalSite();
-      }
-
-      if(!materializeMode && templateRepairPending && !legacyMigration){
-        const repaired=await save(false);
-        if(!repaired) throw new Error(document.getElementById('legend-cms-status')?.textContent || 'Protected form presentation could not be repaired safely. Publishing remains blocked.');
-        templateRepairPending=false;
       }
 
       preservePreviewNavigation();
