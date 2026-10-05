@@ -418,6 +418,56 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public void PersistedCanonicalV3_FailsClosedInsteadOfSelfHealing()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var passiveLink = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "dead-link",
+                            Type = "link",
+                            Tag = "a",
+                            Text = "Dead",
+                            Href = "#"
+                        }
+                    ]
+                }
+            }
+        };
+
+        var nonCanonical = JsonSerializer.Serialize(passiveLink, options);
+        var repairError = Assert.Throws<InvalidOperationException>(() =>
+            WebsiteContentSanitizer.ReadPersisted(nonCanonical, options));
+        Assert.Equal("website_v3_noncanonical_persisted_document", repairError.Message);
+
+        var duplicate = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode { Id = "same", Type = "text", Tag = "p", Text = "One" },
+                        new WebsiteCompositionNode { Id = "same", Type = "text", Tag = "p", Text = "Two" }
+                    ]
+                }
+            }
+        };
+
+        var duplicateError = Assert.Throws<InvalidOperationException>(() =>
+            WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(duplicate, options), options));
+        Assert.Equal("website_duplicate_node_identity:same", duplicateError.Message);
+    }
+
+    [Fact]
     public async Task FullDocumentWrite_IsAllowedOnlyForOneWayLegacyMaterialization()
     {
         using var f = new Fixture();
