@@ -446,7 +446,10 @@ def transaction_disposition(plan, package_root, revision):
         if journal is not None and getattr(journal, 'history_error', None) is not None:
             raise DeploymentReconciliationRequired('Deployment history incomplete; lease must remain held')
         azure = target_azure(key, package_root / target['package'], revision)
-        rows = azure.deployments()
+        rows = read_deployments_bounded(
+            azure,
+            phase='terminal disposition after committed transaction',
+        )
         observed = azure.observed_revision()
         if any(item['status'] in (0, 1, 2) for item in rows) or observed not in {row['revision'], revision}:
             raise DeploymentReconciliationRequired('Provider target not terminal at preserved baseline/candidate')
