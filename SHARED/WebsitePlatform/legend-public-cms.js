@@ -21,7 +21,8 @@
   const params = new URLSearchParams(location.search);
   const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
   const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/?)*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
-  const pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
+  let activeEditorRoute = customPage;
+  let pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
 
@@ -565,7 +566,7 @@
   }
 
   function currentPageRoute() {
-    const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const browserPath = (editorMode && activeEditorRoute) || customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
     return canonicalSiteRoute(browserPath) || '/';
   }
 
@@ -3756,7 +3757,7 @@
     return url;
   }
 
-  async function navigateToEditorPage(route) {
+  async function navigateToEditorPage(route,{replaceHistory=false}={}) {
     if (route === '__store__') { openStorePreview(); return; }
     closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
@@ -3767,6 +3768,34 @@
       showPanel('source'); return;
     }
     if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+
+    // Canonical v3 Business pages are already loaded in the one site graph.
+    // Switching pages is therefore a local workspace operation, not another
+    // /manage bootstrap. Protect keeps navigation reloads where the server must
+    // mount a route-specific executable runtime/template.
+    if(editorMode && SITE_KEY==='business' && documentState.pages?.[route]){
+      activeEditorRoute=route;
+      pageKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
+      setSelected(null);
+      sourceEditorDirty=false;
+      sourceEditorBaseNode=null;
+      sourceEditorBaseFingerprint=null;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
+      applyDocument(documentState);
+      refreshPageSelector();
+      renderPageManager();
+      syncPageControls();
+      preservePreviewNavigation();
+      const url=editorUrlForRoute(route);
+      if(url){
+        const method=replaceHistory?'replaceState':'pushState';
+        history[method]({legendStudioRoute:route},'',url.toString());
+      }
+      refreshBrowserAgentWorkspace();
+      return;
+    }
+
     const url=editorUrlForRoute(route);
     if(url) location.assign(url.toString());
   }
@@ -7662,6 +7691,15 @@
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
+  }
+
+  if(editorMode && SITE_KEY==='business') {
+    window.addEventListener('popstate',()=>{
+      const current=new URL(location.href);
+      const route=normalizePageRoute(current.searchParams.get('cmsPage') || '/');
+      if(route && documentState.pages?.[route] && route!==currentPageRoute())
+        void navigateToEditorPage(route,{replaceHistory:true});
+    });
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
