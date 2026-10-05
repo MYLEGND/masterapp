@@ -588,8 +588,8 @@ public sealed class WebsiteCreativeWorkspaceTests
             },
             mediaId);
 
-        Assert.Equal("grid", split.Layout.Mode);
-        Assert.Equal(2, split.Layout.Columns);
+        Assert.Equal("free", split.Layout.Mode);
+        Assert.Null(split.Layout.Columns);
         Assert.Equal(2, split.Children.Count);
         Assert.Equal("hero.copy", split.Children[0].Id);
         Assert.Equal("container", split.Children[0].Type);
