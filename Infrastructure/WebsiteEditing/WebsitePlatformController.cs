@@ -804,6 +804,30 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
+    [HttpGet("manage/agent/design-quality/repairs")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeDesignQualityRepairs(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required" });
+
+        var plan = WebsiteDesignQualityRepairPlanner.Plan(document);
+        return Ok(new
+        {
+            schema = plan.Schema,
+            revision = state.Revision,
+            repairs = plan.Repairs,
+            operations = plan.Operations
+        });
+    }
+
     [HttpPost("manage/mutations")]
     [RequestSizeLimit(2_500_000)]
     public async Task<IActionResult> ApplyMutations(
