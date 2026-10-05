@@ -86,6 +86,13 @@ class OperationJournal:
             raise ValueError("Invalid Azure deployment identities")
         return sorted(set(values))
 
+    def authorize_first_write_after_baseline_proof(self):
+        if self.intent is not None:
+            raise RuntimeError('Existing upload intent requires read-only reconciliation')
+        if self.history_error is None:
+            return
+        self.history_error = None
+
     def before_submit(self, baseline_ids):
         if self.history_error is not None:
             raise self.history_error
