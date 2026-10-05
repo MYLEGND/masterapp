@@ -1168,6 +1168,8 @@ test('public startup styling has one responsive authority and one palette author
   assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\.section\{padding-top:52px;padding-bottom:52px\}/);
   assert.doesNotMatch(source,/--accent:#b8955a/);
   assert.match(source,/const defaultCodeBlock = '[\s\S]*--navy-deep:#081a3a;--gold:#d4ad45/);
+  assert.doesNotMatch(publicCss,/legend-recipe-(?:hero-split|feature-split|card-grid|stat-grid|step-grid|bento-grid)\\{[^}]*grid-template-columns:[^}]*!important/);
+
 });
 
 test('Website Studio canvas keeps public viewport typography and mobile controls stay inside the viewport',()=>{
