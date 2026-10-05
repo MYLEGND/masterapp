@@ -1806,7 +1806,8 @@ def _admission_superseded_by_successful_source(api, run, record, runs):
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
     conflicts = []
-    for run in direct_release_runs(api):
+    runs = direct_release_runs(api)
+    for run in runs:
         own_run = run['id'] == current_run
         if run.get('status') == 'completed' and successful_release(api, run):
             continue  # exact terminal live proof discharges this publication lease
