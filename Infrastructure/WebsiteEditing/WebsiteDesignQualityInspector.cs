@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Infrastructure.WebsiteEditing;
 
 public sealed record WebsiteConversionPathSummary(
@@ -208,3 +210,149 @@ public static class WebsiteDesignQualityInspector
     private static bool ContainsId(WebsiteCompositionNode node, string id) =>
         string.Equals(node.Id, id, StringComparison.Ordinal) || (node.Children?.Any(child => ContainsId(child, id)) ?? false);
 }
+
+public sealed record WebsiteSafeQualityRepair(
+    string Code,
+    string PagePath,
+    string ElementId,
+    string Description,
+    WebsiteMutationOperation Operation);
+
+public sealed record WebsiteSafeQualityRepairPlan(
+    string Schema,
+    IReadOnlyList<WebsiteSafeQualityRepair> Repairs)
+{
+    public IReadOnlyList<WebsiteMutationOperation> Operations =>
+        Repairs.Select(value => value.Operation).ToArray();
+}
+
+public static class WebsiteDesignQualityRepairPlanner
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public static WebsiteSafeQualityRepairPlan Plan(WebsiteContentDocument document)
+    {
+        var repairs = new List<WebsiteSafeQualityRepair>();
+
+        foreach (var (path, page) in document.Pages.OrderBy(value => value.Key, StringComparer.Ordinal))
+        {
+            if (page.Navigation?.IsDeleted == true || page.SystemTemplateKey is not null)
+                continue;
+
+            var headings = new List<WebsiteCompositionNode>();
+            CollectSafeHeadings(page.Composition, protectedAncestor: false, headings);
+            if (headings.Count == 0) continue;
+
+            var h1 = headings.Where(value => string.Equals(value.Tag, "h1", StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (h1.Length == 0)
+            {
+                AddTagRepair(repairs, path, headings[0], "h1", "design_h1_missing",
+                    "Promote the first safe page heading to H1.");
+            }
+            else if (h1.Length > 1)
+            {
+                foreach (var duplicate in h1.Skip(1))
+                    AddTagRepair(repairs, path, duplicate, "h2", "design_h1_multiple",
+                        "Demote an additional H1 to H2 while preserving its content and presentation.");
+            }
+
+            var effectiveLevels = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var heading in headings)
+            {
+                var tag = repairs.LastOrDefault(value => value.ElementId == heading.Id)?.Operation.Node?.Tag ?? heading.Tag;
+                if (!TryHeadingLevel(tag, out var level)) continue;
+                effectiveLevels[heading.Id] = level;
+            }
+
+            int? previous = null;
+            foreach (var heading in headings)
+            {
+                if (!effectiveLevels.TryGetValue(heading.Id, out var level)) continue;
+                if (previous.HasValue && level > previous.Value + 1)
+                {
+                    var corrected = previous.Value + 1;
+                    AddTagRepair(repairs, path, heading, "h" + corrected, "design_heading_skip",
+                        $"Normalize heading hierarchy to H{corrected}.");
+                    effectiveLevels[heading.Id] = corrected;
+                    level = corrected;
+                }
+                previous = level;
+            }
+        }
+
+        var collapsed = repairs
+            .GroupBy(value => value.ElementId, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var final = group.Last();
+                return final with
+                {
+                    Code = string.Join("+", group.Select(value => value.Code).Distinct(StringComparer.Ordinal)),
+                    Description = string.Join(" ", group.Select(value => value.Description).Distinct(StringComparer.Ordinal))
+                };
+            })
+            .ToArray();
+
+        return new("legend-design-safe-repairs/v1", collapsed);
+    }
+
+    private static void AddTagRepair(
+        List<WebsiteSafeQualityRepair> repairs,
+        string pagePath,
+        WebsiteCompositionNode node,
+        string tag,
+        string code,
+        string description)
+    {
+        var current = repairs.LastOrDefault(value => value.ElementId == node.Id)?.Operation.Node ?? Clone(node);
+        current.Tag = tag;
+        repairs.Add(new(
+            code,
+            pagePath,
+            node.Id,
+            description,
+            new WebsiteMutationOperation
+            {
+                Type = "replaceNode",
+                NodeId = node.Id,
+                ExpectedFingerprint = WebsiteCreativeFingerprint.Node(node),
+                Node = current
+            }));
+    }
+
+    private static void CollectSafeHeadings(
+        IEnumerable<WebsiteCompositionNode>? nodes,
+        bool protectedAncestor,
+        List<WebsiteCompositionNode> result)
+    {
+        foreach (var node in nodes ?? [])
+        {
+            var protectedHere = protectedAncestor ||
+                node.Type == "form" ||
+                !string.IsNullOrWhiteSpace(node.SystemKey) ||
+                !string.IsNullOrWhiteSpace(node.SystemBinding) ||
+                (node.Signals?.Count ?? 0) > 0 ||
+                (node.FieldSignals?.Values.Any(value => value?.Count > 0) ?? false);
+
+            if (!protectedHere && node.Hidden != true && node.Type == "heading" && TryHeadingLevel(node.Tag, out _))
+                result.Add(node);
+
+            CollectSafeHeadings(node.Children, protectedHere, result);
+        }
+    }
+
+    private static bool TryHeadingLevel(string? tag, out int level)
+    {
+        level = 0;
+        return tag is { Length: 2 } &&
+               (tag[0] is 'h' or 'H') &&
+               int.TryParse(tag[1].ToString(), out level) &&
+               level is >= 1 and <= 6;
+    }
+
+    private static T Clone<T>(T value) =>
+        JsonSerializer.Deserialize<T>(
+            JsonSerializer.Serialize(value, JsonOptions),
+            JsonOptions)!;
+}
+
