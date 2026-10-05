@@ -821,7 +821,7 @@ public static class WebsiteDocumentMutationService
         ValidateMutationSubtree(
             document,
             removed,
-            actions: null,
+            null,
             operation.Scope ?? oldLocation.Scope,
             operation.PagePath ?? oldLocation.PagePath,
             operation.ReusableComponentId ?? oldLocation.ReusableComponentId);
