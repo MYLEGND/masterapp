@@ -220,7 +220,16 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
                 baseline_ids = {row['id'] for row in rows}
                 if journal is not None:
                     try:
-                        allowed = journal.before_submit(baseline_ids)
+                        allow_recovered_baseline = (
+                            getattr(journal, 'history_error', None) is not None and
+                            baseline is not None and
+                            observed == baseline and
+                            not active
+                        )
+                        allowed = journal.before_submit(
+                            baseline_ids,
+                            allow_recovered_baseline=allow_recovered_baseline,
+                        )
                     except Exception as exc:
                         raise DeploymentReconciliationRequired('Durable upload intent could not be proven; no write authorized') from exc
                     if not allowed:
