@@ -6582,20 +6582,21 @@
     renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
     if (liveMeta) liveMeta.textContent=`Live page checks (rendered canvas) · ${liveChecks.length} observation${liveChecks.length===1?'':'s'} · not a publish authorization`;
     if (!editorTicket || !savedHost) return;
-    savedHost.textContent='Checking the saved server draft…';
-    if (savedMeta) savedMeta.textContent='Saved draft checks (server) · loading';
+    savedHost.textContent='Checking structural, design, and conversion quality…';
+    if (savedMeta) savedMeta.textContent='Saved canonical quality (server) · loading';
     try {
-      const url=new URL(`${API_BASE}/api/website-content/manage/quality`);
-      url.searchParams.set('ticket',editorTicket);
-      const response=await fetch(url,{cache:'no-store'});
-      if(!response.ok) throw new Error(`Quality check failed (${response.status})`);
-      const payload=await response.json();
-      if(payload.source!=='saved_draft_server' || !Array.isArray(payload.checks)) throw new Error('Saved-draft quality response was invalid.');
-      renderQualityChecks(savedHost,payload.checks,'No saved-draft issues detected by the server checks.');
-      if(savedMeta) savedMeta.textContent=`Saved draft checks (server) · revision ${payload.revision} · ${payload.errorCount||0} errors · ${payload.warningCount||0} warnings`;
+      const payload=await creativeWorkspaceRequest('manage/agent/design-quality');
+      const structural=Array.isArray(payload?.structural?.checks)?payload.structural.checks:[];
+      const design=Array.isArray(payload?.design?.checks)?payload.design.checks:[];
+      const combined=[...structural,...design];
+      renderQualityChecks(savedHost,combined,'No structural, design, or conversion issues detected by the server checks.');
+      const errors=combined.filter(check=>check.severity==='error').length;
+      const warnings=combined.filter(check=>check.severity==='warning').length;
+      const paths=Array.isArray(payload?.design?.conversionPaths)?payload.design.conversionPaths:[];
+      if(savedMeta) savedMeta.textContent=`Saved canonical quality · revision ${payload.revision} · ${errors} errors · ${warnings} warnings · ${paths.length} conversion path${paths.length===1?'':'s'} reviewed`;
     } catch(error) {
       renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
-      if(savedMeta) savedMeta.textContent='Saved draft checks (server) · unavailable';
+      if(savedMeta) savedMeta.textContent='Saved canonical quality (server) · unavailable';
     }
   }
 
