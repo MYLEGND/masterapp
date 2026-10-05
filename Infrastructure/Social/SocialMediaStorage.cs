@@ -25,9 +25,12 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 [".jpeg"] = new("Image", "image/jpeg"),
                 [".png"] = new("Image", "image/png"),
                 [".webp"] = new("Image", "image/webp"),
+                [".gif"] = new("Image", "image/gif"),
                 [".heic"] = new("Image", "image/heic"),
                 [".heif"] = new("Image", "image/heif"),
+                [".avif"] = new("Image", "image/avif"),
                 [".mp4"] = new("Video", "video/mp4"),
+                [".m4v"] = new("Video", "video/mp4"),
                 [".mov"] = new("Video", "video/quicktime"),
                 [".webm"] = new("Video", "video/webm")
             };
