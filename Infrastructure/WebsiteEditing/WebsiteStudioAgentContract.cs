@@ -32,6 +32,7 @@ LEGEND Website Studio creative contract:
 - Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection; use getSignalCatalog + setSignalMappings, then testSignalMapping/getSignalHealth when a genuinely meaningful custom interaction needs canonical intent reporting.
 - Preserve stable protected identities and design freely around them.
 - After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
+- For live diagnosis after publication, use legend_website_workspace operation conversion_trace. It follows bounded recent canonical AnalyticsEvents into non-PII CRM linkage plus Meta/OpenAI transport evidence. Never infer provider acceptance from configuration, browser invocation, or HTTP success when the provider exposes stronger receipt evidence.
 """;
 
     public static object CompactPayload => new
@@ -72,6 +73,7 @@ LEGEND Website Studio creative contract:
             "uploadMedia",
             "importImage",
             "inspectConversionHealth",
+            "traceConversions",
             "runSiteResponsiveQuality",
             "runPreflight",
             "applyMutationBatch",
@@ -121,6 +123,7 @@ STARTER / VISUAL SYSTEM
 
 CONVERSION-FIRST EXPERIENCE
 - Treat the first viewport as the highest-value impression. Within seconds, make the offer, audience, primary benefit, trust context, and next action visually obvious.
+- Measurement truth is part of the experience contract. Preserve the canonical event identity and attribution path while designing around it. When diagnosing a published site, follow canonical AnalyticsEvents into CRM/provider receipts through conversion_trace; do not treat configuration, a browser pixel call, or an HTTP 2xx as stronger evidence than it actually is.
 - Prefer a clear primary action per decision moment as a default. Follow explicit user direction when multiple equal actions are intentionally required, while preserving usability and the canonical action catalog.
 - Build for scanning and persuasion: strong headline, concise supporting copy, credible proof/context, then the next action. Preserve whitespace and visual rhythm instead of filling space for its own sake.
 - Optimize desktop and mobile intentionally through the same semantic nodes. Mobile must feel designed, not collapsed: readable type, thumb-safe controls, deliberate content order, no horizontal overflow, and the primary action easy to find.
