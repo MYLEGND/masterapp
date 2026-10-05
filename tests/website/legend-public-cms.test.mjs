@@ -2502,8 +2502,15 @@ test('media upload has one multipart transport and bypasses inferred ApiControll
   assert.ok(upload.includes("headers: { Accept: 'application/json' }"));
   assert.match(websitePlatformControllerSource,/public async Task<IActionResult> UploadMedia\(CancellationToken/);
   assert.doesNotMatch(websitePlatformControllerSource,/UploadMedia\(\[FromForm\]/);
-  assert.match(websitePlatformControllerSource,/Request\.ReadFormAsync\(cancellationToken\)/);
+  assert.match(websitePlatformControllerSource,/MultipartUploadTransport\.ReadAsync\(Request, cancellationToken\)/);
   assert.match(websitePlatformControllerSource,/GetRequiredService<WebsiteMediaService>\(\)/);
+  assert.match(uploadValidationSource,/public static class MultipartUploadTransport/);
+  assert.match(uploadValidationSource,/TryResolveVisualMediaType/);
+  assert.match(uploadValidationSource,/image\/heic/);
+  assert.match(uploadValidationSource,/image\/heif/);
+  assert.match(uploadValidationSource,/image\/avif/);
+  assert.match(source,/accept="image\/\*,\.heic,\.heif,\.avif"/);
+  assert.doesNotMatch(source,/\^image\\\/\(jpeg\|png\|webp\)\$/);
 });
 
 test('media insertion never invents reserved legend-cms runtime classes', ()=>{
