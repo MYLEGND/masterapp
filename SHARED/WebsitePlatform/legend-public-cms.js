@@ -4034,17 +4034,32 @@
     return result;
   }
 
+  async function mapWithConcurrency(values,limit,worker) {
+    const result=new Array(values.length);
+    let cursor=0;
+    const runners=Array.from({length:Math.min(Math.max(1,limit),values.length)},async()=>{
+      while(true){
+        const index=cursor++;
+        if(index>=values.length) return;
+        result[index]=await worker(values[index],index);
+      }
+    });
+    await Promise.all(runners);
+    return result;
+  }
+
   async function materializeCanonicalSite() {
     if(!legacyMigration) return true;
     const status=document.getElementById('legend-cms-status');
     const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
     const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
-    const snapshots=[];
-
-    for(const route of routes){
-      if(status) status.textContent='Preparing canonical Site Source · '+(snapshots.length+1)+'/'+routes.length;
-      snapshots.push(await requestMaterializedPage(route));
-    }
+    let completed=0;
+    const snapshots=await mapWithConcurrency(routes,4,async route=>{
+      const snapshot=await requestMaterializedPage(route);
+      completed++;
+      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
+      return snapshot;
+    });
 
     const next=normalizeDocument(documentState);
     const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
@@ -5980,16 +5995,25 @@
     const highlight=document.getElementById('legend-cms-source-highlight');
     if(!textarea || !highlight?.replaceChildren) return;
     highlight.replaceChildren();
-    const lines=String(textarea.value || '').replace(/\r/g,'').split('\n');
-    lines.forEach((line,index)=>{
-      const span=document.createElement('span');
-      const tone=sourceToneForLine(line);
-      span.className='legend-cms-source-'+tone;
-      span.dataset.tone=tone;
-      span.textContent=line || ' ';
-      highlight.appendChild(span);
-      if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
-    });
+    const value=String(textarea.value || '').replace(/\r/g,'');
+    if(textarea.readOnly){
+      // Master Source is diagnostic/read-only; one text node avoids thousands of
+      // per-line elements. Selected Source remains color guided and intentionally small.
+      highlight.className='legend-cms-source-highlight legend-cms-source-default';
+      highlight.textContent=value;
+    }else{
+      highlight.className='legend-cms-source-highlight';
+      const lines=value.split('\n');
+      lines.forEach((line,index)=>{
+        const span=document.createElement('span');
+        const tone=sourceToneForLine(line);
+        span.className='legend-cms-source-'+tone;
+        span.dataset.tone=tone;
+        span.textContent=line || ' ';
+        highlight.appendChild(span);
+        if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
+      });
+    }
     highlight.scrollTop=textarea.scrollTop;
     highlight.scrollLeft=textarea.scrollLeft;
   }
