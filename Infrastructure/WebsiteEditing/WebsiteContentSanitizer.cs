@@ -669,7 +669,7 @@ public static class WebsiteContentSanitizer
             .Select(token => new string(token.Take(80)
                 .Where(character => char.IsLetterOrDigit(character) || character is '-' or '_')
                 .ToArray()))
-            .Where(token => token.Length > 0)
+            .Where(token => token.Length > 0 && !string.Equals(token, "legend-cms-image", StringComparison.Ordinal))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         return tokens.Length == 0 ? null : string.Join(' ', tokens);
