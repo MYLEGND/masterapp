@@ -1012,6 +1012,7 @@ public class WebsitePlatformController : ControllerBase
             schema = "legend-conversion-readiness/v2",
             revision = state.Revision,
             publishedRevision,
+            publishedVersionId = state.PublishedVersionId,
             currentDraftIsPublished = publishedRevision.HasValue && publishedRevision.Value == state.Revision,
             draft = new
             {
@@ -1030,6 +1031,7 @@ public class WebsitePlatformController : ControllerBase
                 }
             },
             measurementEvidence,
+            measurementEvidenceScope = "advertising_owner_30d_all_published_sources",
             measurementEvidenceError,
             published = new
             {
@@ -1038,8 +1040,10 @@ public class WebsitePlatformController : ControllerBase
                 returnedRows = returned.Length,
                 resultLimit = 80,
                 analyticsObserved = relevant.Count(entry => entry.AnalyticsStatus == "observed"),
-                metaAccepted = metaProviderAccepted,
-                openAiAccepted = openAiHttpAccepted,
+                metaProviderAccepted,
+                metaHttpAccepted,
+                openAiProviderAccepted,
+                openAiHttpAccepted,
                 acceptanceSemantics = new
                 {
                     meta = "provider_events_received",
