@@ -95,7 +95,6 @@ public sealed class WebsiteCreativeWorkspaceTests
     private static WebsiteCapabilityManifest Capabilities(WebsiteContentDocument document) =>
         WebsiteCreativeCapabilityResolver.Resolve(
             WebsiteEditorSiteKeys.Business,
-            WebsiteEditorSiteKeys.BusinessOwnerKey(Guid.Parse("11111111-1111-1111-1111-111111111111")),
             document,
             Actions());
 
@@ -109,7 +108,6 @@ public sealed class WebsiteCreativeWorkspaceTests
         var actions = WebsiteCallToActionCatalog.Build(siteKey);
         var manifest = WebsiteCreativeCapabilityResolver.Resolve(
             siteKey,
-            "scope-owner",
             document,
             actions);
 
@@ -678,7 +676,6 @@ public sealed class WebsiteCreativeWorkspaceTests
         var actions = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
         var manifest = WebsiteCreativeCapabilityResolver.Resolve(
             WebsiteEditorSiteKeys.Protect,
-            "protect-owner",
             document,
             actions);
         var plan = new WebsiteDesignPlan
