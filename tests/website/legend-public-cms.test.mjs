@@ -25,6 +25,7 @@ const websiteContentSanitizerSource = readFileSync(new URL('../../Infrastructure
 const websiteSiteSourceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSiteSource.cs', import.meta.url), 'utf8');
 const websiteCreativeWorkspaceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteCreativeWorkspace.cs', import.meta.url), 'utf8');
 const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
+const websiteImportServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteImportService.cs', import.meta.url), 'utf8');
 const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
@@ -1232,7 +1233,18 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/planSafeQualityRepairs:\(\)=>creativeWorkspaceRequest\('manage\/agent\/design-quality\/repairs'\)/);
   assert.match(source,/applySafeQualityRepairs:async\(\)=>/);
   assert.match(source,/runResponsiveQuality:runResponsiveQualityAudit/);
+  assert.match(source,/runSiteResponsiveQuality:runSiteResponsiveQualityAudit/);
+  assert.match(source,/inspectConversionHealth:\(\)=>creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
+  assert.match(source,/getSignalCatalog:\(\)=>creativeWorkspaceRequest\('manage\/signal-catalog'\)/);
   assert.match(source,/listMedia:\(query=\{\}\)=>creativeWorkspaceRequest\('manage\/media',\{query:\{\.\.\.query,designMetadata:query\.designMetadata!==false\}\}\)/);
+  assert.match(source,/uploadMedia:async file=>/);
+  assert.match(source,/importImage:url=>creativeWorkspaceRequest\('manage\/media\/import'/);
+  assert.match(source,/legendAudit/);
+  assert.match(source,/legend-site-responsive-audit/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-readiness"\)\]/);
+  assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/media\/import"\)\]/);
+  assert.match(websiteImportServiceSource,/ImportImageAsync/);
+  assert.match(websiteImportServiceSource,/LegendConnectResearchNetworkPolicy\.CreatePublicReadOnlyHandler/);
   assert.match(source,/sandbox','allow-same-origin'/);
   assert.match(source,/script-src \\'none\\'/);
   assert.match(source,/form-action \\'none\\'/);
@@ -1525,6 +1537,7 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('function restoreHistory('),false);
   assert.equal(source.includes('templateRepairPending'),false);
   assert.equal(source.includes('synchronizeCanonicalSharedPresentation'),false);
+  assert.equal(source.includes('rebuildCanonicalSharedPresentationIndex'),false);
   assert.equal(source.includes('constrainDocumentGeometry'),false);
   assert.equal(source.includes('patchPageStructuralMutation'),false);
   assert.ok(source.includes('renderPageStructuralMutationIncrementally'));
