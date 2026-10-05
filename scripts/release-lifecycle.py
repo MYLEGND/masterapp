@@ -1502,11 +1502,11 @@ def reconcile(api, trigger=None):
             if not targets or control_only:
                 _release_release_queue(api, approved, owner, 'no-production-publication-required')
                 promoted = promote_next_release_queue(api)
-                return promoted or {
-                    'state': 'COMPLETE',
-                    'pr': owner,
-                    'release': 'control-only/no-target merge released validation-to-production lease',
-                }
+                if promoted:
+                    return promoted
+                # A control-only repair can complete while an earlier application
+                # release remains unresolved. Do not stop at the correction lease:
+                # continue into the canonical pending-release recovery path below.
 
     automatic = dispatch_pending_automatic_release(api, approved)
     if automatic:

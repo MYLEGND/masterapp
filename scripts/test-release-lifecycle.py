@@ -1529,6 +1529,34 @@ class ReconcileSafety(unittest.TestCase):
         recover.assert_called_once_with(api, "a" * 40)
 
     @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "release_queue_lease", return_value={"ownerPr": 463, "approved": "a" * 40})
+    @patch.object(m, "promote_next_release_queue", return_value=None)
+    @patch.object(m, "dispatch_pending_automatic_release")
+    def test_control_only_owner_immediately_recovers_pending_application_release(self, recover, _, __, ___):
+        api = Api()
+        api.api_map["pulls/463"] = {
+            "number": 463,
+            "merged_at": "2026-10-05T02:37:22Z",
+        }
+        api.pages_map["pulls/463/files"] = [
+            {"filename": "scripts/deploy-approved-app.py"},
+            {"filename": "scripts/test-deploy-approved-app.py"},
+        ]
+        recovered = {
+            "state": "RELEASE_DISPATCHED",
+            "sourcePr": 462,
+            "applicationRevision": "5" * 40,
+            "directRelease": "automatic validated-merge release",
+        }
+        recover.return_value = recovered
+
+        result = m.reconcile(api)
+
+        self.assertEqual(recovered, result)
+        recover.assert_called_once_with(api, "a" * 40)
+        self.assertTrue(any(status[2] == "success" for status in api.statuses))
+
+    @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "direct_only_request", return_value=True)
     def test_failed_exact_release_is_not_auto_replayed(self, _, __):
         api = Api()
