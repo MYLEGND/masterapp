@@ -778,6 +778,16 @@ test('normal Canvas and Selected Source converge on the canonical mutation autho
   assert.match(source,/materializationSavePending \|\| !persistedDocumentState/);
 });
 
+test('bulk imports are ingestion only and pass through the canonical protected authority',()=>{
+  assert.equal((websitePlatformControllerSource.match(/ReconcileImportedDocumentAsync\(actor, baseline, result\.Document/g)||[]).length,2);
+  assert.match(websitePlatformControllerSource,/private async Task<WebsiteContentDocument> ReconcileImportedDocumentAsync/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Serialize\([\s\S]*?WebsiteContentSanitizer\.Sanitize\(imported\)\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.Parse\([\s\S]*?baseline,[\s\S]*?actions\)\.Document/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.ValidateCanonical\(reconciled, actions\)/);
+  assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\(actor, reconciled/);
+  assert.match(websitePlatformControllerSource,/website_import_protected/);
+});
+
 test('source protection UI separates protected authority failures from exact scope conflicts',()=>{
   assert.match(source,/payload\.error==='scope_revision_conflict'/);
   assert.match(source,/sourceEditorBaseFingerprint/);
