@@ -3625,6 +3625,11 @@
 
   function bindBusiness(payload) {
     updateCollectionData(payload);
+    if(SITE_KEY==='business' && Array.isArray(payload?.dataCatalog)){
+      managementPayload ||= {};
+      managementPayload.dataCatalog=payload.dataCatalog;
+      fullDataCatalogLoaded=true;
+    }
     const business = payload.business;
     if (SITE_KEY !== 'business') return;
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
@@ -7349,7 +7354,7 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed as <code>data-cms-id</code>. Master Source is inspection-only. Make source-code changes only through Selected Source, then validate and save through the canonical authority.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> use <code>LEGEND_WEBSITE_STUDIO_AGENT.getSiteSummary()</code> → <code>listRecipes()</code> → one <code>applyDesignPlan()</code> for the main build, then scoped <code>applyMutationBatch()</code> refinements and <code>runPreflight()</code>. Master Source is inspection-only. Selected Source is a precision fallback for one selected node, not the primary website-building workflow.</p>';
     const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
     if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
