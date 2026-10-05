@@ -42,6 +42,7 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string websiteName;
         private readonly string trackingApiBase;
+        private readonly string? founderUpn;
         private readonly AgentTrackingResolver _resolver;
         private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
@@ -62,6 +63,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
+            founderUpn = configuration["Founder:Upn"];
             _resolver = resolver;
             _intakeRecipients = intakeRecipients;
             _db = db;
@@ -1678,28 +1680,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
-        private bool HasExplicitAgentContext()
-        {
-            if (HttpContext?.Items["TrackingProfile"] is AgentTrackingProfile)
-            {
-                return true;
-            }
-
-            var requestMethod = Request?.Method;
-            if (string.IsNullOrWhiteSpace(requestMethod) || !Microsoft.AspNetCore.Http.HttpMethods.IsPost(requestMethod))
-            {
-                return false;
-            }
-
-            string? slug = null;
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-            return !string.IsNullOrWhiteSpace(slug);
-        }
-
-        private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
+private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
         {
             if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
             {
@@ -1777,46 +1758,18 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
 
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
         {
-            if (!HasExplicitAgentContext())
-            {
+            var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
+                HttpContext,
+                _resolver,
+                founderUpn,
+                ct: ct);
+            if (owner is null || owner.IsFounder)
                 return null;
-            }
 
-            var trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
-            string? agentSlug = HttpContext?.Items["TrackingSlug"] as string;
-
-            if ((trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug)))
-            {
-                string? requestedSlug = null;
-                var formSlug = Request?.Form["AgentSlug"].ToString();
-                if (!string.IsNullOrWhiteSpace(formSlug))
-                {
-                    requestedSlug = formSlug.Trim();
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Path.Value);
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-                }
-
-                if (!string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
-                    if (resolved.Found && resolved.Profile != null)
-                    {
-                        trackingProfile = resolved.Profile;
-                        agentSlug = resolved.CanonicalSlug ?? requestedSlug;
-                    }
-                }
-            }
-
-            if (trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug))
-            {
-                return null;
-            }
+            var trackingProfile = owner.Profile;
+            var agentSlug = string.IsNullOrWhiteSpace(owner.Slug)
+                ? trackingProfile.Slug
+                : owner.Slug;
 
             var agentProfile = await ResolveAgentProfileAsync(trackingProfile, ct);
 
