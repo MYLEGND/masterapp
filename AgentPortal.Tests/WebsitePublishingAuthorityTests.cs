@@ -418,6 +418,47 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public async Task FullDocumentWrite_IsAllowedOnlyForOneWayLegacyMaterialization()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+
+        _ = Body(await f.Controller.Manage(token));
+        var state = Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentState>().ToListAsync());
+        state.DraftJson =
+            """
+            {
+              "version": 2,
+              "pages": {
+                "/": {
+                  "title": "Legacy home",
+                  "navigation": { "label": "Home", "showInNavigation": true },
+                  "elements": {},
+                  "sectionOrder": {},
+                  "extras": []
+                }
+              }
+            }
+            """;
+        state.Revision = 0;
+        await f.Db.SaveChangesAsync();
+        f.Db.ChangeTracker.Clear();
+
+        var materialized = Body(await f.Controller.Save(new(token, Document("Materialized"), 0)));
+        Assert.Equal("canonical_v3_materialization", materialized.GetProperty("source").GetString());
+        Assert.Equal(1, materialized.GetProperty("revision").GetInt64());
+
+        var retired = Assert.IsType<BadRequestObjectResult>(
+            await f.Controller.Save(new(token, Document("Second full write"), 1)));
+        var error = JsonSerializer.SerializeToElement(
+            retired.Value,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("website_full_document_write_retired", error.GetProperty("error").GetString());
+
+        Assert.Equal("Materialized", TitleText(Body(await f.Controller.Manage(token))));
+    }
+
+    [Fact]
     public void VisibleCopyCannotChangeManagedActionOrCanonicalBehavior()
     {
         var options = WebsiteCallToActionCatalog.Build(
