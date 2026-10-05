@@ -176,14 +176,21 @@ jobs:
         working-directory: Legend-Website
         shell: bash
         run: |
-          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-install; then exit 0; fi
+          # Resume evidence can preserve the validation result, but node_modules is
+          # runner-local and must be rematerialized on a fresh runner.
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-install && [ -d node_modules ]; then exit 0; fi
           npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Build shared website renderer
         working-directory: Legend-Website
         shell: bash
         run: |
-          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-build; then exit 0; fi
+          # dist is also runner-local. Preserve prior proof only when the exact
+          # materialized outputs are already present in this workspace.
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-build \
+             && [ -f dist/legend-public-cms.js ] \
+             && [ -f dist/legend-public-web.js ] \
+             && [ -f dist/legend-public-web.css ]; then exit 0; fi
           npm run build
 
       - name: Verify renderer authority parity
