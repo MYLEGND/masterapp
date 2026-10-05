@@ -86,8 +86,8 @@ class OperationJournal:
             raise ValueError("Invalid Azure deployment identities")
         return sorted(set(values))
 
-    def before_submit(self, baseline_ids):
-        if self.history_error is not None:
+    def before_submit(self, baseline_ids, *, allow_recovered_baseline=False):
+        if self.history_error is not None and not allow_recovered_baseline:
             raise self.history_error
         if self.intent is not None:
             return False
@@ -97,6 +97,8 @@ class OperationJournal:
                       baselineDeploymentIds=self._ids(baseline_ids), phase='intent')
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record
+        if allow_recovered_baseline:
+            self.history_error = None
         return True
 
     def record_success(self, deployment_ids):
