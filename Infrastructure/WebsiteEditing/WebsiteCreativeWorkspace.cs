@@ -19,7 +19,6 @@ public sealed record WebsiteCapabilityDescriptor(
 public sealed record WebsiteCapabilityManifest(
     string Schema,
     string SiteKey,
-    string OwnerKey,
     string Hash,
     IReadOnlyList<WebsiteCapabilityDescriptor> Capabilities);
 
@@ -29,7 +28,6 @@ public static class WebsiteCreativeCapabilityResolver
 
     public static WebsiteCapabilityManifest Resolve(
         string siteKey,
-        string ownerKey,
         WebsiteContentDocument document,
         IReadOnlyList<WebsiteCallToActionOption> actions)
     {
@@ -93,7 +91,7 @@ public static class WebsiteCreativeCapabilityResolver
             .ThenBy(value => value.PagePath, StringComparer.Ordinal)
             .ToArray();
         var hash = WebsiteCreativeFingerprint.For(distinct);
-        return new(Schema, siteKey, ownerKey, hash, distinct);
+        return new(Schema, siteKey, hash, distinct);
     }
 
     public static WebsiteCapabilityDescriptor Require(
