@@ -254,15 +254,17 @@
     width: 100%;
     min-height: var(--legend-ai-compact-control);
     justify-content: flex-start;
-    border-color: color-mix(in srgb, var(--legend-ai-navy-900) 14%, transparent);
-    background: var(--legend-ai-ivory);
-    color: var(--legend-ai-text);
+    border-color: color-mix(in srgb, var(--legend-ai-gold-500) 72%, transparent);
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
 }
 
-.legend-founder-ai-mobile-controls .legend-founder-ai-mode.is-active {
-    border-color: var(--legend-ai-navy-850);
-    background: var(--legend-ai-navy-850);
-    color: #fff;
+.legend-founder-ai-mobile-controls .legend-founder-ai-mode.is-active,
+.legend-founder-ai-mobile-controls .legend-founder-ai-native-only.is-active {
+    border-color: #b77d12;
+    background: linear-gradient(135deg, #f2ce72, #d79a2b);
+    color: #2b1a03;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.62), 0 7px 18px rgba(145,87,8,.14);
 }
 
 .legend-founder-ai-mobile-controls .legend-founder-ai-native-only {
@@ -322,7 +324,10 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     padding: 12px 11px 10px;
     background: var(--legend-ai-paper);
     border-right: 1px solid var(--legend-ai-line);
@@ -517,37 +522,29 @@
 }
 
 .legend-founder-ai-setting {
-    margin: 0 0 5px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
-    border-radius: 11px;
-    background: var(--legend-ai-ivory);
-    color: var(--legend-ai-text);
-}
-
-.legend-founder-ai-setting[open] {
-    border-color: color-mix(in srgb, var(--legend-ai-gold-500) 52%, transparent);
-    background: color-mix(in srgb, var(--legend-ai-gold-500) 12%, var(--legend-ai-paper));
-}
-
-.legend-founder-ai-setting summary {
+    width: 100%;
     min-height: 43px;
     display: grid;
     grid-template-columns: 26px minmax(0,1fr) 14px;
     align-items: center;
     gap: 8px;
+    margin: 0 0 6px;
     padding: 6px 7px;
-    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 62%, transparent);
+    border-radius: 11px;
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
+    text-align: left;
     cursor: pointer;
-    list-style: none;
+    transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
 }
 
-.legend-founder-ai-setting summary::-webkit-details-marker {
-    display: none;
-}
-
-.legend-founder-ai-setting summary:hover,
-.legend-founder-ai-setting summary:focus-visible {
-    background: color-mix(in srgb, var(--legend-ai-gold-500) 12%, var(--legend-ai-paper));
+.legend-founder-ai-setting:hover,
+.legend-founder-ai-setting:focus-visible {
+    transform: translateX(1px);
+    border-color: var(--legend-ai-gold-700);
+    background: #fffdf7;
+    box-shadow: 0 7px 18px rgba(145,87,8,.09);
     outline: none;
 }
 
@@ -556,10 +553,10 @@
     height: 26px;
     display: grid;
     place-items: center;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 58%, transparent);
     border-radius: 8px;
-    color: var(--legend-ai-gold-800);
-    background: var(--legend-ai-paper);
+    color: #7a4a08;
+    background: #fffaf0;
     font-size: .68rem;
 }
 
@@ -569,33 +566,20 @@
 }
 
 .legend-founder-ai-setting-summary strong {
-    color: var(--legend-ai-text);
+    color: var(--legend-ai-canvas-ink);
     font-size: .67rem;
     font-weight: 850;
 }
 
 .legend-founder-ai-setting-summary small {
     margin-top: 1px;
-    color: var(--legend-ai-muted);
+    color: var(--legend-ai-canvas-muted);
     font-size: .56rem;
 }
 
 .legend-founder-ai-setting-chevron {
-    color: var(--legend-ai-muted);
-    font-size: .70rem;
-    transition: transform .15s ease;
-}
-
-.legend-founder-ai-setting[open] .legend-founder-ai-setting-chevron {
-    transform: rotate(180deg);
-}
-
-.legend-founder-ai-setting p {
-    margin: 0;
-    padding: 2px 9px 10px 41px;
-    color: var(--legend-ai-muted);
-    font-size: .60rem;
-    line-height: 1.48;
+    color: #9a690d;
+    font-size: .82rem;
 }
 
 .legend-founder-ai-sidebar-spacer {
@@ -689,7 +673,7 @@
     min-width: 0;
     min-height: 0;
     display: grid;
-    grid-template-rows: minmax(0,1fr) auto auto;
+    grid-template-rows: minmax(0,1fr) auto;
     padding: 14px 14px 0;
     background:
         radial-gradient(circle at 86% -12%, rgba(224,184,83,.12), transparent 34%),
@@ -761,24 +745,25 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    border: 1px solid rgba(139,82,7,.20);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 72%, transparent);
     border-radius: 12px;
-    background: var(--legend-app-control);
-    color: var(--legend-app-on-dark-muted);
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
     cursor: pointer;
 }
 
 .legend-founder-ai-native-only.is-active {
-    border-color: rgba(28,122,75,.48);
-    background: rgba(28,122,75,.08);
-    color: #145f3b;
+    border-color: #b77d12;
+    background: linear-gradient(135deg, #f2ce72, #d79a2b);
+    color: #2b1a03;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.62), 0 7px 18px rgba(145,87,8,.14);
 }
 
 .legend-founder-ai-native-only input {
     width: 17px;
     height: 17px;
     margin: 0;
-    accent-color: #1c7a4b;
+    accent-color: #b4780d;
 }
 
 .legend-founder-ai-native-only span {
@@ -960,22 +945,63 @@
 }
 
 .legend-founder-ai-status {
-    min-height: 0;
-    display: flex;
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    padding: 0 24px;
-    color: var(--legend-ai-gold-300);
-    background: transparent;
-    font-size: .64rem;
-    font-weight: 800;
-    transition: padding .15s ease, min-height .15s ease;
+    gap: 10px;
+    margin: 4px auto 20px;
+    padding: 11px 14px;
+    border: 1px solid rgba(211,159,45,.42);
+    border-radius: 15px;
+    background: linear-gradient(145deg, #fffdf8, #fff8e8);
+    color: var(--legend-ai-canvas-ink);
+    box-shadow: 0 10px 24px rgba(92,61,9,.09), inset 0 1px 0 rgba(255,255,255,.96);
 }
 
-.legend-founder-ai-status:not(:empty) {
+.legend-founder-ai-status[hidden] {
+    display: none;
+}
+
+.legend-founder-ai-thinking-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
     min-height: 30px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    border-top: 1px solid rgba(200,153,47,.10);
+    padding: 5px 9px;
+    border: 1px solid rgba(183,125,18,.52);
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f7dc94, #e2ad3e);
+    color: #392300;
+    font-size: .65rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.legend-founder-ai-thinking-orbit {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(57,35,0,.24);
+    border-top-color: #392300;
+    border-radius: 50%;
+    animation: legend-founder-thinking-orbit .82s linear infinite;
+}
+
+.legend-founder-ai-thinking-detail {
+    min-width: 0;
+    color: var(--legend-ai-canvas-muted);
+    font-size: .72rem;
+    font-weight: 700;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+@keyframes legend-founder-thinking-orbit {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .legend-founder-ai-thinking-orbit { animation: none; }
 }
 
 .legend-founder-ai-composer {
@@ -995,7 +1021,7 @@
     align-items: flex-end;
     gap: 8px;
     padding: 6px 6px 6px 14px;
-    border: 1px solid var(--legend-ai-line);
+    border: 1px solid #d9a53a;
     border-radius: 18px;
     background: #ffffff;
     box-shadow:
@@ -1019,8 +1045,11 @@
     overflow-y: auto;
     border: 0;
     outline: 0;
-    background: transparent;
-    color: var(--legend-ai-canvas-ink);
+    appearance: none;
+    background: #ffffff;
+    color: #10213a;
+    caret-color: #10213a;
+    box-shadow: none;
     font: inherit;
     font-size: .89rem;
     line-height: 1.48;
@@ -1064,41 +1093,164 @@
     transform: none;
 }
 
-.legend-founder-ai-composer-meta {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 14px;
-    padding: 6px 4px 0;
-    color: rgba(224,232,245,.72);
-    font-size: .56rem;
-    font-weight: 700;
-}
-
-.legend-founder-ai-composer-tools {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
 .legend-founder-ai-mutation-confirmation {
-    display: inline-flex;
+    width: 100%;
+    min-height: 46px;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    color: var(--legend-app-accent-bright);
+    gap: 8px;
+    padding: 8px 9px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 62%, transparent);
+    border-radius: 11px;
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
     cursor: pointer;
+    transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
+}
+
+.legend-founder-ai-mutation-confirmation:has(input:checked) {
+    border-color: #b77d12;
+    background: linear-gradient(135deg, #f2ce72, #d79a2b);
+    color: #2b1a03;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.62), 0 7px 18px rgba(145,87,8,.14);
 }
 
 .legend-founder-ai-mutation-confirmation input {
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
     accent-color: #b4780d;
+}
+
+.legend-founder-ai-mutation-confirmation > span {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.legend-founder-ai-mutation-confirmation strong {
+    font-size: .66rem;
+    font-weight: 900;
+}
+
+.legend-founder-ai-mutation-confirmation small {
+    color: inherit;
+    font-size: .55rem;
+    font-weight: 700;
+    line-height: 1.3;
 }
 
 .legend-founder-ai-sidebar-scrim {
     display: none;
 }
+
+.legend-founder-ai-settings-panel {
+    position: absolute;
+    z-index: 30;
+    inset: 14px;
+    display: grid;
+    grid-template-rows: auto minmax(0,1fr);
+    overflow: hidden;
+    border: 1px solid rgba(211,159,45,.54);
+    border-radius: 18px;
+    background: #ffffff;
+    color: var(--legend-ai-canvas-ink);
+    box-shadow: 0 30px 78px rgba(2,10,28,.32);
+}
+
+.legend-founder-ai-settings-panel[hidden] {
+    display: none;
+}
+
+.legend-founder-ai-settings-panel > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #ead39e;
+    background: linear-gradient(180deg, #fffdf8, #fff8e8);
+}
+
+.legend-founder-ai-settings-kicker {
+    display: block;
+    margin-bottom: 2px;
+    color: #9a690d;
+    font-size: .57rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.legend-founder-ai-settings-panel h3 {
+    margin: 0;
+    color: #10213a;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.legend-founder-ai-settings-panel > header button {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #d9a53a;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #10213a;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.legend-founder-ai-settings-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: grid;
+    align-content: start;
+    gap: 9px;
+    padding: 14px;
+}
+
+.legend-founder-ai-settings-action {
+    width: 100%;
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid rgba(211,159,45,.58);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #10213a;
+    text-align: left;
+    cursor: pointer;
+}
+
+.legend-founder-ai-settings-action:hover,
+.legend-founder-ai-settings-action:focus-visible {
+    border-color: #b77d12;
+    background: #fffaf0;
+    outline: none;
+}
+
+.legend-founder-ai-settings-action > span {
+    display: grid;
+    gap: 2px;
+}
+
+.legend-founder-ai-settings-action strong {
+    font-size: .75rem;
+    font-weight: 900;
+}
+
+.legend-founder-ai-settings-action small {
+    color: #5b687c;
+    font-size: .63rem;
+    line-height: 1.35;
+}
+
 
 /* ==========================================================
    COMPACT DESKTOP / TABLET LANDSCAPE
@@ -1114,8 +1266,7 @@
         grid-template-columns: 70px minmax(0, 1fr);
     }
 
-    .legend-founder-ai-setting-summary small,
-    .legend-founder-ai-setting p {
+    .legend-founder-ai-setting-summary small {
         display: none;
     }
 
