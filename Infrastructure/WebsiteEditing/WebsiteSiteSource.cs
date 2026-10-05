@@ -545,6 +545,21 @@ public static class WebsiteSiteSource
         }
     }
 
+    internal static void ValidateMutationRuntimeClasses(
+        WebsiteCompositionNode proposed,
+        WebsiteCompositionNode? previous = null)
+    {
+        ProtectRuntimeClasses(proposed, previous);
+        var previousChildren = (previous?.Children ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value.Id))
+            .ToDictionary(value => value.Id, StringComparer.Ordinal);
+        foreach (var child in proposed.Children ?? [])
+        {
+            previousChildren.TryGetValue(child.Id, out var previousChild);
+            ValidateMutationRuntimeClasses(child, previousChild);
+        }
+    }
+
     internal static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
         !string.IsNullOrWhiteSpace(node.SystemKey) ||
         !string.IsNullOrWhiteSpace(node.SystemBinding) ||
