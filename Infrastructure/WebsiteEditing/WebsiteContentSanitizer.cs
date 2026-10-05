@@ -223,6 +223,17 @@ public static class WebsiteContentSanitizer
         return path;
     }
 
+    internal static void ValidateBusinessPagePaths(WebsiteContentDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        foreach (var path in document.Pages.Keys)
+        {
+            var normalized = NormalizeBusinessPagePath(path);
+            if (!string.Equals(path, normalized, StringComparison.Ordinal))
+                throw new ArgumentException($"Business website route '{path}' is not canonical.");
+        }
+    }
+
     internal static WebsitePageDocument SanitizeMutationPageMetadata(
         string pagePath,
         WebsitePageDocument? source)
