@@ -8518,3 +8518,8 @@ body {
 }
 
 .fa-kpi-value--compact { font-size: 1.1rem; }
+
+.wa-site-switch-buttons{display:flex;gap:6px;align-items:center}
+.wa-site-switch-btn{border:1px solid rgba(188,142,16,.55);color:#e7d7a6;background:rgba(15,23,42,.7);border-radius:999px;padding:.28rem .7rem;font-weight:700}
+.wa-site-switch-btn:hover,.wa-site-switch-btn:focus{border-color:#bc8e10;color:#fff}
+.wa-site-switch-btn.active{background:#bc8e10;border-color:#bc8e10;color:#0f172a}
