@@ -311,7 +311,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var founderIds = scopedAgentIds is { Length: > 0 }
                 ? scopedAgentIds
                 : new[] { scope.AgentTrackingProfileId.Value };
+            var founderSiteMarker = string.IsNullOrWhiteSpace(scope.SiteKey)
+                ? null
+                : $"\\\"SiteKey\\\":\\\"{scope.SiteKey.Trim()}\\\"";
             return l => l.CommerceBusinessId == null &&
+                (founderSiteMarker == null || (l.MetadataJson != null && l.MetadataJson.Contains(founderSiteMarker))) &&
                 ((l.AgentTrackingProfileId.HasValue && founderIds.Contains(l.AgentTrackingProfileId.Value)) ||
                  (!l.AgentTrackingProfileId.HasValue && l.MetadataJson != null &&
                   (l.MetadataJson.Contains("\"ReportingOwner\":\"founder\"") ||
