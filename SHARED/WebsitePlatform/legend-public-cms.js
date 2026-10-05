@@ -3038,9 +3038,22 @@
             break;
           case 'createPage':
           case 'removePage':
-          case 'movePageRoute':
           case 'updatePage':
             if(operation.pagePath===route || operation.targetPath===route) {
+              renderPage=true;
+              metadata=true;
+            }
+            break;
+          case 'movePageRoute':
+            if(operation.pagePath===route && operation.targetPath && documentState.pages?.[operation.targetPath]){
+              activeEditorRoute=operation.targetPath;
+              pageKey=operation.targetPath==='/'?'home':operation.targetPath.slice(1).replace(/\//g,'-');
+              const url=editorUrlForRoute(operation.targetPath);
+              if(url) history.replaceState({legendStudioRoute:operation.targetPath},'',url.toString());
+              renderPage=true;
+              metadata=true;
+              refreshPageSelector();
+            }else if(operation.targetPath===route){
               renderPage=true;
               metadata=true;
             }
