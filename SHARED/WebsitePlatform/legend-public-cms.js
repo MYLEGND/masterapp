@@ -6019,7 +6019,7 @@
         const payload=await response.json().catch(()=>({}));
         if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Save failed ('+response.status+').')),{status:response.status,payload});
         const serverState=normalizeDocument(payload.document || submittedState);
-        const changedDuringSave=JSON.stringify(documentState)!==submitted;
+        const changedDuringSave=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
         persistedDocumentState=cloneCanonicalValue(serverState);
         revision=payload.revision ?? revision;
         namedDrafts=payload.drafts || namedDrafts;
@@ -6054,7 +6054,7 @@
         }
       });
       const serverState=applyCreativeMutationDeltaToState(submittedState,payload);
-      const changedDuringSave=JSON.stringify(documentState)!==submitted;
+      const changedDuringSave=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
       persistedDocumentState=cloneCanonicalValue(serverState);
       revision=payload.revision ?? revision;
       namedDrafts=payload.drafts || namedDrafts;
@@ -6600,7 +6600,10 @@
     if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
-    if (name === 'signals') void ensureSignalCatalog().then(renderSignalControls);
+    if (name === 'signals') {
+      if(signalCatalog) renderSignalControls();
+      else void ensureSignalCatalog().then(renderSignalControls);
+    }
     if (name === 'quality' && options.refresh!==false) void runWholeSitePreflightAndRender().catch(()=>{});
     if (name === 'collaboration') void refreshCollaboration();
   }
@@ -7832,7 +7835,7 @@
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
         }
-        applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
+        applyCompositionNode(selected, ov); syncEditorControls(); if(activeEditorPanel==='signals') renderSignalControls(); markDirty();
         return;
       }
       if (option.managed) {
@@ -7847,7 +7850,7 @@
         ov.text = option.defaultText || option.label;
         setContentText(selected, ov.text, true);
       }
-      applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
+      applyCompositionNode(selected, ov); syncEditorControls(); if(activeEditorPanel==='signals') renderSignalControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());

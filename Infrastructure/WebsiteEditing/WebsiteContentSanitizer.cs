@@ -22,6 +22,7 @@ public static class WebsiteContentSanitizer
             if (ContainsLegacyAuthority(root))
                 throw new InvalidOperationException("website_v3_parallel_authority_detected");
             var canonical = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(raw, options) ?? new();
+            EnsureUniqueCanonicalNodeIds(canonical);
             var sanitized = Sanitize(canonical);
             EnsurePersistedCanonicalIsStable(canonical, sanitized, options);
             EnsureUniqueCanonicalNodeIds(sanitized);

@@ -510,7 +510,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
 test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',()=>{
   assert.match(websiteContentSanitizerSource,/SanitizeMediaAlt/);
   assert.match(websiteContentSanitizerSource,/Path\.GetFileNameWithoutExtension/);
-  assert.match(websiteContentSanitizerSource,/navigation\.Label/);
+  assert.match(websiteContentSanitizerSource,/SanitizeNavigation\(path, page\.Value\.Navigation, page\.Value\.Title\)/);
   assert.doesNotMatch(source,/templateRepairPending/);
   assert.match(source,/main \*\{min-width:0;box-sizing:border-box\}/);
   assert.match(publicCss,/h1,h2,h3,p\{overflow-wrap:break-word;word-break:normal\}/);
@@ -918,7 +918,7 @@ test('runtime chrome is rejected by server authority instead of silently deleted
   assert.match(source,/function ensureCanonicalNavigationToggle\(/);
 });
 
-test('business header navigation projects one canonical page catalog without preview-title duplicates',async()=>{
+test('business header navigation projects one canonical page catalog without preview-title duplicates or silent v3 rewrites',async()=>{
   const doc=canonicalBusinessNavigation();
   doc.pages['/about']={
     title:'About | Business website preview',
@@ -946,7 +946,7 @@ test('business header navigation projects one canonical page catalog without pre
     assert.deepEqual(labels,['Home','About']);
     assert.equal(labels.some(label=>label.includes('Business website preview')),false);
     const saved=await f.save();
-    assert.equal(saved.pages['/about'].title,'About');
+    assert.equal(saved.pages['/about'].title,'About | Business website preview');
   }finally{f.close();}
 });
 
@@ -3141,7 +3141,9 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
   assert.match(source,/function renderWholeSitePreflight\(payload\)/);
   assert.match(source,/const structural=Array\.isArray\(payload\?\.quality\?\.structural\?\.checks\)/);
   assert.match(source,/const design=Array\.isArray\(payload\?\.quality\?\.design\?\.checks\)/);
-  assert.match(source,/const responsiveChecks=\(payload\?\.responsive \|\| \[\]\)/);
+  assert.match(source,/const responsiveChecks=\[\];/);
+  assert.match(source,/for\(const page of Array\.isArray\(payload\?\.responsive\)\?payload\.responsive:\[\]\)/);
+  assert.match(source,/for\(const breakpoint of Array\.isArray\(page\?\.results\)\?page\.results:\[\]\)/);
   assert.match(source,/Whole-site preflight · revision/);
   assert.match(source,/Rendered responsive preflight/);
   assert.match(source,/creativeWorkspaceRequest\('manage\/agent\/design-quality'\)/);
