@@ -153,6 +153,8 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("Use Analytics Verified Leads and canonical channel outcomes for business truth", metaSignals, StringComparison.Ordinal);
         Assert.DoesNotContain("Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic", analyticsView, StringComparison.Ordinal);
         Assert.Contains("Loading canonical Meta learning scope", analyticsView, StringComparison.Ordinal);
+        Assert.Contains("Meta Funnel Lead Signals", analyticsView, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Submitted Leads<", analyticsView, StringComparison.Ordinal);
     }
 
     [Fact]
