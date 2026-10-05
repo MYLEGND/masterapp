@@ -267,7 +267,8 @@ public sealed class MessagingProfileImageResolverTests
             Headers = new HeaderDictionary { ["Content-Type"] = "image/png" }
         };
 
-        Assert.IsType<OkObjectResult>(await controller.Upload(upload));
+        ControllerTestHelpers.AttachMultipartForm(httpContext, upload);
+        Assert.IsType<OkObjectResult>(await controller.Upload());
 
         var persisted = await db.ClientProfiles.SingleAsync(x => x.Id == client.Id);
         Assert.Equal(imageBytes, persisted.ProfileImageContent);
@@ -326,7 +327,8 @@ public sealed class MessagingProfileImageResolverTests
             Headers = new HeaderDictionary { ["Content-Type"] = "image/webp" }
         };
 
-        Assert.IsType<RedirectToActionResult>(await controller.Upload(upload));
+        ControllerTestHelpers.AttachMultipartForm(httpContext, upload);
+        Assert.IsType<RedirectToActionResult>(await controller.Upload());
 
         var persisted = await db.AgentProfiles.SingleAsync(x => x.Id == agent.Id);
         Assert.Equal(imageBytes, persisted.ProfileImageContent);
@@ -387,7 +389,8 @@ public sealed class MessagingProfileImageResolverTests
             Headers = new HeaderDictionary { ["Content-Type"] = "image/webp" }
         };
 
-        Assert.IsType<RedirectToActionResult>(await controller.Upload(upload));
+        ControllerTestHelpers.AttachMultipartForm(httpContext, upload);
+        Assert.IsType<RedirectToActionResult>(await controller.Upload());
 
         var persisted = await db.AgentProfiles.SingleAsync(profile => profile.Id == agent.Id);
         Assert.Equal(imageBytes, persisted.ProfileImageContent);
