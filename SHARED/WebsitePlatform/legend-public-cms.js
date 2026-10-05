@@ -88,6 +88,7 @@
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
+  const studioPerformance = [];
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
@@ -2887,17 +2888,41 @@
     ].join(' · ');
   }
 
+  function recordStudioPerformance(entry) {
+    studioPerformance.push(entry);
+    if(studioPerformance.length>200) studioPerformance.shift();
+  }
+
   async function creativeWorkspaceRequest(path,{method='GET',body=null,query=null}={}) {
     const url=new URL(API_BASE+'/api/website-content/'+path);
     if(query) for(const [key,value] of Object.entries(query)) if(value!=null) url.searchParams.set(key,String(value));
     if(method==='GET') url.searchParams.set('ticket',editorTicket);
-    const response=await fetch(url,{method,cache:'no-store',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok){
-      const error=new Error(payload.message || payload.error || ('Website Studio request failed ('+response.status+').'));
-      error.status=response.status; error.payload=payload; throw error;
+    const requestText=body?JSON.stringify(body):null;
+    const started=typeof performance?.now==='function'?performance.now():Date.now();
+    try{
+      const response=await fetch(url,{method,cache:'no-store',headers:body?{'Content-Type':'application/json'}:undefined,body:requestText});
+      const payload=await response.json().catch(()=>({}));
+      const finished=typeof performance?.now==='function'?performance.now():Date.now();
+      recordStudioPerformance({
+        path,method,status:response.status,
+        durationMs:Math.round((finished-started)*10)/10,
+        requestChars:requestText?.length || 0,
+        responseChars:JSON.stringify(payload || {}).length,
+        operationCount:Array.isArray(body?.operations)?body.operations.length:undefined,
+        changedScopeCount:Array.isArray(payload?.changedScopes)?payload.changedScopes.length:undefined
+      });
+      if(!response.ok){
+        const error=new Error(payload.message || payload.error || ('Website Studio request failed ('+response.status+').'));
+        error.status=response.status; error.payload=payload; throw error;
+      }
+      return payload;
+    }catch(error){
+      if(!studioPerformance.length || studioPerformance.at(-1)?.path!==path){
+        const finished=typeof performance?.now==='function'?performance.now():Date.now();
+        recordStudioPerformance({path,method,status:error?.status || 0,durationMs:Math.round((finished-started)*10)/10,requestChars:requestText?.length || 0,responseChars:0});
+      }
+      throw error;
     }
-    return payload;
   }
 
   function applyCreativeMutationVisuals(operations,payload,selectedId=null) {
@@ -3031,7 +3056,8 @@
         const quality=await creativeWorkspaceRequest('manage/agent/design-quality');
         return quality?.design?.conversionPaths || quality?.design?.ConversionPaths || [];
       },
-      current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()})
+      current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()}),
+      performance:()=>studioPerformance.map(value=>({...value}))
     };
     Object.defineProperty(window,'LEGEND_WEBSITE_STUDIO_AGENT',{value:Object.freeze(api),configurable:true});
   }
