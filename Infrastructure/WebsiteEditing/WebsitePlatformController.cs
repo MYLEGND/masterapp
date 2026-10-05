@@ -794,9 +794,9 @@ public class WebsitePlatformController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         if (request?.Plan is null) return BadRequest(new { error = "website_design_plan_required" });
-        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        var actor = authorizedActor ?? await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
+        var state = authorizedState ?? await StateAsync(actor, cancellationToken);
         if (state.Revision != request.ExpectedRevision)
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
@@ -831,7 +831,12 @@ public class WebsitePlatformController : ControllerBase
             planPerformance.ElapsedMilliseconds);
         return await ApplyMutationBatchAsync(
             new WebsiteMutationRequest(request.Ticket, request.ExpectedRevision, operations.ToList()),
-            cancellationToken);
+            cancellationToken,
+            actor,
+            state,
+            baseline,
+            actions,
+            capabilities);
     }
 
     [HttpGet("manage/event-map")]
@@ -1416,7 +1421,12 @@ public class WebsitePlatformController : ControllerBase
 
     private async Task<IActionResult> ApplyMutationBatchAsync(
         WebsiteMutationRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        WebsiteEditorTicket? authorizedActor = null,
+        WebsiteContentState? authorizedState = null,
+        WebsiteContentDocument? preparedBaseline = null,
+        IReadOnlyList<WebsiteCallToActionOption>? preparedActions = null,
+        WebsiteCapabilityManifest? preparedCapabilities = null)
     {
         var performance = Stopwatch.StartNew();
         if (request is null || request.Operations is null)
@@ -1436,16 +1446,26 @@ public class WebsitePlatformController : ControllerBase
         if (state.Revision != request.ExpectedRevision && !canScopedRebase)
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
-        var baseline = Read(state.DraftJson);
+        var baseline = preparedBaseline ?? Read(state.DraftJson);
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, baseline);
         if (baseline.LegacyMigration is not null)
             return Conflict(new { error = "website_materialization_required" });
 
-        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
-            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
-            : null;
-        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, baseline, actions);
+        IReadOnlyList<WebsiteCallToActionOption> actions;
+        WebsiteCapabilityManifest capabilities;
+        if (preparedActions is not null && preparedCapabilities is not null)
+        {
+            actions = preparedActions;
+            capabilities = preparedCapabilities;
+        }
+        else
+        {
+            WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+                ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+                : null;
+            actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
+            capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, baseline, actions);
+        }
 
         WebsiteMutationApplyResult result;
         try
