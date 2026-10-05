@@ -76,6 +76,8 @@
   let canonicalSourceDocument = null;
   let canonicalSourceRevision = null;
   let templateRepairPending = false;
+  let materializationSavePending = false;
+  let persistedDocumentState = null;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
@@ -3915,6 +3917,7 @@
 
     next.version=3;
     legacyMigration=null;
+    materializationSavePending=true;
     documentState=normalizeDocument(next);
     dirty=true;
     const saved=await save(false);
@@ -5190,56 +5193,336 @@
     markDirty();
   }
 
+  function jsonEquivalent(left,right) {
+    return JSON.stringify(left)===JSON.stringify(right);
+  }
+
+  function creativeNodeForMutation(node) {
+    const copy=cloneCanonicalValue(node || {});
+    delete copy.signals;
+    delete copy.fieldSignals;
+    delete copy.systemKey;
+    delete copy.systemBinding;
+    delete copy.unexpectedFields;
+    copy.children=[];
+    if(copy.experience && typeof copy.experience==='object') {
+      copy.experience=cloneCanonicalValue(copy.experience);
+      delete copy.experience.submitCapability;
+    }
+    return copy;
+  }
+
+  function creativeNodeComparable(node) {
+    const copy=creativeNodeForMutation(node);
+    delete copy.children;
+    return copy;
+  }
+
+  function flattenCreativeNodes(nodes,scope,pagePath=null,reusableComponentId=null,parentId=null,map=new Map()) {
+    (nodes || []).forEach((node,index)=>{
+      if(!node?.id) return;
+      map.set(node.id,{node,parentId,index,scope,pagePath,reusableComponentId});
+      flattenCreativeNodes(node.children || [],scope,pagePath,reusableComponentId,node.id,map);
+    });
+    return map;
+  }
+
+  function mutationLocation(entry) {
+    return {
+      scope:entry.scope,
+      pagePath:entry.pagePath,
+      reusableComponentId:entry.reusableComponentId,
+      parentId:entry.parentId,
+      index:entry.index
+    };
+  }
+
+  function pushInsertMutation(operations,entry) {
+    const node=entry.node;
+    const location=mutationLocation(entry);
+    if(node.type==='form' && node.systemKey==='canonical_inquiry') {
+      operations.push({
+        type:'insertCapability',
+        ...location,
+        capabilityKey:'contact.inquiry.submit',
+        instanceKey:node.id,
+        node:creativeNodeForMutation(node),
+        content:{title:node.title || 'Send an inquiry',submit:node.text || 'Send inquiry'}
+      });
+      return;
+    }
+    if(String(node.systemKey || '').startsWith('protect_runtime_form:')) {
+      operations.push({
+        type:'insertCapability',
+        ...location,
+        capabilityKey:'runtime.'+node.systemKey,
+        instanceKey:node.id
+      });
+      return;
+    }
+    operations.push({type:'insertNode',...location,node:cloneCanonicalValue(node)});
+  }
+
+  function diffCreativeNodeTrees(beforeNodes,afterNodes,scope,pagePath,reusableComponentId,operations) {
+    const before=flattenCreativeNodes(beforeNodes,scope,pagePath,reusableComponentId);
+    const after=flattenCreativeNodes(afterNodes,scope,pagePath,reusableComponentId);
+
+    // Remove only the highest removed ancestor; the server removes its subtree atomically.
+    for(const [id,entry] of before) {
+      if(after.has(id)) continue;
+      if(entry.parentId && !after.has(entry.parentId)) continue;
+      operations.push({type:'removeNode',nodeId:id});
+    }
+
+    // Insert only the highest new ancestor; its new descendants travel with it.
+    for(const [id,entry] of after) {
+      if(before.has(id)) continue;
+      if(entry.parentId && !before.has(entry.parentId)) continue;
+      pushInsertMutation(operations,entry);
+    }
+
+    for(const [id,next] of after) {
+      const previous=before.get(id);
+      if(!previous) continue;
+      const moved=
+        previous.scope!==next.scope ||
+        previous.pagePath!==next.pagePath ||
+        previous.reusableComponentId!==next.reusableComponentId ||
+        previous.parentId!==next.parentId ||
+        previous.index!==next.index;
+      if(moved) operations.push({type:'moveNode',nodeId:id,...mutationLocation(next)});
+
+      if(!jsonEquivalent(creativeNodeComparable(previous.node),creativeNodeComparable(next.node)))
+        operations.push({type:'replaceNode',nodeId:id,node:creativeNodeForMutation(next.node)});
+    }
+  }
+
+  function pageMetadataProjection(page) {
+    return {
+      title:page?.title ?? null,
+      description:page?.description ?? null,
+      navigation:cloneCanonicalValue(page?.navigation || {}),
+      dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null)
+    };
+  }
+
+  function pageMoveIdentity(page) {
+    return JSON.stringify({
+      systemTemplateKey:page?.systemTemplateKey || null,
+      composition:page?.composition || []
+    });
+  }
+
+  function storePresentationProjection(store) {
+    return {
+      navigationLabel:store?.navigationLabel || 'Store',
+      cartIcon:store?.cartIcon || 'cart',
+      cartIconSizePx:Number(store?.cartIconSizePx) || 28,
+      storeNavigation:cloneCanonicalValue(store?.storeNavigation || {}),
+      cartNavigation:cloneCanonicalValue(store?.cartNavigation || {})
+    };
+  }
+
+  function buildCreativeMutationOperations(beforeInput,afterInput) {
+    const before=normalizeDocument(beforeInput || {});
+    const after=normalizeDocument(afterInput || {});
+    const operations=[];
+
+    if(!jsonEquivalent(before.theme,after.theme))
+      operations.push({type:'setTheme',theme:cloneCanonicalValue(after.theme)});
+    if(!jsonEquivalent(before.breakpoints,after.breakpoints))
+      operations.push({type:'setBreakpoints',breakpoints:cloneCanonicalValue(after.breakpoints)});
+    if(before.faviconImageDataUrl!==after.faviconImageDataUrl)
+      operations.push({type:'setFavicon',faviconImageDataUrl:after.faviconImageDataUrl ?? null});
+    if(!jsonEquivalent(storePresentationProjection(before.store),storePresentationProjection(after.store)))
+      operations.push({type:'setStorePresentation',store:cloneCanonicalValue(after.store)});
+
+    diffCreativeNodeTrees(before.shell?.header || [],after.shell?.header || [],'shell.header',null,null,operations);
+    diffCreativeNodeTrees(before.shell?.footer || [],after.shell?.footer || [],'shell.footer',null,null,operations);
+
+    const beforePaths=new Set(Object.keys(before.pages || {}));
+    const afterPaths=new Set(Object.keys(after.pages || {}));
+    const removed=[...beforePaths].filter(path=>!afterPaths.has(path));
+    const added=[...afterPaths].filter(path=>!beforePaths.has(path));
+    const movedSources=new Set(), movedTargets=new Set();
+    for(const source of removed) {
+      const identity=pageMoveIdentity(before.pages[source]);
+      const target=added.find(path=>!movedTargets.has(path) && pageMoveIdentity(after.pages[path])===identity);
+      if(!target) continue;
+      operations.push({type:'movePageRoute',pagePath:source,targetPath:target});
+      movedSources.add(source); movedTargets.add(target);
+      if(!jsonEquivalent(pageMetadataProjection(before.pages[source]),pageMetadataProjection(after.pages[target])))
+        operations.push({type:'updatePage',pagePath:target,page:pageMetadataProjection(after.pages[target])});
+      diffCreativeNodeTrees(before.pages[source]?.composition || [],after.pages[target]?.composition || [],'page',target,null,operations);
+    }
+
+    for(const path of removed) if(!movedSources.has(path))
+      operations.push({type:'removePage',pagePath:path});
+
+    for(const path of added) {
+      if(movedTargets.has(path)) continue;
+      const page=after.pages[path];
+      operations.push({
+        type:'createPage',pagePath:path,
+        page:{...pageMetadataProjection(page),composition:[]}
+      });
+      diffCreativeNodeTrees([],page?.composition || [],'page',path,null,operations);
+    }
+
+    for(const path of [...afterPaths].filter(path=>beforePaths.has(path))) {
+      const previous=before.pages[path], next=after.pages[path];
+      if(!jsonEquivalent(pageMetadataProjection(previous),pageMetadataProjection(next)))
+        operations.push({type:'updatePage',pagePath:path,page:pageMetadataProjection(next)});
+      diffCreativeNodeTrees(previous?.composition || [],next?.composition || [],'page',path,null,operations);
+    }
+
+    const beforeComponents=before.reusableComponents || {};
+    const afterComponents=after.reusableComponents || {};
+    for(const id of Object.keys(beforeComponents))
+      if(!Object.prototype.hasOwnProperty.call(afterComponents,id))
+        operations.push({type:'removeReusable',reusableComponentId:id});
+    for(const [id,component] of Object.entries(afterComponents))
+      if(!Object.prototype.hasOwnProperty.call(beforeComponents,id) || !jsonEquivalent(beforeComponents[id],component))
+        operations.push({type:'upsertReusable',reusableComponent:cloneCanonicalValue(component)});
+
+    return operations;
+  }
+
+  function applyCreativeMutationDeltaToState(baseInput,payload) {
+    const changes=payload?.changes || {};
+    const next=cloneCanonicalValue(baseInput || documentState);
+    next.pages ||= {};
+    next.reusableComponents ||= {};
+    next.shell ||= {header:[],footer:[]};
+    for(const path of Array.isArray(changes.removedPages)?changes.removedPages:[]) delete next.pages[path];
+    for(const [path,page] of Object.entries(changes.pages || {})) next.pages[path]=page;
+    for(const id of Array.isArray(changes.removedComponents)?changes.removedComponents:[]) delete next.reusableComponents[id];
+    for(const [id,component] of Object.entries(changes.reusableComponents || {})) next.reusableComponents[id]=component;
+    if(changes.theme) next.theme=changes.theme;
+    if(changes.breakpoints) next.breakpoints=changes.breakpoints;
+    if(changes.faviconChanged===true) next.faviconImageDataUrl=changes.faviconImageDataUrl ?? null;
+    if(changes.shellHeader) next.shell.header=changes.shellHeader;
+    if(changes.shellFooter) next.shell.footer=changes.shellFooter;
+    if(changes.store) next.store=changes.store;
+    return normalizeDocument(next);
+  }
+
   let saving = false;
   async function save(publish = false, namedDraft = null) {
-    if (saving) return;
+    if (saving) return false;
     clearTimeout(autoSaveTimer);
-    const status = document.getElementById('legend-cms-status');
-    if (legacyMigration) {
-      if (status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
-      return false;
-    }
+    const status=document.getElementById('legend-cms-status');
+
     if (publish && sourceEditorDirty) {
       if(status) status.textContent='Apply or discard your Selected Source changes before publishing. Nothing was published.';
       showPanel('source');
       return false;
     }
-    if (publish && dirty) { const draftSaved=await save(false); if (!draftSaved || dirty) return false; return save(true); }
-    if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
-    saving = true;
-    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
-    synchronizeCanonicalSharedPresentation(documentState,selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null);
-    const submitted = JSON.stringify(documentState);
-    let saved = false;
+    if (legacyMigration && !materializationSavePending) {
+      if(status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
+      return false;
+    }
+    if (publish && dirty) {
+      const draftSaved=await save(false);
+      if(!draftSaved || dirty) return false;
+      return save(true);
+    }
+
+    saving=true;
+    let saved=false;
     try {
-      const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
-      });
-      if (!response.ok) {
-        if ((response.status===401 || response.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired before this draft could be saved.')) return false;
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || error.error || `Save failed (${response.status})`);
+      if(publish) {
+        if(status) status.textContent='Publishing…';
+        const response=await fetch(API_BASE+'/api/website-content/manage/publish',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:editorTicket,expectedRevision:revision})
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Publish failed ('+response.status+').')),{status:response.status,payload});
+        revision=payload.revision ?? revision;
+        if(payload.document){
+          documentState=normalizeDocument(payload.document);
+          persistedDocumentState=cloneCanonicalValue(documentState);
+          applyDocument(documentState);
+        }
+        dirty=false;
+        saved=true;
+        if(status) status.textContent='Published';
+        return true;
       }
-      const payload = await response.json();
-      const changedDuringSave = JSON.stringify(documentState) !== submitted;
-      if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
-      revision = payload.revision ?? revision;
+
+      const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
+      synchronizeCanonicalSharedPresentation(documentState,selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null);
+      const submittedState=normalizeDocument(cloneCanonicalValue(documentState));
+      const submitted=JSON.stringify(submittedState);
+
+      // The complete-document write exists only for the one-way legacy -> v3
+      // materialization boundary. Normal Website Studio authoring uses mutations.
+      if(materializationSavePending || !persistedDocumentState) {
+        if(status) status.textContent='Saving canonical v3 materialization…';
+        const response=await fetch(API_BASE+'/api/website-content/manage',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:editorTicket,document:submittedState,expectedRevision:revision,...(namedDraft || {})})
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Save failed ('+response.status+').')),{status:response.status,payload});
+        const serverState=normalizeDocument(payload.document || submittedState);
+        const changedDuringSave=JSON.stringify(documentState)!==submitted;
+        persistedDocumentState=cloneCanonicalValue(serverState);
+        revision=payload.revision ?? revision;
+        namedDrafts=payload.drafts || namedDrafts;
+        materializationSavePending=false;
+        if(!changedDuringSave){ documentState=serverState; applyDocument(documentState); }
+        dirty=changedDuringSave;
+        saved=true;
+        if(status) status.textContent=changedDuringSave?'Draft saved; newer edits remain unsaved':'Draft saved';
+        return true;
+      }
+
+      const operations=buildCreativeMutationOperations(persistedDocumentState,submittedState);
+      if(status) status.textContent=operations.length ? 'Saving changed website scopes…' : namedDraft ? 'Saving named draft…' : 'Saved';
+      if(operations.length===0 && !namedDraft){
+        dirty=false; saved=true; return true;
+      }
+
+      const payload=await creativeWorkspaceRequest('manage/mutations',{
+        method:'POST',
+        body:{
+          ticket:editorTicket,
+          expectedRevision:revision,
+          operations,
+          draftId:namedDraft?.draftId || null,
+          draftName:namedDraft?.draftName || null
+        }
+      });
+      const serverState=applyCreativeMutationDeltaToState(submittedState,payload);
+      const changedDuringSave=JSON.stringify(documentState)!==submitted;
+      persistedDocumentState=cloneCanonicalValue(serverState);
+      revision=payload.revision ?? revision;
+      namedDrafts=payload.drafts || namedDrafts;
       canonicalSourceDocument=null;
       canonicalSourceRevision=null;
-      namedDrafts = payload.drafts || namedDrafts;
-      dirty = changedDuringSave;
-      saved = true;
-      if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
-    } catch (error) {
-      if (status) status.textContent = error?.message || 'Save failed';
+      if(!changedDuringSave){
+        documentState=serverState;
+        applyDocument(documentState);
+      }
+      dirty=changedDuringSave;
+      saved=true;
+      if(status) status.textContent=changedDuringSave?'Changed scopes saved; newer edits remain unsaved':'Draft saved';
+    } catch(error) {
+      if((error?.status===401 || error?.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired before this change could be saved.')) return false;
+      const payload=error?.payload || {};
+      if(payload.canonicalProtectionViolation===true)
+        showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
+      if(status) status.textContent=payload.message || error?.message || 'Save failed';
     } finally {
-      saving = false;
-      if (saved && dirty) {
+      saving=false;
+      if(saved && dirty){
         clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
+        autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
       }
     }
     return saved;
@@ -7335,6 +7618,7 @@
       revision = payload.revision;
       namedDrafts = payload.drafts || [];
       applyDocument(payload.document || {});
+      persistedDocumentState=legacyMigration ? null : cloneCanonicalValue(documentState);
 
       if(materializeMode){
         const snapshot=currentMaterializedPage();
