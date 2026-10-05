@@ -25,6 +25,7 @@ function environment(fetch) {
     newConversationRecord: () => ({ messages: [], mode: 'legend' }),
     defaultState: () => ({ activeConversationId: 'fresh', conversations: [{ id: 'fresh', messages: [] }] }),
     setBusy(value) { c.busy = value; }, renderAll() {}, applyOperationalProgress() {},
+    updateThinkingStatus(message = '') { c.status.textContent = message; },
   };
   vm.createContext(c);
   for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
