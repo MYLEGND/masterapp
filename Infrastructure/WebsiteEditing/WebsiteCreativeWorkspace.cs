@@ -228,6 +228,91 @@ public static class WebsiteDocumentIndex
     }
 }
 
+public static class WebsiteStyleIntelligenceProjection
+{
+    private static readonly System.Reflection.PropertyInfo[] VisualStyleProperties =
+        typeof(WebsiteVisualStyle).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+    private static readonly System.Reflection.PropertyInfo[] ThemeProperties =
+        typeof(WebsiteDesignTheme).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+    public static object Build(WebsiteContentDocument document)
+    {
+        var nodes = WebsiteSiteSource.Flatten(document).Select(entry => entry.Node).ToArray();
+        var directStyleOverrides = nodes.Count(node => HasStyleOverride(node.Style));
+        var responsiveOverrides = nodes.Count(node =>
+            (node.BreakpointStyles?.Count ?? 0) > 0 ||
+            (node.BreakpointLayouts?.Count ?? 0) > 0);
+        var animationBindings = nodes.Sum(node => node.Animations?.Count ?? 0);
+
+        var classUsage = nodes
+            .SelectMany(node => (node.ClassName ?? string.Empty)
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .Where(value => !value.StartsWith("legend-cms-", StringComparison.Ordinal))
+            .GroupBy(value => value, StringComparer.Ordinal)
+            .Select(group => new { value = group.Key, count = group.Count() })
+            .OrderByDescending(value => value.count)
+            .ThenBy(value => value.value, StringComparer.Ordinal)
+            .Take(24)
+            .ToArray();
+
+        var actionUsage = nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.ActionKey))
+            .GroupBy(node => node.ActionKey!, StringComparer.Ordinal)
+            .Select(group => new { actionKey = group.Key, count = group.Count() })
+            .OrderByDescending(value => value.count)
+            .ThenBy(value => value.actionKey, StringComparer.Ordinal)
+            .ToArray();
+
+        var headingUsage = nodes
+            .Where(node => node.Type == "heading" && !string.IsNullOrWhiteSpace(node.Tag))
+            .GroupBy(node => node.Tag!.ToLowerInvariant(), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        var typeUsage = nodes
+            .GroupBy(node => node.Type ?? "unknown", StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        var explicitSurfaceCount = nodes.Count(node =>
+            !string.IsNullOrWhiteSpace(node.Style?.BackgroundColor) ||
+            !string.IsNullOrWhiteSpace(node.Style?.BackgroundGradient));
+        var explicitTypographyCount = nodes.Count(node =>
+            node.Style?.FontSize is not null ||
+            node.Style?.FontScale is not null ||
+            !string.IsNullOrWhiteSpace(node.Style?.FontFamily) ||
+            node.Style?.FontWeight is not null);
+        var explicitGeometryCount = nodes.Count(node =>
+            node.Style?.WidthPercent is not null ||
+            node.Style?.HeightPx is not null ||
+            node.Style?.OffsetXPercent is not null ||
+            node.Style?.OffsetYPx is not null);
+
+        var themeTokenCount = ThemeProperties.Count(property =>
+            property.GetValue(document.Theme) is not null);
+
+        return new
+        {
+            nodeCount = nodes.Length,
+            themeTokenCount,
+            directStyleOverrideCount = directStyleOverrides,
+            directStyleOverrideRatio = nodes.Length == 0
+                ? 0m
+                : Math.Round((decimal)directStyleOverrides / nodes.Length, 3),
+            responsiveOverrideNodeCount = responsiveOverrides,
+            animationBindingCount = animationBindings,
+            explicitSurfaceNodeCount = explicitSurfaceCount,
+            explicitTypographyNodeCount = explicitTypographyCount,
+            explicitGeometryNodeCount = explicitGeometryCount,
+            classUsage,
+            actionUsage,
+            headingUsage,
+            typeUsage
+        };
+    }
+
+    private static bool HasStyleOverride(WebsiteVisualStyle? style) =>
+        style is not null && VisualStyleProperties.Any(property => property.GetValue(style) is not null);
+}
+
 public static class WebsiteCreativeProjection
 {
     public static object Node(WebsiteCompositionNode node) => new
@@ -272,9 +357,11 @@ public static class WebsiteCreativeProjection
         string siteKey,
         long revision,
         WebsiteContentDocument document,
+        object? identity,
         object? facts,
         WebsiteCapabilityManifest capabilities,
         WebsiteQualityReport quality,
+        WebsiteDesignQualityReport designQuality,
         IEnumerable<object>? media = null)
     {
         var pages = document.Pages
@@ -304,8 +391,10 @@ public static class WebsiteCreativeProjection
             schema = "legend-creative-workspace/v1",
             siteKey,
             revision,
+            identity,
             facts,
             theme = document.Theme,
+            styleIntelligence = WebsiteStyleIntelligenceProjection.Build(document),
             pages,
             shell = new
             {
@@ -317,7 +406,17 @@ public static class WebsiteCreativeProjection
                 .OrderBy(value => value.Name, StringComparer.Ordinal)
                 .ToArray(),
             capabilities,
-            quality = new { quality.ErrorCount, quality.WarningCount, quality.Checks },
+            quality = new
+            {
+                structural = new { quality.ErrorCount, quality.WarningCount, quality.Checks },
+                design = new
+                {
+                    designQuality.ErrorCount,
+                    designQuality.WarningCount,
+                    designQuality.Checks,
+                    designQuality.ConversionPaths
+                }
+            },
             media = media ?? Array.Empty<object>()
         };
     }
