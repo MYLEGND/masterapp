@@ -670,6 +670,84 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
+    public void SharedShellAuthority_CanonicalizesOnceOnServer_AndLocksRuntimeClassIdentity()
+    {
+        var document = CanonicalDocument();
+        document.Pages["/"].Composition.Insert(0, new WebsiteCompositionNode
+        {
+            Id = "stale.page.header",
+            Type = "container",
+            Tag = "header",
+            ClassName = "site-header"
+        });
+
+        var brand = new WebsiteCompositionNode
+        {
+            Id = "shell.business-name",
+            Type = "text",
+            Tag = "strong",
+            Text = "BUSINESS",
+            SystemBinding = "business_name"
+        };
+        document.Shell.Header.Insert(0, brand);
+        document.Shell.Header.Add(new WebsiteCompositionNode
+        {
+            Id = "shell.duplicate-nav",
+            Type = "container",
+            Tag = "nav",
+            ClassName = "nav",
+            SystemKey = "primary_navigation"
+        });
+        document.Shell.Footer =
+        [
+            new WebsiteCompositionNode
+            {
+                Id = "credit.label",
+                Type = "text",
+                Tag = "span",
+                ClassName = "legend-platform-attribution-designed-label",
+                Text = "Wrong"
+            },
+            new WebsiteCompositionNode
+            {
+                Id = "credit.link",
+                Type = "link",
+                Tag = "a",
+                ClassName = "legend-platform-attribution",
+                Text = "Wrong",
+                Href = "https://wrong.example/"
+            }
+        ];
+
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Business, document);
+
+        Assert.DoesNotContain(document.Pages["/"].Composition, node => node.Id == "stale.page.header");
+        Assert.Single(document.Shell.Header.Where(node => node.SystemKey == "primary_navigation"));
+        Assert.Equal(3.5m, brand.Style.FontScale);
+        Assert.Equal(800, brand.Style.FontWeight);
+        Assert.Equal(1.35m, brand.BreakpointStyles["mobile"].FontScale);
+        Assert.Equal(1.8m, brand.BreakpointStyles["tablet"].FontScale);
+        Assert.Equal("Website Designed by", document.Shell.Footer[0].Text);
+        Assert.Equal("Legend®", document.Shell.Footer[1].Text);
+        Assert.Equal("https://www.mylegnd.com/", document.Shell.Footer[1].Href);
+
+        var baseline = CanonicalDocument();
+        baseline.Shell.Footer = document.Shell.Footer;
+        var projected = WebsiteSiteSource.Serialize(baseline);
+        var removal = JsonSerializer.Deserialize<WebsiteSiteSourceDocument>(
+            projected,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        removal.Shell.Footer[1].ClassName = null;
+        var source = JsonSerializer.Serialize(
+            removal,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
+
+        var error = Assert.Throws<WebsiteSiteSourceProtectionException>(() =>
+            WebsiteSiteSource.Parse(source, baseline, BusinessActions()));
+        Assert.Contains("cannot remove platform runtime class", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ProtectSystemTemplateAuthority_UsesCanonicalRouteIdentityForFounderAgentAndPaidVariants()
     {
         Assert.Equal(
