@@ -1312,6 +1312,14 @@ def release_run_source_pr(run):
     return int(match.group(1)) if match else None
 
 
+def release_run_candidate(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=[0-9]+ candidate=([a-f0-9]{40}) authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return match.group(1) if match else None
+
+
 def automatic_release_admission(pr, approved, runs):
     """Single fail-closed admission predicate; no independent workflow gate map."""
     active = [row for row in runs if row.get('status') != 'completed']
@@ -1761,10 +1769,45 @@ def _admission_settled(api, run, record):
             and value.get('resources') == record['resources'] and targets == expected)
 
 
+def _admission_superseded_by_successful_source(api, run, record, runs):
+    """A later successful release of the same validated PR discharges older leases.
+
+    This is terminal proof, not inference from current live state: the later run
+    must be the canonical direct-release workflow, must bind the exact same
+    validated source revision, and must successfully cover every target recorded
+    by the historical admission.
+    """
+    if run.get('status') != 'completed':
+        return False
+    source_pr = release_run_source_pr(run)
+    source_revision = record.get('authorizedSourceRevision')
+    if source_pr is None or not SHA.fullmatch(source_revision or ''):
+        return False
+
+    try:
+        keys = _validate_admission_record_scope(record)
+    except RuntimeError:
+        return False
+
+    for later in runs:
+        if later.get('id', 0) <= run.get('id', 0):
+            continue
+        if release_run_source_pr(later) != source_pr:
+            continue
+        if release_run_candidate(later) != source_revision:
+            continue
+        if not successful_release(api, later):
+            continue
+        if all(successful_release(api, later, app=key) for key in keys):
+            return True
+    return False
+
+
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
     conflicts = []
-    for run in direct_release_runs(api):
+    runs = direct_release_runs(api)
+    for run in runs:
         own_run = run['id'] == current_run
         if run.get('status') == 'completed' and successful_release(api, run):
             continue  # exact terminal live proof discharges this publication lease
@@ -1795,7 +1838,9 @@ def admission_conflicts(api, candidate, *, current_run):
             # active legacy workflows always block new admission globally.
             continue
         for record in records:
-            if _admission_settled(api, run, record) or _admission_nonmutating_terminal(api, run):
+            if (_admission_settled(api, run, record)
+                or _admission_nonmutating_terminal(api, run)
+                or _admission_superseded_by_successful_source(api, run, record, runs)):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
