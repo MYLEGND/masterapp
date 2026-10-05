@@ -337,13 +337,14 @@ function fixtureMutationResponse(before,after,serverRevision) {
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.matchMedia=()=>({matches:false});
   w.HTMLElement.prototype.animate=function(keyframes,options){ const record={element:this,keyframes,options,cancelled:false}; animations.push(record); return {cancel(){record.cancelled=true;}}; };
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages,agentSlug,pagePrefix,editorAuthorizationUrl};
+  if(modelContext) Object.defineProperty(w.document,'modelContext',{value:modelContext,configurable:true});
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   const alerts=[]; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
@@ -1303,6 +1304,38 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/connect-src \\'none\\'/);
   assert.match(source,/frame\.remove\(\)/);
   assert.doesNotMatch(source,/sandbox','allow-same-origin allow-scripts'/);
+});
+
+test('Website Studio WebMCP adapter registers and executes through the canonical local agent API',async()=>{
+  const registered=[];
+  const modelContext={
+    registerTool:async definition=>{registered.push(definition);}
+  };
+  const f=await domFixture({modelContext});
+  try{
+    assert.deepEqual(
+      registered.map(tool=>tool.name).sort(),
+      [
+        'legend_website_apply_design_plan',
+        'legend_website_apply_mutations',
+        'legend_website_import_image',
+        'legend_website_preflight',
+        'legend_website_set_signal_mappings',
+        'legend_website_workspace'
+      ].sort()
+    );
+    const workspace=registered.find(tool=>tool.name==='legend_website_workspace');
+    assert.ok(workspace);
+    const summary=await workspace.execute({operation:'summary'},{});
+    assert.equal(summary.schema,'legend-creative-workspace/v1');
+    assert.equal(new URL(f.w.location.href).searchParams.has('legendEdit'),false);
+    assert.equal(f.w.history.state?.legendStudioTicket,'ticket');
+
+    const build=registered.find(tool=>tool.name==='legend_website_apply_design_plan');
+    assert.equal(build.annotations.readOnlyHint,false);
+    assert.equal(build.annotations.consequentialHint,true);
+    assert.equal(workspace.annotations.readOnlyHint,true);
+  }finally{f.close();}
 });
 
 test('Website Studio registers bounded editor-only browser tools without exposing the edit ticket',()=>{
