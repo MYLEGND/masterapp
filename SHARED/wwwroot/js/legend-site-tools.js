@@ -135,6 +135,7 @@
   async function register() {
     const modelContext = await waitForModelContext();
     if (!modelContext) return;
+    try { window.dispatchEvent(new CustomEvent("legend:model-context-ready")); } catch { }
     let response;
     try {
       response = await window.fetch(endpoint + "/catalog", {
