@@ -1339,12 +1339,44 @@ public class WebsitePlatformController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
 
+        var changedPagePaths = result.ChangedScopes
+            .Where(value => value.StartsWith("/", StringComparison.Ordinal))
+            .Select(value =>
+            {
+                var marker = value.IndexOf('#');
+                return marker < 0 ? value : value[..marker];
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Where(document.Pages.ContainsKey)
+            .ToArray();
+        var changedComponents = result.ChangedScopes
+            .Where(value => value.StartsWith("@component/", StringComparison.Ordinal))
+            .Select(value =>
+            {
+                var remainder = value["@component/".Length..];
+                var marker = remainder.IndexOf('#');
+                return marker < 0 ? remainder : remainder[..marker];
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Where(document.ReusableComponents.ContainsKey)
+            .ToArray();
+
         return Ok(new
         {
             source = "canonical_v3_mutation",
             revision = state.Revision,
             changedScopes = result.ChangedScopes,
             fingerprints = result.Fingerprints,
+            changes = new
+            {
+                pages = changedPagePaths.ToDictionary(value => value, value => document.Pages[value], StringComparer.Ordinal),
+                theme = result.ChangedScopes.Contains("@theme", StringComparer.Ordinal) ? document.Theme : null,
+                faviconImageDataUrl = result.ChangedScopes.Contains("@favicon", StringComparer.Ordinal) ? document.FaviconImageDataUrl : null,
+                shellHeader = result.ChangedScopes.Any(value => value.StartsWith("@shell/header", StringComparison.Ordinal)) ? document.Shell.Header : null,
+                shellFooter = result.ChangedScopes.Any(value => value.StartsWith("@shell/footer", StringComparison.Ordinal)) ? document.Shell.Footer : null,
+                reusableComponents = changedComponents.ToDictionary(value => value, value => document.ReusableComponents[value], StringComparer.Ordinal),
+                store = result.ChangedScopes.Contains("@store-presentation", StringComparer.Ordinal) ? document.Store : null
+            },
             savedUtc = state.UpdatedUtc,
             drafts = ReadDrafts(state).Select(value => new { value.Id, value.Name, value.UpdatedUtc })
         });
