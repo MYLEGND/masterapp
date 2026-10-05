@@ -880,6 +880,13 @@ public class WebsitePlatformController : ControllerBase
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
 
+        var currentMetaDestination = await ResolveSignalDestinationAsync(actor, cancellationToken);
+        var advertisingOwner = await Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            _db, _configuration, actor, cancellationToken);
+        var browserDestination = await HttpContext.RequestServices
+            .GetRequiredService<Infrastructure.Analytics.MarketingBrowserConfigurationService>()
+            .GetAsync(advertisingOwner, cancellationToken);
+
         var eventMap = await new WebsiteEventMapQuery(_db, _configuration)
             .ReadTicketAsync(actor, cancellationToken);
         var relevant = eventMap
@@ -906,6 +913,16 @@ public class WebsitePlatformController : ControllerBase
                 conversionPaths = design.ConversionPaths,
                 checks = design.Checks.Where(check =>
                     check.Code.StartsWith("conversion_", StringComparison.Ordinal)).ToArray()
+            },
+            destinations = new
+            {
+                meta = SignalDestinationPayload(currentMetaDestination),
+                openai = new
+                {
+                    browserPixelConfigured = !string.IsNullOrWhiteSpace(browserDestination.OpenAiPixelId),
+                    accountApproved = browserDestination.OpenAiAccountApproved,
+                    serverConversionsConfigured = browserDestination.OpenAiConversionsApiConfigured
+                }
             },
             published = new
             {
