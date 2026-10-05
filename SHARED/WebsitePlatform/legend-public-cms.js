@@ -3050,8 +3050,10 @@
       applyDesignPlan:creativeApplyDesignPlan,
       runQuality:async()=>({
         server:await creativeWorkspaceRequest('manage/agent/design-quality'),
-        rendered:{page:currentPageRoute(),viewport:responsiveViewportWidth(),checks:liveQualityChecks()}
+        rendered:{page:currentPageRoute(),viewport:responsiveViewportWidth(),checks:liveQualityChecks()},
+        responsive:await runResponsiveQualityAudit()
       }),
+      runResponsiveQuality:runResponsiveQualityAudit,
       planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
       applySafeQualityRepairs:async()=>{
         const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
@@ -6494,25 +6496,35 @@
     return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
   }
 
-  function effectiveBackgroundColor(el) {
+  function computedStyleFor(el) {
+    const view=el?.ownerDocument?.defaultView || window;
+    return view?.getComputedStyle ? view.getComputedStyle(el) : getComputedStyle(el);
+  }
+
+  function effectiveBackgroundColor(el,doc=el?.ownerDocument || document) {
     let current=el;
-    while(current && current!==document.documentElement){
-      const parsed=parseComputedRgb(getComputedStyle(current).backgroundColor);
+    while(current && current!==doc.documentElement){
+      const parsed=parseComputedRgb(computedStyleFor(current).backgroundColor);
       if(parsed && parsed.a>.08) return parsed;
       current=current.parentElement;
     }
-    return parseComputedRgb(getComputedStyle(document.body).backgroundColor) || {r:255,g:255,b:255,a:1};
+    return parseComputedRgb(computedStyleFor(doc.body).backgroundColor) || {r:255,g:255,b:255,a:1};
   }
 
-  function liveQualityChecks() {
+  function cssEscapeFor(doc,value) {
+    const escape=doc?.defaultView?.CSS?.escape || globalThis.CSS?.escape;
+    return escape ? escape(String(value)) : String(value).replaceAll('"','\\"');
+  }
+
+  function liveQualityChecksForDocument(doc=document,viewportWidth=responsiveViewportWidth(),{includeAnimation=true}={}) {
     const checks = [];
-    const main = document.querySelector('main');
+    const main = doc.querySelector('main');
     const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
     if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
     if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:`The rendered page has ${headings.length} visible H1 headings.` });
 
     const ids = new Map();
-    document.querySelectorAll('[id]').forEach(node => {
+    doc.querySelectorAll('[id]').forEach(node => {
       const id = node.id?.trim();
       if (!id || node.closest('.legend-cms-editor')) return;
       ids.set(id, (ids.get(id) || 0) + 1);
@@ -6520,29 +6532,29 @@
     for (const [id, count] of ids) if (count > 1)
       checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
-    document.querySelectorAll('main img:not([hidden])').forEach(image => {
+    doc.querySelectorAll('main img:not([hidden])').forEach(image => {
       if (!image.hasAttribute('alt'))
         checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
     });
 
-    document.querySelectorAll('main a:not([hidden])').forEach(link => {
+    doc.querySelectorAll('main a:not([hidden])').forEach(link => {
       const href = link.getAttribute('href')?.trim();
       if (!href || href === '#')
         checks.push({ code:'live_link_destination_missing', severity:'warning', message:'A rendered link has no working destination.', elementId:link.dataset.cmsId || link.id || null });
     });
 
-    document.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
+    doc.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
       const labelled = !!control.getAttribute('aria-label')?.trim()
         || !!control.getAttribute('aria-labelledby')?.trim()
         || !!control.closest('label')
-        || (!!control.id && !!document.querySelector(`label[for="${CSS.escape(control.id)}"]`));
+        || (!!control.id && !!doc.querySelector(`label[for="${cssEscapeFor(doc,control.id)}"]`));
       if (!labelled)
         checks.push({ code:'live_control_label_missing', severity:'warning', message:'A rendered form control has no accessible label.', elementId:control.dataset.cmsId || control.id || null });
     });
 
-    document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
+    doc.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
       if (node.hidden) return;
-      const overflowX=getComputedStyle(node).overflowX;
+      const overflowX=computedStyleFor(node).overflowX;
       const visiblyClipped=overflowX==='hidden' || overflowX==='clip';
       if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
@@ -6562,7 +6574,7 @@
     let contrastWarnings=0, typeWarnings=0, lineWarnings=0;
     for(const node of textNodes){
       if(node.closest('.legend-cms-editor') || node.hidden || node.getClientRects().length===0 || !node.textContent?.trim()) continue;
-      const style=getComputedStyle(node);
+      const style=computedStyleFor(node);
       const fontSize=parseFloat(style.fontSize);
       if(Number.isFinite(fontSize) && fontSize<14 && typeWarnings++<8)
         checks.push({code:'live_type_too_small',severity:'warning',message:`Rendered text is ${Math.round(fontSize)}px; increase it for comfortable reading.`,elementId:node.dataset.cmsId || null});
@@ -6571,7 +6583,7 @@
         checks.push({code:'live_line_length',severity:'info',message:'This text block is visually wide. Shorter line length may improve scanning.',elementId:node.dataset.cmsId || null});
       if(contrastWarnings<8){
         const fg=parseComputedRgb(style.color);
-        const bg=effectiveBackgroundColor(node);
+        const bg=effectiveBackgroundColor(node,doc);
         if(fg && bg && fg.a>.8){
           const high=Math.max(relativeLuminance(fg),relativeLuminance(bg));
           const low=Math.min(relativeLuminance(fg),relativeLuminance(bg));
@@ -6602,7 +6614,7 @@
       const meaningful=section.querySelector('h1,h2,h3,p,img,video,a,button,form,[data-website-experience-form]');
       if(!meaningful && !section.textContent?.trim())
         checks.push({code:'live_empty_section',severity:'warning',message:'A visible section has no meaningful content.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
-      const computed=getComputedStyle(section);
+      const computed=computedStyleFor(section);
       const top=parseFloat(computed.paddingTop), bottom=parseFloat(computed.paddingBottom);
       if(Number.isFinite(top) && Number.isFinite(bottom) && top<20 && bottom<20)
         checks.push({code:'live_section_rhythm_tight',severity:'info',message:'This section has very little vertical breathing room.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
@@ -6617,8 +6629,8 @@
         checks.push({code:'live_image_render_failed',severity:'warning',message:'An image source did not render successfully.',elementId:image.dataset.cmsId || image.id || null});
     });
 
-    if(responsiveViewportWidth()<=767){
-      const toggle=document.querySelector('.nav-toggle');
+    if(viewportWidth<=767){
+      const toggle=doc.querySelector('.nav-toggle');
       if(!toggle || toggle.getClientRects().length===0)
         checks.push({code:'live_mobile_nav_toggle_missing',severity:'error',message:'The mobile primary navigation has no usable Menu trigger.'});
       else{
@@ -6628,12 +6640,89 @@
       }
     }
 
-    let animationCount=0;
-    walkComposition(pageState().composition || [],node=>{animationCount+=(node.animations || []).length;});
-    if(animationCount>18)
-      checks.push({code:'live_animation_excess',severity:'warning',message:`This page has ${animationCount} motion bindings. Reduce motion to keep the experience focused.`});
+    if(includeAnimation){
+      let animationCount=0;
+      walkComposition(pageState().composition || [],node=>{animationCount+=(node.animations || []).length;});
+      if(animationCount>18)
+        checks.push({code:'live_animation_excess',severity:'warning',message:`This page has ${animationCount} motion bindings. Reduce motion to keep the experience focused.`});
+    }
 
     return checks;
+  }
+
+  function liveQualityChecks() {
+    return liveQualityChecksForDocument(document,responsiveViewportWidth(),{includeAnimation:true});
+  }
+
+  function representativeBreakpointWidth(breakpoint) {
+    if(!breakpoint) return Math.max(1200,Math.min(1440,Number(window.innerWidth)||1440));
+    const min=Number(breakpoint.minWidth)||0;
+    const max=breakpoint.maxWidth==null?null:Number(breakpoint.maxWidth);
+    if(max==null) return Math.max(min,1440);
+    return Math.max(320,Math.round((min+max)/2));
+  }
+
+  function responsiveAuditMarkup() {
+    const head=[...document.head.querySelectorAll('link[rel="stylesheet"],style')]
+      .map(node=>node.outerHTML)
+      .join('');
+    const body=document.body.cloneNode(true);
+    body.querySelectorAll('.legend-cms-editor,.legend-cms-selection-frame,.legend-cms-grid-overlay,script').forEach(node=>node.remove());
+    body.classList.remove('legend-cms-editing','legend-cms-panel-hidden');
+    body.removeAttribute('style');
+    return '<!doctype html><html><head>'+
+      '<meta charset="utf-8">'+
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\' \'unsafe-inline\' https:; img-src \'self\' https: data: blob:; media-src \'self\' https: blob:; font-src \'self\' https: data:; form-action \'none\'; connect-src \'none\'; script-src \'none\';">'+
+      '<base href="'+location.origin.replaceAll('"','&quot;')+'/">'+head+
+      '</head>'+body.outerHTML+'</html>';
+  }
+
+  async function auditRenderedBreakpoint(breakpoint) {
+    const width=representativeBreakpointWidth(breakpoint);
+    const frame=document.createElement('iframe');
+    frame.setAttribute('aria-hidden','true');
+    frame.setAttribute('tabindex','-1');
+    frame.setAttribute('sandbox','allow-same-origin');
+    frame.style.cssText=`position:fixed;left:-100000px;top:0;width:${width}px;height:1200px;border:0;visibility:hidden;pointer-events:none;`;
+    document.body.appendChild(frame);
+    try{
+      const loaded=new Promise(resolve=>frame.addEventListener('load',resolve,{once:true}));
+      frame.srcdoc=responsiveAuditMarkup();
+      await loaded;
+      await frame.contentDocument?.fonts?.ready?.catch?.(()=>{});
+      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
+      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
+      const doc=frame.contentDocument;
+      if(!doc) return {key:breakpoint?.key || 'base',label:breakpoint?.label || 'Base',width,checks:[{code:'responsive_audit_unavailable',severity:'warning',message:'Responsive audit frame was unavailable.'}]};
+      return {
+        key:breakpoint?.key || 'base',
+        label:breakpoint?.label || 'Base',
+        width,
+        checks:liveQualityChecksForDocument(doc,width,{includeAnimation:false})
+      };
+    }finally{
+      frame.remove();
+    }
+  }
+
+  async function runResponsiveQualityAudit() {
+    if(!editorMode) return [];
+    const originalKey=editorBreakpointKey;
+    const breakpoints=(documentState.breakpoints || []).filter(value=>value && value.key);
+    const targets=breakpoints.length ? breakpoints : defaultBreakpoints();
+    const results=[];
+    try{
+      for(const breakpoint of targets){
+        editorBreakpointKey=breakpoint.key;
+        applyBreakpointPreview();
+        await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+        results.push(await auditRenderedBreakpoint(breakpoint));
+      }
+      return results;
+    }finally{
+      editorBreakpointKey=originalKey;
+      applyBreakpointPreview();
+    }
   }
 
   function renderQualityChecks(host, checks, emptyMessage) {
