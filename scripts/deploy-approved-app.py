@@ -158,7 +158,7 @@ class Azure:
             return False
 
 
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, allow_history_gap_from_baseline=False):
     started = clock()
     submitted = False
     baseline_ids = set()
@@ -220,6 +220,10 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
                 baseline_ids = {row['id'] for row in rows}
                 if journal is not None:
                     try:
+                        if (allow_history_gap_from_baseline and journal.intent is None and
+                                getattr(journal, 'history_error', None) is not None and
+                                baseline is not None and observed == baseline):
+                            journal.authorize_first_write_after_baseline_proof()
                         allowed = journal.before_submit(baseline_ids)
                     except Exception as exc:
                         raise DeploymentReconciliationRequired('Durable upload intent could not be proven; no write authorized') from exc
@@ -259,7 +263,7 @@ def operation_journal(key, revision, digest, baseline):
     return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY)
 
 
-def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None):
+def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None, allow_history_gap_from_baseline=False):
     target = TARGETS[key]
     package = package_root / target["package"]
     digest = verify_package(package, revision, target["static"])
@@ -268,7 +272,13 @@ def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, re
         flush=True,
     )
     journal = journal or operation_journal(key, revision, digest, baseline)
-    result = reconcile(target_azure(key, package, revision), baseline=baseline, reconcile_only=reconcile_only, journal=journal)
+    result = reconcile(
+        target_azure(key, package, revision),
+        baseline=baseline,
+        reconcile_only=reconcile_only,
+        journal=journal,
+        allow_history_gap_from_baseline=allow_history_gap_from_baseline,
+    )
     print(
         f'{target["releaseName"]}: {result}; exact revision healthy and no Azure deployment pending.',
         flush=True,
@@ -348,6 +358,8 @@ def preflight_target(key, package, revision, baseline, journal):
             'one fresh upload of the verified candidate is authorized.',
             flush=True,
         )
+        return True
+    return False
 
 
 def prepare_transaction(target_names, baselines_raw, package_root, rollback_root, revision, output):
@@ -378,15 +390,21 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
             raise DeploymentDrift('Target operation disagrees with original transaction baseline')
         preserved = next((row.get('rollbackEvidence') for row in prior['targets'] if row['app'] == key), None) if prior else None
         rollback = retained_rollback_package(rollback_root, key, baseline, preserved) if baseline != revision else None
-        preflight_target(key, package_root / target['package'], revision, baseline, journal)
-        entries.append({'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback})
+        history_recovery = preflight_target(key, package_root / target['package'], revision, baseline, journal)
+        entries.append({'app': key, 'revision': baseline, 'packageDigest': digest,
+                        'rollbackEvidence': rollback, 'historyRecovery': bool(history_recovery)})
     plan = {'schemaVersion': 1, 'planId': plan_id, 'candidateRevision': revision, 'targets': entries,
             'producingRun': int(os.environ.get('GITHUB_RUN_ID', '0')),
             'producingAttempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
             'historySnapshot': _RELEASE_AUTHORITY.export_release_history_snapshot(revision)}
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         if prior is not None:
-            plan = prior
+            dynamic = {row['app']: bool(row.get('historyRecovery')) for row in entries}
+            plan = dict(prior)
+            plan['targets'] = [
+                {**row, 'historyRecovery': dynamic.get(row['app'], False)}
+                for row in prior['targets']
+            ]
         else:
             spec = importlib.util.spec_from_file_location('release_operation_evidence', Path(__file__).with_name('release-operation-evidence.py'))
             module = importlib.util.module_from_spec(spec)
@@ -425,7 +443,17 @@ def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only
     digest = verify_package(package_root / target['package'], revision, target['static'])
     if digest != row['packageDigest']:
         raise ValueError('Prepared immutable package changed')
-    return deploy_one(key, revision, package_root, baseline=row['revision'], reconcile_only=reconcile_only)
+    history_recovery = row.get('historyRecovery', False)
+    if type(history_recovery) is not bool:
+        raise ValueError('Prepared history recovery marker is malformed')
+    return deploy_one(
+        key,
+        revision,
+        package_root,
+        baseline=row['revision'],
+        reconcile_only=reconcile_only,
+        allow_history_gap_from_baseline=history_recovery,
+    )
 
 
 def finalize_prepared_transaction(plan, package_root, revision):
