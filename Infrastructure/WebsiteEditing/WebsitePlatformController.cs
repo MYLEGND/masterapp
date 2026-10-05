@@ -1094,6 +1094,7 @@ public class WebsitePlatformController : ControllerBase
     public async Task<IActionResult> CreativeConversionTrace(
         [FromQuery] string ticket,
         [FromQuery] int take = 20,
+        [FromQuery] long? analyticsEventId = null,
         [FromQuery] string? eventName = null,
         [FromQuery] string? page = null,
         CancellationToken cancellationToken = default)
@@ -1126,6 +1127,9 @@ public class WebsitePlatformController : ControllerBase
                           row.WebsiteContentVersionId == state.PublishedVersionId)
             .ToArray();
 
+        if (analyticsEventId.HasValue)
+            publishedEvents = publishedEvents.Where(row => row.Id == analyticsEventId.Value).ToArray();
+
         if (!string.IsNullOrWhiteSpace(eventName))
         {
             var normalizedEvent = eventName.Trim();
@@ -1155,7 +1159,7 @@ public class WebsitePlatformController : ControllerBase
         var selectedIds = selected.Select(row => row.Id).ToArray();
 
         var metaRows = selectedIds.Length == 0
-            ? []
+            ? new List<MetaSignalEvent>()
             : await _db.MetaSignalEvents.AsNoTracking()
                 .Where(row =>
                     row.WebsiteContentVersionId == state.PublishedVersionId &&
@@ -1169,7 +1173,7 @@ public class WebsitePlatformController : ControllerBase
             .ToList();
 
         var openAiRows = selectedIds.Length == 0
-            ? []
+            ? new List<MarketingDestinationDelivery>()
             : await _db.MarketingDestinationDeliveries.AsNoTracking()
                 .Where(row =>
                     row.OwnerKey == owner.Key &&
