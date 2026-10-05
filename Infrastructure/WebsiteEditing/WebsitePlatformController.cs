@@ -1163,7 +1163,9 @@ public class WebsitePlatformController : ControllerBase
             : await _db.MetaSignalEvents.AsNoTracking()
                 .Where(row =>
                     row.WebsiteContentVersionId == state.PublishedVersionId &&
-                    row.CreatedUtc >= fromUtc)
+                    row.CreatedUtc >= fromUtc &&
+                    row.AgentTrackingProfileId == owner.AgentTrackingProfileId &&
+                    row.CommerceBusinessId == owner.CommerceBusinessId)
                 .OrderByDescending(row => row.Id)
                 .ToListAsync(cancellationToken);
         metaRows = metaRows.Where(row =>
