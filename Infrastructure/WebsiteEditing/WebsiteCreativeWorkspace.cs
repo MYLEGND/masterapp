@@ -1333,6 +1333,57 @@ public static class WebsiteArtDirectionPresets
                 ShadowSoft="0 18px 50px rgba(4,11,24,.10)", ShadowStrong="0 28px 90px rgba(4,11,24,.18)",
                 NavHeight=76, MotionFastMs=160, MotionStandardMs=320, MotionSlowMs=560
             },
+            "editorial-luxe" => new WebsiteDesignTheme
+            {
+                Navy="#181512", NavyDeep="#0d0b09", Gold="#a47b3c", GoldStrong="#c79b54",
+                Surface="#fbfaf6", SurfaceElevated="#ffffff", SurfaceMuted="#f1eee6", Text="#211d19", Muted="#786f65",
+                FontFamily="Georgia, 'Times New Roman', serif", FontSize=17, DisplaySize=78, H1Size=64, H2Size=46,
+                H3Size=27, BodySize=18, SmallSize=13, BodyLineHeight=1.68m, SectionSpace=124, ContentGap=28,
+                ContentMaxWidth=1160, WideMaxWidth=1420, NarrowMaxWidth=720, Gutter=32, BorderRadius=12, CardRadius=16,
+                ButtonRadius=4, InputRadius=6, BorderColor="#ded7ca", BorderWidth=1,
+                ShadowSoft="0 16px 44px rgba(24,21,18,.08)", ShadowStrong="0 30px 80px rgba(24,21,18,.14)",
+                NavHeight=82, MotionFastMs=180, MotionStandardMs=380, MotionSlowMs=650
+            },
+            "modern-minimal" => new WebsiteDesignTheme
+            {
+                Navy="#111315", NavyDeep="#070809", Gold="#6b7280", GoldStrong="#111315",
+                Surface="#ffffff", SurfaceElevated="#ffffff", SurfaceMuted="#f6f7f8", Text="#111315", Muted="#697079",
+                FontFamily="Inter, system-ui, sans-serif", FontSize=16, DisplaySize=68, H1Size=58, H2Size=42, H3Size=24,
+                BodySize=16, SmallSize=12, BodyLineHeight=1.62m, SectionSpace=104, ContentGap=22, ContentMaxWidth=1120,
+                WideMaxWidth=1360, NarrowMaxWidth=700, Gutter=28, BorderRadius=10, CardRadius=14, ButtonRadius=10,
+                InputRadius=10, BorderColor="#e4e7eb", BorderWidth=1, ShadowSoft="0 12px 36px rgba(0,0,0,.06)",
+                ShadowStrong="0 24px 64px rgba(0,0,0,.10)", NavHeight=72, MotionFastMs=140, MotionStandardMs=260, MotionSlowMs=460
+            },
+            "warm-craft" => new WebsiteDesignTheme
+            {
+                Navy="#25322a", NavyDeep="#17201b", Gold="#b36f3b", GoldStrong="#d08a52",
+                Surface="#fffdf8", SurfaceElevated="#ffffff", SurfaceMuted="#f5efe5", Text="#2d2a25", Muted="#756d62",
+                FontFamily="Inter, system-ui, sans-serif", FontSize=17, DisplaySize=66, H1Size=56, H2Size=42, H3Size=25,
+                BodySize=17, SmallSize=13, BodyLineHeight=1.68m, SectionSpace=104, ContentGap=24, ContentMaxWidth=1140,
+                WideMaxWidth=1380, NarrowMaxWidth=740, Gutter=26, BorderRadius=20, CardRadius=24, ButtonRadius=16,
+                InputRadius=14, BorderColor="#e1d7c9", BorderWidth=1, ShadowSoft="0 16px 40px rgba(37,50,42,.08)",
+                ShadowStrong="0 26px 70px rgba(37,50,42,.14)", NavHeight=76, MotionFastMs=170, MotionStandardMs=340, MotionSlowMs=600
+            },
+            "clinical-precision" => new WebsiteDesignTheme
+            {
+                Navy="#0c2742", NavyDeep="#061728", Gold="#4f8aa8", GoldStrong="#2f6e91",
+                Surface="#ffffff", SurfaceElevated="#ffffff", SurfaceMuted="#f2f7fa", Text="#14212d", Muted="#667887",
+                FontFamily="Inter, system-ui, sans-serif", FontSize=16, DisplaySize=64, H1Size=54, H2Size=40, H3Size=24,
+                BodySize=16, SmallSize=12, BodyLineHeight=1.62m, SectionSpace=96, ContentGap=20, ContentMaxWidth=1120,
+                WideMaxWidth=1360, NarrowMaxWidth=720, Gutter=28, BorderRadius=12, CardRadius=16, ButtonRadius=10,
+                InputRadius=10, BorderColor="#d9e5ec", BorderWidth=1, ShadowSoft="0 12px 34px rgba(6,23,40,.07)",
+                ShadowStrong="0 22px 60px rgba(6,23,40,.12)", NavHeight=74, MotionFastMs=140, MotionStandardMs=280, MotionSlowMs=480
+            },
+            "performance" or "high-energy-performance" => new WebsiteDesignTheme
+            {
+                Navy="#111317", NavyDeep="#050607", Gold="#ef5b2a", GoldStrong="#ff7548",
+                Surface="#ffffff", SurfaceElevated="#ffffff", SurfaceMuted="#f3f4f6", Text="#111317", Muted="#69717c",
+                FontFamily="Inter, system-ui, sans-serif", FontSize=16, DisplaySize=76, H1Size=62, H2Size=46, H3Size=27,
+                BodySize=17, SmallSize=12, BodyLineHeight=1.56m, SectionSpace=100, ContentGap=20, ContentMaxWidth=1200,
+                WideMaxWidth=1480, NarrowMaxWidth=720, Gutter=24, BorderRadius=14, CardRadius=18, ButtonRadius=10,
+                InputRadius=10, BorderColor="#dfe2e7", BorderWidth=1, ShadowSoft="0 16px 42px rgba(5,6,7,.08)",
+                ShadowStrong="0 28px 72px rgba(5,6,7,.18)", NavHeight=74, MotionFastMs=110, MotionStandardMs=230, MotionSlowMs=420
+            },
             _ => null
         };
 }
