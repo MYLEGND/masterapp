@@ -1179,7 +1179,7 @@ public class WebsitePlatformController : ControllerBase
         var identities = new Dictionary<long, Infrastructure.Analytics.CanonicalMarketingIdentity>();
         foreach (var row in selected)
             identities[row.Id] = await Infrastructure.Analytics.CanonicalMarketingIdentityResolver.ResolveAsync(
-                _db, row, cancellationToken: cancellationToken);
+                _db, row, ct: cancellationToken);
 
         static string? LineageKey(Infrastructure.Analytics.CanonicalMarketingIdentity identity)
         {
