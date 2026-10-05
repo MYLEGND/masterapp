@@ -3052,6 +3052,14 @@
         server:await creativeWorkspaceRequest('manage/agent/design-quality'),
         rendered:{page:currentPageRoute(),viewport:responsiveViewportWidth(),checks:liveQualityChecks()}
       }),
+      planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
+      applySafeQualityRepairs:async()=>{
+        const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
+        const operations=Array.isArray(plan?.operations)?plan.operations:[];
+        if(!operations.length) return {applied:false,repairs:plan?.repairs || [],revision};
+        const result=await creativeApplyMutationBatch(operations);
+        return {applied:true,repairs:plan?.repairs || [],result};
+      },
       inspectConversionPath:async()=>{
         const quality=await creativeWorkspaceRequest('manage/agent/design-quality');
         return quality?.design?.conversionPaths || quality?.design?.ConversionPaths || [];
