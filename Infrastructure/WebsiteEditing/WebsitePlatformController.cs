@@ -830,6 +830,95 @@ public class WebsitePlatformController : ControllerBase
             entries = await new WebsiteEventMapQuery(_db, _configuration).ReadTicketAsync(actor, cancellationToken) });
     }
 
+    [HttpGet("manage/agent/conversion-readiness")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CreativeConversionReadiness(
+        [FromQuery] string ticket,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        if (document.LegacyMigration is not null)
+            return Conflict(new { error = "website_materialization_required" });
+
+        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var design = WebsiteDesignQualityInspector.Inspect(document, capabilities);
+
+        var publishedRevision = state.PublishedVersionId.HasValue
+            ? await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                .Where(value => value.Id == state.PublishedVersionId && value.StateId == state.Id)
+                .Select(value => (long?)value.Revision)
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
+
+        var eventMap = await new WebsiteEventMapQuery(_db, _configuration)
+            .ReadTicketAsync(actor, cancellationToken);
+        var relevant = eventMap
+            .Where(entry =>
+                string.Equals(entry.Authority, "verified_server", StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(entry.ActionKey) ||
+                !string.IsNullOrWhiteSpace(entry.Binding))
+            .Take(80)
+            .ToArray();
+
+        static bool Accepted(string status) =>
+            status is "provider_accepted" or "http_accepted";
+        static bool Problem(string status) =>
+            status is "blocked" or "failed" or "requires_reconciliation" or "partial_delivery";
+
+        return Ok(new
+        {
+            schema = "legend-conversion-readiness/v1",
+            revision = state.Revision,
+            publishedRevision,
+            currentDraftIsPublished = publishedRevision.HasValue && publishedRevision.Value == state.Revision,
+            draft = new
+            {
+                conversionPaths = design.ConversionPaths,
+                checks = design.Checks.Where(check =>
+                    check.Code.StartsWith("conversion_", StringComparison.Ordinal)).ToArray()
+            },
+            published = new
+            {
+                windowDays = 30,
+                evidenceRows = relevant.Length,
+                analyticsObserved = relevant.Count(entry => entry.AnalyticsStatus == "observed"),
+                metaAccepted = relevant.Count(entry => Accepted(entry.MetaStatus)),
+                openAiAccepted = relevant.Count(entry => Accepted(entry.OpenAiStatus)),
+                problemRows = relevant.Count(entry =>
+                    Problem(entry.AnalyticsStatus) || Problem(entry.MetaStatus) || Problem(entry.OpenAiStatus)),
+                entries = relevant.Select(entry => new
+                {
+                    entry.Site,
+                    entry.Page,
+                    entry.Element,
+                    entry.VisibleLabel,
+                    entry.ActionKey,
+                    entry.BehaviorKey,
+                    entry.CanonicalEvent,
+                    entry.Authority,
+                    entry.Mode,
+                    entry.Locked,
+                    entry.MetaMapping,
+                    entry.OpenAiMapping,
+                    entry.AnalyticsStatus,
+                    entry.MetaStatus,
+                    entry.OpenAiStatus,
+                    entry.Trigger,
+                    entry.PublishRevision
+                }).ToArray()
+            }
+        });
+    }
+
     [HttpPost("manage/signals")]
     public async Task<IActionResult> UpdateSignals(
         [FromBody] WebsiteSignalUpdateRequest request,
