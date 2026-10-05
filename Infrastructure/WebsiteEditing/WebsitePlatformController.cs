@@ -1077,7 +1077,7 @@ public class WebsitePlatformController : ControllerBase
                     entry.MetaStatus,
                     entry.OpenAiStatus,
                     entry.Trigger,
-                    entry.PublishRevision
+                    entry.PublishedRevision
                 }).ToArray()
             }
         });
