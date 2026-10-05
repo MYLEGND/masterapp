@@ -365,8 +365,10 @@ internal sealed class WebsiteMutationIndex
         if (string.IsNullOrWhiteSpace(node.Id) || _entries.ContainsKey(node.Id))
             throw new ArgumentException($"Duplicate website node ID '{node.Id}'.");
         _entries[node.Id] = new(node, siblings, scope, pagePath, reusableComponentId, parentId);
-        foreach (var child in node.Children ?? [])
-            RegisterSubtree(child, node.Children, scope, pagePath, reusableComponentId, node.Id);
+        var children = node.Children;
+        if (children is null) return;
+        foreach (var child in children)
+            RegisterSubtree(child, children, scope, pagePath, reusableComponentId, node.Id);
     }
 
     private void UnregisterSubtree(WebsiteCompositionNode node)
@@ -2225,7 +2227,7 @@ public static class WebsiteDesignPlanResolver
                     {
                         Label=pagePlan.NavigationLabel ?? existing!.Navigation?.Label ?? pagePlan.Title,
                         ShowInNavigation=pagePlan.ShowInNavigation,
-                        ParentPath=existing.Navigation?.ParentPath,
+                        ParentPath=existing!.Navigation?.ParentPath,
                         Order=pagePlan.NavigationOrder,
                         IsDeleted=false
                     }
@@ -2265,8 +2267,8 @@ public static class WebsiteDesignPlanResolver
                 WebsiteCreativeCapabilityResolver.Require(capabilities, primaryCapability);
 
             IReadOnlyList<WebsiteDesignPlanSection> plannedSections =
-                (pagePlan.Sections?.Count ?? 0) > 0
-                    ? pagePlan.Sections
+                pagePlan.Sections is { Count: > 0 } sections
+                    ? sections
                     : !string.IsNullOrWhiteSpace(pagePlan.Recipe)
                         ? WebsitePageRecipeCatalog.Build(
                             pagePlan.Recipe,
