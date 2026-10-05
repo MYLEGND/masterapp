@@ -1352,6 +1352,11 @@ public static class WebsiteRecipeCatalog
 
 public sealed class WebsiteDesignPlan
 {
+    public string? Goal { get; set; }
+    public string? Audience { get; set; }
+    public string? PrimaryOffer { get; set; }
+    public string? ProofStrategy { get; set; }
+    public string? ResponsiveIntent { get; set; }
     public string? ArtDirection { get; set; }
     public string? PrimaryCapabilityKey { get; set; }
     public WebsiteDesignTheme? Theme { get; set; }
@@ -1362,6 +1367,7 @@ public sealed class WebsiteDesignPlan
 public sealed class WebsiteDesignPlanPage
 {
     public string Path { get; set; } = "/";
+    public string? Purpose { get; set; }
     public string? Recipe { get; set; }
     public string? PrimaryCapabilityKey { get; set; }
     public string? Title { get; set; }
@@ -1377,10 +1383,85 @@ public sealed class WebsiteDesignPlanSection
 {
     public string Recipe { get; set; } = string.Empty;
     public string? Key { get; set; }
+    public string? Role { get; set; }
     public Dictionary<string,string> Content { get; set; } = new(StringComparer.Ordinal);
     public Guid? MediaAssetId { get; set; }
     public string? CapabilityKey { get; set; }
     public string? CapabilityNodeId { get; set; }
+}
+
+public static class WebsiteDesignPlanContract
+{
+    public static object Payload => new
+    {
+        schema = "legend-website-design-plan/v1",
+        persistence = "transient_only",
+        sourceOfTruth = "WebsiteContentDocument_v3",
+        recommendedFlow = new[]
+        {
+            "define conversion goal and audience",
+            "define site information architecture",
+            "choose art direction and semantic theme",
+            "choose one approved primary capability",
+            "define page purpose and section narrative",
+            "resolve page/section recipes or freeform nodes",
+            "apply one or two mutation batches",
+            "run responsive/design/conversion quality",
+            "repair only deficient scopes"
+        },
+        fields = new
+        {
+            goal = "primary conversion/business outcome",
+            audience = "intended visitor/customer",
+            primaryOffer = "main offer or service promise",
+            proofStrategy = "trust/evidence plan",
+            responsiveIntent = "mobile/reflow emphasis",
+            artDirection = "optional canonical preset key",
+            primaryCapabilityKey = "read-only capability manifest key; never raw event/provider wiring",
+            theme = "optional semantic WebsiteDesignTheme overrides",
+            replaceBusinessPages = "Business only; soft-retires unplanned free routes",
+            pages = new
+            {
+                path = "canonical route",
+                purpose = "role in the site/funnel",
+                recipe = "optional page-recipe key",
+                primaryCapabilityKey = "optional page override",
+                title = "page title",
+                description = "page description",
+                navigationLabel = "navigation presentation",
+                navigationOrder = "navigation order",
+                showInNavigation = "navigation visibility",
+                replaceFreeComposition = "replace authorable composition while preserving protected authority",
+                sections = new
+                {
+                    recipe = "section-recipe key",
+                    key = "stable authoring identity",
+                    role = "narrative/conversion purpose",
+                    content = "recipe slot copy",
+                    mediaAssetId = "owned media ID",
+                    capabilityKey = "approved capability reference",
+                    capabilityNodeId = "existing protected runtime capability node"
+                }
+            }
+        },
+        creativeLevels = new[]
+        {
+            "page_recipe",
+            "section_recipe",
+            "freeform_v3_mutations"
+        },
+        nonWritableAuthority = new[]
+        {
+            "signals",
+            "fieldSignals",
+            "canonical_event_identity",
+            "provider_delivery",
+            "owner_routing",
+            "protected_form_execution",
+            "booking_checkout_lead_execution",
+            "system_template_runtime"
+        }
+    };
 }
 
 public sealed record WebsitePageRecipeDefinition(
