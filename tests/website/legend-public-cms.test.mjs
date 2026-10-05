@@ -380,6 +380,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
         schema:'legend-conversion-readiness/v2',
         revision:'r'+serverRevision,
         publishedRevision:null,
+        publishedVersionId:null,
         currentDraftIsPublished:false,
         draft:{conversionPaths:qualityPayload?.conversionPaths || [],checks:[]},
         destinations:{
@@ -387,10 +388,11 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
           openai:{browserPixelConfigured:false,accountApproved:false,serverConversionsConfigured:false}
         },
         measurementEvidence:null,
+        measurementEvidenceScope:'advertising_owner_30d_all_published_sources',
         measurementEvidenceError:null,
         published:{
           windowDays:30,evidenceRows:0,returnedRows:0,resultLimit:80,analyticsObserved:0,
-          metaAccepted:0,openAiAccepted:0,
+          metaProviderAccepted:0,metaHttpAccepted:0,openAiProviderAccepted:0,openAiHttpAccepted:0,
           acceptanceSemantics:{meta:'provider_events_received',openai:'http_2xx_transport_only'},
           acceptance:{meta:{providerAccepted:0,httpAccepted:0},openai:{providerAccepted:0,httpAccepted:0}},
           inFlightRows:0,problemRows:0,entries:[]
@@ -1323,6 +1325,10 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-readiness"\)\]/);
   assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-trace"\)\]/);
   assert.match(websitePlatformControllerSource,/legend-conversion-readiness\/v2/);
+  assert.match(websitePlatformControllerSource,/measurementEvidenceScope = "advertising_owner_30d_all_published_sources"/);
+  assert.match(websitePlatformControllerSource,/metaProviderAccepted/);
+  assert.match(websitePlatformControllerSource,/openAiHttpAccepted/);
+  assert.doesNotMatch(websitePlatformControllerSource,/openAiAccepted =/);
   assert.match(websitePlatformControllerSource,/legend-conversion-trace\/v1/);
   assert.match(websitePlatformControllerSource,/provider_events_received/);
   assert.match(websitePlatformControllerSource,/http_2xx_transport_only/);
