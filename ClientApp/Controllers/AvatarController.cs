@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using ClientApp.Services;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Infrastructure.Security.UploadValidation;
 
 namespace ClientApp.Controllers
 {
@@ -48,7 +49,7 @@ namespace ClientApp.Controllers
 
         [HttpPost("/avatar/upload")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Upload(IFormFile photo)
+        public async Task<IActionResult> Upload()
         {
             var clientProfileId = await GetClientProfileIdAsync();
             if (clientProfileId is null)
@@ -56,9 +57,11 @@ namespace ClientApp.Controllers
                 return Forbid();
             }
 
-            if (photo == null || photo.Length == 0)
+            var transport = await MultipartUploadTransport.ReadAsync(Request, HttpContext.RequestAborted);
+            var photo = transport.Form?.Files.GetFile("photo");
+            if (!transport.IsValid || photo is null || photo.Length == 0)
             {
-                return BadRequest(new { message = "Please choose an image file." });
+                return BadRequest(new { message = transport.ErrorMessage ?? "Please choose an image file." });
             }
 
             await using var stream = new MemoryStream();
