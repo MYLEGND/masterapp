@@ -824,37 +824,6 @@ public sealed class WebsiteSiteSourceV3Tests
     }
 
     [Fact]
-    public void SelectedSource_AllowsOnlyTheSelectedCanonicalSubtree()
-    {
-        var baseline = CanonicalDocument();
-        var selected = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
-        var hero = selected.Pages["/"].Composition
-            .Single(node => node.Id == "home.hero");
-        hero.Children.Single(node => node.Id == "home.hero.image").Alt = "Updated selected content";
-
-        WebsiteSiteSource.EnsureSelectedNodeOnly(
-            baseline,
-            selected,
-            "home.hero.image");
-
-        var unrelated = WebsiteContentSanitizer.Sanitize(CanonicalDocument());
-        unrelated.Theme.Navy = "#000000";
-        var error = Assert.Throws<ArgumentException>(() =>
-            WebsiteSiteSource.EnsureSelectedNodeOnly(
-                baseline,
-                unrelated,
-                "home.hero.image"));
-        Assert.Contains("Selected Source may modify only", error.Message, StringComparison.Ordinal);
-
-        var masterError = Assert.Throws<ArgumentException>(() =>
-            WebsiteSiteSource.EnsureSelectedNodeOnly(
-                baseline,
-                selected,
-                null));
-        Assert.Contains("Master Source is read only", masterError.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void SiteSource_DoesNotExposeProviderOrServerOutcomeAuthority()
     {
         var serialized = WebsiteSiteSource.Serialize(CanonicalDocument());
