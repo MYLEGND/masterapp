@@ -656,7 +656,7 @@ public class WebsitePlatformController : ControllerBase
             revision = state.Revision,
             path = page,
             fingerprint = WebsiteCreativeFingerprint.Page(value),
-            page = WebsiteCreativeProjection.Page(value)
+            page = WebsiteCreativeProjection.PageOutline(value)
         });
     }
 
