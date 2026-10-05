@@ -1234,8 +1234,16 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/applySafeQualityRepairs:async\(\)=>/);
   assert.match(source,/runResponsiveQuality:runResponsiveQualityAudit/);
   assert.match(source,/runSiteResponsiveQuality:runSiteResponsiveQualityAudit/);
+  assert.match(source,/runPreflight:async\(\)=>/);
   assert.match(source,/inspectConversionHealth:\(\)=>creativeWorkspaceRequest\('manage\/agent\/conversion-readiness'\)/);
   assert.match(source,/getSignalCatalog:\(\)=>creativeWorkspaceRequest\('manage\/signal-catalog'\)/);
+  assert.match(source,/setSignalMappings:updateSignalMappings/);
+  assert.match(source,/testSignalMapping:/);
+  assert.match(source,/getSignalHealth:/);
+  assert.match(source,/function applySignalConfigurationDelta\(payload\)/);
+  assert.match(websitePlatformControllerSource,/nodeSignals = savedTarget\.Signals/);
+  assert.match(websitePlatformControllerSource,/fieldSignals = savedTarget\.FieldSignals/);
+  assert.doesNotMatch(websitePlatformControllerSource,/source = "website_signal_configuration",[\s\S]*?\n\s*document,/);
   assert.match(source,/listMedia:\(query=\{\}\)=>creativeWorkspaceRequest\('manage\/media',\{query:\{\.\.\.query,designMetadata:query\.designMetadata!==false\}\}\)/);
   assert.match(source,/uploadMedia:async file=>/);
   assert.match(source,/importImage:url=>creativeWorkspaceRequest\('manage\/media\/import'/);
