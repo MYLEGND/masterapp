@@ -504,6 +504,56 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void SafeQualityRepairPlanner_FixesHeadingHierarchy_AndSkipsProtectedSubtrees()
+    {
+        var document = Baseline();
+        var hero = document.Pages["/"].Composition[0];
+        var title = hero.Children.Single(value => value.Id == "home.hero.title");
+        title.Tag = "h3";
+
+        hero.Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.hero.second",
+            Type = "heading",
+            Tag = "h5",
+            Text = "Second heading"
+        });
+        hero.Children.Add(new WebsiteCompositionNode
+        {
+            Id = "home.protected",
+            Type = "form",
+            Tag = "form",
+            SystemKey = "canonical_inquiry",
+            Children =
+            [
+                new WebsiteCompositionNode
+                {
+                    Id = "home.protected.heading",
+                    Type = "heading",
+                    Tag = "h6",
+                    Text = "Runtime-owned heading"
+                }
+            ]
+        });
+
+        var plan = WebsiteDesignQualityRepairPlanner.Plan(document);
+
+        Assert.Contains(plan.Repairs, value =>
+            value.ElementId == "home.hero.title" &&
+            value.Operation.Node!.Tag == "h1");
+        Assert.Contains(plan.Repairs, value =>
+            value.ElementId == "home.hero.second" &&
+            value.Operation.Node!.Tag == "h2");
+        Assert.DoesNotContain(plan.Repairs, value =>
+            value.ElementId == "home.protected.heading");
+        Assert.All(plan.Operations, operation =>
+        {
+            Assert.Equal("replaceNode", operation.Type);
+            Assert.False(string.IsNullOrWhiteSpace(operation.ExpectedFingerprint));
+        });
+    }
+
+    [Fact]
     public void DesignQuality_FindsPlaceholderCopy_AndReportsConversionPath()
     {
         var document = Baseline();
