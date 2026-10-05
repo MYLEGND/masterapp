@@ -2678,11 +2678,15 @@ test('business page selector switches existing canonical routes without a second
   }finally{f.close();}
 });
 
-test('Studio bootstrap uses the compact agent contract and lazy advanced catalogs',()=>{
+test('Studio bootstrap uses compact context and lazy advanced data/signal catalogs',()=>{
   assert.match(websitePlatformControllerSource,/signalCatalog = \(object\?\)null, agentContract = WebsiteStudioAgentContract\.CompactPayload/);
+  assert.match(websitePlatformControllerSource,/LoadAsync\(draft, business\.Id, cancellationToken\)/);
   assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/contract"\)\]/);
+  assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/data-catalog"\)\]/);
   assert.match(source,/async function ensureSignalCatalog\(\)/);
+  assert.match(source,/async function ensureBusinessDataCatalog\(\)/);
   assert.match(source,/getFullContract:\(\)=>creativeWorkspaceRequest\('manage\/agent\/contract'\)/);
+  assert.match(source,/listBusinessData:async\(\)=>/);
 });
 
 test('business Pages manager creates a canonical page by mutation and switches in place', async()=>{
@@ -2737,6 +2741,32 @@ test('business Pages manager renames the canonical page by mutation without a sh
     assert.equal(Object.hasOwn(saved.pages['/work'],'templatePath'),false);
     assert.equal(f.calls.filter(call=>!call.method && new URL(call.url).pathname.endsWith('/manage')).length,bootstrapCount);
   } finally { f.close(); }
+});
+
+test('business page duplication re-resolves protected inquiry capability instead of copying backend wiring', async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition[0].children.push(canonicalNode('home.form','form','form',{
+    systemKey:'canonical_inquiry',
+    title:'Talk with us',
+    text:'Send',
+    signals:[{id:'11111111111111111111111111111111',trigger:'click',eventName:'cta_click',actionKey:'cta_click',deliveryMode:'analytics'}]
+  }));
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},doc});
+  try{
+    f.click('[data-open="page"]');
+    f.input('#legend-cms-page-slug','/copy');
+    f.click('#legend-cms-page-duplicate');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
+    const mutation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation);
+    const operations=JSON.parse(mutation.body).operations;
+    assert.ok(operations.some(operation=>operation.type==='insertCapability' && operation.capabilityKey==='contact.inquiry.submit'));
+    const copied=f.serverDocument().pages['/copy'];
+    const form=canonicalNodes({pages:{'/copy':copied}},'/copy').find(node=>node.type==='form');
+    assert.ok(form);
+    assert.equal(form.systemKey,'canonical_inquiry');
+    assert.deepEqual(form.signals || [],[]);
+  }finally{f.close();}
 });
 
 test('business Pages manager cannot delete or rename the home route', async()=>{
