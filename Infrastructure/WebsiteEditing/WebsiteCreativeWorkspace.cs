@@ -50,7 +50,8 @@ public static class WebsiteCreativeCapabilityResolver
         var hasCanonicalInquiry = WebsiteSiteSource.Flatten(document)
             .Any(entry => entry.Node.Type == "form" &&
                           string.Equals(entry.Node.SystemKey, "canonical_inquiry", StringComparison.Ordinal));
-        if ((siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend) || hasCanonicalInquiry)
+        if ((siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect) ||
+            hasCanonicalInquiry)
         {
             capabilities.Add(new(
                 "contact.inquiry.submit",
