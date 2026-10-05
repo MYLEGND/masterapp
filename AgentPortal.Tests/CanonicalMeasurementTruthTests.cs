@@ -147,7 +147,19 @@ public sealed class CanonicalMeasurementTruthTests
         {
             Pages =
             {
-                ["/Quote/Life"] = new WebsitePageDocument()
+                ["/Quote/Life"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "runtime.form.quote_life",
+                            Type = "container",
+                            Tag = "div",
+                            SystemKey = "protect_runtime_form:quote_life"
+                        }
+                    ]
+                }
             }
         };
         WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
