@@ -2930,7 +2930,17 @@
       getNode:id=>creativeWorkspaceRequest('manage/agent/node',{query:{id}}),
       listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
       getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
+      getSignalCatalog:()=>creativeWorkspaceRequest('manage/signal-catalog'),
       listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
+      uploadMedia:async file=>{
+        const asset=await uploadMedia(file);
+        if(!asset) throw new Error('Website media upload failed.');
+        return asset;
+      },
+      importImage:url=>creativeWorkspaceRequest('manage/media/import',{
+        method:'POST',
+        body:{ticket:editorTicket,sourceUrl:String(url || '')}
+      }),
       listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
