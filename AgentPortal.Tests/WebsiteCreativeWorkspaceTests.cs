@@ -553,6 +553,8 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "cta.closing");
         var inserts = operations.Where(value => value.Type == "insertRecipe").ToArray();
         Assert.Equal(Enumerable.Range(0, inserts.Length), inserts.Select(value => value.Index!.Value));
+        Assert.Equal("action.business_schedule", inserts.First().CapabilityKey);
+        Assert.Equal("action.business_schedule", inserts.Last().CapabilityKey);
         Assert.DoesNotContain(inserts, value => value.CapabilityKey == "contact.inquiry.submit");
         Assert.DoesNotContain(operations, value => value.Type == "insertNode" && value.Node?.SystemKey is not null);
     }
@@ -563,8 +565,9 @@ public sealed class WebsiteCreativeWorkspaceTests
         var sections = WebsitePageRecipeCatalog.Build(
             "contact",
             "contact",
-            "contact.inquiry.submit");
+            "action.business_schedule");
 
+        Assert.Equal("action.business_schedule", sections.First().CapabilityKey);
         Assert.Single(sections.Where(value => value.CapabilityKey == "contact.inquiry.submit"));
         Assert.Equal(
             "contact.inquiry",
