@@ -306,6 +306,7 @@
    ========================================================== */
 
 .legend-founder-ai-workspace {
+    position: relative;
     min-height: 0;
     display: grid;
     grid-template-columns: 294px minmax(0, 1fr);
