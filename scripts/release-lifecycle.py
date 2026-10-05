@@ -1769,24 +1769,26 @@ def _admission_settled(api, run, record):
             and value.get('resources') == record['resources'] and targets == expected)
 
 
-def _admission_superseded_by_successful_source(api, run, record, runs):
-    """A later successful release of the same validated PR discharges older leases.
+def _admission_superseded_by_terminal_success(api, run, record, runs):
+    """Discharge an older lease only after a later terminal success of the exact immutable release.
 
-    This is terminal proof, not inference from current live state: the later run
-    must be the canonical direct-release workflow, must bind the exact same
-    validated source revision, and must successfully cover every target recorded
-    by the historical admission.
+    Automatic release scope comes from durable admission evidence, not from a
+    mutable/manual release-request file on the later control-plane authority.
     """
     if run.get('status') != 'completed':
         return False
-    source_pr = release_run_source_pr(run)
-    source_revision = record.get('authorizedSourceRevision')
-    if source_pr is None or not SHA.fullmatch(source_revision or ''):
+    required = (
+        'sourcePr',
+        'authorizedSourceRevision',
+        'applicationRevision',
+        'selectedTargets',
+        'resources',
+    )
+    if any(record.get(key) is None for key in required):
         return False
-
-    try:
-        keys = _validate_admission_record_scope(record)
-    except RuntimeError:
+    source_pr = record.get('sourcePr')
+    source_revision = record.get('authorizedSourceRevision')
+    if type(source_pr) is not int or not SHA.fullmatch(source_revision or ''):
         return False
 
     for later in runs:
@@ -1796,12 +1798,12 @@ def _admission_superseded_by_successful_source(api, run, record, runs):
             continue
         if release_run_candidate(later) != source_revision:
             continue
-        if not successful_release(api, later):
+        if later.get('status') != 'completed' or not successful_release(api, later):
             continue
-        if all(successful_release(api, later, app=key) for key in keys):
-            return True
+        for later_record in _admission_records(api, later):
+            if all(later_record.get(key) == record.get(key) for key in required):
+                return True
     return False
-
 
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
@@ -1840,7 +1842,7 @@ def admission_conflicts(api, candidate, *, current_run):
         for record in records:
             if (_admission_settled(api, run, record)
                 or _admission_nonmutating_terminal(api, run)
-                or _admission_superseded_by_successful_source(api, run, record, runs)):
+                or _admission_superseded_by_terminal_success(api, run, record, runs)):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue

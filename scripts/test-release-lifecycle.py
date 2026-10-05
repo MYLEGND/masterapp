@@ -959,6 +959,7 @@ class ResourceAdmission(unittest.TestCase):
             display_title=f'LEGEND release pr=462 candidate={source} authority={authority_one}',
         )
         self.prior.update(
+            sourcePr=462,
             authorizedSourceRevision=source,
             resources=self.candidate['resources'],
             selectedTargets=[canonical_name('client')],
@@ -996,6 +997,7 @@ class ResourceAdmission(unittest.TestCase):
             display_title=f'LEGEND release pr=462 candidate={source} authority={authority_one}',
         )
         self.prior.update(
+            sourcePr=462,
             authorizedSourceRevision=source,
             resources=self.candidate['resources'],
             selectedTargets=[canonical_name('client')],
@@ -1021,6 +1023,44 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, 'successful_release', side_effect=successful):
             blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
         self.assertEqual([98], [row['runId'] for row in blocked])
+
+    def test_terminal_success_uses_durable_admission_scope_not_stale_request(self):
+        source = 'a' * 40
+        self.run.update(
+            status='completed',
+            conclusion='failure',
+            id=98,
+            display_title='LEGEND release pr=462 candidate=' + source + ' authority=' + '1' * 40,
+        )
+        self.prior.update(
+            sourcePr=462,
+            authorizedSourceRevision=source,
+            applicationRevision='b' * 40,
+            selectedTargets=self.candidate['selectedTargets'],
+            resources=self.candidate['resources'],
+        )
+        later = {
+            'id': 120,
+            'status': 'completed',
+            'conclusion': 'success',
+            'path': '.github/workflows/' + m.DIRECT,
+            'head_branch': m.APPROVED,
+            'event': 'workflow_dispatch',
+            'head_repository': {'full_name': self.api.repo},
+            'display_title': 'LEGEND release pr=462 candidate=' + source + ' authority=' + '2' * 40,
+        }
+        later_record = dict(self.prior, admissionId='f' * 64)
+        self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
+
+        def records(_api, run):
+            return [later_record] if run['id'] == 120 else [self.prior]
+
+        with patch.object(m, '_admission_records', side_effect=records), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, 'successful_release', side_effect=lambda _api, run, app=None: run['id'] == 120 and app is None), \
+             patch.object(m, 'release_targets', side_effect=AssertionError('automatic scope must come from durable admission evidence')):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
 
     def test_same_immutable_transaction_can_continue_without_releasing_other_resources(self):
         self.run.update(status='completed', conclusion='failure')
