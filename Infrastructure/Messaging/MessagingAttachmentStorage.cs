@@ -42,7 +42,7 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
         byte[] bytes;
         try
         {
-            await using var buffer = new MemoryStream(capacity: checked((int)sizeBytes));
+            await using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             bytes = buffer.ToArray();
         }
