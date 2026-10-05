@@ -193,12 +193,39 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
             live = None if observed is None else observed == azure.revision
         else:
             live = azure.revision_live()
-        if new and new[0]['status'] == 3:
-            failed = new[0]
+        failed = new[0] if new and new[0]['status'] == 3 else None
+        retained_failed_candidate = (
+            failed is not None and
+            reconcile_only and
+            journal is not None and
+            journal.intent is not None and
+            live is True and
+            not active
+        )
+        if failed is not None and not retained_failed_candidate:
             raise RuntimeError(
                 f"Azure deployment {failed['id']} failed. "
                 "Inspect its deployment log; no automatic restart.")
-        if active:
+        if retained_failed_candidate:
+            # The original write remains truthfully provider-failed. A later
+            # recovery may only preserve the runtime when the retained immutable
+            # intent binds this candidate and Azure is terminal/idle at that exact
+            # candidate. Never resubmit and never relabel the failed provider row.
+            stable += 1
+            if stable >= 2:
+                try:
+                    journal.record_success([])
+                except Exception as exc:
+                    raise DeploymentReconciliationRequired(
+                        'Exact candidate live after terminal provider failure but durable reconciliation receipt unavailable; preserve publication'
+                    ) from exc
+                print(
+                    f'Azure deployment {failed["id"]} is terminal-failed, but the retained immutable candidate '
+                    'is repeatedly proven live and idle; preserving without replay.',
+                    flush=True,
+                )
+                return 'preserved'
+        elif active:
             # Even exact provenance cannot authorize success while another upload
             # may still replace/restart that revision. Wait for Azure to settle.
             stable = 0
