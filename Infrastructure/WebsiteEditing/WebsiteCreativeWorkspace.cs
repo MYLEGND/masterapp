@@ -504,6 +504,33 @@ public static class WebsiteCreativeProjection
         Composition = page.Composition.Select(Node).ToArray()
     };
 
+    public static object PageOutline(WebsitePageDocument page) => new
+    {
+        page.Title,
+        page.Description,
+        page.Navigation,
+        page.DynamicBinding,
+        page.SystemTemplateKey,
+        sections = page.Composition.Select(root => new
+        {
+            root.Id,
+            root.Type,
+            root.ClassName,
+            label = root.Title ?? root.Text,
+            childCount = root.Children?.Count ?? 0,
+            fingerprint = WebsiteCreativeFingerprint.Node(root),
+            children = (root.Children ?? []).Select(child => new
+            {
+                child.Id,
+                child.Type,
+                child.ClassName,
+                label = child.Title ?? child.Text,
+                child.ActionKey,
+                childCount = child.Children?.Count ?? 0
+            }).ToArray()
+        }).ToArray()
+    };
+
     public static object SiteSummary(
         string siteKey,
         long revision,
