@@ -6,6 +6,7 @@ using System.Text.Json;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Security.UploadValidation;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1512,30 +1513,15 @@ public class WebsitePlatformController : ControllerBase
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadMedia(CancellationToken cancellationToken = default)
     {
-        // Parse the one canonical multipart transport inside the action. Keeping IFormFile
-        // out of the action signature prevents ApiController's inferred consumes/model-binding
-        // constraint from rejecting the request before our website authority can validate it.
-        if (!Request.HasFormContentType)
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
             return BadRequest(new
             {
                 error = "website_media_transport_invalid",
-                message = "Website media must be uploaded as multipart form data."
+                message = transport.ErrorMessage
             });
 
-        IFormCollection form;
-        try
-        {
-            form = await Request.ReadFormAsync(cancellationToken);
-        }
-        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
-        {
-            return BadRequest(new
-            {
-                error = "website_media_transport_invalid",
-                message = "The media upload form could not be read."
-            });
-        }
-
+        var form = transport.Form;
         var ticket = form["ticket"].FirstOrDefault();
         var file = form.Files.GetFile("file");
         var actor = await AuthorizeAsync(ticket ?? string.Empty, cancellationToken);
@@ -1620,11 +1606,21 @@ public class WebsitePlatformController : ControllerBase
     }
     [HttpPost("manage/import-file")]
     [RequestSizeLimit(52_000_000)]
-    public async Task<IActionResult> ImportFile([FromForm] string ticket, [FromForm] long expectedRevision, [FromForm] bool authorized, [FromForm] IFormFile file, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> ImportFile(CancellationToken cancellationToken = default)
     {
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        if (!transport.IsValid || transport.Form is null)
+            return BadRequest(new { error = "website_import_transport_invalid", message = transport.ErrorMessage });
+
+        var form = transport.Form;
+        var ticket = form["ticket"].FirstOrDefault() ?? string.Empty;
+        _ = long.TryParse(form["expectedRevision"].FirstOrDefault(), out var expectedRevision);
+        _ = bool.TryParse(form["authorized"].FirstOrDefault(), out var authorized);
+        var file = form.Files.GetFile("file");
+
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
-        if (!authorized || file is null || file.Length > 50_000_000) return BadRequest();
+        if (!authorized || file is null || file.Length <= 0 || file.Length > 50_000_000) return BadRequest();
         var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != expectedRevision) return Conflict(new { error = "revision_conflict" });
         await using var input = file.OpenReadStream();
