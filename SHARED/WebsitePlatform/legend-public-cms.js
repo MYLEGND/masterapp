@@ -81,7 +81,7 @@
   let materializationSavePending = false;
   let persistedDocumentState = null;
   let autoSaveTimer = null;
-  let checkpointBaseline = null;
+  let historyCheckpointPending = false;
   let suppressHistoryCapture = false;
   let sharedPresentationIndex = new Map();
   let sharedPresentationIndexReady = false;
@@ -3011,8 +3011,18 @@
     return payload;
   }
 
+  async function flushLocalCreativeEdits() {
+    if(!dirty) return true;
+    if(saving) throw new Error('Website Studio is already saving local edits.');
+    const saved=await save(false);
+    if(!saved || dirty) throw new Error('Save local Canvas edits before applying an agent mutation.');
+    return true;
+  }
+
   async function creativeApplyMutationBatch(operations,options={}) {
     if(!Array.isArray(operations) || !operations.length) throw new Error('At least one website mutation is required.');
+    if(options?.flushLocal!==false) await flushLocalCreativeEdits();
+    const beforeState=persistedDocumentState || documentState;
     const payload=await creativeWorkspaceRequest('manage/mutations',{
       method:'POST',
       body:{
@@ -3023,16 +3033,30 @@
         draftName:options?.draftName || null
       }
     });
-    return mergeCreativeMutationDelta(payload,operations);
+    const result=mergeCreativeMutationDelta(payload,operations);
+    if(!suppressHistoryCapture && beforeState && persistedDocumentState){
+      const undo=buildCreativeMutationOperations(persistedDocumentState,beforeState);
+      const redo=buildCreativeMutationOperations(beforeState,persistedDocumentState);
+      pushHistoryEntry(undo,redo);
+    }
+    return result;
   }
 
   async function creativeApplyDesignPlan(plan) {
     if(!plan || typeof plan!=='object') throw new Error('A website design plan is required.');
+    await flushLocalCreativeEdits();
+    const beforeState=persistedDocumentState || documentState;
     const payload=await creativeWorkspaceRequest('manage/design-plan',{
       method:'POST',
       body:{ticket:editorTicket,expectedRevision:revision,plan}
     });
-    return mergeCreativeMutationDelta(payload,null);
+    const result=mergeCreativeMutationDelta(payload,null);
+    if(!suppressHistoryCapture && beforeState && persistedDocumentState){
+      const undo=buildCreativeMutationOperations(persistedDocumentState,beforeState);
+      const redo=buildCreativeMutationOperations(beforeState,persistedDocumentState);
+      pushHistoryEntry(undo,redo);
+    }
+    return result;
   }
 
   function installCreativeAgentWorkspaceApi() {
@@ -4850,16 +4874,6 @@
     const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
     const preferredId=selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null;
     synchronizeCanonicalSharedPresentation(documentState,preferredId);
-    if(checkpointBaseline && !suppressHistoryCapture){
-      const undo=buildCreativeMutationOperations(documentState,checkpointBaseline);
-      const redo=buildCreativeMutationOperations(checkpointBaseline,documentState);
-      if(undo.length || redo.length){
-        undoStack.push({undo,redo});
-        if(undoStack.length>120) undoStack.shift();
-        redoStack.length=0;
-      }
-    }
-    checkpointBaseline=null;
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
@@ -5550,8 +5564,8 @@
   }
 
   function buildCreativeMutationOperations(beforeInput,afterInput) {
-    const before=normalizeDocument(beforeInput || {});
-    const after=normalizeDocument(afterInput || {});
+    const before=beforeInput || {};
+    const after=afterInput || {};
     const operations=[];
 
     if(!jsonEquivalent(before.theme,after.theme))
@@ -5700,6 +5714,7 @@
         revision=payload.revision ?? revision;
         namedDrafts=payload.drafts || namedDrafts;
         materializationSavePending=false;
+        historyCheckpointPending=false;
         if(!changedDuringSave){ documentState=serverState; applyDocument(documentState); }
         dirty=changedDuringSave;
         saved=true;
@@ -5708,6 +5723,11 @@
       }
 
       const operations=buildCreativeMutationOperations(persistedDocumentState,submittedState);
+      const captureHistory=historyCheckpointPending && !suppressHistoryCapture && operations.length>0;
+      const inverseOperations=captureHistory
+        ? buildCreativeMutationOperations(submittedState,persistedDocumentState)
+        : [];
+      if(captureHistory) historyCheckpointPending=false;
       if(status) status.textContent=operations.length ? 'Saving changed website scopes…' : namedDraft ? 'Saving named draft…' : 'Saved';
       if(operations.length===0 && !namedDraft){
         dirty=false; saved=true; return true;
@@ -5734,10 +5754,12 @@
         documentState=serverState;
         applyCreativeMutationVisuals(operations,payload,selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null);
       }
+      if(captureHistory) pushHistoryEntry(inverseOperations,operations);
       dirty=changedDuringSave;
       saved=true;
       if(status) status.textContent=changedDuringSave?'Changed scopes saved; newer edits remain unsaved':'Draft saved';
     } catch(error) {
+      if(typeof captureHistory!=='undefined' && captureHistory) historyCheckpointPending=true;
       if((error?.status===401 || error?.status===403) &&
           showEditorAuthorizationRecovery('Website Studio authorization expired before this change could be saved.')) return false;
       const payload=error?.payload || {};
@@ -5784,9 +5806,18 @@
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
+  function pushHistoryEntry(undo,redo) {
+    if(suppressHistoryCapture || !Array.isArray(undo) || !Array.isArray(redo) || (!undo.length && !redo.length)) return;
+    undoStack.push({undo,redo});
+    if(undoStack.length>120) undoStack.shift();
+    redoStack.length=0;
+    refreshHistoryControls();
+  }
   function checkpoint() {
     if(suppressHistoryCapture) return;
-    checkpointBaseline=cloneCanonicalValue(documentState);
+    // A checkpoint is only a transaction boundary marker. The inverse mutation
+    // is derived once from persisted state when autosave commits the batch.
+    historyCheckpointPending=true;
   }
   // History stores reversible canonical mutation batches, never duplicate site
   // documents. If an edit is still local, flush it once so the inverse applies
@@ -5802,7 +5833,7 @@
     if(!Array.isArray(operations) || !operations.length){ refreshHistoryControls(); return; }
     suppressHistoryCapture=true;
     try{
-      await creativeApplyMutationBatch(operations);
+      await creativeApplyMutationBatch(operations,{flushLocal:false});
       to.push(entry);
       setSelected(null);
     }catch(error){
@@ -5811,7 +5842,6 @@
       if(status) status.textContent=error?.payload?.message || error?.message || 'History operation could not be applied.';
     }finally{
       suppressHistoryCapture=false;
-      checkpointBaseline=null;
       refreshHistoryControls();
     }
   }
