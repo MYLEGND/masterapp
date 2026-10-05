@@ -1179,14 +1179,20 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         groupImage = null;
         if (request is null)
             return true;
-        if (string.IsNullOrWhiteSpace(request.ContentType) ||
-            string.IsNullOrWhiteSpace(request.Base64Content))
+        if (string.IsNullOrWhiteSpace(request.Base64Content))
             return false;
         try
         {
+            var content = Convert.FromBase64String(request.Base64Content);
+            var validation = UploadValidator.ValidateImageContent(
+                content,
+                UploadValidationPolicy.Images(3 * 1024 * 1024));
+            if (!validation.IsValid || string.IsNullOrWhiteSpace(validation.DetectedContentType))
+                return false;
+
             groupImage = new MessagingGroupImage(
-                Convert.FromBase64String(request.Base64Content),
-                request.ContentType);
+                content,
+                validation.DetectedContentType);
             return true;
         }
         catch (FormatException)
