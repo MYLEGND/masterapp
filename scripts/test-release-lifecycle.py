@@ -948,6 +948,65 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_settled', return_value=True):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
 
+    def test_later_successful_same_validated_pr_discharges_stale_historical_lease(self):
+        source = 'a' * 40
+        self.run.update(
+            status='completed',
+            conclusion='failure',
+            id=98,
+            display_title=f'LEGEND release pr=462 candidate={source} authority={'1' * 40}',
+        )
+        self.prior.update(
+            authorizedSourceRevision=source,
+            resources=self.candidate['resources'],
+            selectedTargets=[canonical_name('client')],
+        )
+        later = {
+            'id': 120,
+            'status': 'completed',
+            'conclusion': 'success',
+            'display_title': f'LEGEND release pr=462 candidate={source} authority={'2' * 40}',
+        }
+        self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
+
+        def successful(_api, run, app=None):
+            return run.get('id') == 120 and app in (None, 'client')
+
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, 'successful_release', side_effect=successful):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_later_success_of_different_candidate_does_not_discharge_stale_lease(self):
+        source = 'a' * 40
+        other = 'd' * 40
+        self.run.update(
+            status='completed',
+            conclusion='failure',
+            id=98,
+            display_title=f'LEGEND release pr=462 candidate={source} authority={'1' * 40}',
+        )
+        self.prior.update(
+            authorizedSourceRevision=source,
+            resources=self.candidate['resources'],
+            selectedTargets=[canonical_name('client')],
+        )
+        later = {
+            'id': 120,
+            'status': 'completed',
+            'conclusion': 'success',
+            'display_title': f'LEGEND release pr=462 candidate={other} authority={'2' * 40}',
+        }
+        self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
+
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, 'successful_release', return_value=True):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual([98], [row['runId'] for row in blocked])
+
     def test_same_immutable_transaction_can_continue_without_releasing_other_resources(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior.update(self.candidate)
