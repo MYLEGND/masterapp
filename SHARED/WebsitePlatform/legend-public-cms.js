@@ -5364,13 +5364,22 @@
     markDirty();
   }
 
+  function compositionContainsProtectedAuthority(node) {
+    if(!node || typeof node!=='object') return false;
+    if(node.type==='form' || node.systemKey || node.systemBinding ||
+       (Array.isArray(node.signals) && node.signals.length>0) ||
+       Object.values(node.fieldSignals || {}).some(value=>Array.isArray(value) && value.length>0))
+      return true;
+    return (node.children || []).some(compositionContainsProtectedAuthority);
+  }
+
   function removeSelected() {
     if(!selected || selected.dataset.cmsSignalOnly || !selected.dataset.cmsCompositionId) return;
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
-      const message='This component has protected platform wiring and cannot be deleted or replaced.';
+    if(compositionContainsProtectedAuthority(current)){
+      const message='This component contains protected platform wiring and cannot be deleted or replaced.';
       showCanonicalProtectionViolation(message);
       alert(message+' '+canonicalProtectedEditCorrection());
       return;
