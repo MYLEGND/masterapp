@@ -1239,6 +1239,22 @@ test('GPT workspace consumes one canonical node grammar and teaches creative saf
   }finally{f.close();}
 });
 
+test('browser creative workspace exposes whole-site quality media and safe-repair commands without executable audit authority',()=>{
+  assert.match(source,/schema:'legend-creative-browser\/v1'/);
+  assert.match(source,/getSiteSummary:\(\)=>creativeWorkspaceRequest\('manage\/agent\/summary'\)/);
+  assert.match(source,/applyDesignPlan:creativeApplyDesignPlan/);
+  assert.match(source,/planSafeQualityRepairs:\(\)=>creativeWorkspaceRequest\('manage\/agent\/design-quality\/repairs'\)/);
+  assert.match(source,/applySafeQualityRepairs:async\(\)=>/);
+  assert.match(source,/runResponsiveQuality:runResponsiveQualityAudit/);
+  assert.match(source,/listMedia:\(query=\{\}\)=>creativeWorkspaceRequest\('manage\/media',\{query:\{\.\.\.query,designMetadata:query\.designMetadata!==false\}\}\)/);
+  assert.match(source,/sandbox','allow-same-origin'/);
+  assert.match(source,/script-src \\'none\\'/);
+  assert.match(source,/form-action \\'none\\'/);
+  assert.match(source,/connect-src \\'none\\'/);
+  assert.match(source,/frame\.remove\(\)/);
+  assert.doesNotMatch(source,/sandbox','allow-same-origin allow-scripts'/);
+});
+
 test('LEGEND static host permits only same-origin Website Studio materialization frames',()=>{
   assert.match(legendWebConfigSource,/X-Frame-Options" value="SAMEORIGIN"/);
   assert.equal(/X-Frame-Options" value="DENY"/.test(legendWebConfigSource),false);
@@ -3498,13 +3514,13 @@ test('signal-only nodes are protected in the editor and presentation duplication
 test('server-rejected GPT source edit renders the canonical red correction in Source and GPT workspaces',async()=>{
   const correction='CANONICAL CORRECTION REQUIRED: preserve the stable node ID and edit presentation only.';
   const payload={
-    error:'website_site_source_invalid',
+    error:'website_mutation_protected',
     message:"Protected component 'home.h1.node.1' cannot be removed because its canonical behavior is platform-owned.",
     canonicalProtectionViolation:true,
     correction
   };
   const contract={schema:'legend-website-studio-agent/v1',promptTemplate:'contract',protectedEditCorrection:correction};
-  const f=await domFixture({agentContract:contract,sourceValidationStatus:400,sourceValidationPayload:payload});
+  const f=await domFixture({agentContract:contract,mutationSequence:[{status:400,payload}]});
   try{
     f.click('main h1');
     f.click('[data-open="source"]');
