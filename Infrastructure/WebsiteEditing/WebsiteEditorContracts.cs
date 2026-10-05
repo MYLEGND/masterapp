@@ -302,6 +302,9 @@ public sealed class WebsiteCompositionNode
     public string? Alt { get; set; }
     public Guid? MediaAssetId { get; set; }
     public string? MediaUrl { get; set; }
+    // Presentation behavior only. When enabled, the renderer loops the video,
+    // hides native playback controls, keeps inline playback, and preserves audio.
+    public bool? VideoLoop { get; set; }
     public string? SystemKey { get; set; }
     public string? SystemBinding { get; set; }
     public string? SyncSourceId { get; set; }
