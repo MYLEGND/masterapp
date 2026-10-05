@@ -331,7 +331,7 @@ function fixtureMutationResponse(before,after,serverRevision) {
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -339,7 +339,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.HTMLElement.prototype.animate=function(keyframes,options){ const record={element:this,keyframes,options,cancelled:false}; animations.push(record); return {cancel(){record.cancelled=true;}}; };
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages,agentSlug,pagePrefix,editorAuthorizationUrl};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
-  const alerts=[]; let sourceValidationCall=0; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
+  const alerts=[]; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
   w.fetch=async(url,init={})=> {
     calls.push({url:String(url),...init});
@@ -403,13 +403,6 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     if(parsed.pathname.endsWith('/manage/source') && method==='GET'){
       const projected=sourceProjectionDocument(serverDoc);
       return {ok:true,status:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})};
-    }
-    if(parsed.pathname.endsWith('/manage/source/validate')){
-      const step=Array.isArray(sourceValidationSequence) && sourceValidationSequence.length ? sourceValidationSequence[Math.min(sourceValidationCall++,sourceValidationSequence.length-1)] : null;
-      const status=step?.status ?? sourceValidationStatus;
-      const payload=step?.payload ?? sourceValidationPayload ?? {source:'legend_site_source_validation',baseRevision:'r'+serverRevision,persisted:false,published:false,proposedDocument:serverDoc,sourceMap:{}};
-      if(status===409 && payload?.error==='revision_conflict') serverRevision++;
-      return {ok:status>=200&&status<300,status,json:async()=>payload};
     }
     if(parsed.pathname.endsWith('/manage/signals') && method==='POST'){
       const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/');
@@ -618,6 +611,7 @@ test('Master Source stays color guided while Selected Source is a normal editabl
     assert.equal(apply.hidden,true);
     assert.match(f.w.document.querySelector('#legend-cms-source-status').textContent,/read only/i);
     f.click('#legend-cms-source-apply');
+    assert.equal(websitePlatformControllerSource.includes('manage/source/validate'),false);
     assert.equal(f.calls.some(call=>call.url.endsWith('/manage/source/validate')),false);
 
     f.click('main h1');
