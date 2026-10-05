@@ -394,7 +394,7 @@ main :is(img,video)[data-legend-content-role="media"]{
     linear-gradient(145deg,var(--web-navy-deep,#07152d),color-mix(in srgb,var(--web-navy,#0b2652) 86%,#000 14%));
   color:var(--web-surface,#fff)
 }
-.legend-recipe-hero-split{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr)}
+.legend-recipe-hero-split{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr);gap:48px;align-items:center}
 .legend-recipe-hero-copy{width:100%;max-width:var(--web-narrow-max);position:relative;z-index:2}
 .legend-recipe-hero-cinematic{isolation:isolate}
 .legend-recipe-hero-cinematic::after{
@@ -424,7 +424,7 @@ main :is(img,video)[data-legend-content-role="media"]{
 .legend-recipe-proof,.legend-recipe-process,.legend-recipe-testimonials,.legend-recipe-faq{background:var(--web-surface-muted)}
 .legend-recipe-stat{font-size:clamp(18px,2vw,24px);font-weight:760;line-height:1.15}
 .legend-recipe-quote{font-size:clamp(18px,2vw,24px);line-height:1.5}
-.legend-recipe-feature-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,1fr);align-items:center}
+.legend-recipe-feature-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,1fr);gap:44px;align-items:center}
 .legend-recipe-feature-copy{max-width:var(--narrow-max,var(--web-narrow-max))}
 .legend-recipe-contact,.legend-recipe-closing{
   background:linear-gradient(145deg,var(--web-navy-deep,#07152d),var(--web-navy,#0b2652));color:var(--web-surface,#fff)
