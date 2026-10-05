@@ -788,6 +788,16 @@ test('bulk imports are ingestion only and pass through the canonical protected a
   assert.match(websitePlatformControllerSource,/website_import_protected/);
 });
 
+test('named draft restore is a governed restore, never a canonical v3 snapshot writer',()=>{
+  assert.match(websitePlatformControllerSource,/restored = Read\(draft\.DocumentJson\)/);
+  assert.match(websitePlatformControllerSource,/if \(restored\.LegacyMigration is null\)[\s\S]*WebsiteSiteSource\.Serialize\(restored\)[\s\S]*WebsiteSiteSource\.Parse\(source, baseline, actions\)\.Document/);
+  assert.match(websitePlatformControllerSource,/WebsiteSystemTemplateAuthority\.Apply\(actor\.SiteKey, restored\)/);
+  assert.match(websitePlatformControllerSource,/WebsiteSiteSource\.ValidateCanonical\(restored, actions\)/);
+  assert.match(websitePlatformControllerSource,/ValidateCompositionMediaOwnershipAsync\(actor, restored/);
+  assert.match(websitePlatformControllerSource,/Historical pre-v3 named drafts remain eligible only for the[\s\S]*existing explicit one-way materialization boundary/);
+});
+
+
 test('source protection UI separates protected authority failures from exact scope conflicts',()=>{
   assert.match(source,/payload\.error==='scope_revision_conflict'/);
   assert.match(source,/sourceEditorBaseFingerprint/);
