@@ -3044,7 +3044,7 @@
       getNode:id=>creativeWorkspaceRequest('manage/agent/node',{query:{id}}),
       listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
       getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
-      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query}),
+      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
       listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
