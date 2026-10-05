@@ -89,7 +89,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 "The social media filename is invalid.");
         }
 
-        var prefix = await ReadPrefixAsync(content, 64, cancellationToken);
+        var prefix = await ReadPrefixAsync(content, 4096, cancellationToken);
         var detectedContentType = UploadValidator.CanonicalContentType(
             UploadValidator.DetectContentType(prefix.ToArray()));
         if (detectedContentType is null ||
