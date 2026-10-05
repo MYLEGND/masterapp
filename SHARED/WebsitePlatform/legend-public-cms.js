@@ -3039,6 +3039,33 @@
         code:'conversion_delivery_in_flight',
         message:`${conversion.published.inFlightRows} published conversion mapping or delivery row(s) are pending, projected, or retrying.`
       });
+    if(conversion?.currentDraftIsPublished===true &&
+       Number(conversion?.published?.evidenceRows||0)>0 &&
+       Number(conversion?.published?.analyticsObserved||0)===0)
+      delivery.push({
+        severity:'info',
+        code:'conversion_live_evidence_not_observed',
+        message:'The current published conversion map has no canonical event observations in the 30-day evidence window. Configuration readiness is not live-delivery proof.'
+      });
+    const measurement=conversion?.measurementEvidence || null;
+    if(measurement && (metaConfigured || openAiConfigured) && measurement.receivingEvents===false)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_first_party_events_not_received',
+        message:'No canonical first-party analytics events were observed for this advertising owner in the measurement window.'
+      });
+    if(measurement?.meta && (Number(measurement.meta.retrying||0)>0 || Number(measurement.meta.failed||0)>0))
+      delivery.push({
+        severity:'warning',
+        code:'conversion_meta_delivery_health',
+        message:`Meta server delivery has ${Number(measurement.meta.retrying||0)} retrying and ${Number(measurement.meta.failed||0)} failed event(s).`
+      });
+    if(measurement?.openAi && (Number(measurement.openAi.retrying||0)>0 || Number(measurement.openAi.failed||0)>0))
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_delivery_health',
+        message:`OpenAI server delivery has ${Number(measurement.openAi.retrying||0)} retrying and ${Number(measurement.openAi.failed||0)} failed event(s).`
+      });
     const serverChecks=[...structural,...design,...media,...delivery];
     renderQualityChecks(savedHost,serverChecks,'No saved structural, design, conversion, or delivery issues detected.');
 
