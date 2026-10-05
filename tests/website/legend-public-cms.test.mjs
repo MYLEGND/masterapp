@@ -20,6 +20,9 @@ const businessMiddlewareSource = readFileSync(new URL('../../Infrastructure/Webs
 const legendWebConfigSource = readFileSync(new URL('../../Legend-Website/public/web.config', import.meta.url), 'utf8');
 const agentContractSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs', import.meta.url), 'utf8');
 const websitePlatformControllerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsitePlatformController.cs', import.meta.url), 'utf8');
+const websiteSystemTemplateAuthoritySource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSystemTemplateAuthority.cs', import.meta.url), 'utf8');
+const websiteContentSanitizerSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs', import.meta.url), 'utf8');
+const websiteSiteSourceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteSiteSource.cs', import.meta.url), 'utf8');
 const websiteMediaServiceSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteMediaService.cs', import.meta.url), 'utf8');
 const uploadValidationSource = readFileSync(new URL('../../Infrastructure/Security/UploadValidation/UploadValidation.cs', import.meta.url), 'utf8');
 
@@ -784,30 +787,16 @@ test('source protection UI separates protected authority failures from exact sco
   assert.match(websitePlatformControllerSource,/catch \(WebsiteSiteSourceProtectionException ex\)[\s\S]*canonicalProtectionViolation = true/);
 });
 
-test('canonical header defaults use one weight with 3.5 brand and 1.6 navigation scale',async()=>{
-  const doc=canonicalBusinessNavigation(canonicalDocument());
-  doc.shell.header[0].children.unshift(canonicalNode('shell.business-name','text','strong',{
-    text:'LEGEND BUSINESS',
-    systemBinding:'business_name'
-  }));
-  const f=await domFixture({siteKey:'business',doc,business:{id:'b1',displayName:'LEGEND BUSINESS'}});
-  try{
-    const saved=await f.save();
-    const header=saved.shell.header[0];
-    const brand=header.children.find(node=>node.id==='shell.business-name');
-    const nav=header.children.find(node=>node.id==='shell.primary-nav');
-    assert.equal(brand.style.fontScale,3.5);
-    assert.equal(brand.style.fontWeight,800);
-    assert.equal(brand.breakpointStyles.mobile.fontScale,1.35);
-    assert.equal(brand.breakpointStyles.tablet.fontScale,1.8);
-    assert.equal(nav.style.fontScale,1.6);
-    assert.equal(nav.style.fontWeight,800);
-    assert.equal(nav.breakpointStyles.mobile.fontScale,1);
-    assert.equal(nav.breakpointStyles.tablet.fontScale,1.15);
-    assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
-    assert.match(publicCss,/\.business-brand-banner strong\{[^}]*font-weight:var\(--public-banner-title-weight\)/);
-    assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
-  }finally{f.close();}
+test('canonical header defaults are server-owned and the browser has no duplicate shell writer',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplyHeaderTypographyDefaults/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 3\.5m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.6m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.35m/);
+  assert.match(websiteSystemTemplateAuthoritySource,/FontScale = 1\.15m/);
+  assert.doesNotMatch(source,/applyCanonicalHeaderTypographyDefaults/);
+  assert.doesNotMatch(source,/canonicalizeMobileHeaderChrome/);
+  assert.match(publicCss,/\.brand-wordmark strong\{[^}]*font-weight:800/);
+  assert.match(publicCss,/\.nav\{[^}]*font-weight:800/);
 });
 
 test('Protect agent-prefixed home is the canonical root during one-way v3 materialization',async()=>{
@@ -859,51 +848,23 @@ test('Protect nested agent URL resolves to the canonical page route',async()=>{
 });
 
 
-test('Protect collapses legacy agent-prefixed v3 page keys to the canonical page identity',async()=>{
-  const doc=canonicalDocument();
-  doc.pages['/a/legend/contact']={
-    title:'Contact',
-    description:'Scoped legacy key',
-    navigation:{label:'Contact',showInNavigation:true,order:10,isDeleted:false},
-    dynamicBinding:null,
-    composition:[canonicalNode('contact.section','section','section',{children:[
-      canonicalNode('contact.title','heading','h1',{text:'Canonical contact from scoped key'})
-    ]})]
-  };
-  delete doc.pages['/'];
-  const f=await domFixture({
-    siteKey:'protect',
-    doc,
-    pathname:'/a/legend/contact',
-    agentSlug:'legend',
-    pagePrefix:'/a/legend'
-  });
-  try{
-    assert.equal(f.w.document.querySelector('main h1')?.textContent,'Canonical contact from scoped key');
-    const saved=await f.save();
-    assert.ok(saved.pages['/contact']);
-    assert.equal(Object.hasOwn(saved.pages,'/a/legend/contact'),false);
-  }finally{f.close();}
+test('canonical v3 route keys are not silently repaired by the browser',()=>{
+  const normalizeStart=source.indexOf('function normalizeDocument(');
+  const normalizeEnd=source.indexOf('function normalizePageRoute(',normalizeStart);
+  const normalizeSource=source.slice(normalizeStart,normalizeEnd);
+  assert.doesNotMatch(normalizeSource,/canonicalSiteRoute\(rawRoute\)/);
+  assert.doesNotMatch(normalizeSource,/agent-prefixed v3 page keys/);
+  assert.match(source,/function legacyPageForRoute\([\s\S]*?canonicalSiteRoute\(rawPath\)/);
+  assert.match(source,/async function materializeCanonicalSite\(/);
 });
 
-test('runtime navigation toggle is deleted from canonical v3 and recreated only as locked shell chrome',async()=>{
-  const doc=canonicalBusinessNavigation();
-  const header=doc.shell.header[0];
-  header.children.unshift(canonicalNode('shell.header.button.node.75','link','button',{
-    className:'nav-toggle',
-    text:'Menu'
-  }));
-  const f=await domFixture({doc});
-  try{
-    const runtimeToggle=f.w.document.querySelector('[data-public-nav-toggle]');
-    assert.ok(runtimeToggle);
-    assert.equal(runtimeToggle.dataset.cmsCompositionId,undefined);
-    assert.equal(runtimeToggle.dataset.cmsLocked,'true');
-    const saved=await f.save();
-    const serialized=JSON.stringify(saved);
-    assert.equal(serialized.includes('shell.header.button.node.75'),false);
-    assert.equal(serialized.includes('"className":"nav-toggle"'),false);
-  }finally{f.close();}
+test('runtime chrome is rejected by server authority instead of silently deleted by the browser',()=>{
+  assert.doesNotMatch(source,/isRuntimeShellChromeNode/);
+  assert.match(websiteSiteSourceSource,/"nav-toggle"/);
+  assert.match(websiteSiteSourceSource,/cannot invent platform runtime class/);
+  assert.match(websiteSiteSourceSource,/cannot remove platform runtime class/);
+  assert.match(websiteContentSanitizerSource,/website_v3_noncanonical_persisted_document/);
+  assert.match(source,/function ensurePublicNavigationToggle\(/);
 });
 
 test('business header navigation projects one canonical page catalog without preview-title duplicates',async()=>{
@@ -1145,33 +1106,24 @@ test('desktop preserves authored geometry while mobile uses conversion-first sem
   assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\[data-legend-content-role="heading"\]\{order:20\}[\s\S]*\[data-legend-content-role="action"\][\s\S]*order:40[\s\S]*\[data-legend-content-role="media"\]\{order:50\}/);
 });
 
-test('business banner and shell typography use canonical shared responsive tokens instead of one-off geometry',async()=>{
+test('business banner and shell typography derive from shared tokens and server shell authority',()=>{
   assert.match(foundationCss,/--web-public-banner-pad-block:10px/);
   assert.match(foundationCss,/--web-public-banner-title-weight:800/);
   assert.match(publicCss,/\.business-brand-banner\{[\s\S]*padding:var\(--public-banner-pad-block\) var\(--public-banner-pad-inline\)/);
   assert.match(publicCss,/\.business-brand-banner strong\{[\s\S]*font-size:var\(--public-banner-title-size\)[\s\S]*font-weight:var\(--public-banner-title-weight\)/);
-  const doc=canonicalBusinessNavigation(canonicalDocument());
-  doc.shell.header[0].children.unshift(canonicalNode('shell.business-name','text','strong',{
-    text:'LEGEND BUSINESS',systemBinding:'business_name'
-  }));
-  const f=await domFixture({siteKey:'business',doc,business:{id:'b1',displayName:'LEGEND BUSINESS'},viewportWidth:390});
-  try{
-    const saved=await f.save();
-    const brand=saved.shell.header[0].children.find(node=>node.id==='shell.business-name');
-    assert.equal(brand.style.fontScale,3.5);
-    assert.equal(brand.breakpointStyles.mobile.fontScale,1.35);
-    assert.equal(brand.breakpointStyles.tablet.fontScale,1.8);
-  }finally{f.close();}
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplyHeaderTypographyDefaults/);
+  assert.doesNotMatch(source,/applyCanonicalHeaderTypographyDefaults/);
 });
 
-test('mobile public header geometry is canonical system chrome while desktop geometry remains authored',()=>{
-  assert.match(source,/const MOBILE_HEADER_GEOMETRY_FIELDS=\[/);
-  assert.match(source,/function mobileHeaderChromeKind\(node\)/);
-  assert.match(source,/node\.systemKey==='primary_navigation'/);
-  assert.match(source,/classes\.has\('brand-wordmark'\)/);
-  assert.match(source,/MOBILE_HEADER_GEOMETRY_FIELDS\.forEach\(field=>delete mobile\[field\]\)/);
-  assert.match(source,/node\.breakpointLayouts\.mobile=\{mode:'free',direction:'column'\}/);
-  assert.match(source,/mobileShellChrome[\s\S]*MOBILE_HEADER_GEOMETRY_FIELDS\.forEach\(field=>delete style\[field\]\)/);
+test('mobile shell persistence is server-owned while responsive browser safety is render-only',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/CanonicalizeMobileHeaderChrome/);
+  assert.match(websiteSystemTemplateAuthoritySource,/mobile\.WidthPercent = null/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.BreakpointLayouts\["mobile"\]/);
+  assert.doesNotMatch(source,/function constrainDocumentGeometry/);
+  assert.doesNotMatch(source,/canonicalizeMobileHeaderChrome/);
+  assert.match(source,/function responsiveShellChromeKind\(model, el = null\)/);
+  assert.match(source,/function effectiveStyle\([\s\S]*?Math\.min\(100, Number\(style\.widthPercent\)\)/);
+  assert.match(source,/function effectiveLayout\([\s\S]*?responsiveShellChromeKind\(model,el\)/);
 });
 
 test('Website Studio and GPT contract expose one responsive authority with protected mobile shell geometry',()=>{
@@ -1537,6 +1489,11 @@ test('writable Website Studio exposes only the v3 composition authority',()=>{
   assert.equal(source.includes('legend-cms-videoUrl'),false);
   assert.equal(source.includes('function readImage('),false);
   assert.equal(source.includes('function restoreHistory('),false);
+  assert.equal(source.includes('templateRepairPending'),false);
+  assert.equal(source.includes('synchronizeCanonicalSharedPresentation'),false);
+  assert.equal(source.includes('constrainDocumentGeometry'),false);
+  assert.equal(source.includes('patchPageStructuralMutation'),false);
+  assert.ok(source.includes('renderPageStructuralMutationIncrementally'));
   assert.ok(source.includes('function restoreCanonicalV3History('));
   assert.ok(source.includes('function cloneCanonicalValue('));
   assert.equal((source.match(/structuredClone\(/g) || []).length,1);
@@ -3745,81 +3702,31 @@ test('template label presentation updates preserve native inputs and button icon
 });
 
 
-test('global website chrome stays shell-owned and page-local header footer navigation copies are discarded',async()=>{
-  const doc=canonicalBusinessNavigation(canonicalDocument());
-  doc.pages['/'].composition.unshift(
-    canonicalNode('stale.page.header','container','header',{className:'site-header'}),
-    canonicalNode('stale.page.nav','container','nav',{className:'nav',systemKey:'primary_navigation'}),
-    canonicalNode('stale.page.footer','container','footer',{className:'site-footer'})
-  );
-  const f=await domFixture({siteKey:'business',business:{id:'business-1',displayName:'Business'},doc});
-  try{
-    const saved=await f.save();
-    const ids=saved.pages['/'].composition.map(node=>node.id);
-    assert.equal(ids.includes('stale.page.header'),false);
-    assert.equal(ids.includes('stale.page.nav'),false);
-    assert.equal(ids.includes('stale.page.footer'),false);
-    assert.equal(saved.shell.header[0].id,'shell.header');
-    assert.equal(saved.shell.footer[0].id,'shell.footer');
-  }finally{f.close();}
+test('global website chrome cleanup is owned by one server authority, never a browser autosave',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/ApplySharedShellAuthority/);
+  assert.match(websiteSystemTemplateAuthoritySource,/IsPageLocalShellCopy/);
+  assert.match(websiteSystemTemplateAuthoritySource,/primary_navigation/);
+  assert.doesNotMatch(source,/normalizePageCompositionNodes/);
+  assert.doesNotMatch(source,/templateRepairPending/);
 });
 
-test('canonical inquiry presentation is one synchronized site-wide source without copying protected wiring',async()=>{
-  const doc=canonicalDocument();
-  const homeForm=canonicalNode('home.form','form','form',{
-    systemKey:'canonical_inquiry',
-    text:'Send inquiry',
-    title:'Send an inquiry',
-    style:{widthPercent:73,borderColor:'#bc8e10'},
-    fieldLabels:{firstname:'First Name'},
-    fieldPresentations:{firstname:{style:{borderColor:'#bc8e10'},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[]}},
-    fieldSignals:{firstname:[{id:'home-field-signal',eventName:'field_started'}]}
-  });
-  canonicalNodeById(doc,'home.section.1').children.push(homeForm);
-  doc.pages['/contact']={
-    title:'Contact',description:'Contact',navigation:{label:'Contact',showInNavigation:true,order:2,isDeleted:false},
-    dynamicBinding:null,composition:[canonicalNode('contact.section','section','section',{children:[
-      canonicalNode('contact.form','form','form',{
-        systemKey:'canonical_inquiry',
-        text:'Different stale label',
-        style:{widthPercent:22},
-        fieldSignals:{firstname:[{id:'contact-field-signal',eventName:'field_started'}]}
-      })
-    ]})]
-  };
-  const f=await domFixture({doc});
-  try{
-    const saved=await f.save();
-    const home=canonicalNodeById(saved,'home.form','/');
-    const contact=canonicalNodeById(saved,'contact.form','/contact');
-    assert.equal(contact.text,home.text);
-    assert.deepEqual(contact.style,home.style);
-    assert.deepEqual(contact.fieldPresentations,home.fieldPresentations);
-    assert.equal(home.fieldSignals.firstname[0].id,'home-field-signal');
-    assert.equal(contact.fieldSignals.firstname[0].id,'contact-field-signal');
-  }finally{f.close();}
+test('canonical inquiry presentations are independently authored and never browser-synchronized across pages',()=>{
+  assert.doesNotMatch(source,/synchronizeCanonicalSharedPresentation/);
+  assert.doesNotMatch(source,/sharedPresentationIndex/);
+  assert.match(source,/function formFieldPresentationForElement\(el, create = true\)/);
+  assert.match(source,/selectedFieldPresentation=selected\?\.dataset\?\.cmsSignalOnly \? formFieldPresentationForElement\(selected,false\)/);
+  assert.match(source,/formNode\.fieldPresentations\[key\] \|\|= normalizeControlPresentation\(null\)/);
 });
 
-test('LEGEND website credits are immutable in copy and destination but remain presentation nodes',async()=>{
-  const doc=canonicalBusinessNavigation(canonicalDocument());
-  doc.shell.footer[0].children=[
-    canonicalNode('credit.label','text','span',{className:'legend-platform-attribution-designed-label',text:'Bad copy'}),
-    canonicalNode('credit.link','link','a',{className:'legend-platform-attribution',text:'Bad brand',href:'https://wrong.example/',style:{widthPercent:61}})
-  ];
-  const f=await domFixture({siteKey:'business',business:{id:'business-1',displayName:'Business'},doc});
-  try{
-    const saved=await f.save();
-    const footer=saved.shell.footer[0];
-    const label=footer.children.find(node=>node.id==='credit.label');
-    const link=footer.children.find(node=>node.id==='credit.link');
-    assert.equal(label.text,'Website Designed by');
-    assert.equal(link.text,'Legend®');
-    assert.equal(link.href,'https://www.mylegnd.com/');
-    assert.equal(link.style.widthPercent,61);
-    assert.match(publicCss,/\.legend-platform-attribution\{text-decoration:underline!important/);
-    assert.match(businessBuildSource,/Website Designed by/);
-    assert.match(businessBuildSource,/Powered by/);
-  }finally{f.close();}
+test('LEGEND website credits are immutable through the server shell authority',()=>{
+  assert.match(websiteSystemTemplateAuthoritySource,/legend-platform-attribution/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.Text = "Legend®"/);
+  assert.match(websiteSystemTemplateAuthoritySource,/node\.Href = "https:\/\/www\.mylegnd\.com\/"/);
+  assert.match(websiteSiteSourceSource,/"legend-platform-attribution"/);
+  assert.doesNotMatch(source,/enforceLegendAttributionNode/);
+  assert.match(publicCss,/\.legend-platform-attribution\{text-decoration:underline!important/);
+  assert.match(businessBuildSource,/Website Designed by/);
+  assert.match(businessBuildSource,/Powered by/);
 });
 
 test('public mobile navigation is one compact viewport-safe dropdown instead of a side rail',()=>{
