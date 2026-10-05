@@ -145,13 +145,42 @@ public static class WebsiteDesignQualityInspector
                 .ToHashSet(StringComparer.Ordinal);
             var early = conversionNodes.Any(value => IsWithinRoots(value.Id, page.Composition, firstSectionIds));
 
+            var distinctActions = actionKeys
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
+
             conversions.Add(new(
                 path,
-                actionKeys.Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray(),
+                distinctActions,
                 protectedForms,
                 leadCapture,
                 conversionNodes.Length,
                 early));
+
+            if (protectedForms > 1)
+                checks.Add(new("conversion_duplicate_forms", "warning",
+                    $"This page contains {protectedForms} protected forms. Keep one clear primary form unless the journey explicitly requires more.", path));
+
+            if ((actionKeys.Contains("form_start", StringComparer.Ordinal) ||
+                 actionKeys.Contains("submit", StringComparer.Ordinal)) &&
+                protectedForms == 0 &&
+                leadCapture == 0)
+                checks.Add(new("conversion_orphan_form_action", "warning",
+                    "This page uses a form-start or submit action without a canonical form or lead-capture experience on the page.", path));
+
+            var contactLike =
+                string.Equals(path.TrimEnd('/'), "/contact", StringComparison.OrdinalIgnoreCase) ||
+                (page.Navigation?.Label?.Contains("contact", StringComparison.OrdinalIgnoreCase) ?? false);
+            var inquiryAvailable = capabilities.Capabilities.Any(value =>
+                string.Equals(value.Key, "contact.inquiry.submit", StringComparison.Ordinal));
+            if (contactLike && inquiryAvailable && protectedForms == 0 && leadCapture == 0)
+                checks.Add(new("conversion_contact_capture_missing", "warning",
+                    "This Contact page has no canonical inquiry form or native lead-capture experience.", path));
+
+            if (distinctActions.Length > 3)
+                checks.Add(new("conversion_competing_actions", "info",
+                    $"This page presents {distinctActions.Length} different canonical actions. Confirm the hierarchy still makes one primary next step obvious.", path));
 
             if (path == "/" && conversionNodes.Length == 0)
                 checks.Add(new("conversion_home_missing", "warning",
