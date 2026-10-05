@@ -1349,7 +1349,7 @@ public class WebsitePlatformController : ControllerBase
             .Distinct(StringComparer.Ordinal)
             .Where(document.Pages.ContainsKey)
             .ToArray();
-        var changedComponents = result.ChangedScopes
+        var allChangedComponents = result.ChangedScopes
             .Where(value => value.StartsWith("@component/", StringComparison.Ordinal))
             .Select(value =>
             {
@@ -1358,8 +1358,19 @@ public class WebsitePlatformController : ControllerBase
                 return marker < 0 ? remainder : remainder[..marker];
             })
             .Distinct(StringComparer.Ordinal)
-            .Where(document.ReusableComponents.ContainsKey)
             .ToArray();
+        var changedComponents = allChangedComponents.Where(document.ReusableComponents.ContainsKey).ToArray();
+        var removedPages = result.ChangedScopes
+            .Where(value => value.StartsWith("/", StringComparison.Ordinal))
+            .Select(value =>
+            {
+                var marker = value.IndexOf('#');
+                return marker < 0 ? value : value[..marker];
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Where(value => !document.Pages.ContainsKey(value))
+            .ToArray();
+        var removedComponents = allChangedComponents.Where(value => !document.ReusableComponents.ContainsKey(value)).ToArray();
 
         return Ok(new
         {
@@ -1375,6 +1386,8 @@ public class WebsitePlatformController : ControllerBase
                 shellHeader = result.ChangedScopes.Any(value => value.StartsWith("@shell/header", StringComparison.Ordinal)) ? document.Shell.Header : null,
                 shellFooter = result.ChangedScopes.Any(value => value.StartsWith("@shell/footer", StringComparison.Ordinal)) ? document.Shell.Footer : null,
                 reusableComponents = changedComponents.ToDictionary(value => value, value => document.ReusableComponents[value], StringComparer.Ordinal),
+                removedPages,
+                removedComponents,
                 store = result.ChangedScopes.Contains("@store-presentation", StringComparer.Ordinal) ? document.Store : null
             },
             savedUtc = state.UpdatedUtc,
