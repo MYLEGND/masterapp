@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Infrastructure.WebsiteEditing;
 using Xunit;
 
@@ -427,6 +429,48 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "services.grid");
         Assert.Contains(operations, value => value.Type == "insertRecipe" && value.RecipeKey == "cta.closing");
         Assert.DoesNotContain(operations, value => value.Type == "insertNode" && value.Node?.SystemKey is not null);
+    }
+
+    [Fact]
+    public async Task MediaVisualMetadata_ReadsIntrinsicPngDimensionsWithoutTrustingFilename()
+    {
+        var bytes = new byte[24];
+        bytes[0] = 0x89; bytes[1] = 0x50; bytes[2] = 0x4e; bytes[3] = 0x47;
+        bytes[16] = 0x00; bytes[17] = 0x00; bytes[18] = 0x07; bytes[19] = 0x80; // 1920
+        bytes[20] = 0x00; bytes[21] = 0x00; bytes[22] = 0x04; bytes[23] = 0x38; // 1080
+
+        await using var stream = new MemoryStream(bytes, writable: false);
+        var metadata = await WebsiteMediaVisualMetadataInspector.InspectAsync(stream, "image/png");
+
+        Assert.Equal(1920, metadata.WidthPx);
+        Assert.Equal(1080, metadata.HeightPx);
+        Assert.Equal(1.7778m, metadata.AspectRatio);
+        Assert.Equal("landscape", metadata.Orientation);
+    }
+
+    [Fact]
+    public async Task MediaVisualMetadata_ReadsWebpExtendedCanvas_AndClassifiesPortrait()
+    {
+        var bytes = new byte[30];
+        bytes[0] = (byte)'R'; bytes[1] = (byte)'I'; bytes[2] = (byte)'F'; bytes[3] = (byte)'F';
+        bytes[8] = (byte)'W'; bytes[9] = (byte)'E'; bytes[10] = (byte)'B'; bytes[11] = (byte)'P';
+        bytes[12] = (byte)'V'; bytes[13] = (byte)'P'; bytes[14] = (byte)'8'; bytes[15] = (byte)'X';
+        var widthMinusOne = 799;
+        var heightMinusOne = 1199;
+        bytes[24] = (byte)(widthMinusOne & 0xff);
+        bytes[25] = (byte)((widthMinusOne >> 8) & 0xff);
+        bytes[26] = (byte)((widthMinusOne >> 16) & 0xff);
+        bytes[27] = (byte)(heightMinusOne & 0xff);
+        bytes[28] = (byte)((heightMinusOne >> 8) & 0xff);
+        bytes[29] = (byte)((heightMinusOne >> 16) & 0xff);
+
+        await using var stream = new MemoryStream(bytes, writable: false);
+        var metadata = await WebsiteMediaVisualMetadataInspector.InspectAsync(stream, "image/webp");
+
+        Assert.Equal(800, metadata.WidthPx);
+        Assert.Equal(1200, metadata.HeightPx);
+        Assert.Equal(0.6667m, metadata.AspectRatio);
+        Assert.Equal("portrait", metadata.Orientation);
     }
 
     [Fact]
