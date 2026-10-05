@@ -1279,6 +1279,31 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.doesNotMatch(source,/sandbox','allow-same-origin allow-scripts'/);
 });
 
+test('Website Studio registers bounded editor-only browser tools without exposing the edit ticket',()=>{
+  const start=source.indexOf('async function installWebsiteStudioWebMcpTools()');
+  const end=source.indexOf('function installCreativeAgentWorkspaceApi()',start);
+  assert.ok(start>=0 && end>start);
+  const bridge=source.slice(start,end);
+  assert.match(bridge,/document\.modelContext/);
+  assert.match(bridge,/registerTool/);
+  assert.match(bridge,/pagehide[\s\S]*controller\.abort/);
+  for(const name of [
+    'legend_website_workspace',
+    'legend_website_apply_design_plan',
+    'legend_website_apply_mutations',
+    'legend_website_set_signal_mappings',
+    'legend_website_import_image',
+    'legend_website_preflight'
+  ]) assert.ok(bridge.includes(name),name);
+  assert.match(bridge,/business_data/);
+  assert.match(bridge,/privateTests=await Promise\.all/);
+  assert.match(bridge,/readOnlyHint:tool\.readOnly/);
+  assert.match(bridge,/consequentialHint:!tool\.readOnly/);
+  assert.match(bridge,/untrustedContentHint:true/);
+  assert.doesNotMatch(bridge,/editorTicket|legendEdit|authorization|cookie|localStorage|sessionStorage/i);
+  assert.match(source,/Object\.defineProperty\(window,'LEGEND_WEBSITE_STUDIO_AGENT'[\s\S]*installWebsiteStudioWebMcpTools\(\)/);
+});
+
 test('LEGEND static host permits only same-origin Website Studio materialization frames',()=>{
   assert.match(legendWebConfigSource,/X-Frame-Options" value="SAMEORIGIN"/);
   assert.equal(/X-Frame-Options" value="DENY"/.test(legendWebConfigSource),false);
