@@ -50,7 +50,7 @@ public static class WebsiteCreativeCapabilityResolver
         var hasCanonicalInquiry = WebsiteSiteSource.Flatten(document)
             .Any(entry => entry.Node.Type == "form" &&
                           string.Equals(entry.Node.SystemKey, "canonical_inquiry", StringComparison.Ordinal));
-        if (siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend || hasCanonicalInquiry)
+        if ((siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend) || hasCanonicalInquiry)
         {
             capabilities.Add(new(
                 "contact.inquiry.submit",
@@ -990,7 +990,9 @@ public static class WebsiteDocumentMutationService
         if (scope == "@shell/footer") return WebsiteCreativeFingerprint.For(document.Shell.Footer.Select(WebsiteCreativeProjection.Node));
         if (scope.StartsWith("@component/", StringComparison.Ordinal))
         {
-            var id = scope["@component/".Length..].Split('/', 2)[0];
+            var remainder = scope["@component/".Length..];
+            var separator = remainder.IndexOf('/');
+            var id = separator < 0 ? remainder : remainder[..separator];
             return document.ReusableComponents.TryGetValue(id, out var component)
                 ? WebsiteCreativeFingerprint.For(component.Composition.Select(WebsiteCreativeProjection.Node))
                 : null;
