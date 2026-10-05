@@ -967,6 +967,10 @@ class ResourceAdmission(unittest.TestCase):
             'id': 120,
             'status': 'completed',
             'conclusion': 'success',
+            'path': '.github/workflows/' + m.DIRECT,
+            'head_branch': m.APPROVED,
+            'event': 'workflow_dispatch',
+            'head_repository': {'full_name': self.api.repo},
             'display_title': f'LEGEND release pr=462 candidate={source} authority={authority_two}',
         }
         self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
@@ -1000,14 +1004,21 @@ class ResourceAdmission(unittest.TestCase):
             'id': 120,
             'status': 'completed',
             'conclusion': 'success',
+            'path': '.github/workflows/' + m.DIRECT,
+            'head_branch': m.APPROVED,
+            'event': 'workflow_dispatch',
+            'head_repository': {'full_name': self.api.repo},
             'display_title': f'LEGEND release pr=462 candidate={other} authority={authority_two}',
         }
         self.api.pages_map[DurableCandidateQueue.runs_path] = [self.run, later]
 
+        def successful(_api, run, app=None):
+            return run.get('id') == 120 and app in (None, 'client')
+
         with patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
-             patch.object(m, 'successful_release', return_value=True):
+             patch.object(m, 'successful_release', side_effect=successful):
             blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
         self.assertEqual([98], [row['runId'] for row in blocked])
 
