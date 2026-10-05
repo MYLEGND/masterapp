@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
@@ -250,15 +251,15 @@ internal sealed class MessagingProfileImageResolver :
                 "The profile image could not be associated with this account.");
         }
 
-        var validation = Infrastructure.Security.UploadValidation.UploadValidator.ValidateImageContent(
+        var validation = UploadValidator.ValidateImageContent(
             content,
-            Infrastructure.Security.UploadValidation.UploadValidationPolicy.Images(MaximumProfileImageBytes));
+            UploadValidationPolicy.Images(MaximumProfileImageBytes));
         var contentType = NormalizeSupportedImageContentType(validation.DetectedContentType);
         if (!validation.IsValid || contentType is null)
         {
             return ProfileImageUpdateResult.Failure(
                 validation.ErrorCode ?? "PROFILE_IMAGE_INVALID",
-                validation.ErrorMessage ?? "Choose a valid PNG, JPG, or WEBP profile picture under 3 MB.");
+                validation.ErrorMessage ?? "Choose a valid image under 3 MB.");
         }
 
         var now = DateTime.UtcNow;
@@ -578,14 +579,14 @@ internal sealed class MessagingProfileImageResolver :
             matchCount > 1);
     }
 
-    private static string? NormalizeSupportedImageContentType(string? value) =>
-        value?.Trim().ToLowerInvariant() switch
-        {
-            "image/png" => "image/png",
-            "image/jpeg" or "image/jpg" => "image/jpeg",
-            "image/webp" => "image/webp",
-            _ => null
-        };
+    private static string? NormalizeSupportedImageContentType(string? value)
+    {
+        var canonical = UploadValidator.CanonicalContentType(value);
+        return canonical is not null &&
+               UploadValidator.VisualMediaContentTypes(imagesOnly: true).Contains(canonical)
+            ? canonical
+            : null;
+    }
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;

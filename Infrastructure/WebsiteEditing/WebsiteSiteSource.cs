@@ -62,10 +62,35 @@ public static class WebsiteSiteSource
         {
             Modifiers = { info =>
             {
-                if (info.Type != typeof(WebsiteCompositionNode)) return;
-                foreach (var property in info.Properties)
-                    if (property.Name is "signals" or "fieldSignals")
-                        property.ShouldSerialize = (_, _) => false;
+                if (info.Type == typeof(WebsiteCompositionNode) ||
+                    info.Type == typeof(WebsiteControlPresentation))
+                {
+                    foreach (var property in info.Properties)
+                    {
+                        var name = property.Name;
+                        if (name.Equals("signals", StringComparison.OrdinalIgnoreCase) ||
+                            name.Equals("fieldSignals", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, _) => false;
+                        else if (name.Equals("children", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("animations", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, value) => value is System.Collections.ICollection collection && collection.Count > 0;
+                        else if (name.Equals("breakpointStyles", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("breakpointLayouts", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("fieldPresentations", StringComparison.OrdinalIgnoreCase) ||
+                                 name.Equals("fieldLabels", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, value) => value is System.Collections.IDictionary dictionary && dictionary.Count > 0;
+                        else if (name.Equals("style", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, value) => value is WebsiteVisualStyle style && !IsDefaultStyle(style);
+                        else if (name.Equals("layout", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, value) => value is WebsiteCompositionLayout layout && !IsDefaultLayout(layout);
+                    }
+                }
+                else if (info.Type == typeof(WebsiteSiteSourceDocument))
+                {
+                    foreach (var property in info.Properties)
+                        if (property.Name.Equals("breakpoints", StringComparison.OrdinalIgnoreCase))
+                            property.ShouldSerialize = (_, value) => value is not List<WebsiteBreakpointDefinition> breakpoints || !AreDefaultBreakpoints(breakpoints);
+                }
             } }
         }
     };
@@ -76,6 +101,33 @@ public static class WebsiteSiteSource
     {
         TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
+
+    private static readonly System.Reflection.PropertyInfo[] VisualStyleProperties =
+        typeof(WebsiteVisualStyle).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+    private static bool IsDefaultStyle(WebsiteVisualStyle style) =>
+        VisualStyleProperties.All(property => property.GetValue(style) is null);
+
+    private static bool IsDefaultLayout(WebsiteCompositionLayout layout) =>
+        string.Equals(layout.Mode, "free", StringComparison.Ordinal) &&
+        string.Equals(layout.Direction, "column", StringComparison.Ordinal) &&
+        layout.GapPx is null && layout.Columns is null && layout.MinItemWidthPx is null &&
+        layout.AlignItems is null && layout.JustifyContent is null && layout.Wrap is null;
+
+    private static bool AreDefaultBreakpoints(IReadOnlyList<WebsiteBreakpointDefinition> values)
+    {
+        var defaults = WebsiteStudioContract.DefaultBreakpoints();
+        if (values.Count != defaults.Count) return false;
+        for (var index = 0; index < values.Count; index++)
+        {
+            var left = values[index];
+            var right = defaults[index];
+            if (left.Key != right.Key || left.Label != right.Label || left.MinWidth != right.MinWidth ||
+                left.MaxWidth != right.MaxWidth || left.IsSystem != right.IsSystem)
+                return false;
+        }
+        return true;
+    }
 
     public static string Serialize(WebsiteContentDocument document)
     {
@@ -198,70 +250,6 @@ public static class WebsiteSiteSource
             throw new InvalidOperationException("website_site_source_roundtrip_failed");
 
         return new WebsiteSiteSourceParseResult(output, BuildSourceMap(serialized));
-    }
-
-    public static void EnsureSelectedNodeOnly(
-        WebsiteContentDocument baseline,
-        WebsiteContentDocument proposed,
-        string? selectedNodeId)
-    {
-        selectedNodeId = selectedNodeId?.Trim();
-        if (string.IsNullOrWhiteSpace(selectedNodeId))
-            throw new ArgumentException("Selected Source requires one stable selected component ID. Master Source is read only.");
-
-        var before = WebsiteContentSanitizer.Sanitize(Clone(baseline));
-        var after = WebsiteContentSanitizer.Sanitize(Clone(proposed));
-        var markerNode = new WebsiteCompositionNode
-        {
-            Id = selectedNodeId,
-            Type = "text",
-            Tag = "span",
-            Text = "__selected_source_boundary__"
-        };
-
-        static int ReplaceIn(
-            List<WebsiteCompositionNode>? nodes,
-            string id,
-            WebsiteCompositionNode marker)
-        {
-            var count = 0;
-            if (nodes is null) return count;
-            for (var index = 0; index < nodes.Count; index++)
-            {
-                var node = nodes[index];
-                if (string.Equals(node.Id, id, StringComparison.Ordinal))
-                {
-                    nodes[index] = Clone(marker);
-                    count++;
-                    continue;
-                }
-                count += ReplaceIn(node.Children, id, marker);
-            }
-            return count;
-        }
-
-        static int ReplaceSelection(
-            WebsiteContentDocument document,
-            string id,
-            WebsiteCompositionNode marker)
-        {
-            var count = ReplaceIn(document.Shell.Header, id, marker) +
-                        ReplaceIn(document.Shell.Footer, id, marker);
-            foreach (var page in document.Pages.Values)
-                count += ReplaceIn(page.Composition, id, marker);
-            foreach (var component in document.ReusableComponents.Values)
-                count += ReplaceIn(component.Composition, id, marker);
-            return count;
-        }
-
-        if (ReplaceSelection(before, selectedNodeId, markerNode) != 1 ||
-            ReplaceSelection(after, selectedNodeId, markerNode) != 1)
-            throw new WebsiteSiteSourceProtectionException(
-                $"Selected Source component '{selectedNodeId}' must keep one stable canonical identity.");
-
-        if (!string.Equals(Serialize(before), Serialize(after), StringComparison.Ordinal))
-            throw new ArgumentException(
-                "Selected Source may modify only the selected canonical component. Master Source, page metadata, theme, shell siblings, and unrelated components are read only from this surface.");
     }
 
     public static IReadOnlyDictionary<string, WebsiteSiteSourceLocation> BuildSourceMap(string sourceText)
@@ -414,6 +402,9 @@ public static class WebsiteSiteSource
         }
     }
 
+    internal static void ValidateMutationExperienceFieldSignals(WebsiteCompositionNode node) =>
+        ValidateExperienceFieldSignalTargets(node);
+
     private static void ValidateExperienceFieldSignalTargets(WebsiteCompositionNode node)
     {
         if (!string.Equals(node.Type, "experience", StringComparison.Ordinal) ||
@@ -531,6 +522,9 @@ public static class WebsiteSiteSource
         "site-header",
         "site-footer",
         "nav-toggle",
+        "legend-platform-attribution",
+        "legend-platform-attribution-powered-label",
+        "legend-platform-attribution-designed-label",
         "public-form",
         "legend-cms-inquiry-form",
         "legend-cms-embed",
@@ -556,11 +550,35 @@ public static class WebsiteSiteSource
         WebsiteCompositionNode? previous)
     {
         var previousTokens = ClassTokens(previous?.ClassName);
-        foreach (var token in ClassTokens(node.ClassName))
+        var proposedTokens = ClassTokens(node.ClassName);
+
+        foreach (var token in proposedTokens)
         {
             if (IsReservedRuntimeClass(token) && !previousTokens.Contains(token))
                 throw new WebsiteSiteSourceProtectionException(
                     $"Component '{node.Id}' cannot invent platform runtime class '{token}'. Use author-owned presentation classes instead.");
+        }
+
+        foreach (var token in previousTokens)
+        {
+            if (IsReservedRuntimeClass(token) && !proposedTokens.Contains(token))
+                throw new WebsiteSiteSourceProtectionException(
+                    $"Component '{node.Id}' cannot remove platform runtime class '{token}'.");
+        }
+    }
+
+    internal static void ValidateMutationRuntimeClasses(
+        WebsiteCompositionNode proposed,
+        WebsiteCompositionNode? previous = null)
+    {
+        ProtectRuntimeClasses(proposed, previous);
+        var previousChildren = (previous?.Children ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value.Id))
+            .ToDictionary(value => value.Id, StringComparer.Ordinal);
+        foreach (var child in proposed.Children ?? [])
+        {
+            previousChildren.TryGetValue(child.Id, out var previousChild);
+            ValidateMutationRuntimeClasses(child, previousChild);
         }
     }
 

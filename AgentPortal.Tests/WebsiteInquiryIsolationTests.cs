@@ -144,6 +144,8 @@ public sealed class WebsiteInquiryIsolationTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Business, document);
         var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
         version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
             document,

@@ -73,6 +73,58 @@ public static class WebsiteSignalBindingPolicy
         return clean;
     }
 
+    private static readonly IReadOnlySet<string> CanonicalInquiryFieldKeys =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "firstname", "lastname", "phone", "email", "message", "consent", "submit"
+        };
+
+    private static readonly IReadOnlySet<string> CanonicalContactFieldKeys =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "firstname", "lastname", "phone", "email", "message"
+        };
+
+    public static bool IsKnownProtectedFormField(
+        WebsiteCompositionNode node,
+        string fieldKey)
+    {
+        if (string.IsNullOrWhiteSpace(fieldKey)) return false;
+        if (node.Type == "form" &&
+            string.Equals(node.SystemKey, "canonical_inquiry", StringComparison.Ordinal))
+            return CanonicalInquiryFieldKeys.Contains(fieldKey);
+
+        if (!WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(node.SystemKey))
+            return false;
+
+        return node.FieldPresentations.ContainsKey(fieldKey) ||
+               node.FieldLabels.ContainsKey(fieldKey) ||
+               node.FieldSignals.ContainsKey(fieldKey);
+    }
+
+    public static void ValidateProtectedFormField(
+        WebsiteCompositionNode node,
+        string fieldKey,
+        IReadOnlyList<WebsiteSignalBinding> signals)
+    {
+        if (!IsKnownProtectedFormField(node, fieldKey))
+            throw new ArgumentException(
+                $"Protected form field '{fieldKey}' is not a canonical field on component '{node.Id}'.");
+
+        foreach (var binding in signals ?? [])
+        {
+            if (binding.ActionKey == "phone_field_completed" &&
+                !string.Equals(fieldKey, "phone", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException(
+                    "PhoneFieldCompleted may be connected only to the canonical phone field.");
+
+            if (binding.ActionKey == "contact_input_started" &&
+                !CanonicalContactFieldKeys.Contains(fieldKey))
+                throw new ArgumentException(
+                    "ContactInputStarted may be connected only to a canonical contact-input field.");
+        }
+    }
+
     public static void ValidateExperienceControl(
         WebsiteExperienceControl control,
         IReadOnlyList<WebsiteSignalBinding> signals)

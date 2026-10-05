@@ -21,14 +21,24 @@
   const params = new URLSearchParams(location.search);
   const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
   const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/?)*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
-  const pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
+  let activeEditorRoute = customPage;
+  let pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
 
-  const editorTicket = params.get('legendEdit') || '';
+  const historyEditorTicket =
+    typeof history !== 'undefined' && typeof history.state?.legendStudioTicket === 'string'
+      ? history.state.legendStudioTicket
+      : '';
+  const editorTicket = params.get('legendEdit') || historyEditorTicket;
   const materializeMode = !!editorTicket && params.get('legendMaterialize') === '1';
+  const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
   const studioIsolationMode = editorMode || materializeMode;
+  let managementPayload = null;
+  // Capture the signed Studio authorization into non-visible history state and
+  // remove it from the document URL before browser-tool discovery evaluates the page.
+  if(editorMode) concealEditorTicketFromDocumentUrl();
   if (studioIsolationMode) {
     window.LEGEND_WEBSITE_STUDIO_MODE = true;
     // Block production form mutations from the browser while Studio is active.
@@ -53,11 +63,11 @@
   let legacyMigration = null;
   let signalCatalog = null;
   let ctaCatalog = [];
-  let managementPayload = null;
   let storeContext = null;
   let storePreviewActive = false;
   let collaborationReplyTo = null;
   let collectionData = new Map();
+  let fullDataCatalogLoaded = false;
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
   let selectedSection = null;
@@ -72,13 +82,20 @@
   let dirty = false;
   let sourceEditorDirty = false;
   let sourceEditorBaseNode = null;
+  let sourceEditorBaseFingerprint = null;
   let canonicalSourceDocument = null;
   let canonicalSourceRevision = null;
-  let templateRepairPending = false;
+  let materializationSavePending = false;
+  let persistedDocumentState = null;
   let autoSaveTimer = null;
+  let historyCheckpointPending = false;
+  let suppressHistoryCapture = false;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
+  const studioPerformance = [];
+  let websiteStudioWebMcpStatus = 'not_connected';
+  let websiteStudioWebMcpController = null;
   const styleProperties = ['textAlign','fontSize','width','maxWidth','height','minHeight','maxHeight','position','left','top','overflow','paddingTop','paddingBottom','objectPosition','color','backgroundColor','backgroundImage','fontFamily','fontWeight','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit','gridColumn','minWidth','overflowWrap','display','flexDirection','gap','gridTemplateColumns','alignItems','justifyContent','flexWrap','marginTop','marginBottom','marginLeft','marginRight','borderWidth','borderColor','borderStyle','opacity','textTransform','textDecoration','aspectRatio','boxShadow'];
 
   function rememberOriginal(el) {
@@ -139,49 +156,6 @@
     return values;
   }
 
-  function constrainHorizontalStyleRecord(style) {
-    if (!style || typeof style !== 'object') return;
-    const rawWidth = Number(style.widthPercent);
-    const hasWidth = Number.isFinite(rawWidth) && rawWidth > 0;
-    if (hasWidth) style.widthPercent = Math.min(100, rawWidth);
-    const rawOffset = Number(style.offsetXPercent);
-    if (Number.isFinite(rawOffset)) {
-      // Position is independent from stored width. Rendering consumes the
-      // remaining section width so content can move freely without creating
-      // horizontal page overflow.
-      style.offsetXPercent = Math.max(0, Math.min(95, rawOffset));
-    }
-  }
-
-  function constrainCompositionGeometry(model) {
-    if (!model || typeof model !== 'object') return;
-    constrainHorizontalStyleRecord(model.style);
-    if (model.breakpointStyles && typeof model.breakpointStyles === 'object')
-      Object.values(model.breakpointStyles).forEach(constrainHorizontalStyleRecord);
-  }
-
-  function constrainDocumentGeometry(doc) {
-    const visit = nodes => (nodes || []).forEach(node => {
-      constrainCompositionGeometry(node);
-      visit(node?.children);
-    });
-    visit(doc?.shell?.header);
-    visit(doc?.shell?.footer);
-    Object.values(doc?.pages || {}).forEach(page => visit(page?.composition));
-    Object.values(doc?.reusableComponents || {}).forEach(component => visit(component?.composition));
-    constrainCompositionGeometry(doc?.store?.storeNavigation);
-    constrainCompositionGeometry(doc?.store?.cartNavigation);
-    return doc;
-  }
-
-  function isRuntimeShellChromeNode(node) {
-    if (!node || typeof node !== 'object') return false;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    return String(node.tag || '').toLowerCase()==='button' &&
-      classes.includes('nav-toggle') &&
-      !node.actionKey && !node.systemKey && !node.systemBinding && !node.href;
-  }
-
   function wordsFromResourceName(value) {
     if (typeof value !== 'string' || !value.trim() || value.startsWith('data:')) return '';
     let path=value.trim();
@@ -207,7 +181,8 @@
   }
 
   function defaultNavigationLabel(route,title) {
-    if(typeof title==='string' && title.trim()) return title.trim().slice(0,120);
+    const cleanTitle=cleanBusinessPreviewTitle(title);
+    if(typeof cleanTitle==='string' && cleanTitle.trim()) return cleanTitle.trim().slice(0,120);
     if(route==='/') return 'Home';
     const segment=String(route||'/').split('/').filter(Boolean).pop() || 'Page';
     let value=segment;
@@ -215,59 +190,6 @@
     value=value.replace(/[-_]+/g,' ').replace(/\s+/g,' ').trim();
     if(!value) return 'Page';
     return value.split(' ').map(word=>word ? word[0].toUpperCase()+word.slice(1) : '').join(' ').slice(0,120);
-  }
-
-  function isRetiredTemplateDecorationNode(node) {
-    if (!node || typeof node !== 'object') return false;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    const hasMeaning=
-      String(node.text || '').trim() ||
-      String(node.title || '').trim() ||
-      node.actionKey || node.href || node.alt ||
-      node.mediaAssetId || node.mediaUrl ||
-      node.systemKey || node.systemBinding || node.syncSourceId ||
-      node.dataBinding ||
-      (Array.isArray(node.signals) && node.signals.length) ||
-      (Array.isArray(node.children) && node.children.length);
-    if(hasMeaning) return false;
-    if(classes.includes('icon') || classes.includes('halo') || classes.includes('hero-mark')) return true;
-    return node.type==='text' && String(node.tag || '').toLowerCase()==='span' && classes.length===0;
-  }
-
-  function canonicalizePassiveLinkNode(node) {
-    if (!node || isRuntimeShellChromeNode(node) || node.type!=='link' || node.actionKey || node.dataBinding?.target==='href') return node;
-    const href=String(node.href || '').trim();
-    if (href && href!=='#') return node;
-    // A destination-less anchor is presentation, not navigation. Converting it
-    // here repairs already-persisted early-v3 placeholder links instead of
-    // teaching readiness checks to ignore dead interactions.
-    node.type='text';
-    node.tag='span';
-    node.actionKey=null;
-    node.href=null;
-    node.target=null;
-    node.signals=[];
-    return node;
-  }
-
-
-  const LEGEND_ATTRIBUTION_URL='https://www.mylegnd.com/';
-
-  function enforceLegendAttributionNode(node) {
-    if (!node || typeof node !== 'object') return node;
-    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
-    if (classes.includes('legend-platform-attribution')) {
-      node.type='link';
-      node.tag='a';
-      node.text='Legend®';
-      node.href=LEGEND_ATTRIBUTION_URL;
-      node.target='_self';
-    } else if (classes.includes('legend-platform-attribution-powered-label')) {
-      node.text='Powered by';
-    } else if (classes.includes('legend-platform-attribution-designed-label')) {
-      node.text='Website Designed by';
-    }
-    return node;
   }
 
   function normalizeCompositionNodes(input) {
@@ -285,89 +207,8 @@
           animations: Array.isArray(node.animations) ? node.animations : [],
           signals: Array.isArray(node.signals) ? node.signals : []
         };
-        if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
-        enforceLegendAttributionNode(normalized);
-        canonicalizePassiveLinkNode(normalized);
         return normalized;
-      })
-      // Menu toggles are reconstructed runtime chrome. They were accidentally
-      // persisted by early v3 materialization and have no website destination.
-      .filter(node => !isRuntimeShellChromeNode(node))
-      // Repair early v3 drafts that persisted presentation-only template wrappers
-      // after their SVG/pseudo-element contents were deliberately excluded.
-      .filter(node => !isRetiredTemplateDecorationNode(node));
-  }
-
-  function applyCanonicalHeaderTypographyDefaults(node) {
-    if (!node || typeof node!=='object') return node;
-    node.style ||= {};
-    const tag=String(node.tag || '').toLowerCase();
-    const isBrandTitle=
-      node.systemBinding==='business_name' ||
-      (SITE_KEY==='legend' && tag==='strong' && String(node.text || '').trim()==='LEGEND®');
-    if(isBrandTitle){
-      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=3.5;
-      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
-      node.breakpointStyles ||= {};
-      node.breakpointStyles.mobile ||= {};
-      node.breakpointStyles.tablet ||= {};
-      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1.35;
-      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.8;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
-    }
-    if(node.systemKey==='primary_navigation'){
-      if(!positiveNumber(node.style.fontScale)) node.style.fontScale=1.6;
-      if(!positiveNumber(node.style.fontWeight)) node.style.fontWeight=800;
-      node.breakpointStyles ||= {};
-      node.breakpointStyles.mobile ||= {};
-      node.breakpointStyles.tablet ||= {};
-      if(!positiveNumber(node.breakpointStyles.mobile.fontScale)) node.breakpointStyles.mobile.fontScale=1;
-      if(!positiveNumber(node.breakpointStyles.mobile.fontWeight)) node.breakpointStyles.mobile.fontWeight=800;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontScale)) node.breakpointStyles.tablet.fontScale=1.15;
-      if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
-    }
-    return node;
-  }
-
-  function normalizePageCompositionNodes(input) {
-    // Global website chrome has one source: shell.header / shell.footer.
-    // Repair stale drafts by refusing page-local copies of those authorities.
-    return normalizeCompositionNodes(input).filter(node=>{
-      const tag=String(node?.tag || '').toLowerCase();
-      const classes=new Set(String(node?.className || '').split(/\s+/).filter(Boolean));
-      if(tag==='header' || tag==='footer') return false;
-      if(node?.systemKey==='primary_navigation') return false;
-      if(classes.has('site-header') || classes.has('site-footer')) return false;
-      return true;
-    });
-  }
-
-  function normalizeHeaderComposition(input) {
-    const roots=normalizeCompositionNodes(input);
-    let primarySeen=false;
-    const clean=nodes => {
-      const result=[];
-      for(const node of nodes || []) {
-        applyCanonicalHeaderTypographyDefaults(node);
-        const classes=String(node?.className || '').split(/\s+/).filter(Boolean);
-        const primary=node?.systemKey==='primary_navigation';
-        const templateNav=!primary && String(node?.tag || '').toLowerCase()==='nav' && classes.includes('nav');
-        if(templateNav && SITE_KEY==='business') continue;
-        if(primary) {
-          if(primarySeen) continue;
-          primarySeen=true;
-          // Page links are a projection of versioned page navigation metadata,
-          // not a second persisted list inside the shell.
-          if(SITE_KEY==='business') node.children=[];
-        } else {
-          node.children=clean(node.children);
-        }
-        result.push(node);
-      }
-      return result;
-    };
-    return clean(roots);
+      });
   }
 
   function normalizeControlPresentation(input) {
@@ -392,14 +233,9 @@
     const pages = {};
     for (const [key,value] of Object.entries(input?.pages && typeof input.pages === 'object' ? input.pages : {})) {
       if (!value || typeof value !== 'object') continue;
-      const rawRoute = normalizePageRoute(key);
-      const route = canonicalSiteRoute(rawRoute);
+      const route = normalizePageRoute(key);
       if (!route) continue;
-      // Protect v2 could persist the browser-owned /a/{slug}/... path. V3 owns
-      // route identity independent of agent URL scope, so collapse those rows
-      // into the one canonical page key and never serialize the prefixed copy.
-      if (pages[route] && rawRoute !== route) continue;
-      const title=cleanBusinessPreviewTitle(value.title);
+      const title=cleanBusinessPreviewTitle(typeof value.title === 'string' ? value.title : null);
       const navigation=value.navigation && typeof value.navigation === 'object'
         ? {...value.navigation}
         : {showInNavigation:true,order:0,isDeleted:false};
@@ -414,7 +250,7 @@
         navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
         systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
-        composition: normalizePageCompositionNodes(value.composition)
+        composition: normalizeCompositionNodes(value.composition)
       };
     }
 
@@ -434,7 +270,7 @@
       faviconImageDataUrl:typeof input?.faviconImageDataUrl==='string'?input.faviconImageDataUrl:null,
       breakpoints:normalizeBreakpoints(input?.breakpoints),
       shell:{
-        header:normalizeHeaderComposition(input?.shell?.header),
+        header:normalizeCompositionNodes(input?.shell?.header),
         footer:normalizeCompositionNodes(input?.shell?.footer)
       },
       reusableComponents,
@@ -453,42 +289,8 @@
       },
       pages
     };
-    synchronizeCanonicalSharedPresentation(normalized);
-    return constrainDocumentGeometry(normalized);
+    return normalized;
   }
-
-  function canonicalSharedPresentationKey(node) {
-    if (!node || typeof node !== 'object') return null;
-    if (node.type==='form' && node.systemKey==='canonical_inquiry') return 'form:canonical_inquiry';
-    return null;
-  }
-
-  function copyCanonicalSharedPresentation(target, source) {
-    if (!target || !source || target===source) return;
-    for (const key of ['className','text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations']) {
-      if (Object.hasOwn(source,key)) target[key]=cloneCanonicalValue(source[key]);
-      else delete target[key];
-    }
-  }
-
-  function synchronizeCanonicalSharedPresentation(doc, preferredId=null) {
-    if (!doc || typeof doc!=='object') return doc;
-    const groups=new Map();
-    const visit=nodes=>walkComposition(nodes,node=>{
-      const key=canonicalSharedPresentationKey(node);
-      if (!key) return;
-      if (!groups.has(key)) groups.set(key,[]);
-      groups.get(key).push(node);
-    });
-    Object.values(doc.pages || {}).forEach(page=>visit(page?.composition || []));
-    for (const nodes of groups.values()) {
-      if (nodes.length < 2) continue;
-      const source=nodes.find(node=>node.id===preferredId) || nodes[0];
-      nodes.forEach(node=>copyCanonicalSharedPresentation(node,source));
-    }
-    return doc;
-  }
-
 
   function normalizePageRoute(value) {
     if (typeof value !== 'string') return null;
@@ -521,7 +323,7 @@
   }
 
   function currentPageRoute() {
-    const browserPath = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const browserPath = (editorMode && activeEditorRoute) || customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
     return canonicalSiteRoute(browserPath) || '/';
   }
 
@@ -547,17 +349,6 @@
     return SITE_KEY === 'protect' &&
       typeof page?.systemTemplateKey === 'string' &&
       page.systemTemplateKey.startsWith('protect_template:');
-  }
-
-  function containsProtectedRuntimeForm(nodes) {
-    let found=false;
-    walkComposition(nodes,node=>{
-      if(String(node?.systemKey || '').startsWith('protect_runtime_form:')) {
-        found=true;
-        return false;
-      }
-    });
-    return found;
   }
 
   function applyTemplateBackedCompositionPage() {
@@ -592,10 +383,6 @@
       }
     };
     reconcile(page.composition,document.querySelector('main'));
-  }
-
-  function usesCanonicalComposition() {
-    return legacyMigration == null;
   }
 
   function walkComposition(nodes, visit, parent = null) {
@@ -789,62 +576,80 @@
     return {elementId,fieldKey,model,bindings};
   }
 
-  function selectedSignalElementId() {
-    return selectedSignalContext()?.elementId || null;
+  function compositionNodeOnPage(pagePath,id) {
+    const route=normalizePageRoute(pagePath);
+    const page=route ? documentState.pages?.[route] : null;
+    let found=null;
+    walkComposition(page?.composition || [],node=>{
+      if(node.id!==id) return;
+      found=node;
+      return false;
+    });
+    return found;
+  }
+
+  function applySignalConfigurationDelta(payload) {
+    if(payload?.source!=='website_signal_configuration')
+      throw new Error('Signal update response was invalid.');
+    const target=compositionNodeOnPage(payload.pagePath,payload.elementId);
+    if(!target)
+      throw new Error('The updated Analytics target is no longer present in the canonical draft.');
+    target.signals=cloneCanonicalValue(payload.nodeSignals || []);
+    target.fieldSignals=cloneCanonicalValue(payload.fieldSignals || {});
+    revision=payload.revision ?? revision;
+    persistedDocumentState=cloneCanonicalValue(documentState);
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    dirty=false;
+    return payload;
+  }
+
+  async function updateSignalMappings({pagePath=currentPageRoute(),elementId,fieldKey=null,signals=[]}={}) {
+    if(!elementId) throw new Error('A canonical website element is required for Analytics mapping.');
+    await flushLocalCreativeEdits();
+    const payload=await creativeWorkspaceRequest('manage/signals',{
+      method:'POST',
+      body:{
+        ticket:editorTicket,
+        expectedRevision:revision,
+        pagePath,
+        elementId,
+        fieldKey,
+        signals:Array.isArray(signals)?signals:[]
+      }
+    });
+    return applySignalConfigurationDelta(payload);
   }
 
   async function persistSelectedSignals(nextSignals) {
     const context=selectedSignalContext();
     if(!context) return false;
     const status=document.getElementById('legend-cms-status');
-
-    if(dirty){
-      if(status) status.textContent='Saving design changes before updating Analytics mapping…';
-      const saved=await save(false);
-      if(!saved || dirty) return false;
-    }
-
-    const response=await fetch(`${API_BASE}/api/website-content/manage/signals`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        ticket:editorTicket,
-        expectedRevision:revision,
+    try{
+      await updateSignalMappings({
         pagePath:currentPageRoute(),
         elementId:context.elementId,
         fieldKey:context.fieldKey,
         signals:nextSignals
-      })
-    });
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok){
-      if((response.status===401 || response.status===403) &&
+      });
+
+      let refreshed=findEditableElement(context.elementId);
+      if(context.fieldKey && refreshed){
+        refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
+          .find(control=>formFieldKey(control)===context.fieldKey) || null;
+      }
+      if(refreshed) setSelected(refreshed);
+      else setSelected(null);
+      renderSignalControls();
+      if(status) status.textContent='Analytics mapping saved to the canonical draft.';
+      return true;
+    }catch(error){
+      if((error?.status===401 || error?.status===403) &&
           showEditorAuthorizationRecovery('Website Studio authorization expired while updating this Analytics mapping.'))
         return false;
-      if(status) status.textContent=payload.message || payload.error || `Signal update failed (${response.status}).`;
+      if(status) status.textContent=error?.payload?.message || error?.message || 'Signal update failed.';
       return false;
     }
-    if(payload.source!=='website_signal_configuration'){
-      if(status) status.textContent='Signal update response was invalid.';
-      return false;
-    }
-
-    documentState=normalizeDocument(payload.document || documentState);
-    revision=payload.revision ?? revision;
-    canonicalSourceDocument=null;
-    canonicalSourceRevision=null;
-    dirty=false;
-    applyDocument(documentState);
-
-    let refreshed=findEditableElement(context.elementId);
-    if(context.fieldKey && refreshed){
-      refreshed=[...refreshed.querySelectorAll('input,select,textarea,button[data-cms-field-key]')]
-        .find(control=>formFieldKey(control)===context.fieldKey) || null;
-    }
-    if(refreshed) setSelected(refreshed);
-    else setSelected(null);
-    if(status) status.textContent='Analytics mapping saved to the canonical draft.';
-    return true;
   }
 
   async function mutateSelectedSignals(bindingId, mutation) {
@@ -981,6 +786,18 @@
     }
   }
 
+  async function ensureSignalCatalog() {
+    if(signalCatalog) return signalCatalog;
+    try{
+      const payload=await creativeWorkspaceRequest('manage/signal-catalog');
+      signalCatalog=Array.isArray(payload?.events) && Array.isArray(payload?.matchingFields) ? payload : null;
+    }catch(error){
+      console.error('[legend-cms] signal catalog',error);
+      signalCatalog=null;
+    }
+    return signalCatalog;
+  }
+
   function renderSignalControls() {
     const host=document.getElementById('legend-cms-signal-controls');
     if(!host) return;
@@ -1010,8 +827,8 @@
     if(!signalCatalog.runtimeEnabled)
       paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
 
-    const managedActionKey=selected.dataset.websiteActionKey;
-    const managedAction=(managedActionKey && availableCtaOptions().find(option=>option.key===managedActionKey)) || null;
+    const managedActionKey=context.model?.actionKey || selected.dataset.websiteActionKey || '';
+    const managedAction=(managedActionKey && (ctaCatalog || []).find(option=>option.key===managedActionKey)) || null;
     if(type==='FORM' && selected.matches?.('[data-website-inquiry]')){
       const title=document.createElement('strong');title.textContent='Automatic form analytics';host.appendChild(title);
       const help=document.createElement('p');
@@ -1125,24 +942,45 @@
 
   function applyTheme(theme) {
     const root = document.documentElement;
-    const map = {
-      navy: '--web-navy',
-      navyDeep: '--web-navy-deep',
-      gold: '--web-gold',
-      goldStrong: '--web-gold-strong',
-      surface: '--web-surface', text: '--web-ink', muted: '--web-muted', fontFamily: '--web-font'
+    const strings = {
+      navy:'--web-navy', navyDeep:'--web-navy-deep', gold:'--web-gold', goldStrong:'--web-gold-strong',
+      surface:'--web-surface', text:'--web-ink', muted:'--web-muted', fontFamily:'--web-font',
+      surfaceElevated:'--web-surface-elevated', surfaceMuted:'--web-surface-muted',
+      borderColor:'--web-border-color', shadowSoft:'--web-shadow-soft', shadowStrong:'--web-shadow-strong'
     };
-    // The template's gradient end follows the selected primary color; it must
-    // not retain an uneditable royal-blue stop when the palette changes.
+    const pixels = {
+      borderRadius:'--web-radius', displaySize:'--web-display-size', h1Size:'--web-h1-size',
+      h2Size:'--web-h2-size', h3Size:'--web-h3-size', bodySize:'--web-body-size', smallSize:'--web-small-size',
+      sectionSpace:'--web-section-space', contentGap:'--web-content-gap', contentMaxWidth:'--web-content-max',
+      wideMaxWidth:'--web-wide-max', narrowMaxWidth:'--web-narrow-max', gutter:'--web-gutter',
+      cardRadius:'--web-card-radius', buttonRadius:'--web-button-radius', inputRadius:'--web-input-radius',
+      borderWidth:'--web-border-width', navHeight:'--web-nav-height'
+    };
+    const milliseconds = {
+      motionFastMs:'--web-motion-fast', motionStandardMs:'--web-motion-standard', motionSlowMs:'--web-motion-slow'
+    };
     if (theme?.navy) root.style.setProperty('--web-navy-royal', theme.navy);
     else root.style.removeProperty('--web-navy-royal');
-    Object.entries(map).forEach(([key, cssVar]) => {
+    Object.entries(strings).forEach(([key, cssVar]) => {
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
-    if (Number.isFinite(Number(theme?.borderRadius)) && Number(theme.borderRadius) >= 0)
-      root.style.setProperty('--web-radius', `${Number(theme.borderRadius)}px`);
-    else root.style.removeProperty('--web-radius');
+    Object.entries(pixels).forEach(([key, cssVar]) => {
+      const value=Number(theme?.[key]);
+      if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
+      else root.style.removeProperty(cssVar);
+    });
+    Object.entries(milliseconds).forEach(([key, cssVar]) => {
+      const value=Number(theme?.[key]);
+      if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}ms`);
+      else root.style.removeProperty(cssVar);
+    });
+    const lineHeight=Number(theme?.bodyLineHeight);
+    if(Number.isFinite(lineHeight) && lineHeight>0) root.style.setProperty('--web-body-line-height',String(lineHeight));
+    else root.style.removeProperty('--web-body-line-height');
+    const base=Number(theme?.fontSize);
+    if(Number.isFinite(base) && base>0) root.style.setProperty('--web-base-font-size',`${base}px`);
+    else root.style.removeProperty('--web-base-font-size');
   }
 
   function responsiveViewportWidth() {
@@ -1171,6 +1009,22 @@
       return aSpan - bSpan;
     });
     return candidates[0]?.key || null;
+  }
+
+  const RESPONSIVE_MOBILE_HEADER_GEOMETRY_FIELDS=[
+    'widthPercent','heightPx','offsetXPercent','offsetYPx',
+    'minWidthPx','maxWidthPx','minHeightPx','maxHeightPx',
+    'marginTop','marginBottom','marginLeft','marginRight'
+  ];
+
+  function responsiveShellChromeKind(model, el = null) {
+    const tag=String(model?.tag || el?.tagName || '').toLowerCase();
+    const classes=new Set(String(model?.className || el?.className || '').split(/\s+/).filter(Boolean));
+    if(model?.systemKey==='primary_navigation' || (tag==='nav' && classes.has('nav'))) return 'navigation';
+    if(model?.systemBinding==='business_name' ||
+       classes.has('brand') || classes.has('brand-wordmark') || classes.has('business-brand-banner')) return 'brand';
+    if(tag==='header' || classes.has('site-header')) return 'frame';
+    return null;
   }
 
   function canonicalResponsiveRole(model, el = null) {
@@ -1203,33 +1057,42 @@
     const explicit=responsive && typeof responsive==='object' ? responsive : {};
     const has=field=>Object.hasOwn(explicit,field);
     const role=canonicalResponsiveRole(model,el);
+    const fullBleedMedia=
+      role==='media' &&
+      (String(model?.className || '').split(/\s+/).includes('legend-recipe-hero-cinematic-media') ||
+       el?.classList?.contains('legend-recipe-hero-cinematic-media'));
 
     // Breakpoint values are authoritative when explicitly authored. Responsive
     // defaults only fill fields that are absent at the active breakpoint, so a
     // mobile edit never rewrites or masks desktop/base presentation.
     if(role==='shell'){
+      const mobileShellChrome=key==='mobile' && (
+        responsiveShellChromeKind(model,el) ||
+        el?.matches?.('.site-header,.brand,.brand-wordmark,.business-brand-banner,.nav') ||
+        el?.closest?.('.nav,.brand,.brand-wordmark,.business-brand-banner')
+      );
       if(key==='mobile'){
         if(!has('widthPercent')) delete style.widthPercent;
         if(!has('heightPx')) delete style.heightPx;
         if(!has('offsetXPercent')) style.offsetXPercent=0;
         if(!has('offsetYPx')) style.offsetYPx=0;
+        if(mobileShellChrome){
+          RESPONSIVE_MOBILE_HEADER_GEOMETRY_FIELDS.forEach(field=>delete style[field]);
+          style.offsetXPercent=0;
+          style.offsetYPx=0;
+        }
       }
       const brand=model?.systemBinding==='business_name' ||
         (SITE_KEY==='legend' && String(model?.tag || '').toLowerCase()==='strong' && String(model?.text || '').trim()==='LEGEND®');
       if(brand){
-        if(key==='mobile'){
-          if(!has('widthPercent')) delete style.widthPercent;
-          if(!has('offsetXPercent')) style.offsetXPercent=0;
-          if(!has('offsetYPx')) style.offsetYPx=0;
-        }
-        if(!has('fontScale')){
-          const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        const ceiling=key==='mobile' ? 1.35 : key==='tablet' ? 1.8 : 3.5;
+        if(key==='mobile' || !has('fontScale'))
           style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
-        }
       }
-      if(model?.systemKey==='primary_navigation' && !has('fontScale')){
+      if(model?.systemKey==='primary_navigation'){
         const ceiling=key==='mobile' ? 1 : key==='tablet' ? 1.15 : 1.6;
-        style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
+        if(key==='mobile' || !has('fontScale'))
+          style.fontScale=positiveNumber(style.fontScale) ? Math.min(ceiling,Number(style.fontScale)) : ceiling;
       }
       return style;
     }
@@ -1269,13 +1132,16 @@
         const ceiling=role==='heading' ? 1.35 : role==='kicker' ? 1.05 : role==='action' ? 1.05 : 1.15;
         style.fontScale=Math.min(ceiling,Number(style.fontScale));
       }
-      if(mediaRole){
+      if(mediaRole && !fullBleedMedia){
         if(!has('maxWidthPx')){
           const requestedMax=positiveNumber(style.maxWidthPx) ? Number(style.maxWidthPx) : 560;
           style.maxWidthPx=Math.min(560,requestedMax);
         }
         if(!has('maxHeightPx') && positiveNumber(style.maxHeightPx))
           style.maxHeightPx=Math.min(520,Number(style.maxHeightPx));
+      } else if(fullBleedMedia){
+        if(!has('maxWidthPx')) delete style.maxWidthPx;
+        if(!has('maxHeightPx')) delete style.maxHeightPx;
       }
     } else if(key==='tablet'){
       if(!has('offsetXPercent')) style.offsetXPercent=0;
@@ -1308,6 +1174,11 @@
     const key = activeBreakpoint();
     const responsive = key && model?.breakpointLayouts && typeof model.breakpointLayouts[key] === 'object' ? model.breakpointLayouts[key] : null;
     const layout=responsive ? { ...base, ...responsive } : { ...base };
+    if(key==='mobile' && (
+      responsiveShellChromeKind(model,el)==='frame' ||
+      responsiveShellChromeKind(model,el)==='navigation' ||
+      el?.matches?.('.site-header,.nav')
+    )) return {mode:'free',direction:'column'};
     if(!key || !canonicalResponsiveBodyElement(el)) return layout;
     const explicit=responsive && typeof responsive==='object' ? responsive : {};
     const has=field=>Object.hasOwn(explicit,field);
@@ -1422,15 +1293,18 @@
   }
 
   function applyBreakpointPreview() {
-    if (!editorPreview) return;
     const breakpoint=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
-    if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
-    else {
-      const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
-      editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+    if(editorPreview){
+      if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
+      else {
+        const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
+        editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+      }
     }
+    // Hidden whole-site audit frames deliberately do not build the editor UI,
+    // but they still must reapply canonical breakpoint styles before measuring.
     refreshResponsiveComposition();
-    syncEditorControls();
+    if(editorPreview) syncEditorControls();
   }
   function applyStyle(el, style) {
     if (!el) return;
@@ -2076,14 +1950,10 @@
     controls.forEach((control,index)=>{
       const key=safeId(control.dataset.cmsFieldKey || control.getAttribute('name') || control.id || (control.matches('button[type="submit"]')?'submit':'field-'+index));
       if(!key) return;
-      if(String(node.systemKey || '').startsWith('protect_runtime_form:') && !Object.hasOwn(presentations,key)) {
-        presentations[key]=normalizeControlPresentation(null);
-        if(editorMode) { templateRepairPending=true; dirty=true; }
-      }
       control.dataset.cmsFieldKey=key;
       control.dataset.cmsSignalOnly='true';
       control.dataset.cmsEditable='true';
-      const presentation=presentations[key];
+      const presentation=presentations[key] || normalizeControlPresentation(null);
       if(presentation){
         applyStyle(control,effectiveStyle(presentation));
         applyLayout(control,effectiveLayout(presentation));
@@ -2509,6 +2379,11 @@
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
         el.alt = node.alt || '';
+        el.decoding='async';
+        const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
+        const priorityMedia=classes.has('legend-recipe-hero-media') || classes.has('legend-recipe-hero-cinematic-media');
+        el.loading=priorityMedia ? 'eager' : 'lazy';
+        if(priorityMedia) el.setAttribute('fetchpriority','high');
       } else if (node.type === 'video') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
@@ -2775,8 +2650,669 @@
       'revision='+(revision ?? 'unsaved'),
       'selected='+(selectedId || 'none'),
       'canonicalActions='+actionCount,
+      'browserTools='+websiteStudioWebMcpStatus,
       'externalAiApi=false'
     ].join(' · ');
+  }
+
+  function recordStudioPerformance(entry) {
+    studioPerformance.push(entry);
+    if(studioPerformance.length>200) studioPerformance.shift();
+  }
+
+  async function creativeWorkspaceRequest(path,{method='GET',body=null,query=null}={}) {
+    const url=new URL(API_BASE+'/api/website-content/'+path);
+    if(query) for(const [key,value] of Object.entries(query)) if(value!=null) url.searchParams.set(key,String(value));
+    if(method==='GET') url.searchParams.set('ticket',editorTicket);
+    const requestText=body?JSON.stringify(body):null;
+    const started=typeof performance?.now==='function'?performance.now():Date.now();
+    try{
+      const response=await fetch(url,{method,cache:'no-store',headers:body?{'Content-Type':'application/json'}:undefined,body:requestText});
+      const payload=await response.json().catch(()=>({}));
+      const finished=typeof performance?.now==='function'?performance.now():Date.now();
+      recordStudioPerformance({
+        path,method,status:response.status,
+        durationMs:Math.round((finished-started)*10)/10,
+        requestChars:requestText?.length || 0,
+        responseChars:JSON.stringify(payload || {}).length,
+        operationCount:Array.isArray(body?.operations)?body.operations.length:undefined,
+        changedScopeCount:Array.isArray(payload?.changedScopes)?payload.changedScopes.length:undefined
+      });
+      if(!response.ok){
+        const error=new Error(payload.message || payload.error || ('Website Studio request failed ('+response.status+').'));
+        error.status=response.status; error.payload=payload; throw error;
+      }
+      return payload;
+    }catch(error){
+      if(!studioPerformance.length || studioPerformance.at(-1)?.path!==path){
+        const finished=typeof performance?.now==='function'?performance.now():Date.now();
+        recordStudioPerformance({path,method,status:error?.status || 0,durationMs:Math.round((finished-started)*10)/10,requestChars:requestText?.length || 0,responseChars:0});
+      }
+      throw error;
+    }
+  }
+
+  function directCompositionChildren(parent,exclude=null) {
+    return [...(parent?.children || [])].filter(child=>
+      child!==exclude && child?.dataset?.cmsCompositionId);
+  }
+
+  function insertCompositionElementAt(parent,element,index) {
+    if(!parent || !element) return false;
+    const siblings=directCompositionChildren(parent,element);
+    const targetIndex=Math.max(0,Math.min(Number.isFinite(Number(index))?Number(index):siblings.length,siblings.length));
+    parent.insertBefore(element,siblings[targetIndex] || null);
+    return true;
+  }
+
+  function renderPageStructuralMutationIncrementally(operation,route) {
+    if(pageUsesSystemTemplate()) return false;
+    const main=document.querySelector('main');
+    if(!main) return false;
+
+    if(operation.type==='removeNode'){
+      const el=findEditableElement(operation.nodeId);
+      if(!el) return true;
+      if(selected && (selected===el || el.contains(selected))) setSelected(null);
+      el.remove();
+      return true;
+    }
+
+    if(operation.type==='moveNode'){
+      const targetRoute=operation.pagePath || route;
+      let el=findEditableElement(operation.nodeId);
+      if(targetRoute!==route){
+        if(el){
+          if(selected && (selected===el || el.contains(selected))) setSelected(null);
+          el.remove();
+        }
+        return true;
+      }
+
+      const model=compositionNode(operation.nodeId);
+      const parent=operation.parentId ? findEditableElement(operation.parentId) : main;
+      if(!model || !parent) return false;
+      el ||= buildCompositionNode(model);
+      if(!el) return false;
+      insertCompositionElementAt(parent,el,operation.index);
+      walkComposition([model],node=>applyCompositionNode(findEditableElement(node.id),node));
+      return true;
+    }
+
+    if(operation.type==='insertNode' || operation.type==='insertRecipe' || operation.type==='insertCapability'){
+      const targetRoute=operation.pagePath || route;
+      if(targetRoute!==route) return true;
+      const id=operation.type==='insertNode' ? operation.node?.id : operation.instanceKey;
+      if(!id) return false;
+      const model=compositionNode(id);
+      const parent=operation.parentId ? findEditableElement(operation.parentId) : main;
+      if(!model || !parent) return false;
+
+      let buildModel=model;
+      if(operation.type==='insertNode' && operation.node && (!operation.node.children || operation.node.children.length===0))
+        buildModel={...model,children:[]};
+
+      const existing=findEditableElement(id);
+      const el=existing || buildCompositionNode(buildModel);
+      if(!el) return false;
+      insertCompositionElementAt(parent,el,operation.index);
+      walkComposition([buildModel],node=>applyCompositionNode(findEditableElement(node.id),node));
+      return true;
+    }
+
+    return false;
+  }
+
+  function applyCreativeMutationVisuals(operations,payload,selectedId=null) {
+    const changes=payload?.changes || {};
+    const changedScopes=Array.isArray(payload?.changedScopes)?payload.changedScopes:[];
+    const route=currentPageRoute();
+    const currentPageChanged=changedScopes.some(scope=>scope===route || String(scope).startsWith(route+'#')) || !!changes.pages?.[route];
+    const shellChanged=changedScopes.some(scope=>String(scope).startsWith('@shell/')) || !!changes.shellHeader || !!changes.shellFooter;
+    const componentChanged=changedScopes.some(scope=>String(scope).startsWith('@component/')) ||
+      Object.keys(changes.reusableComponents || {}).length>0 || (changes.removedComponents || []).length>0;
+    let renderPage=false, renderShell=false, refreshReusable=false, metadata=false, responsive=false;
+    let pageCatalogChanged=false;
+
+    if(!Array.isArray(operations)){
+      renderPage=!!changes.pages?.[route];
+      renderShell=shellChanged;
+      refreshReusable=componentChanged;
+      metadata=renderPage;
+      responsive=!!changes.theme || !!changes.breakpoints;
+      pageCatalogChanged=Object.keys(changes.pages || {}).length>0 || (changes.removedPages || []).length>0;
+      if(changes.theme) applyTheme(documentState.theme);
+      if(changes.faviconChanged===true) applyFavicon(documentState.faviconImageDataUrl);
+      if(changes.store) applyStoreNavigation();
+    }else{
+      for(const operation of operations){
+        switch(operation?.type){
+          case 'setTheme':
+            applyTheme(documentState.theme);
+            responsive=true;
+            break;
+          case 'setFavicon':
+            applyFavicon(documentState.faviconImageDataUrl);
+            break;
+          case 'setBreakpoints':
+            responsive=true;
+            break;
+          case 'setStorePresentation':
+            applyStoreNavigation();
+            break;
+          case 'replaceShellHeader':
+          case 'replaceShellFooter':
+            renderShell=true;
+            break;
+          case 'upsertReusable':
+          case 'removeReusable':
+            refreshReusable=true;
+            break;
+          case 'createPage':
+          case 'removePage':
+          case 'updatePage':
+            if(operation.pagePath===route || operation.targetPath===route) {
+              renderPage=true;
+              metadata=true;
+            }
+            break;
+          case 'movePageRoute':
+            if(operation.pagePath===route && operation.targetPath && documentState.pages?.[operation.targetPath]){
+              activeEditorRoute=operation.targetPath;
+              pageKey=operation.targetPath==='/'?'home':operation.targetPath.slice(1).replace(/\//g,'-');
+              const url=editorUrlForRoute(operation.targetPath);
+              if(url) writeEditorHistory('replaceState',url,operation.targetPath);
+              renderPage=true;
+              metadata=true;
+              refreshPageSelector();
+            }else if(operation.targetPath===route){
+              renderPage=true;
+              metadata=true;
+            }
+            break;
+          case 'insertNode':
+          case 'insertRecipe':
+          case 'insertCapability':
+          case 'removeNode':
+          case 'moveNode':
+            if(shellChanged && !currentPageChanged) {
+              renderShell=true;
+              break;
+            }
+            if(componentChanged && !currentPageChanged) {
+              refreshReusable=true;
+              break;
+            }
+            if(currentPageChanged && !renderPageStructuralMutationIncrementally(operation,route))
+              renderPage=true;
+            break;
+          case 'replaceNode':
+          case 'setApprovedCapability': {
+            if(shellChanged && !currentPageChanged) {
+              renderShell=true;
+              break;
+            }
+            if(componentChanged && !currentPageChanged) {
+              refreshReusable=true;
+              break;
+            }
+            if(!currentPageChanged) break;
+            const id=operation.nodeId;
+            const model=id ? compositionNode(id) : null;
+            const el=id ? findEditableElement(id) : null;
+            if(pageUsesSystemTemplate() || !model || !el) {
+              renderPage=true;
+              break;
+            }
+            const replacement=buildCompositionNode(model);
+            if(!replacement){
+              renderPage=true;
+              break;
+            }
+            el.replaceWith(replacement);
+            break;
+          }
+        }
+      }
+    }
+
+    if(renderShell) renderCanonicalShell();
+    if(renderPage) renderCanonicalCompositionPage();
+    if(refreshReusable) refreshReusableInstances();
+    if(metadata){
+      const page=pageState();
+      document.title=page.title ?? originalTitle;
+      const description=document.querySelector('meta[name="description"]');
+      if(description) description.setAttribute('content',page.description ?? originalDescription);
+      syncPageControls();
+    }
+    if(responsive) refreshResponsiveComposition();
+    if(pageCatalogChanged){
+      applyBusinessPageNavigation();
+      refreshPageSelector();
+      renderPageManager();
+    }
+    preservePreviewNavigation();
+    if(selectedId) setSelected(findEditableElement(selectedId));
+    else updateDirectCanvasUi();
+  }
+
+  function mergeCreativeMutationDelta(payload,operations=null) {
+    const selectedId=selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null;
+    documentState=applyCreativeMutationDeltaToState(documentState,payload);
+    persistedDocumentState=cloneCanonicalValue(documentState);
+    revision=payload?.revision ?? revision;
+    namedDrafts=payload?.drafts || namedDrafts;
+    dirty=false;
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    sourceEditorBaseNode=null;
+    sourceEditorBaseFingerprint=null;
+    applyCreativeMutationVisuals(operations,payload,selectedId);
+    refreshBrowserAgentWorkspace();
+    return payload;
+  }
+
+  async function flushLocalCreativeEdits() {
+    if(!dirty) return true;
+    if(saving) throw new Error('Website Studio is already saving local edits.');
+    const saved=await save(false);
+    if(!saved || dirty) throw new Error('Save local Canvas edits before applying an agent mutation.');
+    return true;
+  }
+
+  async function creativeApplyMutationBatch(operations,options={}) {
+    if(!Array.isArray(operations) || !operations.length) throw new Error('At least one website mutation is required.');
+    if(options?.flushLocal!==false) await flushLocalCreativeEdits();
+    const beforeState=persistedDocumentState || documentState;
+    const payload=await creativeWorkspaceRequest('manage/mutations',{
+      method:'POST',
+      body:{
+        ticket:editorTicket,
+        expectedRevision:revision,
+        operations,
+        draftId:options?.draftId || null,
+        draftName:options?.draftName || null
+      }
+    });
+    const result=mergeCreativeMutationDelta(payload,operations);
+    if(!suppressHistoryCapture && beforeState && persistedDocumentState){
+      const undo=buildCreativeMutationOperations(persistedDocumentState,beforeState);
+      const redo=buildCreativeMutationOperations(beforeState,persistedDocumentState);
+      pushHistoryEntry(undo,redo);
+    }
+    return result;
+  }
+
+  async function creativeApplyDesignPlan(plan) {
+    if(!plan || typeof plan!=='object') throw new Error('A website design plan is required.');
+    await flushLocalCreativeEdits();
+    const beforeState=persistedDocumentState || documentState;
+    const payload=await creativeWorkspaceRequest('manage/design-plan',{
+      method:'POST',
+      body:{ticket:editorTicket,expectedRevision:revision,plan}
+    });
+    const result=mergeCreativeMutationDelta(payload,null);
+    if(!suppressHistoryCapture && beforeState && persistedDocumentState){
+      const undo=buildCreativeMutationOperations(persistedDocumentState,beforeState);
+      const redo=buildCreativeMutationOperations(beforeState,persistedDocumentState);
+      pushHistoryEntry(undo,redo);
+    }
+    return result;
+  }
+
+  async function runWholeSitePreflight() {
+    if(sourceEditorDirty)
+      throw new Error('Apply or discard Selected Source changes before running whole-site preflight.');
+    await flushLocalCreativeEdits();
+    const checkedRevision=revision;
+    const [quality,responsive,conversion]=await Promise.all([
+      creativeWorkspaceRequest('manage/agent/design-quality'),
+      runSiteResponsiveQualityAudit(),
+      creativeWorkspaceRequest('manage/agent/conversion-readiness')
+    ]);
+    const responsiveRevisions=(Array.isArray(responsive)?responsive:[])
+      .map(page=>page?.revision)
+      .filter(value=>value!=null);
+    const evidenceMatches =
+      revision===checkedRevision &&
+      quality?.revision===checkedRevision &&
+      conversion?.revision===checkedRevision &&
+      responsiveRevisions.length===(Array.isArray(responsive)?responsive.length:0) &&
+      responsiveRevisions.every(value=>value===checkedRevision);
+    if(!evidenceMatches)
+      throw new Error('Website revision changed during preflight. Run preflight again on the current draft.');
+    return {revision:checkedRevision,quality,responsive,conversion};
+  }
+
+  function renderWholeSitePreflight(payload) {
+    const savedHost=document.getElementById('legend-cms-quality-saved');
+    const liveHost=document.getElementById('legend-cms-quality-live');
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    const structural=Array.isArray(payload?.quality?.structural?.checks)?payload.quality.structural.checks:[];
+    const design=Array.isArray(payload?.quality?.design?.checks)?payload.quality.design.checks:[];
+    const media=Array.isArray(payload?.quality?.media?.checks)?payload.quality.media.checks:[];
+    const delivery=[];
+    const conversion=payload?.conversion || {};
+    const metaDestination=conversion?.destinations?.meta || {};
+    const openAiDestination=conversion?.destinations?.openai || {};
+    const metaConfigured=metaDestination?.browserPixelConfigured===true || metaDestination?.serverCapiConfigured===true;
+    const openAiConfigured=openAiDestination?.browserPixelConfigured===true ||
+      openAiDestination?.serverConversionsConfigured===true || openAiDestination?.accountApproved===true;
+    if(conversion?.currentDraftIsPublished===false && conversion?.publishedRevision!=null)
+      delivery.push({
+        severity:'info',
+        code:'conversion_evidence_previous_revision',
+        message:`Published delivery evidence is from revision ${conversion.publishedRevision}; this draft is revision ${payload?.revision}.`
+      });
+    if(conversion?.measurementEvidenceError)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_measurement_evidence_unavailable',
+        message:'Canonical provider delivery evidence could not be read. Do not infer delivery health from configuration alone.'
+      });
+    if(metaConfigured && metaDestination?.serverCapiConfigured!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_meta_server_delivery_not_configured',
+        message:'Meta is partially configured but canonical server conversion delivery is not configured.'
+      });
+    if(openAiConfigured && openAiDestination?.accountApproved!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_account_not_approved',
+        message:'OpenAI Ads is connected in part, but the current advertising account is not approved.'
+      });
+    if(openAiConfigured && openAiDestination?.serverConversionsConfigured!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_server_delivery_not_configured',
+        message:'OpenAI Ads is partially configured but canonical server conversion delivery is not configured.'
+      });
+    if(Number(conversion?.published?.problemRows||0)>0)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_delivery_problem',
+        message:`${conversion.published.problemRows} published conversion mapping or delivery row(s) need attention.`
+      });
+    if(Number(conversion?.published?.inFlightRows||0)>0)
+      delivery.push({
+        severity:'info',
+        code:'conversion_delivery_in_flight',
+        message:`${conversion.published.inFlightRows} published conversion mapping or delivery row(s) are pending, projected, or retrying.`
+      });
+    if(conversion?.currentDraftIsPublished===true &&
+       Number(conversion?.published?.evidenceRows||0)>0 &&
+       Number(conversion?.published?.analyticsObserved||0)===0)
+      delivery.push({
+        severity:'info',
+        code:'conversion_live_evidence_not_observed',
+        message:'The current published conversion map has no canonical event observations in the 30-day evidence window. Configuration readiness is not live-delivery proof.'
+      });
+    const measurement=conversion?.measurementEvidence || null;
+    if(measurement && (metaConfigured || openAiConfigured) && measurement.receivingEvents===false)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_first_party_events_not_received',
+        message:'No canonical first-party analytics events were observed for this advertising owner in the measurement window.'
+      });
+    if(measurement?.meta && (Number(measurement.meta.retrying||0)>0 || Number(measurement.meta.failed||0)>0))
+      delivery.push({
+        severity:'warning',
+        code:'conversion_meta_delivery_health',
+        message:`Meta server delivery has ${Number(measurement.meta.retrying||0)} retrying and ${Number(measurement.meta.failed||0)} failed event(s).`
+      });
+    if(measurement?.openAi && (Number(measurement.openAi.retrying||0)>0 || Number(measurement.openAi.failed||0)>0))
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_delivery_health',
+        message:`OpenAI server delivery has ${Number(measurement.openAi.retrying||0)} retrying and ${Number(measurement.openAi.failed||0)} failed event(s).`
+      });
+    const serverChecks=[...structural,...design,...media,...delivery];
+    renderQualityChecks(savedHost,serverChecks,'No saved structural, design, conversion, or delivery issues detected.');
+
+    const responsiveChecks=[];
+    for(const page of Array.isArray(payload?.responsive)?payload.responsive:[])
+      for(const breakpoint of Array.isArray(page?.results)?page.results:[])
+        for(const check of Array.isArray(breakpoint?.checks)?breakpoint.checks:[])
+          responsiveChecks.push({
+            ...check,
+            message:`${page.route} · ${breakpoint.label || breakpoint.key} · ${check.message || check.code || 'Responsive observation'}`
+          });
+    renderQualityChecks(liveHost,responsiveChecks,'No rendered responsive issues detected across active pages and breakpoints.');
+
+    const serverErrors=serverChecks.filter(check=>check.severity==='error').length;
+    const serverWarnings=serverChecks.filter(check=>check.severity==='warning').length;
+    if(savedMeta) savedMeta.textContent=
+      `Whole-site preflight · revision ${payload?.revision ?? revision} · ${serverErrors} errors · ${serverWarnings} warnings · ${payload?.quality?.design?.conversionPaths?.length || 0} conversion paths`;
+    if(liveMeta) liveMeta.textContent=
+      `Rendered responsive preflight · ${Array.isArray(payload?.responsive)?payload.responsive.length:0} active pages · ${responsiveChecks.length} observation${responsiveChecks.length===1?'':'s'}`;
+  }
+
+  async function runWholeSitePreflightAndRender() {
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    if(savedMeta) savedMeta.textContent='Running saved structural, design, conversion, and delivery checks…';
+    if(liveMeta) liveMeta.textContent='Rendering every active page across canonical breakpoints…';
+    try{
+      const result=await runWholeSitePreflight();
+      renderWholeSitePreflight(result);
+      return result;
+    }catch(error){
+      renderQualityChecks(document.getElementById('legend-cms-quality-saved'),
+        [{severity:'error',message:error?.payload?.message || error?.message || 'Whole-site preflight failed.'}],'');
+      if(savedMeta) savedMeta.textContent='Whole-site preflight unavailable';
+      throw error;
+    }
+  }
+
+  async function installWebsiteStudioWebMcpTools() {
+    if(!editorMode || websiteStudioWebMcpController) return;
+
+    const modelContext=document.modelContext;
+    if(!modelContext || typeof modelContext.registerTool!=='function'){
+      if(websiteStudioWebMcpStatus!=='waiting_for_transport'){
+        websiteStudioWebMcpStatus='waiting_for_transport';
+        window.addEventListener('legend:model-context-ready',()=>void installWebsiteStudioWebMcpTools(),{once:true});
+        refreshBrowserAgentWorkspace();
+      }
+      return;
+    }
+
+    const api=window.LEGEND_WEBSITE_STUDIO_AGENT;
+    if(!api){
+      websiteStudioWebMcpStatus='unavailable';
+      refreshBrowserAgentWorkspace();
+      return;
+    }
+
+    const controller=new AbortController();
+    websiteStudioWebMcpController=controller;
+    window.addEventListener('pagehide',()=>controller.abort(),{once:true});
+
+    const objectSchema=(properties={},required=[])=>({
+      type:'object',
+      properties,
+      required,
+      additionalProperties:false
+    });
+    const tools=[
+      {
+        name:'legend_website_workspace',
+        description:'Read the authorized Website Studio workspace efficiently. Start with summary, then recipes, and fetch page/node/media/signal/conversion detail only when needed. Use conversion_trace to follow bounded recent published canonical events through CRM and provider receipts without PII.',
+        readOnly:true,
+        schema:objectSchema({
+          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','business_data','signal_catalog','conversion_health','conversion_trace']},
+          page:{type:'string',maxLength:2048},
+          id:{type:'string',maxLength:240},
+          q:{type:'string',maxLength:200},
+          analyticsEventId:{type:'string',pattern:'^[0-9]{1,19}$'},
+          eventName:{type:'string',maxLength:160},
+          kind:{type:'string',enum:['all','image','video']},
+          take:{type:'integer',minimum:1,maximum:24}
+        },['operation']),
+        execute:async args=>{
+          switch(args?.operation){
+            case 'summary': return await api.getSiteSummary();
+            case 'recipes': return await api.listRecipes();
+            case 'page_outline': return await api.getPageOutline(args.page || undefined);
+            case 'node': return await api.getNode(args.id);
+            case 'media': return await api.listMedia({q:args.q || undefined,kind:args.kind || 'all',take:args.take || 12,designMetadata:true});
+            case 'business_data': return await api.listBusinessData();
+            case 'signal_catalog': return await api.getSignalCatalog();
+            case 'conversion_health': return await api.inspectConversionHealth();
+            case 'conversion_trace': return await api.traceConversions({
+              take:args.take || 20,
+              analyticsEventId:args.analyticsEventId || undefined,
+              eventName:args.eventName || undefined,
+              page:args.page || undefined
+            });
+            default: throw new Error('Choose a supported Website Studio read operation.');
+          }
+        }
+      },
+      {
+        name:'legend_website_apply_design_plan',
+        description:'Apply one whole-site WebsiteDesignPlan through the canonical typed mutation authority. Use this for the main build instead of editing page-by-page.',
+        readOnly:false,
+        schema:objectSchema({plan:{type:'object'}},['plan']),
+        execute:args=>api.applyDesignPlan(args.plan)
+      },
+      {
+        name:'legend_website_apply_mutations',
+        description:'Apply a bounded batch of canonical Website Studio mutations for targeted refinement after the main design plan.',
+        readOnly:false,
+        schema:objectSchema({
+          operations:{type:'array',minItems:1,maxItems:400,items:{type:'object'}}
+        },['operations']),
+        execute:args=>api.applyMutationBatch(args.operations)
+      },
+      {
+        name:'legend_website_set_signal_mappings',
+        description:'Attach approved custom intent mappings through the canonical Analytics authority and immediately run private no-dispatch validation for each saved mapping. Never use this for verified server outcomes.',
+        readOnly:false,
+        schema:objectSchema({
+          pagePath:{type:'string',maxLength:2048},
+          elementId:{type:'string',maxLength:240},
+          fieldKey:{type:'string',maxLength:160},
+          signals:{type:'array',maxItems:8,items:{type:'object'}}
+        },['pagePath','elementId','signals']),
+        execute:async args=>{
+          const saved=await api.setSignalMappings(args);
+          const privateTests=await Promise.all(
+            (Array.isArray(args?.signals)?args.signals:[])
+              .filter(signal=>signal?.id)
+              .map(signal=>api.testSignalMapping({
+                pagePath:args.pagePath,
+                elementId:args.elementId,
+                fieldKey:args.fieldKey || null,
+                bindingId:signal.id
+              }))
+          );
+          return {saved,privateTests};
+        }
+      },
+      {
+        name:'legend_website_import_image',
+        description:'Copy one public image into this website owner’s canonical media library through the bounded safe media-ingress authority.',
+        readOnly:false,
+        schema:objectSchema({sourceUrl:{type:'string',maxLength:4096}},['sourceUrl']),
+        execute:args=>api.importImage(args.sourceUrl)
+      },
+      {
+        name:'legend_website_preflight',
+        description:'Run the final exact-revision whole-site preflight: saved structural/design/media quality, every active page across breakpoints, and canonical conversion/delivery readiness.',
+        readOnly:false,
+        schema:objectSchema(),
+        execute:()=>api.runPreflight()
+      }
+    ];
+
+    const registered=[];
+    for(const tool of tools){
+      if(controller.signal.aborted) break;
+      try{
+        await modelContext.registerTool({
+          name:tool.name,
+          description:tool.description,
+          inputSchema:tool.schema,
+          annotations:{
+            readOnlyHint:tool.readOnly,
+            consequentialHint:!tool.readOnly,
+            untrustedContentHint:true
+          },
+          execute:async(args,options)=>{
+            if(options?.signal?.aborted) throw new DOMException('Aborted','AbortError');
+            return await tool.execute(args || {});
+          }
+        },{signal:controller.signal});
+        registered.push(tool.name);
+      }catch{}
+    }
+
+    websiteStudioWebMcpStatus=registered.length===tools.length
+      ? 'connected'
+      : registered.length>0 ? 'partial' : 'unavailable';
+    refreshBrowserAgentWorkspace();
+  }
+
+  function installCreativeAgentWorkspaceApi() {
+    if(!editorMode) return;
+    const api={
+      schema:'legend-creative-browser/v1',
+      getSiteSummary:()=>creativeWorkspaceRequest('manage/agent/summary'),
+      getPageOutline:page=>creativeWorkspaceRequest('manage/agent/page-outline',{query:{page:page || currentPageRoute()}}),
+      getNode:id=>creativeWorkspaceRequest('manage/agent/node',{query:{id}}),
+      listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
+      getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
+      getSignalCatalog:()=>creativeWorkspaceRequest('manage/signal-catalog'),
+      setSignalMappings:updateSignalMappings,
+      testSignalMapping:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
+        creativeWorkspaceRequest('manage/signals/test',{
+          method:'POST',
+          body:{ticket:editorTicket,expectedRevision:revision,pagePath,elementId,bindingId,fieldKey}
+        }),
+      getSignalHealth:({pagePath=currentPageRoute(),elementId,bindingId,fieldKey=null}={})=>
+        creativeWorkspaceRequest('manage/signals/health',{query:{pagePath,elementId,bindingId,fieldKey}}),
+      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query:{...query,designMetadata:query.designMetadata!==false}}),
+      uploadMedia:async file=>{
+        const asset=await uploadMedia(file);
+        if(!asset) throw new Error('Website media upload failed.');
+        return asset;
+      },
+      importImage:url=>creativeWorkspaceRequest('manage/media/import',{
+        method:'POST',
+        body:{ticket:editorTicket,sourceUrl:String(url || '')}
+      }),
+      listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
+      applyMutationBatch:creativeApplyMutationBatch,
+      applyDesignPlan:creativeApplyDesignPlan,
+      runQuality:runWholeSitePreflight,
+      runResponsiveQuality:runResponsiveQualityAudit,
+      runSiteResponsiveQuality:runSiteResponsiveQualityAudit,
+      runPreflight:runWholeSitePreflight,
+      planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
+      applySafeQualityRepairs:async()=>{
+        const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
+        const operations=Array.isArray(plan?.operations)?plan.operations:[];
+        if(!operations.length) return {applied:false,repairs:plan?.repairs || [],revision};
+        const result=await creativeApplyMutationBatch(operations);
+        return {applied:true,repairs:plan?.repairs || [],result};
+      },
+      inspectConversionPath:async()=>{
+        const readiness=await creativeWorkspaceRequest('manage/agent/conversion-readiness');
+        return readiness?.draft?.conversionPaths || [];
+      },
+      inspectConversionHealth:()=>creativeWorkspaceRequest('manage/agent/conversion-readiness'),
+      traceConversions:({take=20,analyticsEventId=null,eventName=null,page=null}={})=>creativeWorkspaceRequest('manage/agent/conversion-trace',{
+        query:{take,analyticsEventId:analyticsEventId || undefined,eventName:eventName || undefined,page:page || undefined}
+      }),
+      current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()}),
+      performance:()=>studioPerformance.map(value=>({...value}))
+    };
+    Object.defineProperty(window,'LEGEND_WEBSITE_STUDIO_AGENT',{value:Object.freeze(api),configurable:true});
+    void installWebsiteStudioWebMcpTools();
   }
 
   function openBrowserAgentSource(scope='site') {
@@ -3133,7 +3669,15 @@
         };
         parent.children ||= [];
         parent.children.push(instance);
-        renderCanonicalCompositionPage();
+        const insertIndex=parent.children.length-1;
+        if(!renderPageStructuralMutationIncrementally({
+          type:'insertNode',
+          scope:'page',
+          pagePath:currentPageRoute(),
+          parentId,
+          index:insertIndex,
+          node:instance
+        },currentPageRoute())) renderCanonicalCompositionPage();
         setSelected(findEditableElement(id));
         markDirty();
         renderReusableComponents();
@@ -3333,23 +3877,6 @@
       renderCanonicalShell();
       const page=pageState();
       if(pageUsesSystemTemplate(page)){
-        const liveRuntime=document.querySelector('form[data-form-key]:not([data-website-inquiry])');
-        if(liveRuntime && !containsProtectedRuntimeForm(page.composition)){
-          // Repair early v3 drafts that flattened an executable form into generic
-          // content. Re-materialize presentation from the still-mounted server
-          // template, while the form execution stays outside WebsiteContentDocument.
-          const previous=new Map();
-          walkComposition(page.composition || [],node=>previous.set(node.id,node));
-          page.composition=materializeCurrentPageComposition();
-          walkComposition(page.composition,node=>{
-            const saved=previous.get(node.id);
-            if(!saved) return;
-            for(const key of ['text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations'])
-              if(saved[key] != null) node[key]=cloneCanonicalValue(saved[key]);
-          });
-          templateRepairPending=true;
-          dirty=true;
-        }
         applyTemplateBackedCompositionPage();
       }else{
         renderCanonicalCompositionPage();
@@ -3394,6 +3921,11 @@
 
   function bindBusiness(payload) {
     updateCollectionData(payload);
+    if(SITE_KEY==='business' && Array.isArray(payload?.dataCatalog)){
+      managementPayload ||= {};
+      managementPayload.dataCatalog=payload.dataCatalog;
+      fullDataCatalogLoaded=true;
+    }
     const business = payload.business;
     if (SITE_KEY !== 'business') return;
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
@@ -3594,6 +4126,32 @@
     return page;
   }
 
+  function credentialFreeEditorUrl(value) {
+    const url=value instanceof URL ? new URL(value.toString()) : new URL(String(value),location.origin);
+    url.searchParams.delete('legendEdit');
+    url.searchParams.delete('legendMaterialize');
+    url.searchParams.delete('legendAudit');
+    return url;
+  }
+
+  function editorHistoryState(route=currentPageRoute()) {
+    const prior=history.state && typeof history.state==='object' ? history.state : {};
+    return {...prior,legendStudioTicket:editorTicket,legendStudioRoute:route};
+  }
+
+  function writeEditorHistory(method,url,route=currentPageRoute()) {
+    const safe=credentialFreeEditorUrl(url);
+    history[method](editorHistoryState(route),'',safe.toString());
+  }
+
+  function concealEditorTicketFromDocumentUrl() {
+    if(!editorMode || !editorTicket) return;
+    const current=new URL(location.href);
+    if(!current.searchParams.has('legendEdit') &&
+       history.state?.legendStudioTicket===editorTicket) return;
+    writeEditorHistory('replaceState',current,currentPageRoute());
+  }
+
   function editorUrlForRoute(route, materialize = false) {
     route=canonicalSiteRoute(route); if(!route) return null;
     const entry=websitePageEntries(true).find(value=>value.route===route);
@@ -3612,7 +4170,7 @@
     return url;
   }
 
-  async function navigateToEditorPage(route) {
+  async function navigateToEditorPage(route,{replaceHistory=false}={}) {
     if (route === '__store__') { openStorePreview(); return; }
     closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
@@ -3623,6 +4181,34 @@
       showPanel('source'); return;
     }
     if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+
+    // Canonical v3 Business pages are already loaded in the one site graph.
+    // Switching pages is therefore a local workspace operation, not another
+    // /manage bootstrap. Protect keeps navigation reloads where the server must
+    // mount a route-specific executable runtime/template.
+    if(editorMode && SITE_KEY==='business' && documentState.pages?.[route]){
+      activeEditorRoute=route;
+      pageKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
+      setSelected(null);
+      sourceEditorDirty=false;
+      sourceEditorBaseNode=null;
+      sourceEditorBaseFingerprint=null;
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
+      applyDocument(documentState);
+      refreshPageSelector();
+      renderPageManager();
+      syncPageControls();
+      preservePreviewNavigation();
+      const url=editorUrlForRoute(route);
+      if(url){
+        const method=replaceHistory?'replaceState':'pushState';
+        writeEditorHistory(method,url,route);
+      }
+      refreshBrowserAgentWorkspace();
+      return;
+    }
+
     const url=editorUrlForRoute(route);
     if(url) location.assign(url.toString());
   }
@@ -3662,6 +4248,45 @@
       window.addEventListener('message',onMessage);
       document.body.appendChild(frame);
     });
+  }
+
+  async function requestResponsiveAuditPage(route) {
+    const url=editorUrlForRoute(route);
+    if(!url) throw new Error('Unable to resolve page '+route+' for responsive quality.');
+    url.searchParams.set('legendAudit','1');
+    return await new Promise((resolve,reject)=>{
+      const frame=document.createElement('iframe');
+      frame.setAttribute('aria-hidden','true');
+      frame.setAttribute('tabindex','-1');
+      frame.style.cssText='position:fixed;left:-100000px;top:0;width:1440px;height:1200px;border:0;visibility:hidden;pointer-events:none;';
+      frame.src=url.toString();
+      const timeout=setTimeout(()=>finish(new Error('Timed out while auditing '+route+'.')),30000);
+      const onMessage=event=>{
+        if(event.origin!==location.origin || event.source!==frame.contentWindow) return;
+        if(event.data?.type!=='legend-site-responsive-audit') return;
+        if(normalizePageRoute(event.data.route)!==route) return;
+        finish(null,{
+          route,
+          revision:event.data.revision ?? null,
+          results:Array.isArray(event.data.results)?event.data.results:[]
+        });
+      };
+      const finish=(error,value)=>{
+        clearTimeout(timeout); window.removeEventListener('message',onMessage); frame.remove();
+        error ? reject(error) : resolve(value);
+      };
+      window.addEventListener('message',onMessage);
+      document.body.appendChild(frame);
+    });
+  }
+
+  async function runSiteResponsiveQualityAudit() {
+    if(!editorMode || auditMode) return [];
+    const routes=websitePageEntries(false)
+      .filter(entry=>!entry.deleted)
+      .map(entry=>entry.route)
+      .filter(Boolean);
+    return await mapWithConcurrency([...new Set(routes)],2,route=>requestResponsiveAuditPage(route));
   }
 
   function materializeLegacyReusableDefinitions() {
@@ -3722,17 +4347,32 @@
     return result;
   }
 
+  async function mapWithConcurrency(values,limit,worker) {
+    const result=new Array(values.length);
+    let cursor=0;
+    const runners=Array.from({length:Math.min(Math.max(1,limit),values.length)},async()=>{
+      while(true){
+        const index=cursor++;
+        if(index>=values.length) return;
+        result[index]=await worker(values[index],index);
+      }
+    });
+    await Promise.all(runners);
+    return result;
+  }
+
   async function materializeCanonicalSite() {
     if(!legacyMigration) return true;
     const status=document.getElementById('legend-cms-status');
     const entries=websitePageEntries(false).filter(entry=>!entry.deleted);
     const routes=[...new Set([currentPageRoute(),...entries.map(entry=>entry.route).filter(Boolean)])];
-    const snapshots=[];
-
-    for(const route of routes){
-      if(status) status.textContent='Preparing canonical Site Source · '+(snapshots.length+1)+'/'+routes.length;
-      snapshots.push(await requestMaterializedPage(route));
-    }
+    let completed=0;
+    const snapshots=await mapWithConcurrency(routes,4,async route=>{
+      const snapshot=await requestMaterializedPage(route);
+      completed++;
+      if(status) status.textContent='Preparing canonical Site Source · '+completed+'/'+routes.length;
+      return snapshot;
+    });
 
     const next=normalizeDocument(documentState);
     const firstShell=snapshots.find(snapshot=>snapshot?.shell)?.shell;
@@ -3760,6 +4400,7 @@
 
     next.version=3;
     legacyMigration=null;
+    materializationSavePending=true;
     documentState=normalizeDocument(next);
     dirty=true;
     const saved=await save(false);
@@ -4051,7 +4692,22 @@
       if(!routes.has(route)) return;
       const scoped=editorUrlForRoute(route);
       scoped.hash=url.hash;
-      el.href=scoped.toString();
+      if(editorMode){
+        el.href=credentialFreeEditorUrl(scoped).toString();
+        el.dataset.legendEditorRoute=route;
+        if(el.dataset.legendEditorNavigationBound!=='true'){
+          el.dataset.legendEditorNavigationBound='true';
+          el.addEventListener('click',event=>{
+            const next=normalizePageRoute(el.dataset.legendEditorRoute);
+            if(!next) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void navigateToEditorPage(next);
+          });
+        }
+      }else{
+        el.href=scoped.toString();
+      }
     });
   }
   function canonicalProtectedEditCorrection() {
@@ -4509,9 +5165,6 @@
   }
 
   function markDirty() {
-    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
-    const preferredId=selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null;
-    synchronizeCanonicalSharedPresentation(documentState,preferredId);
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
@@ -4550,9 +5203,6 @@
 
   function selectedWebsiteModel(create = true) {
     const model = editableWebsiteModelForElement(selected, create);
-    const composition=selected?.dataset?.cmsCompositionId ? compositionNodeForElement(selected,create) : null;
-    if (create && composition && selected?.dataset.websiteActionKey && !Object.hasOwn(composition, 'actionKey'))
-      composition.actionKey = selected.dataset.websiteActionKey;
     return model;
   }
 
@@ -4772,8 +5422,11 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,true) : null;
-    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation); });
+    const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
+    const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
+      !!selected?.closest?.('form[data-cms-composition-id]') &&
+      !!formFieldKey(selected);
+    document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (inlineHelp) inlineHelp.hidden = true;
@@ -4962,11 +5615,13 @@
 
   async function uploadImageAsset(file) {
     if (!file) return null;
-    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
-      alert('Use a JPEG, PNG, or WebP image.');
+    const asset = await uploadMedia(file);
+    if (!asset) return null;
+    if (!String(asset.contentType || '').startsWith('image/')) {
+      alert('Choose an image file.');
       return null;
     }
-    return await uploadMedia(file);
+    return asset;
   }
 
   function moveSelectedSection(delta) {
@@ -4983,7 +5638,14 @@
     checkpoint();
     const [node]=roots.splice(index,1);
     roots.splice(target,0,node);
-    renderCanonicalCompositionPage();
+    if(!renderPageStructuralMutationIncrementally({
+      type:'moveNode',
+      nodeId:id,
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId:null,
+      index:target
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
     refreshLayers();
@@ -5009,9 +5671,26 @@
     };
     parent.children ||= [];
     parent.children.push(node);
-    renderCanonicalCompositionPage();
+    const insertIndex=parent.children.length-1;
+    if(!renderPageStructuralMutationIncrementally({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId,
+      index:insertIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
+  }
+
+  function compositionContainsProtectedAuthority(node) {
+    if(!node || typeof node!=='object') return false;
+    if(node.type==='form' || node.systemKey || node.systemBinding ||
+       (Array.isArray(node.signals) && node.signals.length>0) ||
+       Object.values(node.fieldSignals || {}).some(value=>Array.isArray(value) && value.length>0))
+      return true;
+    return (node.children || []).some(compositionContainsProtectedAuthority);
   }
 
   function removeSelected() {
@@ -5019,8 +5698,8 @@
     const entry=compositionEntry(selected.dataset.cmsCompositionId);
     const current=entry?.node;
     if(!current) return;
-    if(current.systemKey || current.systemBinding || (Array.isArray(current.signals) && current.signals.length > 0) || current.type==='form'){
-      const message='This component has protected platform wiring and cannot be deleted or replaced.';
+    if(compositionContainsProtectedAuthority(current)){
+      const message='This component contains protected platform wiring and cannot be deleted or replaced.';
       showCanonicalProtectionViolation(message);
       alert(message+' '+canonicalProtectedEditCorrection());
       return;
@@ -5028,61 +5707,380 @@
     checkpoint();
     if(!removeCompositionNode(current.id)) return;
     if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-    else renderCanonicalCompositionPage();
+    else if(!renderPageStructuralMutationIncrementally({
+      type:'removeNode',
+      nodeId:current.id,
+      scope:'page',
+      pagePath:currentPageRoute()
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(null);
     markDirty();
   }
 
+  function jsonEquivalent(left,right) {
+    return JSON.stringify(left)===JSON.stringify(right);
+  }
+
+  function creativeNodeForMutation(node) {
+    const copy=cloneCanonicalValue(node || {});
+    delete copy.signals;
+    delete copy.fieldSignals;
+    delete copy.systemKey;
+    delete copy.systemBinding;
+    delete copy.unexpectedFields;
+    copy.children=[];
+    if(copy.experience && typeof copy.experience==='object') {
+      copy.experience=cloneCanonicalValue(copy.experience);
+      delete copy.experience.submitCapability;
+    }
+    return copy;
+  }
+
+  function creativeNodeComparable(node) {
+    const copy=creativeNodeForMutation(node);
+    delete copy.children;
+    return copy;
+  }
+
+  function flattenCreativeNodes(nodes,scope,pagePath=null,reusableComponentId=null,parentId=null,map=new Map()) {
+    (nodes || []).forEach((node,index)=>{
+      if(!node?.id) return;
+      map.set(node.id,{node,parentId,index,scope,pagePath,reusableComponentId});
+      flattenCreativeNodes(node.children || [],scope,pagePath,reusableComponentId,node.id,map);
+    });
+    return map;
+  }
+
+  function mutationLocation(entry) {
+    return {
+      scope:entry.scope,
+      pagePath:entry.pagePath,
+      reusableComponentId:entry.reusableComponentId,
+      parentId:entry.parentId,
+      index:entry.index
+    };
+  }
+
+  function pushInsertMutation(operations,entry) {
+    const node=entry.node;
+    const location=mutationLocation(entry);
+
+    if(node.type==='form' && node.systemKey==='canonical_inquiry') {
+      operations.push({
+        type:'insertCapability',
+        ...location,
+        capabilityKey:'contact.inquiry.submit',
+        instanceKey:node.id,
+        node:creativeNodeForMutation(node),
+        content:{title:node.title || 'Send an inquiry',submit:node.text || 'Send inquiry'}
+      });
+      return;
+    }
+
+    if(String(node.systemKey || '').startsWith('protect_runtime_form:')) {
+      operations.push({
+        type:'insertCapability',
+        ...location,
+        capabilityKey:'runtime.'+node.systemKey,
+        instanceKey:node.id
+      });
+      return;
+    }
+
+    // New creative subtrees are emitted one semantic node at a time. This keeps
+    // protected capability nodes out of ordinary insertNode payloads while still
+    // preserving exact hierarchy/order in one mutation transaction.
+    const projected=creativeNodeForMutation(node);
+    projected.children=[];
+    operations.push({type:'insertNode',...location,node:projected});
+
+    if(node.type==='experience' && node.experience?.submitCapability==='lead_capture') {
+      operations.push({
+        type:'setApprovedCapability',
+        nodeId:node.id,
+        capabilityKey:'experience.lead_capture'
+      });
+    }
+
+    (node.children || []).forEach((child,index)=>{
+      pushInsertMutation(operations,{
+        node:child,
+        parentId:node.id,
+        index,
+        scope:entry.scope,
+        pagePath:entry.pagePath,
+        reusableComponentId:entry.reusableComponentId
+      });
+    });
+  }
+
+  function diffCreativeNodeTrees(beforeNodes,afterNodes,scope,pagePath,reusableComponentId,operations) {
+    const before=flattenCreativeNodes(beforeNodes,scope,pagePath,reusableComponentId);
+    const after=flattenCreativeNodes(afterNodes,scope,pagePath,reusableComponentId);
+
+    // Remove only the highest removed ancestor; the server removes its subtree atomically.
+    for(const [id,entry] of before) {
+      if(after.has(id)) continue;
+      if(entry.parentId && !after.has(entry.parentId)) continue;
+      operations.push({type:'removeNode',nodeId:id});
+    }
+
+    // Insert only the highest new ancestor; its new descendants travel with it.
+    for(const [id,entry] of after) {
+      if(before.has(id)) continue;
+      if(entry.parentId && !before.has(entry.parentId)) continue;
+      pushInsertMutation(operations,entry);
+    }
+
+    for(const [id,next] of after) {
+      const previous=before.get(id);
+      if(!previous) continue;
+      const moved=
+        previous.scope!==next.scope ||
+        previous.pagePath!==next.pagePath ||
+        previous.reusableComponentId!==next.reusableComponentId ||
+        previous.parentId!==next.parentId ||
+        previous.index!==next.index;
+      if(moved) operations.push({type:'moveNode',nodeId:id,...mutationLocation(next)});
+
+      if(!jsonEquivalent(creativeNodeComparable(previous.node),creativeNodeComparable(next.node)))
+        operations.push({type:'replaceNode',nodeId:id,node:creativeNodeForMutation(next.node)});
+    }
+  }
+
+  function pageMetadataProjection(page) {
+    return {
+      title:page?.title ?? null,
+      description:page?.description ?? null,
+      navigation:cloneCanonicalValue(page?.navigation || {}),
+      dynamicBinding:cloneCanonicalValue(page?.dynamicBinding || null)
+    };
+  }
+
+  function pageMoveIdentity(page) {
+    return JSON.stringify({
+      systemTemplateKey:page?.systemTemplateKey || null,
+      composition:page?.composition || []
+    });
+  }
+
+  function storePresentationProjection(store) {
+    return {
+      navigationLabel:store?.navigationLabel || 'Store',
+      cartIcon:store?.cartIcon || 'cart',
+      cartIconSizePx:Number(store?.cartIconSizePx) || 28,
+      storeNavigation:cloneCanonicalValue(store?.storeNavigation || {}),
+      cartNavigation:cloneCanonicalValue(store?.cartNavigation || {})
+    };
+  }
+
+  function buildCreativeMutationOperations(beforeInput,afterInput) {
+    const before=beforeInput || {};
+    const after=afterInput || {};
+    const operations=[];
+
+    if(!jsonEquivalent(before.theme,after.theme))
+      operations.push({type:'setTheme',theme:cloneCanonicalValue(after.theme)});
+    if(!jsonEquivalent(before.breakpoints,after.breakpoints))
+      operations.push({type:'setBreakpoints',breakpoints:cloneCanonicalValue(after.breakpoints)});
+    if(before.faviconImageDataUrl!==after.faviconImageDataUrl)
+      operations.push({type:'setFavicon',faviconImageDataUrl:after.faviconImageDataUrl ?? null});
+    if(!jsonEquivalent(storePresentationProjection(before.store),storePresentationProjection(after.store)))
+      operations.push({type:'setStorePresentation',store:cloneCanonicalValue(after.store)});
+
+    diffCreativeNodeTrees(before.shell?.header || [],after.shell?.header || [],'shell.header',null,null,operations);
+    diffCreativeNodeTrees(before.shell?.footer || [],after.shell?.footer || [],'shell.footer',null,null,operations);
+
+    const beforePaths=new Set(Object.keys(before.pages || {}));
+    const afterPaths=new Set(Object.keys(after.pages || {}));
+    const removed=[...beforePaths].filter(path=>!afterPaths.has(path));
+    const added=[...afterPaths].filter(path=>!beforePaths.has(path));
+    const movedSources=new Set(), movedTargets=new Set();
+    for(const source of removed) {
+      const identity=pageMoveIdentity(before.pages[source]);
+      const target=added.find(path=>!movedTargets.has(path) && pageMoveIdentity(after.pages[path])===identity);
+      if(!target) continue;
+      operations.push({type:'movePageRoute',pagePath:source,targetPath:target});
+      movedSources.add(source); movedTargets.add(target);
+      if(!jsonEquivalent(pageMetadataProjection(before.pages[source]),pageMetadataProjection(after.pages[target])))
+        operations.push({type:'updatePage',pagePath:target,page:pageMetadataProjection(after.pages[target])});
+      diffCreativeNodeTrees(before.pages[source]?.composition || [],after.pages[target]?.composition || [],'page',target,null,operations);
+    }
+
+    for(const path of removed) if(!movedSources.has(path))
+      operations.push({type:'removePage',pagePath:path});
+
+    for(const path of added) {
+      if(movedTargets.has(path)) continue;
+      const page=after.pages[path];
+      operations.push({
+        type:'createPage',pagePath:path,
+        page:{...pageMetadataProjection(page),composition:[]}
+      });
+      diffCreativeNodeTrees([],page?.composition || [],'page',path,null,operations);
+    }
+
+    for(const path of [...afterPaths].filter(path=>beforePaths.has(path))) {
+      const previous=before.pages[path], next=after.pages[path];
+      if(!jsonEquivalent(pageMetadataProjection(previous),pageMetadataProjection(next)))
+        operations.push({type:'updatePage',pagePath:path,page:pageMetadataProjection(next)});
+      diffCreativeNodeTrees(previous?.composition || [],next?.composition || [],'page',path,null,operations);
+    }
+
+    const beforeComponents=before.reusableComponents || {};
+    const afterComponents=after.reusableComponents || {};
+    for(const id of Object.keys(beforeComponents))
+      if(!Object.prototype.hasOwnProperty.call(afterComponents,id))
+        operations.push({type:'removeReusable',reusableComponentId:id});
+    for(const [id,component] of Object.entries(afterComponents))
+      if(!Object.prototype.hasOwnProperty.call(beforeComponents,id) || !jsonEquivalent(beforeComponents[id],component))
+        operations.push({type:'upsertReusable',reusableComponent:cloneCanonicalValue(component)});
+
+    return operations;
+  }
+
+  function applyCreativeMutationDeltaToState(baseInput,payload) {
+    const changes=payload?.changes || {};
+    const next=cloneCanonicalValue(baseInput || documentState);
+    next.pages ||= {};
+    next.reusableComponents ||= {};
+    next.shell ||= {header:[],footer:[]};
+    for(const path of Array.isArray(changes.removedPages)?changes.removedPages:[]) delete next.pages[path];
+    for(const [path,page] of Object.entries(changes.pages || {})) next.pages[path]=page;
+    for(const id of Array.isArray(changes.removedComponents)?changes.removedComponents:[]) delete next.reusableComponents[id];
+    for(const [id,component] of Object.entries(changes.reusableComponents || {})) next.reusableComponents[id]=component;
+    if(changes.theme) next.theme=changes.theme;
+    if(changes.breakpoints) next.breakpoints=changes.breakpoints;
+    if(changes.faviconChanged===true) next.faviconImageDataUrl=changes.faviconImageDataUrl ?? null;
+    if(changes.shellHeader) next.shell.header=changes.shellHeader;
+    if(changes.shellFooter) next.shell.footer=changes.shellFooter;
+    if(changes.store) next.store=changes.store;
+    return normalizeDocument(next);
+  }
+
   let saving = false;
   async function save(publish = false, namedDraft = null) {
-    if (saving) return;
+    if (saving) return false;
     clearTimeout(autoSaveTimer);
-    const status = document.getElementById('legend-cms-status');
-    if (legacyMigration) {
-      if (status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
-      return false;
-    }
+    const status=document.getElementById('legend-cms-status');
+
     if (publish && sourceEditorDirty) {
       if(status) status.textContent='Apply or discard your Selected Source changes before publishing. Nothing was published.';
       showPanel('source');
       return false;
     }
-    if (publish && dirty) { const draftSaved=await save(false); if (!draftSaved || dirty) return false; return save(true); }
-    if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
-    saving = true;
-    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
-    synchronizeCanonicalSharedPresentation(documentState,selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null);
-    const submitted = JSON.stringify(documentState);
-    let saved = false;
+    if (legacyMigration && !materializationSavePending) {
+      if(status) status.textContent='Legacy website content is read-only until canonical materialization completes.';
+      return false;
+    }
+    if (publish && dirty) {
+      const draftSaved=await save(false);
+      if(!draftSaved || dirty) return false;
+      return save(true);
+    }
+
+    saving=true;
+    let saved=false;
+    let captureHistory=false;
     try {
-      const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
-      });
-      if (!response.ok) {
-        if ((response.status===401 || response.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired before this draft could be saved.')) return false;
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || error.error || `Save failed (${response.status})`);
+      if(publish) {
+        if(status) status.textContent='Publishing…';
+        const response=await fetch(API_BASE+'/api/website-content/manage/publish',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:editorTicket,expectedRevision:revision})
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Publish failed ('+response.status+').')),{status:response.status,payload});
+        revision=payload.revision ?? revision;
+        if(payload.document){
+          documentState=normalizeDocument(payload.document);
+          persistedDocumentState=cloneCanonicalValue(documentState);
+          applyDocument(documentState);
+        }
+        dirty=false;
+        saved=true;
+        if(status) status.textContent='Published';
+        return true;
       }
-      const payload = await response.json();
-      const changedDuringSave = JSON.stringify(documentState) !== submitted;
-      if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
-      revision = payload.revision ?? revision;
+
+      const submittedState=normalizeDocument(cloneCanonicalValue(documentState));
+      const submitted=JSON.stringify(submittedState);
+
+      // The complete-document write exists only for the one-way legacy -> v3
+      // materialization boundary. Normal Website Studio authoring uses mutations.
+      if(materializationSavePending || !persistedDocumentState) {
+        if(status) status.textContent='Saving canonical v3 materialization…';
+        const response=await fetch(API_BASE+'/api/website-content/manage',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ticket:editorTicket,document:submittedState,expectedRevision:revision,...(namedDraft || {})})
+        });
+        const payload=await response.json().catch(()=>({}));
+        if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Save failed ('+response.status+').')),{status:response.status,payload});
+        const serverState=normalizeDocument(payload.document || submittedState);
+        const changedDuringSave=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
+        persistedDocumentState=cloneCanonicalValue(serverState);
+        revision=payload.revision ?? revision;
+        namedDrafts=payload.drafts || namedDrafts;
+        materializationSavePending=false;
+        historyCheckpointPending=false;
+        if(!changedDuringSave){ documentState=serverState; applyDocument(documentState); }
+        dirty=changedDuringSave;
+        saved=true;
+        if(status) status.textContent=changedDuringSave?'Draft saved; newer edits remain unsaved':'Draft saved';
+        return true;
+      }
+
+      const operations=buildCreativeMutationOperations(persistedDocumentState,submittedState);
+      captureHistory=historyCheckpointPending && !suppressHistoryCapture && operations.length>0;
+      const inverseOperations=captureHistory
+        ? buildCreativeMutationOperations(submittedState,persistedDocumentState)
+        : [];
+      if(captureHistory) historyCheckpointPending=false;
+      if(status) status.textContent=operations.length ? 'Saving changed website scopes…' : namedDraft ? 'Saving named draft…' : 'Saved';
+      if(operations.length===0 && !namedDraft){
+        dirty=false; saved=true; return true;
+      }
+
+      const payload=await creativeWorkspaceRequest('manage/mutations',{
+        method:'POST',
+        body:{
+          ticket:editorTicket,
+          expectedRevision:revision,
+          operations,
+          draftId:namedDraft?.draftId || null,
+          draftName:namedDraft?.draftName || null
+        }
+      });
+      const serverState=applyCreativeMutationDeltaToState(submittedState,payload);
+      const changedDuringSave=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
+      persistedDocumentState=cloneCanonicalValue(serverState);
+      revision=payload.revision ?? revision;
+      namedDrafts=payload.drafts || namedDrafts;
       canonicalSourceDocument=null;
       canonicalSourceRevision=null;
-      namedDrafts = payload.drafts || namedDrafts;
-      dirty = changedDuringSave;
-      saved = true;
-      if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
-    } catch (error) {
-      if (status) status.textContent = error?.message || 'Save failed';
+      if(!changedDuringSave){
+        documentState=serverState;
+        applyCreativeMutationVisuals(operations,payload,selected?.dataset?.cmsCompositionId || selected?.dataset?.cmsId || null);
+      }
+      if(captureHistory) pushHistoryEntry(inverseOperations,operations);
+      dirty=changedDuringSave;
+      saved=true;
+      if(status) status.textContent=changedDuringSave?'Changed scopes saved; newer edits remain unsaved':'Draft saved';
+    } catch(error) {
+      if(captureHistory) historyCheckpointPending=true;
+      if((error?.status===401 || error?.status===403) &&
+          showEditorAuthorizationRecovery('Website Studio authorization expired before this change could be saved.')) return false;
+      const payload=error?.payload || {};
+      if(payload.canonicalProtectionViolation===true)
+        showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
+      if(status) status.textContent=payload.message || error?.message || 'Save failed';
     } finally {
-      saving = false;
-      if (saved && dirty) {
+      saving=false;
+      if(saved && dirty){
         clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
+        autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
       }
     }
     return saved;
@@ -5118,24 +6116,44 @@
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
-  function historySnapshot() {
-    return JSON.stringify(documentState);
+  function pushHistoryEntry(undo,redo) {
+    if(suppressHistoryCapture || !Array.isArray(undo) || !Array.isArray(redo) || (!undo.length && !redo.length)) return;
+    undoStack.push({undo,redo});
+    if(undoStack.length>120) undoStack.shift();
+    redoStack.length=0;
+    refreshHistoryControls();
   }
   function checkpoint() {
-    undoStack.push(historySnapshot());
-    if (undoStack.length > 80) undoStack.shift();
-    redoStack.length = 0;
+    if(suppressHistoryCapture) return;
+    // A checkpoint is only a transaction boundary marker. The inverse mutation
+    // is derived once from persisted state when autosave commits the batch.
+    historyCheckpointPending=true;
   }
-  // CANONICAL V3 HISTORY RESTORE.
-  // This restores only the WebsiteContentDocument v3 graph. It intentionally
-  // does not reconstruct template DOM, v2 elements/extras, or any override side-store.
-  function restoreCanonicalV3History(from, to) {
-    if (!from.length) return;
-    to.push(historySnapshot());
-    const snapshot = normalizeDocument(JSON.parse(from.pop()));
-    applyDocument(snapshot);
-    setSelected(null);
-    markDirty();
+  // History stores reversible canonical mutation batches, never duplicate site
+  // documents. If an edit is still local, flush it once so the inverse applies
+  // against the same persisted v3 authority.
+  async function restoreCanonicalV3History(from, to, direction='undo') {
+    if (!from.length || saving) return;
+    if(dirty){
+      const saved=await save(false);
+      if(!saved || dirty) return;
+    }
+    const entry=from.pop();
+    const operations=direction==='redo' ? entry.redo : entry.undo;
+    if(!Array.isArray(operations) || !operations.length){ refreshHistoryControls(); return; }
+    suppressHistoryCapture=true;
+    try{
+      await creativeApplyMutationBatch(operations,{flushLocal:false});
+      to.push(entry);
+      setSelected(null);
+    }catch(error){
+      from.push(entry);
+      const status=document.getElementById('legend-cms-status');
+      if(status) status.textContent=error?.payload?.message || error?.message || 'History operation could not be applied.';
+    }finally{
+      suppressHistoryCapture=false;
+      refreshHistoryControls();
+    }
   }
   function safeUrl(value, media = false) {
     if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value) || /(?:legendEdit|ticket)=/i.test(value)) return false;
@@ -5163,6 +6181,15 @@
     const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
     el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
   }
+  async function ensureBusinessDataCatalog() {
+    if(SITE_KEY!=='business' || fullDataCatalogLoaded) return;
+    const payload=await creativeWorkspaceRequest('manage/data-catalog');
+    managementPayload ||= {};
+    managementPayload.dataCatalog=Array.isArray(payload?.dataCatalog)?payload.dataCatalog:[];
+    updateCollectionData(payload);
+    fullDataCatalogLoaded=true;
+  }
+
   function approvedDataSources() {
     return SITE_KEY === 'business' && Array.isArray(managementPayload?.dataCatalog) ? managementPayload.dataCatalog : [];
   }
@@ -5252,15 +6279,6 @@
     return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
-  function sourceFindNodeInDocument(sourceDocument,id) {
-    if(!sourceDocument || !id) return null;
-    return sourceFindNode(sourceDocument.shell?.header,id) ||
-      sourceFindNode(sourceDocument.shell?.footer,id) ||
-      (sourceDocument.pages || []).map(page=>sourceFindNode(page?.composition,id)).find(Boolean) ||
-      Object.values(sourceDocument.reusableComponents || {}).map(component=>sourceFindNode(component?.composition,id)).find(Boolean) ||
-      null;
-  }
-
   function syncSelectedSourcePresentationFromCanvas() {
     const textarea=document.getElementById('legend-cms-site-source');
     const scope=document.getElementById('legend-cms-source-scope');
@@ -5327,16 +6345,25 @@
     const highlight=document.getElementById('legend-cms-source-highlight');
     if(!textarea || !highlight?.replaceChildren) return;
     highlight.replaceChildren();
-    const lines=String(textarea.value || '').replace(/\r/g,'').split('\n');
-    lines.forEach((line,index)=>{
-      const span=document.createElement('span');
-      const tone=sourceToneForLine(line);
-      span.className='legend-cms-source-'+tone;
-      span.dataset.tone=tone;
-      span.textContent=line || ' ';
-      highlight.appendChild(span);
-      if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
-    });
+    const value=String(textarea.value || '').replace(/\r/g,'');
+    if(textarea.readOnly){
+      // Master Source is diagnostic/read-only; one text node avoids thousands of
+      // per-line elements. Selected Source remains color guided and intentionally small.
+      highlight.className='legend-cms-source-highlight legend-cms-source-default';
+      highlight.textContent=value;
+    }else{
+      highlight.className='legend-cms-source-highlight';
+      const lines=value.split('\n');
+      lines.forEach((line,index)=>{
+        const span=document.createElement('span');
+        const tone=sourceToneForLine(line);
+        span.className='legend-cms-source-'+tone;
+        span.dataset.tone=tone;
+        span.textContent=line || ' ';
+        highlight.appendChild(span);
+        if(index<lines.length-1) highlight.appendChild(document.createTextNode('\n'));
+      });
+    }
     highlight.scrollTop=textarea.scrollTop;
     highlight.scrollLeft=textarea.scrollLeft;
   }
@@ -5447,32 +6474,34 @@
       }
     }
 
-    let snapshot;
-    try{ snapshot=await loadCanonicalSourceSnapshot(); }
-    catch(error){
-      clearCanonicalProtectionViolation();
-      if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
-      return;
-    }
-    if(!snapshot) return;
-
     const selectedId=sourceSelectedNodeId();
     if(scope && scope.value==='selection' && !selectedId) scope.value='site';
     const mode=scope?.value || 'site';
+
     if(mode==='selection' && selectedId){
-      const node=sourceFindNodeInDocument(snapshot.sourceDocument,selectedId);
-      if(!node){
-        if(status) status.textContent='The selected component is not exposed in canonical Source. Select another component.';
-        scope.value='site';
-        sourceEditorBaseNode=null;
-        textarea.value=snapshot.text;
-      }else{
-        sourceEditorBaseNode=cloneCanonicalValue(node);
+      try{
+        const snapshot=await creativeWorkspaceRequest('manage/agent/node',{query:{id:selectedId}});
+        sourceEditorBaseNode=cloneCanonicalValue(snapshot.node);
+        sourceEditorBaseFingerprint=snapshot.fingerprint || null;
+        canonicalSourceRevision=snapshot.revision ?? revision;
         textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
-        if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+        if(label) label.textContent='Selected source · '+(snapshot.location?.pagePath || currentPageRoute())+' · #'+selectedId;
+      }catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'Selected Source could not be loaded.';
+        return;
       }
     }else{
+      let snapshot;
+      try{ snapshot=await loadCanonicalSourceSnapshot(); }
+      catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
+        return;
+      }
+      if(!snapshot) return;
       sourceEditorBaseNode=null;
+      sourceEditorBaseFingerprint=null;
       textarea.value=snapshot.text;
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
@@ -5481,39 +6510,14 @@
         if(index>=0) textarea.setSelectionRange(index,index+marker.length);
       }
     }
+
     sourceEditorDirty=false;
     const editable=syncSourceEditingMode();
     renderSourceHighlight();
     if(status) status.textContent=editable
-      ? 'Selected Source is synchronized with the server canonical projection.'
+      ? 'Selected Source is scoped to one canonical node. Protected backend authority is not part of this write surface.'
       : 'Master Source is synchronized from the server and read only.';
     if(force) clearCanonicalProtectionViolation();
-  }
-
-  function selectedSourceHasConcurrentChange(sourceDocument, selectedNodeId) {
-    if(!sourceEditorBaseNode) return false;
-    const latest=sourceFindNodeInDocument(sourceDocument,selectedNodeId);
-    if(!latest) return true;
-    return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
-  }
-
-  function selectedSourceDocument(baseSourceDocument, selectedNodeId, replacement) {
-    const projected=cloneCanonicalValue(baseSourceDocument);
-    let replaced=
-      sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
-      sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
-    if(!replaced){
-      for(const page of projected.pages || []){
-        if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
-      }
-    }
-    if(!replaced){
-      for(const component of Object.values(projected.reusableComponents || {})){
-        if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
-      }
-    }
-    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical Source projection.');
-    return JSON.stringify(projected,null,2);
   }
 
   async function applySiteSource() {
@@ -5529,146 +6533,55 @@
       return;
     }
 
-    let replacement;
-    try{ replacement=JSON.parse(textarea.value); }
+    let replacementNode;
+    try{ replacementNode=JSON.parse(textarea.value); }
     catch(error){
       clearCanonicalProtectionViolation();
       if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
       return;
     }
-    if(replacement?.id!==selectedNodeId){
+    if(replacementNode?.id!==selectedNodeId){
       const message='Selected Source must keep the stable node ID '+selectedNodeId+'.';
       if(status) status.textContent=message;
       showCanonicalProtectionViolation(message);
       return;
     }
-
-    let baseSourceDocument=canonicalSourceDocument ? cloneCanonicalValue(canonicalSourceDocument) : null;
-    let expectedRevision=canonicalSourceRevision ?? revision;
+    if(!sourceEditorBaseFingerprint){
+      if(status) status.textContent='Refresh Selected Source before applying this edit.';
+      return;
+    }
 
     if(dirty){
       if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
       const saved=await save(false);
-      if(!saved || dirty){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
-        return;
-      }
-      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-      if(!latest) return;
-      if(selectedSourceHasConcurrentChange(latest.sourceDocument,selectedNodeId)){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
-        return;
-      }
-      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-      expectedRevision=latest.revision;
-    }else if(!baseSourceDocument){
-      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-      if(!latest) return;
-      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-      expectedRevision=latest.revision;
+      if(!saved || dirty) return;
     }
 
     clearCanonicalProtectionViolation();
-    let rebased=false;
-    for(let attempt=0;attempt<3;attempt++){
-      let sourceText;
-      try{ sourceText=selectedSourceDocument(baseSourceDocument,selectedNodeId,replacement); }
-      catch(error){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent=error?.message || 'The selected component is no longer available.';
-        return;
-      }
-
-      if(status) status.textContent=rebased
-        ? 'Revalidating this design edit against the latest canonical Source…'
-        : 'Validating authorable design against protected backend authority…';
-
-      const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision,source:sourceText,selectedNodeId})
-      });
-      const payload=await response.json().catch(()=>({}));
-
-      if(!response.ok){
-        if((response.status===401 || response.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
-        if(response.status===409 && payload.error==='revision_conflict'){
-          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-          if(!latest) return;
-          expectedRevision=latest.revision;
-          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
-            clearCanonicalProtectionViolation();
-            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
-            return;
-          }
-          rebased=true;
-          continue;
-        }
-
-        const message=payload.message || payload.error || 'Site Source validation failed.';
-        if(payload.canonicalProtectionViolation===true)
-          showCanonicalProtectionViolation(message,payload.correction);
-        else
-          clearCanonicalProtectionViolation();
-        if(status) status.textContent=message;
-        return;
-      }
-
-      const proposedDocument=normalizeDocument(payload.proposedDocument || {});
-      const validatedRevision=payload.baseRevision ?? expectedRevision;
-      const saveResponse=await fetch(`${API_BASE}/api/website-content/manage`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,document:proposedDocument,expectedRevision:validatedRevision})
-      });
-      const savePayload=await saveResponse.json().catch(()=>({}));
-
-      if(!saveResponse.ok){
-        if((saveResponse.status===401 || saveResponse.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
-        if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
-          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-          if(!latest) return;
-          expectedRevision=latest.revision;
-          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
-            clearCanonicalProtectionViolation();
-            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
-            return;
-          }
-          rebased=true;
-          continue;
-        }
-
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent=savePayload.message || savePayload.error || `Source save failed (${saveResponse.status}).`;
-        return;
-      }
-
-      checkpoint();
-      documentState=normalizeDocument(savePayload.document || proposedDocument);
-      revision=savePayload.revision ?? validatedRevision;
-      namedDrafts=savePayload.drafts || namedDrafts;
-      dirty=false;
+    if(status) status.textContent='Applying this node through the canonical mutation authority…';
+    try{
+      await creativeApplyMutationBatch([{
+        type:'replaceNode',
+        nodeId:selectedNodeId,
+        node:replacementNode,
+        expectedFingerprint:sourceEditorBaseFingerprint
+      }]);
       sourceEditorDirty=false;
-      canonicalSourceDocument=null;
-      canonicalSourceRevision=null;
-      applyDocument(documentState);
       await refreshSiteSourceEditor(true);
-      if(status) status.textContent=rebased
-        ? 'Applied after rebasing onto the latest canonical Source. Protected backend authority unchanged.'
-        : 'Applied to the canonical draft. Protected backend authority unchanged.';
-      return;
+      if(status) status.textContent='Applied one scoped node mutation. Protected events/forms/backend wiring were not writable.';
+    }catch(error){
+      const payload=error?.payload || {};
+      if(payload.canonicalProtectionViolation===true)
+        showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
+      else
+        clearCanonicalProtectionViolation();
+      if(error?.status===409 && payload.error==='scope_revision_conflict')
+        if(status) status.textContent='This selected component changed elsewhere. Your Source text is preserved; refresh and reconcile the newer node.';
+      else if(status) status.textContent=payload.message || error?.message || 'Selected Source could not be applied.';
     }
-
-    clearCanonicalProtectionViolation();
-    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and reconcile the latest design.';
   }
 
-  function showPanel(name) {
+  function showPanel(name,options={}) {
     activeEditorPanel = name;
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
@@ -5680,12 +6593,18 @@
       void refreshSiteSourceEditor();
     }
     if (name === 'components') renderReusableComponents();
-    if (name === 'data') renderDataControls();
+    if (name === 'data') void ensureBusinessDataCatalog().then(renderDataControls).catch(error=>{
+      const status=document.getElementById('legend-cms-data-status');
+      if(status) status.textContent=error?.message || 'Unable to load business data.';
+    });
     if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
-    if (name === 'signals') renderSignalControls();
-    if (name === 'quality') void refreshQualityInspector();
+    if (name === 'signals') {
+      if(signalCatalog) renderSignalControls();
+      else void ensureSignalCatalog().then(renderSignalControls);
+    }
+    if (name === 'quality' && options.refresh!==false) void runWholeSitePreflightAndRender().catch(()=>{});
     if (name === 'collaboration') void refreshCollaboration();
   }
 
@@ -5901,20 +6820,62 @@
     };
     parent.children ||= [];
     parent.children.push(node);
-    renderCanonicalCompositionPage();
+    const insertIndex=parent.children.length-1;
+    if(!renderPageStructuralMutationIncrementally({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId,
+      index:insertIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     setSelected(findEditableElement(id));
     markDirty();
   }
 
-  function liveQualityChecks() {
+  function parseComputedRgb(value) {
+    const match=String(value || '').match(/rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)(?:\s*[,/]\s*([\d.]+))?/i);
+    if(!match) return null;
+    return {r:Number(match[1]),g:Number(match[2]),b:Number(match[3]),a:match[4]==null?1:Number(match[4])};
+  }
+
+  function relativeLuminance(rgb) {
+    const channel=value=>{
+      const normalized=Math.max(0,Math.min(255,value))/255;
+      return normalized<=.03928 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
+    };
+    return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
+  }
+
+  function computedStyleFor(el) {
+    const view=el?.ownerDocument?.defaultView || window;
+    return view?.getComputedStyle ? view.getComputedStyle(el) : getComputedStyle(el);
+  }
+
+  function effectiveBackgroundColor(el,doc=el?.ownerDocument || document) {
+    let current=el;
+    while(current && current!==doc.documentElement){
+      const parsed=parseComputedRgb(computedStyleFor(current).backgroundColor);
+      if(parsed && parsed.a>.08) return parsed;
+      current=current.parentElement;
+    }
+    return parseComputedRgb(computedStyleFor(doc.body).backgroundColor) || {r:255,g:255,b:255,a:1};
+  }
+
+  function cssEscapeFor(doc,value) {
+    const escape=doc?.defaultView?.CSS?.escape || globalThis.CSS?.escape;
+    return escape ? escape(String(value)) : String(value).replaceAll('"','\\"');
+  }
+
+  function liveQualityChecksForDocument(doc=document,viewportWidth=responsiveViewportWidth(),{includeAnimation=true}={}) {
     const checks = [];
-    const main = document.querySelector('main');
+    const main = doc.querySelector('main');
     const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
     if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
     if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:`The rendered page has ${headings.length} visible H1 headings.` });
 
     const ids = new Map();
-    document.querySelectorAll('[id]').forEach(node => {
+    doc.querySelectorAll('[id]').forEach(node => {
       const id = node.id?.trim();
       if (!id || node.closest('.legend-cms-editor')) return;
       ids.set(id, (ids.get(id) || 0) + 1);
@@ -5922,34 +6883,193 @@
     for (const [id, count] of ids) if (count > 1)
       checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
-    document.querySelectorAll('main img:not([hidden])').forEach(image => {
+    doc.querySelectorAll('main img:not([hidden])').forEach(image => {
       if (!image.hasAttribute('alt'))
         checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
     });
 
-    document.querySelectorAll('main a:not([hidden])').forEach(link => {
+    doc.querySelectorAll('main a:not([hidden])').forEach(link => {
       const href = link.getAttribute('href')?.trim();
       if (!href || href === '#')
         checks.push({ code:'live_link_destination_missing', severity:'warning', message:'A rendered link has no working destination.', elementId:link.dataset.cmsId || link.id || null });
     });
 
-    document.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
+    doc.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
       const labelled = !!control.getAttribute('aria-label')?.trim()
         || !!control.getAttribute('aria-labelledby')?.trim()
         || !!control.closest('label')
-        || (!!control.id && !!document.querySelector(`label[for="${CSS.escape(control.id)}"]`));
+        || (!!control.id && !!doc.querySelector(`label[for="${cssEscapeFor(doc,control.id)}"]`));
       if (!labelled)
         checks.push({ code:'live_control_label_missing', severity:'warning', message:'A rendered form control has no accessible label.', elementId:control.dataset.cmsId || control.id || null });
     });
 
-    document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
+    doc.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
       if (node.hidden) return;
-      const overflowX=getComputedStyle(node).overflowX;
+      const overflowX=computedStyleFor(node).overflowX;
       const visiblyClipped=overflowX==='hidden' || overflowX==='clip';
       if (!visiblyClipped && Number(node.scrollWidth) > Number(node.clientWidth) + 1)
         checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
     });
+
+    const headingLevels=[];
+    main?.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(node=>{
+      if(node.hidden || node.getClientRects().length===0) return;
+      const level=Number(node.tagName.slice(1));
+      const previous=headingLevels.at(-1);
+      if(previous && level>previous+1)
+        checks.push({code:'live_heading_skip',severity:'info',message:`Heading hierarchy jumps from H${previous} to H${level}.`,elementId:node.dataset.cmsId || null});
+      headingLevels.push(level);
+    });
+
+    const textNodes=main ? [...main.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button,label,small,blockquote,span')] : [];
+    let contrastWarnings=0, typeWarnings=0, lineWarnings=0;
+    for(const node of textNodes){
+      if(node.closest('.legend-cms-editor') || node.hidden || node.getClientRects().length===0 || !node.textContent?.trim()) continue;
+      const style=computedStyleFor(node);
+      const fontSize=parseFloat(style.fontSize);
+      if(Number.isFinite(fontSize) && fontSize<14 && typeWarnings++<8)
+        checks.push({code:'live_type_too_small',severity:'warning',message:`Rendered text is ${Math.round(fontSize)}px; increase it for comfortable reading.`,elementId:node.dataset.cmsId || null});
+      const width=node.getBoundingClientRect().width;
+      if(Number.isFinite(fontSize) && fontSize>0 && width/fontSize>46 && node.textContent.trim().length>120 && lineWarnings++<6)
+        checks.push({code:'live_line_length',severity:'info',message:'This text block is visually wide. Shorter line length may improve scanning.',elementId:node.dataset.cmsId || null});
+      if(contrastWarnings<8){
+        const fg=parseComputedRgb(style.color);
+        const bg=effectiveBackgroundColor(node,doc);
+        if(fg && bg && fg.a>.8){
+          const high=Math.max(relativeLuminance(fg),relativeLuminance(bg));
+          const low=Math.min(relativeLuminance(fg),relativeLuminance(bg));
+          const ratio=(high+.05)/(low+.05);
+          const bold=Number(style.fontWeight)>=700;
+          const threshold=fontSize>=24 || (bold && fontSize>=18.66) ? 3 : 4.5;
+          if(ratio<threshold){
+            contrastWarnings++;
+            checks.push({code:'live_contrast_low',severity:'warning',message:`Text contrast is about ${ratio.toFixed(1)}:1; strengthen foreground/background contrast.`,elementId:node.dataset.cmsId || null});
+          }
+        }
+      }
+    }
+
+    let touchWarnings=0;
+    main?.querySelectorAll('a,button,input[type="button"],input[type="submit"]').forEach(node=>{
+      if(node.hidden || node.getClientRects().length===0 || touchWarnings>=8) return;
+      const rect=node.getBoundingClientRect();
+      if(rect.width<44 || rect.height<44){
+        touchWarnings++;
+        checks.push({code:'live_touch_target_small',severity:'warning',message:`Interactive target is ${Math.round(rect.width)}×${Math.round(rect.height)}px; target at least 44×44px.`,elementId:node.dataset.cmsId || node.id || null});
+      }
+    });
+
+    const sectionNodes=main ? [...main.children].filter(node=>node.matches?.('section,.section,.page-hero,.cta,.container-narrow')) : [];
+    sectionNodes.forEach(section=>{
+      if(section.hidden) return;
+      const meaningful=section.querySelector('h1,h2,h3,p,img,video,a,button,form,[data-website-experience-form]');
+      if(!meaningful && !section.textContent?.trim())
+        checks.push({code:'live_empty_section',severity:'warning',message:'A visible section has no meaningful content.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
+      const computed=computedStyleFor(section);
+      const top=parseFloat(computed.paddingTop), bottom=parseFloat(computed.paddingBottom);
+      if(Number.isFinite(top) && Number.isFinite(bottom) && top<20 && bottom<20)
+        checks.push({code:'live_section_rhythm_tight',severity:'info',message:'This section has very little vertical breathing room.',elementId:section.dataset.cmsId || section.dataset.cmsSection || null});
+    });
+
+    const firstSection=sectionNodes.find(node=>!node.hidden);
+    if(firstSection && !firstSection.querySelector('a[data-website-action-key],button[data-website-action-key],form,[data-submit-capability]'))
+      checks.push({code:'live_first_decision_no_action',severity:'info',message:'The opening section has no approved action or conversion capability. Confirm that this is intentional.',elementId:firstSection.dataset.cmsId || firstSection.dataset.cmsSection || null});
+
+    main?.querySelectorAll('img:not([hidden])').forEach(image=>{
+      if(image.complete && image.currentSrc && (!image.naturalWidth || !image.naturalHeight))
+        checks.push({code:'live_image_render_failed',severity:'warning',message:'An image source did not render successfully.',elementId:image.dataset.cmsId || image.id || null});
+    });
+
+    if(viewportWidth<=767){
+      const toggle=doc.querySelector('.nav-toggle');
+      if(!toggle || toggle.getClientRects().length===0)
+        checks.push({code:'live_mobile_nav_toggle_missing',severity:'error',message:'The mobile primary navigation has no usable Menu trigger.'});
+      else{
+        const rect=toggle.getBoundingClientRect();
+        if(rect.width<44 || rect.height<44)
+          checks.push({code:'live_mobile_nav_touch_target',severity:'warning',message:'The mobile Menu trigger is smaller than 44×44px.'});
+      }
+    }
+
+    if(includeAnimation){
+      let animationCount=0;
+      walkComposition(pageState().composition || [],node=>{animationCount+=(node.animations || []).length;});
+      if(animationCount>18)
+        checks.push({code:'live_animation_excess',severity:'warning',message:`This page has ${animationCount} motion bindings. Reduce motion to keep the experience focused.`});
+    }
+
     return checks;
+  }
+
+  function representativeBreakpointWidth(breakpoint) {
+    if(!breakpoint) return Math.max(1200,Math.min(1440,Number(window.innerWidth)||1440));
+    const min=Number(breakpoint.minWidth)||0;
+    const max=breakpoint.maxWidth==null?null:Number(breakpoint.maxWidth);
+    if(max==null) return Math.max(min,1440);
+    return Math.max(320,Math.round((min+max)/2));
+  }
+
+  function responsiveAuditMarkup() {
+    const head=[...document.head.querySelectorAll('link[rel="stylesheet"],style')]
+      .map(node=>node.outerHTML)
+      .join('');
+    const body=document.body.cloneNode(true);
+    body.querySelectorAll('.legend-cms-editor,.legend-cms-selection-frame,.legend-cms-grid-overlay,script').forEach(node=>node.remove());
+    body.classList.remove('legend-cms-editing','legend-cms-panel-hidden');
+    body.removeAttribute('style');
+    return '<!doctype html><html><head>'+
+      '<meta charset="utf-8">'+
+      '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'self\' \'unsafe-inline\' https:; img-src \'self\' https: data: blob:; media-src \'self\' https: blob:; font-src \'self\' https: data:; form-action \'none\'; connect-src \'none\'; script-src \'none\';">'+
+      '<base href="'+location.origin.replaceAll('"','&quot;')+'/">'+head+
+      '</head>'+body.outerHTML+'</html>';
+  }
+
+  async function auditRenderedBreakpoint(breakpoint) {
+    const width=representativeBreakpointWidth(breakpoint);
+    const frame=document.createElement('iframe');
+    frame.setAttribute('aria-hidden','true');
+    frame.setAttribute('tabindex','-1');
+    frame.setAttribute('sandbox','allow-same-origin');
+    frame.style.cssText=`position:fixed;left:-100000px;top:0;width:${width}px;height:1200px;border:0;visibility:hidden;pointer-events:none;`;
+    document.body.appendChild(frame);
+    try{
+      const loaded=new Promise(resolve=>frame.addEventListener('load',resolve,{once:true}));
+      frame.srcdoc=responsiveAuditMarkup();
+      await loaded;
+      await frame.contentDocument?.fonts?.ready?.catch?.(()=>{});
+      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
+      await new Promise(resolve=>(frame.contentWindow?.requestAnimationFrame || requestAnimationFrame)(()=>resolve()));
+      const doc=frame.contentDocument;
+      if(!doc) return {key:breakpoint?.key || 'base',label:breakpoint?.label || 'Base',width,checks:[{code:'responsive_audit_unavailable',severity:'warning',message:'Responsive audit frame was unavailable.'}]};
+      return {
+        key:breakpoint?.key || 'base',
+        label:breakpoint?.label || 'Base',
+        width,
+        checks:liveQualityChecksForDocument(doc,width,{includeAnimation:false})
+      };
+    }finally{
+      frame.remove();
+    }
+  }
+
+  async function runResponsiveQualityAudit() {
+    if(!editorMode) return [];
+    const originalKey=editorBreakpointKey;
+    const breakpoints=(documentState.breakpoints || []).filter(value=>value && value.key);
+    const targets=breakpoints.length ? breakpoints : defaultBreakpoints();
+    const results=[];
+    try{
+      for(const breakpoint of targets){
+        editorBreakpointKey=breakpoint.key;
+        applyBreakpointPreview();
+        await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+        results.push(await auditRenderedBreakpoint(breakpoint));
+      }
+      return results;
+    }finally{
+      editorBreakpointKey=originalKey;
+      applyBreakpointPreview();
+    }
   }
 
   function renderQualityChecks(host, checks, emptyMessage) {
@@ -5963,32 +7083,6 @@
       const badge=document.createElement('strong'); badge.textContent=(check.severity || 'info').toUpperCase();
       const message=document.createElement('span'); message.textContent=check.message || check.code || 'Quality observation';
       row.append(badge,message); host.appendChild(row);
-    }
-  }
-
-  async function refreshQualityInspector() {
-    const savedHost=document.getElementById('legend-cms-quality-saved');
-    const liveHost=document.getElementById('legend-cms-quality-live');
-    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
-    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
-    const liveChecks=liveQualityChecks();
-    renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
-    if (liveMeta) liveMeta.textContent=`Live page checks (rendered canvas) · ${liveChecks.length} observation${liveChecks.length===1?'':'s'} · not a publish authorization`;
-    if (!editorTicket || !savedHost) return;
-    savedHost.textContent='Checking the saved server draft…';
-    if (savedMeta) savedMeta.textContent='Saved draft checks (server) · loading';
-    try {
-      const url=new URL(`${API_BASE}/api/website-content/manage/quality`);
-      url.searchParams.set('ticket',editorTicket);
-      const response=await fetch(url,{cache:'no-store'});
-      if(!response.ok) throw new Error(`Quality check failed (${response.status})`);
-      const payload=await response.json();
-      if(payload.source!=='saved_draft_server' || !Array.isArray(payload.checks)) throw new Error('Saved-draft quality response was invalid.');
-      renderQualityChecks(savedHost,payload.checks,'No saved-draft issues detected by the server checks.');
-      if(savedMeta) savedMeta.textContent=`Saved draft checks (server) · revision ${payload.revision} · ${payload.errorCount||0} errors · ${payload.warningCount||0} warnings`;
-    } catch(error) {
-      renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
-      if(savedMeta) savedMeta.textContent='Saved draft checks (server) · unavailable';
     }
   }
 
@@ -6228,9 +7322,17 @@
       const copy=cloneCanonicalNodeFresh(entry.node,{offsetY:16});
       const siblings=compositionChildren(entry.parent,entry.root);
       const index=siblings.findIndex(node=>node.id===entry.node.id);
-      siblings.splice(index+1,0,copy);
+      const insertIndex=index+1;
+      siblings.splice(insertIndex,0,copy);
       if(entry.root?.scope?.startsWith('shell.')) renderCanonicalShell();
-      else renderCanonicalCompositionPage();
+      else if(!renderPageStructuralMutationIncrementally({
+        type:'insertNode',
+        scope:'page',
+        pagePath:currentPageRoute(),
+        parentId:entry.parent?.id || null,
+        index:insertIndex,
+        node:copy
+      },currentPageRoute())) renderCanonicalCompositionPage();
       setSelected(findEditableElement(copy.id));
       markDirty();
     });
@@ -6248,8 +7350,8 @@
       if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
       if (key === 'z' || key === 'y') {
         event.preventDefault();
-        if (key === 'y' || event.shiftKey) restoreCanonicalV3History(redoStack, undoStack);
-        else restoreCanonicalV3History(undoStack, redoStack);
+        if (key === 'y' || event.shiftKey) void restoreCanonicalV3History(redoStack, undoStack,'redo');
+        else void restoreCanonicalV3History(undoStack, redoStack,'undo');
       }
     });
     refreshHistoryControls();
@@ -6459,7 +7561,7 @@
     const defaultClasses={
       section:'section',
       cta:'btn primary',
-      image:'legend-cms-image',
+      image:null,
       form:'public-form legend-cms-inquiry-form',
       experience:'legend-native-experience',
       embed:'legend-cms-embed'
@@ -6481,21 +7583,33 @@
       }:null
     };
 
+    let mutationParentId=null;
+    let mutationIndex=0;
     if(nodeType==='section'){
       const roots=pageState().composition ||= [];
       const selectedId=sectionEl?.dataset?.cmsCompositionId;
       const index=selectedId ? roots.findIndex(value=>value.id===selectedId) : -1;
-      if(index>=0) roots.splice(index+1,0,node); else roots.push(node);
+      mutationIndex=index>=0 ? index+1 : roots.length;
+      roots.splice(mutationIndex,0,node);
     } else {
       const flowContainer=selectedFlowContainer(sectionEl);
       const parentId=flowContainer?.dataset?.cmsCompositionId || sectionEl?.dataset?.cmsCompositionId;
       const parent=parentId ? compositionNode(parentId) : (pageState().composition || []).find(value=>value.type==='section');
       if(!parent){ alert('Select a section before adding content.'); return; }
+      mutationParentId=parent.id;
       parent.children ||= [];
+      mutationIndex=parent.children.length;
       parent.children.push(node);
     }
 
-    renderCanonicalCompositionPage();
+    if(!renderPageStructuralMutationIncrementally({
+      type:'insertNode',
+      scope:'page',
+      pagePath:currentPageRoute(),
+      parentId:mutationParentId,
+      index:mutationIndex,
+      node
+    },currentPageRoute())) renderCanonicalCompositionPage();
     const created=document.querySelector('[data-cms-id="'+CSS.escape(id)+'"]');
     setSelected(created,{openContent:nodeType==='cta'});
     markDirty();
@@ -6517,10 +7631,10 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit Desktop/Base or explicitly target one breakpoint. Breakpoint values inherit only fields you leave unset.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Desktop/Base and Mobile are independent authoring surfaces. Explicit Mobile width, alignment, offsets, height, spacing, typography, and layout are preserved exactly within normal validated bounds; inherited defaults are used only for fields you have not set.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. When Mobile is selected, these controls write only to the mobile breakpoint; Desktop/Base remains unchanged.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit Desktop/Base or explicitly target one breakpoint. Breakpoint values inherit only fields you leave unset.</p><div class="legend-cms-inline-help" id="legend-cms-responsive-policy"><strong>Canonical responsive hierarchy</strong><br>Desktop/Base and Mobile are independent authoring surfaces for page content. On Mobile, the global public header, brand fit, Menu trigger, and primary navigation geometry are platform shell chrome: width, offsets, height, and layout are canonicalized so navigation cannot collapse, drift off-canvas, or wrap vertically. Colors, copy, and bounded typography remain editable. Other explicit Mobile presentation is preserved within normal validated bounds.</div><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Selection, movement, and resizing are separate actions: click content to select it, drag the gold Move control to position it, and drag only the border edges or corners to resize. When Mobile is selected, these controls write only to the mobile breakpoint; Desktop/Base remains unchanged.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Sections</h2><p>Drag only whole page sections to reorder them. Edit headings, buttons, fields, and other content directly on the page so this list stays clean and short.</p><label class="legend-cms-group">Find section<input id="legend-cms-layer-search" type="search" placeholder="Search sections"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
-      <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" data-agent-action="upload-media" accept="image/*,video/*,.heic,.heif,.avif,.mov,.m4v,.webm"><button id="legend-cms-media-refresh" type="button" data-agent-action="refresh-media">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save any non-system canonical block or section once, then insert synchronized references. Protected platform components cannot be copied into reusable content.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Add page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/*,.heic,.heif,.avif"><small>A valid image file. The shared media authority verifies the file bytes; this is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const sourceView=document.createElement('section'); sourceView.dataset.cmsView='source'; sourceView.hidden=true;
     sourceView.innerHTML='<h2>Canonical Source</h2><p>Master Source is a read-only, color-guided inspection of the canonical v3 graph. Selected Source is the normal editable code surface: click, select, type, paste, use Tab / Shift+Tab to indent or outdent, and Enter to keep indentation. Canvas, Selected Source, drafts, validation, and publish all resolve to the same stable node identities.</p><label class="legend-cms-group">Scope<select id="legend-cms-source-scope"><option value="site">Master Source · read only</option><option value="selection">Selected Source · editable</option></select></label><small id="legend-cms-source-location">Master Source · entire website · read only</small><div class="legend-cms-source-key" aria-label="Source color guide"><span data-tone="content">Content</span><span data-tone="style">Typography & style</span><span data-tone="color">Color</span><span data-tone="size">Size & spacing</span><span data-tone="layout">Layout & responsive</span><span data-tone="media">Media</span><span data-tone="behavior">Behavior</span><span data-tone="structure">Authorable structure</span><span data-tone="protected">Protected identity</span></div><div class="legend-cms-source-editor"><pre id="legend-cms-source-highlight" class="legend-cms-source-highlight" aria-hidden="true"></pre><textarea id="legend-cms-site-source" class="legend-cms-site-source" data-agent-surface="site-source" rows="28" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="soft" aria-label="Canonical source"></textarea></div><small id="legend-cms-source-status" role="status">Master Source is synchronized and read only.</small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-row"><button id="legend-cms-source-apply" type="button" data-agent-action="apply-source">Apply selected source</button><button id="legend-cms-source-reload" type="button" data-agent-action="reload-source">Refresh from canonical graph</button></div>';
@@ -6544,7 +7658,7 @@
     gpt.id='legend-cms-browser-agent-workspace';
     gpt.dataset.agentWorkspace='browser-only';
     gpt.dataset.externalAiApi='false';
-    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> stable component IDs are exposed as <code>data-cms-id</code>. Master Source is inspection-only. Make source-code changes only through Selected Source, then validate and save through the canonical authority.</p>';
+    gpt.innerHTML='<h2>GPT Browser Workspace</h2><p>Use an authorized browser session to let GPT operate this exact Website Studio. No website content is sent to OpenAI by this application and no OpenAI API key is used here.</p><div class="legend-cms-agent-contract"><strong>Canonical operating contract</strong><pre id="legend-cms-agent-contract-script"></pre></div><small id="legend-cms-browser-agent-status" role="status"></small><div class="legend-cms-protection-warning" data-canonical-protection-warning role="alert" hidden></div><div class="legend-cms-menu"><button id="legend-cms-agent-master-source" type="button" data-agent-action="master-source">Inspect Master Source</button><button id="legend-cms-agent-selection-source" type="button" data-agent-action="selection-source">Edit selected source</button><button id="legend-cms-agent-media" type="button" data-agent-action="media-library">Open Media</button><button id="legend-cms-agent-quality" type="button" data-agent-action="quality-preflight">Run Quality</button><button id="legend-cms-agent-publish" type="button" data-agent-action="publish-workspace">Open Publish</button></div><p><strong>For browser agents:</strong> use <code>LEGEND_WEBSITE_STUDIO_AGENT.getSiteSummary()</code> → <code>listRecipes()</code> → one <code>applyDesignPlan()</code> for the main build, then scoped <code>applyMutationBatch()</code> refinements and <code>runPreflight()</code>. Master Source is inspection-only. Selected Source is a precision fallback for one selected node, not the primary website-building workflow.</p>';
     const agentScript=gpt.querySelector('#legend-cms-agent-contract-script');
     if(agentScript) agentScript.textContent=managementPayload?.agentContract?.promptTemplate || 'Canonical GPT operating contract unavailable; do not modify this website until the server contract is loaded.';
     tools.appendChild(gpt);
@@ -6572,13 +7686,16 @@
     if (content) content.appendChild(selectedActions);
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v"><label><input id="legend-cms-video-loop" type="checkbox"> Loop continuously · hide playback controls</label><small>Loop mode preserves the uploaded audio track. Browsers may require the first user gesture before audible autoplay begins.</small></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">CTA / link</label><select id="legend-cms-action"></select><small>Choose an action. Visible text and styling can change freely without changing its destination or analytics.</small><small id="legend-cms-action-wiring"></small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-video-file">Replace video from this website's media library</label><input id="legend-cms-video-file" type="file" accept="video/*,.mov,.m4v,.webm"><label><input id="legend-cms-video-loop" type="checkbox"> Loop continuously · hide playback controls</label><small>Loop mode preserves the uploaded audio track. Browsers may require the first user gesture before audible autoplay begins.</small></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     document.getElementById('legend-cms-agent-master-source')?.addEventListener('click',()=>openBrowserAgentSource('site'));
     document.getElementById('legend-cms-agent-selection-source')?.addEventListener('click',()=>openBrowserAgentSource('selection'));
     document.getElementById('legend-cms-agent-media')?.addEventListener('click',()=>showPanel('media'));
-    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{showPanel('quality');void refreshQualityInspector();});
+    document.getElementById('legend-cms-agent-quality')?.addEventListener('click',()=>{
+      showPanel('quality',{refresh:false});
+      void runWholeSitePreflightAndRender().catch(()=>{});
+    });
     document.getElementById('legend-cms-agent-publish')?.addEventListener('click',()=>showPanel('publish'));
 
     const sourceTextarea=document.getElementById('legend-cms-site-source');
@@ -6610,8 +7727,8 @@
     document.getElementById('legend-cms-publish-save-draft')?.addEventListener('click',chooseDraft);
     document.getElementById('legend-cms-publish-now')?.addEventListener('click',()=>void save(true));
     document.getElementById('legend-cms-publish-quality')?.addEventListener('click',()=>{
-      showPanel('quality');
-      void refreshQualityInspector();
+      showPanel('quality',{refresh:false});
+      void runWholeSitePreflightAndRender().catch(()=>{});
     });
     syncBreakpointControls();
     document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
@@ -6663,7 +7780,7 @@
     document.getElementById('legend-cms-media-search')?.addEventListener('input',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-kind')?.addEventListener('change',()=>void refreshMediaLibrary());
     document.getElementById('legend-cms-media-upload')?.addEventListener('change',async event=>{ const file=event.target.files?.[0]; if(!file) return; const asset=await uploadMedia(file); event.target.value=''; if(asset) await refreshMediaLibrary(); });
-    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
+    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void runWholeSitePreflightAndRender().catch(()=>{}));
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     panel.querySelectorAll('[data-editor-viewport]').forEach(button=>button.addEventListener('click',()=>{
       editorBreakpointKey=button.dataset.editorViewport==='mobile' ? 'mobile' : 'base';
@@ -6718,7 +7835,7 @@
           ov.target = '_self';
           document.getElementById('legend-cms-custom-link').hidden = true;
         }
-        applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
+        applyCompositionNode(selected, ov); syncEditorControls(); if(activeEditorPanel==='signals') renderSignalControls(); markDirty();
         return;
       }
       if (option.managed) {
@@ -6733,7 +7850,7 @@
         ov.text = option.defaultText || option.label;
         setContentText(selected, ov.text, true);
       }
-      applyCompositionNode(selected, ov); syncEditorControls(); markDirty();
+      applyCompositionNode(selected, ov); syncEditorControls(); if(activeEditorPanel==='signals') renderSignalControls(); markDirty();
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-image-upload').click());
@@ -6798,7 +7915,7 @@
     });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedWebsiteModel(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyCompositionNode(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreCanonicalV3History(undoStack, redoStack));
-    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack));
+    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreCanonicalV3History(redoStack, undoStack, 'redo'));
     installDirectCanvasControls(preview);
     showPanel('gpt');
   }
@@ -6904,7 +8021,7 @@
       [data-cms-view="publish"]{gap:12px}[data-cms-view="advanced"] .legend-cms-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
-      .legend-cms-image,.legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .legend-legacy-migration-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){
         html{max-width:100%;overflow-x:hidden}
         body.legend-cms-editing{width:100%;max-width:100%;overflow:hidden}
@@ -7006,7 +8123,7 @@
       </div>
       <div id="legend-cms-image-group" class="legend-cms-group" hidden>
         <label for="legend-cms-image">Replace image</label>
-        <input id="legend-cms-image" type="file" accept="image/jpeg,image/png,image/webp">
+        <input id="legend-cms-image" type="file" accept="image/*,.heic,.heif,.avif">
       </div>
       <strong class="legend-cms-control-heading">Typography</strong>
       <div class="legend-cms-row">
@@ -7149,7 +8266,7 @@
     bar.innerHTML = `
       <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
       <span id="legend-cms-status" role="status" aria-live="polite">Draft editor</span>
-      <input id="legend-cms-image-upload" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <input id="legend-cms-image-upload" type="file" accept="image/*,.heic,.heif,.avif" hidden>
       <button id="legend-cms-up">Section ↑</button>
       <button id="legend-cms-down">Section ↓</button>
       <button id="legend-cms-reset">Reset selected</button><button id="legend-cms-remove">Delete selected</button>
@@ -7257,8 +8374,11 @@
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
       if (dirty && !confirm('Exit with unsaved changes?')) return;
-      const url = new URL(location.href);
-      url.searchParams.delete('legendEdit');
+      const url = credentialFreeEditorUrl(location.href);
+      const state=history.state && typeof history.state==='object' ? {...history.state} : {};
+      delete state.legendStudioTicket;
+      delete state.legendStudioRoute;
+      history.replaceState(state,'',url.toString());
       location.href = url.toString();
     });
   }
@@ -7267,6 +8387,7 @@
     try {
       const url = new URL(`${API_BASE}/api/website-content/manage`);
       url.searchParams.set('ticket', editorTicket);
+      if(auditMode) url.searchParams.set('audit','true');
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         if ((response.status===401 || response.status===403) &&
@@ -7278,6 +8399,7 @@
         if (showEditorAuthorizationRecovery('This Website Studio authorization belongs to a different website scope.')) return;
         throw new Error('This edit session belongs to a different website. Open it from your profile.');
       }
+      concealEditorTicketFromDocumentUrl();
       bindBusiness(payload);
       managementPayload = payload;
       storeContext = payload.store || null;
@@ -7292,6 +8414,7 @@
       revision = payload.revision;
       namedDrafts = payload.drafts || [];
       applyDocument(payload.document || {});
+      persistedDocumentState=legacyMigration ? null : cloneCanonicalValue(documentState);
 
       if(materializeMode){
         const snapshot=currentMaterializedPage();
@@ -7300,20 +8423,27 @@
         return;
       }
 
-      if(legacyMigration && payload.capabilities?.compositionV3===true){
-        await materializeCanonicalSite();
+      if(auditMode){
+        const results=await runResponsiveQualityAudit();
+        window.parent?.postMessage({
+          type:'legend-site-responsive-audit',
+          route:currentPageRoute(),
+          revision,
+          results
+        },location.origin);
+        document.documentElement.hidden=false;
+        return;
       }
 
-      if(!materializeMode && templateRepairPending && !legacyMigration){
-        const repaired=await save(false);
-        if(!repaired) throw new Error(document.getElementById('legend-cms-status')?.textContent || 'Protected form presentation could not be repaired safely. Publishing remains blocked.');
-        templateRepairPending=false;
+      if(legacyMigration && payload.capabilities?.compositionV3===true){
+        await materializeCanonicalSite();
       }
 
       preservePreviewNavigation();
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
       buildEditor();
+      installCreativeAgentWorkspaceApi();
       installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
@@ -7347,6 +8477,15 @@
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
+  }
+
+  if(editorMode && SITE_KEY==='business') {
+    window.addEventListener('popstate',()=>{
+      const current=new URL(location.href);
+      const route=normalizePageRoute(current.searchParams.get('cmsPage') || '/');
+      if(route && documentState.pages?.[route] && route!==currentPageRoute())
+        void navigateToEditorPage(route,{replaceHistory:true});
+    });
   }
 
   document.addEventListener('DOMContentLoaded', async () => {

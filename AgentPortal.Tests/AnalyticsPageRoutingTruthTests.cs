@@ -130,6 +130,35 @@ public sealed class AnalyticsPageRoutingTruthTests
     }
 
     [Fact]
+    public void MarketingDeliveryEvidenceAndAiLearningTruthHaveSingleReadAuthorities()
+    {
+        var root = RepoRoot();
+        var evidence = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MarketingMeasurementEvidenceService.cs"));
+        var eventMap = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsiteEventMapQuery.cs"));
+        var studio = File.ReadAllText(Path.Combine(root, "Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
+        var metaSignals = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "MetaSignalAnalyticsService.cs"));
+        var analyticsView = File.ReadAllText(Path.Combine(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
+
+        Assert.Contains("public static class MarketingDeliveryEvidencePolicy", evidence, StringComparison.Ordinal);
+        Assert.Contains("MetaProviderAccepted", evidence, StringComparison.Ordinal);
+        Assert.Contains("HttpTransportAccepted", evidence, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", eventMap, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.HttpTransportAccepted", eventMap, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", studio, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy", studio, StringComparison.Ordinal);
+        Assert.Contains(".HttpTransportAccepted(value)", studio, StringComparison.Ordinal);
+        Assert.DoesNotContain("metaRows.All(m => m.MetaServerSent &&", eventMap, StringComparison.Ordinal);
+        Assert.DoesNotContain("httpAccepted = value.Status == \"sent\"", studio, StringComparison.Ordinal);
+
+        Assert.Contains("Submitted Leads value is a funnel-signal count, not the canonical CRM lead total", metaSignals, StringComparison.Ordinal);
+        Assert.Contains("Use Analytics Verified Leads and canonical channel outcomes for business truth", metaSignals, StringComparison.Ordinal);
+        Assert.DoesNotContain("Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic", analyticsView, StringComparison.Ordinal);
+        Assert.Contains("Loading canonical Meta learning scope", analyticsView, StringComparison.Ordinal);
+        Assert.Contains("Meta Funnel Lead Signals", analyticsView, StringComparison.Ordinal);
+        Assert.DoesNotContain(">Submitted Leads<", analyticsView, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task BusinessMetaSignalFiltersAreActuallyApplied_NotSilentlyIgnored()
     {
         using var db = ControllerTestHelpers.BuildDb();

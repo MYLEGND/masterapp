@@ -3,36 +3,13 @@ namespace Infrastructure.WebsiteEditing;
 public static class WebsiteContentSanitizer
 {
     /// <summary>
-    /// Read-only compatibility for persisted documents. Retired browser mappings
-    /// of verified outcomes are inactive; their original JSON remains available
-    /// to the Event Map. New saves always use strict Sanitize validation.
+    /// Persisted canonical v3 is never self-healed during reads. Historical
+    /// pre-v3 JSON is projected only through the explicit one-way materialization
+    /// boundary; canonical v3 must already satisfy the canonical contract.
     /// </summary>
     public static WebsiteContentDocument ReadPersisted(string json, System.Text.Json.JsonSerializerOptions options)
     {
         var root = System.Text.Json.Nodes.JsonNode.Parse(json);
-        void RemoveRetiredMappings(System.Text.Json.Nodes.JsonNode? node)
-        {
-            if (node is System.Text.Json.Nodes.JsonObject obj)
-            {
-                foreach (var property in obj.ToArray())
-                {
-                    if (property.Key.Equals("signals", StringComparison.OrdinalIgnoreCase) &&
-                        property.Value is System.Text.Json.Nodes.JsonArray bindings)
-                    {
-                        for (var i = bindings.Count - 1; i >= 0; i--)
-                        {
-                            var name = bindings[i]?["eventName"]?.ToString() ?? bindings[i]?["EventName"]?.ToString();
-                            if (Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(name)) bindings.RemoveAt(i);
-                        }
-                    }
-                    RemoveRetiredMappings(property.Value);
-                }
-            }
-            else if (node is System.Text.Json.Nodes.JsonArray array)
-                foreach (var child in array) RemoveRetiredMappings(child);
-        }
-
-        RemoveRetiredMappings(root);
         var raw = root?.ToJsonString() ?? "{}";
         var version = 0;
         if (root is System.Text.Json.Nodes.JsonObject rootObject &&
@@ -45,8 +22,11 @@ public static class WebsiteContentSanitizer
             if (ContainsLegacyAuthority(root))
                 throw new InvalidOperationException("website_v3_parallel_authority_detected");
             var canonical = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(raw, options) ?? new();
-            RepairPersistedDuplicateNodeIdentities(canonical);
-            return Sanitize(canonical);
+            EnsureUniqueCanonicalNodeIds(canonical);
+            var sanitized = Sanitize(canonical);
+            EnsurePersistedCanonicalIsStable(canonical, sanitized, options);
+            EnsureUniqueCanonicalNodeIds(sanitized);
+            return sanitized;
         }
 
         var legacy = System.Text.Json.JsonSerializer.Deserialize<LegacyWebsiteContentDocument>(raw, options) ?? new();
@@ -71,7 +51,9 @@ public static class WebsiteContentSanitizer
 
         var document = System.Text.Json.JsonSerializer.Deserialize<WebsiteContentDocument>(root.ToJsonString(), options)
             ?? throw new ArgumentException("Canonical website document is invalid.");
-        return Sanitize(document);
+        var sanitized = Sanitize(document);
+        EnsureUniqueCanonicalNodeIds(sanitized);
+        return sanitized;
     }
 
     private static bool ContainsLegacyAuthority(System.Text.Json.Nodes.JsonNode? root)
@@ -104,58 +86,40 @@ public static class WebsiteContentSanitizer
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
 
-    private static void RepairPersistedDuplicateNodeIdentities(WebsiteContentDocument document)
+    private static void EnsurePersistedCanonicalIsStable(
+        WebsiteContentDocument persisted,
+        WebsiteContentDocument sanitized,
+        System.Text.Json.JsonSerializerOptions options)
     {
-        var nodes = new List<WebsiteCompositionNode>();
+        var persistedNode = System.Text.Json.Nodes.JsonNode.Parse(
+            System.Text.Json.JsonSerializer.Serialize(persisted, options));
+        var sanitizedNode = System.Text.Json.Nodes.JsonNode.Parse(
+            System.Text.Json.JsonSerializer.Serialize(sanitized, options));
 
-        void Visit(IEnumerable<WebsiteCompositionNode>? values)
+        if (!System.Text.Json.Nodes.JsonNode.DeepEquals(persistedNode, sanitizedNode))
+            throw new InvalidOperationException("website_v3_noncanonical_persisted_document");
+    }
+
+    private static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+
+        void Visit(IEnumerable<WebsiteCompositionNode>? nodes)
         {
-            foreach (var node in values ?? [])
+            foreach (var node in nodes ?? [])
             {
-                if (node is null) continue;
-                nodes.Add(node);
+                if (!ids.Add(node.Id))
+                    throw new InvalidOperationException($"website_duplicate_node_identity:{node.Id}");
                 Visit(node.Children);
             }
         }
 
         Visit(document.Shell?.Header);
         Visit(document.Shell?.Footer);
-        foreach (var page in (document.Pages ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(page.Value?.Composition);
-        foreach (var component in (document.ReusableComponents ?? new()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            Visit(component.Value?.Composition);
-
-        var normalized = nodes
-            .Select(node => (Node: node, Id: SanitizeId(node.Id)))
-            .Where(entry => entry.Id.Length > 0)
-            .ToList();
-        var reserved = normalized.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-
-        foreach (var group in normalized.GroupBy(entry => entry.Id, StringComparer.Ordinal).Where(group => group.Count() > 1))
-        {
-            var entries = group.ToList();
-            var protectedEntries = entries.Where(entry => WebsiteSiteSource.HasProtectedSemantics(entry.Node)).ToList();
-            if (protectedEntries.Count > 1)
-                throw new InvalidOperationException($"website_duplicate_protected_node_identity:{group.Key}");
-
-            var keeper = protectedEntries.Count == 1 ? protectedEntries[0] : entries[0];
-            keeper.Node.Id = group.Key;
-
-            var suffix = 2;
-            foreach (var entry in entries.Where(entry => !ReferenceEquals(entry.Node, keeper.Node)))
-            {
-                string repaired;
-                do
-                {
-                    var suffixText = $".repair.{suffix++}";
-                    var prefixLength = Math.Max(1, 160 - suffixText.Length);
-                    repaired = SanitizeId(group.Key[..Math.Min(group.Key.Length, prefixLength)] + suffixText);
-                }
-                while (repaired.Length == 0 || !reserved.Add(repaired));
-
-                entry.Node.Id = repaired;
-            }
-        }
+        foreach (var page in document.Pages.Values)
+            Visit(page.Composition);
+        foreach (var component in document.ReusableComponents.Values)
+            Visit(component.Composition);
     }
 
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
@@ -217,6 +181,139 @@ public static class WebsiteContentSanitizer
         clean.Theme = SanitizeTheme(source.Theme);
         clean.UpdatedUtc = source.UpdatedUtc;
         return clean;
+    }
+
+    internal static List<WebsiteBreakpointDefinition> SanitizeMutationBreakpoints(
+        IEnumerable<WebsiteBreakpointDefinition>? source) =>
+        SanitizeBreakpoints(source);
+
+    internal static WebsiteDesignTheme SanitizeMutationTheme(WebsiteDesignTheme? source) =>
+        SanitizeTheme(source);
+
+    internal static string? SanitizeMutationFavicon(string? value) =>
+        SanitizeImage(value);
+
+    internal static WebsiteStoreSettings SanitizeMutationStore(
+        WebsiteStoreSettings? source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+    {
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        return SanitizeStore(source, keys);
+    }
+
+    internal static string NormalizeBusinessPagePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("A Business website page path is required.");
+
+        var path = value.Trim();
+        if (!path.StartsWith('/')) path = "/" + path;
+        path = path.Length > 1 ? path.TrimEnd('/') : path;
+
+        if (path.Length > 160 ||
+            path.StartsWith("//", StringComparison.Ordinal) ||
+            path.Contains('\\') ||
+            path.Contains('?') ||
+            path.Contains('#') ||
+            path.Contains("..", StringComparison.Ordinal) ||
+            path.Any(char.IsControl) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/?)*$"))
+            throw new ArgumentException(
+                "Business website routes must be 160 characters or fewer and use lowercase letters, numbers, hyphens, underscores, and forward-slash segments only.");
+
+        return path;
+    }
+
+    internal static void ValidateBusinessPagePaths(WebsiteContentDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        foreach (var path in document.Pages.Keys)
+        {
+            var normalized = NormalizeBusinessPagePath(path);
+            if (!string.Equals(path, normalized, StringComparison.Ordinal))
+                throw new ArgumentException($"Business website route '{path}' is not canonical.");
+        }
+    }
+
+    internal static WebsitePageDocument SanitizeMutationPageMetadata(
+        string pagePath,
+        WebsitePageDocument? source)
+    {
+        source ??= new WebsitePageDocument();
+        return new WebsitePageDocument
+        {
+            Title = ClampText(source.Title),
+            Description = ClampText(source.Description),
+            Navigation = SanitizeNavigation(pagePath, source.Navigation, source.Title),
+            DynamicBinding = SanitizeDynamicBinding(source.DynamicBinding),
+            SystemTemplateKey = WebsiteSystemTemplateAuthority.IsKnownTemplateKey(source.SystemTemplateKey)
+                ? source.SystemTemplateKey!.Trim()
+                : null,
+            Composition = []
+        };
+    }
+
+    internal static WebsiteCompositionNode SanitizeMutationNode(
+        WebsiteCompositionNode source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true)
+    {
+        RejectUnexpectedMutationNodeFields(source, "mutation/" + source.Id);
+
+        static HashSet<string> Ids(WebsiteCompositionNode root)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            void Visit(WebsiteCompositionNode node)
+            {
+                if (string.IsNullOrWhiteSpace(node.Id) || !ids.Add(node.Id))
+                    throw new ArgumentException("Website mutation node IDs must be non-empty and unique inside the changed subtree.");
+                foreach (var child in node.Children ?? []) Visit(child);
+            }
+            Visit(root);
+            return ids;
+        }
+
+        var sourceIds = Ids(source);
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        var result = SanitizeComposition([source], keys, mobileFlowSafety);
+        if (result.Count != 1)
+            throw new ArgumentException($"Website component '{source.Id}' is not valid canonical v3 content.");
+        var sanitizedIds = Ids(result[0]);
+        if (!sourceIds.SetEquals(sanitizedIds))
+            throw new ArgumentException(
+                $"Website component '{source.Id}' contains invalid structure that cannot be silently rewritten during a scoped mutation.");
+        return result[0];
+    }
+
+    internal static WebsiteReusableComponentDefinition SanitizeMutationReusableComponent(
+        WebsiteReusableComponentDefinition source,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
+    {
+        if (source is null || string.IsNullOrWhiteSpace(source.Id))
+            throw new ArgumentException("Reusable component identity is required.");
+        if (source.UnexpectedFields is { Count: > 0 })
+            throw new ArgumentException(
+                $"Unsupported website field(s) at component:{source.Id}: {string.Join(", ", source.UnexpectedFields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        foreach (var node in source.Composition ?? [])
+            RejectUnexpectedMutationNodeFields(node, "component:" + source.Id + "/" + node.Id);
+
+        var id = SanitizeId(source.Id);
+        if (id.Length == 0 || !string.Equals(id, source.Id, StringComparison.Ordinal))
+            throw new ArgumentException("Reusable component identity is invalid.");
+        var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
+        return SanitizeReusableComponent(source, keys, id)
+            ?? throw new ArgumentException("Reusable component is invalid.");
+    }
+
+    private static void RejectUnexpectedMutationNodeFields(
+        WebsiteCompositionNode node,
+        string location)
+    {
+        if (node.UnexpectedFields is { Count: > 0 })
+            throw new ArgumentException(
+                $"Unsupported website field(s) at {location}: {string.Join(", ", node.UnexpectedFields.Keys.OrderBy(value => value, StringComparer.Ordinal))}");
+        foreach (var child in node.Children ?? [])
+            RejectUnexpectedMutationNodeFields(child, location + "/" + child.Id);
     }
 
     private static void RejectUnexpectedCanonicalFields(WebsiteContentDocument source)
@@ -374,6 +471,11 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
+    private static List<WebsiteSignalBinding> SanitizeLegacySignals(IEnumerable<WebsiteSignalBinding>? bindings) =>
+        WebsiteSignalBindingPolicy.Validate((bindings ?? [])
+            .Where(binding => binding is not null &&
+                !Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(binding.EventName)));
+
     private static LegacyWebsiteExtraComponent? SanitizeLegacyExtra(LegacyWebsiteExtraComponent? extra, HashSet<string> breakpointKeys)
     {
         if (extra is null) return null;
@@ -389,7 +491,7 @@ public static class WebsiteContentSanitizer
             SectionId = sectionId,
             Type = type,
             TemplateSectionId = type == "section" ? NullIfEmpty(SanitizeId(extra.TemplateSectionId)) : null,
-            Signals = type == "reusable" ? [] : WebsiteSignalBindingPolicy.Validate(extra.Signals),
+            Signals = type == "reusable" ? [] : SanitizeLegacySignals(extra.Signals),
             ActionKey = SanitizeActionKey(extra.ActionKey),
             Title = ClampContentText(extra.Title),
             Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
@@ -411,7 +513,7 @@ public static class WebsiteContentSanitizer
 
     private static LegacyWebsiteElementRecord SanitizeElement(LegacyWebsiteElementRecord source, HashSet<string> breakpointKeys) => new()
     {
-        Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
+        Signals = SanitizeLegacySignals(source.Signals),
         ActionKey = SanitizeActionKey(source.ActionKey),
         Text = ClampContentText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),
@@ -669,7 +771,7 @@ public static class WebsiteContentSanitizer
             .Select(token => new string(token.Take(80)
                 .Where(character => char.IsLetterOrDigit(character) || character is '-' or '_')
                 .ToArray()))
-            .Where(token => token.Length > 0)
+            .Where(token => token.Length > 0 && !string.Equals(token, "legend-cms-image", StringComparison.Ordinal))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         return tokens.Length == 0 ? null : string.Join(' ', tokens);
@@ -964,11 +1066,44 @@ public static class WebsiteContentSanitizer
             GoldStrong = SanitizeHex(source.GoldStrong),
             Surface = SanitizeHex(source.Surface),
             Muted = SanitizeHex(source.Muted),
-            Text = SanitizeHex(source.Text), FontFamily = SanitizeFont(source.FontFamily),
-            FontSize = source.FontSize > 0 ? source.FontSize : null,
-            BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null
+            Text = SanitizeHex(source.Text),
+            FontFamily = SanitizeFont(source.FontFamily),
+            FontSize = Bound(source.FontSize, 8, 96),
+            BorderRadius = Bound(source.BorderRadius, 0, 120),
+            DisplaySize = Bound(source.DisplaySize, 24, 160),
+            H1Size = Bound(source.H1Size, 22, 120),
+            H2Size = Bound(source.H2Size, 18, 96),
+            H3Size = Bound(source.H3Size, 16, 72),
+            BodySize = Bound(source.BodySize, 12, 32),
+            SmallSize = Bound(source.SmallSize, 10, 24),
+            BodyLineHeight = Bound(source.BodyLineHeight, 1, 2.4m),
+            SectionSpace = Bound(source.SectionSpace, 16, 320),
+            ContentGap = Bound(source.ContentGap, 0, 120),
+            ContentMaxWidth = Bound(source.ContentMaxWidth, 320, 2400),
+            WideMaxWidth = Bound(source.WideMaxWidth, 480, 3200),
+            NarrowMaxWidth = Bound(source.NarrowMaxWidth, 240, 1600),
+            Gutter = Bound(source.Gutter, 0, 120),
+            CardRadius = Bound(source.CardRadius, 0, 120),
+            ButtonRadius = Bound(source.ButtonRadius, 0, 999),
+            InputRadius = Bound(source.InputRadius, 0, 120),
+            SurfaceElevated = SanitizeColor(source.SurfaceElevated),
+            SurfaceMuted = SanitizeColor(source.SurfaceMuted),
+            BorderColor = SanitizeColor(source.BorderColor),
+            BorderWidth = Bound(source.BorderWidth, 0, 12),
+            ShadowSoft = SanitizeCssValue(source.ShadowSoft, 300),
+            ShadowStrong = SanitizeCssValue(source.ShadowStrong, 300),
+            NavHeight = Bound(source.NavHeight, 40, 180),
+            MotionFastMs = BoundInt(source.MotionFastMs, 0, 2000),
+            MotionStandardMs = BoundInt(source.MotionStandardMs, 0, 4000),
+            MotionSlowMs = BoundInt(source.MotionSlowMs, 0, 8000)
         };
     }
+
+    private static decimal? Bound(decimal? value, decimal min, decimal max) =>
+        value.HasValue && value.Value >= min && value.Value <= max ? value : null;
+
+    private static int? BoundInt(int? value, int min, int max) =>
+        value.HasValue && value.Value >= min && value.Value <= max ? value : null;
 
     private static string? SanitizeHex(string? value)
     {

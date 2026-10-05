@@ -3,6 +3,7 @@ using System.Globalization;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -459,14 +460,33 @@ public sealed class CommerceManagementController(
     [HttpPost("product/images/upload")]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadImages(
-        string ticket,
-        [FromForm] string productId,
-        [FromForm] List<IFormFile> images,
+        string? ticket,
         CancellationToken ct = default)
     {
-        var store = await ResolveAsync(ticket, ct);
+        var transport = await MultipartUploadTransport.ReadAsync(Request, ct);
+        if (!transport.IsValid || transport.Form is null)
+            return BadRequest(new { error = "product_media_transport_invalid", message = transport.ErrorMessage });
+
+        ticket = string.IsNullOrWhiteSpace(ticket)
+            ? transport.Form["ticket"].FirstOrDefault()
+            : ticket;
+        var store = await ResolveAsync(ticket ?? string.Empty, ct);
         if (store is null) return Unauthorized();
-        await products.UploadImagesAsync(store.CommerceBusinessId, productId, images);
+
+        var productId = transport.Form["productId"].FirstOrDefault() ?? string.Empty;
+        var images = transport.Form.Files
+            .Where(file => string.Equals(file.Name, "images", StringComparison.OrdinalIgnoreCase) && file.Length > 0)
+            .ToList();
+
+        try
+        {
+            await products.UploadImagesAsync(store.CommerceBusinessId, productId, images);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "product_media_invalid", message = ex.Message });
+        }
+
         TempData["ProductStatus"] = "Images uploaded.";
         return RedirectToAction(nameof(Products), new { ticket });
     }

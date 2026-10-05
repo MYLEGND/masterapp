@@ -1,4 +1,5 @@
 using Domain.Messaging;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -8,20 +9,6 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
 {
     private const long DefaultMaximumAttachmentBytes = 10 * 1024 * 1024;
     private const int MaximumOriginalFileNameLength = 255;
-    private static readonly IReadOnlyDictionary<string, string> AllowedContentTypes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            [".pdf"] = "application/pdf",
-            [".png"] = "image/png",
-            [".jpg"] = "image/jpeg",
-            [".jpeg"] = "image/jpeg",
-            [".txt"] = "text/plain",
-            [".doc"] = "application/msword",
-            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            [".xls"] = "application/vnd.ms-excel",
-            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        };
-
     private readonly string _rootPath;
     private readonly long _maximumAttachmentBytes;
     private readonly ILogger<MessagingAttachmentStorage> _logger;
@@ -49,12 +36,52 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
         var safeOriginalName = Path.GetFileName(originalFileName?.Trim() ?? string.Empty);
         if (string.IsNullOrWhiteSpace(safeOriginalName) || safeOriginalName.Length > MaximumOriginalFileNameLength)
             return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_NAME_INVALID", "The attachment name is invalid.");
-
-        var extension = Path.GetExtension(safeOriginalName);
-        if (!AllowedContentTypes.TryGetValue(extension, out var contentType))
+        if (UploadValidator.IsDangerousExtension(Path.GetExtension(safeOriginalName)))
             return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
 
-        var storedFileName = $"{attachmentId:N}{extension.ToLowerInvariant()}";
+        byte[] bytes;
+        try
+        {
+            await using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer, cancellationToken);
+            bytes = buffer.ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "Messaging attachment input could not be read. AttachmentId={AttachmentId}", attachmentId);
+            return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_CONTENT_INVALID", "The attachment could not be read.");
+        }
+
+        if (bytes.LongLength != sizeBytes)
+            return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_SIZE_MISMATCH", "The attachment size did not match the request.");
+
+        var detectedContentType = UploadValidator.CanonicalContentType(
+            UploadValidator.DetectContentType(bytes));
+        var contentType = detectedContentType;
+        var extension = detectedContentType is null
+            ? Path.GetExtension(safeOriginalName).ToLowerInvariant()
+            : UploadValidator.CanonicalExtensionForContentType(detectedContentType);
+
+        if (contentType is null)
+        {
+            if (!UploadValidator.TryResolveAttachmentContentType(safeOriginalName, out contentType))
+                return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
+
+            var signatureRequired =
+                contentType.StartsWith("image/", StringComparison.Ordinal) ||
+                contentType.StartsWith("video/", StringComparison.Ordinal) ||
+                contentType.StartsWith("audio/", StringComparison.Ordinal) ||
+                string.Equals(contentType, "application/pdf", StringComparison.Ordinal);
+            if (signatureRequired)
+                return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_SIGNATURE_INVALID", "The attachment bytes do not match the selected media type.");
+
+            extension = Path.GetExtension(safeOriginalName).ToLowerInvariant();
+        }
+
+        if (string.IsNullOrWhiteSpace(extension))
+            return MessagingStoredAttachmentResult.Failure("MESSAGING_ATTACHMENT_TYPE_INVALID", "This attachment type is not permitted.");
+
+        var storedFileName = $"{attachmentId:N}{extension}";
         var storagePath = $"attachments/{storedFileName}";
         var physicalPath = ResolvePhysicalPath(storagePath);
         if (physicalPath is null)
@@ -63,14 +90,7 @@ internal sealed class MessagingAttachmentStorage : IMessageAttachmentStorage
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
-            await using var destination = new FileStream(
-                physicalPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 80 * 1024,
-                useAsync: true);
-            await content.CopyToAsync(destination, cancellationToken);
+            await File.WriteAllBytesAsync(physicalPath, bytes, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

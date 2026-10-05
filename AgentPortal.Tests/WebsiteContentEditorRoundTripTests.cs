@@ -89,26 +89,37 @@ public sealed class WebsiteContentEditorRoundTripTests
         using var fixture = new Fixture(siteKey);
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument("Black variation");
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 0);
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0, null, "Black")));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 0, [], null, "Black")));
+        fixture.Db.ChangeTracker.Clear();
         var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         var draft = Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
         Assert.Null(state.PublishedVersionId);
 
-        Node(document).Text = "Second variation";
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 1, null, "Second")));
+        var current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var second = ReplaceNodeOperation(current, node => node.Text = "Second variation");
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 1, [second], null, "Second")));
+        fixture.Db.ChangeTracker.Clear();
+        state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Equal(2, JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!.Count);
 
-        Assert.IsType<ConflictObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 1, draft.Id)));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 2, draft.Id)));
-        Assert.Equal("Black variation", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().LoadDraft(new(ticket, 1, draft.Id)));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().LoadDraft(new(ticket, 2, draft.Id)));
+        Assert.Equal("Black variation", Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Text);
 
-        Node(document).Text = "Updated black";
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 3, draft.Id, "Black")));
-        Assert.IsType<NotFoundResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, Guid.NewGuid())));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, draft.Id)));
+        current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var updated = ReplaceNodeOperation(current, node => node.Text = "Updated black");
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 3, [updated], draft.Id, "Black")));
+        Assert.IsType<NotFoundResult>(await fixture.CreateController().DeleteDraft(new(ticket, 4, Guid.NewGuid())));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(new(ticket, 4, draft.Id)));
+        fixture.Db.ChangeTracker.Clear();
+        state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
-        Assert.Equal("Updated black", Node(ReadDocument(await fixture.Controller.Manage(ticket))).Text);
+        Assert.Equal("Updated black", Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Text);
         Assert.Null(state.PublishedVersionId);
     }
 
@@ -145,7 +156,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         };
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        var saved = await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         Assert.Equal("Saved page content", Node(saved).Text);
         Assert.Equal(document.FaviconImageDataUrl, saved.FaviconImageDataUrl);
 
@@ -177,7 +188,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         };
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        var saved = await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         AssertLargeStyle(Node(saved).Style);
 
         fixture.Db.ChangeTracker.Clear();
@@ -204,9 +215,14 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().ToListAsync());
         Assert.Empty(await fixture.Db.AgentFinanceToolStates.ToListAsync());
 
-        Node(document).Text = "Unpublished revision";
-        ReadDocument(await fixture.CreateController().Save(new(ticket, document, 2)));
-        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().Save(new(ticket, new WebsiteContentDocument(), 2)));
+        var current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var unpublishedEdit = ReplaceNodeOperation(current, node => node.Text = "Unpublished revision");
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 2, [unpublishedEdit])));
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 2, [
+                new WebsiteMutationOperation { Type = "setTheme", Theme = new WebsiteDesignTheme { Navy = "#000000" } }
+            ])));
 
         fixture.Db.ChangeTracker.Clear();
         Assert.Equal("Updated title", Node(ReadDocument(await fixture.CreateController().Public(
@@ -225,8 +241,8 @@ public sealed class WebsiteContentEditorRoundTripTests
         document.Pages["/"] = new WebsitePageDocument { Title = unicode, Description = unicode };
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Publish(new(ticket, 1)));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().Publish(new(ticket, 1)));
 
         fixture.Db.ChangeTracker.Clear();
         var version = Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().AsNoTracking().ToListAsync());
@@ -276,8 +292,8 @@ public sealed class WebsiteContentEditorRoundTripTests
         var document = new WebsiteContentDocument { FaviconImageDataUrl = first };
         var slug = siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null;
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        var unpublished = Assert.IsType<RedirectResult>(await fixture.Controller.PublicFavicon(siteKey, slug));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
+        var unpublished = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
         Assert.EndsWith("/images/favicon/legend-favicon.svg", unpublished.Url, StringComparison.Ordinal);
 
         Assert.IsType<OkObjectResult>(await fixture.Controller.Publish(new(ticket, 1)));
@@ -285,8 +301,10 @@ public sealed class WebsiteContentEditorRoundTripTests
         var published = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
         Assert.Equal(first, published.Url);
 
-        document.FaviconImageDataUrl = second;
-        Assert.IsType<OkObjectResult>(await fixture.CreateController().Save(new(ticket, document, 2)));
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 2, [
+                new WebsiteMutationOperation { Type = "setFavicon", FaviconImageDataUrl = second }
+            ])));
         fixture.Db.ChangeTracker.Clear();
         var stillPublished = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
         Assert.Equal(first, stillPublished.Url);
@@ -307,18 +325,18 @@ public sealed class WebsiteContentEditorRoundTripTests
         };
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         AssertNoAdjustments(Node(ReadDocument(await fixture.CreateController().Manage(ticket))).Style);
 
-        Node(document).Style = new WebsiteVisualStyle
+        var current = ReadDocument(await fixture.CreateController().Manage(ticket));
+        var styleEdit = ReplaceNodeOperation(current, node => node.Style = new WebsiteVisualStyle
         {
             FontScale = 0.05m,
             WidthPercent = 0.25m,
             PaddingTop = 0,
             PaddingBottom = 0
-        };
-        var accepted = Node(ReadDocument(await fixture.Controller.Save(new(ticket, document, 1)))).Style;
+        });
+        var accepted = Node(await ApplyMutationsAndReadAsync(fixture, ticket, 1, [styleEdit])).Style;
         Assert.Equal(0.05m, accepted.FontScale);
         Assert.Equal(0.25m, accepted.WidthPercent);
         Assert.Equal(0m, accepted.PaddingTop);
@@ -333,8 +351,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var document = CanonicalDocument("New heading without resizing");
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
 
-        ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
         var element = Node(ReadDocument(await fixture.CreateController().Manage(ticket)));
         Assert.Equal("New heading without resizing", element.Text);
@@ -354,16 +371,19 @@ public sealed class WebsiteContentEditorRoundTripTests
         var initial = CanonicalDocument("Preserved content");
         var validTicket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
 
-        ReadDocument(await fixture.Controller.Save(new(validTicket, initial, 0)));
+        await SeedCanonicalDraftAsync(fixture, validTicket, initial, revision: 1);
         var originalJson = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
-        Node(initial).Text = "Unauthorized replacement";
+        var unauthorizedEdit = ReplaceNodeOperation(
+            ReadDocument(await fixture.CreateController().Manage(validTicket)),
+            node => node.Text = "Unauthorized replacement");
 
         var rejectedTicket = expired
             ? fixture.Ticket(DateTime.UtcNow.AddMinutes(-1))
             : "not-a-protected-ticket";
 
         Assert.IsType<UnauthorizedResult>(await fixture.Controller.Manage(rejectedTicket));
-        Assert.IsType<UnauthorizedResult>(await fixture.Controller.Save(new(rejectedTicket, initial, 1)));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(rejectedTicket, 1, [unauthorizedEdit])));
 
         fixture.Db.ChangeTracker.Clear();
         var row = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
@@ -463,17 +483,16 @@ public sealed class WebsiteContentEditorRoundTripTests
             Fields = ["slug", "name", "description", "priceCents"]
         };
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
-        fixture.Db.ChangeTracker.Clear();
         var manage = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
         var json = JsonSerializer.SerializeToElement(manage.Value, JsonOptions);
         var projections = json.GetProperty("collections").EnumerateArray().ToArray();
         var projection = Assert.Single(
-            projections.Where(value => value.GetProperty("id").GetString() == "commerce_products"));
-        Assert.Contains(
+            projections.Where(value => value.GetProperty("id").GetString() == "products"));
+        Assert.DoesNotContain(
             projections,
-            value => value.GetProperty("id").GetString() == "business_facts");
+            value => value.GetProperty("source").GetString() == "business_facts");
         Assert.True(projection.GetProperty("isList").GetBoolean());
         var item = Assert.Single(projection.GetProperty("items").EnumerateArray());
         Assert.Equal("own-active", item.GetProperty("key").GetString());
@@ -483,6 +502,14 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.DoesNotContain("Foreign Active Product", serialized, StringComparison.Ordinal);
         Assert.Contains(json.GetProperty("dataCatalog").EnumerateArray(),
             source => source.GetProperty("key").GetString() == "commerce_products");
+
+        var fullCatalog = Assert.IsType<OkObjectResult>(
+            await fixture.CreateController().DataCatalog(ticket, CancellationToken.None));
+        var fullJson = JsonSerializer.SerializeToElement(fullCatalog.Value, JsonOptions);
+        Assert.Contains(fullJson.GetProperty("collections").EnumerateArray(),
+            value => value.GetProperty("source").GetString() == "business_facts");
+        Assert.Contains(fullJson.GetProperty("collections").EnumerateArray(),
+            value => value.GetProperty("source").GetString() == "commerce_products");
     }
 
     [Fact]
@@ -582,29 +609,45 @@ public sealed class WebsiteContentEditorRoundTripTests
 
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument();
-        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
-        {
-            Id = "home.owned-photo",
-            Type = "image",
-            Tag = "img",
-            MediaAssetId = owned
-        });
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-
-        document.Pages["/"].Composition.Add(new WebsiteCompositionNode
-        {
-            Id = "home.foreign-photo",
-            Type = "image",
-            Tag = "img",
-            MediaAssetId = foreign
-        });
+        var accepted = await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(ticket, 1, [
+                new WebsiteMutationOperation
+                {
+                    Type = "insertNode",
+                    Scope = "page",
+                    PagePath = "/",
+                    Node = new WebsiteCompositionNode
+                    {
+                        Id = "home.owned-photo",
+                        Type = "image",
+                        Tag = "img",
+                        MediaAssetId = owned
+                    }
+                }
+            ]));
+        Assert.IsType<OkObjectResult>(accepted);
 
         var rejected = Assert.IsType<BadRequestObjectResult>(
-            await fixture.CreateController().Save(new(ticket, document, 1)));
+            await fixture.CreateController().ApplyMutations(
+                new WebsitePlatformController.WebsiteMutationRequest(ticket, 2, [
+                    new WebsiteMutationOperation
+                    {
+                        Type = "insertNode",
+                        Scope = "page",
+                        PagePath = "/",
+                        Node = new WebsiteCompositionNode
+                        {
+                            Id = "home.foreign-photo",
+                            Type = "image",
+                            Tag = "img",
+                            MediaAssetId = foreign
+                        }
+                    }
+                ])));
         var json = JsonSerializer.SerializeToElement(rejected.Value, JsonOptions);
-        Assert.Equal("invalid_website_document", json.GetProperty("error").GetString());
-        Assert.False(json.GetProperty("canonicalProtectionViolation").GetBoolean());
+        Assert.Equal("website_mutation_invalid", json.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -644,7 +687,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         await fixture.Db.SaveChangesAsync();
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
 
-        var imageResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, "logo", "image", CancellationToken.None));
+        var imageResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, "logo", "image", cancellationToken: CancellationToken.None));
         var imageJson = JsonSerializer.SerializeToElement(imageResult.Value, JsonOptions);
         var assets = imageJson.GetProperty("assets").EnumerateArray().ToArray();
         var image = Assert.Single(assets);
@@ -652,12 +695,12 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("team-logo.png", image.GetProperty("name").GetString());
         Assert.Equal("image/png", image.GetProperty("contentType").GetString());
 
-        var videoResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "video", CancellationToken.None));
+        var videoResult = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "video", cancellationToken: CancellationToken.None));
         var videoJson = JsonSerializer.SerializeToElement(videoResult.Value, JsonOptions);
         Assert.Equal(ownVideo.Id, Assert.Single(videoJson.GetProperty("assets").EnumerateArray()).GetProperty("id").GetGuid());
 
-        Assert.IsType<BadRequestObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "audio", CancellationToken.None));
-        Assert.IsType<UnauthorizedResult>(await fixture.Controller.MediaLibrary("invalid-ticket", null, "all", CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await fixture.Controller.MediaLibrary(ticket, null, "audio", cancellationToken: CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.Controller.MediaLibrary("invalid-ticket", null, "all", cancellationToken: CancellationToken.None));
     }
 
 
@@ -668,8 +711,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument("Original heading");
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
         var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
@@ -706,8 +748,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             }
         ];
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
         var beforeJson = before.DraftJson;
 
@@ -771,7 +812,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             }
         ];
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
         var versionId = Guid.NewGuid();
         state.PublishedVersionId = versionId;
@@ -843,8 +884,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = CanonicalDocument("Collaborative heading");
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
-        fixture.Db.ChangeTracker.Clear();
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
 
         var collaboration = Assert.IsType<OkObjectResult>(await fixture.CreateController().Collaboration(
@@ -919,7 +959,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var document = new WebsiteContentDocument();
         document.Pages["/"] = new WebsitePageDocument();
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
         var parentResult = Assert.IsType<OkObjectResult>(await fixture.CreateController().CreateCollaborationComment(
             new WebsitePlatformController.WebsiteStudioCommentCreateRequest(
@@ -972,7 +1012,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             ]
         };
 
-        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
 
         var quality = Assert.IsType<OkObjectResult>(await fixture.CreateController().DraftQuality(
             ticket,
@@ -995,6 +1035,68 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality(
             "invalid-ticket",
             CancellationToken.None));
+    }
+
+    private static async Task<WebsiteContentDocument> SeedCanonicalDraftAsync(
+        Fixture fixture,
+        string ticket,
+        WebsiteContentDocument document,
+        long revision = 1)
+    {
+        _ = await fixture.Controller.Manage(ticket);
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(fixture.SiteKey, canonical);
+        canonical.UpdatedUtc = DateTime.UtcNow;
+        state.DraftJson = JsonSerializer.Serialize(canonical, JsonOptions);
+        state.Revision = revision;
+        state.PublishedVersionId = null;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.UpdatedUtc = DateTime.UtcNow;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        return canonical;
+    }
+
+    private static async Task<WebsiteContentDocument> ApplyMutationsAndReadAsync(
+        Fixture fixture,
+        string ticket,
+        long expectedRevision,
+        IReadOnlyList<WebsiteMutationOperation> operations,
+        Guid? draftId = null,
+        string? draftName = null)
+    {
+        var result = await fixture.CreateController().ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(
+                ticket,
+                expectedRevision,
+                operations.ToList(),
+                draftId,
+                draftName));
+        Assert.IsType<OkObjectResult>(result);
+        fixture.Db.ChangeTracker.Clear();
+        return ReadDocument(await fixture.CreateController().Manage(ticket));
+    }
+
+    private static WebsiteMutationOperation ReplaceNodeOperation(
+        WebsiteContentDocument document,
+        Action<WebsiteCompositionNode> mutate)
+    {
+        var node = Node(document);
+        var replacement = JsonSerializer.Deserialize<WebsiteCompositionNode>(
+            JsonSerializer.Serialize(node, JsonOptions),
+            JsonOptions)!;
+        mutate(replacement);
+        return new WebsiteMutationOperation
+        {
+            Type = "replaceNode",
+            NodeId = node.Id,
+            ExpectedFingerprint = WebsiteCreativeFingerprint.Node(node),
+            Node = replacement
+        };
     }
 
     private static WebsiteContentDocument ReadDocument(IActionResult result)
@@ -1026,6 +1128,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         public const string AgentSlug = "editor-test-agent";
         public Guid? BusinessId { get; private set; }
         public string OwnerKey => _owner;
+        public string SiteKey => _siteKey;
         private readonly string _siteKey;
         private readonly string _owner;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());

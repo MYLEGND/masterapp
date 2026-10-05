@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace Infrastructure.Security.UploadValidation;
 
@@ -41,14 +45,21 @@ public sealed class UploadValidationPolicy
     /// <summary>When true, the actual bytes must match a recognized signature.</summary>
     public bool RequireKnownSignature { get; init; } = true;
 
-    /// <summary>Standard image policy (PNG/JPEG/WEBP) with a byte-signature requirement.</summary>
+    /// <summary>Standard browser/device image policy with a byte-signature requirement.</summary>
     public static UploadValidationPolicy Images(long maxSizeBytes) => new()
     {
         MaxSizeBytes = maxSizeBytes,
-        AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".png", ".jpg", ".jpeg", ".webp" },
-        AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "image/png", "image/jpeg", "image/jpg", "image/webp" },
+        AllowedExtensions = UploadValidator.VisualMediaExtensions(imagesOnly: true),
+        AllowedContentTypes = UploadValidator.VisualMediaContentTypes(imagesOnly: true),
+        RequireKnownSignature = true
+    };
+
+    /// <summary>Canonical image/video policy used by product, website, and other visual media ingress.</summary>
+    public static UploadValidationPolicy Media(long maxSizeBytes) => new()
+    {
+        MaxSizeBytes = maxSizeBytes,
+        AllowedExtensions = UploadValidator.VisualMediaExtensions(),
+        AllowedContentTypes = UploadValidator.VisualMediaContentTypes(),
         RequireKnownSignature = true
     };
 
@@ -71,6 +82,87 @@ public sealed class UploadValidationPolicy
 /// </summary>
 public static class UploadValidator
 {
+    private static readonly IReadOnlyDictionary<string, (string MediaKind, string ContentType)> CanonicalVisualMedia =
+        new Dictionary<string, (string MediaKind, string ContentType)>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".jpg"] = ("Image", "image/jpeg"),
+            [".jpeg"] = ("Image", "image/jpeg"),
+            [".png"] = ("Image", "image/png"),
+            [".webp"] = ("Image", "image/webp"),
+            [".gif"] = ("Image", "image/gif"),
+            [".heic"] = ("Image", "image/heic"),
+            [".heif"] = ("Image", "image/heif"),
+            [".avif"] = ("Image", "image/avif"),
+            [".mp4"] = ("Video", "video/mp4"),
+            [".m4v"] = ("Video", "video/mp4"),
+            [".mov"] = ("Video", "video/quicktime"),
+            [".webm"] = ("Video", "video/webm")
+        };
+
+    public static bool TryResolveVisualMediaType(
+        string? fileName,
+        out string mediaKind,
+        out string contentType)
+    {
+        var extension = Path.GetExtension(SanitizeFileName(fileName)).ToLowerInvariant();
+        if (CanonicalVisualMedia.TryGetValue(extension, out var media))
+        {
+            mediaKind = media.MediaKind;
+            contentType = media.ContentType;
+            return true;
+        }
+
+        mediaKind = string.Empty;
+        contentType = string.Empty;
+        return false;
+    }
+
+    public static IReadOnlySet<string> VisualMediaExtensions(bool imagesOnly = false) =>
+        CanonicalVisualMedia
+            .Where(pair => !imagesOnly || pair.Value.MediaKind == "Image")
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public static IReadOnlySet<string> VisualMediaContentTypes(bool imagesOnly = false) =>
+        CanonicalVisualMedia
+            .Where(pair => !imagesOnly || pair.Value.MediaKind == "Image")
+            .Select(pair => pair.Value.ContentType)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly IReadOnlyDictionary<string, string> CanonicalAttachmentTypes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".pdf"] = "application/pdf",
+            [".txt"] = "text/plain",
+            [".doc"] = "application/msword",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".xls"] = "application/vnd.ms-excel",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            [".mp3"] = "audio/mpeg",
+            [".m4a"] = "audio/mp4",
+            [".aac"] = "audio/aac",
+            [".wav"] = "audio/wav",
+            [".ogg"] = "audio/ogg",
+            [".oga"] = "audio/ogg",
+            [".flac"] = "audio/flac"
+        };
+
+    public static bool TryResolveAttachmentContentType(string? fileName, out string contentType)
+    {
+        if (TryResolveVisualMediaType(fileName, out _, out contentType))
+            return true;
+
+        var extension = Path.GetExtension(SanitizeFileName(fileName)).ToLowerInvariant();
+        if (CanonicalAttachmentTypes.TryGetValue(extension, out var resolved))
+        {
+            contentType = resolved;
+            return true;
+        }
+
+        contentType = string.Empty;
+        return false;
+    }
+
     // Extensions that must never be accepted regardless of policy (executable or
     // browser-scriptable content that could enable stored-XSS / RCE if served).
     private static readonly HashSet<string> DangerousExtensions =
@@ -107,7 +199,8 @@ public static class UploadValidator
             return UploadValidationResult.Invalid("UPLOAD_EXTENSION_BLOCKED", "This file type is not permitted.");
 
         if (policy.AllowedExtensions.Count > 0 &&
-            (string.IsNullOrEmpty(extension) || !policy.AllowedExtensions.Contains(extension)))
+            !string.IsNullOrEmpty(extension) &&
+            !policy.AllowedExtensions.Contains(extension))
         {
             return UploadValidationResult.Invalid("UPLOAD_EXTENSION_INVALID", "This file type is not permitted.");
         }
@@ -248,18 +341,116 @@ public static class UploadValidator
             content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50)
             return "image/webp";
 
+        // WAV: RIFF....WAVE
+        if (content.Length >= 12 &&
+            content[0] == 0x52 && content[1] == 0x49 && content[2] == 0x46 && content[3] == 0x46 &&
+            content[8] == 0x57 && content[9] == 0x41 && content[10] == 0x56 && content[11] == 0x45)
+            return "audio/wav";
+
+        // AAC ADTS frame sync must be checked before the broader MPEG sync.
+        if (content.Length >= 2 &&
+            content[0] == 0xFF && (content[1] & 0xF6) == 0xF0)
+            return "audio/aac";
+
+        // MP3: ID3 tag or MPEG audio frame sync.
+        if ((content.Length >= 3 &&
+             content[0] == 0x49 && content[1] == 0x44 && content[2] == 0x33) ||
+            (content.Length >= 2 && content[0] == 0xFF && (content[1] & 0xE0) == 0xE0))
+            return "audio/mpeg";
+
+        // Ogg container.
+        if (content.Length >= 4 &&
+            content[0] == 0x4F && content[1] == 0x67 && content[2] == 0x67 && content[3] == 0x53)
+            return "audio/ogg";
+
+        // FLAC.
+        if (content.Length >= 4 &&
+            content[0] == 0x66 && content[1] == 0x4C && content[2] == 0x61 && content[3] == 0x43)
+            return "audio/flac";
+
         // WebM: EBML container signature with an explicit WebM document type.
         if (content.Length >= 12 && content[0] == 0x1A && content[1] == 0x45 && content[2] == 0xDF && content[3] == 0xA3 &&
             content.AsSpan(4, Math.Min(content.Length - 4, 4096)).IndexOf(new byte[] { 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D }) >= 0)
             return "video/webm";
 
-        // MP4 / MOV / other ISO base media: bytes 4..8 == "ftyp"
+        // ISO base media: inspect brands before deciding whether ftyp is an
+        // image container (HEIC/HEIF/AVIF) or a video container (MP4/MOV/M4V).
         if (content.Length >= 12 &&
             content[4] == 0x66 && content[5] == 0x74 && content[6] == 0x79 && content[7] == 0x70)
+        {
+            var brandWindow = Math.Min(content.Length, 64);
+            var brands = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var offset = 8; offset + 4 <= brandWindow; offset += 4)
+                brands.Add(Encoding.ASCII.GetString(content, offset, 4));
+
+            if (brands.Overlaps(new[] { "avif", "avis" }))
+                return "image/avif";
+            if (brands.Overlaps(new[] { "heic", "heix", "hevc", "hevx" }))
+                return "image/heic";
+            if (brands.Overlaps(new[] { "heif", "mif1", "msf1" }))
+                return "image/heif";
+            if (brands.Overlaps(new[] { "M4A ", "M4B ", "M4P " }))
+                return "audio/mp4";
+            if (brands.Contains("qt  "))
+                return "video/quicktime";
+
             return "video/mp4";
+        }
 
         return null;
     }
+
+    public static string? CanonicalContentType(string? contentType) =>
+        contentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/png" => "image/png",
+            "image/jpeg" or "image/jpg" or "image/pjpeg" => "image/jpeg",
+            "image/gif" => "image/gif",
+            "image/webp" => "image/webp",
+            "image/heic" or "image/heic-sequence" => "image/heic",
+            "image/heif" or "image/heif-sequence" => "image/heif",
+            "image/avif" => "image/avif",
+            "video/mp4" or "video/x-mp4" or "video/m4v" or "video/x-m4v" => "video/mp4",
+            "video/quicktime" => "video/quicktime",
+            "video/webm" => "video/webm",
+            "audio/mpeg" or "audio/mp3" => "audio/mpeg",
+            "audio/mp4" or "audio/x-m4a" => "audio/mp4",
+            "audio/aac" => "audio/aac",
+            "audio/wav" or "audio/x-wav" => "audio/wav",
+            "audio/ogg" or "application/ogg" => "audio/ogg",
+            "audio/flac" or "audio/x-flac" => "audio/flac",
+            "application/pdf" => "application/pdf",
+            "text/plain" => "text/plain",
+            "application/msword" => "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel" => "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => null
+        };
+
+    public static string? CanonicalExtensionForContentType(string? contentType) =>
+        contentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" or "image/jpg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "image/heic" or "image/heic-sequence" => ".heic",
+            "image/heif" or "image/heif-sequence" => ".heif",
+            "image/avif" => ".avif",
+            "video/mp4" => ".mp4",
+            "video/quicktime" => ".mov",
+            "video/x-m4v" or "video/m4v" => ".m4v",
+            "video/webm" => ".webm",
+            "audio/mpeg" => ".mp3",
+            "audio/mp4" => ".m4a",
+            "audio/aac" => ".aac",
+            "audio/wav" => ".wav",
+            "audio/ogg" => ".ogg",
+            "audio/flac" => ".flac",
+            "application/pdf" => ".pdf",
+            _ => null
+        };
 
     private static bool ExtensionMatchesContentType(string extension, string detectedContentType)
     {
@@ -269,10 +460,66 @@ public static class UploadValidator
             "image/jpeg" => extension is ".jpg" or ".jpeg",
             "image/gif" => extension is ".gif",
             "image/webp" => extension is ".webp",
+            "image/heic" or "image/heif" => extension is ".heic" or ".heif",
+            "image/avif" => extension is ".avif",
             "application/pdf" => extension is ".pdf",
             "video/mp4" => extension is ".mp4" or ".m4v" or ".mov",
+            "video/quicktime" => extension is ".mov",
             "video/webm" => extension is ".webm",
+            "audio/mpeg" => extension is ".mp3",
+            "audio/mp4" => extension is ".m4a",
+            "audio/aac" => extension is ".aac",
+            "audio/wav" => extension is ".wav",
+            "audio/ogg" => extension is ".ogg" or ".oga",
+            "audio/flac" => extension is ".flac",
             _ => true
         };
     }
+}
+
+/// <summary>
+/// One transport reader for every multipart upload endpoint. Actions call this
+/// before model binding so malformed or mislabeled media requests are handled by
+/// application code instead of escaping as framework-generated HTTP 415 responses.
+/// </summary>
+public static class MultipartUploadTransport
+{
+    public static async Task<MultipartUploadReadResult> ReadAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.HasFormContentType)
+        {
+            return MultipartUploadReadResult.Invalid(
+                "UPLOAD_MULTIPART_REQUIRED",
+                "Upload content must be sent as multipart form data.");
+        }
+
+        try
+        {
+            return MultipartUploadReadResult.Valid(
+                await request.ReadFormAsync(cancellationToken));
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or IOException)
+        {
+            return MultipartUploadReadResult.Invalid(
+                "UPLOAD_MULTIPART_INVALID",
+                "The upload form could not be read.");
+        }
+    }
+}
+
+public sealed record MultipartUploadReadResult(
+    bool IsValid,
+    IFormCollection? Form,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public static MultipartUploadReadResult Valid(IFormCollection form) =>
+        new(true, form, null, null);
+
+    public static MultipartUploadReadResult Invalid(string errorCode, string errorMessage) =>
+        new(false, null, errorCode, errorMessage);
 }

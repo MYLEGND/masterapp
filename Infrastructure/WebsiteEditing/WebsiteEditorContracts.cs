@@ -135,6 +135,35 @@ public sealed class WebsiteDesignTheme
     public string? FontFamily { get; set; }
     public decimal? FontSize { get; set; }
     public decimal? BorderRadius { get; set; }
+
+    // Semantic site-wide design system. These remain presentation only; nodes
+    // store deliberate exceptions rather than repeating the same values.
+    public decimal? DisplaySize { get; set; }
+    public decimal? H1Size { get; set; }
+    public decimal? H2Size { get; set; }
+    public decimal? H3Size { get; set; }
+    public decimal? BodySize { get; set; }
+    public decimal? SmallSize { get; set; }
+    public decimal? BodyLineHeight { get; set; }
+    public decimal? SectionSpace { get; set; }
+    public decimal? ContentGap { get; set; }
+    public decimal? ContentMaxWidth { get; set; }
+    public decimal? WideMaxWidth { get; set; }
+    public decimal? NarrowMaxWidth { get; set; }
+    public decimal? Gutter { get; set; }
+    public decimal? CardRadius { get; set; }
+    public decimal? ButtonRadius { get; set; }
+    public decimal? InputRadius { get; set; }
+    public string? SurfaceElevated { get; set; }
+    public string? SurfaceMuted { get; set; }
+    public string? BorderColor { get; set; }
+    public decimal? BorderWidth { get; set; }
+    public string? ShadowSoft { get; set; }
+    public string? ShadowStrong { get; set; }
+    public decimal? NavHeight { get; set; }
+    public int? MotionFastMs { get; set; }
+    public int? MotionStandardMs { get; set; }
+    public int? MotionSlowMs { get; set; }
 }
 
 

@@ -141,7 +141,9 @@ public sealed class SocialMediaStorageTests
             configuration,
             NullLogger<SocialMediaStorage>.Instance,
             options);
-        var content = new byte[] { 1, 2, 3, 4 };
+        var content = requiresProcessing
+            ? Mp4WithMovieHeaderDuration(timescale: 1_000, duration: 1_000)
+            : new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 };
 
         await using var stream = new MemoryStream(content);
         var result = await storage.StoreAsync(

@@ -18,6 +18,90 @@ public static class WebsiteStudioAgentContract
 
     public static string PromptTemplate { get; } = BuildPromptTemplate();
 
+    public static string CompactPromptTemplate { get; } = """
+LEGEND Website Studio creative contract:
+- WebsiteContentDocument v3 is the only writable website source.
+- Work site-first, not page-by-page. Read the Creative Workspace summary, plan the whole conversion journey, then build/refine in mutation batches.
+- Creative authority is content + presentation + structure + owned media + approved capability references.
+- Protected forms, signal/event identity, attribution, provider delivery, owner scope, checkout/booking/lead execution, and system-template runtime are server-owned and are not writable creative fields.
+- Use the read-only Capability Manifest to place approved actions/forms/runtime capabilities. Never invent an executable capability.
+- Prefer semantic theme tokens and recipes for repeated design grammar; use freeform v3 nodes whenever a unique composition is better.
+- Prefer the highest valid scope: theme/site shell/page/section/node/breakpoint. Avoid repeated node overrides when one semantic token or shared component expresses the intent.
+- In the local Studio API use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan.
+- In ChatGPT Work/WebMCP use legend_website_workspace (summary -> recipes -> only needed detail), legend_website_apply_design_plan for the main build, legend_website_apply_mutations for targeted refinement, legend_website_set_signal_mappings only for meaningful custom intent, legend_website_import_image for safe public imagery, and legend_website_preflight to finish. Master Source is diagnostic only.
+- Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection; use getSignalCatalog + setSignalMappings, then testSignalMapping/getSignalHealth when a genuinely meaningful custom interaction needs canonical intent reporting.
+- Preserve stable protected identities and design freely around them.
+- After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
+- For live diagnosis after publication, use legend_website_workspace operation conversion_trace. It follows bounded recent canonical AnalyticsEvents into non-PII CRM linkage plus Meta/OpenAI transport evidence. Never infer provider acceptance from configuration, browser invocation, or HTTP success when the provider exposes stronger receipt evidence.
+""";
+
+    public static object CompactPayload => new
+    {
+        schema = Schema,
+        promptTemplate = CompactPromptTemplate,
+        protectedEditCorrection = ProtectedEditCorrection,
+        workspace = new
+        {
+            unitOfWork = "whole_site",
+            sourceOfTruth = "WebsiteContentDocument_v3",
+            mutationAuthority = "manage/mutations",
+            designPlanAuthority = "manage/design-plan",
+            masterSourceRole = "diagnostic_read_only",
+            selectedSourceRole = "single_node_mutation",
+            capabilityRole = "read_only_server_resolved_execution"
+        },
+        webMcpTools = new[]
+        {
+            "legend_website_workspace",
+            "legend_website_apply_design_plan",
+            "legend_website_apply_mutations",
+            "legend_website_set_signal_mappings",
+            "legend_website_import_image",
+            "legend_website_preflight"
+        },
+        browserCommands = new[]
+        {
+            "getSiteSummary",
+            "getPageOutline",
+            "getNode",
+            "listRecipes",
+            "getSignalCatalog",
+            "setSignalMappings",
+            "testSignalMapping",
+            "getSignalHealth",
+            "listMedia",
+            "uploadMedia",
+            "importImage",
+            "inspectConversionHealth",
+            "traceConversions",
+            "runSiteResponsiveQuality",
+            "runPreflight",
+            "applyMutationBatch",
+            "applyDesignPlan",
+            "runQuality"
+        },
+        creativeWritable = new[]
+        {
+            "content",
+            "presentation",
+            "structure",
+            "owned_media_references",
+            "approved_capability_references"
+        },
+        serverOwned = new[]
+        {
+            "protected_form_execution",
+            "signals_and_field_signals",
+            "canonical_event_identity",
+            "attribution_lineage",
+            "provider_delivery",
+            "owner_scope",
+            "lead_booking_checkout_execution",
+            "system_template_runtime",
+            "publish_authority"
+        }
+    };
+
     private static string BuildPromptTemplate()
     {
         var nodeGrammar = WebsiteCompositionSchema.PromptGrammar();
@@ -39,6 +123,7 @@ STARTER / VISUAL SYSTEM
 
 CONVERSION-FIRST EXPERIENCE
 - Treat the first viewport as the highest-value impression. Within seconds, make the offer, audience, primary benefit, trust context, and next action visually obvious.
+- Measurement truth is part of the experience contract. Preserve the canonical event identity and attribution path while designing around it. When diagnosing a published site, follow canonical AnalyticsEvents into CRM/provider receipts through conversion_trace; do not treat configuration, a browser pixel call, or an HTTP 2xx as stronger evidence than it actually is.
 - Prefer a clear primary action per decision moment as a default. Follow explicit user direction when multiple equal actions are intentionally required, while preserving usability and the canonical action catalog.
 - Build for scanning and persuasion: strong headline, concise supporting copy, credible proof/context, then the next action. Preserve whitespace and visual rhythm instead of filling space for its own sake.
 - Optimize desktop and mobile intentionally through the same semantic nodes. Mobile must feel designed, not collapsed: readable type, thumb-safe controls, deliberate content order, no horizontal overflow, and the primary action easy to find.
@@ -124,8 +209,9 @@ RESPONSIVE AUTHORING
 - style and layout are the Desktop/Base presentation.
 - breakpointStyles and breakpointLayouts are presentation overrides for the same semantic node at mobile/tablet/desktop/custom breakpoints.
 - Do not create duplicate desktop/mobile copies to solve responsive layout. Keep one semantic node and author its presentation per breakpoint.
-- Mobile is an independent first-class editing surface. A Mobile edit must write only breakpointStyles.mobile or breakpointLayouts.mobile; it must never mutate, normalize, copy into, or delete Desktop/Base style or layout.
-- The shared renderer supplies inherited responsive defaults only when a property is unset at the active breakpoint. Explicit mobile width, height, alignment, offsets, margins, spacing, typography, sizing, media geometry, and layout mode outrank inherited Desktop/Base defaults after ordinary type/range validation.
+- Mobile is an independent first-class editing surface for page content. A Mobile edit must write only breakpointStyles.mobile or breakpointLayouts.mobile; it must never mutate, normalize, copy into, or delete Desktop/Base style or layout.
+- The global public header frame, brand fit, Menu trigger, and primary navigation are platform shell chrome on Mobile. Their mobile width, height, offsets, min/max geometry, margins, and layout mode are canonical system geometry and must not be authored into a competing mobile shell. Colors, copy, and bounded typography/presentation remain editable.
+- Outside that protected mobile shell geometry, the shared renderer supplies inherited responsive defaults only when a property is unset at the active breakpoint. Explicit mobile width, height, alignment, offsets, margins, spacing, typography, sizing, media geometry, and layout mode outrank inherited Desktop/Base defaults after ordinary type/range validation.
 - Mobile should begin from a useful conversion-first inherited layout: context/kicker -> headline -> concise supporting copy or proof -> primary action/form -> supporting image/video -> deeper cards/content. Those are defaults, not a license to discard an explicit Mobile composition selected by the user.
 - Keep primary actions comfortably tappable, media inside the viewport when not explicitly resized otherwise, and avoid accidental one-word-per-line copy. When the user explicitly authors Mobile presentation, preserve it exactly as the responsive source of truth instead of silently repairing it back to a platform layout.
 - Tablet should normally use no more than two grid columns and wrapping row layouts unless an explicit tablet composition is authored.
@@ -274,8 +360,9 @@ If a visual request conflicts with protected behavior, preserve the backend cont
     public static object ForScope(IReadOnlyList<WebsiteCallToActionOption> actions, object? signalCatalog) => new
     {
         schema = Schema,
-        promptTemplate = PromptTemplate + "\nSCOPED PRESET INVENTORY (server-owned; complete for this account)\n" +
-            JsonSerializer.Serialize(new { actions, signalCatalog }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+        // Inventories stay structured and on-demand. Do not duplicate them inside
+        // the prompt where every browser-agent turn would pay for them again.
+        promptTemplate = PromptTemplate,
         availableActions = actions,
         signalCatalog,
         protectedEditCorrection = ProtectedEditCorrection,

@@ -115,7 +115,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     if (requiresReconciliation) return "requires_reconciliation";
                     var rows = deliveries.Where(r => r.Provider == provider).ToArray();
                     if (rows.Length == 0) return sources.Any(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, provider + "ProjectionBlock") != null) ? "blocked" : "not_observed";
-                    if (rows.All(r => r.Status == "sent" && r.LastHttpStatusCode is >= 200 and < 300)) return "http_accepted";
+                    if (rows.All(Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.HttpTransportAccepted)) return "http_accepted";
                     if (rows.All(r => r.Status == "sent")) return "receipt_unverified";
                     if (rows.Any(r => r.Status == "sent")) return "partial_delivery";
                     return rows.OrderByDescending(r => r.UpdatedUtc).First().Status;
@@ -131,7 +131,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     MarketingConversionDestinationCatalog.ResolveMeta(conversion)?.EventName ?? signal,
                     MarketingConversionDestinationCatalog.ResolveOpenAi(conversion)?.EventName ?? (behavior?.Key == "page_view" ? OpenAiMeasurementEventNames.PageViewed : null),
                     version?.Id, version is null ? "not_published" : sources.Length > 0 ? "observed" : "not_observed",
-                    requiresReconciliation ? "requires_reconciliation" : metaRows.Length > 0 && metaRows.All(m => m.MetaServerSent && CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "metaServerEventsReceived") > 0) ? "provider_accepted" : metaRows.Any(m => m.MetaServerSent) ? "partial_delivery" : metaRows.Any(m => CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerStatus")?.StartsWith("blocked_") == true) ? "blocked" : metaRows.Length > 0 ? "projected" : Status("meta"), Status("openai"),
+                    requiresReconciliation ? "requires_reconciliation" : metaRows.Length > 0 && metaRows.All(Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.MetaProviderAccepted) ? "provider_accepted" : metaRows.Any(m => m.MetaServerSent) ? "partial_delivery" : metaRows.Any(m => CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerStatus")?.StartsWith("blocked_") == true) ? "blocked" : metaRows.Length > 0 ? "projected" : Status("meta"), Status("openai"),
                     binding?.Trigger ?? (automatic ? behavior?.AutomaticTrigger : "click") ?? "", version?.Revision ?? 0));
             }
             void Element(string page, string key, string? label, string? action, List<WebsiteSignalBinding> bindings)

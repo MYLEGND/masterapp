@@ -162,6 +162,7 @@ public sealed class CanonicalMeasurementTruthTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
         WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
         var state = new WebsiteContentState
         {

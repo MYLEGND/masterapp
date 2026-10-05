@@ -45,6 +45,18 @@ internal static class ControllerTestHelpers
         return new ClaimsPrincipal(identity);
     }
 
+    public static void AttachMultipartForm(HttpContext httpContext, IFormFile file)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(file);
+
+        var files = new FormFileCollection { file };
+        httpContext.Request.ContentType = "multipart/form-data; boundary=legend-test";
+        httpContext.Request.Form = new FormCollection(
+            new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>(),
+            files);
+    }
+
     internal static IServiceScopeFactory BuildIsolatedFounderHistoryScopes(MasterAppDbContext identityDb)
     {
         // Protected-data/model fixtures keep operational data read-only while

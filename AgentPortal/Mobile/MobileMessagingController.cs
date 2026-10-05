@@ -3,6 +3,7 @@ using Domain.Messaging;
 using AgentPortal.Security;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -735,7 +736,6 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
     public async Task<IActionResult> UploadAttachment(
         Guid conversationId,
         Guid messageId,
-        IFormFile? file,
         CancellationToken cancellationToken)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
@@ -743,8 +743,11 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
             return resolved.Error;
         if (resolved.Actor is null)
             return Error(StatusCodes.Status403Forbidden, "mobile_actor_unavailable", "Messaging is not available for this user.");
-        if (file is null)
-            return Error(StatusCodes.Status400BadRequest, "mobile_attachment_required", "Choose an attachment to upload.");
+
+        var transport = await MultipartUploadTransport.ReadAsync(Request, cancellationToken);
+        var file = transport.Form?.Files.GetFile("file");
+        if (!transport.IsValid || file is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_attachment_required", transport.ErrorMessage ?? "Choose an attachment to upload.");
 
         var actor = resolved.Actor.Actor;
 
@@ -1176,14 +1179,20 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         groupImage = null;
         if (request is null)
             return true;
-        if (string.IsNullOrWhiteSpace(request.ContentType) ||
-            string.IsNullOrWhiteSpace(request.Base64Content))
+        if (string.IsNullOrWhiteSpace(request.Base64Content))
             return false;
         try
         {
+            var content = Convert.FromBase64String(request.Base64Content);
+            var validation = UploadValidator.ValidateImageContent(
+                content,
+                UploadValidationPolicy.Images(3 * 1024 * 1024));
+            if (!validation.IsValid || string.IsNullOrWhiteSpace(validation.DetectedContentType))
+                return false;
+
             groupImage = new MessagingGroupImage(
-                Convert.FromBase64String(request.Base64Content),
-                request.ContentType);
+                content,
+                validation.DetectedContentType);
             return true;
         }
         catch (FormatException)

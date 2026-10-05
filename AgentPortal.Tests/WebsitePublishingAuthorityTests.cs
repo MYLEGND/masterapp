@@ -84,24 +84,72 @@ public sealed class WebsitePublishingAuthorityTests
     private static string? TitleText(JsonElement envelope) =>
         Page(envelope).GetProperty("composition")[0].GetProperty("text").GetString();
 
+    private static async Task SeedCanonicalDraftAsync(
+        Fixture fixture,
+        string token,
+        string siteKey,
+        WebsiteContentDocument document,
+        long revision = 1)
+    {
+        _ = Body(await fixture.Controller.Manage(token));
+        var state = Assert.Single(await fixture.Db.Set<Domain.Entities.WebsiteContentState>().ToListAsync());
+        var canonical = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(siteKey, canonical);
+        canonical.UpdatedUtc = DateTime.UtcNow;
+        state.DraftJson = JsonSerializer.Serialize(canonical, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        state.Revision = revision;
+        state.PublishedVersionId = null;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.UpdatedUtc = DateTime.UtcNow;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+    }
+
+    private static WebsiteMutationOperation ReplaceTitle(
+        WebsiteContentDocument document,
+        string text)
+    {
+        var node = document.Pages["/"].Composition.Single(value => value.Id == "home.title");
+        var replacement = JsonSerializer.Deserialize<WebsiteCompositionNode>(
+            JsonSerializer.Serialize(node, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        replacement.Text = text;
+        return new WebsiteMutationOperation
+        {
+            Type = "replaceNode",
+            NodeId = node.Id,
+            ExpectedFingerprint = WebsiteCreativeFingerprint.Node(node),
+            Node = replacement
+        };
+    }
+
+
     [Fact]
-    public async Task AgentContractUsesCompleteScopedCatalogs_WithoutDependingOnPlacedInstances()
+    public async Task AgentContractBootstrapsCompact_AndLoadsCompleteScopedCatalogsOnDemand()
     {
         using var f = new Fixture();
         var payload = Body(await f.Controller.Manage(f.Token));
-        var contract = payload.GetProperty("agentContract");
-        var actions = payload.GetProperty("ctaCatalog").GetProperty("options");
+        var compact = payload.GetProperty("agentContract");
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("signalCatalog").ValueKind);
+        Assert.True(compact.GetProperty("browserCommands").GetArrayLength() > 0);
+        Assert.Contains("whole_site", compact.GetRawText(), StringComparison.Ordinal);
+
+        var full = Body(await f.Controller.CreativeAgentContract(f.Token));
+        var actions = full.GetProperty("availableActions");
+        var signals = full.GetProperty("signalCatalog");
         Assert.True(actions.GetArrayLength() > 0);
-        Assert.Equal(actions.GetRawText(), contract.GetProperty("availableActions").GetRawText());
-        Assert.Equal(payload.GetProperty("signalCatalog").GetRawText(), contract.GetProperty("signalCatalog").GetRawText());
-        var prompt = contract.GetProperty("promptTemplate").GetString()!;
-        foreach (var action in actions.EnumerateArray())
-            Assert.Contains(action.GetProperty("key").GetString()!, prompt, StringComparison.Ordinal);
-        Assert.Contains("removing an instance never deletes the catalog capability", prompt, StringComparison.Ordinal);
+        Assert.True(signals.GetProperty("events").GetArrayLength() > 0);
+
+        var prompt = full.GetProperty("promptTemplate").GetString()!;
+        Assert.DoesNotContain("SCOPED PRESET INVENTORY", prompt, StringComparison.Ordinal);
+        Assert.Contains("Selected Source never writes Signals/FieldSignals", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task ProtectRepairSurvivesCanonicalSave_AndRejectsAnotherRoutesRuntime()
+    public async Task ProtectRuntimeIdentitySurvivesCreativeMutation_AndRejectsAnotherRoutesRuntime()
     {
         using var f = new Fixture();
         f.Db.AgentTrackingProfiles.Add(new Domain.Entities.AgentTrackingProfile
@@ -116,15 +164,41 @@ public sealed class WebsitePublishingAuthorityTests
         var draft = Document("Home");
         draft.Pages["/Quote/Life"] = new WebsitePageDocument
         {
-            Composition = [new WebsiteCompositionNode { Id = "life.runtime", Type = "container", Tag = "div",
+            SystemTemplateKey = "protect_template:life_wizard",
+            Composition = [new WebsiteCompositionNode
+            {
+                Id = "life.runtime",
+                Type = "container",
+                Tag = "div",
                 SystemKey = "protect_runtime_form:quote_life",
-                FieldLabels = new() { ["FirstName"] = "Your first name" } }]
+                FieldLabels = new() { ["FirstName"] = "Your first name" }
+            }]
         };
-        var saved = Body(await f.Controller.Save(new(token, draft, 0)));
-        Assert.Equal("protect_runtime_form:quote_life", Page(saved, "/Quote/Life").GetProperty("composition")[0].GetProperty("systemKey").GetString());
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Protect, draft, revision: 1);
+
+        var saved = Body(await f.Controller.Manage(token));
+        Assert.Equal("protect_runtime_form:quote_life",
+            Page(saved, "/Quote/Life").GetProperty("composition")[0].GetProperty("systemKey").GetString());
         Body(await f.Controller.Publish(new(token, 1)));
-        draft.Pages["/Quote/Life"].Composition[0].SystemKey = "protect_runtime_form:quote_home_form";
-        Assert.IsType<BadRequestObjectResult>(await f.Controller.Save(new(token, draft, 2)));
+
+        var rejected = Assert.IsType<BadRequestObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 2, [
+                new WebsiteMutationOperation
+                {
+                    Type = "replaceNode",
+                    NodeId = "life.runtime",
+                    Node = new WebsiteCompositionNode
+                    {
+                        Id = "life.runtime",
+                        Type = "container",
+                        Tag = "div",
+                        SystemKey = "protect_runtime_form:quote_home_form",
+                        FieldLabels = new() { ["FirstName"] = "Still presentation" }
+                    }
+                }
+            ])));
+        var error = JsonSerializer.SerializeToElement(rejected.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("website_mutation_protected", error.GetProperty("error").GetString());
         Assert.Equal(2, Body(await f.Controller.Manage(token)).GetProperty("revision").GetInt64());
     }
 
@@ -133,7 +207,7 @@ public sealed class WebsitePublishingAuthorityTests
     {
         using var f = new Fixture();
         var token = f.Token;
-        Body(await f.Controller.Save(new(token, Document("good"), 0)));
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("good"), revision: 1);
         var published = Body(await f.Controller.Publish(new(token, 1))).GetProperty("versionId").GetGuid();
         var state = await f.Db.Set<Domain.Entities.WebsiteContentState>().SingleAsync();
         var broken = Document("broken");
@@ -150,20 +224,27 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
-    public async Task DraftRemainsPrivateUntilPublish_AndStaleWriterCannotOverwrite()
+    public async Task DraftRemainsPrivateUntilPublish_AndStaleMutationCannotOverwrite()
     {
         using var f = new Fixture();
         var token = f.Token;
 
         Assert.Equal(0, Body(await f.Controller.Manage(token)).GetProperty("revision").GetInt64());
-        Assert.Equal(1, Body(await f.Controller.Save(new(token, Document("draft"), 0))).GetProperty("revision").GetInt64());
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("draft"), revision: 1);
 
         var beforePublish = Body(await f.Controller.Public("legend"))
             .GetProperty("document")
             .GetProperty("pages");
         Assert.False(beforePublish.TryGetProperty("/", out _));
 
-        Assert.IsType<ConflictObjectResult>(await f.Controller.Save(new(token, Document("stale"), 0)));
+        Assert.IsType<ConflictObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 0, [
+                new WebsiteMutationOperation
+                {
+                    Type = "setTheme",
+                    Theme = new WebsiteDesignTheme { Navy = "#000000" }
+                }
+            ])));
 
         Body(await f.Controller.Publish(new(token, 1)));
         Assert.Equal("draft", TitleText(Body(await f.Controller.Public("legend"))));
@@ -175,11 +256,22 @@ public sealed class WebsitePublishingAuthorityTests
         using var f = new Fixture();
         var token = f.Token;
 
-        Body(await f.Controller.Save(new(token, Document("first"), 0)));
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("first"), revision: 1);
         var first = Body(await f.Controller.Publish(new(token, 1))).GetProperty("versionId").GetGuid();
-        Body(await f.Controller.Save(new(token, Document("second"), 2)));
+
+        var current = Body(await f.Controller.Manage(token))
+            .GetProperty("document")
+            .Deserialize<WebsiteContentDocument>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 2, [ReplaceTitle(current, "second")])));
         Body(await f.Controller.Publish(new(token, 3)));
-        Body(await f.Controller.Save(new(token, Document("unfinished"), 4)));
+
+        current = Body(await f.Controller.Manage(token))
+            .GetProperty("document")
+            .Deserialize<WebsiteContentDocument>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 4, [ReplaceTitle(current, "unfinished")])));
+
         Body(await f.Controller.Rollback(new(token, 5, first)));
 
         Assert.Equal("first", TitleText(Body(await f.Controller.Public("legend"))));
@@ -232,31 +324,22 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
-    public async Task CanonicalSaveIsExactReplacement_AndNeverResurrectsOmittedNodes()
+    public async Task CanonicalMutationRemovalIsExact_AndNeverResurrectsOmittedNodes()
     {
         using var f = new Fixture();
         var token = f.Token;
 
-        Body(await f.Controller.Save(new(token, Document("persisted"), 0)));
-
-        var replacement = new WebsiteContentDocument
-        {
-            Pages = new(StringComparer.Ordinal)
-            {
-                ["/"] = new WebsitePageDocument
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("persisted"), revision: 1);
+        Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 1, [
+                new WebsiteMutationOperation
                 {
-                    Title = "Home",
-                    Navigation = new WebsitePageNavigation
-                    {
-                        Label = "Home",
-                        ShowInNavigation = true
-                    },
-                    Composition = []
+                    Type = "removeNode",
+                    NodeId = "home.title"
                 }
-            }
-        };
+            ])));
 
-        var saved = Body(await f.Controller.Save(new(token, replacement, 1)));
+        var saved = Body(await f.Controller.Manage(token));
         Assert.Empty(Page(saved).GetProperty("composition").EnumerateArray());
         Assert.Equal(2, saved.GetProperty("revision").GetInt64());
     }
@@ -332,6 +415,97 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Equal(WebsiteStudioContract.CurrentDocumentVersion, historical.Version);
         Assert.Throws<InvalidOperationException>(() => WebsiteContentSanitizer.Sanitize(historical));
         Assert.Contains(bindingId, legacyJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PersistedCanonicalV3_FailsClosedInsteadOfSelfHealing()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var passiveLink = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "dead-link",
+                            Type = "link",
+                            Tag = "a",
+                            Text = "Dead",
+                            Href = "#"
+                        }
+                    ]
+                }
+            }
+        };
+
+        var nonCanonical = JsonSerializer.Serialize(passiveLink, options);
+        var repairError = Assert.Throws<InvalidOperationException>(() =>
+            WebsiteContentSanitizer.ReadPersisted(nonCanonical, options));
+        Assert.Equal("website_v3_noncanonical_persisted_document", repairError.Message);
+
+        var duplicate = new WebsiteContentDocument
+        {
+            Pages = new(StringComparer.Ordinal)
+            {
+                ["/"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode { Id = "same", Type = "text", Tag = "p", Text = "One" },
+                        new WebsiteCompositionNode { Id = "same", Type = "text", Tag = "p", Text = "Two" }
+                    ]
+                }
+            }
+        };
+
+        var duplicateError = Assert.Throws<InvalidOperationException>(() =>
+            WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(duplicate, options), options));
+        Assert.Equal("website_duplicate_node_identity:same", duplicateError.Message);
+    }
+
+    [Fact]
+    public async Task FullDocumentWrite_IsAllowedOnlyForOneWayLegacyMaterialization()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+
+        _ = Body(await f.Controller.Manage(token));
+        var state = Assert.Single(await f.Db.Set<Domain.Entities.WebsiteContentState>().ToListAsync());
+        state.DraftJson =
+            """
+            {
+              "version": 2,
+              "pages": {
+                "/": {
+                  "title": "Legacy home",
+                  "navigation": { "label": "Home", "showInNavigation": true },
+                  "elements": {},
+                  "sectionOrder": {},
+                  "extras": []
+                }
+              }
+            }
+            """;
+        state.Revision = 0;
+        await f.Db.SaveChangesAsync();
+        f.Db.ChangeTracker.Clear();
+
+        var materialized = Body(await f.Controller.Save(new(token, Document("Materialized"), 0)));
+        Assert.Equal("canonical_v3_materialization", materialized.GetProperty("source").GetString());
+        Assert.Equal(1, materialized.GetProperty("revision").GetInt64());
+
+        var retired = Assert.IsType<BadRequestObjectResult>(
+            await f.Controller.Save(new(token, Document("Second full write"), 1)));
+        var error = JsonSerializer.SerializeToElement(
+            retired.Value,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("website_full_document_write_retired", error.GetProperty("error").GetString());
+
+        Assert.Equal("Materialized", TitleText(Body(await f.Controller.Manage(token))));
     }
 
     [Fact]
@@ -441,22 +615,28 @@ public sealed class WebsitePublishingAuthorityTests
             Text = "Dead",
             Href = "#"
         });
-
-        Assert.Equal(1, Body(await f.Controller.Save(new(token, dead, 0))).GetProperty("revision").GetInt32());
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, dead, revision: 1);
         Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1)));
 
-        var managed = Document("Home");
-        managed.Pages["/"].Composition.Add(new WebsiteCompositionNode
-        {
-            Id = "managed",
-            Type = "cta",
-            Tag = "a",
-            Text = "Talk",
-            ActionKey = "legend_contact",
-            Href = "#"
-        });
-
-        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1))).GetProperty("revision").GetInt32());
+        Assert.IsType<OkObjectResult>(await f.Controller.ApplyMutations(
+            new WebsitePlatformController.WebsiteMutationRequest(token, 1, [
+                new WebsiteMutationOperation { Type = "removeNode", NodeId = "dead" },
+                new WebsiteMutationOperation
+                {
+                    Type = "insertNode",
+                    Scope = "page",
+                    PagePath = "/",
+                    Node = new WebsiteCompositionNode
+                    {
+                        Id = "managed",
+                        Type = "cta",
+                        Tag = "a",
+                        Text = "Talk",
+                        ActionKey = "legend_contact",
+                        Href = "#"
+                    }
+                }
+            ])));
         Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
 
         var published = Page(Body(await f.Controller.Public("legend")));

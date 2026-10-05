@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.RateLimiting;
 using Infrastructure.Security;
 using Infrastructure.Security.UploadValidation;
@@ -24,6 +25,22 @@ public class Phase5CrossPlatformSecurityTests
     private static byte[] Webp() => new byte[] { 0x52, 0x49, 0x46, 0x46, 0x10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50 };
     private static byte[] Pdf() => new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E };
 
+    private static byte[] IsoBaseMedia(params string[] brands)
+    {
+        var bytes = new byte[Math.Max(32, 8 + brands.Length * 4)];
+        bytes[3] = (byte)bytes.Length;
+        bytes[4] = (byte)'f';
+        bytes[5] = (byte)'t';
+        bytes[6] = (byte)'y';
+        bytes[7] = (byte)'p';
+        for (var index = 0; index < brands.Length; index++)
+        {
+            var encoded = Encoding.ASCII.GetBytes(brands[index].PadRight(4).Substring(0, 4));
+            Array.Copy(encoded, 0, bytes, 8 + index * 4, 4);
+        }
+        return bytes;
+    }
+
     // =====================================================================
     // OBJECTIVE 1 — Upload validation authority
     // =====================================================================
@@ -34,6 +51,73 @@ public class Phase5CrossPlatformSecurityTests
         var result = UploadValidator.ValidateContent(Png(), "photo.png", "image/png", UploadValidationPolicy.Images(3 * 1024 * 1024));
         Assert.True(result.IsValid);
         Assert.Equal("image/png", result.DetectedContentType);
+    }
+
+    [Theory]
+    [InlineData("photo.heic", "image/heic", "heic")]
+    [InlineData("photo.heif", "image/heif", "mif1")]
+    [InlineData("photo.avif", "image/avif", "avif")]
+    public void Upload_IsoImageContainers_AreNotMisclassifiedAsMp4(
+        string fileName,
+        string expectedContentType,
+        string brand)
+    {
+        var result = UploadValidator.ValidateContent(
+            IsoBaseMedia(brand),
+            fileName,
+            "application/octet-stream",
+            UploadValidationPolicy.Images(3 * 1024 * 1024));
+
+        Assert.True(result.IsValid);
+        Assert.Equal(expectedContentType, result.DetectedContentType);
+    }
+
+    [Theory]
+    [InlineData("movie.mp4")]
+    [InlineData("movie.m4v")]
+    [InlineData("movie.mov")]
+    public void Upload_IsoVideoContainers_ShareCanonicalMp4ByteAuthority(string fileName)
+    {
+        var result = UploadValidator.ValidateContent(
+            IsoBaseMedia("isom", "mp42"),
+            fileName,
+            "application/octet-stream",
+            UploadValidationPolicy.Media(25 * 1024 * 1024));
+
+        Assert.True(result.IsValid);
+        Assert.Equal("video/mp4", result.DetectedContentType);
+    }
+
+    [Fact]
+    public void Upload_QuickTimeBrand_PreservesQuickTimeContainerIdentity()
+    {
+        var result = UploadValidator.ValidateContent(
+            IsoBaseMedia("qt  "),
+            "movie.mov",
+            "video/quicktime",
+            UploadValidationPolicy.Media(25 * 1024 * 1024));
+
+        Assert.True(result.IsValid);
+        Assert.Equal("video/quicktime", result.DetectedContentType);
+        Assert.Equal(".mov", UploadValidator.CanonicalExtensionForContentType(result.DetectedContentType));
+    }
+
+    [Fact]
+    public void Upload_VisualMediaAndAttachmentCatalogs_ShareOneTypeAuthority()
+    {
+        Assert.True(UploadValidator.TryResolveVisualMediaType(
+            "capture.MOV",
+            out var mediaKind,
+            out var mediaType));
+        Assert.Equal("Video", mediaKind);
+        Assert.Equal("video/quicktime", mediaType);
+
+        Assert.True(UploadValidator.TryResolveAttachmentContentType(
+            "capture.MOV",
+            out var attachmentType));
+        Assert.Equal(mediaType, attachmentType);
+        Assert.Equal("video/mp4", UploadValidator.CanonicalContentType("video/x-m4v"));
+        Assert.Equal("image/jpeg", UploadValidator.CanonicalContentType("image/pjpeg"));
     }
 
     [Fact]

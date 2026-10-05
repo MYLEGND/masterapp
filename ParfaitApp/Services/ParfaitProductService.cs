@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
@@ -8,11 +9,6 @@ namespace ParfaitApp.Services;
 
 public sealed class ParfaitProductService
 {
-    private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".jpg", ".jpeg", ".png", ".webp", ".gif"
-    };
-
     private static readonly object Lock = new();
 
     private readonly ParfaitStoragePaths _storagePaths;
@@ -438,18 +434,24 @@ public sealed class ParfaitProductService
 
         foreach (var file in files.Where(file => file.Length > 0))
         {
-            var extension = Path.GetExtension(file.FileName);
-            if (!AllowedImageExtensions.Contains(extension))
-                continue;
+            await using var source = new MemoryStream();
+            await file.CopyToAsync(source);
+            var bytes = source.ToArray();
+            var validation = UploadValidator.ValidateContent(
+                bytes,
+                file.FileName,
+                file.ContentType,
+                UploadValidationPolicy.Images(25_000_000));
+            if (!validation.IsValid)
+                throw new ArgumentException(validation.ErrorMessage ?? "The product image is not a supported image.");
 
+            var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType)
+                ?? throw new ArgumentException("The product image container is not recognized.");
             var imageId = Guid.NewGuid().ToString("N");
-            var safeFileName = $"{imageId}{extension.ToLowerInvariant()}";
+            var safeFileName = $"{imageId}{extension}";
             var physicalPath = Path.Combine(productFolder, safeFileName);
 
-            await using (var stream = File.Create(physicalPath))
-            {
-                await file.CopyToAsync(stream);
-            }
+            await File.WriteAllBytesAsync(physicalPath, bytes);
 
             product.Images.Add(new CommerceProductImage
             {
