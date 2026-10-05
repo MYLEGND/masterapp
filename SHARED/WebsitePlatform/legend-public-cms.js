@@ -2952,6 +2952,14 @@
       }),
       runResponsiveQuality:runResponsiveQualityAudit,
       runSiteResponsiveQuality:runSiteResponsiveQualityAudit,
+      runPreflight:async()=>{
+        const [quality,responsive,conversion]=await Promise.all([
+          creativeWorkspaceRequest('manage/agent/design-quality'),
+          runSiteResponsiveQualityAudit(),
+          creativeWorkspaceRequest('manage/agent/conversion-readiness')
+        ]);
+        return {revision,quality,responsive,conversion};
+      },
       planSafeQualityRepairs:()=>creativeWorkspaceRequest('manage/agent/design-quality/repairs'),
       applySafeQualityRepairs:async()=>{
         const plan=await creativeWorkspaceRequest('manage/agent/design-quality/repairs');
