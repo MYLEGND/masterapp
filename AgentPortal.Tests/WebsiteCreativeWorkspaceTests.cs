@@ -735,6 +735,206 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void FastRoadsterBuild_ResolvesWholeSiteInOneBoundedPlan_WithProtectedConversionPath()
+    {
+        var document = Baseline();
+        var actions = Actions();
+        var manifest = WebsiteCreativeCapabilityResolver.Resolve(
+            WebsiteEditorSiteKeys.Business,
+            document,
+            actions);
+
+        WebsiteDesignPlanSection Section(
+            string recipe,
+            string key,
+            Dictionary<string, string> content,
+            string? capability = null) => new()
+            {
+                Recipe = recipe,
+                Key = key,
+                Content = content,
+                CapabilityKey = capability
+            };
+
+        var plan = new WebsiteDesignPlan
+        {
+            ArtDirection = "roadster-precision",
+            ReplaceBusinessPages = true,
+            PrimaryCapabilityKey = "action.business_schedule",
+            Pages =
+            [
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/",
+                    Title = "Precision Home",
+                    Description = "A premium, conversion-focused home page.",
+                    NavigationLabel = "Home",
+                    NavigationOrder = 0,
+                    Sections =
+                    [
+                        Section("hero.cinematic","home.hero",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Built for decisive growth",
+                            ["headline"]="A cleaner path from attention to action.",
+                            ["body"]="Premium positioning, fast decisions, and one clear next move."
+                        },"action.business_schedule"),
+                        Section("proof.stats","home.proof",new(StringComparer.Ordinal)
+                        {
+                            ["headline"]="Clarity you can measure.",
+                            ["body"]="Every section earns its place in the journey.",
+                            ["stat1"]="Focused message",
+                            ["stat2"]="Protected measurement",
+                            ["stat3"]="Fast follow-through"
+                        }),
+                        Section("services.grid","home.services",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Capabilities",
+                            ["headline"]="Everything important. Nothing ornamental.",
+                            ["body"]="A focused system built to move the right visitor forward.",
+                            ["item1"]="Strategy",
+                            ["item2"]="Execution",
+                            ["item3"]="Optimization"
+                        }),
+                        Section("cta.closing","home.close",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Next move",
+                            ["headline"]="Turn intent into a real conversation.",
+                            ["body"]="Choose a time that works and keep momentum moving."
+                        },"action.business_schedule")
+                    ]
+                },
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/services",
+                    Title = "Services",
+                    Description = "Premium services.",
+                    NavigationLabel = "Services",
+                    NavigationOrder = 10,
+                    Sections =
+                    [
+                        Section("hero.split","services.hero",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Services",
+                            ["headline"]="Built around the outcome, not the noise.",
+                            ["body"]="A clear service architecture makes the decision easier."
+                        },"action.business_schedule"),
+                        Section("services.grid","services.grid",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="What we do",
+                            ["headline"]="Focused expertise from first move to finish.",
+                            ["body"]="Each service supports one coherent growth system.",
+                            ["item1"]="Positioning",
+                            ["item2"]="Digital execution",
+                            ["item3"]="Conversion improvement"
+                        }),
+                        Section("process.steps","services.process",new(StringComparer.Ordinal)
+                        {
+                            ["headline"]="Move from idea to execution without drift.",
+                            ["step1"]="01 · Clarify the objective",
+                            ["step2"]="02 · Build the right system",
+                            ["step3"]="03 · Measure and refine"
+                        }),
+                        Section("cta.closing","services.close",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Start",
+                            ["headline"]="Choose the next move.",
+                            ["body"]="Book a focused conversation and move forward."
+                        },"action.business_schedule")
+                    ]
+                },
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/about",
+                    Title = "About",
+                    Description = "How the business works.",
+                    NavigationLabel = "About",
+                    NavigationOrder = 20,
+                    Sections =
+                    [
+                        Section("hero.cinematic","about.hero",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="About",
+                            ["headline"]="Precision is a business advantage.",
+                            ["body"]="The experience is designed around clarity, trust, and decisive execution."
+                        }),
+                        Section("feature.split","about.method",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Method",
+                            ["headline"]="Simple systems. High standards.",
+                            ["body"]="Every decision connects brand, experience, and measurable action."
+                        }),
+                        Section("cta.closing","about.close",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Work together",
+                            ["headline"]="See what a sharper system changes.",
+                            ["body"]="Start with one focused conversation."
+                        },"action.business_schedule")
+                    ]
+                },
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/contact",
+                    Title = "Contact",
+                    Description = "Start a conversation.",
+                    NavigationLabel = "Contact",
+                    NavigationOrder = 30,
+                    PrimaryCapabilityKey = "contact.inquiry.submit",
+                    Sections =
+                    [
+                        Section("hero.cinematic","contact.hero",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Contact",
+                            ["headline"]="Start with what you need.",
+                            ["body"]="Share the goal and the right next step can follow."
+                        }),
+                        Section("contact.inquiry","contact.form",new(StringComparer.Ordinal)
+                        {
+                            ["eyebrow"]="Send a note",
+                            ["headline"]="Tell us where you want to go next.",
+                            ["body"]="Use the protected inquiry experience below.",
+                            ["title"]="Start the conversation",
+                            ["submit"]="Send inquiry"
+                        },"contact.inquiry.submit")
+                    ]
+                }
+            ]
+        };
+
+        var operations = WebsiteDesignPlanResolver.Resolve(
+            document,
+            WebsiteEditorSiteKeys.Business,
+            manifest,
+            plan);
+
+        Assert.InRange(operations.Count, 1, 80);
+        var result = WebsiteDocumentMutationService.Apply(
+            document,
+            WebsiteEditorSiteKeys.Business,
+            actions,
+            manifest,
+            operations);
+
+        Assert.Equal(4, result.Document.Pages.Values.Count(page => page.Navigation?.IsDeleted != true));
+        Assert.Equal("#07152d", result.Document.Theme.Navy);
+        Assert.Equal(72m, result.Document.Theme.DisplaySize);
+        Assert.Equal(
+            new[] { "home.hero", "home.proof", "home.services", "home.close" },
+            result.Document.Pages["/"].Composition.Select(node => node.Id).ToArray());
+
+        var inquiry = WebsiteSiteSource.Flatten(result.Document)
+            .Single(entry => entry.Node.Type == "form" &&
+                             entry.Node.SystemKey == "canonical_inquiry");
+        Assert.Equal("/contact", inquiry.PagePath);
+
+        var quality = WebsiteDesignQualityInspector.Inspect(result.Document, manifest);
+        var home = quality.ConversionPaths.Single(path => path.PagePath == "/");
+        Assert.True(home.HasEarlyConversionPoint);
+        Assert.True(home.TotalConversionPoints >= 2);
+        Assert.DoesNotContain(quality.Checks, check =>
+            check.Code == "design_placeholder_copy");
+    }
+
+    [Fact]
     public async Task MediaVisualMetadata_ReadsIntrinsicPngDimensionsWithoutTrustingFilename()
     {
         var bytes = new byte[24];
