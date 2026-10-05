@@ -3553,6 +3553,68 @@ def _release_checkout_from_job_log(repository, release_job, application, token):
     return checkout
 
 
+def _historical_publication_failed_before_first_write(repository, release_job, application_revision, target, checkout, token):
+    """Prove one historical canonical target attempt failed before any upload intent/write."""
+    import ast
+
+    job_id = release_job.get('id')
+    if (type(job_id) is not int or job_id < 1 or release_job.get('status') != 'completed'):
+        return False
+
+    # This negative proof is valid only for the exact write-ahead uploader
+    # contract: deployment reconciliation checks provider state first, then
+    # durably publishes/read-backs intent, and only then calls Azure submit.
+    historical_deploy = _release_history_source(
+        repository, checkout, 'scripts/deploy-approved-app.py', token)
+    historical_evidence = _release_history_source(
+        repository, checkout, 'scripts/release-operation-evidence.py', token)
+    current_deploy = Path(__file__).with_name('deploy-approved-app.py').read_text()
+    current_evidence = Path(__file__).with_name('release-operation-evidence.py').read_text()
+
+    def function_dump(source, name):
+        tree = ast.parse(source)
+        node = next((row for row in tree.body
+                     if isinstance(row, (ast.FunctionDef, ast.AsyncFunctionDef)) and row.name == name), None)
+        return ast.dump(node) if node is not None else None
+
+    def method_dump(source, class_name, method_name):
+        tree = ast.parse(source)
+        owner = next((row for row in tree.body if isinstance(row, ast.ClassDef) and row.name == class_name), None)
+        node = next((row for row in owner.body
+                     if isinstance(row, (ast.FunctionDef, ast.AsyncFunctionDef)) and row.name == method_name), None) if owner else None
+        return ast.dump(node) if node is not None else None
+
+    if (function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile') or
+            method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
+            method_dump(current_evidence, 'OperationJournal', 'before_submit')):
+        return False
+
+    # Authenticated retained logs are only execution evidence after source
+    # contract identity is proven. Require the exact target/revision start,
+    # the fail-closed pre-upload exception, and no submit marker in that target
+    # execution segment.
+    raw = _release_job_log(repository, job_id, token)
+    lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+             for line in raw.splitlines()]
+    text = '\n'.join(lines)
+    release_name = RELEASE_TARGETS[target]['releaseName']
+    start_marker = f'{release_name}: approved revision {application_revision}, ZIP sha256 '
+    starts = [match.start() for match in re.finditer(re.escape(start_marker), text)]
+    if len(starts) != 1:
+        return False
+    start = starts[0]
+    end_marker = '\n##[error]Process completed with exit code 1.'
+    end = text.find(end_marker, start)
+    if end < 0:
+        return False
+    segment = text[start:end + len(end_marker)]
+    expected = (
+        'DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
+        '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.'
+    )
+    return expected in segment and 'Submitting the verified immutable ZIP once.' not in segment
+
+
 def _release_attempt_package_revision(repository, run, attempt, release_job, token, target):
     """Bind legacy publication to the package's verified embedded revision.
 
@@ -3859,6 +3921,11 @@ def release_operation_history(repository, operation_id, application_revision, ta
             except (OSError, subprocess.SubprocessError) as exc:
                 raise ReleaseOperationHistoryUnproven('Historical package proof provider unavailable') from exc
             if prior_revision == application_revision:
+                if _historical_publication_failed_before_first_write(
+                        repository, job, application_revision, target, prior_revision, token):
+                    # The exact historical source contract plus authenticated log
+                    # prove this target failed before durable intent and before Azure submit.
+                    continue
                 raise ReleaseOperationHistoryUnproven('Prior publication may have written this immutable package; missing intent is not absence proof')
         _remember_release_exclusion(application_revision, run, target)
     return None

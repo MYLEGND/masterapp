@@ -194,6 +194,8 @@ class CanonicalHistoryTests(unittest.TestCase):
                                            text=True, capture_output=True, check=True).stdout
         self.old_deployer = subprocess.run(['git', 'show', 'HEAD:scripts/deploy-approved-app.py'],
                                            text=True, capture_output=True, check=True).stdout
+        self.old_evidence = subprocess.run(['git', 'show', 'HEAD:scripts/release-operation-evidence.py'],
+                                           text=True, capture_output=True, check=True).stdout
 
     def legacy_history(self):
         original = self.api
@@ -202,7 +204,11 @@ class CanonicalHistoryTests(unittest.TestCase):
                 return dict(artifacts=self.legacy_artifacts, total_count=len(self.legacy_artifacts))
             return original(repo, path, token)
         def source(repo, revision, path, token):
-            return self.old_workflow if path.endswith('.yml') else self.old_deployer
+            if path.endswith('.yml'):
+                return self.old_workflow
+            if path.endswith('release-operation-evidence.py'):
+                return self.old_evidence
+            return self.old_deployer
         with patch.object(self.authority, 'api_get', side_effect=api), \
                 patch.object(self.authority, '_release_history_json', return_value=self.state), \
                 patch.object(self.authority, '_release_history_source', side_effect=source):
@@ -298,6 +304,42 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.legacy_fixture('a' * 40)
         with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
             self.legacy_history()
+
+    def test_authenticated_same_package_preupload_failure_allows_first_write(self):
+        self.legacy_fixture('a' * 40)
+        self.job['id'] = 123
+        self.old_workflow = self.old_workflow.replace(
+            'Publish selected head as one transaction', 'Publish canonical target (portal)')
+        self.job['steps'][1]['name'] = 'Publish canonical target (portal)'
+        log = (
+            '2026-10-05T03:19:14.000Z masterapp-portal: approved revision ' + 'a' * 40 +
+            ', ZIP sha256 ' + 'b' * 64 + '\n'
+            '2026-10-05T03:20:58.000Z DeploymentStatusUnavailable: Azure deployment status remained unavailable '
+            'for 3 consecutive reads (before any upload). No deployment or rollback write was replayed; '
+            'resume by reconciling the exact revision.\n'
+            '2026-10-05T03:20:58.001Z ##[error]Process completed with exit code 1.\n'
+        )
+        with patch.object(self.authority, '_release_job_log', return_value=log):
+            self.assertIsNone(self.legacy_history())
+
+    def test_preupload_failure_proof_rejects_any_submit_marker(self):
+        self.legacy_fixture('a' * 40)
+        self.job['id'] = 123
+        self.old_workflow = self.old_workflow.replace(
+            'Publish selected head as one transaction', 'Publish canonical target (portal)')
+        self.job['steps'][1]['name'] = 'Publish canonical target (portal)'
+        log = (
+            '2026-10-05T03:19:14.000Z masterapp-portal: approved revision ' + 'a' * 40 +
+            ', ZIP sha256 ' + 'b' * 64 + '\n'
+            '2026-10-05T03:19:20.000Z Submitting the verified immutable ZIP once.\n'
+            '2026-10-05T03:20:58.000Z DeploymentStatusUnavailable: Azure deployment status remained unavailable '
+            'for 3 consecutive reads (before any upload). No deployment or rollback write was replayed; '
+            'resume by reconciling the exact revision.\n'
+            '2026-10-05T03:20:58.001Z ##[error]Process completed with exit code 1.\n'
+        )
+        with patch.object(self.authority, '_release_job_log', return_value=log):
+            with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
+                self.legacy_history()
 
     def test_legacy_receipt_attempt_mismatch_is_tampering_not_absence(self):
         self.legacy_fixture()
