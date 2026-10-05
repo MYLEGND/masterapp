@@ -1166,24 +1166,45 @@
 
   function applyTheme(theme) {
     const root = document.documentElement;
-    const map = {
-      navy: '--web-navy',
-      navyDeep: '--web-navy-deep',
-      gold: '--web-gold',
-      goldStrong: '--web-gold-strong',
-      surface: '--web-surface', text: '--web-ink', muted: '--web-muted', fontFamily: '--web-font'
+    const strings = {
+      navy:'--web-navy', navyDeep:'--web-navy-deep', gold:'--web-gold', goldStrong:'--web-gold-strong',
+      surface:'--web-surface', text:'--web-ink', muted:'--web-muted', fontFamily:'--web-font',
+      surfaceElevated:'--web-surface-elevated', surfaceMuted:'--web-surface-muted',
+      borderColor:'--web-border-color', shadowSoft:'--web-shadow-soft', shadowStrong:'--web-shadow-strong'
     };
-    // The template's gradient end follows the selected primary color; it must
-    // not retain an uneditable royal-blue stop when the palette changes.
+    const pixels = {
+      borderRadius:'--web-radius', displaySize:'--web-display-size', h1Size:'--web-h1-size',
+      h2Size:'--web-h2-size', h3Size:'--web-h3-size', bodySize:'--web-body-size', smallSize:'--web-small-size',
+      sectionSpace:'--web-section-space', contentGap:'--web-content-gap', contentMaxWidth:'--web-content-max',
+      wideMaxWidth:'--web-wide-max', narrowMaxWidth:'--web-narrow-max', gutter:'--web-gutter',
+      cardRadius:'--web-card-radius', buttonRadius:'--web-button-radius', inputRadius:'--web-input-radius',
+      borderWidth:'--web-border-width', navHeight:'--web-nav-height'
+    };
+    const milliseconds = {
+      motionFastMs:'--web-motion-fast', motionStandardMs:'--web-motion-standard', motionSlowMs:'--web-motion-slow'
+    };
     if (theme?.navy) root.style.setProperty('--web-navy-royal', theme.navy);
     else root.style.removeProperty('--web-navy-royal');
-    Object.entries(map).forEach(([key, cssVar]) => {
+    Object.entries(strings).forEach(([key, cssVar]) => {
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
-    if (Number.isFinite(Number(theme?.borderRadius)) && Number(theme.borderRadius) >= 0)
-      root.style.setProperty('--web-radius', `${Number(theme.borderRadius)}px`);
-    else root.style.removeProperty('--web-radius');
+    Object.entries(pixels).forEach(([key, cssVar]) => {
+      const value=Number(theme?.[key]);
+      if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
+      else root.style.removeProperty(cssVar);
+    });
+    Object.entries(milliseconds).forEach(([key, cssVar]) => {
+      const value=Number(theme?.[key]);
+      if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}ms`);
+      else root.style.removeProperty(cssVar);
+    });
+    const lineHeight=Number(theme?.bodyLineHeight);
+    if(Number.isFinite(lineHeight) && lineHeight>0) root.style.setProperty('--web-body-line-height',String(lineHeight));
+    else root.style.removeProperty('--web-body-line-height');
+    const base=Number(theme?.fontSize);
+    if(Number.isFinite(base) && base>0) root.style.setProperty('--web-base-font-size',`${base}px`);
+    else root.style.removeProperty('--web-base-font-size');
   }
 
   function responsiveViewportWidth() {
