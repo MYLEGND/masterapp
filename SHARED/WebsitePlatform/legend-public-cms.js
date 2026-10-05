@@ -1026,6 +1026,18 @@
     }
   }
 
+  async function ensureSignalCatalog() {
+    if(signalCatalog) return signalCatalog;
+    try{
+      const payload=await creativeWorkspaceRequest('manage/signal-catalog');
+      signalCatalog=Array.isArray(payload?.events) && Array.isArray(payload?.matchingFields) ? payload : null;
+    }catch(error){
+      console.error('[legend-cms] signal catalog',error);
+      signalCatalog=null;
+    }
+    return signalCatalog;
+  }
+
   function renderSignalControls() {
     const host=document.getElementById('legend-cms-signal-controls');
     if(!host) return;
@@ -2915,6 +2927,7 @@
       getPageOutline:page=>creativeWorkspaceRequest('manage/agent/page-outline',{query:{page:page || currentPageRoute()}}),
       getNode:id=>creativeWorkspaceRequest('manage/agent/node',{query:{id}}),
       listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
+      getFullContract:()=>creativeWorkspaceRequest('manage/agent/contract'),
       listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query}),
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
@@ -6026,7 +6039,7 @@
     if (name === 'gpt') refreshBrowserAgentWorkspace();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
-    if (name === 'signals') renderSignalControls();
+    if (name === 'signals') void ensureSignalCatalog().then(renderSignalControls);
     if (name === 'quality') void refreshQualityInspector();
     if (name === 'collaboration') void refreshCollaboration();
   }
