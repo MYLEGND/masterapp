@@ -3059,30 +3059,26 @@
   async function installWebsiteStudioWebMcpTools() {
     if(!editorMode || websiteStudioWebMcpController) return;
 
-    const controller=new AbortController();
-    websiteStudioWebMcpController=controller;
-    window.addEventListener('pagehide',()=>controller.abort(),{once:true});
-
-    let modelContext=null;
-    for(let attempt=0;attempt<40 && !controller.signal.aborted;attempt++){
-      const candidate=document.modelContext;
-      if(candidate && typeof candidate.registerTool==='function'){
-        modelContext=candidate;
-        break;
-      }
-      if(attempt===0){
-        websiteStudioWebMcpStatus='connecting';
+    const modelContext=document.modelContext;
+    if(!modelContext || typeof modelContext.registerTool!=='function'){
+      if(websiteStudioWebMcpStatus!=='waiting_for_transport'){
+        websiteStudioWebMcpStatus='waiting_for_transport';
+        window.addEventListener('legend:model-context-ready',()=>void installWebsiteStudioWebMcpTools(),{once:true});
         refreshBrowserAgentWorkspace();
       }
-      await new Promise(resolve=>window.setTimeout(resolve,100));
+      return;
     }
 
     const api=window.LEGEND_WEBSITE_STUDIO_AGENT;
-    if(!modelContext || !api){
+    if(!api){
       websiteStudioWebMcpStatus='unavailable';
       refreshBrowserAgentWorkspace();
       return;
     }
+
+    const controller=new AbortController();
+    websiteStudioWebMcpController=controller;
+    window.addEventListener('pagehide',()=>controller.abort(),{once:true});
 
     const objectSchema=(properties={},required=[])=>({
       type:'object',
@@ -3140,7 +3136,7 @@
         schema:objectSchema({
           pagePath:{type:'string',maxLength:2048},
           elementId:{type:'string',maxLength:240},
-          fieldKey:{type:['string','null'],maxLength:160},
+          fieldKey:{type:'string',maxLength:160},
           signals:{type:'array',maxItems:8,items:{type:'object'}}
         },['pagePath','elementId','signals']),
         execute:async args=>{
