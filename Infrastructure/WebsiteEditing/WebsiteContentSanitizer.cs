@@ -261,10 +261,29 @@ public static class WebsiteContentSanitizer
         bool mobileFlowSafety = true)
     {
         RejectUnexpectedMutationNodeFields(source, "mutation/" + source.Id);
+
+        static HashSet<string> Ids(WebsiteCompositionNode root)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            void Visit(WebsiteCompositionNode node)
+            {
+                if (string.IsNullOrWhiteSpace(node.Id) || !ids.Add(node.Id))
+                    throw new ArgumentException("Website mutation node IDs must be non-empty and unique inside the changed subtree.");
+                foreach (var child in node.Children ?? []) Visit(child);
+            }
+            Visit(root);
+            return ids;
+        }
+
+        var sourceIds = Ids(source);
         var keys = breakpoints.Select(value => value.Key).ToHashSet(StringComparer.Ordinal);
         var result = SanitizeComposition([source], keys, mobileFlowSafety);
         if (result.Count != 1)
             throw new ArgumentException($"Website component '{source.Id}' is not valid canonical v3 content.");
+        var sanitizedIds = Ids(result[0]);
+        if (!sourceIds.SetEquals(sanitizedIds))
+            throw new ArgumentException(
+                $"Website component '{source.Id}' contains invalid structure that cannot be silently rewritten during a scoped mutation.");
         return result[0];
     }
 
