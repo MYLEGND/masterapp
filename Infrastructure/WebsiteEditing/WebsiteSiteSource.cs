@@ -395,6 +395,9 @@ public static class WebsiteSiteSource
         }
     }
 
+    internal static void ValidateMutationExperienceFieldSignals(WebsiteCompositionNode node) =>
+        ValidateExperienceFieldSignalTargets(node);
+
     private static void ValidateExperienceFieldSignalTargets(WebsiteCompositionNode node)
     {
         if (!string.Equals(node.Type, "experience", StringComparison.Ordinal) ||
