@@ -964,11 +964,44 @@ public static class WebsiteContentSanitizer
             GoldStrong = SanitizeHex(source.GoldStrong),
             Surface = SanitizeHex(source.Surface),
             Muted = SanitizeHex(source.Muted),
-            Text = SanitizeHex(source.Text), FontFamily = SanitizeFont(source.FontFamily),
-            FontSize = source.FontSize > 0 ? source.FontSize : null,
-            BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null
+            Text = SanitizeHex(source.Text),
+            FontFamily = SanitizeFont(source.FontFamily),
+            FontSize = Bound(source.FontSize, 8, 96),
+            BorderRadius = Bound(source.BorderRadius, 0, 120),
+            DisplaySize = Bound(source.DisplaySize, 24, 160),
+            H1Size = Bound(source.H1Size, 22, 120),
+            H2Size = Bound(source.H2Size, 18, 96),
+            H3Size = Bound(source.H3Size, 16, 72),
+            BodySize = Bound(source.BodySize, 12, 32),
+            SmallSize = Bound(source.SmallSize, 10, 24),
+            BodyLineHeight = Bound(source.BodyLineHeight, 1, 2.4m),
+            SectionSpace = Bound(source.SectionSpace, 16, 320),
+            ContentGap = Bound(source.ContentGap, 0, 120),
+            ContentMaxWidth = Bound(source.ContentMaxWidth, 320, 2400),
+            WideMaxWidth = Bound(source.WideMaxWidth, 480, 3200),
+            NarrowMaxWidth = Bound(source.NarrowMaxWidth, 240, 1600),
+            Gutter = Bound(source.Gutter, 0, 120),
+            CardRadius = Bound(source.CardRadius, 0, 120),
+            ButtonRadius = Bound(source.ButtonRadius, 0, 999),
+            InputRadius = Bound(source.InputRadius, 0, 120),
+            SurfaceElevated = SanitizeColor(source.SurfaceElevated),
+            SurfaceMuted = SanitizeColor(source.SurfaceMuted),
+            BorderColor = SanitizeColor(source.BorderColor),
+            BorderWidth = Bound(source.BorderWidth, 0, 12),
+            ShadowSoft = SanitizeCssValue(source.ShadowSoft, 300),
+            ShadowStrong = SanitizeCssValue(source.ShadowStrong, 300),
+            NavHeight = Bound(source.NavHeight, 40, 180),
+            MotionFastMs = BoundInt(source.MotionFastMs, 0, 2000),
+            MotionStandardMs = BoundInt(source.MotionStandardMs, 0, 4000),
+            MotionSlowMs = BoundInt(source.MotionSlowMs, 0, 8000)
         };
     }
+
+    private static decimal? Bound(decimal? value, decimal min, decimal max) =>
+        value.HasValue && value.Value >= min && value.Value <= max ? value : null;
+
+    private static int? BoundInt(int? value, int min, int max) =>
+        value.HasValue && value.Value >= min && value.Value <= max ? value : null;
 
     private static string? SanitizeHex(string? value)
     {
