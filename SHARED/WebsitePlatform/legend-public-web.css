@@ -405,7 +405,7 @@ main :is(img,video)[data-legend-content-role="media"]{
   position:absolute;inset:0;z-index:0;width:100%;max-width:none;height:100%;margin:0;
   border:0;border-radius:0;box-shadow:none;object-fit:cover;object-position:center;opacity:.58;filter:saturate(.82) contrast(1.06)
 }
-.legend-recipe-hero-media,.legend-recipe-feature-media{
+.legend-recipe-hero-media:not(.legend-recipe-hero-cinematic-media),.legend-recipe-feature-media{
   width:100%;height:min(58vh,620px);object-fit:cover;object-position:center;border-radius:var(--web-card-radius);
   box-shadow:var(--web-shadow-strong);border:var(--web-border-width) solid color-mix(in srgb,var(--web-gold,#bc8e10) 42%,transparent)
 }
