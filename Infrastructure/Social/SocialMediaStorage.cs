@@ -4,6 +4,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
 using Domain.Social;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -15,25 +16,6 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         SocialMediaUploadLimits.MaximumMediaBytes;
     private const int MaximumOriginalFileNameLength = 255;
     private const int CopyBufferSize = 80 * 1024;
-
-    private static readonly IReadOnlyDictionary<string, SupportedSocialMediaType>
-        SupportedMediaTypes =
-            new Dictionary<string, SupportedSocialMediaType>(
-                StringComparer.OrdinalIgnoreCase)
-            {
-                [".jpg"] = new("Image", "image/jpeg"),
-                [".jpeg"] = new("Image", "image/jpeg"),
-                [".png"] = new("Image", "image/png"),
-                [".webp"] = new("Image", "image/webp"),
-                [".gif"] = new("Image", "image/gif"),
-                [".heic"] = new("Image", "image/heic"),
-                [".heif"] = new("Image", "image/heif"),
-                [".avif"] = new("Image", "image/avif"),
-                [".mp4"] = new("Video", "video/mp4"),
-                [".m4v"] = new("Video", "video/mp4"),
-                [".mov"] = new("Video", "video/quicktime"),
-                [".webm"] = new("Video", "video/webm")
-            };
 
     private readonly string _rootPath;
     private readonly long _maximumMediaBytes;
@@ -107,17 +89,18 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 "The social media filename is invalid.");
         }
 
-        var extension = Path.GetExtension(safeOriginalName);
-
-        if (!SupportedMediaTypes.TryGetValue(
-                extension,
-                out var supportedType))
+        if (!UploadValidator.TryResolveVisualMediaType(
+                safeOriginalName,
+                out var mediaKind,
+                out var mimeType))
         {
             return SocialMediaStorageResult.Failure(
                 "SOCIAL_MEDIA_TYPE_INVALID",
                 "This social media file type is not permitted.");
         }
 
+        var extension = Path.GetExtension(safeOriginalName);
+        var supportedType = new SupportedSocialMediaType(mediaKind, mimeType);
         var normalizedExtension = extension.ToLowerInvariant();
         var storedFileName = $"{mediaAssetId:N}{normalizedExtension}";
 
