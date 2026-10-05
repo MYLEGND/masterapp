@@ -1295,15 +1295,18 @@
   }
 
   function applyBreakpointPreview() {
-    if (!editorPreview) return;
     const breakpoint=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
-    if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
-    else {
-      const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
-      editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+    if(editorPreview){
+      if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
+      else {
+        const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
+        editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+      }
     }
+    // Hidden whole-site audit frames deliberately do not build the editor UI,
+    // but they still must reapply canonical breakpoint styles before measuring.
     refreshResponsiveComposition();
-    syncEditorControls();
+    if(editorPreview) syncEditorControls();
   }
   function applyStyle(el, style) {
     if (!el) return;
