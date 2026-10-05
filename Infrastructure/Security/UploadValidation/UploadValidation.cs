@@ -199,7 +199,8 @@ public static class UploadValidator
             return UploadValidationResult.Invalid("UPLOAD_EXTENSION_BLOCKED", "This file type is not permitted.");
 
         if (policy.AllowedExtensions.Count > 0 &&
-            (string.IsNullOrEmpty(extension) || !policy.AllowedExtensions.Contains(extension)))
+            !string.IsNullOrEmpty(extension) &&
+            !policy.AllowedExtensions.Contains(extension))
         {
             return UploadValidationResult.Invalid("UPLOAD_EXTENSION_INVALID", "This file type is not permitted.");
         }
@@ -346,16 +347,16 @@ public static class UploadValidator
             content[8] == 0x57 && content[9] == 0x41 && content[10] == 0x56 && content[11] == 0x45)
             return "audio/wav";
 
+        // AAC ADTS frame sync must be checked before the broader MPEG sync.
+        if (content.Length >= 2 &&
+            content[0] == 0xFF && (content[1] & 0xF6) == 0xF0)
+            return "audio/aac";
+
         // MP3: ID3 tag or MPEG audio frame sync.
         if ((content.Length >= 3 &&
              content[0] == 0x49 && content[1] == 0x44 && content[2] == 0x33) ||
             (content.Length >= 2 && content[0] == 0xFF && (content[1] & 0xE0) == 0xE0))
             return "audio/mpeg";
-
-        // AAC ADTS frame sync.
-        if (content.Length >= 2 &&
-            content[0] == 0xFF && (content[1] & 0xF6) == 0xF0)
-            return "audio/aac";
 
         // Ogg container.
         if (content.Length >= 4 &&
