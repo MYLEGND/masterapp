@@ -140,6 +140,41 @@ class CanonicalHistoryTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'No authenticated legacy package'):
             self.history()
 
+    def test_modern_same_package_missing_intent_is_absence_proof_only_for_exact_anti_replay_source(self):
+        self.job['steps'][0]['conclusion'] = 'failure'
+        with patch.object(self.authority, '_release_attempt_package_revision', return_value='a' * 40), \
+             patch.object(self.authority, '_historical_intent_before_upload_contract', return_value=True):
+            self.assertIsNone(self.history())
+
+        self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+        with patch.object(self.authority, '_release_attempt_package_revision', return_value='a' * 40), \
+             patch.object(self.authority, '_historical_intent_before_upload_contract', return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
+                self.history()
+
+    def test_historical_intent_before_upload_contract_rejects_any_critical_source_drift(self):
+        deploy_source = Path(__file__).with_name('deploy-approved-app.py').read_text()
+        evidence_source = Path(__file__).with_name('release-operation-evidence.py').read_text()
+
+        def exact_source(repository, revision, path, token):
+            return evidence_source if path.endswith('release-operation-evidence.py') else deploy_source
+
+        with patch.object(self.authority, '_release_history_source', side_effect=exact_source):
+            self.assertTrue(self.authority._historical_intent_before_upload_contract(
+                'owner/repo', 'd' * 40, 'placeholder'))
+
+        changed = evidence_source.replace(
+            "self.publisher('legend-release-operation-intent-' + self.operation_id, record)",
+            "self.intent = record",
+            1,
+        )
+        def changed_source(repository, revision, path, token):
+            return changed if path.endswith('release-operation-evidence.py') else deploy_source
+
+        with patch.object(self.authority, '_release_history_source', side_effect=changed_source):
+            self.assertFalse(self.authority._historical_intent_before_upload_contract(
+                'owner/repo', 'd' * 40, 'placeholder'))
+
     def test_unknown_execution_owner_cannot_prove_absence(self):
         self.job['name'] = 'renamed-owner'
         with self.assertRaisesRegex(RuntimeError, 'publication owner'):
