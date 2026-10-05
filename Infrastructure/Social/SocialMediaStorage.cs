@@ -89,6 +89,13 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 "The social media filename is invalid.");
         }
 
+        if (UploadValidator.IsDangerousExtension(Path.GetExtension(safeOriginalName)))
+        {
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_TYPE_INVALID",
+                "This social media file type is not permitted.");
+        }
+
         var prefix = await ReadPrefixAsync(content, 4096, cancellationToken);
         var detectedContentType = UploadValidator.CanonicalContentType(
             UploadValidator.DetectContentType(prefix.ToArray()));
