@@ -5604,32 +5604,34 @@
       }
     }
 
-    let snapshot;
-    try{ snapshot=await loadCanonicalSourceSnapshot(); }
-    catch(error){
-      clearCanonicalProtectionViolation();
-      if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
-      return;
-    }
-    if(!snapshot) return;
-
     const selectedId=sourceSelectedNodeId();
     if(scope && scope.value==='selection' && !selectedId) scope.value='site';
     const mode=scope?.value || 'site';
+
     if(mode==='selection' && selectedId){
-      const node=sourceFindNodeInDocument(snapshot.sourceDocument,selectedId);
-      if(!node){
-        if(status) status.textContent='The selected component is not exposed in canonical Source. Select another component.';
-        scope.value='site';
-        sourceEditorBaseNode=null;
-        textarea.value=snapshot.text;
-      }else{
-        sourceEditorBaseNode=cloneCanonicalValue(node);
+      try{
+        const snapshot=await creativeWorkspaceRequest('manage/agent/node',{query:{id:selectedId}});
+        sourceEditorBaseNode=cloneCanonicalValue(snapshot.node);
+        sourceEditorBaseFingerprint=snapshot.fingerprint || null;
+        canonicalSourceRevision=snapshot.revision ?? revision;
         textarea.value=JSON.stringify(sourceEditorBaseNode,null,2);
-        if(label) label.textContent='Selected source · '+currentPageRoute()+' · #'+selectedId;
+        if(label) label.textContent='Selected source · '+(snapshot.location?.pagePath || currentPageRoute())+' · #'+selectedId;
+      }catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'Selected Source could not be loaded.';
+        return;
       }
     }else{
+      let snapshot;
+      try{ snapshot=await loadCanonicalSourceSnapshot(); }
+      catch(error){
+        clearCanonicalProtectionViolation();
+        if(status) status.textContent=error?.message || 'Canonical Source could not be loaded.';
+        return;
+      }
+      if(!snapshot) return;
       sourceEditorBaseNode=null;
+      sourceEditorBaseFingerprint=null;
       textarea.value=snapshot.text;
       if(label) label.textContent='Master Source · entire website';
       if(selectedId){
@@ -5638,39 +5640,14 @@
         if(index>=0) textarea.setSelectionRange(index,index+marker.length);
       }
     }
+
     sourceEditorDirty=false;
     const editable=syncSourceEditingMode();
     renderSourceHighlight();
     if(status) status.textContent=editable
-      ? 'Selected Source is synchronized with the server canonical projection.'
+      ? 'Selected Source is scoped to one canonical node. Protected backend authority is not part of this write surface.'
       : 'Master Source is synchronized from the server and read only.';
     if(force) clearCanonicalProtectionViolation();
-  }
-
-  function selectedSourceHasConcurrentChange(sourceDocument, selectedNodeId) {
-    if(!sourceEditorBaseNode) return false;
-    const latest=sourceFindNodeInDocument(sourceDocument,selectedNodeId);
-    if(!latest) return true;
-    return JSON.stringify(latest)!==JSON.stringify(sourceEditorBaseNode);
-  }
-
-  function selectedSourceDocument(baseSourceDocument, selectedNodeId, replacement) {
-    const projected=cloneCanonicalValue(baseSourceDocument);
-    let replaced=
-      sourceReplaceNode(projected.shell?.header,selectedNodeId,replacement) ||
-      sourceReplaceNode(projected.shell?.footer,selectedNodeId,replacement);
-    if(!replaced){
-      for(const page of projected.pages || []){
-        if(sourceReplaceNode(page.composition,selectedNodeId,replacement)){ replaced=true; break; }
-      }
-    }
-    if(!replaced){
-      for(const component of Object.values(projected.reusableComponents || {})){
-        if(sourceReplaceNode(component.composition,selectedNodeId,replacement)){ replaced=true; break; }
-      }
-    }
-    if(!replaced) throw new Error('The selected source node is no longer present in the current canonical Source projection.');
-    return JSON.stringify(projected,null,2);
   }
 
   async function applySiteSource() {
@@ -5686,143 +5663,52 @@
       return;
     }
 
-    let replacement;
-    try{ replacement=JSON.parse(textarea.value); }
+    let replacementNode;
+    try{ replacementNode=JSON.parse(textarea.value); }
     catch(error){
       clearCanonicalProtectionViolation();
       if(status) status.textContent=error?.message || 'Selected Source syntax is invalid.';
       return;
     }
-    if(replacement?.id!==selectedNodeId){
+    if(replacementNode?.id!==selectedNodeId){
       const message='Selected Source must keep the stable node ID '+selectedNodeId+'.';
       if(status) status.textContent=message;
       showCanonicalProtectionViolation(message);
       return;
     }
-
-    let baseSourceDocument=canonicalSourceDocument ? cloneCanonicalValue(canonicalSourceDocument) : null;
-    let expectedRevision=canonicalSourceRevision ?? revision;
+    if(!sourceEditorBaseFingerprint){
+      if(status) status.textContent='Refresh Selected Source before applying this edit.';
+      return;
+    }
 
     if(dirty){
       if(status) status.textContent='Saving existing canvas edits before applying Selected Source…';
       const saved=await save(false);
-      if(!saved || dirty){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent='Save or reconcile the existing canvas edits before applying Selected Source.';
-        return;
-      }
-      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-      if(!latest) return;
-      if(selectedSourceHasConcurrentChange(latest.sourceDocument,selectedNodeId)){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent='The selected component changed after Source editing began. Your Source text is preserved; refresh Selected Source before reconciling this design edit.';
-        return;
-      }
-      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-      expectedRevision=latest.revision;
-    }else if(!baseSourceDocument){
-      const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-      if(!latest) return;
-      baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-      expectedRevision=latest.revision;
+      if(!saved || dirty) return;
     }
 
     clearCanonicalProtectionViolation();
-    let rebased=false;
-    for(let attempt=0;attempt<3;attempt++){
-      let sourceText;
-      try{ sourceText=selectedSourceDocument(baseSourceDocument,selectedNodeId,replacement); }
-      catch(error){
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent=error?.message || 'The selected component is no longer available.';
-        return;
-      }
-
-      if(status) status.textContent=rebased
-        ? 'Revalidating this design edit against the latest canonical Source…'
-        : 'Validating authorable design against protected backend authority…';
-
-      const response=await fetch(API_BASE+'/api/website-content/manage/source/validate',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,expectedRevision,source:sourceText,selectedNodeId})
-      });
-      const payload=await response.json().catch(()=>({}));
-
-      if(!response.ok){
-        if((response.status===401 || response.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired while validating this edit.')) return;
-        if(response.status===409 && payload.error==='revision_conflict'){
-          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-          if(!latest) return;
-          expectedRevision=latest.revision;
-          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
-            clearCanonicalProtectionViolation();
-            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
-            return;
-          }
-          rebased=true;
-          continue;
-        }
-
-        const message=payload.message || payload.error || 'Site Source validation failed.';
-        if(payload.canonicalProtectionViolation===true)
-          showCanonicalProtectionViolation(message,payload.correction);
-        else
-          clearCanonicalProtectionViolation();
-        if(status) status.textContent=message;
-        return;
-      }
-
-      const proposedDocument=normalizeDocument(payload.proposedDocument || {});
-      const validatedRevision=payload.baseRevision ?? expectedRevision;
-      const saveResponse=await fetch(`${API_BASE}/api/website-content/manage`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ticket:editorTicket,document:proposedDocument,expectedRevision:validatedRevision})
-      });
-      const savePayload=await saveResponse.json().catch(()=>({}));
-
-      if(!saveResponse.ok){
-        if((saveResponse.status===401 || saveResponse.status===403) &&
-            showEditorAuthorizationRecovery('Website Studio authorization expired before this design edit could be saved.')) return;
-        if(saveResponse.status===409 && savePayload.error==='revision_conflict'){
-          const latest=await loadCanonicalSourceSnapshot().catch(error=>{ if(status) status.textContent=error?.message || 'Unable to refresh canonical Source.'; return null; });
-          if(!latest) return;
-          expectedRevision=latest.revision;
-          baseSourceDocument=cloneCanonicalValue(latest.sourceDocument);
-          if(selectedSourceHasConcurrentChange(baseSourceDocument,selectedNodeId)){
-            clearCanonicalProtectionViolation();
-            if(status) status.textContent='The selected component was changed elsewhere. Your Source text is preserved; refresh Selected Source and reconcile the newer design before applying.';
-            return;
-          }
-          rebased=true;
-          continue;
-        }
-
-        clearCanonicalProtectionViolation();
-        if(status) status.textContent=savePayload.message || savePayload.error || `Source save failed (${saveResponse.status}).`;
-        return;
-      }
-
-      checkpoint();
-      documentState=normalizeDocument(savePayload.document || proposedDocument);
-      revision=savePayload.revision ?? validatedRevision;
-      namedDrafts=savePayload.drafts || namedDrafts;
-      dirty=false;
+    if(status) status.textContent='Applying this node through the canonical mutation authority…';
+    try{
+      await creativeApplyMutationBatch([{
+        type:'replaceNode',
+        nodeId:selectedNodeId,
+        node:replacementNode,
+        expectedFingerprint:sourceEditorBaseFingerprint
+      }]);
       sourceEditorDirty=false;
-      canonicalSourceDocument=null;
-      canonicalSourceRevision=null;
-      applyDocument(documentState);
       await refreshSiteSourceEditor(true);
-      if(status) status.textContent=rebased
-        ? 'Applied after rebasing onto the latest canonical Source. Protected backend authority unchanged.'
-        : 'Applied to the canonical draft. Protected backend authority unchanged.';
-      return;
+      if(status) status.textContent='Applied one scoped node mutation. Protected events/forms/backend wiring were not writable.';
+    }catch(error){
+      const payload=error?.payload || {};
+      if(payload.canonicalProtectionViolation===true)
+        showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
+      else
+        clearCanonicalProtectionViolation();
+      if(error?.status===409 && payload.error==='scope_revision_conflict')
+        if(status) status.textContent='This selected component changed elsewhere. Your Source text is preserved; refresh and reconcile the newer node.';
+      else if(status) status.textContent=payload.message || error?.message || 'Selected Source could not be applied.';
     }
-
-    clearCanonicalProtectionViolation();
-    if(status) status.textContent='The draft changed repeatedly while this edit was being applied. Refresh Selected Source and reconcile the latest design.';
   }
 
   function showPanel(name) {
@@ -7471,6 +7357,7 @@
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
       buildEditor();
+      installCreativeAgentWorkspaceApi();
       installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
