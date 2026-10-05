@@ -626,8 +626,8 @@ public static class WebsiteDocumentMutationService
         if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var existing, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
-        if (HasProtectedSemantics(existing))
-            throw new WebsiteSiteSourceProtectionException($"Protected component '{existing.Id}' cannot be removed by the creative mutation authority.");
+        if (ContainsProtectedSemantics(existing))
+            throw new WebsiteSiteSourceProtectionException($"Component '{existing.Id}' contains protected platform authority and cannot be removed by the creative mutation authority.");
         WebsiteDocumentIndex.Remove(document, existing.Id, out _, out _);
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId ?? existing.Id));
     }
@@ -643,10 +643,10 @@ public static class WebsiteDocumentMutationService
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
 
-        if (HasProtectedSemantics(existing) &&
-            (!string.Equals(oldLocation.PagePath, operation.PagePath, StringComparison.Ordinal) ||
+        if (ContainsProtectedSemantics(existing) &&
+            (!string.Equals(oldLocation.PagePath, operation.PagePath ?? oldLocation.PagePath, StringComparison.Ordinal) ||
              oldLocation.Scope != (operation.Scope ?? oldLocation.Scope)))
-            throw new WebsiteSiteSourceProtectionException("Protected runtime components may be repositioned only within their existing page/scope.");
+            throw new WebsiteSiteSourceProtectionException("Components containing protected platform authority may be repositioned only within their existing page/scope.");
 
         if (!WebsiteDocumentIndex.Remove(document, existing.Id, out var removed, out _))
             throw new ArgumentException("The component could not be moved.");
@@ -674,6 +674,9 @@ public static class WebsiteDocumentMutationService
         var capability = WebsiteCreativeCapabilityResolver.Require(capabilities, operation.CapabilityKey);
         if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var node, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
+
+        if (HasProtectedSemantics(node))
+            throw new WebsiteSiteSourceProtectionException("Protected signal/system components cannot be retargeted to another executable capability.");
 
         if (capability.Key == "experience.lead_capture")
         {
@@ -891,7 +894,8 @@ public static class WebsiteDocumentMutationService
             }
         }
 
-        if ((proposed.Children?.Count ?? 0) > 0 || (current.Children?.Count ?? 0) == 0)
+        if (!protectedIdentity &&
+            ((proposed.Children?.Count ?? 0) > 0 || (current.Children?.Count ?? 0) == 0))
             next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions);
 
         next.Id = current.Id;
@@ -929,8 +933,8 @@ public static class WebsiteDocumentMutationService
         }
 
         foreach (var existing in current)
-            if (HasProtectedSemantics(existing) && next.All(value => value.Id != existing.Id))
-                throw new WebsiteSiteSourceProtectionException($"Protected component '{existing.Id}' cannot be removed by replacing its parent.");
+            if (ContainsProtectedSemantics(existing) && next.All(value => value.Id != existing.Id))
+                throw new WebsiteSiteSourceProtectionException($"Component '{existing.Id}' contains protected platform authority and cannot be removed by replacing its parent.");
         return next;
     }
 
@@ -1310,9 +1314,9 @@ public static class WebsitePageRecipeCatalog
         for (var index = 0; index < definition.SectionRecipes.Count; index++)
         {
             var recipe = definition.SectionRecipes[index];
-            var capability = recipe == "contact.inquiry"
-                ? primaryCapabilityKey == "contact.inquiry.submit" ? primaryCapabilityKey : "contact.inquiry.submit"
-                : (index == 0 || index == definition.SectionRecipes.Count - 1) ? primaryCapabilityKey : null;
+            var capability = (index == 0 || index == definition.SectionRecipes.Count - 1 || recipe == "contact.inquiry")
+                ? primaryCapabilityKey
+                : null;
             result.Add(new WebsiteDesignPlanSection
             {
                 Recipe = recipe,
@@ -1406,6 +1410,10 @@ public static class WebsiteDesignPlanResolver
         WebsiteDesignPlan plan)
     {
         var operations = new List<WebsiteMutationOperation>();
+        var planPrimaryCapability = plan.PrimaryCapabilityKey;
+        if (string.IsNullOrWhiteSpace(planPrimaryCapability) &&
+            capabilities.Capabilities.Any(value => value.Key == "contact.inquiry.submit"))
+            planPrimaryCapability = "contact.inquiry.submit";
 
         if (plan.ReplaceBusinessPages && siteKey == WebsiteEditorSiteKeys.Business)
         {
@@ -1472,7 +1480,7 @@ public static class WebsiteDesignPlanResolver
                 }
             }
 
-            var primaryCapability = pagePlan.PrimaryCapabilityKey ?? plan.PrimaryCapabilityKey;
+            var primaryCapability = pagePlan.PrimaryCapabilityKey ?? planPrimaryCapability;
             if (!string.IsNullOrWhiteSpace(primaryCapability))
                 WebsiteCreativeCapabilityResolver.Require(capabilities, primaryCapability);
 
