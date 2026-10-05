@@ -711,9 +711,8 @@ public static class WebsiteDocumentMutationService
         HashSet<string> changed)
     {
         if (operation.Node is null) throw new ArgumentException("A node is required.");
-        if (WebsiteDocumentIndex.TryFind(document, operation.Node.Id, out _, out _))
-            throw new ArgumentException($"Node '{operation.Node.Id}' already exists.");
-        var node = PrepareNewNode(operation.Node, actions);
+        var node = PrepareNewNode(operation.Node, actions, document.Breakpoints);
+        EnsureNewSubtreeIdentitiesAvailable(document, node);
         EnsureAuthorableParent(document, operation.ParentId);
         var siblings = WebsiteDocumentIndex.ResolveChildren(
             document,
@@ -737,7 +736,8 @@ public static class WebsiteDocumentMutationService
         if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var existing, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Node(existing), "node", existing.Id);
-        var replacement = MergeAuthorable(existing, operation.Node, actions);
+        var replacement = MergeAuthorable(existing, operation.Node, actions, document.Breakpoints);
+        EnsureReplacementSubtreeIdentitiesAvailable(document, existing, replacement);
         var siblings = WebsiteDocumentIndex.ResolveChildren(document, location.Scope, location.PagePath, location.ReusableComponentId, location.ParentId);
         siblings[location.Index] = replacement;
         changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, replacement.Id));
@@ -878,7 +878,10 @@ public static class WebsiteDocumentMutationService
                 Layout = new WebsiteCompositionLayout { Mode = "stack", Direction = "column", GapPx = 14 }
             };
             if (operation.Node is not null)
-                node = MergeAuthorable(node, operation.Node, actions);
+                node = MergeAuthorable(node, operation.Node, actions, document.Breakpoints);
+            else
+                node = WebsiteContentSanitizer.SanitizeMutationNode(node, document.Breakpoints);
+            EnsureNewSubtreeIdentitiesAvailable(document, node);
             var siblings = WebsiteDocumentIndex.ResolveChildren(
                 document,
                 operation.Scope ?? "page",
@@ -956,11 +959,22 @@ public static class WebsiteDocumentMutationService
     {
         var source = operation.ReusableComponent ?? throw new ArgumentException("Reusable component is required.");
         if (string.IsNullOrWhiteSpace(source.Id)) throw new ArgumentException("Reusable component identity is required.");
-        if (source.Composition.Any(ContainsProtectedSemantics))
+        if ((source.Composition ?? []).Any(ContainsProtectedSemantics))
             throw new WebsiteSiteSourceProtectionException("Protected runtime behavior cannot be copied into reusable creative components.");
-        source.Composition = PrepareNewNodes(source.Composition, actions);
-        document.ReusableComponents[source.Id] = source;
-        changed.Add("@component/" + source.Id);
+
+        var prepared = Clone(source);
+        prepared.Composition = PrepareNewNodes(
+            source.Composition ?? [],
+            actions,
+            document.Breakpoints);
+        prepared = WebsiteContentSanitizer.SanitizeMutationReusableComponent(prepared, document.Breakpoints);
+
+        var ignored = document.ReusableComponents.TryGetValue(prepared.Id, out var previous)
+            ? CollectSubtreeIds(previous.Composition)
+            : new HashSet<string>(StringComparer.Ordinal);
+        EnsureSubtreeIdentitiesAvailable(document, prepared.Composition, ignored);
+        document.ReusableComponents[prepared.Id] = prepared;
+        changed.Add("@component/" + prepared.Id);
     }
 
     private static void RemoveReusable(
@@ -978,7 +992,8 @@ public static class WebsiteDocumentMutationService
     private static WebsiteCompositionNode MergeAuthorable(
         WebsiteCompositionNode current,
         WebsiteCompositionNode proposed,
-        IReadOnlyList<WebsiteCallToActionOption> actions)
+        IReadOnlyList<WebsiteCallToActionOption> actions,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
     {
         var protectedIdentity = HasProtectedSemantics(current);
         if (protectedIdentity)
@@ -1040,7 +1055,7 @@ public static class WebsiteDocumentMutationService
 
         if (!protectedIdentity &&
             ((proposed.Children?.Count ?? 0) > 0 || (current.Children?.Count ?? 0) == 0))
-            next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions);
+            next.Children = PrepareReplacementChildren(current.Children ?? [], proposed.Children ?? [], actions, breakpoints);
 
         next.Id = current.Id;
         next.SystemKey = current.SystemKey;
@@ -1058,22 +1073,25 @@ public static class WebsiteDocumentMutationService
             next.Experience = current.Experience;
             next.SyncSourceId = current.SyncSourceId;
         }
-        return next;
+
+        WebsiteSiteSource.ValidateMutationRuntimeClasses(next, current);
+        return WebsiteContentSanitizer.SanitizeMutationNode(next, breakpoints);
     }
 
     private static List<WebsiteCompositionNode> PrepareReplacementChildren(
         IReadOnlyList<WebsiteCompositionNode> current,
         IReadOnlyList<WebsiteCompositionNode> proposed,
-        IReadOnlyList<WebsiteCallToActionOption> actions)
+        IReadOnlyList<WebsiteCallToActionOption> actions,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints)
     {
         var currentById = current.ToDictionary(value => value.Id, StringComparer.Ordinal);
         var next = new List<WebsiteCompositionNode>();
         foreach (var child in proposed)
         {
             if (currentById.TryGetValue(child.Id, out var existing))
-                next.Add(MergeAuthorable(existing, child, actions));
+                next.Add(MergeAuthorable(existing, child, actions, breakpoints));
             else
-                next.Add(PrepareNewNode(child, actions));
+                next.Add(PrepareNewNode(child, actions, breakpoints));
         }
 
         foreach (var existing in current)
@@ -1084,18 +1102,32 @@ public static class WebsiteDocumentMutationService
 
     private static List<WebsiteCompositionNode> PrepareNewNodes(
         IEnumerable<WebsiteCompositionNode> nodes,
-        IReadOnlyList<WebsiteCallToActionOption> actions) =>
-        nodes.Select(node => PrepareNewNode(node, actions)).ToList();
+        IReadOnlyList<WebsiteCallToActionOption> actions,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true) =>
+        nodes.Select(node => PrepareNewNode(node, actions, breakpoints, mobileFlowSafety)).ToList();
 
     private static WebsiteCompositionNode PrepareNewNode(
         WebsiteCompositionNode source,
-        IReadOnlyList<WebsiteCallToActionOption> actions)
+        IReadOnlyList<WebsiteCallToActionOption> actions,
+        IReadOnlyList<WebsiteBreakpointDefinition> breakpoints,
+        bool mobileFlowSafety = true)
     {
         var node = Clone(source);
+        PrepareNewNodeAuthority(node, actions);
+        WebsiteSiteSource.ValidateMutationRuntimeClasses(node);
+        return WebsiteContentSanitizer.SanitizeMutationNode(node, breakpoints, mobileFlowSafety);
+    }
+
+    private static void PrepareNewNodeAuthority(
+        WebsiteCompositionNode node,
+        IReadOnlyList<WebsiteCallToActionOption> actions)
+    {
         if (string.IsNullOrWhiteSpace(node.Id)) node.Id = FreshId("node");
         node.Signals ??= [];
         node.FieldSignals ??= new(StringComparer.Ordinal);
         node.Children ??= [];
+
         if (node.Type == "form" || !string.IsNullOrWhiteSpace(node.SystemKey) || !string.IsNullOrWhiteSpace(node.SystemBinding) ||
             node.Signals.Count > 0 || node.FieldSignals.Values.Any(value => value?.Count > 0) ||
             node.Experience?.SubmitCapability is not null)
@@ -1109,8 +1141,8 @@ public static class WebsiteDocumentMutationService
             node.Target = action.OpenInNewTab ? "_blank" : "_self";
         }
 
-        node.Children = PrepareNewNodes(node.Children ?? [], actions);
-        return node;
+        foreach (var child in node.Children)
+            PrepareNewNodeAuthority(child, actions);
     }
 
     private static bool HasProtectedSemantics(WebsiteCompositionNode node) =>
