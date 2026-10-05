@@ -99,6 +99,30 @@ public sealed class WebsiteCreativeWorkspaceTests
             document,
             Actions());
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public void CapabilityManifest_ExposesCanonicalInquiryAcrossWebsiteScopes(string siteKey)
+    {
+        var document = Baseline();
+        var actions = WebsiteCallToActionCatalog.Build(siteKey);
+        var manifest = WebsiteCreativeCapabilityResolver.Resolve(
+            siteKey,
+            "scope-owner",
+            document,
+            actions);
+
+        Assert.Contains(manifest.Capabilities, value =>
+            value.Key == "contact.inquiry.submit" &&
+            value.Kind == "protected_form" &&
+            value.Protected);
+        Assert.Contains(manifest.Capabilities, value =>
+            value.Key == "experience.lead_capture" &&
+            value.Kind == "experience_submit" &&
+            value.Protected);
+    }
+
     [Fact]
     public void CapabilityManifest_ExposesSemanticReferences_NotWritableProviderConfiguration()
     {
