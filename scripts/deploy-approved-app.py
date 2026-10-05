@@ -334,12 +334,20 @@ def preflight_target(key, package, revision, baseline, journal):
         raise
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
         raise DeploymentReconciliationRequired('Pre-publication Azure state unavailable') from exc
-    if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:
-        raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized') from journal.history_error
     if observed is not None and observed not in {baseline, revision}:
         raise DeploymentDrift('Pre-publication live target differs from original baseline and candidate')
-    if observed is None or any(row['status'] in (0, 1, 2) for row in rows):
+    active = any(row['status'] in (0, 1, 2) for row in rows)
+    if observed is None or active:
         raise DeploymentReconciliationRequired('Pre-publication runtime or active deployment remains unverified')
+    if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:
+        if observed != baseline:
+            raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized') from journal.history_error
+        print(
+            f'{TARGETS[key]["releaseName"]}: prior immutable publication history is incomplete, '
+            'but Azure is terminal at the exact preserved baseline with no active deployment; '
+            'one fresh upload of the verified candidate is authorized.',
+            flush=True,
+        )
 
 
 def prepare_transaction(target_names, baselines_raw, package_root, rollback_root, revision, output):
