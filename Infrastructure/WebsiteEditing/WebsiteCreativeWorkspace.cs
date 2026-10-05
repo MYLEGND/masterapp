@@ -677,6 +677,18 @@ public static class WebsiteDocumentMutationService
         changed.Add(path);
     }
 
+    private static void EnsureAuthorableParent(
+        WebsiteContentDocument document,
+        string? parentId)
+    {
+        if (string.IsNullOrWhiteSpace(parentId)) return;
+        if (!WebsiteDocumentIndex.TryFind(document, parentId, out var parent, out _))
+            throw new ArgumentException($"Parent node '{parentId}' was not found.");
+        if (HasProtectedSemantics(parent))
+            throw new WebsiteSiteSourceProtectionException(
+                $"Protected component '{parent.Id}' cannot accept free child structure. Design around it or use its approved presentation fields.");
+    }
+
     private static void InsertNode(
         WebsiteContentDocument document,
         WebsiteMutationOperation operation,
@@ -687,6 +699,7 @@ public static class WebsiteDocumentMutationService
         if (WebsiteDocumentIndex.TryFind(document, operation.Node.Id, out _, out _))
             throw new ArgumentException($"Node '{operation.Node.Id}' already exists.");
         var node = PrepareNewNode(operation.Node, actions);
+        EnsureAuthorableParent(document, operation.ParentId);
         var siblings = WebsiteDocumentIndex.ResolveChildren(
             document,
             operation.Scope ?? "page",
@@ -747,6 +760,7 @@ public static class WebsiteDocumentMutationService
              oldLocation.Scope != (operation.Scope ?? oldLocation.Scope)))
             throw new WebsiteSiteSourceProtectionException("Components containing protected platform authority may be repositioned only within their existing page/scope.");
 
+        EnsureAuthorableParent(document, operation.ParentId);
         if (!WebsiteDocumentIndex.Remove(document, existing.Id, out var removed, out _))
             throw new ArgumentException("The component could not be moved.");
         var siblings = WebsiteDocumentIndex.ResolveChildren(
@@ -835,6 +849,7 @@ public static class WebsiteDocumentMutationService
 
         if (capability.Key == "contact.inquiry.submit")
         {
+            EnsureAuthorableParent(document, operation.ParentId);
             var node = new WebsiteCompositionNode
             {
                 Id = operation.InstanceKey ?? FreshId("form.canonical_inquiry"),
