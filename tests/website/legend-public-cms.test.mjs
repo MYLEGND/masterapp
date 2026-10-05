@@ -362,7 +362,12 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     if(parsed.pathname.endsWith('/manage/agent/contract') && method==='GET')
       return {ok:true,status:200,json:async()=>agentContract || {schema:'legend-website-studio-agent/v1',promptTemplate:'compact'}};
     if(parsed.pathname.endsWith('/manage/agent/design-quality') && method==='GET')
-      return {ok:true,status:200,json:async()=>({schema:'legend-design-quality/v1',revision:'r'+serverRevision,structural:{checks:[]},design:{checks:[],conversionPaths:[]}})};
+      return {ok:true,status:200,json:async()=>({
+        schema:'legend-design-quality/v1',
+        revision:qualityPayload?.revision ?? ('r'+serverRevision),
+        structural:{checks:qualityPayload?.checks || []},
+        design:{checks:qualityPayload?.designChecks || [],conversionPaths:qualityPayload?.conversionPaths || []}
+      })};
     if(parsed.pathname.endsWith('/manage/data-catalog') && method==='GET')
       return {ok:true,status:200,json:async()=>({
         source:'website_business_data_catalog',
@@ -2974,7 +2979,7 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
     const liveMeta=f.w.document.querySelector('#legend-cms-quality-live-meta').textContent;
     const savedText=f.w.document.querySelector('#legend-cms-quality-saved').textContent;
     const liveText=f.w.document.querySelector('#legend-cms-quality-live').textContent;
-    assert.match(savedMeta,/Saved draft checks \(server\) · revision 7 · 1 errors · 1 warnings/);
+    assert.match(savedMeta,/Saved canonical quality · revision 7 · 1 errors · 1 warnings/);
     assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
     assert.match(savedText,/Saved draft dynamic collection is unavailable/);
     assert.doesNotMatch(savedText,/missing alternative text|no working destination/);
@@ -2984,7 +2989,7 @@ test('quality inspector keeps saved-server checks separate from rendered canonic
     const renderedImage=f.w.document.querySelector('main img');
     assert.ok(renderedImage?.hasAttribute('alt'));
     assert.equal(renderedImage.getAttribute('alt'),'');
-    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
+    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/agent/design-quality')));
   } finally { f.close(); }
 });
 
@@ -3022,8 +3027,10 @@ test('duplicate canonical link has independent stable identity and history resto
     assert.equal(links.find(node=>node.id===originalId).href,'https://business.example/book');
     assert.equal(links.find(node=>node.id===duplicateId).href,'https://business.example/second');
     f.click('#legend-cms-undo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelectorAll('main a').length,2);
     f.click('#legend-cms-undo');
+    await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(f.w.document.querySelectorAll('main a').length,1);
   } finally { f.close(); }
 });
