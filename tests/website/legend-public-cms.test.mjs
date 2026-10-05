@@ -331,7 +331,7 @@ function fixtureMutationResponse(before,after,serverRevision) {
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,sourceValidationPayload=null,sourceValidationStatus=200,sourceValidationSequence=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -363,6 +363,15 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       return {ok:true,status:200,json:async()=>agentContract || {schema:'legend-website-studio-agent/v1',promptTemplate:'compact'}};
     if(parsed.pathname.endsWith('/manage/agent/design-quality') && method==='GET')
       return {ok:true,status:200,json:async()=>({schema:'legend-design-quality/v1',revision:'r'+serverRevision,structural:{checks:[]},design:{checks:[],conversionPaths:[]}})};
+    if(parsed.pathname.endsWith('/manage/data-catalog') && method==='GET')
+      return {ok:true,status:200,json:async()=>({
+        source:'website_business_data_catalog',
+        dataCatalog:dataCatalog || [
+          {key:'business_facts',label:'Business details',isList:false,fields:['contactEmail','phone','hours','locations','services']},
+          {key:'commerce_products',label:'Products',isList:true,fields:['id','name','slug','description','priceLabel','primaryImageUrl','primaryImageAlt']}
+        ],
+        collections:dataCollections || []
+      })};
     if(parsed.pathname.endsWith('/manage/signal-catalog') && method==='GET')
       return {ok:true,status:200,json:async()=>signalCatalog || {events:[],matchingFields:[],runtimeEnabled:true}};
     if(parsed.pathname.endsWith('/manage/quality'))
