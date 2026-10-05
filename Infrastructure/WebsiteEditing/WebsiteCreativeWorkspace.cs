@@ -610,11 +610,16 @@ public static class WebsiteDocumentMutationService
             throw new WebsiteSiteSourceProtectionException("Arbitrary route creation is available only for scoped Business websites.");
         if (document.Pages.ContainsKey(path))
             throw new ArgumentException($"Page '{path}' already exists.");
-        var page = operation.Page ?? new WebsitePageDocument();
+        var requested = operation.Page ?? new WebsitePageDocument();
+        requested.SystemTemplateKey = null;
+        requested.Navigation ??= new WebsitePageNavigation();
+        requested.Navigation.IsDeleted = false;
+        var page = WebsiteContentSanitizer.SanitizeMutationPageMetadata(path, requested);
         page.SystemTemplateKey = null;
-        page.Navigation ??= new WebsitePageNavigation();
-        page.Navigation.IsDeleted = false;
-        page.Composition = PrepareNewNodes(page.Composition, actions);
+        page.Composition = PrepareNewNodes(
+            requested.Composition ?? [],
+            actions,
+            document.Breakpoints);
         document.Pages[path] = page;
         changed.Add(path);
     }
@@ -628,19 +633,20 @@ public static class WebsiteDocumentMutationService
         if (!document.Pages.TryGetValue(path, out var page))
             throw new ArgumentException($"Page '{path}' was not found.");
         VerifyFingerprint(operation.ExpectedFingerprint, WebsiteCreativeFingerprint.Page(page), "page", path);
-        if (operation.Page is not null)
+        var candidate = new WebsitePageDocument
         {
-            page.Title = operation.Page.Title;
-            page.Description = operation.Page.Description;
-            page.Navigation = operation.Page.Navigation ?? new WebsitePageNavigation();
-            page.DynamicBinding = operation.Page.DynamicBinding;
-        }
-        else
-        {
-            if (operation.Title is not null) page.Title = operation.Title;
-            if (operation.Description is not null) page.Description = operation.Description;
-            if (operation.Navigation is not null) page.Navigation = operation.Navigation;
-        }
+            Title = operation.Page?.Title ?? operation.Title ?? page.Title,
+            Description = operation.Page?.Description ?? operation.Description ?? page.Description,
+            Navigation = operation.Page?.Navigation ?? operation.Navigation ?? page.Navigation,
+            DynamicBinding = operation.Page is not null ? operation.Page.DynamicBinding : page.DynamicBinding,
+            SystemTemplateKey = page.SystemTemplateKey
+        };
+        var sanitized = WebsiteContentSanitizer.SanitizeMutationPageMetadata(path, candidate);
+        page.Title = sanitized.Title;
+        page.Description = sanitized.Description;
+        page.Navigation = sanitized.Navigation;
+        page.DynamicBinding = sanitized.DynamicBinding;
+        page.SystemTemplateKey = candidate.SystemTemplateKey;
         changed.Add(path);
     }
 
@@ -674,7 +680,15 @@ public static class WebsiteDocumentMutationService
         if (!document.Pages.TryGetValue(path, out var page)) throw new ArgumentException($"Page '{path}' was not found.");
         if (page.SystemTemplateKey is not null || siteKey != WebsiteEditorSiteKeys.Business)
             throw new WebsiteSiteSourceProtectionException("Protected or fixed-route pages cannot be removed from Website Studio.");
-        page.Navigation.IsDeleted = true;
+        var navigation = page.Navigation ?? new WebsitePageNavigation();
+        navigation.IsDeleted = true;
+        navigation.ShowInNavigation = false;
+        page.Navigation = WebsiteContentSanitizer
+            .SanitizeMutationPageMetadata(path, new WebsitePageDocument
+            {
+                Title = page.Title,
+                Navigation = navigation
+            }).Navigation;
         changed.Add(path);
     }
 
