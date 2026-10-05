@@ -7025,7 +7025,7 @@
     const defaultClasses={
       section:'section',
       cta:'btn primary',
-      image:'legend-cms-image',
+      image:null,
       form:'public-form legend-cms-inquiry-form',
       experience:'legend-native-experience',
       embed:'legend-cms-embed'
