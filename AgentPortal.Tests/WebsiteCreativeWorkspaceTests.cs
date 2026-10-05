@@ -738,6 +738,59 @@ public sealed class WebsiteCreativeWorkspaceTests
     }
 
     [Fact]
+    public void DesignPlan_FailsFastForMalformedWholeSiteInputs()
+    {
+        var document = Baseline();
+        var manifest = Capabilities(document);
+
+        var duplicateRoute = new WebsiteDesignPlan
+        {
+            Pages =
+            [
+                new WebsiteDesignPlanPage { Path = "/", Sections = [new WebsiteDesignPlanSection { Recipe = "hero.cinematic", Key = "one" }] },
+                new WebsiteDesignPlanPage { Path = "/", Sections = [new WebsiteDesignPlanSection { Recipe = "cta.closing", Key = "two" }] }
+            ]
+        };
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, duplicateRoute));
+
+        var duplicateSection = new WebsiteDesignPlan
+        {
+            Pages =
+            [
+                new WebsiteDesignPlanPage
+                {
+                    Path = "/",
+                    Sections =
+                    [
+                        new WebsiteDesignPlanSection { Recipe = "hero.cinematic", Key = "same" },
+                        new WebsiteDesignPlanSection { Recipe = "cta.closing", Key = "same" }
+                    ]
+                }
+            ]
+        };
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, duplicateSection));
+
+        var unknownDirection = new WebsiteDesignPlan
+        {
+            ArtDirection = "roadster-typo",
+            Pages = [new WebsiteDesignPlanPage { Path = "/" }]
+        };
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, unknownDirection));
+
+        var tooMany = new WebsiteDesignPlan
+        {
+            Pages = Enumerable.Range(0, 25)
+                .Select(index => new WebsiteDesignPlanPage { Path = index == 0 ? "/" : "/p-" + index })
+                .ToList()
+        };
+        Assert.Throws<ArgumentException>(() =>
+            WebsiteDesignPlanResolver.Resolve(document, WebsiteEditorSiteKeys.Business, manifest, tooMany));
+    }
+
+    [Fact]
     public void FastRoadsterBuild_ResolvesWholeSiteInOneBoundedPlan_WithProtectedConversionPath()
     {
         var document = Baseline();
