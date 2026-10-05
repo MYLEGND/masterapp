@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Domain.Entities;
 using Infrastructure.Leads;
 using Shared.Analytics;
 
