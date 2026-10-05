@@ -33,6 +33,7 @@
   const auditMode = !!editorTicket && params.get('legendAudit') === '1';
   const editorMode = !!editorTicket && !materializeMode;
   const studioIsolationMode = editorMode || materializeMode;
+  let managementPayload = null;
   // Capture the signed Studio authorization into non-visible history state and
   // remove it from the document URL before browser-tool discovery evaluates the page.
   if(editorMode) concealEditorTicketFromDocumentUrl();
@@ -60,7 +61,6 @@
   let legacyMigration = null;
   let signalCatalog = null;
   let ctaCatalog = [];
-  let managementPayload = null;
   let storeContext = null;
   let storePreviewActive = false;
   let collaborationReplyTo = null;
