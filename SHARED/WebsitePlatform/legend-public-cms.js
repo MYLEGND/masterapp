@@ -2991,6 +2991,7 @@
     const liveMeta=document.getElementById('legend-cms-quality-live-meta');
     const structural=Array.isArray(payload?.quality?.structural?.checks)?payload.quality.structural.checks:[];
     const design=Array.isArray(payload?.quality?.design?.checks)?payload.quality.design.checks:[];
+    const media=Array.isArray(payload?.quality?.media?.checks)?payload.quality.media.checks:[];
     const delivery=[];
     const conversion=payload?.conversion || {};
     if(conversion?.currentDraftIsPublished===false && conversion?.publishedRevision!=null)
@@ -3005,7 +3006,7 @@
         code:'conversion_delivery_problem',
         message:`${conversion.published.problemRows} published conversion mapping or delivery row(s) need attention.`
       });
-    const serverChecks=[...structural,...design,...delivery];
+    const serverChecks=[...structural,...design,...media,...delivery];
     renderQualityChecks(savedHost,serverChecks,'No saved structural, design, conversion, or delivery issues detected.');
 
     const responsiveChecks=[];
