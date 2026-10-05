@@ -434,6 +434,7 @@ public class WebsitePlatformController : ControllerBase
             document.Store.CartIconSizePx = request.CartIconSizePx.Value;
 
         document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
@@ -470,6 +471,7 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
         document.Store.Enabled = false;
         document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
@@ -1703,7 +1705,9 @@ public class WebsitePlatformController : ControllerBase
         state.ScheduledActorJson = null;
         state.ScheduledRevision = null;
         state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
-        state.DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(result.Document), JsonOptions);
+        var importedDocument = WebsiteContentSanitizer.Sanitize(result.Document);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, importedDocument);
+        state.DraftJson = JsonSerializer.Serialize(importedDocument, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
@@ -2092,7 +2096,9 @@ public class WebsitePlatformController : ControllerBase
         await using var input = file.OpenReadStream();
         var result = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>().PrepareExportAsync(input, Path.GetExtension(file.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase), Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
         state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
-        state.DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(result.Document), JsonOptions);
+        var importedDocument = WebsiteContentSanitizer.Sanitize(result.Document);
+        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, importedDocument);
+        state.DraftJson = JsonSerializer.Serialize(importedDocument, JsonOptions);
         state.Revision++;
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;
