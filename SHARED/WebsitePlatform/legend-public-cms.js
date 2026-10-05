@@ -2388,6 +2388,11 @@
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
         el.alt = node.alt || '';
+        el.decoding='async';
+        const classes=new Set(String(node.className || '').split(/\s+/).filter(Boolean));
+        const priorityMedia=classes.has('legend-recipe-hero-media') || classes.has('legend-recipe-hero-cinematic-media');
+        el.loading=priorityMedia ? 'eager' : 'lazy';
+        if(priorityMedia) el.setAttribute('fetchpriority','high');
       } else if (node.type === 'video') {
         const source = node.mediaAssetId ? API_BASE + '/api/website-content/media/' + node.mediaAssetId : node.mediaUrl;
         if (source) el.src = mediaUrl(source);
