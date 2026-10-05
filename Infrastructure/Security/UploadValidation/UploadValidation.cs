@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
 namespace Infrastructure.Security.UploadValidation;
@@ -47,10 +49,8 @@ public sealed class UploadValidationPolicy
     public static UploadValidationPolicy Images(long maxSizeBytes) => new()
     {
         MaxSizeBytes = maxSizeBytes,
-        AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".avif" },
-        AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif" },
+        AllowedExtensions = UploadValidator.VisualMediaExtensions(imagesOnly: true),
+        AllowedContentTypes = UploadValidator.VisualMediaContentTypes(imagesOnly: true),
         RequireKnownSignature = true
     };
 
@@ -58,10 +58,8 @@ public sealed class UploadValidationPolicy
     public static UploadValidationPolicy Media(long maxSizeBytes) => new()
     {
         MaxSizeBytes = maxSizeBytes,
-        AllowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".heif", ".avif", ".mp4", ".m4v", ".mov", ".webm" },
-        AllowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif", "video/mp4", "video/webm" },
+        AllowedExtensions = UploadValidator.VisualMediaExtensions(),
+        AllowedContentTypes = UploadValidator.VisualMediaContentTypes(),
         RequireKnownSignature = true
     };
 
@@ -84,6 +82,53 @@ public sealed class UploadValidationPolicy
 /// </summary>
 public static class UploadValidator
 {
+    private static readonly IReadOnlyDictionary<string, (string MediaKind, string ContentType)> CanonicalVisualMedia =
+        new Dictionary<string, (string MediaKind, string ContentType)>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".jpg"] = ("Image", "image/jpeg"),
+            [".jpeg"] = ("Image", "image/jpeg"),
+            [".png"] = ("Image", "image/png"),
+            [".webp"] = ("Image", "image/webp"),
+            [".gif"] = ("Image", "image/gif"),
+            [".heic"] = ("Image", "image/heic"),
+            [".heif"] = ("Image", "image/heif"),
+            [".avif"] = ("Image", "image/avif"),
+            [".mp4"] = ("Video", "video/mp4"),
+            [".m4v"] = ("Video", "video/mp4"),
+            [".mov"] = ("Video", "video/quicktime"),
+            [".webm"] = ("Video", "video/webm")
+        };
+
+    public static bool TryResolveVisualMediaType(
+        string? fileName,
+        out string mediaKind,
+        out string contentType)
+    {
+        var extension = Path.GetExtension(SanitizeFileName(fileName)).ToLowerInvariant();
+        if (CanonicalVisualMedia.TryGetValue(extension, out var media))
+        {
+            mediaKind = media.MediaKind;
+            contentType = media.ContentType;
+            return true;
+        }
+
+        mediaKind = string.Empty;
+        contentType = string.Empty;
+        return false;
+    }
+
+    public static IReadOnlySet<string> VisualMediaExtensions(bool imagesOnly = false) =>
+        CanonicalVisualMedia
+            .Where(pair => !imagesOnly || pair.Value.MediaKind == "Image")
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public static IReadOnlySet<string> VisualMediaContentTypes(bool imagesOnly = false) =>
+        CanonicalVisualMedia
+            .Where(pair => !imagesOnly || pair.Value.MediaKind == "Image")
+            .Select(pair => pair.Value.ContentType == "video/quicktime" ? "video/mp4" : pair.Value.ContentType)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
     // Extensions that must never be accepted regardless of policy (executable or
     // browser-scriptable content that could enable stored-XSS / RCE if served).
     private static readonly HashSet<string> DangerousExtensions =
