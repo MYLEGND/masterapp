@@ -350,3 +350,89 @@ main :is(img,video)[data-legend-content-role="media"]{
 }
 
 .legend-platform-attribution{text-decoration:underline!important;text-underline-offset:.16em;text-decoration-thickness:1px!important}
+
+/* Canonical premium recipe presentation. Recipes resolve to ordinary v3 nodes;
+   these classes are shared public/editor styling, never a second content authority. */
+:root{
+  --web-display-size:clamp(48px,7vw,80px);
+  --web-h1-size:clamp(44px,6vw,68px);
+  --web-h2-size:clamp(32px,4.5vw,50px);
+  --web-h3-size:clamp(20px,2.2vw,28px);
+  --web-body-size:17px;
+  --web-small-size:13px;
+  --web-body-line-height:1.6;
+  --web-section-space:96px;
+  --web-content-gap:24px;
+  --web-content-max:1180px;
+  --web-wide-max:1440px;
+  --web-narrow-max:760px;
+  --web-gutter:28px;
+  --web-card-radius:22px;
+  --web-button-radius:999px;
+  --web-input-radius:14px;
+  --web-surface-elevated:#fff;
+  --web-surface-muted:#f5f7fa;
+  --web-border-color:#d9e0ea;
+  --web-border-width:1px;
+  --web-shadow-soft:0 18px 50px rgba(4,11,24,.10);
+  --web-shadow-strong:0 28px 90px rgba(4,11,24,.18);
+  --web-nav-height:76px;
+  --web-motion-fast:160ms;
+  --web-motion-standard:320ms;
+  --web-motion-slow:560ms
+}
+.legend-recipe-section,.legend-recipe-hero{
+  width:100%;padding:var(--web-section-space) max(var(--web-gutter),env(safe-area-inset-left)) var(--web-section-space) max(var(--web-gutter),env(safe-area-inset-right));
+  margin:0 auto;box-sizing:border-box
+}
+.legend-recipe-section>*,
+.legend-recipe-hero>*{max-width:var(--web-content-max);margin-left:auto;margin-right:auto}
+.legend-recipe-hero{
+  min-height:min(88vh,900px);display:grid;align-content:center;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 85% 12%,color-mix(in srgb,var(--web-gold,#bc8e10) 22%,transparent),transparent 34%),
+    linear-gradient(145deg,var(--web-navy-deep,#07152d),color-mix(in srgb,var(--web-navy,#0b2652) 86%,#000 14%));
+  color:var(--web-surface,#fff)
+}
+.legend-recipe-hero-split{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr)}
+.legend-recipe-hero-media,.legend-recipe-feature-media{
+  width:100%;height:min(58vh,620px);object-fit:cover;object-position:center;border-radius:var(--web-card-radius);
+  box-shadow:var(--web-shadow-strong);border:var(--web-border-width) solid color-mix(in srgb,var(--web-gold,#bc8e10) 42%,transparent)
+}
+.legend-recipe-display{max-width:14ch;margin:0;font-size:var(--web-display-size);line-height:.98;letter-spacing:-.045em;font-weight:780;text-wrap:balance}
+.legend-recipe-heading{max-width:19ch;margin:0;font-size:var(--web-h2-size);line-height:1.04;letter-spacing:-.035em;text-wrap:balance}
+.legend-recipe-card-title,.legend-recipe-faq-q{margin:0;font-size:var(--web-h3-size);line-height:1.15;letter-spacing:-.02em}
+.legend-recipe-lead,.legend-recipe-copy{max-width:var(--web-narrow-max);margin:0;font-size:var(--web-body-size);line-height:var(--web-body-line-height)}
+.legend-recipe-eyebrow{margin:0;color:var(--web-gold-strong,#d4ad45);font-size:var(--web-small-size);font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+.legend-recipe-card-grid,.legend-recipe-stat-grid,.legend-recipe-step-grid,.legend-recipe-bento-grid{width:100%}
+.legend-recipe-card,.legend-recipe-stat,.legend-recipe-quote,.legend-recipe-faq-item{
+  min-width:0;padding:clamp(20px,3vw,32px);border:var(--web-border-width) solid var(--web-border-color);
+  border-radius:var(--web-card-radius);background:var(--web-surface-elevated);box-shadow:var(--web-shadow-soft)
+}
+.legend-recipe-proof,.legend-recipe-process,.legend-recipe-testimonials,.legend-recipe-faq{background:var(--web-surface-muted)}
+.legend-recipe-stat{font-size:clamp(18px,2vw,24px);font-weight:760;line-height:1.15}
+.legend-recipe-quote{font-size:clamp(18px,2vw,24px);line-height:1.5}
+.legend-recipe-feature-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,1fr);align-items:center}
+.legend-recipe-feature-copy{max-width:var(--narrow-max,var(--web-narrow-max))}
+.legend-recipe-contact,.legend-recipe-closing{
+  background:linear-gradient(145deg,var(--web-navy-deep,#07152d),var(--web-navy,#0b2652));color:var(--web-surface,#fff)
+}
+.legend-recipe-contact .legend-recipe-copy,.legend-recipe-closing .legend-recipe-copy{color:color-mix(in srgb,var(--web-surface,#fff) 82%,transparent)}
+.legend-capability-slot{width:100%;max-width:var(--web-narrow-max)}
+.legend-recipe-action,.legend-recipe-section .btn,.legend-recipe-hero .btn{
+  border-radius:var(--web-button-radius);transition:transform var(--web-motion-fast) ease,box-shadow var(--web-motion-fast) ease
+}
+.legend-recipe-action:hover,.legend-recipe-section .btn:hover,.legend-recipe-hero .btn:hover{transform:translateY(-1px)}
+.legend-recipe-section :is(input,select,textarea),.legend-recipe-hero :is(input,select,textarea){border-radius:var(--web-input-radius)}
+@media(max-width:767px){
+  .legend-recipe-section,.legend-recipe-hero{
+    min-height:auto;padding:clamp(48px,12vw,72px) max(18px,env(safe-area-inset-left)) clamp(48px,12vw,72px) max(18px,env(safe-area-inset-right))
+  }
+  .legend-recipe-hero-split,.legend-recipe-feature-split{grid-template-columns:1fr!important}
+  .legend-recipe-display{font-size:clamp(40px,12vw,58px);max-width:16ch}
+  .legend-recipe-heading{font-size:clamp(30px,9vw,42px)}
+  .legend-recipe-card-grid,.legend-recipe-stat-grid,.legend-recipe-step-grid,.legend-recipe-bento-grid{grid-template-columns:1fr!important}
+  .legend-recipe-hero-media,.legend-recipe-feature-media{height:min(50vh,480px)}
+  .legend-capability-slot{max-width:100%}
+}
+
