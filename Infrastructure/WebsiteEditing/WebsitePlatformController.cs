@@ -996,6 +996,12 @@ public class WebsitePlatformController : ControllerBase
                     string.Equals(control.Key, fieldKey, StringComparison.OrdinalIgnoreCase));
                 WebsiteSignalBindingPolicy.ValidateExperienceControl(control, signals);
             }
+            else if (fieldKey is not null &&
+                     (target.Type == "form" ||
+                      WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(target.SystemKey)))
+            {
+                WebsiteSignalBindingPolicy.ValidateProtectedFormField(target, fieldKey, signals);
+            }
         }
         catch (ArgumentException ex)
         {
@@ -2743,6 +2749,13 @@ public class WebsitePlatformController : ControllerBase
                 found.Experience.Controls.Count(control =>
                     string.Equals(control.Key, signalFieldKey, StringComparison.OrdinalIgnoreCase)) != 1)
                 return false;
+        }
+        else if (normalizedFieldKey is not null &&
+                 (found.Type == "form" ||
+                  WebsiteSystemTemplateAuthority.IsRuntimeFormSystemKey(found.SystemKey)) &&
+                 !WebsiteSignalBindingPolicy.IsKnownProtectedFormField(found, normalizedFieldKey))
+        {
+            return false;
         }
 
         target = found;
