@@ -3075,11 +3075,7 @@
       listBusinessData:async()=>{await ensureBusinessDataCatalog();return {dataCatalog:managementPayload?.dataCatalog || [],collections:[...collectionData.values()]};},
       applyMutationBatch:creativeApplyMutationBatch,
       applyDesignPlan:creativeApplyDesignPlan,
-      runQuality:async()=>({
-        server:await creativeWorkspaceRequest('manage/agent/design-quality'),
-        rendered:{page:currentPageRoute(),viewport:responsiveViewportWidth(),checks:liveQualityChecks()},
-        responsive:await runResponsiveQualityAudit()
-      }),
+      runQuality:runWholeSitePreflight,
       runResponsiveQuality:runResponsiveQualityAudit,
       runSiteResponsiveQuality:runSiteResponsiveQualityAudit,
       runPreflight:runWholeSitePreflight,
@@ -6352,7 +6348,7 @@
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') void ensureSignalCatalog().then(renderSignalControls);
-    if (name === 'quality' && options.refresh!==false) void refreshQualityInspector();
+    if (name === 'quality' && options.refresh!==false) void runWholeSitePreflightAndRender().catch(()=>{});
     if (name === 'collaboration') void refreshCollaboration();
   }
 
@@ -6835,33 +6831,6 @@
       const badge=document.createElement('strong'); badge.textContent=(check.severity || 'info').toUpperCase();
       const message=document.createElement('span'); message.textContent=check.message || check.code || 'Quality observation';
       row.append(badge,message); host.appendChild(row);
-    }
-  }
-
-  async function refreshQualityInspector() {
-    const savedHost=document.getElementById('legend-cms-quality-saved');
-    const liveHost=document.getElementById('legend-cms-quality-live');
-    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
-    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
-    const liveChecks=liveQualityChecks();
-    renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
-    if (liveMeta) liveMeta.textContent=`Live page checks (rendered canvas) · ${liveChecks.length} observation${liveChecks.length===1?'':'s'} · not a publish authorization`;
-    if (!editorTicket || !savedHost) return;
-    savedHost.textContent='Checking structural, design, and conversion quality…';
-    if (savedMeta) savedMeta.textContent='Saved canonical quality (server) · loading';
-    try {
-      const payload=await creativeWorkspaceRequest('manage/agent/design-quality');
-      const structural=Array.isArray(payload?.structural?.checks)?payload.structural.checks:[];
-      const design=Array.isArray(payload?.design?.checks)?payload.design.checks:[];
-      const combined=[...structural,...design];
-      renderQualityChecks(savedHost,combined,'No structural, design, or conversion issues detected by the server checks.');
-      const errors=combined.filter(check=>check.severity==='error').length;
-      const warnings=combined.filter(check=>check.severity==='warning').length;
-      const paths=Array.isArray(payload?.design?.conversionPaths)?payload.design.conversionPaths:[];
-      if(savedMeta) savedMeta.textContent=`Saved canonical quality · revision ${payload.revision} · ${errors} errors · ${warnings} warnings · ${paths.length} conversion path${paths.length===1?'':'s'} reviewed`;
-    } catch(error) {
-      renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
-      if(savedMeta) savedMeta.textContent='Saved canonical quality (server) · unavailable';
     }
   }
 
