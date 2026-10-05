@@ -515,7 +515,7 @@ public sealed class WebsiteCreativeWorkspaceTests
         Assert.True(result.Document.Pages["/old"].Navigation.IsDeleted);
         Assert.True(result.Document.Pages.ContainsKey("/services"));
         Assert.Equal(
-            ["home.hero.new", "home.close"],
+            new[] { "home.hero.new", "home.close" },
             result.Document.Pages["/"].Composition.Select(value => value.Id).ToArray());
         Assert.Contains(result.Document.Pages["/"].Composition, value => value.Id == "home.hero.new");
         Assert.Contains(result.Document.Pages["/"].Composition, value => value.Id == "home.close");
