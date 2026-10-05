@@ -704,6 +704,7 @@ public class WebsitePlatformController : ControllerBase
             schema = "legend-website-recipes/v1",
             recipes = WebsiteRecipeCatalog.Definitions,
             pageRecipes = WebsitePageRecipeCatalog.Definitions,
+            designPlan = WebsiteDesignPlanContract.Payload,
             artDirections = new[] { "roadster-precision", "editorial-luxe", "modern-minimal", "warm-craft", "clinical-precision", "high-energy-performance" },
             capabilities
         });
