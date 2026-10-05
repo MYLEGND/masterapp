@@ -47,7 +47,10 @@ public static class WebsiteCreativeCapabilityResolver
                 RuntimeAction: action.RuntimeAction));
         }
 
-        if (siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend)
+        var hasCanonicalInquiry = WebsiteSiteSource.Flatten(document)
+            .Any(entry => entry.Node.Type == "form" &&
+                          string.Equals(entry.Node.SystemKey, "canonical_inquiry", StringComparison.Ordinal));
+        if (siteKey is WebsiteEditorSiteKeys.Business or WebsiteEditorSiteKeys.Legend || hasCanonicalInquiry)
         {
             capabilities.Add(new(
                 "contact.inquiry.submit",
@@ -57,6 +60,14 @@ public static class WebsiteCreativeCapabilityResolver
                 true,
                 AllowedPlacements: ["section", "container"]));
         }
+
+        capabilities.Add(new(
+            "experience.lead_capture",
+            "experience_submit",
+            "Canonical lead capture",
+            "Submit an authorable native experience through the server-owned scoped lead-capture authority.",
+            true,
+            AllowedPlacements: ["experience"]));
 
         foreach (var entry in WebsiteSiteSource.Flatten(document))
         {
@@ -411,7 +422,7 @@ public static class WebsiteDocumentMutationService
                 return;
 
             case "createPage":
-                CreatePage(document, siteKey, operation, changed);
+                CreatePage(document, siteKey, operation, actions, changed);
                 return;
 
             case "updatePage":
@@ -481,6 +492,7 @@ public static class WebsiteDocumentMutationService
         WebsiteContentDocument document,
         string siteKey,
         WebsiteMutationOperation operation,
+        IReadOnlyList<WebsiteCallToActionOption> actions,
         HashSet<string> changed)
     {
         var path = NormalizePath(operation.PagePath);
@@ -493,7 +505,7 @@ public static class WebsiteDocumentMutationService
         page.SystemTemplateKey = null;
         page.Navigation ??= new WebsitePageNavigation();
         page.Navigation.IsDeleted = false;
-        page.Composition = PrepareNewNodes(page.Composition, []);
+        page.Composition = PrepareNewNodes(page.Composition, actions);
         document.Pages[path] = page;
         changed.Add(path);
     }
@@ -641,10 +653,20 @@ public static class WebsiteDocumentMutationService
         if (string.IsNullOrWhiteSpace(operation.NodeId))
             throw new ArgumentException("Node identity is required.");
         var capability = WebsiteCreativeCapabilityResolver.Require(capabilities, operation.CapabilityKey);
-        if (capability.ActionKey is null)
-            throw new ArgumentException("This capability is not an action capability.");
         if (!WebsiteDocumentIndex.TryFind(document, operation.NodeId, out var node, out var location))
             throw new ArgumentException($"Node '{operation.NodeId}' was not found.");
+
+        if (capability.Key == "experience.lead_capture")
+        {
+            if (node.Type != "experience" || node.Experience is null)
+                throw new ArgumentException("Canonical lead capture may be assigned only to a native experience.");
+            node.Experience.SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability;
+            changed.Add(ScopeKey(location.Scope, location.PagePath, location.ReusableComponentId, node.Id));
+            return;
+        }
+
+        if (capability.ActionKey is null)
+            throw new ArgumentException("This capability is not an action capability.");
         if (node.Type is not ("cta" or "link"))
             throw new ArgumentException("Approved action capabilities may be assigned only to CTA/link nodes.");
         var action = actions.SingleOrDefault(value => value.Key == capability.ActionKey)
@@ -829,6 +851,9 @@ public static class WebsiteDocumentMutationService
             next.Type = proposed.Type;
             next.Tag = proposed.Tag;
             next.DataBinding = proposed.DataBinding;
+            if (proposed.Experience?.SubmitCapability is not null &&
+                !string.Equals(proposed.Experience.SubmitCapability, current.Experience?.SubmitCapability, StringComparison.Ordinal))
+                throw new WebsiteSiteSourceProtectionException("Native experience submission capabilities must be selected through the canonical capability authority.");
             next.Experience = proposed.Experience;
             next.SyncSourceId = proposed.SyncSourceId;
             next.Href = proposed.Href;
@@ -898,7 +923,8 @@ public static class WebsiteDocumentMutationService
         var node = Clone(source);
         if (string.IsNullOrWhiteSpace(node.Id)) node.Id = FreshId("node");
         if (node.Type == "form" || !string.IsNullOrWhiteSpace(node.SystemKey) || !string.IsNullOrWhiteSpace(node.SystemBinding) ||
-            node.Signals.Count > 0 || node.FieldSignals.Values.Any(value => value.Count > 0))
+            node.Signals.Count > 0 || node.FieldSignals.Values.Any(value => value.Count > 0) ||
+            node.Experience?.SubmitCapability is not null)
             throw new WebsiteSiteSourceProtectionException("Protected capabilities must be inserted through the server capability authority, not as free nodes.");
 
         if (!string.IsNullOrWhiteSpace(node.ActionKey))
@@ -943,7 +969,8 @@ public static class WebsiteDocumentMutationService
                 : null;
         }
 
-        var page = scope.Split('#', 2)[0];
+        var marker = scope.IndexOf('#');
+        var page = marker < 0 ? scope : scope[..marker];
         return document.Pages.TryGetValue(page, out var value) ? WebsiteCreativeFingerprint.Page(value) : null;
     }
 
@@ -961,7 +988,7 @@ public static class WebsiteDocumentMutationService
         var path = value.Trim();
         if (!path.StartsWith('/')) path = "/" + path;
         path = path.Length > 1 ? path.TrimEnd('/') : path;
-        if (path.Contains("..", StringComparison.Ordinal) || path.Contains('?', StringComparison.Ordinal) || path.Contains('#', StringComparison.Ordinal))
+        if (path.Contains("..", StringComparison.Ordinal) || path.Contains('?') || path.Contains('#'))
             throw new ArgumentException("The page path is invalid.");
         return path;
     }
