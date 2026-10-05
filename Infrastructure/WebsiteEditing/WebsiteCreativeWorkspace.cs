@@ -1570,8 +1570,9 @@ public static class WebsiteDocumentMutationService
             var nodeChanged =
                 FilterMap(node.BreakpointStyles, valid) |
                 FilterMap(node.BreakpointLayouts, valid);
-            foreach (var presentation in node.FieldPresentations?.Values ?? [])
-                nodeChanged |= ReconcileControl(presentation, valid);
+            if (node.FieldPresentations is not null)
+                foreach (var presentation in node.FieldPresentations.Values)
+                    nodeChanged |= ReconcileControl(presentation, valid);
             foreach (var child in node.Children ?? [])
                 nodeChanged |= ReconcileNode(child);
             return nodeChanged;

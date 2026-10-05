@@ -666,21 +666,15 @@ public class WebsitePlatformController : ControllerBase
         var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         var quality = WebsiteDraftQualityInspector.Inspect(document);
         var designQuality = WebsiteDesignQualityInspector.Inspect(document, capabilities);
-        var identity = business is null
-            ? new
-            {
-                siteKey = actor.SiteKey,
-                agentSlug = actor.AgentSlug
-            }
-            : new
-            {
-                siteKey = actor.SiteKey,
-                businessId = (Guid?)business.Id,
-                displayName = business.DisplayName,
-                legalName = business.LegalName,
-                businessType = business.BusinessType,
-                agentSlug = actor.AgentSlug
-            };
+        var identity = new
+        {
+            siteKey = actor.SiteKey,
+            businessId = (Guid?)business?.Id,
+            displayName = business?.DisplayName,
+            legalName = business?.LegalName,
+            businessType = business?.BusinessType,
+            agentSlug = actor.AgentSlug
+        };
         var mediaRows = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
             .Where(value => value.OwnerKey == actor.OwnerUserId)
             .OrderByDescending(value => value.CreatedUtc)
@@ -996,7 +990,7 @@ public class WebsitePlatformController : ControllerBase
 
         var returned = relevant
             .OrderByDescending(RowProblem)
-            .ThenByDescending(entry => entry.PublishRevision)
+            .ThenByDescending(entry => entry.PublishedRevision)
             .ThenBy(entry => entry.Page, StringComparer.Ordinal)
             .ThenBy(entry => entry.Element, StringComparer.Ordinal)
             .Take(80)
@@ -2841,6 +2835,25 @@ public class WebsitePlatformController : ControllerBase
             referencedBytes = assets.Sum(asset => (long)asset.SizeBytes),
             checks
         };
+    }
+
+    private async Task ValidateNewCompositionMediaOwnershipAsync(
+        WebsiteEditorTicket actor,
+        WebsiteContentDocument baseline,
+        WebsiteContentDocument document,
+        CancellationToken cancellationToken)
+    {
+        var ids = WebsiteMediaReferenceCatalog.Collect(document);
+        ids.ExceptWith(WebsiteMediaReferenceCatalog.Collect(baseline));
+        if (ids.Count == 0) return;
+
+        var owned = await _db.Set<WebsiteMediaAsset>().AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId && ids.Contains(asset.Id))
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken);
+
+        if (owned.Count != ids.Count)
+            throw new ArgumentException("Website source references media that is unavailable to this website owner.");
     }
 
     private async Task ValidateCompositionMediaOwnershipAsync(
