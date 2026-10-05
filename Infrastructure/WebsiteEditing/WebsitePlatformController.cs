@@ -707,22 +707,14 @@ public class WebsitePlatformController : ControllerBase
     {
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
-        var state = await StateAsync(actor, cancellationToken);
-        var document = Read(state.DraftJson);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
-        WebsiteBusinessFacts? facts = actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue
-            ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
-            : null;
-        var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         return Ok(new
         {
             schema = "legend-website-recipes/v1",
+            siteKey = actor.SiteKey,
             recipes = WebsiteRecipeCatalog.Definitions,
             pageRecipes = WebsitePageRecipeCatalog.Definitions,
             designPlan = WebsiteDesignPlanContract.Payload,
-            artDirections = new[] { "roadster-precision", "editorial-luxe", "modern-minimal", "warm-craft", "clinical-precision", "high-energy-performance" },
-            capabilities
+            artDirections = new[] { "roadster-precision", "editorial-luxe", "modern-minimal", "warm-craft", "clinical-precision", "high-energy-performance" }
         });
     }
 
