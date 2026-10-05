@@ -585,7 +585,7 @@ public class WebsitePlatformController : ControllerBase
             : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         var quality = WebsiteDraftQualityInspector.Inspect(document);
         var designQuality = WebsiteDesignQualityInspector.Inspect(document, capabilities);
         var identity = business is null
@@ -714,7 +714,7 @@ public class WebsitePlatformController : ControllerBase
             ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
             : null;
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         return Ok(new
         {
             schema = "legend-website-recipes/v1",
@@ -742,7 +742,7 @@ public class WebsitePlatformController : ControllerBase
             ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
             : null;
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         var structural = WebsiteDraftQualityInspector.Inspect(document);
         var design = WebsiteDesignQualityInspector.Inspect(document, capabilities);
         return Ok(new
@@ -806,7 +806,7 @@ public class WebsitePlatformController : ControllerBase
             ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
             : null;
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, baseline, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, baseline, actions);
         IReadOnlyList<WebsiteMutationOperation> operations;
         var planPerformance = Stopwatch.StartNew();
         try
@@ -863,7 +863,7 @@ public class WebsitePlatformController : ControllerBase
             ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
             : null;
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, document);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, document, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, document, actions);
         var design = WebsiteDesignQualityInspector.Inspect(document, capabilities);
 
         var publishedRevision = state.PublishedVersionId.HasValue
@@ -1434,7 +1434,7 @@ public class WebsitePlatformController : ControllerBase
             ? await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken)
             : null;
         var actions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, baseline);
-        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, actor.OwnerUserId, baseline, actions);
+        var capabilities = WebsiteCreativeCapabilityResolver.Resolve(actor.SiteKey, baseline, actions);
 
         WebsiteMutationApplyResult result;
         try
