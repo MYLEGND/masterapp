@@ -909,7 +909,7 @@ namespace AgentPortal.Controllers;
                     isSqlite,
                     cancellationToken);
                 if (!cleanupSafety.IsInternal &&
-                    !Infrastructure.Leads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
+                    !Infrastructure.VerifiedLeads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
                 {
                     return BadRequest(new
                     {
@@ -2020,7 +2020,7 @@ namespace AgentPortal.Controllers;
             {
                 Bucket = trafficType.ToString(),
                 summary.Sessions,
-                summary.Leads
+                summary.VerifiedLeads
             });
         }
 
@@ -2030,7 +2030,7 @@ namespace AgentPortal.Controllers;
             Scope = await ResolveScopeLabelAsync(scope, team),
             QualityMode = TrafficQualityBucketFilters.ToClientValue(range.QualityMode),
             TotalSessions = total.Sessions,
-            TotalLeads = total.Leads,
+            TotalLeads = total.VerifiedLeads,
             Buckets = buckets,
             Note = "Uses the same scoped attribution, session/visitor fallback and traffic-quality authority as production analytics."
         });
