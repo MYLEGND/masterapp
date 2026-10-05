@@ -2765,6 +2765,7 @@
     const componentChanged=changedScopes.some(scope=>String(scope).startsWith('@component/')) ||
       Object.keys(changes.reusableComponents || {}).length>0 || (changes.removedComponents || []).length>0;
     let renderPage=false, renderShell=false, refreshReusable=false, metadata=false, responsive=false;
+    let pageCatalogChanged=false;
 
     if(!Array.isArray(operations)){
       renderPage=!!changes.pages?.[route];
@@ -2772,6 +2773,10 @@
       refreshReusable=componentChanged;
       metadata=renderPage;
       responsive=!!changes.theme || !!changes.breakpoints;
+      pageCatalogChanged=Object.keys(changes.pages || {}).length>0 || (changes.removedPages || []).length>0;
+      if(changes.theme) applyTheme(documentState.theme);
+      if(changes.faviconChanged===true) applyFavicon(documentState.faviconImageDataUrl);
+      if(changes.store) applyStoreNavigation();
     }else{
       for(const operation of operations){
         switch(operation?.type){
@@ -2875,6 +2880,11 @@
       syncPageControls();
     }
     if(responsive) refreshResponsiveComposition();
+    if(pageCatalogChanged){
+      applyBusinessPageNavigation();
+      refreshPageSelector();
+      renderPageManager();
+    }
     preservePreviewNavigation();
     if(selectedId) setSelected(findEditableElement(selectedId));
     else updateDirectCanvasUi();
