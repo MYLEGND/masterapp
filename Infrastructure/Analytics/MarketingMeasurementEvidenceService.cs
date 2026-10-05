@@ -11,6 +11,36 @@ public sealed record ProviderMeasurementEvidence(int Attempted, int Accepted, in
 public sealed record MarketingMeasurementEvidenceSnapshot(string OwnerKey, DateTime WindowFromUtc,
     bool ReceivingEvents, DateTime? LastReceivedUtc, ProviderMeasurementEvidence Meta, ProviderMeasurementEvidence OpenAi);
 
+/// <summary>
+/// Single read-only interpretation policy for provider delivery evidence.
+/// Configuration and transport attempts never become business truth through this policy.
+/// </summary>
+public static class MarketingDeliveryEvidencePolicy
+{
+    public const string MetaAcceptanceEvidence = "events_received";
+    public const string OpenAiAcceptanceEvidence = "http_accepted";
+
+    public static bool MetaAttempted(MetaSignalEvent row) =>
+        CanonicalAdvertisingEventProjection.ReadBoolean(row.MetadataJson, "metaServerAttempted") == true;
+
+    public static bool MetaProviderAccepted(MetaSignalEvent row) =>
+        row.MetaServerSent &&
+        CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "metaServerEventsReceived") > 0;
+
+    public static bool MetaRetryable(MetaSignalEvent row) =>
+        CanonicalAdvertisingEventProjection.ReadBoolean(row.MetadataJson, "metaServerRetryable") == true;
+
+    public static DateTime? MetaDispatchedUtc(MetaSignalEvent row) =>
+        DateTime.TryParse(
+            CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "metaServerDispatchedUtc"),
+            out var at)
+            ? at
+            : null;
+
+    public static bool HttpTransportAccepted(MarketingDestinationDelivery row) =>
+        row.Status == "sent" && row.LastHttpStatusCode is >= 200 and < 300;
+}
+
 /// <summary>Read-only source-linked evidence. Credentials and configuration never imply event delivery.</summary>
 public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, IConfiguration configuration,
     MarketingConnectionStore connections, IOpenAiAdsAccountConnectionAuthority openAiConnections)
@@ -39,22 +69,24 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         var openAi = deliveries.Where(r => r.AnalyticsEventId is { } id && sourceById.ContainsKey(id) &&
             r.AgentTrackingProfileId == owner.AgentTrackingProfileId && r.CommerceBusinessId == owner.CommerceBusinessId &&
             OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(r, currentOpenAi)).ToArray();
-        bool MetaAttempt(MetaSignalEvent m) => CanonicalAdvertisingEventProjection.ReadBoolean(m.MetadataJson, "metaServerAttempted") == true;
-        bool MetaAccepted(MetaSignalEvent m) => m.MetaServerSent && CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "metaServerEventsReceived") > 0;
-        bool MetaRetry(MetaSignalEvent m) => CanonicalAdvertisingEventProjection.ReadBoolean(m.MetadataJson, "metaServerRetryable") == true;
-        DateTime? MetaSentAt(MetaSignalEvent m) => DateTime.TryParse(CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerDispatchedUtc"), out var at) ? at : null;
-        var metaAccepted = meta.Count(MetaAccepted);
-        var openAiAccepted = openAi.Count(r => r.Status == "sent" && r.LastHttpStatusCode is >= 200 and < 300);
+        var metaAccepted = meta.Count(MarketingDeliveryEvidencePolicy.MetaProviderAccepted);
+        var openAiAccepted = openAi.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
         return new(owner.Key, from, sources.Count > 0, sources.Select(e => (DateTime?)e.ReceivedUtc).Max(),
-            new(meta.Count(MetaAttempt), metaAccepted, meta.Count(m => !MetaAttempt(m) && MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(m.EventName, m.MetadataJson)), meta.Count(MetaRetry),
-                meta.Count(m => MetaAttempt(m) && !m.MetaServerSent && !MetaRetry(m)),
+            new(meta.Count(MarketingDeliveryEvidencePolicy.MetaAttempted), metaAccepted,
+                meta.Count(m => !MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
+                    MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(m.EventName, m.MetadataJson)),
+                meta.Count(MarketingDeliveryEvidencePolicy.MetaRetryable),
+                meta.Count(m => MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
+                    !m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaRetryable(m)),
                 sources.Any(e => !string.IsNullOrWhiteSpace(e.Fbclid) || !string.IsNullOrWhiteSpace(e.MetaCampaignId)),
-                meta.Where(MetaAccepted).Select(MetaSentAt).Max(), metaAccepted > 0 ? "events_received" : "not_observed"),
+                meta.Where(MarketingDeliveryEvidencePolicy.MetaProviderAccepted)
+                    .Select(MarketingDeliveryEvidencePolicy.MetaDispatchedUtc).Max(),
+                metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed"),
             new(openAi.Count(r => r.AttemptCount > 0), openAiAccepted,
                 openAi.Count(r => r.Status == "pending" || r.Status.StartsWith("blocked_", StringComparison.Ordinal)),
                 openAi.Count(r => r.Status == "retryable"), openAi.Count(r => r.Status == "permanent_failure"),
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
-                openAi.Where(r => r.Status == "sent").Select(r => r.SentUtc).Max(),
-                openAiAccepted > 0 ? "http_accepted" : "not_observed"));
+                openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
+                openAiAccepted > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed"));
     }
 }
