@@ -251,6 +251,25 @@
   }
 
 
+  const LEGEND_ATTRIBUTION_URL='https://www.mylegnd.com/';
+
+  function enforceLegendAttributionNode(node) {
+    if (!node || typeof node !== 'object') return node;
+    const classes=String(node.className || '').split(/\s+/).filter(Boolean);
+    if (classes.includes('legend-platform-attribution')) {
+      node.type='link';
+      node.tag='a';
+      node.text='Legend®';
+      node.href=LEGEND_ATTRIBUTION_URL;
+      node.target='_self';
+    } else if (classes.includes('legend-platform-attribution-powered-label')) {
+      node.text='Powered by';
+    } else if (classes.includes('legend-platform-attribution-designed-label')) {
+      node.text='Website Designed by';
+    }
+    return node;
+  }
+
   function normalizeCompositionNodes(input) {
     if (!Array.isArray(input)) return [];
     return input
@@ -267,6 +286,7 @@
           signals: Array.isArray(node.signals) ? node.signals : []
         };
         if(normalized.type==='image') normalized.alt=defaultImageAlt(normalized);
+        enforceLegendAttributionNode(normalized);
         canonicalizePassiveLinkNode(normalized);
         return normalized;
       })
@@ -308,6 +328,19 @@
       if(!positiveNumber(node.breakpointStyles.tablet.fontWeight)) node.breakpointStyles.tablet.fontWeight=800;
     }
     return node;
+  }
+
+  function normalizePageCompositionNodes(input) {
+    // Global website chrome has one source: shell.header / shell.footer.
+    // Repair stale drafts by refusing page-local copies of those authorities.
+    return normalizeCompositionNodes(input).filter(node=>{
+      const tag=String(node?.tag || '').toLowerCase();
+      const classes=new Set(String(node?.className || '').split(/\s+/).filter(Boolean));
+      if(tag==='header' || tag==='footer') return false;
+      if(node?.systemKey==='primary_navigation') return false;
+      if(classes.has('site-header') || classes.has('site-footer')) return false;
+      return true;
+    });
   }
 
   function normalizeHeaderComposition(input) {
@@ -381,7 +414,7 @@
         navigation,
         dynamicBinding: value.dynamicBinding && typeof value.dynamicBinding === 'object' ? {...value.dynamicBinding} : null,
         systemTemplateKey: typeof value.systemTemplateKey === 'string' ? value.systemTemplateKey : null,
-        composition: normalizeCompositionNodes(value.composition)
+        composition: normalizePageCompositionNodes(value.composition)
       };
     }
 
@@ -420,8 +453,42 @@
       },
       pages
     };
+    synchronizeCanonicalSharedPresentation(normalized);
     return constrainDocumentGeometry(normalized);
   }
+
+  function canonicalSharedPresentationKey(node) {
+    if (!node || typeof node !== 'object') return null;
+    if (node.type==='form' && node.systemKey==='canonical_inquiry') return 'form:canonical_inquiry';
+    return null;
+  }
+
+  function copyCanonicalSharedPresentation(target, source) {
+    if (!target || !source || target===source) return;
+    for (const key of ['className','text','title','style','breakpointStyles','layout','breakpointLayouts','animations','fieldLabels','fieldPresentations']) {
+      if (Object.hasOwn(source,key)) target[key]=cloneCanonicalValue(source[key]);
+      else delete target[key];
+    }
+  }
+
+  function synchronizeCanonicalSharedPresentation(doc, preferredId=null) {
+    if (!doc || typeof doc!=='object') return doc;
+    const groups=new Map();
+    const visit=nodes=>walkComposition(nodes,node=>{
+      const key=canonicalSharedPresentationKey(node);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(node);
+    });
+    Object.values(doc.pages || {}).forEach(page=>visit(page?.composition || []));
+    for (const nodes of groups.values()) {
+      if (nodes.length < 2) continue;
+      const source=nodes.find(node=>node.id===preferredId) || nodes[0];
+      nodes.forEach(node=>copyCanonicalSharedPresentation(node,source));
+    }
+    return doc;
+  }
+
 
   function normalizePageRoute(value) {
     if (typeof value !== 'string') return null;
@@ -1497,7 +1564,10 @@
     if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
     // Entity-owned names and commerce controls expose presentation editing only.
     // Their text/destination remains owned by the Business Profile / Store contract.
-    if (el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field') || el.dataset.legendStoreNav) return false;
+    if (el.hasAttribute?.('data-business-name') || el.hasAttribute?.('data-business-field') || el.dataset.legendStoreNav ||
+        el.classList?.contains('legend-platform-attribution') ||
+        el.classList?.contains('legend-platform-attribution-powered-label') ||
+        el.classList?.contains('legend-platform-attribution-designed-label')) return false;
     if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER','FORM','INPUT','SELECT','TEXTAREA'].includes(el.tagName)) return false;
     return editableTextTags.has(el.tagName) || editableInteractiveTags.has(el.tagName);
   }
@@ -4439,6 +4509,9 @@
   }
 
   function markDirty() {
+    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
+    const preferredId=selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null;
+    synchronizeCanonicalSharedPresentation(documentState,preferredId);
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
@@ -4977,6 +5050,8 @@
     if (publish && dirty) { const draftSaved=await save(false); if (!draftSaved || dirty) return false; return save(true); }
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
+    const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
+    synchronizeCanonicalSharedPresentation(documentState,selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null);
     const submitted = JSON.stringify(documentState);
     let saved = false;
     try {
