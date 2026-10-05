@@ -395,6 +395,7 @@ main :is(img,video)[data-legend-content-role="media"]{
   color:var(--web-surface,#fff)
 }
 .legend-recipe-hero-split{grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr)}
+.legend-recipe-hero-copy{width:100%;max-width:var(--web-narrow-max)}
 .legend-recipe-hero-media,.legend-recipe-feature-media{
   width:100%;height:min(58vh,620px);object-fit:cover;object-position:center;border-radius:var(--web-card-radius);
   box-shadow:var(--web-shadow-strong);border:var(--web-border-width) solid color-mix(in srgb,var(--web-gold,#bc8e10) 42%,transparent)
