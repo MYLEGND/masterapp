@@ -1748,9 +1748,7 @@ public static class WebsiteRecipeCatalog
             id,
             useSplit ? "legend-recipe-hero legend-recipe-hero-split" : "legend-recipe-hero legend-recipe-hero-cinematic",
             children,
-            useSplit
-                ? new WebsiteCompositionLayout { Mode="free" }
-                : new WebsiteCompositionLayout { Mode="stack", Direction="column", GapPx=24, AlignItems="start" });
+            new WebsiteCompositionLayout { Mode="free" });
     }
 
     private static WebsiteCompositionNode Stats(string id, IReadOnlyDictionary<string,string> c) =>
