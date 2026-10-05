@@ -28,7 +28,7 @@ LEGEND Website Studio creative contract:
 - Prefer semantic theme tokens and recipes for repeated design grammar; use freeform v3 nodes whenever a unique composition is better.
 - Prefer the highest valid scope: theme/site shell/page/section/node/breakpoint. Avoid repeated node overrides when one semantic token or shared component expresses the intent.
 - Use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
-- Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection.
+- Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection; use getSignalCatalog + setSignalMappings, then testSignalMapping/getSignalHealth when a genuinely meaningful custom interaction needs canonical intent reporting.
 - Preserve stable protected identities and design freely around them.
 - After the main build, use runPreflight for server quality + every-page responsive rendering + conversion/delivery readiness in one pass; repair only deficient scopes, then re-run it before publishing. Publishing remains a strict whole-site server authority.
 """;
@@ -55,6 +55,9 @@ LEGEND Website Studio creative contract:
             "getNode",
             "listRecipes",
             "getSignalCatalog",
+            "setSignalMappings",
+            "testSignalMapping",
+            "getSignalHealth",
             "listMedia",
             "uploadMedia",
             "importImage",
