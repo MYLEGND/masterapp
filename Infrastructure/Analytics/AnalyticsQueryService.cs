@@ -314,7 +314,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return l => l.CommerceBusinessId == null &&
                 ((l.AgentTrackingProfileId.HasValue && founderIds.Contains(l.AgentTrackingProfileId.Value)) ||
                  (!l.AgentTrackingProfileId.HasValue && l.MetadataJson != null &&
-                  l.MetadataJson.Contains("\"SiteKey\":\"legend\"")));
+                  (l.MetadataJson.Contains("\"ReportingOwner\":\"founder\"") ||
+                   l.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
