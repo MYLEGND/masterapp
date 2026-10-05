@@ -306,7 +306,7 @@ public class WebsitePlatformController : ControllerBase
 
         var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService))
             as WebsiteCommerceScopeService;
-        var commerceScope = commerceService is null || draft.Store?.Enabled != true
+        var commerceScope = commerceService is null || (audit && draft.Store?.Enabled != true)
             ? null
             : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
         var storePayload = await StorePayloadAsync(
