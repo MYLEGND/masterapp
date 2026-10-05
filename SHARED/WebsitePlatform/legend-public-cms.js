@@ -72,6 +72,7 @@
   let dirty = false;
   let sourceEditorDirty = false;
   let sourceEditorBaseNode = null;
+  let sourceEditorBaseFingerprint = null;
   let canonicalSourceDocument = null;
   let canonicalSourceRevision = null;
   let templateRepairPending = false;
@@ -2849,6 +2850,88 @@
       'canonicalActions='+actionCount,
       'externalAiApi=false'
     ].join(' · ');
+  }
+
+  async function creativeWorkspaceRequest(path,{method='GET',body=null,query=null}={}) {
+    const url=new URL(API_BASE+'/api/website-content/'+path);
+    if(query) for(const [key,value] of Object.entries(query)) if(value!=null) url.searchParams.set(key,String(value));
+    if(method==='GET') url.searchParams.set('ticket',editorTicket);
+    const response=await fetch(url,{method,cache:'no-store',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok){
+      const error=new Error(payload.message || payload.error || ('Website Studio request failed ('+response.status+').'));
+      error.status=response.status; error.payload=payload; throw error;
+    }
+    return payload;
+  }
+
+  function mergeCreativeMutationDelta(payload) {
+    const changes=payload?.changes || {};
+    const next=cloneCanonicalValue(documentState);
+    next.pages ||= {};
+    next.reusableComponents ||= {};
+    for(const path of Array.isArray(changes.removedPages)?changes.removedPages:[]) delete next.pages[path];
+    for(const [path,page] of Object.entries(changes.pages || {})) next.pages[path]=page;
+    for(const id of Array.isArray(changes.removedComponents)?changes.removedComponents:[]) delete next.reusableComponents[id];
+    for(const [id,component] of Object.entries(changes.reusableComponents || {})) next.reusableComponents[id]=component;
+    if(changes.theme) next.theme=changes.theme;
+    if(Object.prototype.hasOwnProperty.call(changes,'faviconImageDataUrl') && changes.faviconImageDataUrl!==null)
+      next.faviconImageDataUrl=changes.faviconImageDataUrl;
+    if(changes.shellHeader) next.shell.header=changes.shellHeader;
+    if(changes.shellFooter) next.shell.footer=changes.shellFooter;
+    if(changes.store) next.store=changes.store;
+    documentState=normalizeDocument(next);
+    revision=payload?.revision ?? revision;
+    namedDrafts=payload?.drafts || namedDrafts;
+    dirty=false;
+    canonicalSourceDocument=null;
+    canonicalSourceRevision=null;
+    sourceEditorBaseNode=null;
+    sourceEditorBaseFingerprint=null;
+    applyDocument(documentState);
+    refreshBrowserAgentWorkspace();
+    return payload;
+  }
+
+  async function creativeApplyMutationBatch(operations,options={}) {
+    if(!Array.isArray(operations) || !operations.length) throw new Error('At least one website mutation is required.');
+    const payload=await creativeWorkspaceRequest('manage/mutations',{
+      method:'POST',
+      body:{
+        ticket:editorTicket,
+        expectedRevision:revision,
+        operations,
+        draftId:options?.draftId || null,
+        draftName:options?.draftName || null
+      }
+    });
+    return mergeCreativeMutationDelta(payload);
+  }
+
+  async function creativeApplyDesignPlan(plan) {
+    if(!plan || typeof plan!=='object') throw new Error('A website design plan is required.');
+    const payload=await creativeWorkspaceRequest('manage/design-plan',{
+      method:'POST',
+      body:{ticket:editorTicket,expectedRevision:revision,plan}
+    });
+    return mergeCreativeMutationDelta(payload);
+  }
+
+  function installCreativeAgentWorkspaceApi() {
+    if(!editorMode) return;
+    const api={
+      schema:'legend-creative-browser/v1',
+      getSiteSummary:()=>creativeWorkspaceRequest('manage/agent/summary'),
+      getPageOutline:page=>creativeWorkspaceRequest('manage/agent/page-outline',{query:{page:page || currentPageRoute()}}),
+      getNode:id=>creativeWorkspaceRequest('manage/agent/node',{query:{id}}),
+      listRecipes:()=>creativeWorkspaceRequest('manage/agent/recipes'),
+      listMedia:(query={})=>creativeWorkspaceRequest('manage/media',{query}),
+      applyMutationBatch:creativeApplyMutationBatch,
+      applyDesignPlan:creativeApplyDesignPlan,
+      runQuality:()=>creativeWorkspaceRequest('manage/quality'),
+      current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()})
+    };
+    Object.defineProperty(window,'LEGEND_WEBSITE_STUDIO_AGENT',{value:Object.freeze(api),configurable:true});
   }
 
   function openBrowserAgentSource(scope='site') {
