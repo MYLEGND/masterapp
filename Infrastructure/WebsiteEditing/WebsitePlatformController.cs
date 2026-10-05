@@ -1005,14 +1005,25 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = "revision_conflict" });
         }
 
+        if (!TryFindSignalTarget(
+                document,
+                request.PagePath,
+                request.ElementId,
+                fieldKey,
+                out var savedTarget,
+                out _))
+            throw new InvalidOperationException("website_signal_target_lost_after_save");
+
         return Ok(new
         {
             source = "website_signal_configuration",
             revision = state.Revision,
-            document,
+            pagePath = request.PagePath,
             elementId = request.ElementId,
             fieldKey,
-            signals
+            signals,
+            nodeSignals = savedTarget.Signals,
+            fieldSignals = savedTarget.FieldSignals
         });
     }
 
