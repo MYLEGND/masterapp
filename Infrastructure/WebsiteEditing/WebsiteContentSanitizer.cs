@@ -85,6 +85,20 @@ public static class WebsiteContentSanitizer
     private const int MaxCompositionNodesPerPage = 1200;
     private const int MaxCompositionDepth = 16;
 
+    private static void EnsurePersistedCanonicalIsStable(
+        WebsiteContentDocument persisted,
+        WebsiteContentDocument sanitized,
+        System.Text.Json.JsonSerializerOptions options)
+    {
+        var persistedNode = System.Text.Json.Nodes.JsonNode.Parse(
+            System.Text.Json.JsonSerializer.Serialize(persisted, options));
+        var sanitizedNode = System.Text.Json.Nodes.JsonNode.Parse(
+            System.Text.Json.JsonSerializer.Serialize(sanitized, options));
+
+        if (!System.Text.Json.Nodes.JsonNode.DeepEquals(persistedNode, sanitizedNode))
+            throw new InvalidOperationException("website_v3_noncanonical_persisted_document");
+    }
+
     private static void EnsureUniqueCanonicalNodeIds(WebsiteContentDocument document)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
