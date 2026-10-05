@@ -2021,7 +2021,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       UtmSource: attr.utmSource, UtmMedium: attr.utmMedium, UtmCampaign: attr.utmCampaign,
       UtmId: attr.utmId, UtmTerm: attr.utmTerm, UtmContent: attr.utmContent,
       MetaCampaignId: attr.metaCampaignId, MetaAdSetId: attr.metaAdSetId, MetaAdId: attr.metaAdId,
-      Fbclid: attr.fbclid, ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
+      Fbclid: attr.fbclid, Oppref: attr.oppref,
+      ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
     };
     Object.entries(values).forEach(([name, value]) => {
       const field = form.elements.namedItem(name);
@@ -2295,6 +2296,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     },
     bindForms(root = document) {
       return bindCanonicalForms(root);
+    },
+    syncFormAttribution(form) {
+      syncFormAttribution(form);
     },
     signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
     measurementConsent: Object.freeze({

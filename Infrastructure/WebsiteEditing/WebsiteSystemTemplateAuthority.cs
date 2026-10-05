@@ -1,4 +1,6 @@
 using Shared.Analytics;
+using Domain.Entities;
+using System.Text.Json;
 
 namespace Infrastructure.WebsiteEditing;
 
@@ -72,6 +74,51 @@ public static class WebsiteSystemTemplateAuthority
         var route = ProtectRouteCatalog.Routes.Single(route => route.Path == path);
         return "protect_runtime_form:" + route.PageKey +
                (template == Prefix + "life_wizard" ? "" : "_form");
+    }
+
+    public static bool IsProtectedRuntimeSource(string? pageKeyOrPath) =>
+        ResolveRuntimeRoute(pageKeyOrPath) is not null;
+
+    /// <summary>Resolve the stable protected runtime-form node from one immutable published version.</summary>
+    public static string? ResolvePublishedRuntimeFormElementId(WebsiteContentVersion? version, string? pageKeyOrPath)
+    {
+        var route = ResolveRuntimeRoute(pageKeyOrPath);
+        if (version is null || route is null) return null;
+        var expected = RuntimeFormKey(route);
+        if (expected is null) return null;
+        try
+        {
+            var document = WebsiteContentSanitizer.ReadPersisted(
+                version.DocumentJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var matches = WebsiteSiteSource.Flatten(document)
+                .Where(item => string.Equals(NormalizeProtectPath(item.PagePath), route, StringComparison.OrdinalIgnoreCase) &&
+                               string.Equals(item.Node.SystemKey, expected, StringComparison.Ordinal))
+                .Select(item => item.Node.Id)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveRuntimeRoute(string? pageKeyOrPath)
+    {
+        if (string.IsNullOrWhiteSpace(pageKeyOrPath)) return null;
+        var value = pageKeyOrPath.Trim();
+        if (value.StartsWith('/'))
+        {
+            var path = NormalizeProtectPath(value);
+            return RuntimeFormKey(path) is null ? null : path;
+        }
+        if (value.EndsWith("_landing", StringComparison.OrdinalIgnoreCase))
+            value = value[..^"_landing".Length];
+        var route = ProtectRouteCatalog.Routes.FirstOrDefault(candidate =>
+            string.Equals(candidate.PageKey, value, StringComparison.OrdinalIgnoreCase));
+        return route is null || RuntimeFormKey(route.Path) is null ? null : route.Path;
     }
 
     // A repaired browser projection may request only the exact runtime already

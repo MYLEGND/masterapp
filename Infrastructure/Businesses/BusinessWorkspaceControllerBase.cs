@@ -133,16 +133,26 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
     }
 
     [HttpGet("analytics")]
-    public async Task<IActionResult> Analytics(Guid businessId, int days = 30, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Analytics(
+        Guid businessId,
+        int days = 30,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken cancellationToken = default)
     {
         var business = await ResolveBusinessAsync(businessId, "analytics", cancellationToken);
         if (business is null) return Forbid();
-        var model = await workspace.AnalyticsAsync(business, days, cancellationToken);
+
+        var preset = days == 7 ? "7d" : days == 90 ? "90d" : "30d";
+        var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
+        var range = TimeRangeRequest.FromPreset(preset, viewerTz: timezone);
+        var model = await workspace.AnalyticsAsync(business, range, cancellationToken);
+
         model.CanCustomize = await ResolveBusinessAsync(businessId, "settings", cancellationToken) is not null;
         ViewData["AnalyticsBase"] = $"/business/{businessId}/analytics";
         ViewData["InitialScopeLabel"] = business.DisplayName;
-        ViewData["InitialRangePreset"] = days == 7 ? "7d" : days == 90 ? "90d" : "30d";
-        ViewData["InitialRangeLabel"] = $"Last {days} days";
+        ViewData["InitialRangePreset"] = range.Preset;
+        ViewData["InitialRangeLabel"] = range.Label;
         ViewData["InitialSummaryJson"] = JsonSerializer.Serialize(model.Summary);
         ViewData["BusinessWorkspace"] = model;
         ViewData["AnalyticsCanMetaAds"] = true;
@@ -310,12 +320,15 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         [FromQuery] string? preset = null,
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
         try
         {
-            var range = TimeRangeRequest.FromPreset(preset ?? "7d", fromUtc, toUtc, TimeZoneInfo.Utc);
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(timezoneId, timezoneOffsetMinutes);
+            var range = TimeRangeRequest.FromPreset(preset ?? "7d", fromUtc, toUtc, timezone);
             var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
             return Json(await service.CampaignInsightsAsync(
                 MarketingOwnerScope.Business(businessId),
@@ -332,6 +345,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         DateTime? FromUtc,
         DateTime? ToUtc,
         TrafficQualityMode QualityMode,
+        string? TimezoneId,
+        int? TimezoneOffsetMinutes,
         MarketingManagerGoalRequest Goal);
 
     [HttpGet("analytics/marketing-manager/context")]
@@ -367,11 +382,14 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
 
         try
         {
+            var timezone = AnalyticsViewerTimeZoneResolver.Resolve(
+                request.TimezoneId,
+                request.TimezoneOffsetMinutes);
             var range = TimeRangeRequest.FromPreset(
                 string.IsNullOrWhiteSpace(request.Preset) ? "30d" : request.Preset,
                 request.FromUtc,
                 request.ToUtc,
-                TimeZoneInfo.Utc,
+                timezone,
                 request.QualityMode);
             var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.IMarketingManagerService>();
             return Json(await service.PlanAsync(

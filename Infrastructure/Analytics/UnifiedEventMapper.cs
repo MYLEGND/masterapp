@@ -192,6 +192,9 @@ public static class UnifiedEventMapper
         fbc = ctx.Fbc,
         fbp = ctx.Fbp,
         canonicalOutcomeEventId = ctx.IsServerAuthority == true ? ctx.EventId : null,
+        measurementConsentAllowed = ctx.MeasurementConsentAllowed,
+        measurementConsentState = ctx.MeasurementConsentState,
+        measurementConsentSource = ctx.MeasurementConsentSource,
         payload = ctx.Metadata
     };
 }

@@ -171,6 +171,18 @@ public class LifeQuoteControllerPublicBookingTests
     public async Task SubmitLifeQuote_Ajax_WhenBookingDisabled_StillReturnsSuccess()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        var founderTracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "founder-booking-disabled",
+            AgentUpn = "founder@example.test",
+            Slug = "legend",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.AgentTrackingProfiles.Add(founderTracking);
+        await db.SaveChangesAsync();
+
         var captureService = new Mock<IWebsiteLifeLeadCaptureService>();
         captureService
             .Setup(service => service.UpsertAsync(It.IsAny<WebsiteLifeLeadCaptureRequest>(), It.IsAny<CancellationToken>()))
@@ -219,6 +231,9 @@ public class LifeQuoteControllerPublicBookingTests
         http.Request.ContentType = "application/x-www-form-urlencoded";
         http.Request.Headers["X-Requested-With"] = "fetch";
         http.Request.Form = new FormCollection(new Dictionary<string, StringValues>());
+        http.Items["TrackingProfile"] = founderTracking;
+        http.Items["TrackingSlug"] = founderTracking.Slug;
+        http.Items["IsFounderPath"] = true;
         controller.ControllerContext = new ControllerContext { HttpContext = http };
         controller.TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 

@@ -110,7 +110,8 @@ public sealed class BusinessAnalyticsDetailTests
             .ReturnsAsync(new MarketingHealthDto());
 
         var service = new BusinessWorkspaceService(db, analytics.Object);
-        var model = await service.AnalyticsAsync(business, 30, CancellationToken.None);
+        var model = await service.AnalyticsAsync(business,
+            TimeRangeRequest.FromPreset("30d", viewerTz: TimeZoneInfo.Utc), CancellationToken.None);
 
         Assert.Contains(model.EventMap, row => row.Element == "automatic:page_view" && row.Event == "page_view" && row.Mode == "automatic");
         Assert.Contains(model.EventMap, row => row.Element == "automatic:meaningful_scroll" && row.Event == "scroll_depth_50" && row.Mode == "automatic");

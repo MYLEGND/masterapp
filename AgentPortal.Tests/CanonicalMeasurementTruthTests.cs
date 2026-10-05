@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
+using Infrastructure.Leads;
+using Infrastructure.WebsiteEditing;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -89,6 +92,116 @@ public sealed class CanonicalMeasurementTruthTests
         await db.SaveChangesAsync();
         Assert.Equal(expected, MetaSignalAnalyticsBridge.IsEligibleSource(source));
         Assert.Equal(expected, await MetaSignalAnalyticsBridge.PersistAsync(db, source));
+    }
+
+
+    [Fact]
+    public void NinetyDayPresetUsesTheSharedCalendarRangeAuthority()
+    {
+        var range = TimeRangeRequest.FromPreset("90d", viewerTz: TimeZoneInfo.Utc);
+        var span = range.ToUtc - range.FromUtc;
+
+        Assert.Equal("90d", range.Preset);
+        Assert.Equal("Last 90 Days", range.Label);
+        Assert.Equal(TimeGrouping.Week, range.Grouping);
+        Assert.InRange(span.TotalDays, 89d, 90.1d);
+    }
+
+    [Fact]
+    public void UnifiedServerEventPersistsResolvedMeasurementConsent()
+    {
+        var http = new DefaultHttpContext();
+        http.Request.Headers["Sec-GPC"] = "1";
+
+        var row = UnifiedEventMapper.ToAnalytics(UnifiedEventContextBuilder.Build(
+            http,
+            eventId: "lead_test",
+            eventName: "website_lead_submitted",
+            sessionId: "session",
+            visitorId: "visitor",
+            isBrowserSignal: false,
+            isServerAuthority: true,
+            metaServerAuthorityEligible: true));
+
+        Assert.False(CanonicalAdvertisingEventProjection.ReadBoolean(
+            row.MetadataJson, "measurementConsentAllowed") == true);
+        Assert.Equal("denied", CanonicalAdvertisingEventProjection.ReadString(
+            row.MetadataJson, "measurementConsentState"));
+        Assert.Equal("gpc", CanonicalAdvertisingEventProjection.ReadString(
+            row.MetadataJson, "measurementConsentSource"));
+    }
+
+    [Fact]
+    public async Task ProtectLeadPersistenceAttachesPublishedRuntimeFormLineageOnce()
+    {
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+        var profile = new AgentTrackingProfile
+        {
+            AgentUserId = "agent-user",
+            AgentUpn = "agent@example.org",
+            Slug = "agent"
+        };
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/Quote/Life"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "runtime.form.quote_life",
+                            Type = "container",
+                            Tag = "div",
+                            SystemKey = "protect_runtime_form:quote_life"
+                        }
+                    ]
+                }
+            }
+        };
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Protect, document);
+        var state = new WebsiteContentState
+        {
+            OwnerKey = profile.AgentUserId,
+            SiteKey = WebsiteEditorSiteKeys.Protect,
+            DraftJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        };
+        var version = new WebsiteContentVersion
+        {
+            StateId = state.Id,
+            Revision = 1,
+            DocumentJson = state.DraftJson,
+            ActorUserId = profile.AgentUserId
+        };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(profile, state, version);
+        await db.SaveChangesAsync();
+
+        var lead = new WebsiteLead
+        {
+            LeadId = Guid.NewGuid(),
+            AgentTrackingProfileId = profile.Id,
+            AgentSlug = profile.Slug,
+            SourcePageKey = "quote_life",
+            FirstName = "Taylor",
+            Email = "taylor@example.org",
+            Environment = "production",
+            Host = "protect.mylegnd.com",
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        Assert.True(await WebsiteLeadSubmission.TryCreateAsync(
+            db, lead, Guid.NewGuid().ToString("D"), CancellationToken.None));
+
+        var saved = Assert.Single(await db.WebsiteLeads.ToListAsync());
+        Assert.Equal(version.Id, saved.WebsiteContentVersionId);
+        Assert.False(string.IsNullOrWhiteSpace(saved.WebsiteBindingId));
+        Assert.Equal(
+            WebsiteSystemTemplateAuthority.ResolvePublishedRuntimeFormElementId(version, "quote_life"),
+            saved.WebsiteBindingId);
     }
 
     private static ControllerActionDescriptor Action(string controller, string action) => new()

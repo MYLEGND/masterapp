@@ -42,6 +42,7 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string websiteName;
         private readonly string trackingApiBase;
+        private readonly string? founderUpn;
         private readonly AgentTrackingResolver _resolver;
         private readonly WebsiteIntakeRecipientResolver _intakeRecipients;
         private readonly MasterAppDbContext _db;
@@ -62,6 +63,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
+            founderUpn = configuration["Founder:Upn"];
             _resolver = resolver;
             _intakeRecipients = intakeRecipients;
             _db = db;
@@ -385,14 +387,15 @@ if (!ModelState.IsValid)
                     RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                 };
 
-                var submittedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var submittedCtx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "website_lead_submitted",
                     eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: lead.CreatedUtc);
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
                 UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
@@ -727,25 +730,27 @@ if (!ModelState.IsValid)
                     ? "paid_landing"
                     : "site_mode";
 
-                var ctx = BuildTrackingContext(
-                    pageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     "meta_browser_event_attempt",
                     analyticsMetadata,
-                    pageVariant,
-                    pageMode);
+                    pageKey: pageKey,
+                    pageVariant: pageVariant,
+                    pageMode: pageMode);
                 var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ctxSuccess = BuildTrackingContext(
-                        pageKey,
+                    var ctxSuccess = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext,
                         lead,
                         "meta_browser_event_success",
                         analyticsMetadata,
-                        pageVariant,
-                        pageMode);
+                        pageKey: pageKey,
+                        pageVariant: pageVariant,
+                        pageMode: pageMode);
                     var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
                 }
@@ -878,7 +883,6 @@ if (!ModelState.IsValid)
                 HttpContext,
                 _resolver,
                 _intakeRecipients,
-                ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
@@ -1072,36 +1076,7 @@ if (!ModelState.IsValid)
             }
         }
 
-        private static string? ExtractSlugFromPath(string? pathOrUrl)
-        {
-            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-            var value = pathOrUrl.Trim();
-            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            {
-                value = uri.AbsolutePath;
-            }
-
-            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            {
-                return segments[1];
-            }
-
-            return null;
-        }
-
-        private string? ResolveExplicitAgentSlugFromRequest()
-        {
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug))
-                return formSlug.Trim();
-
-            return ExtractSlugFromPath(Request?.Path.Value)
-                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-        }
-
-        // ── Server-side product content (mirrors JS PRODUCT_CONTENT) ─────────────
+// ── Server-side product content (mirrors JS PRODUCT_CONTENT) ─────────────
         private sealed record RecContent(string Title, string Description, string[] Bullets);
 
         private static readonly IReadOnlyDictionary<string, RecContent> RecContentMap =
@@ -1705,28 +1680,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
-        private bool HasExplicitAgentContext()
-        {
-            if (HttpContext?.Items["TrackingProfile"] is AgentTrackingProfile)
-            {
-                return true;
-            }
-
-            var requestMethod = Request?.Method;
-            if (string.IsNullOrWhiteSpace(requestMethod) || !Microsoft.AspNetCore.Http.HttpMethods.IsPost(requestMethod))
-            {
-                return false;
-            }
-
-            string? slug = null;
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-            return !string.IsNullOrWhiteSpace(slug);
-        }
-
-        private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
+private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
         {
             if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
             {
@@ -1804,46 +1758,18 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
 
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
         {
-            if (!HasExplicitAgentContext())
-            {
+            var owner = await ProtectWebsiteOwnerResolver.ResolveAsync(
+                HttpContext,
+                _resolver,
+                founderUpn,
+                ct: ct);
+            if (owner is null || owner.IsFounder)
                 return null;
-            }
 
-            var trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
-            string? agentSlug = HttpContext?.Items["TrackingSlug"] as string;
-
-            if ((trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug)))
-            {
-                string? requestedSlug = null;
-                var formSlug = Request?.Form["AgentSlug"].ToString();
-                if (!string.IsNullOrWhiteSpace(formSlug))
-                {
-                    requestedSlug = formSlug.Trim();
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Path.Value);
-                }
-                if (string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    requestedSlug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-                }
-
-                if (!string.IsNullOrWhiteSpace(requestedSlug))
-                {
-                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
-                    if (resolved.Found && resolved.Profile != null)
-                    {
-                        trackingProfile = resolved.Profile;
-                        agentSlug = resolved.CanonicalSlug ?? requestedSlug;
-                    }
-                }
-            }
-
-            if (trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug))
-            {
-                return null;
-            }
+            var trackingProfile = owner.Profile;
+            var agentSlug = string.IsNullOrWhiteSpace(owner.Slug)
+                ? trackingProfile.Slug
+                : owner.Slug;
 
             var agentProfile = await ResolveAgentProfileAsync(trackingProfile, ct);
 
@@ -2128,49 +2054,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             };
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            string pageVariant,
-            string pageMode,
-            DateTime? eventUtc = null,
-            string? quoteType = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: pageVariant,
-                pageMode: pageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
-                metadata: metadata);
-        }
-
-        private async Task TryWriteLeadPipelineEventAsync(
+private async Task TryWriteLeadPipelineEventAsync(
             WebsiteLead lead,
             string quoteType,
             WizardPageMode pageMode,
@@ -2181,15 +2065,16 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             AnalyticsEvent? analyticsEvent = null;
             try
             {
-                var ctx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
+                var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                    HttpContext,
                     lead,
                     eventType,
                     metadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    DateTime.UtcNow,
-                    quoteType);
+                    pageKey: pageMode.EffectivePageKey,
+                    pageVariant: pageMode.PageVariant,
+                    pageMode: pageMode.PageMode,
+                    eventUtc: DateTime.UtcNow,
+                    quoteType: quoteType);
                 analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 

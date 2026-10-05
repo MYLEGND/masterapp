@@ -110,7 +110,6 @@ namespace Protect_Website.Controllers
                 correlationId, model.Email);
 
             var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
-            var isAgentContext = IsAgentContext();
             _logger.LogInformation(
                 "DentalVisionHearingQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
                 correlationId, agentSlug, agentProfileId, leadRecipientEmail);
@@ -265,14 +264,15 @@ await TryWriteLeadEventAsync(
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    var ctx = BuildTrackingContext(
-                        effectivePageKey,
+                    var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext,
                         lead,
                         eventType,
                         metadata,
-                        string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                        string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                        eventUtc);
+                        pageKey: effectivePageKey,
+                        pageVariant: string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        pageMode: string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
+                        eventUtc: eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -1094,49 +1094,11 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 HttpContext,
                 _resolver,
                 _intakeRecipients,
-                ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
-        private static string? ExtractSlugFromPath(string? pathOrUrl)
-        {
-            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-            var value = pathOrUrl.Trim();
-            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            {
-                value = uri.AbsolutePath;
-            }
-
-            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            {
-                return segments[1];
-            }
-
-            return null;
-        }
-
-        private string? ResolveExplicitAgentSlugFromRequest()
-        {
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) return formSlug.Trim();
-            return ExtractSlugFromPath(Request?.Path.Value)
-                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-        }
-
-        private bool IsAgentContext()
-        {
-            string? slug = null;
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
-            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-            return !string.IsNullOrWhiteSpace(slug);
-        }
-
-        private bool IsAjax()
+private bool IsAjax()
         {
             var hdr = Request?.Headers["X-Requested-With"].ToString();
             return !string.IsNullOrWhiteSpace(hdr) &&
@@ -1366,48 +1328,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             }
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            string pageVariant,
-            string pageMode,
-            DateTime? eventUtc = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: pageVariant,
-                pageMode: pageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: lead.InterestType,
-                metadata: metadata);
-        }
-
-        private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
+private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
         {
             var viewModel = model ?? new DentalVisionHearingQuoteFormModel();
             ApplyPageMode(viewModel, isLandingPage);
