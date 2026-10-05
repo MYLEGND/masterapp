@@ -2082,6 +2082,61 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
+    private sealed record WebsiteMediaDesignUsage(
+        string Scope,
+        string? Role,
+        string? Alt,
+        string? ObjectPosition);
+
+    private static Dictionary<Guid, List<WebsiteMediaDesignUsage>> BuildMediaUsageIndex(
+        WebsiteContentDocument document)
+    {
+        var result = new Dictionary<Guid, List<WebsiteMediaDesignUsage>>();
+
+        static string? RoleFor(WebsiteCompositionNode node)
+        {
+            var identity = ((node.Id ?? string.Empty) + " " + (node.ClassName ?? string.Empty)).ToLowerInvariant();
+            if (identity.Contains("hero", StringComparison.Ordinal)) return "hero";
+            if (identity.Contains("logo", StringComparison.Ordinal) || identity.Contains("brand", StringComparison.Ordinal)) return "brand";
+            if (identity.Contains("gallery", StringComparison.Ordinal)) return "gallery";
+            if (identity.Contains("feature", StringComparison.Ordinal)) return "feature";
+            if (identity.Contains("card", StringComparison.Ordinal)) return "card";
+            return node.Type;
+        }
+
+        void Visit(IEnumerable<WebsiteCompositionNode>? nodes, string scope)
+        {
+            foreach (var node in nodes ?? [])
+            {
+                if (node.MediaAssetId.HasValue)
+                {
+                    if (!result.TryGetValue(node.MediaAssetId.Value, out var usages))
+                    {
+                        usages = [];
+                        result[node.MediaAssetId.Value] = usages;
+                    }
+
+                    usages.Add(new(
+                        scope + "#" + node.Id,
+                        RoleFor(node),
+                        node.Alt,
+                        node.Style?.ObjectPosition));
+                }
+
+                Visit(node.Children, scope);
+            }
+        }
+
+        Visit(document.Shell?.Header, "@shell/header");
+        Visit(document.Shell?.Footer, "@shell/footer");
+        foreach (var (pagePath, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>(StringComparer.Ordinal))
+            Visit(page?.Composition, pagePath);
+        foreach (var (componentId, component) in document.ReusableComponents ?? new Dictionary<string, WebsiteReusableComponentDefinition>(StringComparer.Ordinal))
+            Visit(component?.Composition, "@component/" + componentId);
+
+        return result;
+    }
+
     private static string MediaDisplayName(WebsiteMediaAsset asset)
     {
         if (string.IsNullOrWhiteSpace(asset.SourceUrl)) return asset.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "Website video" : "Website image";
