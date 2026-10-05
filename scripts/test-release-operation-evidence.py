@@ -300,6 +300,31 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.job['steps'][0]['name'] = 'Direct deploy AgentPortal'
         self.assertIsNone(self.history())
 
+    def test_explicit_provider_baseline_proof_clears_only_deferred_history_error(self):
+        self.legacy_fixture('a' * 40)
+        env = {
+            'GITHUB_RUN_ID': '10',
+            'GITHUB_RUN_ATTEMPT': '1',
+            'PACKAGE_PRODUCER_RUN': '11',
+            'GITHUB_REPOSITORY': 'owner/repo',
+            'GITHUB_TOKEN': 'placeholder',
+        }
+        with patch.object(self.authority, 'release_operation_history',
+                          side_effect=self.authority.ReleaseOperationHistoryUnproven('missing intent')):
+            operation = journal.OperationJournal(
+                target='portal',
+                application_revision='a' * 40,
+                package_digest='b' * 64,
+                baseline='c' * 40,
+                authority=self.authority,
+                publisher=lambda *args: None,
+                environment=env,
+            )
+        self.assertIsNotNone(operation.history_error)
+        operation.authorize_first_write_after_baseline_proof()
+        self.assertIsNone(operation.history_error)
+        self.assertIsNone(operation.intent)
+
     def test_authenticated_legacy_same_package_missing_intent_blocks_replay(self):
         self.legacy_fixture('a' * 40)
         with self.assertRaisesRegex(RuntimeError, 'may have written this immutable package'):
