@@ -909,7 +909,7 @@ namespace AgentPortal.Controllers;
                     isSqlite,
                     cancellationToken);
                 if (!cleanupSafety.IsInternal &&
-                    !Infrastructure.VerifiedLeads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
+                    !Infrastructure.Leads.WebsiteLeadCaptureSafety.IsLocalHost(cleanupSafety.Host))
                 {
                     return BadRequest(new
                     {
