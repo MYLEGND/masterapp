@@ -1249,6 +1249,8 @@ test('browser creative workspace exposes whole-site quality media and safe-repai
   assert.match(source,/importImage:url=>creativeWorkspaceRequest\('manage\/media\/import'/);
   assert.match(source,/legendAudit/);
   assert.match(source,/legend-site-responsive-audit/);
+  assert.match(source,/function applyBreakpointPreview\(\)[\s\S]*refreshResponsiveComposition\(\)[\s\S]*if\(editorPreview\) syncEditorControls\(\)/);
+  assert.doesNotMatch(source,/function applyBreakpointPreview\(\) \{\s*if \(!editorPreview\) return;/);
   assert.match(websitePlatformControllerSource,/\[HttpGet\("manage\/agent\/conversion-readiness"\)\]/);
   assert.match(websitePlatformControllerSource,/\[HttpPost\("manage\/media\/import"\)\]/);
   assert.match(websiteImportServiceSource,/ImportImageAsync/);
