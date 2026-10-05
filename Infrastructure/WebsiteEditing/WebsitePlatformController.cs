@@ -1153,7 +1153,9 @@ public class WebsitePlatformController : ControllerBase
         var metaRows = selectedIds.Length == 0
             ? []
             : await _db.MetaSignalEvents.AsNoTracking()
-                .Where(row => row.WebsiteContentVersionId == state.PublishedVersionId)
+                .Where(row =>
+                    row.WebsiteContentVersionId == state.PublishedVersionId &&
+                    row.CreatedUtc >= fromUtc)
                 .OrderByDescending(row => row.Id)
                 .ToListAsync(cancellationToken);
         metaRows = metaRows.Where(row =>
@@ -1169,38 +1171,31 @@ public class WebsitePlatformController : ControllerBase
                     row.OwnerKey == owner.Key &&
                     row.Provider == Shared.Analytics.MarketingDestinationKeys.OpenAi &&
                     row.AnalyticsEventId.HasValue &&
-                    selectedIds.Contains(row.AnalyticsEventId.Value))
+                    selectedIds.Contains(row.AnalyticsEventId.Value) &&
+                    row.CreatedUtc >= fromUtc)
                 .OrderByDescending(row => row.UpdatedUtc)
                 .ToListAsync(cancellationToken);
 
-        static Guid? ReadLeadId(AnalyticsEvent row)
-        {
-            var raw =
-                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "LeadId") ??
-                Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "leadId");
-            return Guid.TryParse(raw, out var parsed) && parsed != Guid.Empty ? parsed : null;
-        }
+        var identities = new Dictionary<long, Infrastructure.Analytics.CanonicalMarketingIdentity>();
+        foreach (var row in selected)
+            identities[row.Id] = await Infrastructure.Analytics.CanonicalMarketingIdentityResolver.ResolveAsync(
+                _db, row, cancellationToken: cancellationToken);
 
-        var leadIds = selected.Select(ReadLeadId).Where(value => value.HasValue)
-            .Select(value => value!.Value).Distinct().ToArray();
-        var leads = leadIds.Length == 0
-            ? []
-            : await _db.WebsiteLeads.AsNoTracking()
-                .Where(row =>
-                    leadIds.Contains(row.LeadId) &&
-                    row.WebsiteContentVersionId == state.PublishedVersionId &&
-                    !row.IsDeleted)
-                .ToListAsync(cancellationToken);
+        static string? LineageKey(Infrastructure.Analytics.CanonicalMarketingIdentity identity)
+        {
+            var raw = identity.WebsiteLeadId?.ToString("N") ??
+                      identity.WorkstationLeadId ??
+                      identity.ClientUserId;
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var hash = System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(raw));
+            return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+        }
 
         object Trace(AnalyticsEvent row)
         {
-            var leadId = ReadLeadId(row);
-            var linkedLead = leadId.HasValue
-                ? leads.SingleOrDefault(value =>
-                    value.LeadId == leadId.Value &&
-                    value.AgentTrackingProfileId == row.AgentTrackingProfileId &&
-                    value.CommerceBusinessId == row.CommerceBusinessId)
-                : null;
+            var identity = identities[row.Id];
+            var linkedLead = identity.WebsiteLead;
             var meta = metaRows.Where(value =>
                     Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(
                         value.MetadataJson, "sourceAnalyticsEventId") == row.Id &&
@@ -1260,18 +1255,21 @@ public class WebsitePlatformController : ControllerBase
                     row.MetaAdSetId,
                     row.MetaAdId,
                     fbclidPresent = !string.IsNullOrWhiteSpace(row.Fbclid),
-                    opprefPresent = !string.IsNullOrWhiteSpace(row.Oppref)
+                    opprefPresent = !string.IsNullOrWhiteSpace(row.Oppref),
+                    obrefPresent = !string.IsNullOrWhiteSpace(identity.Obref)
                 },
                 crm = new
                 {
-                    leadId,
-                    linked = linkedLead is not null,
-                    status = linkedLead?.Status,
-                    createdUtc = linkedLead?.CreatedUtc,
-                    productionRecordId = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
-                        row.MetadataJson, "productionRecordId"),
-                    workstationLeadId = Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
-                        row.MetadataJson, "workstationLeadId")
+                    lineageKey = LineageKey(identity),
+                    identityAuthority = "CanonicalMarketingIdentityResolver",
+                    websiteLeadLinked = linkedLead is not null,
+                    websiteLeadStatus = linkedLead?.Status,
+                    websiteLeadCreatedUtc = linkedLead?.CreatedUtc,
+                    workstationLeadLinked = !string.IsNullOrWhiteSpace(identity.WorkstationLeadId),
+                    clientLinked = !string.IsNullOrWhiteSpace(identity.ClientUserId),
+                    productionOutcomeLinked = !string.IsNullOrWhiteSpace(
+                        Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadString(
+                            row.MetadataJson, "productionRecordId"))
                 },
                 meta = new
                 {
@@ -1289,6 +1287,8 @@ public class WebsitePlatformController : ControllerBase
                     receipts = openAi.Select(value => new
                     {
                         deliveryId = value.Id,
+                        value.CanonicalSource,
+                        value.CanonicalEventName,
                         value.ProviderEventName,
                         value.Status,
                         value.AttemptCount,
@@ -1329,6 +1329,7 @@ public class WebsitePlatformController : ControllerBase
             privacy = new
             {
                 piiIncluded = false,
+                rawCustomerIdentifiersIncluded = false,
                 rawClickReferencesIncluded = false,
                 providerCredentialsIncluded = false
             },
