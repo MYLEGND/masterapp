@@ -200,6 +200,29 @@ public static class WebsiteContentSanitizer
         return SanitizeStore(source, keys);
     }
 
+    internal static string NormalizeBusinessPagePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException("A Business website page path is required.");
+
+        var path = value.Trim();
+        if (!path.StartsWith('/')) path = "/" + path;
+        path = path.Length > 1 ? path.TrimEnd('/') : path;
+
+        if (path.Length > 160 ||
+            path.StartsWith("//", StringComparison.Ordinal) ||
+            path.Contains('\\') ||
+            path.Contains('?') ||
+            path.Contains('#') ||
+            path.Contains("..", StringComparison.Ordinal) ||
+            path.Any(char.IsControl) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/?)*$"))
+            throw new ArgumentException(
+                "Business website routes must be 160 characters or fewer and use lowercase letters, numbers, hyphens, underscores, and forward-slash segments only.");
+
+        return path;
+    }
+
     internal static WebsitePageDocument SanitizeMutationPageMetadata(
         string pagePath,
         WebsitePageDocument? source)
