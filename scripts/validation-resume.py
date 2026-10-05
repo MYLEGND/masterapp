@@ -3441,25 +3441,31 @@ def _historical_intent_before_upload_contract(repository, revision, token):
 
     This is deliberately exact and narrow. Missing intent may prove no write only
     for generations whose critical uploader/evidence functions are AST-identical
-    to the current canonical anti-replay contract. Any drift remains unproven.
+    to the current canonical anti-replay contract. Unavailable, ambiguous, or
+    drifted source returns False so the caller retains its original fail-closed
+    missing-intent protection.
     """
-    historical_deploy = _release_history_source(
-        repository, revision, 'scripts/deploy-approved-app.py', token)
-    historical_evidence = _release_history_source(
-        repository, revision, 'scripts/release-operation-evidence.py', token)
-    current_deploy = Path(__file__).with_name('deploy-approved-app.py').read_text()
-    current_evidence = Path(__file__).with_name('release-operation-evidence.py').read_text()
+    try:
+        historical_deploy = _release_history_source(
+            repository, revision, 'scripts/deploy-approved-app.py', token)
+        historical_evidence = _release_history_source(
+            repository, revision, 'scripts/release-operation-evidence.py', token)
+        current_deploy = Path(__file__).with_name('deploy-approved-app.py').read_text()
+        current_evidence = Path(__file__).with_name('release-operation-evidence.py').read_text()
 
-    for name in ('operation_journal', 'deploy_one', 'reconcile'):
-        if _ast_function_contract(historical_deploy, name) != _ast_function_contract(current_deploy, name):
+        for name in ('operation_journal', 'deploy_one', 'reconcile'):
+            if _ast_function_contract(historical_deploy, name) != _ast_function_contract(current_deploy, name):
+                return False
+        if (_ast_function_contract(historical_evidence, 'publish_record') !=
+                _ast_function_contract(current_evidence, 'publish_record')):
             return False
-    if _ast_function_contract(historical_evidence, 'publish_record') != _ast_function_contract(current_evidence, 'publish_record'):
+        for method in ('__init__', 'before_submit'):
+            if (_ast_method_contract(historical_evidence, 'OperationJournal', method) !=
+                    _ast_method_contract(current_evidence, 'OperationJournal', method)):
+                return False
+        return True
+    except (ReleaseOperationHistoryUnproven, SyntaxError, OSError, UnicodeError):
         return False
-    for method in ('__init__', 'before_submit'):
-        if (_ast_method_contract(historical_evidence, 'OperationJournal', method) !=
-                _ast_method_contract(current_evidence, 'OperationJournal', method)):
-            return False
-    return True
 
 
 def _release_history_json(repository, run_id, artifact, filename):
