@@ -1398,10 +1398,12 @@ test('custom code blocks use opaque data frames instead of weakening the page sc
   assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
 });
 
-test('shared mobile navigation opens as compact horizontal button grids',()=>{
+test('shared mobile navigation opens as one horizontal tab per row',()=>{
   assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
-  assert.ok(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
-  assert.ok(publicCss.includes('.nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'));
+  assert.ok(publicCss.includes('grid-template-columns:minmax(0,1fr)'));
+  assert.ok(publicCss.includes('white-space:nowrap;overflow:hidden;text-overflow:ellipsis'));
+  assert.equal(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'),false);
+  assert.equal(publicCss.includes('grid-template-columns:repeat(3,minmax(0,1fr))'),false);
   assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
 for (const siteKey of ['legend','protect','business']) {
@@ -3366,4 +3368,89 @@ test('template label presentation updates preserve native inputs and button icon
     assert.equal(f.w.document.querySelector('main button[type="submit"]').textContent,'Get started');
     assert.ok(f.w.document.querySelector('main button[type="submit"] svg'));
   } finally {f.close();}
+});
+
+
+test('global website chrome stays shell-owned and page-local header footer navigation copies are discarded',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.pages['/'].composition.unshift(
+    canonicalNode('stale.page.header','container','header',{className:'site-header'}),
+    canonicalNode('stale.page.nav','container','nav',{className:'nav',systemKey:'primary_navigation'}),
+    canonicalNode('stale.page.footer','container','footer',{className:'site-footer'})
+  );
+  const f=await domFixture({siteKey:'business',business:{id:'business-1',displayName:'Business'},doc});
+  try{
+    const saved=await f.save();
+    const ids=saved.pages['/'].composition.map(node=>node.id);
+    assert.equal(ids.includes('stale.page.header'),false);
+    assert.equal(ids.includes('stale.page.nav'),false);
+    assert.equal(ids.includes('stale.page.footer'),false);
+    assert.equal(saved.shell.header[0].id,'shell.header');
+    assert.equal(saved.shell.footer[0].id,'shell.footer');
+  }finally{f.close();}
+});
+
+test('canonical inquiry presentation is one synchronized site-wide source without copying protected wiring',async()=>{
+  const doc=canonicalDocument();
+  const homeForm=canonicalNode('home.form','form','form',{
+    systemKey:'canonical_inquiry',
+    text:'Send inquiry',
+    title:'Send an inquiry',
+    style:{widthPercent:73,borderColor:'#bc8e10'},
+    fieldLabels:{firstname:'First Name'},
+    fieldPresentations:{firstname:{style:{borderColor:'#bc8e10'},breakpointStyles:{},layout:{mode:'free',direction:'column'},breakpointLayouts:{},animations:[]}},
+    fieldSignals:{firstname:[{id:'home-field-signal',eventName:'field_started'}]}
+  });
+  canonicalNodeById(doc,'home.section.1').children.push(homeForm);
+  doc.pages['/contact']={
+    title:'Contact',description:'Contact',navigation:{label:'Contact',showInNavigation:true,order:2,isDeleted:false},
+    dynamicBinding:null,composition:[canonicalNode('contact.section','section','section',{children:[
+      canonicalNode('contact.form','form','form',{
+        systemKey:'canonical_inquiry',
+        text:'Different stale label',
+        style:{widthPercent:22},
+        fieldSignals:{firstname:[{id:'contact-field-signal',eventName:'field_started'}]}
+      })
+    ]})]
+  };
+  const f=await domFixture({doc});
+  try{
+    const saved=await f.save();
+    const home=canonicalNodeById(saved,'home.form','/');
+    const contact=canonicalNodeById(saved,'contact.form','/contact');
+    assert.equal(contact.text,home.text);
+    assert.deepEqual(contact.style,home.style);
+    assert.deepEqual(contact.fieldPresentations,home.fieldPresentations);
+    assert.equal(home.fieldSignals.firstname[0].id,'home-field-signal');
+    assert.equal(contact.fieldSignals.firstname[0].id,'contact-field-signal');
+  }finally{f.close();}
+});
+
+test('LEGEND website credits are immutable in copy and destination but remain presentation nodes',async()=>{
+  const doc=canonicalBusinessNavigation(canonicalDocument());
+  doc.shell.footer[0].children=[
+    canonicalNode('credit.label','text','span',{className:'legend-platform-attribution-designed-label',text:'Bad copy'}),
+    canonicalNode('credit.link','link','a',{className:'legend-platform-attribution',text:'Bad brand',href:'https://wrong.example/',style:{widthPercent:61}})
+  ];
+  const f=await domFixture({siteKey:'business',business:{id:'business-1',displayName:'Business'},doc});
+  try{
+    const saved=await f.save();
+    const footer=saved.shell.footer[0];
+    const label=footer.children.find(node=>node.id==='credit.label');
+    const link=footer.children.find(node=>node.id==='credit.link');
+    assert.equal(label.text,'Website Designed by');
+    assert.equal(link.text,'Legend®');
+    assert.equal(link.href,'https://www.mylegnd.com/');
+    assert.equal(link.style.widthPercent,61);
+    assert.match(publicCss,/\.legend-platform-attribution\{text-decoration:underline!important/);
+    assert.match(businessBuildSource,/Website Designed by/);
+    assert.match(businessBuildSource,/Powered by/);
+  }finally{f.close();}
+});
+
+test('public mobile navigation is exactly one horizontal tab per row',()=>{
+  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:left[^}]*justify-content:flex-start/);
+  assert.doesNotMatch(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*repeat\([34],minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(publicCss,/@media\(max-width:650px\)[\s\S]*?\.nav\{[^}]*repeat\([23],minmax\(0,1fr\)\)/);
 });

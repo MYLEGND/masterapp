@@ -251,10 +251,10 @@ main :is(img,video)[data-legend-content-role="media"]{
   main [data-legend-content-role="action"]{min-inline-size:min(100%,var(--public-action-min))}
   main :is(img,video)[data-legend-content-role="media"]{max-width:min(100%,720px);margin-inline:auto}
   .nav-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:46px;min-height:46px}
-  .nav{position:absolute;top:100%;left:0;right:0;display:none;grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;gap:10px 12px;padding:16px 18px max(20px,env(safe-area-inset-bottom));background:var(--navy-deep);border-top:1px solid rgba(255,255,255,.1)}
+  .nav{position:absolute;top:100%;left:0;right:0;display:none;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:8px;padding:14px 16px max(18px,env(safe-area-inset-bottom));background:var(--navy-deep);border-top:1px solid rgba(255,255,255,.1)}
   .nav[data-open=true]{display:grid}
-  .nav a,.nav button{min-width:0;min-height:48px;padding:10px 8px;text-align:center;justify-content:center;border:1px solid rgba(255,255,255,.14);border-radius:10px}
-  .nav .nav-cta{text-align:center;margin-top:0}
+  .nav a,.nav button{width:100%;min-width:0;min-height:44px;padding:10px 14px;text-align:left;justify-content:flex-start;border:1px solid rgba(255,255,255,.14);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;line-height:1.2}
+  .nav .nav-cta{width:100%;min-height:44px;padding:10px 14px;text-align:left;justify-content:flex-start;margin-top:0;border-radius:8px}
   .btn{min-height:48px}
   .mark-showcase,.founder{grid-template-columns:1fr}
   .brand-seal{position:relative;top:0}
@@ -318,5 +318,7 @@ main :is(img,video)[data-legend-content-role="media"]{
   .steps span:last-child{border-bottom:0}
   .footer-grid>div:first-child{grid-column:auto}
   .page-hero{padding-top:58px}
-  .nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .nav{grid-template-columns:minmax(0,1fr);gap:8px}
 }
+
+.legend-platform-attribution{text-decoration:underline!important;text-underline-offset:.16em;text-decoration-thickness:1px!important}
