@@ -199,7 +199,7 @@ test('canonical startup fills navigation and image accessibility defaults and pr
   }finally{f.close();}
 });
 
-test('canonical startup repairs dead placeholder links while preserving dynamic href bindings and brand geometry',async()=>{
+test('canonical startup repairs dead links while preserving desktop brand geometry and clearing unsafe mobile shell geometry',async()=>{
   const doc=canonicalBusinessNavigation(canonicalDocument({href:'#'}));
   const dead=canonicalNodeById(doc,'home.a.node.1');
   dead.href='#';
@@ -224,8 +224,7 @@ test('canonical startup repairs dead placeholder links while preserving dynamic 
     const brand=saved.shell.header[0].children.find(node=>node.id==='shell.brand');
     assert.equal(brand.style.widthPercent,4);
     assert.equal(brand.style.offsetXPercent,91);
-    assert.equal(brand.breakpointStyles.mobile.widthPercent,3);
-    assert.equal(brand.breakpointStyles.mobile.offsetXPercent,95);
+    assert.equal(brand.breakpointStyles.mobile ?? null,null);
   }finally{f.close();}
 });
 
@@ -903,20 +902,24 @@ test('business banner and shell typography use canonical shared responsive token
   }finally{f.close();}
 });
 
-test('explicit mobile shell presentation outranks inherited desktop defaults',()=>{
-  assert.match(source,/if\(brand\)\{[\s\S]*if\(!has\('fontScale'\)\)[\s\S]*const ceiling=key==='mobile' \? 1\.35 : key==='tablet' \? 1\.8 : 3\.5/);
-  assert.match(source,/model\?\.systemKey==='primary_navigation' && !has\('fontScale'\)/);
-  assert.doesNotMatch(source,/function canonicalizePlatformBrandGeometry/);
+test('mobile public header geometry is canonical system chrome while desktop geometry remains authored',()=>{
+  assert.match(source,/const MOBILE_HEADER_GEOMETRY_FIELDS=\[/);
+  assert.match(source,/function mobileHeaderChromeKind\(node\)/);
+  assert.match(source,/node\.systemKey==='primary_navigation'/);
+  assert.match(source,/classes\.has\('brand-wordmark'\)/);
+  assert.match(source,/MOBILE_HEADER_GEOMETRY_FIELDS\.forEach\(field=>delete mobile\[field\]\)/);
+  assert.match(source,/node\.breakpointLayouts\.mobile=\{mode:'free',direction:'column'\}/);
+  assert.match(source,/mobileShellChrome[\s\S]*MOBILE_HEADER_GEOMETRY_FIELDS\.forEach\(field=>delete style\[field\]\)/);
 });
 
-test('Website Studio and GPT contract expose the same isolated responsive authority',()=>{
+test('Website Studio and GPT contract expose one responsive authority with protected mobile shell geometry',()=>{
   assert.match(source,/Canonical responsive hierarchy/);
-  assert.match(source,/Desktop\/Base and Mobile are independent authoring surfaces/);
-  assert.match(source,/Explicit Mobile width, alignment, offsets, height, spacing, typography, and layout are preserved exactly/);
-  assert.match(agentContractSource,/Mobile is an independent first-class editing surface/);
+  assert.match(source,/Desktop\/Base and Mobile are independent authoring surfaces for page content/);
+  assert.match(source,/global public header, brand fit, Menu trigger, and primary navigation geometry are platform shell chrome/);
+  assert.match(agentContractSource,/Mobile is an independent first-class editing surface for page content/);
   assert.match(agentContractSource,/A Mobile edit must write only breakpointStyles\.mobile or breakpointLayouts\.mobile/);
-  assert.match(agentContractSource,/Explicit mobile width, height, alignment, offsets, margins, spacing, typography, sizing, media geometry, and layout mode outrank inherited Desktop\/Base defaults/);
-  assert.doesNotMatch(agentContractSource,/Mobile flow safety is canonical and non-negotiable/);
+  assert.match(agentContractSource,/global public header frame, brand fit, Menu trigger, and primary navigation are platform shell chrome on Mobile/);
+  assert.match(agentContractSource,/Outside that protected mobile shell geometry/);
 });
 
 test('public startup styling has one responsive authority and one palette authority',()=>{
@@ -1398,12 +1401,11 @@ test('custom code blocks use opaque data frames instead of weakening the page sc
   assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
 });
 
-test('shared mobile navigation opens as one horizontal tab per row',()=>{
+test('shared public mobile navigation uses the compact dropdown contract',()=>{
   assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
-  assert.ok(publicCss.includes('grid-template-columns:minmax(0,1fr)'));
+  assert.ok(publicCss.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
   assert.ok(publicCss.includes('white-space:nowrap;overflow:hidden;text-overflow:ellipsis'));
-  assert.equal(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'),false);
-  assert.equal(publicCss.includes('grid-template-columns:repeat(3,minmax(0,1fr))'),false);
+  assert.ok(publicCss.includes('box-shadow:0 18px 44px rgba(0,0,0,.34)'));
   assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
 for (const siteKey of ['legend','protect','business']) {
@@ -3448,9 +3450,10 @@ test('LEGEND website credits are immutable in copy and destination but remain pr
   }finally{f.close();}
 });
 
-test('public mobile navigation is exactly one horizontal tab per row',()=>{
-  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
-  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:left[^}]*justify-content:flex-start/);
-  assert.doesNotMatch(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*repeat\([34],minmax\(0,1fr\)\)/);
-  assert.doesNotMatch(publicCss,/@media\(max-width:650px\)[\s\S]*?\.nav\{[^}]*repeat\([23],minmax\(0,1fr\)\)/);
+test('public mobile navigation is one compact viewport-safe dropdown instead of a side rail',()=>{
+  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.site-header\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*top:calc\(100% \+ 6px\)[^}]*left:max\(12px,env\(safe-area-inset-left\)\)[^}]*right:max\(12px,env\(safe-area-inset-right\)\)/);
+  assert.match(publicCss,/\.nav\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*max-height:min\(68dvh,520px\)/);
+  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:nowrap/);
+  assert.match(publicCss,/\.business-brand-banner strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
 });
