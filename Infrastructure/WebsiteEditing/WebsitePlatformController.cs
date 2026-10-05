@@ -1241,7 +1241,9 @@ public class WebsitePlatformController : ControllerBase
         WebsiteMutationRequest request,
         CancellationToken cancellationToken)
     {
-        if (request is null || request.Operations is null || request.Operations.Count == 0)
+        if (request is null || request.Operations is null)
+            return BadRequest(new { error = "website_mutations_required" });
+        if (request.Operations.Count == 0 && !request.DraftId.HasValue && request.DraftName is null)
             return BadRequest(new { error = "website_mutations_required" });
         if (request.Operations.Count > 400)
             return BadRequest(new { error = "website_mutation_limit" });
@@ -1250,8 +1252,8 @@ public class WebsitePlatformController : ControllerBase
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
 
-        var canScopedRebase = request.Operations.All(operation =>
-            operation.Type is "replaceNode" or "removeNode" or "moveNode" or "updatePage" or "setApprovedCapability" &&
+        var canScopedRebase = request.Operations.Count > 0 && request.Operations.All(operation =>
+            (operation.Type is "replaceNode" or "removeNode" or "moveNode" or "updatePage" or "setApprovedCapability") &&
             !string.IsNullOrWhiteSpace(operation.ExpectedFingerprint));
         if (state.Revision != request.ExpectedRevision && !canScopedRebase)
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
@@ -1382,7 +1384,9 @@ public class WebsitePlatformController : ControllerBase
             {
                 pages = changedPagePaths.ToDictionary(value => value, value => document.Pages[value], StringComparer.Ordinal),
                 theme = result.ChangedScopes.Contains("@theme", StringComparer.Ordinal) ? document.Theme : null,
+                faviconChanged = result.ChangedScopes.Contains("@favicon", StringComparer.Ordinal),
                 faviconImageDataUrl = result.ChangedScopes.Contains("@favicon", StringComparer.Ordinal) ? document.FaviconImageDataUrl : null,
+                breakpoints = result.ChangedScopes.Contains("@breakpoints", StringComparer.Ordinal) ? document.Breakpoints : null,
                 shellHeader = result.ChangedScopes.Any(value => value.StartsWith("@shell/header", StringComparison.Ordinal)) ? document.Shell.Header : null,
                 shellFooter = result.ChangedScopes.Any(value => value.StartsWith("@shell/footer", StringComparison.Ordinal)) ? document.Shell.Footer : null,
                 reusableComponents = changedComponents.ToDictionary(value => value, value => document.ReusableComponents[value], StringComparer.Ordinal),
