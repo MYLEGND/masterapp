@@ -2992,17 +2992,52 @@
     const media=Array.isArray(payload?.quality?.media?.checks)?payload.quality.media.checks:[];
     const delivery=[];
     const conversion=payload?.conversion || {};
+    const metaDestination=conversion?.destinations?.meta || {};
+    const openAiDestination=conversion?.destinations?.openai || {};
+    const metaConfigured=metaDestination?.browserPixelConfigured===true || metaDestination?.serverCapiConfigured===true;
+    const openAiConfigured=openAiDestination?.browserPixelConfigured===true ||
+      openAiDestination?.serverConversionsConfigured===true || openAiDestination?.accountApproved===true;
     if(conversion?.currentDraftIsPublished===false && conversion?.publishedRevision!=null)
       delivery.push({
         severity:'info',
         code:'conversion_evidence_previous_revision',
         message:`Published delivery evidence is from revision ${conversion.publishedRevision}; this draft is revision ${payload?.revision}.`
       });
-    else if(Number(conversion?.published?.problemRows||0)>0)
+    if(conversion?.measurementEvidenceError)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_measurement_evidence_unavailable',
+        message:'Canonical provider delivery evidence could not be read. Do not infer delivery health from configuration alone.'
+      });
+    if(metaConfigured && metaDestination?.serverCapiConfigured!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_meta_server_delivery_not_configured',
+        message:'Meta is partially configured but canonical server conversion delivery is not configured.'
+      });
+    if(openAiConfigured && openAiDestination?.accountApproved!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_account_not_approved',
+        message:'OpenAI Ads is connected in part, but the current advertising account is not approved.'
+      });
+    if(openAiConfigured && openAiDestination?.serverConversionsConfigured!==true)
+      delivery.push({
+        severity:'warning',
+        code:'conversion_openai_server_delivery_not_configured',
+        message:'OpenAI Ads is partially configured but canonical server conversion delivery is not configured.'
+      });
+    if(Number(conversion?.published?.problemRows||0)>0)
       delivery.push({
         severity:'warning',
         code:'conversion_delivery_problem',
         message:`${conversion.published.problemRows} published conversion mapping or delivery row(s) need attention.`
+      });
+    if(Number(conversion?.published?.inFlightRows||0)>0)
+      delivery.push({
+        severity:'info',
+        code:'conversion_delivery_in_flight',
+        message:`${conversion.published.inFlightRows} published conversion mapping or delivery row(s) are pending, projected, or retrying.`
       });
     const serverChecks=[...structural,...design,...media,...delivery];
     renderQualityChecks(savedHost,serverChecks,'No saved structural, design, conversion, or delivery issues detected.');
@@ -3075,15 +3110,16 @@
     const tools=[
       {
         name:'legend_website_workspace',
-        description:'Read the authorized Website Studio workspace efficiently. Start with summary, then recipes, and fetch page/node/media/signal/conversion detail only when needed.',
+        description:'Read the authorized Website Studio workspace efficiently. Start with summary, then recipes, and fetch page/node/media/signal/conversion detail only when needed. Use conversion_trace to follow bounded recent published canonical events through CRM and provider receipts without PII.',
         readOnly:true,
         schema:objectSchema({
-          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','business_data','signal_catalog','conversion_health']},
+          operation:{type:'string',enum:['summary','recipes','page_outline','node','media','business_data','signal_catalog','conversion_health','conversion_trace']},
           page:{type:'string',maxLength:2048},
           id:{type:'string',maxLength:240},
           q:{type:'string',maxLength:200},
+          eventName:{type:'string',maxLength:160},
           kind:{type:'string',enum:['all','image','video']},
-          take:{type:'integer',minimum:1,maximum:24}
+          take:{type:'integer',minimum:1,maximum:50}
         },['operation']),
         execute:async args=>{
           switch(args?.operation){
@@ -3095,6 +3131,11 @@
             case 'business_data': return await api.listBusinessData();
             case 'signal_catalog': return await api.getSignalCatalog();
             case 'conversion_health': return await api.inspectConversionHealth();
+            case 'conversion_trace': return await api.traceConversions({
+              take:args.take || 20,
+              eventName:args.eventName || undefined,
+              page:args.page || undefined
+            });
             default: throw new Error('Choose a supported Website Studio read operation.');
           }
         }
@@ -3232,6 +3273,9 @@
         return readiness?.draft?.conversionPaths || [];
       },
       inspectConversionHealth:()=>creativeWorkspaceRequest('manage/agent/conversion-readiness'),
+      traceConversions:({take=20,eventName=null,page=null}={})=>creativeWorkspaceRequest('manage/agent/conversion-trace',{
+        query:{take,eventName:eventName || undefined,page:page || undefined}
+      }),
       current:()=>({siteKey:SITE_KEY,page:currentPageRoute(),revision,selectedId:sourceSelectedNodeId()}),
       performance:()=>studioPerformance.map(value=>({...value}))
     };
