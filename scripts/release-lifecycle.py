@@ -1312,6 +1312,14 @@ def release_run_source_pr(run):
     return int(match.group(1)) if match else None
 
 
+def release_run_candidate(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=[0-9]+ candidate=([a-f0-9]{40}) authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return match.group(1) if match else None
+
+
 def automatic_release_admission(pr, approved, runs):
     """Single fail-closed admission predicate; no independent workflow gate map."""
     active = [row for row in runs if row.get('status') != 'completed']
@@ -1761,9 +1769,12 @@ def _admission_settled(api, run, record):
             and value.get('resources') == record['resources'] and targets == expected)
 
 
-
 def _admission_superseded_by_terminal_success(api, run, record, runs):
-    """Discharge an older failed lease only after a later terminal success of the exact same immutable release."""
+    """Discharge an older lease only after a later terminal success of the exact immutable release.
+
+    Automatic release scope comes from durable admission evidence, not from a
+    mutable/manual release-request file on the later control-plane authority.
+    """
     if run.get('status') != 'completed':
         return False
     required = (
@@ -1775,8 +1786,17 @@ def _admission_superseded_by_terminal_success(api, run, record, runs):
     )
     if any(record.get(key) is None for key in required):
         return False
+    source_pr = record.get('sourcePr')
+    source_revision = record.get('authorizedSourceRevision')
+    if type(source_pr) is not int or not SHA.fullmatch(source_revision or ''):
+        return False
+
     for later in runs:
         if later.get('id', 0) <= run.get('id', 0):
+            continue
+        if release_run_source_pr(later) != source_pr:
+            continue
+        if release_run_candidate(later) != source_revision:
             continue
         if later.get('status') != 'completed' or not successful_release(api, later):
             continue
@@ -1820,9 +1840,9 @@ def admission_conflicts(api, candidate, *, current_run):
             # active legacy workflows always block new admission globally.
             continue
         for record in records:
-            if _admission_settled(api, run, record) or _admission_nonmutating_terminal(api, run):
-                continue
-            if _admission_superseded_by_terminal_success(api, run, record, runs):
+            if (_admission_settled(api, run, record)
+                or _admission_nonmutating_terminal(api, run)
+                or _admission_superseded_by_terminal_success(api, run, record, runs)):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
