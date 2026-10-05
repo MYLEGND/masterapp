@@ -1,3 +1,5 @@
+> **HISTORICAL REFERENCE ONLY — DO NOT IMPLEMENT FROM THIS FILE.** The active Website Studio architecture is canonical v3 and is defined by `website-studio-north-star-creative-workspace-20261005.md` plus the executable `Infrastructure/WebsiteEditing` contracts. Older V1/V2 route names, compatibility plans, and implementation steps below are retained only as historical evidence and must not be treated as current authority.
+
 # Shared website studio implementation map
 
 Status: active shared-editor implementation, not a release or production completion certificate.
