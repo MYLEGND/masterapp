@@ -51,4 +51,3 @@ The useful conclusions from the original audit were implemented without introduc
 ## Release state
 
 This document is not a release certificate. Source-level implementation and cleanup may be complete on the isolated branch, but validation, PR review, merge, release, and deployment remain separate governed steps.
-
