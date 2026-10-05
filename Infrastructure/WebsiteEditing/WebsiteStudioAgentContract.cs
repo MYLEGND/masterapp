@@ -27,10 +27,10 @@ LEGEND Website Studio creative contract:
 - Use the read-only Capability Manifest to place approved actions/forms/runtime capabilities. Never invent an executable capability.
 - Prefer semantic theme tokens and recipes for repeated design grammar; use freeform v3 nodes whenever a unique composition is better.
 - Prefer the highest valid scope: theme/site shell/page/section/node/breakpoint. Avoid repeated node overrides when one semantic token or shared component expresses the intent.
-- Use getSiteSummary/getPageOutline/getNode/listRecipes and applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
+- Use getSiteSummary/getPageOutline/getNode/listRecipes, acquire owned media through listMedia/uploadMedia/importImage, then applyMutationBatch/applyDesignPlan. Master Source is diagnostic only.
 - Selected Source edits exactly one node through the canonical mutation authority. Signals/FieldSignals are not part of its writable projection.
 - Preserve stable protected identities and design freely around them.
-- Review desktop/mobile quality and conversion flow before publishing. Publishing remains a strict whole-site server authority.
+- Review whole-site responsive quality and inspectConversionHealth before publishing. Publishing remains a strict whole-site server authority.
 """;
 
     public static object CompactPayload => new
@@ -54,7 +54,12 @@ LEGEND Website Studio creative contract:
             "getPageOutline",
             "getNode",
             "listRecipes",
+            "getSignalCatalog",
             "listMedia",
+            "uploadMedia",
+            "importImage",
+            "inspectConversionHealth",
+            "runSiteResponsiveQuality",
             "applyMutationBatch",
             "applyDesignPlan",
             "runQuality"
