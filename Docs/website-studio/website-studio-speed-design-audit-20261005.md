@@ -887,6 +887,30 @@ Log aggregates only; never log customer website bodies or protected form payload
 
 ---
 
+
+## 41. Normal page switching reloads the entire editor/bootstrap
+
+\`navigateToEditorPage()\` flushes dirty state and then calls \`location.assign()\`.
+
+That means moving from Home to Services to About to Contact can repeatedly:
+
+- reload the page runtime,
+- call the full \`GET manage\` endpoint again,
+- reload the complete document,
+- reload eager catalogs/history/agent contract,
+- normalize/apply the complete document,
+- rebuild the editor UI.
+
+This is especially harmful to GPT because multi-page construction becomes unnecessarily serial.
+
+**Canonical replacement:**
+
+- design-plan and batch generation must create/edit multiple pages without navigating at all,
+- ordinary v3 Business page switching should flush the current mutation batch, change the active route in editor state, and render the already loaded or lazily fetched page slice in place,
+- browser history may be updated without rebootstrap,
+- protected system-template pages may use a bounded server-rendered/runtime mount when their executable template genuinely requires it; that exception must not force normal Business pages back into full reload navigation.
+
+
 # Canonical replacement architecture
 
 ## Architectural invariant
@@ -1415,7 +1439,8 @@ Leave as the strict final compiler first. Measure after P1/P2/P3 before adding a
 14. Make Site Source omit defaults/empty structures.
 15. Convert Selected Source to node GET/PATCH over the mutation service.
 16. Expose deterministic browser-agent query/mutation commands.
-17. Lazy-load advanced catalogs/history/collections/media.
+17. Replace normal v3 Business page-switch full reloads with in-place route/page-slice switching.
+18. Lazy-load advanced catalogs/history/collections/media.
 
 **Stop condition:** a normal GPT edit never needs Master Source.
 
@@ -1432,19 +1457,19 @@ Leave as the strict final compiler first. Measure after P1/P2/P3 before adding a
 
 ## P4 — visual refinement efficiency
 
-24. Add multi-breakpoint design-quality checks.
-25. Add deterministic safe-fix mutations.
-26. Add targeted DOM insert/replace/remove/move.
-27. Replace global shared-presentation traversal with derived sync index.
-28. Add build telemetry.
+25. Add multi-breakpoint design-quality checks.
+26. Add deterministic safe-fix mutations.
+27. Add targeted DOM insert/replace/remove/move.
+28. Replace global shared-presentation traversal with derived sync index.
+29. Add build telemetry.
 
 ## P5 — structural cleanup after behavior is proven
 
-29. Batch/server-side legacy materialization.
-30. Source-split/bundle the CMS runtime.
-31. Split controller internals.
-32. Split website regression tests by behavior domain.
-33. Measure compiler latency; only then decide whether a warm compiler worker is justified.
+30. Batch/server-side legacy materialization.
+31. Source-split/bundle the CMS runtime.
+32. Split controller internals.
+33. Split website regression tests by behavior domain.
+34. Measure compiler latency; only then decide whether a warm compiler worker is justified.
 
 ---
 
