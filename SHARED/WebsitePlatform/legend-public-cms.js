@@ -80,6 +80,8 @@
   let materializationSavePending = false;
   let persistedDocumentState = null;
   let autoSaveTimer = null;
+  let checkpointBaseline = null;
+  let suppressHistoryCapture = false;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const animationRuntime = new WeakMap();
@@ -4699,6 +4701,16 @@
     const selectedForm=selected?.closest?.('form[data-cms-composition-id]');
     const preferredId=selectedForm?.dataset?.cmsCompositionId || selected?.dataset?.cmsCompositionId || null;
     synchronizeCanonicalSharedPresentation(documentState,preferredId);
+    if(checkpointBaseline && !suppressHistoryCapture){
+      const undo=buildCreativeMutationOperations(documentState,checkpointBaseline);
+      const redo=buildCreativeMutationOperations(checkpointBaseline,documentState);
+      if(undo.length || redo.length){
+        undoStack.push({undo,redo});
+        if(undoStack.length>120) undoStack.shift();
+        redoStack.length=0;
+      }
+    }
+    checkpointBaseline=null;
     dirty = true;
     refreshHistoryControls();
     const status = document.getElementById('legend-cms-status');
@@ -5587,24 +5599,36 @@
     document.body.appendChild(dialog); dialog.showModal(); name.focus();
   }
   const undoStack = [], redoStack = [];
-  function historySnapshot() {
-    return JSON.stringify(documentState);
-  }
   function checkpoint() {
-    undoStack.push(historySnapshot());
-    if (undoStack.length > 80) undoStack.shift();
-    redoStack.length = 0;
+    if(suppressHistoryCapture) return;
+    checkpointBaseline=cloneCanonicalValue(documentState);
   }
-  // CANONICAL V3 HISTORY RESTORE.
-  // This restores only the WebsiteContentDocument v3 graph. It intentionally
-  // does not reconstruct template DOM, v2 elements/extras, or any override side-store.
-  function restoreCanonicalV3History(from, to) {
-    if (!from.length) return;
-    to.push(historySnapshot());
-    const snapshot = normalizeDocument(JSON.parse(from.pop()));
-    applyDocument(snapshot);
-    setSelected(null);
-    markDirty();
+  // History stores reversible canonical mutation batches, never duplicate site
+  // documents. If an edit is still local, flush it once so the inverse applies
+  // against the same persisted v3 authority.
+  async function restoreCanonicalV3History(from, to, direction='undo') {
+    if (!from.length || saving) return;
+    if(dirty){
+      const saved=await save(false);
+      if(!saved || dirty) return;
+    }
+    const entry=from.pop();
+    const operations=direction==='redo' ? entry.redo : entry.undo;
+    if(!Array.isArray(operations) || !operations.length){ refreshHistoryControls(); return; }
+    suppressHistoryCapture=true;
+    try{
+      await creativeApplyMutationBatch(operations);
+      to.push(entry);
+      setSelected(null);
+    }catch(error){
+      from.push(entry);
+      const status=document.getElementById('legend-cms-status');
+      if(status) status.textContent=error?.payload?.message || error?.message || 'History operation could not be applied.';
+    }finally{
+      suppressHistoryCapture=false;
+      checkpointBaseline=null;
+      refreshHistoryControls();
+    }
   }
   function safeUrl(value, media = false) {
     if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value) || /(?:legendEdit|ticket)=/i.test(value)) return false;
@@ -6603,8 +6627,8 @@
       if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
       if (key === 'z' || key === 'y') {
         event.preventDefault();
-        if (key === 'y' || event.shiftKey) restoreCanonicalV3History(redoStack, undoStack);
-        else restoreCanonicalV3History(undoStack, redoStack);
+        if (key === 'y' || event.shiftKey) void restoreCanonicalV3History(redoStack, undoStack,'redo');
+        else void restoreCanonicalV3History(undoStack, redoStack,'undo');
       }
     });
     refreshHistoryControls();
