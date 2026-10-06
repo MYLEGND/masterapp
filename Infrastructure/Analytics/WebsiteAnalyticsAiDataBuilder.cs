@@ -384,7 +384,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                     StringComparer.Ordinal);
             var identities = observations.Keys.ToArray();
 
-            AnalyticsEvent[] Downstream(string identity) =>
+            Domain.Entities.AnalyticsEvent[] Downstream(string identity) =>
                 outcomeByIdentity.TryGetValue(identity, out var rows)
                     ? rows.Where(row => row.EventUtc >= observations[identity]).ToArray()
                     : [];
