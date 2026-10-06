@@ -139,7 +139,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
             self.assertNotIn("secret-fixture", content)
             self.assertNotIn("per_page", content)
 
-    def test_rate_limited_plan_runs_every_unproven_gate_fresh(self):
+    def test_rate_limited_pr_plan_blocks_before_expensive_children(self):
         error = m.EvidenceLookupUnavailable(
             "rate limited", status=403, endpoint="actions/workflows/example/runs"
         )
@@ -155,18 +155,69 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 run_attempt=1,
                 head_branch="repair",
                 event="pull_request",
+                resume_cache=None,
             )
-            with patch.object(m, "prior_evidence", side_effect=error):
+            with patch.object(m, "prior_evidence", side_effect=error), \
+                 self.assertRaises(SystemExit) as stopped:
                 m.cmd_plan(args)
+            self.assertEqual(1, stopped.exception.code)
             plan = m.json.loads(Path(args.output).read_text())
-        self.assertEqual("evidence_unavailable_fresh_validation", plan["evidenceSource"])
-        self.assertEqual(403, plan["evidenceFallback"]["httpStatus"])
-        self.assertTrue(plan["gates"])
-        self.assertTrue(all(row["run"] for row in plan["gates"].values()))
-        self.assertTrue(all(
-            row["reason"] == "no_prior_success_evidence"
-            for row in plan["gates"].values()
-        ))
+        self.assertEqual("blocked", plan["mode"])
+        self.assertEqual("planner_unavailable_resume_planning_only", plan["reason"])
+        self.assertEqual(403, plan["evidenceHttpStatus"])
+        self.assertNotIn("gates", plan)
+
+    def test_partial_pr_local_gate_cache_reuses_only_checkpointed_children(self):
+        workflow = "approved-release-security-validation.yml"
+        head = m.subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "validation-resume.json"
+            cache.write_text(m.json.dumps({
+                "schemaVersion": 2,
+                "workflow": workflow,
+                "headSha": head,
+                "runId": 41,
+                "runAttempt": 1,
+                "gates": {"no-skips": {"result": "success"}},
+            }))
+            args = SimpleNamespace(
+                output=str(Path(directory) / "plan.json"),
+                workflow=workflow,
+                repository="owner/repo",
+                current_sha=head,
+                current_run_id=42,
+                run_attempt=1,
+                head_branch="repair",
+                event="pull_request",
+                resume_cache=str(cache),
+            )
+            with patch.object(m, "prior_evidence") as remote:
+                m.cmd_plan(args)
+            remote.assert_not_called()
+            plan = m.json.loads(Path(args.output).read_text())
+        self.assertFalse(plan["gates"]["no-skips"]["run"])
+        self.assertEqual("pr_local_gate_cache", plan["gates"]["no-skips"]["evidenceSource"])
+        self.assertTrue(plan["gates"]["secret-scan"]["run"])
+        self.assertTrue(plan["gates"]["composition"]["run"])
+
+    def test_checkpoint_gate_carries_preserved_proof_and_exact_success_only(self):
+        workflow = "step6-openai-ads-execution-validation.yml"
+        plan = {
+            "workflow": workflow,
+            "gates": {
+                "restore": {"run": False},
+                "build": {"run": True},
+                "tests": {"run": True},
+            },
+        }
+        payload = m._checkpoint_payload(
+            plan, workflow, "a" * 40, 77, 2, successful_gate="build"
+        )
+        self.assertEqual(
+            {"restore", "build"},
+            set(payload["gates"]),
+        )
+        self.assertNotIn("tests", payload["gates"])
 
     def test_rate_limited_step5_decision_falls_back_to_full_validation(self):
         error = m.EvidenceLookupUnavailable(
