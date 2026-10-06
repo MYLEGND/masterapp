@@ -1318,7 +1318,7 @@ def direct_release_runs(api):
     filter it locally to the one canonical workflow and approved branch.
     """
     return [row for row in api.pages(
-        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
+        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe='') + '&event=workflow_dispatch',
         'workflow_runs')
         if row.get('head_branch') == APPROVED
         and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT]
