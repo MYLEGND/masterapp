@@ -1,90 +1,51 @@
-# Deployment Checklist
+# LEGEND Production Deployment
 
-## Pre-Deploy
+The protected `legend/approved-changes` lifecycle is the **sole production deployment authority** for MASTERAPP.
 
-### Database
-- [ ] Create or verify a fresh Azure SQL backup / point-in-time restore point before any publish.
-- [ ] Do **not** run ad-hoc SQL files against production unless they have been reviewed for destructive commands like `DROP TABLE`, `TRUNCATE`, or broad `DELETE`.
-- [ ] All pending EF Core migrations applied to Azure SQL:
-  ```
-  dotnet ef database update --project Infrastructure --startup-project AgentPortal \
-    --connection "<azure-sql-connection-string>"
-  ```
-  *(Remember: EF tooling uses the startup project's provider. For SQL Server migrations, generate DDL manually and apply via `sqlcmd` if the provider cannot be switched.)*
-- [ ] Verify `__EFMigrationsHistory` contains all expected migration IDs.
+Production application publication must flow through:
 
-### App Service Settings (Azure Portal → Configuration)
-| Setting | Type | Notes |
-|---|---|---|
-| `ConnectionStrings:MasterAppDb` | SQLServer | Azure SQL connection string |
-| `AzureAd:TenantId` | App setting | AAD tenant ID |
-| `AzureAd:ClientId` | App setting | App registration client ID |
-| `AzureAd:ClientSecret` | App setting | Key Vault reference preferred |
-| `AzureAd:Domain` | App setting | e.g. `mylegnd.com` |
-| `Founder__Upn` | App setting | Founder's UPN (e.g. `zac.owen@mylegnd.com`) |
-| `AzureTranslator__Endpoint` | App setting | HTTPS endpoint for the approved Azure Translator resource |
-| `AzureTranslator__Key` | App setting / Key Vault reference | Translator subscription key; never ship this to iOS |
-| `AzureTranslator__Region` | App setting | Required for multi-service/regional Translator resources |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | App setting | App Insights connection string |
-| `SignalR__RedisConnectionString` | App setting | Redis connection string (for multi-instance) |
-| `DataProtection__BlobUri` | App setting | Azure Blob URI for Data Protection keys |
-| `DataProtection__KeyVaultKeyId` | App setting | Key Vault key URI for key encryption |
-| `OWNER_EMAIL` | App setting | Required in Production (startup guard) |
+`.github/workflows/all-intentional-direct-release-20260918.yml`
 
-### Managed Identity Requirements
-- [ ] App Service Managed Identity has **Storage Blob Data Contributor** on the DP keys storage container.
-- [ ] App Service Managed Identity has **Key Vault Crypto User** on the DP Key Vault key.
-- [ ] App Service Managed Identity has **Azure Cache for Redis Data Contributor** (if using Redis).
+No local shell script, developer workstation command, diagnostic workflow, manual Azure publication, alternate migration command, or model/tool permission may substitute for that authority.
 
-### Redis (if enabling multi-instance)
-- [ ] Azure Cache for Redis provisioned (`Basic C0` minimum).
-- [ ] `SignalR__RedisConnectionString` set on App Service.
-- [ ] Verify Redis is reachable: `curl -f https://<site>/readyz` → `Healthy` for `redis` check.
+## Canonical flow
 
----
+1. Start from the exact current `legend/approved-changes` head on an isolated branch.
+2. Merge only after the trusted lifecycle accepts the exact candidate head and every required validation gate is green or canonically reused.
+3. Derive affected applications from the single release-target authority in `scripts/validation-resume.py`.
+4. Reuse the exact validated immutable package when its content identity remains valid; otherwise build only the invalidated package components.
+5. Prepare one immutable all-target transaction before any application publication.
+6. Publish selected Azure application targets concurrently through `scripts/deploy-approved-app.py`.
+7. Never replay an ambiguous upload. Preserve successful siblings and reconcile only the unresolved target state.
+8. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
+9. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
 
-## Deploy
+## Timing invariants
 
-1. Push to `main` / trigger deployment pipeline.
-2. Monitor **Deployment Center → Logs** in Azure Portal.
-3. Watch **Log Stream** for any startup exceptions.
+The release control plane owns these bounds:
 
----
+- application publication reconciliation: 420 seconds maximum per target, with targets running concurrently;
+- durable receipt finalization: 90 seconds per attempt, at most three attempts;
+- finalization retries only unresolved targets;
+- production release job fail-safe: 30 minutes;
+- successful publication evidence is preserved and must not be replayed merely because a sibling is unresolved.
 
-## Post-Deploy Health Checks
+These values are protected by the trusted-base control-plane integrity guard. A candidate that attempts to restore legacy timing, duplicate finalization, serialized publication, alternate deployment authority, or mutable workflow-generation behavior must fail before merge.
 
-```bash
-# Liveness (process alive)
-curl -f https://<site>/healthz
+## Database and configuration changes
 
-# Readiness (DB + Redis)
-curl -f https://<site>/readyz
-```
+Production migration and configuration work is part of the same governed release transaction. Only the canonical release child authorities may perform those writes. Developer/local database utilities are not production authorities.
 
-Both must return HTTP 200. If `/readyz` returns Unhealthy, check:
-- DB connectivity (firewall rules, connection string)
-- Redis connectivity (firewall rules, connection string)
+## Diagnostics
 
----
+Production diagnostic workflows are read-only observers. They may inspect runtime state, logs, metrics, provenance, and provider status, but they may not upload executables, change application files/settings, restart applications, or publish application bytes.
 
-## Rollback
+## Failure and recovery
 
-1. In Azure Portal → App Service → **Deployment slots** → swap back to previous slot, OR
-2. In **Deployment Center** → redeploy previous successful build.
-3. If migration must be rolled back: apply the `Down()` migration:
-   ```
-   dotnet ef database update <previous-migration-id> ...
-   ```
-4. If Redis state is causing issues: remove `SignalR__RedisConnectionString` from App Settings → restart → app falls back to in-memory `LeadBridgeStateService`.
-5. If Data Protection keys are unreachable (decryption failures): restore previous key XML blob from Azure Blob Storage versioning.
+- Fail closed when live revision, package identity, provider state, or durable evidence is ambiguous.
+- Preserve exact successful child receipts.
+- Resume only the failed or unresolved boundary when canonical evidence proves reuse is safe.
+- Do not create a second release workflow, alternate deployment script, emergency publication shortcut, or hidden model/tool bypass.
+- A control-plane repair must itself pass the trusted protected-branch integrity guard and required validation before becoming authority.
 
----
-
-## Smoke Test After Deploy
-
-- [ ] Sign in via Azure AD — confirm redirect and landing page.
-- [ ] Navigate to Leads → confirm list loads or shows empty state.
-- [ ] Navigate to Clients → confirm list loads or shows empty state.
-- [ ] Open browser DevTools → Network → confirm no 500 errors.
-- [ ] Check Application Insights → **Live Metrics** — requests flowing, no exception spikes.
-- [ ] Verify SignalR: open two browser tabs, update a lead call count — confirm both tabs reflect the change in real time.
+The protected branch, canonical release workflow, immutable transaction evidence, and live provenance together define production truth.
