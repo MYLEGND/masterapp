@@ -9,17 +9,29 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 API = "https://api.cloudflare.com/client/v4"
 GRAPHQL = "https://api.cloudflare.com/client/v4/graphql"
 ROUTER_SCRIPT = "legend-business-website-router"
 POLICY_REF = "legend_public_custom_hostname_disable_bic"
 POLICY_EXPRESSION = 'not (lower(http.host) eq "mylegnd.com" or ends_with(lower(http.host), ".mylegnd.com"))'
+
+def release_authority():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = release_authority()
 
 REQUIRED_PERMISSION_CONTRACT = (
     "Zone WAF: Edit",
@@ -181,6 +193,7 @@ def audit(prove_cache_purge: bool) -> None:
     # Cloudflare exposes Cache Purge only as a write operation. Purging a guaranteed
     # non-existent probe URL proves the permission without evicting application content.
     if prove_cache_purge:
+        _RELEASE_AUTHORITY.require_canonical_release_runtime()
         api_request(
             "POST",
             f"{API}/zones/{zone}/purge_cache",
@@ -208,6 +221,7 @@ def audit(prove_cache_purge: bool) -> None:
 
 
 def reconcile_bot_fight_mode() -> None:
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     token = required_env("CLOUDFLARE_API_TOKEN")
     zone = required_env("CLOUDFLARE_ZONE_ID")
     current = api_request("GET", f"{API}/zones/{zone}/bot_management", token).get("result", {})
@@ -230,6 +244,7 @@ def reconcile_bot_fight_mode() -> None:
 
 
 def reconcile_bic() -> None:
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     token = required_env("CLOUDFLARE_API_TOKEN")
     zone = required_env("CLOUDFLARE_ZONE_ID")
 
