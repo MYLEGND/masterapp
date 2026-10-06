@@ -30,6 +30,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('command', choices=('prepare', 'complete'))
     args = parser.parse_args()
+    load('validation-resume').assert_protected_release_execution()
     account, worker = os.environ['CLOUDFLARE_ACCOUNT_ID'], os.environ['ROUTING_WORKER']
     material = hashlib.sha256(json.dumps(dict(account=account, worker=worker,
         zone=os.environ['CLOUDFLARE_ZONE_ID']), sort_keys=True).encode()).hexdigest()
