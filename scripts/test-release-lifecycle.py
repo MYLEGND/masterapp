@@ -843,6 +843,52 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual(2, result["sourcePr"])
         self.assertEqual([m.DIRECT], [workflow for workflow, _ in self.api.dispatched])
 
+    def test_nonmutating_current_approved_release_does_not_block_queue_promotion(self):
+        run = {
+            "id": 99,
+            "run_attempt": 1,
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "head_sha": self.approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.api.pages_map[self.runs_path] = [run]
+        promoted = {"state": "RELEASE_QUEUE_ACQUIRED", "pr": 487}
+        with patch.object(m, "release_queue_lease", return_value={
+                 "approved": self.approved, "ownerPr": None, "status": None}), \
+             patch.object(m, "dispatch_pending_automatic_release", return_value=None), \
+             patch.object(m, "dispatch_pending_legacy_release", return_value=None), \
+             patch.object(m, "_never_admitted", return_value=True) as never, \
+             patch.object(m, "promote_next_release_queue", return_value=promoted) as promote:
+            result = m.reconcile(self.api)
+        self.assertEqual(promoted, result)
+        never.assert_called_once_with(self.api, run)
+        promote.assert_called_once_with(self.api)
+
+    def test_ambiguous_current_approved_release_remains_blocking(self):
+        run = {
+            "id": 99,
+            "run_attempt": 1,
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "head_sha": self.approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.api.pages_map[self.runs_path] = [run]
+        with patch.object(m, "release_queue_lease", return_value={
+                 "approved": self.approved, "ownerPr": None, "status": None}), \
+             patch.object(m, "dispatch_pending_automatic_release", return_value=None), \
+             patch.object(m, "dispatch_pending_legacy_release", return_value=None), \
+             patch.object(m, "_never_admitted", return_value=False), \
+             patch.object(m, "release_execution_state", return_value="FAILED_NEEDS_REPAIR"), \
+             patch.object(m, "promote_next_release_queue") as promote:
+            result = m.reconcile(self.api)
+        self.assertEqual("FAILED_NEEDS_REPAIR", result["state"])
+        self.assertIn("terminal proof", result["retained"])
+        promote.assert_not_called()
+
     def test_changed_source_pr_identity_is_retained_after_queue_discovery(self):
         self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
         self.api.api_map["pulls/1"] = {"number": 1, "head": {"sha": "f" * 40}}
