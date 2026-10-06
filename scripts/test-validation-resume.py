@@ -903,6 +903,10 @@ jobs:
         workflow = path.read_text()
         self.assertNotIn("scripts/validation-resume.py plan", workflow)
         self.assertEqual(1, workflow.count("scripts/validation-resume.py step5-decision"))
+        self.assertIn("--resume-cache /tmp/step5-resume-cache", workflow)
+        self.assertNotIn("PYCACHE", workflow)
+        self.assertNotIn("PYGRAPH", workflow)
+        self.assertNotIn("graphql_parent_success", workflow)
         self.assertIn("scripts/validation-resume.py step5-baseline", workflow)
         self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', workflow)
         self.assertIn("historical_evidence_unavailable_run_full_step5", workflow)
@@ -2133,6 +2137,46 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         path = "AgentPortal.Tests/One.cs"
         self.write(path, Path(path).read_text().replace("Shared.Value();", "Shared.Value(); Shared.Value();"))
         self.assertEqual(["AgentPortal.Tests.One"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_test_fix_mixed_with_step5_control_changes_stays_bounded(self):
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        control = "scripts/validation-resume.py"
+        self.write(control, Path(control).read_text() + "\n# planner-only fixture change\n")
+        self.assertEqual(["AgentPortal.Tests.Two"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_pr_local_cache_uses_canonical_bounded_repair_decision(self):
+        import json
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        control = "scripts/validation-resume.py"
+        self.write(control, Path(control).read_text() + "\n# planner-only fixture change\n")
+        head = self.commit()
+        capsule = Path("step5-cache")
+        capsule.mkdir()
+        (capsule / "metadata.json").write_text(json.dumps({
+            "schemaVersion": 1,
+            "headSha": self.base,
+            "baseSha": self.base,
+            "runId": 71,
+        }))
+        trx = (
+            '<TestRun><Results>'
+            '<UnitTestResult testName="AgentPortal.Tests.Two.Case" outcome="Passed" />'
+            '</Results><ResultSummary outcome="Completed">'
+            '<Counters total="1" passed="1" failed="0" error="0" timeout="0" '
+            'aborted="0" disconnected="0" inProgress="0" pending="0" />'
+            '</ResultSummary></TestRun>'
+        )
+        (capsule / "candidate.trx").write_text(trx)
+        (capsule / "baseline.trx").write_text(trx)
+
+        decision, rejection = m._step5_cached_decision(head, self.base, str(capsule))
+        self.assertIsNone(rejection)
+        self.assertEqual("repair", decision["mode"])
+        self.assertEqual(["AgentPortal.Tests.Two"], decision["repairClasses"])
+        self.assertTrue(decision["resumeCache"])
+        self.assertEqual("pr_local_cached_child_evidence", decision["reason"])
 
     def test_shared_fixture_change_requires_full_proof(self):
         path = "AgentPortal.Tests/Shared.cs"
