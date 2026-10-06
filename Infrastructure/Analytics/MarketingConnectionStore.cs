@@ -168,11 +168,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         CancellationToken ct = default)
     {
         var key = MarketingDestinationKeys.Normalize(provider);
-        if (key == MarketingDestinationKeys.Meta)
-        {
-            await DisconnectAsync(owner, ct);
-            return;
-        }
+        if (key is not (MarketingDestinationKeys.Google or MarketingDestinationKeys.TikTok))
+            throw new ArgumentException("External provider must be google or tiktok.", nameof(provider));
 
         var row = await db.MarketingConnections.SingleOrDefaultAsync(
             x => x.OwnerKey == owner.Key && x.Provider == key, ct);
