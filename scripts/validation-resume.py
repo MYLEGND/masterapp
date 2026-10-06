@@ -53,16 +53,20 @@ DIRECT_RELEASE_CHILDREN = {
         "operation_exclusions": ("Legend-Cloudflare/src/website-routing/",),
     },
     "migrations": {
-        "step": "Apply additive diagnostics migrations before restarting apps",
-        "paths": ("scripts/MigrationReleaseProbe/", "scripts/release-migration.py"),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": (
+            "scripts/MigrationReleaseProbe/",
+            "scripts/release-migration.py",
+            "scripts/release-prepublication.py",
+        ),
     },
     "shared-config": {
-        "step": "Synchronize selected shared authorization and publisher runtimes",
-        "paths": ("scripts/release-child-receipt.py",),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": ("scripts/release-child-receipt.py", "scripts/release-prepublication.py"),
     },
     "editor-config": {
-        "step": "Synchronize selected editor ticket authority",
-        "paths": ("scripts/release-child-receipt.py",),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": ("scripts/release-child-receipt.py", "scripts/release-prepublication.py"),
     },
     "routing-cloudflare": {
         "step": "Deploy shared Cloudflare business website router",
@@ -563,6 +567,7 @@ LIFECYCLE_AUTHORITY_PATHS = (
 
 RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/migration-probe-package.py",
+    "scripts/release-prepublication.py",
     "scripts/release-child-receipt.py",
     "scripts/release-router.py",
     "scripts/test-release-children.py",
