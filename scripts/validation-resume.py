@@ -2113,11 +2113,16 @@ def compute_plan(
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 
-    # Close only real execution/evidence edges. "requires" means a runtime
-    # prerequisite that must exist when a child executes; "consumes" means the
-    # child's preserved evidence is semantically derived from that node and must
-    # be invalidated when the consumed evidence changes. Keeping these distinct
-    # prevents a repaired sibling test from cascading across unrelated suites.
+    # Close only real execution prerequisites. "requires" means a runtime
+    # prerequisite that must execute when a child executes. "consumes" is a
+    # materialization edge only: it tells the workflow what exact producer
+    # material a child needs, but it does not invalidate otherwise-green sibling
+    # evidence merely because that shared producer had to be rematerialized.
+    #
+    # Each consumer already declares its own semantic source/test inputs. A
+    # shared application-source change therefore invalidates the relevant
+    # consumers directly, while a booking-test-only correction can rebuild the
+    # common test assembly without rerunning Meta/Website/CRM regressions.
     changed = True
     while changed:
         changed = False
@@ -2127,17 +2132,6 @@ def compute_plan(
                     run.add(required)
                     reasons[required] = f"required_by:{key}"
                     changed = True
-        for key, gate in gates.items():
-            if key in run:
-                continue
-            invalidated = next(
-                (dependency for dependency in gate.get("consumes", ()) if dependency in run),
-                None,
-            )
-            if invalidated:
-                run.add(key)
-                reasons[key] = f"evidence_dependency_invalidated:{invalidated}"
-                changed = True
 
     for key, gate in gates.items():
         should_run = key in run
@@ -2878,7 +2872,10 @@ def cmd_live_state(args):
             "actual": actual,
             "expected": args.revision if selected else None,
         }, sort_keys=True))
-    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    # Keep canonical RELEASE_TARGETS insertion order in the persisted receipt.
+    # Sorting nested object keys would alphabetize target names and destroy the
+    # deterministic inventory order even though the probes themselves are parallel.
+    Path(args.output).write_text(json.dumps(result, indent=2) + "\n")
     if args.github_output:
         with Path(args.github_output).open("a") as output:
             for key in RELEASE_TARGETS:
