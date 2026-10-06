@@ -77,6 +77,9 @@ def founder_lane():
     environment["LEGEND_CLOUDFLARE_ROOT"] = str(workspace)
     try:
         run([
+            "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
+        ], cwd=workspace, timeout=600)
+        run([
             sys.executable,
             "scripts/deploy-founder-cloudflare.py",
             "deploy",
