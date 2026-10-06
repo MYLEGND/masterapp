@@ -120,10 +120,16 @@ public sealed record UnifiedChannelPerformanceSnapshot(
     DateTime FromUtc,
     DateTime ToUtc,
     DateTime GeneratedUtc,
-    IReadOnlyList<ProviderDeliveryMetricRow> ChatGptAdsDelivery,
+    IReadOnlyList<ProviderDeliveryMetricRow> ProviderDelivery,
     CanonicalOutcomeTotals ChatGptAdsOutcomes,
     IReadOnlyList<ChannelPerformanceRow> Channels,
     IReadOnlyList<string> DataQualityNotes)
 {
     public BlendedGrowthEconomicsSnapshot? Economics { get; init; }
+
+    // Compatibility projection only. ProviderDelivery is the single delivery collection.
+    public IReadOnlyList<ProviderDeliveryMetricRow> ChatGptAdsDelivery =>
+        ProviderDelivery.Where(x =>
+            string.Equals(x.Provider, MarketingChannels.ChatGptAds, StringComparison.Ordinal))
+        .ToArray();
 }
