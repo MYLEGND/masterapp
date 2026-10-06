@@ -537,6 +537,26 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+  wake-release-lifecycle-after-package-backfill:
+    needs: validated-release-package
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.package_revision != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout protected lifecycle wake authority
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Wake protected lifecycle after terminal package backfill
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/wake-release-lifecycle.py
+
   validated-migration-probe:
     needs: approved-head-preflight
     name: validated-migration-probe
