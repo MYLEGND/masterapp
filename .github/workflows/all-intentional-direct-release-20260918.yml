@@ -926,9 +926,9 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS
-      - name: Publish canonical target (portal)
-        id: publish_portal
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
+      - name: Publish canonical selected targets in parallel
+        id: publish_targets
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
         env:
@@ -937,69 +937,106 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/deploy-approved-app.py \
-            --target portal \
+            --targets-json "$SELECTED_TARGETS" \
             --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
+            --transaction-plan /tmp/release-transaction.json \
+            --publish-prepared-parallel \
+            --target-results-dir /tmp/release-target-results
+
+      - name: Publish canonical target (portal)
+        id: publish_portal
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - /tmp/release-target-results/portal.json portal <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {key}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
 
       - name: Publish canonical target (client)
         id: publish_client
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') }}
         continue-on-error: true
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target client \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
+          python3 - /tmp/release-target-results/client.json client <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {key}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
 
       - name: Publish canonical target (protect)
         id: publish_protect
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') }}
         continue-on-error: true
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target protect \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
+          python3 - /tmp/release-target-results/protect.json protect <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {key}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
 
       - name: Publish canonical target (parfait)
         id: publish_parfait
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') }}
         continue-on-error: true
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target parfait \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
+          python3 - /tmp/release-target-results/parfait.json parfait <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {key}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
 
       - name: Publish canonical target (website)
         id: publish_website
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') }}
         continue-on-error: true
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target website \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
+          python3 - /tmp/release-target-results/website.json website <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {key}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
       # END GENERATED CANONICAL TARGET PUBLICATIONS
 
       - name: Reconcile complete immutable release transaction
