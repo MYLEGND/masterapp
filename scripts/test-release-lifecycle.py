@@ -860,6 +860,22 @@ class GeneratedPublicationStages(unittest.TestCase):
         text = self.generator.WORKFLOW.read_text()
         self.assertEqual(text, self.generator.render(text, m.VALIDATION_AUTHORITY.RELEASE_TARGETS))
 
+    def test_parallel_publication_is_one_mutation_fanout_with_target_specific_result_gates(self):
+        text = self.generator.WORKFLOW.read_text()
+        self.assertEqual(1, text.count('name: Publish canonical selected targets in parallel'))
+        self.assertEqual(1, text.count('--publish-prepared-parallel'))
+        parallel = text.index('name: Publish canonical selected targets in parallel')
+        for key in m.VALIDATION_AUTHORITY.RELEASE_TARGETS:
+            child = text.index(f'name: Publish canonical target ({key})')
+            self.assertGreater(child, parallel)
+            self.assertIn(f'/tmp/release-target-results/{key}.json', text)
+
+    def test_parallel_publication_is_classified_as_mutation_for_historical_fail_closed_proof(self):
+        source = self.generator.WORKFLOW.read_text()
+        mutation = m._historical_release_mutation_steps(source)
+        self.assertIsNotNone(mutation)
+        self.assertIn('Publish canonical selected targets in parallel', mutation)
+
     def test_new_inventory_target_generates_its_own_durable_step_and_gate(self):
         text = self.generator.WORKFLOW.read_text()
         targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,
