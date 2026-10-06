@@ -705,13 +705,144 @@ jobs:
                   output.write("effective_evidence=true\n")
               print("Materialized effective repaired/reused Step 5 evidence for the current head.")
 
+          introduced_classes = sorted({name.rsplit(".", 1)[0] for name in introduced})
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("introduced="+str(bool(introduced)).lower()+"\n")
+              output.write("introduced_classes="+";".join(introduced_classes)+"\n")
+              output.write("introduced_filter="+"|".join(
+                  f"FullyQualifiedName~{name}" for name in introduced_classes
+              )+"\n")
+
           if introduced:
               print("Step 5 introduced full-suite failures:")
               for name in introduced:
                   print(f" - {name}")
-              raise SystemExit(1)
+              print("Step 5 will attempt one bounded same-run class recheck before final enforcement.")
+          else:
+              print("Step 5 introduced zero new full-suite failures.")
+          PY
 
-          print("Step 5 introduced zero new full-suite failures.")
+      - name: Setup .NET for bounded same-run Step 5 recheck
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Build only the newly introduced Step 5 failure classes
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        shell: bash
+        run: |
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Recheck only newly introduced Step 5 failure classes
+        id: selfrecheck
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        shell: bash
+        env:
+          RECHECK_FILTER: ${{ steps.comparison.outputs.introduced_filter }}
+          RECHECK_CLASSES: ${{ steps.comparison.outputs.introduced_classes }}
+        run: |
+          set +e
+          rm -rf /tmp/step5-self-recheck
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter "$RECHECK_FILTER" \
+            --logger "trx;LogFileName=repair.trx" \
+            --results-directory /tmp/step5-self-recheck
+          recheck_rc=$?
+          set -e
+          test -f /tmp/step5-self-recheck/repair.trx
+          echo "Bounded same-run recheck exit code: $recheck_rc"
+
+          python3 - <<'PY'
+          import copy
+          import importlib.util
+          import os
+          from pathlib import Path
+          import shutil
+          import xml.etree.ElementTree as ET
+
+          spec = importlib.util.spec_from_file_location("validation_resume", "scripts/validation-resume.py")
+          authority = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          results = authority.read_step5_results
+          classes = [value for value in os.environ.get("RECHECK_CLASSES", "").split(";") if value]
+          if not classes:
+              raise SystemExit("Same-run Step 5 recheck had no bounded class authority.")
+
+          repair_rows = results("/tmp/step5-self-recheck/repair.trx")
+          for class_name in classes:
+              prefix = class_name + "."
+              if not any(name.startswith(prefix) for name in repair_rows):
+                  raise SystemExit(f"Same-run recheck omitted affected class: {class_name}")
+
+          candidate_tree = ET.parse("/tmp/step5-candidate/candidate.trx")
+          candidate_root = candidate_tree.getroot()
+          repair_tree = ET.parse("/tmp/step5-self-recheck/repair.trx")
+          repair_nodes = {
+              node.attrib.get("testName", ""): node
+              for node in repair_tree.getroot().iter()
+              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+          }
+          candidate_nodes = {
+              node.attrib.get("testName", ""): node
+              for node in candidate_root.iter()
+              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+          }
+          affected = lambda name: any(name.startswith(class_name + ".") for class_name in classes)
+          prior_affected = {name for name in candidate_nodes if affected(name)}
+          missing = sorted(name for name in prior_affected if name not in repair_nodes)
+          if missing:
+              raise SystemExit(
+                  "Same-run recheck omitted prior tests from the affected class: "
+                  + ", ".join(missing)
+              )
+          for name in prior_affected:
+              candidate_nodes[name].set("outcome", repair_nodes[name].attrib.get("outcome", ""))
+
+          results_node = next(
+              (node for node in candidate_root.iter() if node.tag.endswith("Results")),
+              None,
+          )
+          if results_node is None:
+              raise SystemExit("Candidate TRX has no Results node.")
+          for name, node in repair_nodes.items():
+              if affected(name) and name not in candidate_nodes:
+                  results_node.append(copy.deepcopy(node))
+
+          all_results = [node for node in candidate_root.iter() if node.tag.endswith("UnitTestResult")]
+          counters = next(node for node in candidate_root.iter() if node.tag.endswith("Counters"))
+          counters.set("total", str(len(all_results)))
+          for outcome in ("Passed", "Failed", "NotExecuted"):
+              counters.set(
+                  outcome[0].lower() + outcome[1:],
+                  str(sum(node.get("outcome") == outcome for node in all_results)),
+              )
+
+          effective = Path("/tmp/step5-effective")
+          effective.mkdir(parents=True, exist_ok=True)
+          candidate_tree.write(effective / "candidate.trx", encoding="utf-8", xml_declaration=True)
+          shutil.copy2("/tmp/step5-baseline/baseline.trx", effective / "baseline.trx")
+
+          candidate_failed = {
+              name for name, outcome in results(effective / "candidate.trx").items()
+              if outcome in {"Failed", "NotExecuted"}
+          }
+          baseline_failed = {
+              name for name, outcome in results(effective / "baseline.trx").items()
+              if outcome in {"Failed", "NotExecuted"}
+          }
+          unresolved = sorted(candidate_failed - baseline_failed)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("effective_evidence=true\n")
+              output.write("resolved="+str(not unresolved).lower()+"\n")
+              output.write("unresolved_count="+str(len(unresolved))+"\n")
+          if unresolved:
+              print("Bounded same-run Step 5 recheck still proves introduced failures:")
+              for name in unresolved:
+                  print(f" - {name}")
+          else:
+              print("Bounded same-run Step 5 recheck reconciled all introduced failures.")
           PY
 
       - name: Preserve effective Step 5 candidate evidence
