@@ -156,7 +156,17 @@ public sealed class GoogleMarketingDestination(MarketingConnectionStore connecti
             return new(Key, true, false, false, "destination_not_configured");
         if (!connection.Ready)
             return new(Key, true, false, false, "account_selection_required");
-        return new(Key, true, true, false, "reporting_ready_conversion_delivery_not_configured");
+
+        var measurement = await connections.GetProviderMeasurementConfigurationAsync(owner, Key, cancellationToken);
+        if (!measurement.MappingReady)
+            return new(Key, true, true, false, measurement.Status);
+        if (!measurement.Mappings.Any(mapping =>
+                string.Equals(mapping.CanonicalEventName, eventName, StringComparison.OrdinalIgnoreCase)))
+            return new(Key, true, true, false, "canonical_event_not_mapped");
+        if (PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(outcome.MetadataJson, "gclid")) is null)
+            return new(Key, true, true, false, "google_click_reference_missing");
+        return new(Key, true, true, true, "mapping_ready");
     }
 }
 
@@ -182,6 +192,16 @@ public sealed class TikTokMarketingDestination(MarketingConnectionStore connecti
             return new(Key, true, false, false, "destination_not_configured");
         if (!connection.Ready)
             return new(Key, true, false, false, "account_selection_required");
-        return new(Key, true, true, false, "reporting_ready_conversion_delivery_not_configured");
+
+        var measurement = await connections.GetProviderMeasurementConfigurationAsync(owner, Key, cancellationToken);
+        if (!measurement.MappingReady)
+            return new(Key, true, true, false, measurement.Status);
+        if (!measurement.Mappings.Any(mapping =>
+                string.Equals(mapping.CanonicalEventName, eventName, StringComparison.OrdinalIgnoreCase)))
+            return new(Key, true, true, false, "canonical_event_not_mapped");
+        if (PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(outcome.MetadataJson, "ttclid")) is null)
+            return new(Key, true, true, false, "tiktok_click_reference_missing");
+        return new(Key, true, true, true, "mapping_ready");
     }
 }
