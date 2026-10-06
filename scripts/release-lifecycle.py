@@ -20,6 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import sys
+import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
@@ -560,12 +561,24 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate release-control changes no longer require canonical security validation'
 
-    candidate_validation_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_validation')
-    if not all(token in candidate_validation_source for token in (
+    validation_snapshot_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_candidate_validation_snapshot'
+    )
+    candidate_validation_source = _function_source(
+        source['lifecycle'], lifecycle_tree, 'candidate_validation'
+    )
+    if not all(token in validation_snapshot_source for token in (
         'VALIDATION_AUTHORITY.required_validation_topology(names)',
         "run.get('event') != 'pull_request'",
-        "latest[path].get('status') != 'completed'",
-        "latest[path].get('conclusion') != 'success'",
+        "run.get('status') != 'completed'",
+        "run.get('conclusion') != 'success'",
+    )):
+        return 'Candidate weakened exact-head validation inventory'
+    if not all(token in candidate_validation_source for token in (
+        '_candidate_validation_snapshot(api, pr)',
+        "state['failed']",
+        "state['missing']",
+        "state['active']",
     )):
         return 'Candidate weakened exact-head merge validation'
 
