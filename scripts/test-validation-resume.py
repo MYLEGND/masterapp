@@ -1858,6 +1858,93 @@ jobs:
         self.assertFalse(m.merge_content_equivalent_evidence(current, candidate, run))
         self.assertTrue(all(gate["run"] for gate in current["gates"].values()))
 
+    def test_content_equivalent_search_stops_at_newest_usable_child_ledger(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        current = m.compute_plan(
+            workflow, "b" * 40, None, {}, [], "no_prior_completed_run"
+        )
+        runs = [
+            {"id": 101, "head_sha": "a" * 40, "run_attempt": 1, "event": "pull_request", "head_branch": "one"},
+            {"id": 100, "head_sha": "c" * 40, "run_attempt": 1, "event": "pull_request", "head_branch": "older"},
+        ]
+        candidate = m.compute_plan(
+            workflow,
+            "b" * 40,
+            {"id": 101, "head_sha": "a" * 40},
+            self.successful_steps(workflow),
+            [],
+            "trusted_plan_artifact_history",
+        )
+        args = SimpleNamespace(
+            event="pull_request", workflow=workflow, repository="owner/repo",
+            current_sha="b" * 40,
+        )
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}), \
+             patch.object(m, "_trusted_historical_runs", return_value=runs), \
+             patch.object(m, "_historical_plan_steps", return_value=self.successful_steps(workflow)) as history, \
+             patch.object(m, "_plan_against_prior", return_value=candidate) as planner:
+            result = m._apply_content_equivalent_evidence(args, current)
+        self.assertEqual(1, history.call_count)
+        self.assertEqual(1, planner.call_count)
+        self.assertEqual(101, result["historicalEvidenceFrontierRunId"])
+        self.assertEqual(1, result["historicalEvidenceRunsExamined"])
+        self.assertTrue(all(not row["run"] for row in result["gates"].values()))
+
+    def test_compile_gate_explicitly_excludes_runtime_repository_reads(self):
+        gates = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]
+        self.assertIs(gates["compile-regression"]["repository_reads"], False)
+        self.assertTrue(gates["website-regressions"].get("repository_reads", True))
+        self.assertTrue(gates["meta-regressions"].get("repository_reads", True))
+
+
+class ArchitectureDependencyIdentityTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        self.temp = tempfile.TemporaryDirectory()
+        self.old = os.getcwd()
+        os.chdir(self.temp.name)
+        self.git("init", "-q")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.git("config", "user.name", "Fixture")
+        self.write("AgentPortal.Tests/AgentPortal.Tests.csproj", "<Project />")
+        self.write(
+            "AgentPortal.Tests/WebsitePublishingAuthorityTests.cs",
+            'class WebsitePublishingAuthorityTests { void Case() { System.IO.File.ReadAllText("approved-release-baseline.py"); } }',
+        )
+        self.write("scripts/approved-release-baseline.py", "control-one")
+        self.write(
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            (ROOT / ".github/workflows/masterapp-platform-architecture-validation.yml").read_text(),
+        )
+        self.head = self.commit()
+
+    def tearDown(self):
+        import os
+        os.chdir(self.old)
+        self.temp.cleanup()
+
+    def git(self, *args):
+        import subprocess
+        return subprocess.run(["git", *args], check=True, text=True, capture_output=True)
+
+    def write(self, path, content):
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+
+    def commit(self):
+        self.git("add", ".")
+        self.git("commit", "-qm", "fixture")
+        return self.git("rev-parse", "HEAD").stdout.strip()
+
+    def test_runtime_source_contract_file_does_not_poison_compile_identity(self):
+        manifests = m.gate_dependency_manifests(
+            "masterapp-platform-architecture-validation.yml", self.head
+        )
+        control = "scripts/approved-release-baseline.py"
+        self.assertNotIn(control, manifests["compile-regression"]["sourceInputs"])
+        self.assertIn(control, manifests["website-regressions"]["sourceInputs"])
+
 
 class Step5DependencyBehaviorTests(unittest.TestCase):
     def setUp(self):
