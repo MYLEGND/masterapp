@@ -639,6 +639,30 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened canonical lifecycle absent-path identity'
 
+    live_settlement_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_admission_covered_by_live_provenance'
+    )
+    admission_conflict_source = _function_source(
+        source['lifecycle'], lifecycle_tree, 'admission_conflicts'
+    )
+    if not all(token in live_settlement_source for token in (
+        '_validate_admission_record_scope(record)',
+        "'read/schema/masterapp'",
+        "'write/app/'",
+        "row.get('app')",
+        "row.get('revision')",
+        'ancestor(revision, observed[key])',
+    )):
+        return 'Candidate weakened canonical live-provenance stale-lease settlement'
+    if not all(token in admission_conflict_source for token in (
+        'live_snapshot_loaded = False',
+        'live_revisions()',
+        '_admission_covered_by_live_provenance(record, live_snapshot)',
+        "run.get('status') == 'completed'",
+        'not own_run',
+    )):
+        return 'Candidate removed fail-closed live-provenance lease discharge'
+
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
     )
@@ -2119,10 +2143,56 @@ def _admission_superseded_by_terminal_success(api, run, record, runs):
                 return True
     return False
 
+def _admission_covered_by_live_provenance(record, rows):
+    """Discharge only completed historical app leases production has already passed.
+
+    This is intentionally narrower than a provider receipt: it applies only to
+    application-write leases and consumes the same canonical live provenance
+    authority as release planning. Any auxiliary/runtime-control resource remains
+    dependent on its own durable disposition proof.
+    """
+    try:
+        keys = _validate_admission_record_scope(record)
+    except Exception:
+        return False
+    revision = record.get('applicationRevision')
+    if not SHA.fullmatch(revision or ''):
+        return False
+
+    allowed = {'read/schema/masterapp'}
+    allowed.update(
+        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
+        for key in keys
+    )
+    resources = record.get('resources')
+    if not isinstance(resources, list) or any(resource not in allowed for resource in resources):
+        return False
+
+    expected = set(keys)
+    observed = {}
+    for row in rows or ():
+        key = row.get('app')
+        if key not in expected:
+            continue
+        live = row.get('revision')
+        if key in observed or not SHA.fullmatch(live or ''):
+            return False
+        observed[key] = live
+    if set(observed) != expected:
+        return False
+
+    try:
+        return all(ancestor(revision, observed[key]) for key in expected)
+    except Exception:
+        return False
+
+
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
     conflicts = []
     runs = direct_release_runs(api)
+    live_snapshot_loaded = False
+    live_snapshot = None
     for run in runs:
         own_run = run['id'] == current_run
         if run.get('status') == 'completed' and successful_release(api, run):
@@ -2160,6 +2230,15 @@ def admission_conflicts(api, candidate, *, current_run):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
+            if not own_run and run.get('status') == 'completed':
+                if not live_snapshot_loaded:
+                    live_snapshot_loaded = True
+                    try:
+                        live_snapshot = live_revisions()
+                    except Exception:
+                        live_snapshot = None
+                if live_snapshot is not None and _admission_covered_by_live_provenance(record, live_snapshot):
+                    continue
             continuation = ((run.get('status') == 'completed' or own_run)
                             and record['applicationRevision'] == candidate['applicationRevision']
                             and record['selectedTargets'] == candidate['selectedTargets']
