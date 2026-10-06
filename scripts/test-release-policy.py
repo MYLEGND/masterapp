@@ -693,29 +693,36 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('dotnet build', step('Build exact selected release candidate'))
         self.assertNotIn('dotnet publish', step('Publish exact selected application packages'))
         self.assertNotIn('npm ', step('Publish exact selected application packages'))
-        migration = step('Apply additive diagnostics migrations before restarting apps')
-        self.assertIn("sys.path.insert(0,str(scripts))", migration)
-        self.assertIn("MIGRATION_BUNDLE", migration)
-        self.assertIn("DATABASE_AUTHORITY", migration)
-        self.assertIn("scripts/release-migration.py", migration)
-        self.assertIn("RELEASE_RESOURCE_GROUP", (ROOT / 'release-migration.py').read_text())
-        self.assertIn("release_proven", migration)
+        prepublication = step('Synchronize canonical pre-publication resource lanes')
+        self.assertIn('scripts/release-prepublication.py', prepublication)
+        self.assertEqual(1, workflow.count('Synchronize canonical pre-publication resource lanes'))
+        for stale in (
+            'Synchronize selected shared authorization and publisher runtimes',
+            'Synchronize selected editor ticket authority',
+            'Prepare canonical business website routing authority',
+            'Apply additive diagnostics migrations before restarting apps',
+        ):
+            self.assertNotIn(stale, workflow)
+
+        prepublication_owner = (ROOT / 'release-prepublication.py').read_text()
+        self.assertIn('ThreadPoolExecutor', prepublication_owner)
+        self.assertIn('configure_all_targets', prepublication_owner)
+        self.assertIn('run_migration_lane', prepublication_owner)
+        self.assertIn('pool.submit(configure_all_targets)', prepublication_owner)
+        self.assertIn('pool.submit(run_migration_lane)', prepublication_owner)
+        self.assertIn('child_receipt(child, app, partition, prepare=True)', prepublication_owner)
+        self.assertIn('"az", "webapp", "config", "appsettings", "set"', prepublication_owner)
+        self.assertIn('scripts/release-package.py', prepublication_owner)
+        self.assertIn('scripts/migration-probe-package.py', prepublication_owner)
+        self.assertIn('scripts/release-migration.py', prepublication_owner)
+        self.assertIn('release_proven', prepublication_owner)
+        self.assertNotIn("dotnet-ef database update", prepublication_owner)
+
         migration_owner = (ROOT / 'release-migration.py').read_text()
+        self.assertIn("RELEASE_RESOURCE_GROUP", migration_owner)
         self.assertIn("'SQLCONNSTR_MasterAppDb': connection", migration_owner)
         self.assertIn('capture_output=True', migration_owner)
         self.assertNotIn("print(connection)", migration_owner)
-        changed_index = migration.index('changed="$(')
-        no_change_index = migration.index('if [ -z "$changed" ]')
-        receipt_index = migration.index("release_proven")
-        self.assertLess(changed_index, receipt_index)
-        self.assertLess(no_change_index, receipt_index)
-        self.assertIn("migration receipt gate is not applicable", migration)
-        self.assertIn('git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"', migration)
-        self.assertIn('git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"', migration)
-        self.assertIn('git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --', migration)
-        self.assertIn('source-identical approved merge alias', migration)
-        self.assertNotIn("dotnet-ef','database','update", migration)
-        self.assertNotIn("dotnet-ef database update", migration)
 
     def test_architecture_validation_publishes_one_canonical_package_from_parallel_components(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
