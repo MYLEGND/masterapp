@@ -104,6 +104,68 @@ jobs:
         run: |
           set -euo pipefail
           decision="$RUNNER_TEMP/step5-decision.json"
+          resolved=false
+
+          # Fast path: PR-local cache is independent of the shared REST rate
+          # bucket and contains the complete candidate/baseline TRX pair from the
+          # most recent Step 5 comparison, including failed-parent evidence.
+          if [ -f /tmp/step5-resume-cache/metadata.json ] &&
+             [ -f /tmp/step5-resume-cache/candidate.trx ] &&
+             [ -f /tmp/step5-resume-cache/baseline.trx ]; then
+            if python3 - "$decision" <<'PYCACHE'
+          import importlib.util,json,os,re,subprocess,sys
+          from pathlib import Path
+
+          current="${{ github.event.pull_request.head.sha }}"
+          base="${{ github.event.pull_request.base.sha }}"
+          capsule=Path("/tmp/step5-resume-cache")
+          metadata=json.load(open(capsule/"metadata.json"))
+          prior=metadata.get("headSha") or ""
+          prior_base=metadata.get("baseSha") or ""
+          if not re.fullmatch(r"[0-9a-f]{40}", prior) or not re.fullmatch(r"[0-9a-f]{40}", prior_base):
+              raise SystemExit(2)
+          if subprocess.run(["git","merge-base","--is-ancestor",prior,current]).returncode:
+              raise SystemExit(3)
+
+          spec=importlib.util.spec_from_file_location("validation_resume","scripts/validation-resume.py")
+          authority=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          workflow_path=authority.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+          if not authority._step5_jobs_unchanged(prior, workflow_path):
+              raise SystemExit(4)
+          if not authority._step5_baseline_inputs_equivalent(prior_base, base):
+              raise SystemExit(5)
+          candidate=authority.read_step5_results(capsule/"candidate.trx")
+          authority.read_step5_results(capsule/"baseline.trx")
+          classes=authority.step5_dependency_change(prior,current)
+          if classes is None:
+              raise SystemExit(6)
+          classes=authority._step5_discovered_repair_classes(
+              classes, tuple(candidate), authority.git_changed(prior,current))
+          if classes is None:
+              raise SystemExit(7)
+          result={
+              "schemaVersion":4,
+              "mode":"repair" if classes else "reuse",
+              "priorRunId":metadata.get("runId"),
+              "priorHeadSha":prior,
+              "baselineEvidenceRunId":metadata.get("runId"),
+              "baselineEvidenceArtifact":None,
+              "repairClasses":classes,
+              "repairFilter":"|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+              "resumeCache":True,
+              "parentSuccessReuse":False,
+              "reason":"pr_local_cached_child_evidence",
+          }
+          Path(sys.argv[1]).write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(result,indent=2,sort_keys=True))
+          PYCACHE
+            then
+              resolved=true
+            else
+              echo "PR-local Step 5 cache was not compatible with the current exact head; falling back to authenticated evidence resolution."
+            fi
+          fi
 
           run_decision() {
             local log="$1"
@@ -116,24 +178,117 @@ jobs:
               --output "$decision" | tee "$log"
           }
 
-          # Evidence lookup is an optimization only when it is genuinely absent.
-          # A GitHub primary/secondary rate-limit is not evidence absence and must
-          # never authorize a redundant full Step 5. Wait for the provider's own
-          # reset/retry boundary and resume the same planning operation.
-          for attempt in 1 2 3 4; do
-            log="$RUNNER_TEMP/step5-decision-$attempt.log"
-            run_decision "$log"
-            reason="$(python3 - "$decision" <<'PYREASON'
+          graphql_parent_success() {
+            python3 - "$decision" <<'PYGRAPH'
+          import importlib.util,json,os,re,subprocess,sys,urllib.request
+          from pathlib import Path
+
+          current="${{ github.event.pull_request.head.sha }}"
+          base="${{ github.event.pull_request.base.sha }}"
+          repository="${{ github.repository }}"
+          owner,name=repository.split("/",1)
+          token=os.environ["GITHUB_TOKEN"]
+
+          spec=importlib.util.spec_from_file_location("validation_resume","scripts/validation-resume.py")
+          authority=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          workflow_path=authority.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+
+          ancestors=subprocess.check_output(
+              ["git","rev-list","--first-parent","--max-count=30",current+"^"],
+              text=True).splitlines()
+          query=r"""
+          query($owner:String!,$name:String!,$oid:GitObjectID!){
+            repository(owner:$owner,name:$name){
+              object(oid:$oid){
+                ... on Commit {
+                  statusCheckRollup {
+                    contexts(first:100) {
+                      nodes {
+                        __typename
+                        ... on CheckRun { name conclusion detailsUrl }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }"""
+          for prior in ancestors:
+              if subprocess.run(["git","merge-base","--is-ancestor",base,prior]).returncode:
+                  continue
+              try:
+                  if not authority._step5_jobs_unchanged(prior,workflow_path):
+                      continue
+                  if authority.step5_dependency_change(prior,current) != []:
+                      continue
+              except Exception:
+                  continue
+              payload=json.dumps({"query":query,"variables":{"owner":owner,"name":name,"oid":prior}}).encode()
+              request=urllib.request.Request(
+                  "https://api.github.com/graphql",data=payload,
+                  headers={"Authorization":f"Bearer {token}","Content-Type":"application/json",
+                           "User-Agent":"legend-step5-parent-proof/1.0"})
+              try:
+                  with urllib.request.urlopen(request,timeout=30) as response:
+                      body=json.load(response)
+              except Exception:
+                  continue
+              nodes=((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                     .get("statusCheckRollup") or {}).get("contexts",{}).get("nodes",[])
+              success=next((row for row in nodes
+                  if row.get("__typename")=="CheckRun" and row.get("name")=="step5-validation"
+                  and row.get("conclusion")=="SUCCESS"),None)
+              if not success:
+                  continue
+              run_id=None
+              match=re.search(r"/actions/runs/(\d+)",success.get("detailsUrl") or "")
+              if match:
+                  run_id=int(match.group(1))
+              result={
+                  "schemaVersion":4,
+                  "mode":"reuse",
+                  "priorRunId":run_id,
+                  "priorHeadSha":prior,
+                  "baselineEvidenceRunId":None,
+                  "baselineEvidenceArtifact":None,
+                  "repairClasses":[],
+                  "repairFilter":None,
+                  "resumeCache":False,
+                  "parentSuccessReuse":True,
+                  "reason":"graphql_parent_success_dependency_equivalent",
+              }
+              Path(sys.argv[1]).write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+              print(json.dumps(result,indent=2,sort_keys=True))
+              raise SystemExit(0)
+          raise SystemExit(1)
+          PYGRAPH
+          }
+
+          if [ "$resolved" != "true" ]; then
+            # REST evidence remains the canonical rich proof path. If the shared
+            # bucket is exhausted, a dependency-equivalent successful parent can
+            # still be proven through the separate GraphQL check-rollup budget.
+            for attempt in 1 2 3 4; do
+              log="$RUNNER_TEMP/step5-decision-$attempt.log"
+              run_decision "$log"
+              reason="$(python3 - "$decision" <<'PYREASON'
           import json,sys
           print(json.load(open(sys.argv[1])).get("reason") or "")
           PYREASON
           )"
-            if [ "$reason" != "historical_evidence_unavailable_run_full_step5" ]; then
-              break
-            fi
+              if [ "$reason" != "historical_evidence_unavailable_run_full_step5" ]; then
+                resolved=true
+                break
+              fi
 
-            delay="$(python3 - "$log" <<'PYWAIT'
-          import json,re,sys,time
+              if graphql_parent_success; then
+                resolved=true
+                break
+              fi
+
+              delay="$(python3 - "$log" <<'PYWAIT'
+          import json,sys,time
           reset=None
           retry=None
           for line in open(sys.argv[1], errors="replace"):
@@ -149,28 +304,24 @@ jobs:
               except Exception:
                   pass
           if retry is not None:
-              print(max(1, retry + 2))
+              print(max(1,retry+2))
           elif reset is not None:
-              print(max(1, reset - int(time.time()) + 3))
+              print(max(1,reset-int(time.time())+3))
           else:
               print(60)
           PYWAIT
           )"
-            if [ "$delay" -gt 3600 ]; then
-              echo "::error::Step 5 historical evidence is rate-limited beyond the bounded autonomous recovery window; refusing to discard completed evidence and rerun the full suite."
-              exit 75
-            fi
-            echo "Step 5 evidence lookup is rate-limited; preserving completed child evidence and retrying after provider reset in ${delay}s."
-            sleep "$delay"
-          done
+              if [ "$delay" -gt 3600 ]; then
+                echo "::error::Step 5 historical evidence is rate-limited beyond the bounded autonomous recovery window; refusing to discard completed evidence and rerun the full suite."
+                exit 75
+              fi
+              echo "Step 5 evidence lookup is rate-limited; preserving completed child evidence and retrying after provider reset in ${delay}s."
+              sleep "$delay"
+            done
+          fi
 
-          reason="$(python3 - "$decision" <<'PYFINAL'
-          import json,sys
-          print(json.load(open(sys.argv[1])).get("reason") or "")
-          PYFINAL
-          )"
-          if [ "$reason" = "historical_evidence_unavailable_run_full_step5" ]; then
-            echo "::error::Historical Step 5 evidence remained unavailable after bounded autonomous retries; no redundant full validation was authorized."
+          if [ "$resolved" != "true" ]; then
+            echo "::error::Step 5 could not authenticate prior evidence after bounded autonomous recovery; no redundant full validation was authorized."
             exit 75
           fi
 
@@ -182,14 +333,20 @@ jobs:
               raise SystemExit(f"Unsupported Step 5 resume mode: {mode}")
           current_run=str(${{ github.run_id }})
           baseline_run=str(decision.get("baselineEvidenceRunId") or "")
-          full = mode == "full"
+          resume_cache=bool(decision.get("resumeCache"))
+          parent_success=bool(decision.get("parentSuccessReuse"))
+          full=mode=="full"
           with open(sys.argv[2],"a") as output:
               output.write(f"mode={mode}\n")
               output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
               output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
               output.write(f"baseline_evidence_run_id={baseline_run}\n")
               output.write(f"baseline_evidence_artifact={decision.get('baselineEvidenceArtifact') or ''}\n")
-              output.write("baseline_run_required="+str(mode in {"repair","reuse"} and baseline_run == current_run).lower()+"\n")
+              output.write("baseline_run_required="+str(
+                  mode in {"repair","reuse"} and not resume_cache and not parent_success
+                  and baseline_run == current_run).lower()+"\n")
+              output.write("resume_cache="+str(resume_cache).lower()+"\n")
+              output.write("parent_success_reuse="+str(parent_success).lower()+"\n")
               output.write(f"repair_filter={decision.get('repairFilter') or ''}\n")
               output.write("repair_classes="+';'.join(decision.get('repairClasses') or [])+"\n")
               output.write("candidate_restore_run="+str(full).lower()+"\n")
