@@ -4013,10 +4013,33 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
                         if name in _historical_publication_names(target)), None)
     if publication is None:
         raise ReleaseOperationHistoryUnproven('Historical publication source is unknown')
-    publish_body = ''.join(lines[publication[1]:publication[2]])
+    target_body = ''.join(lines[publication[1]:publication[2]])
+    publish_body = target_body
+    publication_start = publication[1]
+    parallel_mode = False
     if 'python3 scripts/deploy-approved-app.py' not in publish_body:
-        raise ReleaseOperationHistoryUnproven('Historical publication does not use canonical immutable verifier')
-    verified = any(start < publication[1] and steps.get(name, {}).get('conclusion') == 'success' and
+        parallel_name = 'Publish canonical selected targets in parallel'
+        parallel = next(((name, start, end) for name, start, end in spans
+                         if name == parallel_name), None)
+        release_name = RELEASE_TARGETS[target]['releaseName']
+        if (
+            parallel is None or parallel[1] >= publication[1] or
+            f'/tmp/release-target-results/{target}.json' not in target_body or
+            f"contains(fromJSON(env.SELECTED_TARGETS), '{release_name}')" not in target_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical publication does not use canonical immutable verifier')
+        parallel_body = ''.join(lines[parallel[1]:parallel[2]])
+        if (
+            'python3 scripts/deploy-approved-app.py' not in parallel_body or
+            '--publish-prepared-parallel' not in parallel_body or
+            '--targets-json "$SELECTED_TARGETS"' not in parallel_body or
+            '--transaction-plan /tmp/release-transaction.json' not in parallel_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical parallel publication contract is incompatible')
+        publish_body = parallel_body
+        publication_start = parallel[1]
+        parallel_mode = True
+    verified = any(start < publication_start and steps.get(name, {}).get('conclusion') == 'success' and
                    'scripts/release-package.py verify' in ''.join(lines[start:end]) and
                    f'--revision "${revision_variable}"' in ''.join(lines[start:end])
                    for name, start, end in spans)
@@ -4026,7 +4049,12 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     tree = ast.parse(deployment_source)
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
-    current_verify = next(node for node in current.body if isinstance(node, ast.FunctionDef) and node.name == 'verify_package')
+    current_functions = {node.name: node for node in current.body if isinstance(node, ast.FunctionDef)}
+    current_verify = current_functions['verify_package']
+    if parallel_mode:
+        for name in ('publish_prepared_targets_parallel', 'publish_prepared_target'):
+            if name not in functions or name not in current_functions or ast.dump(functions[name]) != ast.dump(current_functions[name]):
+                raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
     expected = [ast.parse("revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')").body[0]]
     if revision_variable == 'RELEASE_SHA':
         expected.extend(ast.parse(text).body[0] for text in ("revision = os.environ['RELEASE_SHA']", "revision = os.environ.get('RELEASE_SHA')"))
