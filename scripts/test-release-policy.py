@@ -802,6 +802,22 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("steps.transactionrecovery.outcome == 'success'", workflow)
         self.assertIn('TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}', workflow)
 
+    def test_lifecycle_self_resumes_package_dependency_without_new_release_authority(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        self.assertIn('timeout-minutes: 30', workflow)
+        recovery=workflow.split(
+            '      - name: Recover authorized direct release when needed\n',1
+        )[1].split('      - name:',1)[0]
+        self.assertIn('for attempt in $(seq 1 20); do', recovery)
+        self.assertIn('python3 scripts/release-lifecycle.py reconcile "\${args[@]}" --output "$state_file"', recovery)
+        self.assertIn('dispatched for exact green automatic application revision', recovery)
+        self.assertIn('dispatched for exact green historical application revision', recovery)
+        self.assertIn('already queued or running', recovery)
+        self.assertIn('sleep 60', recovery)
+        self.assertNotIn('deploy-approved-app.py', recovery)
+        self.assertNotIn('gh workflow run', recovery)
+        self.assertNotIn('actions/workflows/', recovery)
+
     def test_release_mutation_authorities_remain_serialized(self):
         for name in (
             'legend-release-lifecycle.yml',
