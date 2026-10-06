@@ -316,92 +316,198 @@ jobs:
             AgentPortal.Tests/obj
           key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
 
+      - name: Run independent architecture gate fanout
+        id: architecturefanout
+        if: always() && steps.plan.outcome == 'success' && steps.gate_compile_regression.outcome == 'success'
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.gate_compile_regression.outcome }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/architecture-fanout"
+          mkdir -p "$root"
+          pids=()
+
+          founder_diagnostics_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/founder-tests" \
+              --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+          }
+          domain_release() {
+            dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          }
+          website_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/website-tests" \
+              --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
+          }
+          meta_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/meta-tests" \
+              --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          }
+          booking_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/booking-tests" \
+              --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
+          }
+          crm_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/crm-tests" \
+              --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
+          }
+          form_tracking() {
+            node --test tests/analytics/form-tracker.test.cjs
+          }
+          release_web_contracts() {
+            node --test tests/analytics/csv-export.test.cjs
+            node tests/analytics/form-tracker.test.cjs .
+            node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+            node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore --nologo \
+              --results-directory "$root/release-web-tests" \
+              --filter 'FullyQualifiedName~WebsiteDomainImportTests'
+            npm ci --prefix Legend-Cloudflare
+            npm --prefix Legend-Cloudflare run check:founder-baseline
+            npm --prefix Legend-Cloudflare run test:website-routing
+            npm --prefix Legend-Cloudflare run check:website-routing
+            python3 -m py_compile scripts/cloudflare-routing-authority.py
+            legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+            if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+              echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+              return 1
+            fi
+            python3 scripts/test-diagnostic-project-impact.py
+            python3 scripts/test-sync-published-checkout.py
+          }
+          release_policy() {
+            python3 scripts/test-release-policy.py
+            python3 scripts/test-deploy-approved-app.py
+          }
+
+          run_lane() {
+            gate="$1"
+            needs_compile="$2"
+            fn="$3"
+            (
+              status="$root/$gate.status"
+              log="$root/$gate.log"
+              if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate "$gate"; then
+                echo preserved > "$status"
+                exit 0
+              fi
+              if [ "$needs_compile" = true ] && [ "$COMPILE_OUTCOME" != success ]; then
+                echo dependency_failure > "$status"
+                exit 0
+              fi
+              set +e
+              ( set -euo pipefail; "$fn" ) >"$log" 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -eq 0 ]; then
+                echo success > "$status"
+              else
+                echo failure > "$status"
+              fi
+              exit 0
+            ) &
+            pids+=("$!")
+          }
+
+          run_lane founder-diagnostics-regressions true founder_diagnostics_regressions
+          run_lane domain-release false domain_release
+          run_lane website-regressions true website_regressions
+          run_lane meta-regressions true meta_regressions
+          run_lane booking-regressions true booking_regressions
+          run_lane crm-regressions true crm_regressions
+          run_lane form-tracking false form_tracking
+          run_lane release-web-contracts true release_web_contracts
+          run_lane release-policy false release_policy
+
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+
       - name: Run Founder diagnostics and safe GPT Codex regressions
         id: gate_founder_diagnostics_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
-            --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+          cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.status")" = success
 
       - name: Compile shared domain release refresh
         id: gate_domain_release
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release; then exit 0; fi
-          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          cat "$RUNNER_TEMP/architecture-fanout/domain-release.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/domain-release.status")" = success
 
       - name: Run website ownership and publishing regressions
         id: gate_website_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
-            --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
+          cat "$RUNNER_TEMP/architecture-fanout/website-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/website-regressions.status")" = success
 
       - name: Run Meta authority regressions
         id: gate_meta_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
-            --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.status")" = success
 
       - name: Run booking authority regressions
         id: gate_booking_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
-            --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
+          cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.status")" = success
 
       - name: Run CRM outcome regressions
         id: gate_crm_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
-            --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
+          cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.status")" = success
 
       - name: Run canonical form tracking tests
         id: gate_form_tracking
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
-          node --test tests/analytics/form-tracker.test.cjs
+          cat "$RUNNER_TEMP/architecture-fanout/form-tracking.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/form-tracking.status")" = success
 
       - name: Run release web contract regressions
         id: gate_release_web_contracts
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
-          node --test tests/analytics/csv-export.test.cjs
-          node tests/analytics/form-tracker.test.cjs .
-          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
-          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore --nologo \
-            --filter 'FullyQualifiedName~WebsiteDomainImportTests'
-          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
-          npm ci --prefix Legend-Cloudflare
-          npm --prefix Legend-Cloudflare run check:founder-baseline
-          npm --prefix Legend-Cloudflare run test:website-routing
-          npm --prefix Legend-Cloudflare run check:website-routing
-          python3 -m py_compile scripts/cloudflare-routing-authority.py
-          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
-          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
-            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
-            exit 1
-          fi
-          python3 scripts/test-diagnostic-project-impact.py
-          python3 scripts/test-sync-published-checkout.py
+          cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.status")" = success
 
       - name: Verify consolidated release scope and routing policy
         id: gate_release_policy
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
-          python3 scripts/test-release-policy.py
-          python3 scripts/test-deploy-approved-app.py
-
+          cat "$RUNNER_TEMP/architecture-fanout/release-policy.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-policy.status")" = success
 
       - name: Record canonical child execution evidence
         if: always() && steps.plan.outcome == 'success'
