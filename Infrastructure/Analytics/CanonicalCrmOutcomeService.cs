@@ -819,6 +819,10 @@ public sealed class CanonicalCrmOutcomeService
     {
         var payload = JsonSerializer.SerializeToNode(metadata)!.AsObject();
         payload["LeadId"] = websiteLeadId?.ToString("D");
+        payload["oppref"] = OpenAiClickReference.Normalize(
+            payload["oppref"]?.GetValue<string>() ?? lineage?.Oppref);
+        payload["gclid"] = PaidAdsClickReference.NormalizeGoogle(lineage?.Gclid);
+        payload["ttclid"] = PaidAdsClickReference.NormalizeTikTok(lineage?.Ttclid);
         payload["fbc"] = lineage?.Fbc;
         payload["fbp"] = lineage?.Fbp;
         payload["pageVariant"] = lineage?.PageVariant;
