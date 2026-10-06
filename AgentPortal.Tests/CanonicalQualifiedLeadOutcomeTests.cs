@@ -71,6 +71,22 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
         db.WorkstationLeadProfiles.Add(lead);
         await db.SaveChangesAsync();
 
+        var paidLanding = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = "page_view",
+            EventUtc = DateTime.UtcNow.AddMinutes(-5),
+            AgentTrackingProfileId = trackingId,
+            SessionId = "qualified-session",
+            VisitorId = "qualified-visitor",
+            Gclid = "google-click-qualified",
+            Ttclid = "tiktok-click-qualified",
+            IsBrowserSignal = true,
+            IsServerAuthority = false
+        });
+        paidLanding.ClientEventId = Guid.NewGuid();
+        UnifiedAnalyticsWriter.Write(db, paidLanding);
+        await db.SaveChangesAsync();
+
         lead.CrmStage = "Qualified";
         lead.Bucket = "Qualified";
         lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(1);
@@ -85,6 +101,10 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
         Assert.Equal("qualified-visitor", authority.VisitorId);
         Assert.Equal("qualified-campaign", authority.UtmCampaign);
         Assert.Equal("qualified-openai-click", authority.Oppref);
+        Assert.Equal("google-click-qualified",
+            CanonicalAdvertisingEventProjection.ReadString(authority.MetadataJson, "gclid"));
+        Assert.Equal("tiktok-click-qualified",
+            CanonicalAdvertisingEventProjection.ReadString(authority.MetadataJson, "ttclid"));
         Assert.True(CanonicalAdvertisingEventProjection.ReadBoolean(
             authority.MetadataJson, "qualificationActive"));
 
