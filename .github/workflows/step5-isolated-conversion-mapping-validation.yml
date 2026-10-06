@@ -633,6 +633,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Restore PR-local Step 5 evidence cache for bounded repair
+        if: needs.plan.outputs.resume_cache == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ needs.plan.outputs.prior_head_sha }}
+
+      - name: Load cached prior Step 5 candidate and baseline
+        if: needs.plan.outputs.resume_cache == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/step5-resume-cache/candidate.trx
+          test -f /tmp/step5-resume-cache/baseline.trx
+          mkdir -p /tmp/step5-prior-candidate /tmp/step5-prior-baseline
+          cp /tmp/step5-resume-cache/candidate.trx /tmp/step5-prior-candidate/candidate.trx
+          cp /tmp/step5-resume-cache/baseline.trx /tmp/step5-prior-baseline/baseline.trx
+
       - name: Load exact current candidate results
         if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
         uses: actions/download-artifact@v4
@@ -684,7 +702,10 @@ jobs:
           dotnet-version: '10.0.401'
 
       - name: Load preserved candidate results from prior exact head
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true'
         uses: actions/download-artifact@v4
         with:
           name: step5-candidate-${{ needs.plan.outputs.prior_head_sha }}
@@ -695,6 +716,8 @@ jobs:
       - name: Load freshly required approved baseline results
         if: >-
           (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true' &&
           needs.plan.outputs.baseline_run_required == 'true'
         uses: actions/download-artifact@v4
         with:
@@ -704,6 +727,8 @@ jobs:
       - name: Load independently proven approved baseline results
         if: >-
           (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true' &&
           needs.plan.outputs.baseline_run_required != 'true'
         uses: actions/download-artifact@v4
         with:
@@ -713,7 +738,9 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Normalize independently proven approved baseline result
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.parent_success_reuse != 'true'
         shell: bash
         run: |
           set -euo pipefail
