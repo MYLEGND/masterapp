@@ -982,6 +982,39 @@ jobs:
             rows = m._trusted_historical_runs(args, "token")
         self.assertEqual([77], [row["id"] for row in rows])
 
+    def test_historical_run_discovery_stops_after_nearest_trusted_success(self):
+        args = SimpleNamespace(
+            event="pull_request",
+            workflow="approved-release-security-validation.yml",
+            repository="MYLEGND/masterapp",
+            current_run_id=99,
+            current_sha="d" * 40,
+        )
+        newer_failed = {
+            "id": 88,
+            "head_sha": "c" * 40,
+            "status": "completed",
+            "conclusion": "failure",
+            "event": "pull_request",
+            "path": ".github/workflows/approved-release-security-validation.yml",
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "updated_at": "2026-10-04T02:00:00Z",
+        }
+        nearest_success = dict(newer_failed, id=77, head_sha="b" * 40,
+                               conclusion="success", updated_at="2026-10-04T01:00:00Z")
+        older_success = dict(newer_failed, id=66, head_sha="a" * 40,
+                             conclusion="success", updated_at="2026-10-04T00:00:00Z")
+        seen = []
+        def trusted(_repo, run, _path, _sha):
+            seen.append(run["id"])
+            return True
+        with patch.object(m, "api_get", return_value={"workflow_runs": [older_success, newer_failed, nearest_success]}), \
+             patch.object(m, "_trusted_lineage_run", side_effect=trusted), \
+             patch.object(m, "_trusted_pr_run", side_effect=AssertionError("lineage proof should be enough")):
+            rows = m._trusted_historical_runs(args, "token")
+        self.assertEqual([88, 77], [row["id"] for row in rows])
+        self.assertEqual([88, 77], seen)
+
     def test_validation_resume_test_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/test-validation-resume.py",
