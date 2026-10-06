@@ -174,6 +174,7 @@ public sealed class CanonicalCrmOutcomeService
                 .Where(x => x.AgentUserId == lead.AgentUserId && x.Status == "active")
                 .OrderByDescending(x => x.UpdatedUtc)
                 .FirstOrDefaultAsync(ct);
+        var qualificationPaidRefs = await ResolvePaidClickReferencesAsync(websiteLead, intake, now, ct);
 
         var lineage = new UnifiedEventContext
         {
@@ -203,12 +204,8 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intake?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intake?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intake?.Fbclid ?? websiteLead?.Fbclid,
-            Gclid = PaidAdsClickReference.NormalizeGoogle(
-                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
-                CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Gclid")),
-            Ttclid = PaidAdsClickReference.NormalizeTikTok(
-                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
-                CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Ttclid")),
+            Gclid = qualificationPaidRefs.Gclid,
+            Ttclid = qualificationPaidRefs.Ttclid,
             Oppref = OpenAiClickReference.Normalize(intake?.Oppref ?? websiteLead?.Oppref),
             Fbc = intake?.Fbc ?? websiteLead?.Fbc,
             Fbp = intake?.Fbp ?? websiteLead?.Fbp,
@@ -411,6 +408,9 @@ public sealed class CanonicalCrmOutcomeService
         }
 
         appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink?.Oppref ?? websiteLead?.Oppref);
+        var appointmentEventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc;
+        var appointmentPaidRefs = await ResolvePaidClickReferencesAsync(
+            websiteLead, intakeLink, appointmentEventUtc, cancellationToken);
 
         var metaEligible = appointment.Status is LeadAppointmentStatus.Booked
             or LeadAppointmentStatus.Confirmed
@@ -428,7 +428,7 @@ public sealed class CanonicalCrmOutcomeService
             Fbp = intakeLink?.Fbp ?? websiteLead?.Fbp,
             UserAgent = intakeLink?.ClientUserAgent ?? websiteLead?.ClientUserAgent,
             IpAddress = intakeLink?.ClientIpAddress ?? websiteLead?.ClientIpAddress,
-            EventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
+            EventUtc = appointmentEventUtc,
             SessionId = intakeLink?.SessionId ?? websiteLead?.SessionId,
             VisitorId = intakeLink?.VisitorId ?? websiteLead?.VisitorId,
             PageKey = intakeLink?.SourcePageKey ?? websiteLead?.SourcePageKey,
@@ -445,12 +445,8 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
-            Gclid = PaidAdsClickReference.NormalizeGoogle(
-                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
-                CanonicalAdvertisingEventProjection.ReadString(intakeLink?.SnapshotJson, "Gclid")),
-            Ttclid = PaidAdsClickReference.NormalizeTikTok(
-                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
-                CanonicalAdvertisingEventProjection.ReadString(intakeLink?.SnapshotJson, "Ttclid")),
+            Gclid = appointmentPaidRefs.Gclid,
+            Ttclid = appointmentPaidRefs.Ttclid,
             Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
             AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
                 ? null
@@ -577,6 +573,10 @@ public sealed class CanonicalCrmOutcomeService
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var productionEventUtc = productionRecord?.UpdatedUtc ?? DateTime.UtcNow;
+        var productionPaidRefs = await ResolvePaidClickReferencesAsync(
+            productionWebsiteLead, productionIntake, productionEventUtc, cancellationToken);
+
         var row = BuildAnalyticsOutcome(
             eventName: eventName,
             eventId: $"{eventName.ToLowerInvariant()}_{productionRecordId:N}",
@@ -631,7 +631,7 @@ public sealed class CanonicalCrmOutcomeService
                 AgentSlug = productionWebsiteLead?.AgentSlug ?? trackingProfile?.Slug,
                 WebsiteContentVersionId = productionWebsiteLead?.WebsiteContentVersionId,
                 WebsiteBindingId = productionWebsiteLead?.WebsiteBindingId,
-                EventUtc = productionRecord?.UpdatedUtc ?? DateTime.UtcNow,
+                EventUtc = productionEventUtc,
                 SessionId = productionIntake?.SessionId ?? productionWebsiteLead?.SessionId,
                 VisitorId = productionIntake?.VisitorId ?? productionWebsiteLead?.VisitorId,
                 PageKey = productionIntake?.SourcePageKey ?? productionWebsiteLead?.SourcePageKey,
@@ -646,12 +646,8 @@ public sealed class CanonicalCrmOutcomeService
                 MetaAdSetId = productionIntake?.MetaAdSetId ?? productionWebsiteLead?.MetaAdSetId,
                 MetaAdId = productionIntake?.MetaAdId ?? productionWebsiteLead?.MetaAdId,
                 Fbclid = productionIntake?.Fbclid ?? productionWebsiteLead?.Fbclid,
-                Gclid = PaidAdsClickReference.NormalizeGoogle(
-                    CanonicalAdvertisingEventProjection.ReadString(productionWebsiteLead?.MetadataJson, "Gclid") ??
-                    CanonicalAdvertisingEventProjection.ReadString(productionIntake?.SnapshotJson, "Gclid")),
-                Ttclid = PaidAdsClickReference.NormalizeTikTok(
-                    CanonicalAdvertisingEventProjection.ReadString(productionWebsiteLead?.MetadataJson, "Ttclid") ??
-                    CanonicalAdvertisingEventProjection.ReadString(productionIntake?.SnapshotJson, "Ttclid")),
+                Gclid = productionPaidRefs.Gclid,
+                Ttclid = productionPaidRefs.Ttclid,
                 Fbc = productionIntake?.Fbc ?? productionWebsiteLead?.Fbc,
                 Fbp = productionIntake?.Fbp ?? productionWebsiteLead?.Fbp,
                 PageVariant = productionIntake?.PageVariant,
@@ -683,6 +679,63 @@ public sealed class CanonicalCrmOutcomeService
             side,
             contactKey,
             amount);
+    }
+
+    private async Task<(string? Gclid, string? Ttclid)> ResolvePaidClickReferencesAsync(
+        WebsiteLead? websiteLead,
+        WebsiteLeadIntakeLink? intake,
+        DateTime eventUtc,
+        CancellationToken ct)
+    {
+        var gclid = PaidAdsClickReference.NormalizeGoogle(
+            CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
+            CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Gclid"));
+        var ttclid = PaidAdsClickReference.NormalizeTikTok(
+            CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
+            CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Ttclid"));
+        if (gclid is not null && ttclid is not null)
+            return (gclid, ttclid);
+
+        var sessionId = intake?.SessionId ?? websiteLead?.SessionId;
+        var visitorId = intake?.VisitorId ?? websiteLead?.VisitorId;
+        if (string.IsNullOrWhiteSpace(sessionId) && string.IsNullOrWhiteSpace(visitorId))
+            return (gclid, ttclid);
+
+        var commerceBusinessId = websiteLead?.CommerceBusinessId ?? intake?.CommerceBusinessId;
+        var agentTrackingProfileId = commerceBusinessId.HasValue ? null : websiteLead?.AgentTrackingProfileId;
+        var from = (websiteLead?.CreatedUtc ?? intake?.SubmittedUtc ?? eventUtc).AddDays(-1);
+        var to = eventUtc.AddDays(1);
+
+        var query = _db.AnalyticsEvents.AsNoTracking()
+            .Where(x => x.EventUtc >= from && x.EventUtc <= to &&
+                        x.CommerceBusinessId == commerceBusinessId);
+        if (commerceBusinessId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == null);
+        else if (agentTrackingProfileId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == agentTrackingProfileId);
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            query = query.Where(x => x.SessionId == sessionId);
+        else
+            query = query.Where(x => x.VisitorId == visitorId);
+
+        var metadataRows = await query
+            .OrderBy(x => x.EventUtc)
+            .ThenBy(x => x.Id)
+            .Select(x => x.MetadataJson)
+            .Take(250)
+            .ToListAsync(ct);
+
+        foreach (var metadataJson in metadataRows)
+        {
+            gclid ??= PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(metadataJson, "gclid"));
+            ttclid ??= PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(metadataJson, "ttclid"));
+            if (gclid is not null && ttclid is not null)
+                break;
+        }
+
+        return (gclid, ttclid);
     }
 
     private async Task<Guid?> ResolveProductionWebsiteLeadIdAsync(
