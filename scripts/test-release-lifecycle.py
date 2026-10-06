@@ -860,29 +860,29 @@ class GeneratedPublicationStages(unittest.TestCase):
         text = self.generator.WORKFLOW.read_text()
         self.assertEqual(text, self.generator.render(text, m.VALIDATION_AUTHORITY.RELEASE_TARGETS))
 
-    def test_new_inventory_target_generates_its_own_durable_step_and_gate(self):
+    def test_new_inventory_target_requires_no_duplicate_workflow_step(self):
         text = self.generator.WORKFLOW.read_text()
         targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,
                    'extra': {'releaseName': 'isolated-extra-app'}}
         rendered = self.generator.render(text, targets)
-        self.assertIn('name: Publish canonical target (extra)', rendered)
-        self.assertIn('TARGET_OUTCOME_EXTRA: ${{ steps.publish_extra.outcome }}', rendered)
-        self.assertIn("contains(fromJSON(env.SELECTED_TARGETS), 'isolated-extra-app')", rendered)
+        self.assertEqual(text, rendered)
+        self.assertNotIn('isolated-extra-app', rendered)
+        self.assertEqual(1, rendered.count('id: publish_targets'))
 
-    def test_selected_failure_cannot_be_hidden_by_continue_on_error(self):
+    def test_batch_failure_cannot_be_hidden_by_continue_on_error(self):
         import subprocess
         path = Path(__file__).with_name('release-workflow.py')
-        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'failure'}, clear=False):
+        with patch.dict(os.environ, {'TARGET_OUTCOME_BATCH': 'failure'}, clear=False):
             result = subprocess.run(['python3', str(path), '--verify-outcomes',
                                      '--selected-targets', json.dumps([canonical_name('client')])],
                                     capture_output=True, text=True)
         self.assertNotEqual(0, result.returncode)
-        self.assertIn('did not succeed: client', result.stderr)
+        self.assertIn('publication batch did not succeed', result.stderr)
 
-    def test_unselected_failure_does_not_invalidate_selected_success(self):
+    def test_batch_success_allows_transaction_finalization(self):
         import subprocess
         path = Path(__file__).with_name('release-workflow.py')
-        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'success', 'TARGET_OUTCOME_PORTAL': 'failure'}, clear=False):
+        with patch.dict(os.environ, {'TARGET_OUTCOME_BATCH': 'success'}, clear=False):
             result = subprocess.run(['python3', str(path), '--verify-outcomes',
                                      '--selected-targets', json.dumps([canonical_name('client')])],
                                     capture_output=True, text=True)
