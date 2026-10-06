@@ -172,6 +172,7 @@ internal sealed partial class LegendFounderToolAuthority
                 ("application_id", Any("TikTokAds:AppId")),
                 ("application_secret", Any("TikTokAds:AppSecret")),
                 ("advertiser_authorization_url", Any("TikTokAds:AdvertiserAuthorizationUrl")),
+                ("business_advertiser_authorization_url", Any("TikTokAds:BusinessAdvertiserAuthorizationUrl")),
                 ("redirect_uri", Any("TikTokAds:RedirectUri"))),
             Result("graph_provisioning",
                 ("tenant", Any("GraphProvisioning:TenantId", "AzureAd:TenantId")),
