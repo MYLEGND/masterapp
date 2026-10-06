@@ -43,7 +43,8 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .ThrowsAsync(new HttpRequestException("Meta unavailable"));
         var external = new Mock<IMarketingExternalAdsReportingService>();
         external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+            .ReturnsAsync(new ExternalAdsCampaignReport(
+                Array.Empty<ProviderDeliveryMetricRow>(), "UTC", range.FromUtc.Date, range.ToUtc.Date));
         var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Contains(result.DataQualityNotes, x => x.Contains("completed account-local hours", StringComparison.Ordinal));
@@ -82,7 +83,8 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .ReturnsAsync(new List<AnalyticsEvent> { paid, direct, paid });
         var external = new Mock<IMarketingExternalAdsReportingService>();
         external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+            .ReturnsAsync(new ExternalAdsCampaignReport(
+                Array.Empty<ProviderDeliveryMetricRow>(), "UTC", range.FromUtc.Date, range.ToUtc.Date));
         var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Equal(1, result.ChatGptAdsOutcomes.Customers);
