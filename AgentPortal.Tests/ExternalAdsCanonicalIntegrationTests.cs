@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Infrastructure.Analytics;
@@ -140,6 +141,227 @@ public sealed class ExternalAdsCanonicalIntegrationTests
         var rows = await db.MarketingConnections.AsNoTracking().ToListAsync();
         Assert.DoesNotContain("google-refresh", rows.Single(x => x.Provider == MarketingDestinationKeys.Google).AdsAccessTokenCiphertext!);
         Assert.DoesNotContain("tiktok-access", rows.Single(x => x.Provider == MarketingDestinationKeys.TikTok).AdsAccessTokenCiphertext!);
+    }
+
+    [Fact]
+    public async Task ExternalMeasurementMappingIsAccountBoundAndWrongGoogleCustomerIsRejected()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = MarketingOwnerScope.Agent(Guid.NewGuid());
+
+        await store.SaveProviderCredentialAsync(
+            owner,
+            MarketingDestinationKeys.Google,
+            "google-refresh",
+            MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken,
+            "{}",
+            null,
+            "1111111111",
+            "Google Ads 1111111111");
+
+        var connection = await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google);
+        var saved = await store.SaveProviderMeasurementConfigurationAsync(
+            owner,
+            new MarketingProviderMeasurementUpdate(
+                MarketingDestinationKeys.Google,
+                null,
+                "click",
+                [
+                    new MarketingProviderEventMapping(
+                        "QualifiedLead",
+                        "QualifiedLead",
+                        "customers/1111111111/conversionActions/77")
+                ],
+                connection.Revision));
+
+        Assert.True(saved.MappingReady);
+        Assert.Single(saved.Mappings);
+        Assert.Equal("customers/1111111111/conversionActions/77", saved.Mappings[0].DestinationId);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.SaveProviderMeasurementConfigurationAsync(
+                owner,
+                new MarketingProviderMeasurementUpdate(
+                    MarketingDestinationKeys.Google,
+                    null,
+                    "click",
+                    [
+                        new MarketingProviderEventMapping(
+                            "PolicyPaid",
+                            "PolicyPaid",
+                            "customers/2222222222/conversionActions/88")
+                    ],
+                    saved.Revision)));
+
+        await store.SelectProviderAccountAsync(
+            owner,
+            MarketingDestinationKeys.Google,
+            "2222222222",
+            "Google Ads 2222222222");
+
+        var invalidated = await store.GetProviderMeasurementConfigurationAsync(
+            owner, MarketingDestinationKeys.Google);
+        Assert.False(invalidated.MappingReady);
+        Assert.Equal("measurement_mapping_required", invalidated.Status);
+    }
+
+    [Fact]
+    public async Task GoogleConversionTransportUsesCanonicalGclidValueTimeAndStableOrderId()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = MarketingOwnerScope.Agent(Guid.NewGuid());
+        await store.SaveProviderCredentialAsync(
+            owner,
+            MarketingDestinationKeys.Google,
+            "google-refresh",
+            MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken,
+            "{}",
+            null,
+            "1111111111",
+            "Google Ads 1111111111");
+        var connection = await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google);
+        var measurement = await store.SaveProviderMeasurementConfigurationAsync(
+            owner,
+            new MarketingProviderMeasurementUpdate(
+                MarketingDestinationKeys.Google,
+                null,
+                "click",
+                [new("QualifiedLead", "QualifiedLead", "customers/1111111111/conversionActions/77")],
+                connection.Revision));
+
+        string? uploadBody = null;
+        var handler = new StubHandler(request =>
+        {
+            var uri = request.RequestUri ?? throw new InvalidOperationException("Request URI missing.");
+            if (uri.Host == "oauth2.googleapis.com")
+                return Json("""{"access_token":"google-access","expires_in":3600}""");
+            if (uri.Host == "googleads.googleapis.com" && uri.AbsolutePath.EndsWith(":uploadClickConversions", StringComparison.Ordinal))
+            {
+                uploadBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                return Json("""{"results":[{"gclid":"gclid-canonical-1"}]}""");
+            }
+            throw new InvalidOperationException("Unexpected provider request: " + uri);
+        });
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new System.Collections.Generic.Dictionary<string, string?>
+            {
+                ["GoogleAds:ClientId"] = "google-client",
+                ["GoogleAds:ClientSecret"] = "google-secret",
+                ["GoogleAds:DeveloperToken"] = "developer-token",
+                ["GoogleAds:ApiVersion"] = "v25"
+            }).Build();
+        var oauth = new MarketingExternalAdsOAuthService(
+            new SingleClientFactory(new HttpClient(handler)),
+            configuration,
+            new EphemeralDataProtectionProvider(),
+            store,
+            NullLogger<MarketingExternalAdsOAuthService>.Instance);
+        var transport = new ExternalAdsConversionApiService(
+            new HttpClient(handler), oauth, configuration);
+
+        var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = "QualifiedLead",
+            EventUtc = new DateTime(2026, 10, 6, 4, 15, 0, DateTimeKind.Utc),
+            AgentTrackingProfileId = owner.AgentTrackingProfileId,
+            IsServerAuthority = true,
+            Gclid = "gclid-canonical-1",
+            Metadata = new { valueCents = 25000, currency = "USD" }
+        });
+        var mapping = Assert.Single(measurement.Mappings);
+        var result = await transport.SendAsync(
+            owner, connection, measurement, mapping, source, "gclid-canonical-1");
+
+        Assert.True(result.Sent);
+        Assert.NotNull(uploadBody);
+        using var payload = JsonDocument.Parse(uploadBody!);
+        var conversion = payload.RootElement.GetProperty("conversions")[0];
+        Assert.Equal("customers/1111111111/conversionActions/77",
+            conversion.GetProperty("conversionAction").GetString());
+        Assert.Equal("gclid-canonical-1", conversion.GetProperty("gclid").GetString());
+        Assert.Equal(250m, conversion.GetProperty("conversionValue").GetDecimal());
+        Assert.Equal("USD", conversion.GetProperty("currencyCode").GetString());
+        Assert.Equal(CanonicalAdvertisingEventProjection.ResolveEventId(source),
+            conversion.GetProperty("orderId").GetString());
+        Assert.Contains("+00:00", conversion.GetProperty("conversionDateTime").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TikTokConversionTransportUsesCanonicalTtclidEventSourceAndStableEventId()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = MarketingOwnerScope.Business(Guid.NewGuid());
+        await store.SaveProviderCredentialAsync(
+            owner,
+            MarketingDestinationKeys.TikTok,
+            "tiktok-access",
+            MarketingProviderAuthorizationMethods.TikTokOAuthAccessToken,
+            """{"authorizedAccountIds":["3333333333"]}""",
+            null,
+            "3333333333",
+            "TikTok Ads 3333333333");
+        var connection = await store.GetProviderConnectionAsync(owner, MarketingDestinationKeys.TikTok);
+        var measurement = await store.SaveProviderMeasurementConfigurationAsync(
+            owner,
+            new MarketingProviderMeasurementUpdate(
+                MarketingDestinationKeys.TikTok,
+                "crm-event-source-1",
+                "crm",
+                [new("QualifiedLead", "QualifiedLeadReady")],
+                connection.Revision));
+
+        string? eventBody = null;
+        var handler = new StubHandler(request =>
+        {
+            var uri = request.RequestUri ?? throw new InvalidOperationException("Request URI missing.");
+            if (uri.Host == "business-api.tiktok.com" && uri.AbsolutePath.EndsWith("/event/track/", StringComparison.Ordinal))
+            {
+                eventBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                Assert.True(request.Headers.TryGetValues("Access-Token", out var values));
+                Assert.Contains("tiktok-access", values);
+                return Json("""{"code":0,"message":"OK","data":{}}""");
+            }
+            throw new InvalidOperationException("Unexpected provider request: " + uri);
+        });
+        var configuration = new ConfigurationBuilder().Build();
+        var oauth = new MarketingExternalAdsOAuthService(
+            new SingleClientFactory(new HttpClient(handler)),
+            configuration,
+            new EphemeralDataProtectionProvider(),
+            store,
+            NullLogger<MarketingExternalAdsOAuthService>.Instance);
+        var transport = new ExternalAdsConversionApiService(
+            new HttpClient(handler), oauth, configuration);
+
+        var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = "QualifiedLead",
+            EventUtc = new DateTime(2026, 10, 6, 4, 20, 0, DateTimeKind.Utc),
+            CommerceBusinessId = owner.CommerceBusinessId,
+            IsServerAuthority = true,
+            Ttclid = "ttclid-canonical-1"
+        });
+        var mapping = Assert.Single(measurement.Mappings);
+        var result = await transport.SendAsync(
+            owner, connection, measurement, mapping, source, "ttclid-canonical-1");
+
+        Assert.True(result.Sent);
+        Assert.NotNull(eventBody);
+        using var payload = JsonDocument.Parse(eventBody!);
+        Assert.Equal("crm", payload.RootElement.GetProperty("event_source").GetString());
+        Assert.Equal("crm-event-source-1", payload.RootElement.GetProperty("event_source_id").GetString());
+        var evt = payload.RootElement.GetProperty("data")[0];
+        Assert.Equal("QualifiedLeadReady", evt.GetProperty("event").GetString());
+        Assert.Equal(CanonicalAdvertisingEventProjection.ResolveEventId(source),
+            evt.GetProperty("event_id").GetString());
+        Assert.Equal("ttclid-canonical-1",
+            evt.GetProperty("user").GetProperty("ttclid").GetString());
     }
 
     [Fact]
