@@ -2812,16 +2812,28 @@ def cmd_live_state(args):
         "revision": args.revision,
         "targets": {},
     }
+
+    def probe(key):
+        target = RELEASE_TARGETS[key]
+        try:
+            actual = _read_provenance(target["host"], target, args.revision)
+            return key, actual, actual == args.revision
+        except Exception as exc:
+            return key, type(exc).__name__, False
+
+    selected_results = {}
+    if keys:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+            selected_results = {
+                key: (actual, live)
+                for key, actual, live in pool.map(probe, keys)
+            }
+
+    # Preserve the canonical inventory order in receipts/GITHUB_OUTPUT even
+    # though independent network reads execute concurrently.
     for key, target in RELEASE_TARGETS.items():
         selected = key in keys
-        actual = None
-        live = False
-        if selected:
-            try:
-                actual = _read_provenance(target["host"], target, args.revision)
-                live = actual == args.revision
-            except Exception as exc:
-                actual = type(exc).__name__
+        actual, live = selected_results.get(key, (None, False))
         result["targets"][key] = {
             "releaseName": target["releaseName"],
             "selected": selected,
@@ -2994,6 +3006,21 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
     result = {"schemaVersion": 1, "needed": True, "currentSha": current_sha,
               "evidenceRunId": None, "evidenceHeadSha": None, "changedInputs": [],
               "reason": "compatible_immutable_package_missing"}
+    # Package production is driven by package-producing inputs, not artifact
+    # discovery. A control/test/lifecycle-only head has no new application bytes
+    # to stamp with the current commit and therefore must not manufacture a
+    # redundant immutable package merely because historical artifact lookup misses.
+    result['changedInputs'] = sorted(
+        path for path in git_changed(base_sha, current_sha)
+        if package_canary_input_path(path)
+    )
+    if not result['changedInputs']:
+        result.update({
+            "needed": False,
+            "reason": "no_package_producing_inputs_changed",
+        })
+        return result
+
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
     if token:
         compatible = compatible_package_producer(repository, current_sha, token)
@@ -3005,7 +3032,6 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
                            "exactPackageRunId": compatible['runId'],
                            "exactPackageArtifact": compatible['artifact']})
             return result
-    result['changedInputs'] = sorted(path for path in git_changed(base_sha, current_sha) if package_canary_input_path(path))
     return result
 
 
