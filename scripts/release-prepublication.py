@@ -28,6 +28,17 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def release_authority():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = release_authority()
+
+
 def env_json(name, default):
     raw = os.environ.get(name)
     if not raw:
@@ -340,6 +351,7 @@ def configure_target(app, *, preserve_live, shared_targets, marketing_targets, e
             if any(key in changes for key in keys):
                 child_receipt(child, app, partition, prepare=True)
                 prepared.append((child, partition))
+        _RELEASE_AUTHORITY.require_canonical_release_runtime()
         args = [
             "az", "webapp", "config", "appsettings", "set",
             "-g", os.environ["RELEASE_RESOURCE_GROUP"],
