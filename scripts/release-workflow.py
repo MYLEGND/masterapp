@@ -46,11 +46,11 @@ def target_steps(targets):
           PACKAGE_PRODUCER_RUN: ${{{{ steps.reusevalidated.outputs.run_id }}}}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --targets-json "$SELECTED_TARGETS" \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json \
-            --publish-prepared-parallel \
+          python3 scripts/deploy-approved-app.py \\
+            --targets-json "$SELECTED_TARGETS" \\
+            --package-root /tmp/diagnostics-packages \\
+            --transaction-plan /tmp/release-transaction.json \\
+            --publish-prepared-parallel \\
             --target-results-dir /tmp/release-target-results
 ''']
     for key in targets:
