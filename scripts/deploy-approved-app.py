@@ -145,6 +145,7 @@ class Azure:
         return None if revision is None else revision == self.revision
 
     def submit(self):
+        _RELEASE_AUTHORITY.require_canonical_release_runtime()
         # Async avoids a long synchronous gateway request. CLI runtime tracking is
         # replaced by exact-revision checks below, not waived. Status preflight
         # already warmed SCM; disabling CLI warmup prevents its exception fallback
