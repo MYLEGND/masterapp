@@ -611,28 +611,41 @@ def release_control_authority_path(path: str) -> bool:
 
 
 PACKAGE_BUILD_WORKFLOW = '.github/workflows/masterapp-platform-architecture-validation.yml'
-PACKAGE_BUILD_STEPS = (
-    'Setup .NET for canonical package build',
-    'Setup Node for canonical static package build',
+PACKAGE_COMPONENT_BUILD_STEPS = (
+    'Checkout exact package component authority',
+    'Setup .NET for canonical package component build',
+    'Setup Node for canonical static package component build',
+    'Build immutable validated release package component',
+)
+PACKAGE_ASSEMBLY_BUILD_STEPS = (
+    'Checkout exact package authority',
+    'Load immutable package components',
     'Build immutable validated release package',
 )
 
 
 def package_builder_workflow_contract(text: str) -> str:
-    """Only builder/toolchain execution affects immutable package bytes."""
-    block = _job_blocks(text).get('validated-release-package')
-    if block is None:
-        raise ValueError('Canonical package builder job missing')
-    steps = named_step_blocks(block)
-    if any(name not in steps for name in PACKAGE_BUILD_STEPS):
-        raise ValueError('Canonical package builder steps missing')
-    lines, spans = _named_step_spans(block)
-    build_end = next(end for name, start, end in spans if name == PACKAGE_BUILD_STEPS[-1])
-    build = ''.join(lines[:build_end])
-    # Only the canonical read-only evidence planner is excluded. Unknown inserted
-    # steps, checkout, job environment/container/defaults and tool setup remain
-    # inputs, so a new build-affecting command cannot escape invalidation.
-    build = _mask_named_steps(build, ('Resolve whether application bytes changed',))
+    """Hash the complete fan-out/fan-in byte-production execution envelope.
+
+    Planning and artifact retention are not byte producers. The isolated component
+    matrix and the single assembly barrier are: their job configuration, checkout,
+    toolchains, component set, download shape and build commands all remain package
+    identity inputs so concurrency cannot create an alternate packaging authority.
+    """
+    jobs = _job_blocks(text)
+    component = jobs.get('validated-release-package-components')
+    assembly = jobs.get('validated-release-package')
+    if component is None or assembly is None:
+        raise ValueError('Canonical package fan-out/fan-in jobs missing')
+
+    def through(block, required):
+        steps = named_step_blocks(block)
+        if any(name not in steps for name in required):
+            raise ValueError('Canonical package builder steps missing')
+        lines, spans = _named_step_spans(block)
+        end = next(finish for name, start, finish in spans if name == required[-1])
+        return ''.join(lines[:end]).rstrip() + '\n'
+
     header = text.split('\njobs:', 1)[0]
     execution = []
     header_lines = header.splitlines(keepends=True)
@@ -642,7 +655,9 @@ def package_builder_workflow_contract(text: str) -> str:
             while end < len(header_lines) and (not header_lines[end].strip() or header_lines[end][0].isspace()):
                 end += 1
             execution.append(''.join(header_lines[i:end]))
-    return ''.join(execution) + build.rstrip() + '\n'
+    execution.append(through(component, PACKAGE_COMPONENT_BUILD_STEPS))
+    execution.append(through(assembly, PACKAGE_ASSEMBLY_BUILD_STEPS))
+    return ''.join(execution)
 
 
 def release_control_only_path(path: str) -> bool:
