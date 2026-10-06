@@ -27,6 +27,7 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  checks: read
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
