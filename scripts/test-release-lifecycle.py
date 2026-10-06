@@ -210,6 +210,64 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
             api, pr, ["AgentPortal/wwwroot/css/legend-app-shell.css"]
         ))
 
+    def test_guard_rejects_legacy_publication_timeout(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/deploy-approved-app.py":
+                    return value.replace(
+                        "PUBLICATION_RECONCILE_TIMEOUT_SECONDS = 420",
+                        "PUBLICATION_RECONCILE_TIMEOUT_SECONDS = 1200",
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/deploy-approved-app.py"]
+        )
+        self.assertIn("timing", result)
+
+    def test_guard_rejects_workflow_owned_receipt_recovery(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == ".github/workflows/all-intentional-direct-release-20260918.yml":
+                    return value + "\n# transactionrecovery\n"
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}},
+            [".github/workflows/all-intentional-direct-release-20260918.yml"],
+        )
+        self.assertIn("legacy workflow-owned receipt recovery", result)
+
+    def test_guard_rejects_unprotecting_release_execution_inputs(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/validation-resume.py":
+                    return value.replace('    "scripts/release-workflow.py",\n', "")
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/validation-resume.py"]
+        )
+        self.assertIn("release execution control inputs", result)
+
+    def test_guard_rejects_write_capable_production_diagnostics(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == ".github/workflows/deployment-diagnostics.yml":
+                    return value + "\n# list-publishing-credentials\n"
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}},
+            [".github/workflows/deployment-diagnostics.yml"],
+        )
+        self.assertIn("no longer read-only", result)
+
+    def test_guard_rejects_retired_deployment_bypass_reintroduction(self):
+        result = m.candidate_control_plane_integrity(
+            Api(), {"head": {"sha": "b" * 40}}, ["deploy-portal.sh"]
+        )
+        self.assertIn("retired alternate production deployment path", result)
 
 
 class DirectAuthorization(unittest.TestCase):
