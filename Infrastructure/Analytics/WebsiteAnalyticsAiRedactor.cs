@@ -48,9 +48,9 @@ public static class WebsiteAnalyticsAiRedactor
             Channels = (payload.Channels ?? []).Where(x => AllowedChannels.Contains(x.Channel)).Select(x => x with {
                 AttributionConfidence = AllowedConfidence.Contains(x.AttributionConfidence) ? x.AttributionConfidence : "unverified"
             }).ToList(),
-            ChatGptCampaigns = RedactCampaigns(payload.ChatGptCampaigns, logger),
+            PaidCampaigns = RedactPaidCampaigns(payload.PaidCampaigns, logger),
             ChannelCoverageNotes = (payload.ChannelCoverageNotes ?? []).Select(x =>
-                x.StartsWith("ChatGPT Ads delivery covers completed account-local hours:", StringComparison.Ordinal) && !LooksPii(x)
+                IsSafeCoverageNote(x) && !LooksPii(x)
                 ? x : "Provider coverage or attribution is limited; do not treat missing delivery metrics as zero.").Distinct().ToList(),
             Devices = RedactDevices(payload.Devices),
             Browsers = RedactDevices(payload.Browsers),
@@ -128,7 +128,6 @@ public static class WebsiteAnalyticsAiRedactor
             SourcePerformance = RedactSources(payload.SourcePerformance, logger),
             FormAbandonment = RedactAbandonment(payload.FormAbandonment, logger),
             TopAbandonedFields = RedactLabelCounts(payload.TopAbandonedFields, "TopAbandonedFields", logger),
-            ActiveCampaigns = RedactCampaigns(payload.ActiveCampaigns, logger),
             MetaSignal = RedactMetaSignal(payload.MetaSignal, logger),
             OutcomeCalibration = RedactOutcomeCalibration(payload.OutcomeCalibration)
         };
@@ -137,10 +136,11 @@ public static class WebsiteAnalyticsAiRedactor
     }
 
     private static readonly HashSet<string> AllowedChannels = new(StringComparer.Ordinal) {
-        "chatgpt_ads", "meta_ads", "organic", "direct", "referral", "unknown"
+        "chatgpt_ads", "meta_ads", "google_ads", "tiktok_ads", "organic", "direct", "referral", "unknown"
     };
     private static readonly HashSet<string> AllowedConfidence = new(StringComparer.Ordinal) {
-        "reference_observed", "not_observed", "canonical", "unverified", "observed", "source_observed"
+        "reference_observed", "not_observed", "canonical", "canonical_lineage", "unavailable",
+        "unverified", "observed", "source_observed"
     };
     private static readonly HashSet<string> SafeCategories = new(StringComparer.OrdinalIgnoreCase) {
         "organic", "direct", "referral", "unknown", "facebook", "instagram", "openai", "chatgpt", "google", "bing",
@@ -181,7 +181,9 @@ public static class WebsiteAnalyticsAiRedactor
         // URL tokens. Stable opaque aliases preserve joins without relying on a name regex.
         if (fieldName == "ScopeLabel") return value is "founder" or "agent" or "business" ? value : "authorized_owner";
         if (fieldName == "RangeLabel") return "Selected UTC window";
-        if (fieldName == "TrafficFilter") return value is "All" or "All Traffic" or "Paid" or "NonPaid" or "Unknown" ? value : "Selected traffic";
+        if (fieldName == "TrafficFilter") return value is "All" or "All Traffic" or "Real Human Traffic" or "Likely Human Traffic" or
+            "Review Needed" or "Suspicious Activity" or "Likely Bots/Automation" or "Internal/QA Traffic" or
+            "Paid" or "NonPaid" or "Unknown" ? value : "Selected traffic";
         if (fieldName == "Warnings") {
             var area = new[] { "Summary", "Traffic", "CTA", "Dwell", "Conversions", "Devices", "Journey", "PagePerf", "QuoteFunnel", "Engagement", "Exit", "Source", "Abandon", "MarketingHealth", "MetaAds", "MetaSignal", "PublishedWebsite", "ChannelPerformance" }
                 .FirstOrDefault(x => value.StartsWith(x, StringComparison.Ordinal));
@@ -277,21 +279,38 @@ public static class WebsiteAnalyticsAiRedactor
         }).ToList();
     }
 
-    private static List<AiCampaignRow> RedactCampaigns(List<AiCampaignRow>? rows, ILogger? logger)
+    private static bool IsSafeCoverageNote(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        (value.StartsWith("ChatGPT Ads delivery covers completed account-local hours:", StringComparison.Ordinal) ||
+         value.StartsWith("Google Ads reporting uses account-local dates:", StringComparison.Ordinal) ||
+         value.StartsWith("TikTok Ads reporting uses account-local dates:", StringComparison.Ordinal) ||
+         value.StartsWith("Campaign-level downstream attribution", StringComparison.Ordinal));
+
+    private static List<AiPaidCampaignRow> RedactPaidCampaigns(List<AiPaidCampaignRow>? rows, ILogger? logger)
     {
-        if (rows == null) return new List<AiCampaignRow>();
-        return rows.Select(x => new AiCampaignRow
-        {
-            CampaignName = CleanLabel(x.CampaignName, logger, "ActiveCampaigns.CampaignName"),
-            Spend        = x.Spend,
-            Impressions  = x.Impressions,
-            Clicks       = x.Clicks,
-            Ctr          = x.Ctr,
-            Cpc          = x.Cpc,
-            Leads        = x.Leads
-        })
-        .Where(x => x.CampaignName != "[redacted]")
-        .ToList();
+        if (rows == null) return new List<AiPaidCampaignRow>();
+        return rows
+            .Where(x => AllowedChannels.Contains(x.Channel))
+            .Select(x => new AiPaidCampaignRow
+            {
+                Channel = x.Channel,
+                CampaignName = CleanLabel(x.CampaignName, logger, "PaidCampaigns.CampaignName"),
+                Status = CleanLabel(x.Status, logger, "PaidCampaigns.Status"),
+                Spend = x.Spend,
+                Impressions = x.Impressions,
+                Clicks = x.Clicks,
+                ProviderConversions = x.ProviderConversions,
+                CanonicalLeads = x.CanonicalLeads,
+                CanonicalQualifiedLeads = x.CanonicalQualifiedLeads,
+                CanonicalAppointments = x.CanonicalAppointments,
+                CanonicalApplications = x.CanonicalApplications,
+                CanonicalCustomers = x.CanonicalCustomers,
+                CanonicalRevenue = x.CanonicalRevenue,
+                AttributionEvidence = x.AttributionEvidence is "canonical_campaign_lineage" or "campaign_delivery_only_downstream_not_proven"
+                    ? x.AttributionEvidence : "campaign_delivery_only_downstream_not_proven"
+            })
+            .Where(x => x.CampaignName != "[redacted]")
+            .ToList();
     }
 
     private static OutcomeCalibrationAiPayload? RedactOutcomeCalibration(OutcomeCalibrationAiPayload? payload)

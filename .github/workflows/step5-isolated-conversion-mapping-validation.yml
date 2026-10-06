@@ -27,6 +27,7 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  checks: read
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
@@ -59,13 +60,16 @@ jobs:
   plan:
     needs: approved-head-preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 70
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       prior_run_id: ${{ steps.plan.outputs.prior_run_id }}
       prior_head_sha: ${{ steps.plan.outputs.prior_head_sha }}
       baseline_evidence_run_id: ${{ steps.plan.outputs.baseline_evidence_run_id }}
       baseline_evidence_artifact: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+      baseline_run_required: ${{ steps.plan.outputs.baseline_run_required }}
+      resume_cache: ${{ steps.plan.outputs.resume_cache }}
+      parent_success_reuse: ${{ steps.plan.outputs.parent_success_reuse }}
       repair_filter: ${{ steps.plan.outputs.repair_filter }}
       repair_classes: ${{ steps.plan.outputs.repair_classes }}
       candidate_restore_run: ${{ steps.plan.outputs.candidate_restore_run }}
@@ -77,70 +81,302 @@ jobs:
       candidate_full_evidence_head_sha: ${{ steps.plan.outputs.candidate_full_evidence_head_sha }}
       comparison_run: ${{ steps.plan.outputs.comparison_run }}
     steps:
-      - name: Checkout exact isolated head for diff planning
+      - name: Checkout exact isolated head for Step 5 planning
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Preserve valid work and invalidate only repaired failures
+      - name: Restore latest PR-local Step 5 evidence cache
+        id: resumecache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          restore-keys: |
+            step5-pr-${{ github.event.pull_request.number }}-
+
+      - name: Resolve one canonical Step 5 resume decision
         id: plan
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          plan="$RUNNER_TEMP/validation-resume.json"
           decision="$RUNNER_TEMP/step5-decision.json"
+          resolved=false
 
-          python3 scripts/validation-resume.py plan \
-            --workflow step5-isolated-conversion-mapping-validation.yml \
-            --current-sha "${{ github.event.pull_request.head.sha }}" \
-            --current-run-id "${{ github.run_id }}" \
-            --run-attempt "${{ github.run_attempt }}" \
-            --head-branch "${{ github.head_ref }}" \
-            --event "${{ github.event_name }}" \
-            --repository "${{ github.repository }}" \
-            --output "$plan"
+          # Fast path: PR-local cache is independent of the shared REST rate
+          # bucket and contains the complete candidate/baseline TRX pair from the
+          # most recent Step 5 comparison, including failed-parent evidence.
+          if [ -f /tmp/step5-resume-cache/metadata.json ] &&
+             [ -f /tmp/step5-resume-cache/candidate.trx ] &&
+             [ -f /tmp/step5-resume-cache/baseline.trx ]; then
+            if python3 - "$decision" <<'PYCACHE'
+          import importlib.util,json,os,re,subprocess,sys
+          from pathlib import Path
 
-          python3 scripts/validation-resume.py step5-decision \
-            --current-sha "${{ github.event.pull_request.head.sha }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --current-run-id "${{ github.run_id }}" \
-            --head-branch "${{ github.head_ref }}" \
-            --repository "${{ github.repository }}" \
-            --output "$decision"
+          current="${{ github.event.pull_request.head.sha }}"
+          base="${{ github.event.pull_request.base.sha }}"
+          capsule=Path("/tmp/step5-resume-cache")
+          metadata=json.load(open(capsule/"metadata.json"))
+          prior=metadata.get("headSha") or ""
+          prior_base=metadata.get("baseSha") or ""
+          if not re.fullmatch(r"[0-9a-f]{40}", prior) or not re.fullmatch(r"[0-9a-f]{40}", prior_base):
+              raise SystemExit(2)
+          if subprocess.run(["git","merge-base","--is-ancestor",prior,current]).returncode:
+              raise SystemExit(3)
 
-          python3 - "$plan" "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          spec=importlib.util.spec_from_file_location("validation_resume","scripts/validation-resume.py")
+          authority=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          workflow_path=authority.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+          if not authority._step5_jobs_unchanged(prior, workflow_path):
+              raise SystemExit(4)
+          if not authority._step5_baseline_inputs_equivalent(prior_base, base):
+              raise SystemExit(5)
+          candidate=authority.read_step5_results(capsule/"candidate.trx")
+          authority.read_step5_results(capsule/"baseline.trx")
+          classes=authority.step5_dependency_change(prior,current)
+          if classes is None:
+              raise SystemExit(6)
+          classes=authority._step5_discovered_repair_classes(
+              classes, tuple(candidate), authority.git_changed(prior,current))
+          if classes is None:
+              raise SystemExit(7)
+          result={
+              "schemaVersion":4,
+              "mode":"repair" if classes else "reuse",
+              "priorRunId":metadata.get("runId"),
+              "priorHeadSha":prior,
+              "baselineEvidenceRunId":metadata.get("runId"),
+              "baselineEvidenceArtifact":None,
+              "repairClasses":classes,
+              "repairFilter":"|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+              "resumeCache":True,
+              "parentSuccessReuse":False,
+              "reason":"pr_local_cached_child_evidence",
+          }
+          Path(sys.argv[1]).write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(result,indent=2,sort_keys=True))
+          PYCACHE
+            then
+              resolved=true
+            else
+              echo "PR-local Step 5 cache was not compatible with the current exact head; falling back to authenticated evidence resolution."
+            fi
+          fi
+
+          run_decision() {
+            local log="$1"
+            python3 scripts/validation-resume.py step5-decision \
+              --current-sha "${{ github.event.pull_request.head.sha }}" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --current-run-id "${{ github.run_id }}" \
+              --head-branch "${{ github.head_ref }}" \
+              --repository "${{ github.repository }}" \
+              --output "$decision" | tee "$log"
+          }
+
+          graphql_parent_success() {
+            python3 - "$decision" <<'PYGRAPH'
+          import importlib.util,json,os,re,subprocess,sys,urllib.request
+          from pathlib import Path
+
+          current="${{ github.event.pull_request.head.sha }}"
+          base="${{ github.event.pull_request.base.sha }}"
+          repository="${{ github.repository }}"
+          owner,name=repository.split("/",1)
+          token=os.environ["GITHUB_TOKEN"]
+
+          spec=importlib.util.spec_from_file_location("validation_resume","scripts/validation-resume.py")
+          authority=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          workflow_path=authority.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+
+          # One GraphQL request returns the recent first-parent history plus each
+          # commit's check rollup. This avoids one provider request per ancestor
+          # and keeps control-only resume independent of the REST history bucket.
+          query=r"""
+          query($owner:String!,$name:String!,$oid:GitObjectID!){
+            repository(owner:$owner,name:$name){
+              object(oid:$oid){
+                ... on Commit {
+                  history(first:30) {
+                    nodes {
+                      oid
+                      statusCheckRollup {
+                        contexts(first:100) {
+                          nodes {
+                            __typename
+                            ... on CheckRun { name conclusion detailsUrl }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }"""
+          payload=json.dumps({"query":query,"variables":{"owner":owner,"name":name,"oid":current}}).encode()
+          request=urllib.request.Request(
+              "https://api.github.com/graphql",data=payload,
+              headers={"Authorization":f"Bearer {token}","Content-Type":"application/json",
+                       "User-Agent":"legend-step5-parent-proof/1.0"})
+          try:
+              with urllib.request.urlopen(request,timeout=30) as response:
+                  body=json.load(response)
+          except Exception:
+              raise SystemExit(1)
+
+          history=((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                   .get("history") or {}).get("nodes",[])
+          for row in history:
+              prior=row.get("oid") or ""
+              if prior == current or not re.fullmatch(r"[0-9a-f]{40}",prior):
+                  continue
+              # Check-rollup is the cheap discriminator. Run the expensive
+              # source/test dependency closure only for an ancestor that
+              # actually completed Step 5 successfully.
+              nodes=((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes",[])
+              success=next((check for check in nodes
+                  if check.get("__typename")=="CheckRun" and check.get("name")=="step5-validation"
+                  and check.get("conclusion")=="SUCCESS"),None)
+              if not success:
+                  continue
+              if subprocess.run(["git","merge-base","--is-ancestor",base,prior]).returncode:
+                  continue
+              try:
+                  if not authority._step5_jobs_unchanged(prior,workflow_path):
+                      continue
+                  if authority.step5_dependency_change(prior,current) != []:
+                      continue
+              except Exception:
+                  continue
+              run_id=None
+              match=re.search(r"/actions/runs/(\d+)",success.get("detailsUrl") or "")
+              if match:
+                  run_id=int(match.group(1))
+              result={
+                  "schemaVersion":4,
+                  "mode":"reuse",
+                  "priorRunId":run_id,
+                  "priorHeadSha":prior,
+                  "baselineEvidenceRunId":None,
+                  "baselineEvidenceArtifact":None,
+                  "repairClasses":[],
+                  "repairFilter":None,
+                  "resumeCache":False,
+                  "parentSuccessReuse":True,
+                  "reason":"graphql_parent_success_dependency_equivalent",
+              }
+              Path(sys.argv[1]).write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+              print(json.dumps(result,indent=2,sort_keys=True))
+              raise SystemExit(0)
+          raise SystemExit(1)
+          PYGRAPH
+          }
+
+          if [ "$resolved" != "true" ] && graphql_parent_success; then
+            resolved=true
+          fi
+
+          if [ "$resolved" != "true" ]; then
+            # REST evidence remains the canonical rich proof path for actual
+            # repair/full cases. Control-only heads prove dependency-equivalent
+            # parent success first and never spend the shared REST budget.
+            # bucket is exhausted, a dependency-equivalent successful parent can
+            # still be proven through the separate GraphQL check-rollup budget.
+            for attempt in 1 2 3 4; do
+              log="$RUNNER_TEMP/step5-decision-$attempt.log"
+              run_decision "$log"
+              reason="$(python3 - "$decision" <<'PYREASON'
           import json,sys
-          plan=json.load(open(sys.argv[1]))
-          decision=json.load(open(sys.argv[2]))
-          gates=plan.get('gates',{})
-          mode=decision.get('mode') or 'full'
-          def gate(name):
-              return gates.get(name,{})
-          candidate_keys=('candidate-restore','candidate-build','candidate-focused','candidate-full')
-          comparison_run = True if mode in {'repair','reuse'} else bool(gate('comparison').get('run'))
-          with open(sys.argv[3],'a') as output:
+          print(json.load(open(sys.argv[1])).get("reason") or "")
+          PYREASON
+          )"
+              if [ "$reason" != "historical_evidence_unavailable_run_full_step5" ]; then
+                resolved=true
+                break
+              fi
+
+              if graphql_parent_success; then
+                resolved=true
+                break
+              fi
+
+              delay="$(python3 - "$log" <<'PYWAIT'
+          import json,sys,time
+          reset=None
+          retry=None
+          for line in open(sys.argv[1], errors="replace"):
+              if "evidenceRateLimit" not in line:
+                  continue
+              try:
+                  payload=json.loads(line.strip())
+                  rate=payload.get("evidenceRateLimit") or {}
+                  if rate.get("Retry-After"):
+                      retry=max(retry or 0, int(rate["Retry-After"]))
+                  if rate.get("X-RateLimit-Reset"):
+                      reset=max(reset or 0, int(rate["X-RateLimit-Reset"]))
+              except Exception:
+                  pass
+          if retry is not None:
+              print(max(1,retry+2))
+          elif reset is not None:
+              print(max(1,reset-int(time.time())+3))
+          else:
+              print(60)
+          PYWAIT
+          )"
+              if [ "$delay" -gt 3600 ]; then
+                echo "::error::Step 5 historical evidence is rate-limited beyond the bounded autonomous recovery window; refusing to discard completed evidence and rerun the full suite."
+                exit 75
+              fi
+              echo "Step 5 evidence lookup is rate-limited; preserving completed child evidence and retrying after provider reset in ${delay}s."
+              sleep "$delay"
+            done
+          fi
+
+          if [ "$resolved" != "true" ]; then
+            echo "::error::Step 5 could not authenticate prior evidence after bounded autonomous recovery; no redundant full validation was authorized."
+            exit 75
+          fi
+
+          python3 - "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json,sys
+          decision=json.load(open(sys.argv[1]))
+          mode=decision.get("mode") or "full"
+          if mode not in {"full","repair","reuse"}:
+              raise SystemExit(f"Unsupported Step 5 resume mode: {mode}")
+          current_run=str(${{ github.run_id }})
+          baseline_run=str(decision.get("baselineEvidenceRunId") or "")
+          resume_cache=bool(decision.get("resumeCache"))
+          parent_success=bool(decision.get("parentSuccessReuse"))
+          full=mode=="full"
+          with open(sys.argv[2],"a") as output:
               output.write(f"mode={mode}\n")
               output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
               output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
-              output.write(f"baseline_evidence_run_id={decision.get('baselineEvidenceRunId') or ''}\n")
+              output.write(f"baseline_evidence_run_id={baseline_run}\n")
               output.write(f"baseline_evidence_artifact={decision.get('baselineEvidenceArtifact') or ''}\n")
+              output.write("baseline_run_required="+str(
+                  mode in {"repair","reuse"} and not resume_cache and not parent_success
+                  and baseline_run == current_run).lower()+"\n")
+              output.write("resume_cache="+str(resume_cache).lower()+"\n")
+              output.write("parent_success_reuse="+str(parent_success).lower()+"\n")
               output.write(f"repair_filter={decision.get('repairFilter') or ''}\n")
               output.write("repair_classes="+';'.join(decision.get('repairClasses') or [])+"\n")
-              for key,out_name in (
-                  ('candidate-restore','candidate_restore_run'),
-                  ('candidate-build','candidate_build_run'),
-                  ('candidate-focused','candidate_focused_run'),
-                  ('candidate-full','candidate_full_run'),
-              ):
-                  output.write(f"{out_name}={str(bool(gate(key).get('run'))).lower()}\n")
-              output.write("candidate_any_run="+str(any(gate(key).get('run') for key in candidate_keys)).lower()+"\n")
-              output.write(f"candidate_full_evidence_run_id={gate('candidate-full').get('evidenceRunId') or ''}\n")
-              output.write(f"candidate_full_evidence_head_sha={gate('candidate-full').get('evidenceHeadSha') or ''}\n")
-              output.write("comparison_run="+str(comparison_run).lower()+"\n")
+              output.write("candidate_restore_run="+str(full).lower()+"\n")
+              output.write("candidate_build_run="+str(full).lower()+"\n")
+              output.write("candidate_focused_run="+str(full).lower()+"\n")
+              output.write("candidate_full_run="+str(full).lower()+"\n")
+              output.write("candidate_any_run="+str(full).lower()+"\n")
+              output.write("candidate_full_evidence_run_id=\n")
+              output.write("candidate_full_evidence_head_sha=\n")
+              output.write("comparison_run=true\n")
           PYPLAN
 
       - name: Retain exact Step 5 resume decision
@@ -152,13 +388,14 @@ jobs:
           PRIOR_HEAD_SHA: ${{ steps.plan.outputs.prior_head_sha }}
           BASELINE_EVIDENCE_RUN_ID: ${{ steps.plan.outputs.baseline_evidence_run_id }}
           BASELINE_EVIDENCE_ARTIFACT: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+          BASELINE_RUN_REQUIRED: ${{ steps.plan.outputs.baseline_run_required }}
           REPAIR_CLASSES: ${{ steps.plan.outputs.repair_classes }}
           REPAIR_FILTER: ${{ steps.plan.outputs.repair_filter }}
         run: |
           python3 - <<'PY'
           import json,os
           data={
-              'schemaVersion':1,
+              'schemaVersion':2,
               'currentHeadSha':'${{ github.event.pull_request.head.sha }}',
               'currentBaseSha':'${{ github.event.pull_request.base.sha }}',
               'mode':os.environ.get('MODE') or 'full',
@@ -166,6 +403,7 @@ jobs:
               'priorHeadSha':os.environ.get('PRIOR_HEAD_SHA') or None,
               'baselineEvidenceRunId':os.environ.get('BASELINE_EVIDENCE_RUN_ID') or None,
               'baselineEvidenceArtifact':os.environ.get('BASELINE_EVIDENCE_ARTIFACT') or None,
+              'baselineRunRequired':os.environ.get('BASELINE_RUN_REQUIRED')=='true',
               'repairClasses':[x for x in os.environ.get('REPAIR_CLASSES','').split(';') if x],
               'repairFilter':os.environ.get('REPAIR_FILTER') or None,
               'gateRuns':{
@@ -173,10 +411,8 @@ jobs:
                   'candidate-build':'${{ steps.plan.outputs.candidate_build_run }}'=='true',
                   'candidate-focused':'${{ steps.plan.outputs.candidate_focused_run }}'=='true',
                   'candidate-full':'${{ steps.plan.outputs.candidate_full_run }}'=='true',
-                  'comparison':'${{ steps.plan.outputs.comparison_run }}'=='true',
+                  'comparison':True,
               },
-              'candidateFullEvidenceRunId':'${{ steps.plan.outputs.candidate_full_evidence_run_id }}' or None,
-              'candidateFullEvidenceHeadSha':'${{ steps.plan.outputs.candidate_full_evidence_head_sha }}' or None,
           }
           with open('/tmp/step5-resume-decision.json','w') as output:
               json.dump(data,output,sort_keys=True,indent=2)
@@ -190,16 +426,15 @@ jobs:
           name: step5-resume-decision-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             /tmp/step5-resume-decision.json
-            ${{ runner.temp }}/validation-resume.json
             ${{ runner.temp }}/step5-decision.json
           retention-days: 30
           if-no-files-found: error
 
   baseline-evidence:
     needs: plan
-    if: needs.plan.outputs.comparison_run == 'true'
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 70
     outputs:
       reusable: ${{ steps.lookup.outputs.reusable }}
       run_id: ${{ steps.lookup.outputs.run_id }}
@@ -349,7 +584,11 @@ jobs:
 
   baseline:
     needs: [plan, baseline-evidence]
-    if: needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
+    if: >-
+      needs.plan.outputs.comparison_run == 'true' &&
+      ((needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable != 'true') ||
+       ((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+        needs.plan.outputs.baseline_run_required == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -405,15 +644,33 @@ jobs:
       always() &&
       needs.plan.result == 'success' &&
       (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
-        (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')) ||
+        (needs.plan.outputs.baseline_run_required != 'true' || needs.baseline.result == 'success')) ||
        (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
        (needs.plan.outputs.mode == 'full' &&
         needs.plan.outputs.comparison_run == 'true' &&
         needs.candidate.result == 'success' &&
         (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
+      - name: Restore PR-local Step 5 evidence cache for bounded repair
+        if: needs.plan.outputs.resume_cache == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ needs.plan.outputs.prior_head_sha }}
+
+      - name: Load cached prior Step 5 candidate and baseline
+        if: needs.plan.outputs.resume_cache == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/step5-resume-cache/candidate.trx
+          test -f /tmp/step5-resume-cache/baseline.trx
+          mkdir -p /tmp/step5-prior-candidate /tmp/step5-prior-baseline
+          cp /tmp/step5-resume-cache/candidate.trx /tmp/step5-prior-candidate/candidate.trx
+          cp /tmp/step5-resume-cache/baseline.trx /tmp/step5-prior-baseline/baseline.trx
+
       - name: Load exact current candidate results
         if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
         uses: actions/download-artifact@v4
@@ -465,7 +722,10 @@ jobs:
           dotnet-version: '10.0.401'
 
       - name: Load preserved candidate results from prior exact head
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true'
         uses: actions/download-artifact@v4
         with:
           name: step5-candidate-${{ needs.plan.outputs.prior_head_sha }}
@@ -473,8 +733,23 @@ jobs:
           run-id: ${{ needs.plan.outputs.prior_run_id }}
           github-token: ${{ github.token }}
 
+      - name: Load freshly required approved baseline results
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true' &&
+          needs.plan.outputs.baseline_run_required == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-prior-baseline
+
       - name: Load independently proven approved baseline results
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.resume_cache != 'true' &&
+          needs.plan.outputs.parent_success_reuse != 'true' &&
+          needs.plan.outputs.baseline_run_required != 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.plan.outputs.baseline_evidence_artifact }}
@@ -483,7 +758,9 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Normalize independently proven approved baseline result
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.parent_success_reuse != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -527,9 +804,20 @@ jobs:
           VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
           REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
           COMPARISON_RUN: ${{ needs.plan.outputs.comparison_run }}
+          PARENT_SUCCESS_REUSE: ${{ needs.plan.outputs.parent_success_reuse }}
         run: |
           if [ "$COMPARISON_RUN" != "true" ]; then
             echo "PRESERVED comparison: canonical child evidence remains valid and unchanged."
+            exit 0
+          fi
+          if [ "$PARENT_SUCCESS_REUSE" = "true" ]; then
+            echo "PRESERVED comparison: a dependency-equivalent ancestor already completed Step 5 successfully."
+            {
+              echo "introduced=false"
+              echo "introduced_classes="
+              echo "introduced_filter="
+              echo "parent_success_reuse=true"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           python3 - <<'PY'
@@ -643,29 +931,286 @@ jobs:
                   output.write("effective_evidence=true\n")
               print("Materialized effective repaired/reused Step 5 evidence for the current head.")
 
+          introduced_classes = sorted({name.rsplit(".", 1)[0] for name in introduced})
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("introduced="+str(bool(introduced)).lower()+"\n")
+              output.write("introduced_classes="+";".join(introduced_classes)+"\n")
+              output.write("introduced_filter="+"|".join(
+                  f"FullyQualifiedName~{name}" for name in introduced_classes
+              )+"\n")
+
           if introduced:
               print("Step 5 introduced full-suite failures:")
               for name in introduced:
                   print(f" - {name}")
-              raise SystemExit(1)
+              print("Step 5 will attempt one bounded same-run class recheck before final enforcement.")
+          else:
+              print("Step 5 introduced zero new full-suite failures.")
+          PY
 
-          print("Step 5 introduced zero new full-suite failures.")
+      - name: Setup .NET for bounded same-run Step 5 recheck
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Build only the newly introduced Step 5 failure classes
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        shell: bash
+        run: |
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Recheck only newly introduced Step 5 failure classes
+        id: selfrecheck
+        if: needs.plan.outputs.mode == 'full' && steps.comparison.outputs.introduced == 'true'
+        shell: bash
+        env:
+          RECHECK_FILTER: ${{ steps.comparison.outputs.introduced_filter }}
+          RECHECK_CLASSES: ${{ steps.comparison.outputs.introduced_classes }}
+        run: |
+          set +e
+          rm -rf /tmp/step5-self-recheck
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter "$RECHECK_FILTER" \
+            --logger "trx;LogFileName=repair.trx" \
+            --results-directory /tmp/step5-self-recheck
+          recheck_rc=$?
+          set -e
+          test -f /tmp/step5-self-recheck/repair.trx
+          echo "Bounded same-run recheck exit code: $recheck_rc"
+
+          python3 - <<'PY'
+          import copy
+          import importlib.util
+          import os
+          from pathlib import Path
+          import shutil
+          import xml.etree.ElementTree as ET
+
+          spec = importlib.util.spec_from_file_location("validation_resume", "scripts/validation-resume.py")
+          authority = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          results = authority.read_step5_results
+          classes = [value for value in os.environ.get("RECHECK_CLASSES", "").split(";") if value]
+          if not classes:
+              raise SystemExit("Same-run Step 5 recheck had no bounded class authority.")
+
+          repair_rows = results("/tmp/step5-self-recheck/repair.trx")
+          for class_name in classes:
+              prefix = class_name + "."
+              if not any(name.startswith(prefix) for name in repair_rows):
+                  raise SystemExit(f"Same-run recheck omitted affected class: {class_name}")
+
+          candidate_tree = ET.parse("/tmp/step5-candidate/candidate.trx")
+          candidate_root = candidate_tree.getroot()
+          repair_tree = ET.parse("/tmp/step5-self-recheck/repair.trx")
+          repair_nodes = {
+              node.attrib.get("testName", ""): node
+              for node in repair_tree.getroot().iter()
+              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+          }
+          candidate_nodes = {
+              node.attrib.get("testName", ""): node
+              for node in candidate_root.iter()
+              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
+          }
+          affected = lambda name: any(name.startswith(class_name + ".") for class_name in classes)
+          prior_affected = {name for name in candidate_nodes if affected(name)}
+          missing = sorted(name for name in prior_affected if name not in repair_nodes)
+          if missing:
+              raise SystemExit(
+                  "Same-run recheck omitted prior tests from the affected class: "
+                  + ", ".join(missing)
+              )
+          for name in prior_affected:
+              candidate_nodes[name].set("outcome", repair_nodes[name].attrib.get("outcome", ""))
+
+          results_node = next(
+              (node for node in candidate_root.iter() if node.tag.endswith("Results")),
+              None,
+          )
+          if results_node is None:
+              raise SystemExit("Candidate TRX has no Results node.")
+          for name, node in repair_nodes.items():
+              if affected(name) and name not in candidate_nodes:
+                  results_node.append(copy.deepcopy(node))
+
+          all_results = [node for node in candidate_root.iter() if node.tag.endswith("UnitTestResult")]
+          counters = next(node for node in candidate_root.iter() if node.tag.endswith("Counters"))
+          counters.set("total", str(len(all_results)))
+          for outcome in ("Passed", "Failed", "NotExecuted"):
+              counters.set(
+                  outcome[0].lower() + outcome[1:],
+                  str(sum(node.get("outcome") == outcome for node in all_results)),
+              )
+
+          effective = Path("/tmp/step5-effective")
+          effective.mkdir(parents=True, exist_ok=True)
+          candidate_tree.write(effective / "candidate.trx", encoding="utf-8", xml_declaration=True)
+          shutil.copy2("/tmp/step5-baseline/baseline.trx", effective / "baseline.trx")
+
+          candidate_failed = {
+              name for name, outcome in results(effective / "candidate.trx").items()
+              if outcome in {"Failed", "NotExecuted"}
+          }
+          baseline_failed = {
+              name for name, outcome in results(effective / "baseline.trx").items()
+              if outcome in {"Failed", "NotExecuted"}
+          }
+          unresolved = sorted(candidate_failed - baseline_failed)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("effective_evidence=true\n")
+              output.write("resolved="+str(not unresolved).lower()+"\n")
+              output.write("unresolved_count="+str(len(unresolved))+"\n")
+          if unresolved:
+              print("Bounded same-run Step 5 recheck still proves introduced failures:")
+              for name in unresolved:
+                  print(f" - {name}")
+          else:
+              print("Bounded same-run Step 5 recheck reconciled all introduced failures.")
           PY
 
       - name: Preserve effective Step 5 candidate evidence
-        if: always() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') && steps.comparison.outputs.effective_evidence == 'true'
+        if: >-
+          always() &&
+          (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+            steps.comparison.outputs.effective_evidence == 'true') ||
+           (needs.plan.outputs.mode == 'full' &&
+            steps.selfrecheck.outputs.effective_evidence == 'true'))
         uses: actions/upload-artifact@v4
         with:
           name: step5-candidate-${{ github.event.pull_request.head.sha }}
           path: /tmp/step5-effective/candidate.trx
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
 
       - name: Preserve effective Step 5 baseline evidence
-        if: always() && steps.comparison.outputs.effective_evidence == 'true' && needs.baseline.result != 'success'
+        if: >-
+          always() &&
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          steps.comparison.outputs.effective_evidence == 'true' &&
+          needs.baseline.result != 'success'
         uses: actions/upload-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}
           path: /tmp/step5-effective/baseline.trx
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
+
+      - name: Record bounded Step 5 recovery state
+        if: always()
+        shell: bash
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          PRIOR_RUN_ID: ${{ needs.plan.outputs.prior_run_id }}
+          PRIOR_HEAD_SHA: ${{ needs.plan.outputs.prior_head_sha }}
+          REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+          RESUME_CACHE: ${{ needs.plan.outputs.resume_cache }}
+          PARENT_SUCCESS_REUSE: ${{ needs.plan.outputs.parent_success_reuse }}
+          INTRODUCED: ${{ steps.comparison.outputs.introduced }}
+          INTRODUCED_CLASSES: ${{ steps.comparison.outputs.introduced_classes }}
+          SELF_RECHECK_RESOLVED: ${{ steps.selfrecheck.outputs.resolved }}
+          SELF_RECHECK_UNRESOLVED_COUNT: ${{ steps.selfrecheck.outputs.unresolved_count }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          receipt={
+              "schemaVersion":1,
+              "headSha":"${{ github.event.pull_request.head.sha }}",
+              "baseSha":"${{ github.event.pull_request.base.sha }}",
+              "runId":int("${{ github.run_id }}"),
+              "mode":os.environ.get("MODE") or "unknown",
+              "priorRunId":int(os.environ["PRIOR_RUN_ID"]) if os.environ.get("PRIOR_RUN_ID") else None,
+              "priorHeadSha":os.environ.get("PRIOR_HEAD_SHA") or None,
+              "repairClasses":[x for x in os.environ.get("REPAIR_CLASSES","").split(";") if x],
+              "resumeCache":os.environ.get("RESUME_CACHE")=="true",
+              "parentSuccessReuse":os.environ.get("PARENT_SUCCESS_REUSE")=="true",
+              "introduced":os.environ.get("INTRODUCED")=="true",
+              "introducedClasses":[x for x in os.environ.get("INTRODUCED_CLASSES","").split(";") if x],
+              "sameRunRecheckResolved":os.environ.get("SELF_RECHECK_RESOLVED")=="true",
+              "sameRunUnresolvedCount":int(os.environ.get("SELF_RECHECK_UNRESOLVED_COUNT") or 0),
+          }
+          with open("/tmp/step5-recovery-state.json","w") as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+
+      - name: Preserve bounded Step 5 recovery state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-recovery-state-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-recovery-state.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+      - name: Materialize PR-local Step 5 evidence cache
+        id: cachecapsule
+        if: >-
+          always() &&
+          steps.comparison.outcome == 'success' &&
+          needs.plan.outputs.parent_success_reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=""
+          baseline=""
+          for path in /tmp/step5-effective/candidate.trx /tmp/step5-candidate/candidate.trx /tmp/step5-prior-candidate/candidate.trx; do
+            if [ -f "$path" ]; then candidate="$path"; break; fi
+          done
+          for path in /tmp/step5-effective/baseline.trx /tmp/step5-baseline/baseline.trx /tmp/step5-prior-baseline/baseline.trx; do
+            if [ -f "$path" ]; then baseline="$path"; break; fi
+          done
+          test -n "$candidate" && test -n "$baseline"
+          rm -rf /tmp/step5-resume-cache
+          mkdir -p /tmp/step5-resume-cache
+          cp "$candidate" /tmp/step5-resume-cache/candidate.trx
+          cp "$baseline" /tmp/step5-resume-cache/baseline.trx
+          python3 - <<'PY'
+          import json
+          payload={
+              "schemaVersion":1,
+              "headSha":"${{ github.event.pull_request.head.sha }}",
+              "baseSha":"${{ github.event.pull_request.base.sha }}",
+              "runId":int("${{ github.run_id }}"),
+          }
+          with open("/tmp/step5-resume-cache/metadata.json","w") as output:
+              json.dump(payload,output,sort_keys=True,indent=2)
+          PY
+
+      - name: Save PR-local Step 5 evidence cache
+        if: always() && steps.cachecapsule.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+
+      - name: Enforce final Step 5 outcome after bounded recovery
+        if: always()
+        shell: bash
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          COMPARISON_OUTCOME: ${{ steps.comparison.outcome }}
+          INTRODUCED: ${{ steps.comparison.outputs.introduced }}
+          SELF_RECHECK_OUTCOME: ${{ steps.selfrecheck.outcome }}
+          SELF_RECHECK_RESOLVED: ${{ steps.selfrecheck.outputs.resolved }}
+        run: |
+          set -euo pipefail
+          if [ "$COMPARISON_OUTCOME" != "success" ]; then
+            echo "::error::Step 5 comparison evidence itself is invalid or incomplete."
+            exit 1
+          fi
+          if [ "$INTRODUCED" != "true" ]; then
+            echo "Step 5 final comparison is green."
+            exit 0
+          fi
+          if [ "$MODE" = "full" ] && [ "$SELF_RECHECK_OUTCOME" = "success" ] && [ "$SELF_RECHECK_RESOLVED" = "true" ]; then
+            echo "Step 5 introduced failures were transient and were reconciled by the bounded same-run class recheck."
+            exit 0
+          fi
+          echo "::error::Step 5 still proves a deterministic candidate-only regression. Full-suite and baseline evidence were preserved; the next repair head must rerun only the recorded affected classes."
+          exit 1

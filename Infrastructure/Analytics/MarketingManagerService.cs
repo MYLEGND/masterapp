@@ -49,7 +49,7 @@ public sealed class MarketingManagerService(
         var targetIncrement = request.TargetIncrement is > 0 ? request.TargetIncrement.Value : ParseTargetIncrement(goal);
 
         var safeContext = await context.BuildAsync(range, analyticsScope, range.Label, owner.OwnerType,
-            "All Traffic", TrafficType.All, ct, owner);
+            DecisionTrafficLabel(range), TrafficType.All, ct, owner);
         var summary = new SummaryKpiDto { VerifiedLeads = safeContext.VerifiedLeads, Sessions = safeContext.Sessions,
             SessionConversionRate = safeContext.SessionConversionRate, TopSource = safeContext.TopSource, TopCampaign = safeContext.TopCampaign };
         var funnel = new QuoteFunnelDto { QuoteStarts = safeContext.QuoteStarts, QuoteFormSubmits = safeContext.QuoteFormSubmits };
@@ -74,8 +74,10 @@ public sealed class MarketingManagerService(
             new("top_source", "Top source", summary.TopSource ?? "No source in range", "canonical analytics"),
             new("top_campaign", "Top campaign", summary.TopCampaign ?? "No campaign in range", "canonical analytics"),
             new("tracking_errors", "Client tracking errors", health.ClientTrackingErrors.ToString(), "canonical analytics"),
-            new("chatgpt_spend", "ChatGPT Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.ChatGptAds)?.Spend ?? 0), "OpenAI Ads + canonical attribution"),
-            new("meta_spend", "Meta Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.MetaAds)?.Spend ?? 0), "Meta Ads + canonical attribution")
+            new("chatgpt_spend", "ChatGPT Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.ChatGptAds)?.Spend), "ChatGPT Ads delivery + canonical downstream attribution"),
+            new("meta_spend", "Meta Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.MetaAds)?.Spend), "Meta Ads delivery + canonical downstream attribution"),
+            new("google_spend", "Google Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.GoogleAds)?.Spend), "Google Ads delivery + canonical downstream attribution"),
+            new("tiktok_spend", "TikTok Ads spend", Money(channel.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.TikTokAds)?.Spend), "TikTok Ads delivery + canonical downstream attribution")
         };
 
         if (targetIncrement > 0)
@@ -103,7 +105,7 @@ public sealed class MarketingManagerService(
         {
             "The Marketing Manager may prepare and propose changes, but provider mutations execute only through the existing exact-action advertising authorization ledger.",
             "No campaign, budget, status, landing-page, or CRM mutation is executed from planning output alone.",
-            "ChatGPT Ads downstream outcomes use canonical oppref lineage; unproven campaign-level revenue attribution is not inferred.",
+            "Paid-channel downstream outcomes use canonical acquisition lineage (oppref, Meta identifiers, gclid, or ttclid); unproven campaign-level revenue attribution is never inferred.",
             "Scope is server-resolved. Cross-agent and cross-business data are never combined into a single owner plan."
         };
 
@@ -141,7 +143,7 @@ public sealed class MarketingManagerService(
 
         var safeContext = await context.BuildAsync(
             range, analyticsScope, range.Label, owner.OwnerType,
-            "All Traffic", TrafficType.All, ct, owner);
+            DecisionTrafficLabel(range), TrafficType.All, ct, owner);
         var calibrations = (safeContext.OutcomeCalibration?.Signals ?? [])
             .ToDictionary(x => x.Signal, StringComparer.OrdinalIgnoreCase);
 
@@ -225,16 +227,16 @@ public sealed class MarketingManagerService(
                     : "NoCalibratedIntentSignal";
 
             calibrations.TryGetValue(signal, out var calibration);
-            var likelihood = ProgressRateForStage(lead.CrmStage, calibration);
+            var likelihood = PaidProbabilityForStage(lead.CrmStage, calibration);
             decimal? expectedValue = averagePaidValue.HasValue && calibration is not null
-                ? Math.Round(averagePaidValue.Value * calibration.PaidRate / 100m, 2)
+                ? Math.Round(averagePaidValue.Value * likelihood / 100m, 2)
                 : null;
 
             var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
             var recencyMultiplier = RecencyMultiplier(now - lead.UpdatedUtc);
             var urgencyMultiplier = UrgencyMultiplier(meta.CrmPriority, meta.CrmNextDate, now);
             var evidenceBase = expectedValue is > 0m
-                ? expectedValue.Value * Math.Max(likelihood / 100m, 0.05m)
+                ? expectedValue.Value
                 : Math.Max(likelihood, 1m);
             var priorityIndex = Math.Round(evidenceBase * recencyMultiplier * urgencyMultiplier, 2);
             var band = priorityIndex >= (averagePaidValue ?? 100m) * 0.25m ? "High"
@@ -274,21 +276,43 @@ public sealed class MarketingManagerService(
             ]);
     }
 
+    private static string DecisionTrafficLabel(TimeRangeRequest range) =>
+        range.QualityMode switch
+        {
+            TrafficQualityMode.RealHumanTraffic => "Real Human Traffic",
+            TrafficQualityMode.LikelyHuman => "Likely Human Traffic",
+            TrafficQualityMode.ReviewedNeeded => "Review Needed",
+            TrafficQualityMode.SuspiciousActivity => "Suspicious Activity",
+            TrafficQualityMode.LikelyBotsAutomation => "Likely Bots/Automation",
+            TrafficQualityMode.InternalQa => "Internal/QA Traffic",
+            _ => "All Traffic"
+        };
+
     private static LeadPrioritySnapshot EmptyPriority(MarketingOwnerScope owner, string reason) =>
         new(owner, DateTime.UtcNow, reason, null, [], [reason]);
 
-    private static decimal ProgressRateForStage(
+    internal static decimal PaidProbabilityForStage(
         string? stage,
         SignalOutcomeCalibrationAiRow? calibration)
     {
         if (calibration is null) return 0m;
-        return stage?.Trim().ToLowerInvariant() switch
+        var normalized = stage?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (normalized is "paid" or "policyplaced" or "customer" or "client" or "closedwon")
+            return 100m;
+
+        var denominator = normalized switch
         {
-            "qualified" => calibration.AppointmentRate,
-            "booked" or "meetingscheduled" => calibration.ApplicationRate,
-            "needsdocs" or "applicationstarted" or "followup" => calibration.IssuedRate,
-            _ => calibration.QualifiedRate
+            "issued" or "policyissued" => calibration.IssuedRate,
+            "needsdocs" or "applicationstarted" or "application" or "applicationsubmitted" or "followup"
+                => calibration.ApplicationRate,
+            "booked" or "meetingscheduled" or "appointmentbooked" or "appointmentcompleted"
+                => calibration.AppointmentRate,
+            "qualified" => calibration.QualifiedRate,
+            _ => 100m
         };
+
+        if (calibration.PaidRate <= 0m || denominator <= 0m) return 0m;
+        return Math.Clamp(Math.Round(calibration.PaidRate / denominator * 100m, 2), 0m, 100m);
     }
 
     private static decimal RecencyMultiplier(TimeSpan age) =>
@@ -316,8 +340,8 @@ public sealed class MarketingManagerService(
         decimal? expectedValue,
         decimal recencyMultiplier,
         decimal urgencyMultiplier) =>
-        $"{signal}; observed next-outcome likelihood {likelihood:0.##}%; " +
-        (expectedValue.HasValue ? $"historical expected downstream value {Money(expectedValue)}; " : "paid-value history unavailable; ") +
+        $"{signal}; observed paid-close probability from the current CRM stage {likelihood:0.##}%; " +
+        (expectedValue.HasValue ? $"stage-conditioned expected remaining revenue {Money(expectedValue)}; " : "paid-value history unavailable; ") +
         $"recency x{recencyMultiplier:0.##}; CRM urgency x{urgencyMultiplier:0.##}.";
 
     public Task<AdvertisingActionProposalSnapshot> ProposeChatGptPromotionAsync(
@@ -406,18 +430,21 @@ public sealed class MarketingManagerService(
                 MarketingChannels.ChatGptAds));
         }
 
-        var meta = performance.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.MetaAds);
-        if (meta is not null && meta.Spend > 0)
+        foreach (var paid in performance.Channels
+                     .Where(x => x.Channel is MarketingChannels.MetaAds or MarketingChannels.GoogleAds or MarketingChannels.TikTokAds)
+                     .Where(x => x.Spend is > 0m)
+                     .OrderByDescending(x => x.Spend))
         {
+            var provider = PaidChannelLabel(paid.Channel);
             result.Add(new(
                 priority++,
                 "advertising",
-                "Review Meta budget allocation against downstream qualified leads, appointments, customers, revenue, and ROAS before increasing total spend.",
-                $"Meta spend is {Money(meta.Spend)} with {meta.QualifiedLeads:N0} qualified leads, {meta.Appointments:N0} appointments, and {Money(meta.Revenue)} attributed revenue.",
-                "Directs budget toward channels producing business outcomes rather than clicks alone.",
+                $"Review {provider} budget allocation against downstream qualified leads, appointments, customers, revenue, and ROAS before increasing total spend.",
+                $"{provider} spend is {Money(paid.Spend)} with {paid.QualifiedLeads:N0} qualified leads, {paid.Appointments:N0} appointments, and {Money(paid.Revenue)} canonically attributed revenue.",
+                "Directs budget toward channels producing business outcomes rather than clicks alone; campaign-level revenue is used only when explicitly proven.",
                 true,
-                MarketingChannels.MetaAds,
-                "meta_budget_review"));
+                paid.Channel,
+                paid.Channel + "_budget_review"));
         }
 
         result.Add(new(
@@ -430,6 +457,15 @@ public sealed class MarketingManagerService(
 
         return result.Take(8).ToList();
     }
+
+    private static string PaidChannelLabel(string channel) => channel switch
+    {
+        MarketingChannels.ChatGptAds => "ChatGPT Ads",
+        MarketingChannels.MetaAds => "Meta Ads",
+        MarketingChannels.GoogleAds => "Google Ads",
+        MarketingChannels.TikTokAds => "TikTok Ads",
+        _ => channel
+    };
 
     private static int ParseTargetIncrement(string goal)
     {

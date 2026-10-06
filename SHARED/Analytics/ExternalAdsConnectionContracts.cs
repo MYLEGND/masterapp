@@ -32,3 +32,27 @@ public sealed record MarketingProviderOAuthCompletion(
     string ReturnUrl,
     MarketingProviderConnectionSnapshot Connection,
     IReadOnlyList<MarketingProviderAccountOption> Accounts);
+
+public sealed record MarketingProviderEventMapping(
+    string CanonicalEventName,
+    string ProviderEventName,
+    string? DestinationId = null);
+
+public sealed record MarketingProviderMeasurementConfiguration(
+    MarketingOwnerScope Owner,
+    string Provider,
+    string? EventSourceId,
+    string EventSourceType,
+    IReadOnlyList<MarketingProviderEventMapping> Mappings,
+    Guid Revision,
+    bool MappingReady,
+    string Status,
+    bool HasMeasurementCredential = false);
+
+public sealed record MarketingProviderMeasurementUpdate(
+    string Provider,
+    string? EventSourceId,
+    string? EventSourceType,
+    IReadOnlyList<MarketingProviderEventMapping> Mappings,
+    Guid ExpectedRevision,
+    string? MeasurementAccessToken = null);

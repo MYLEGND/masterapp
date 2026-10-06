@@ -26,6 +26,8 @@ public static class MarketingDeliveryEvidencePolicy
 {
     public const string MetaAcceptanceEvidence = "events_received";
     public const string OpenAiAcceptanceEvidence = "http_accepted";
+    public const string GoogleAcceptanceEvidence = "click_conversion_accepted";
+    public const string TikTokAcceptanceEvidence = "events_api_accepted";
 
     public static bool MetaAttempted(MetaSignalEvent row) =>
         CanonicalAdvertisingEventProjection.ReadBoolean(row.MetadataJson, "metaServerAttempted") == true;
@@ -71,13 +73,28 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
             (CanonicalAdvertisingEventProjection.ReadBoolean(m.MetadataJson, "metaServerAttempted") != true ||
              CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerPixelId") == currentMeta.PixelId)).ToArray();
         var deliveries = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
-            .Where(r => r.OwnerKey == owner.Key && r.Provider == MarketingDestinationKeys.OpenAi &&
-                r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) && r.CreatedUtc >= from).ToListAsync(ct);
-        var openAi = deliveries.Where(r => r.AnalyticsEventId is { } id && sourceById.ContainsKey(id) &&
+            .Where(r => r.OwnerKey == owner.Key &&
+                (r.Provider == MarketingDestinationKeys.OpenAi ||
+                 r.Provider == MarketingDestinationKeys.Google ||
+                 r.Provider == MarketingDestinationKeys.TikTok) &&
+                r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) && r.CreatedUtc >= from)
+            .ToListAsync(ct);
+        var openAi = deliveries.Where(r => r.Provider == MarketingDestinationKeys.OpenAi &&
+            r.AnalyticsEventId is { } id && sourceById.ContainsKey(id) &&
             r.AgentTrackingProfileId == owner.AgentTrackingProfileId && r.CommerceBusinessId == owner.CommerceBusinessId &&
             OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(r, currentOpenAi)).ToArray();
+
+        var googleConnection = await connections.GetProviderConnectionAsync(owner, MarketingDestinationKeys.Google, ct);
+        var googleMeasurement = await connections.GetProviderMeasurementConfigurationAsync(owner, MarketingDestinationKeys.Google, ct);
+        var tiktokConnection = await connections.GetProviderConnectionAsync(owner, MarketingDestinationKeys.TikTok, ct);
+        var tiktokMeasurement = await connections.GetProviderMeasurementConfigurationAsync(owner, MarketingDestinationKeys.TikTok, ct);
+        var google = CurrentExternalReceipts(deliveries, sourceById, owner, googleConnection, googleMeasurement);
+        var tiktok = CurrentExternalReceipts(deliveries, sourceById, owner, tiktokConnection, tiktokMeasurement);
+
         var metaAccepted = meta.Count(MarketingDeliveryEvidencePolicy.MetaProviderAccepted);
         var openAiAccepted = openAi.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
+        var googleAccepted = google.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
+        var tiktokAccepted = tiktok.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
         return new(owner.Key, from, sources.Count > 0, sources.Select(e => (DateTime?)e.ReceivedUtc).Max(),
             new(meta.Count(MarketingDeliveryEvidencePolicy.MetaAttempted), metaAccepted,
                 meta.Count(m => !MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
@@ -95,17 +112,69 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
                 openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
                 openAiAccepted > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed"),
-            new(0, 0, 0, 0, 0,
+            EvidenceForExternal(
+                google,
+                googleAccepted,
                 sources.Any(e => PaidAdsClickReference.NormalizeGoogle(
                     CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid")) is not null ||
                     CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.GoogleAds),
-                null,
-                "conversion_delivery_not_configured"),
-            new(0, 0, 0, 0, 0,
+                googleMeasurement.MappingReady,
+                MarketingDeliveryEvidencePolicy.GoogleAcceptanceEvidence),
+            EvidenceForExternal(
+                tiktok,
+                tiktokAccepted,
                 sources.Any(e => PaidAdsClickReference.NormalizeTikTok(
                     CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid")) is not null ||
                     CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.TikTokAds),
-                null,
-                "conversion_delivery_not_configured"));
+                tiktokMeasurement.MappingReady,
+                MarketingDeliveryEvidencePolicy.TikTokAcceptanceEvidence));
     }
+
+    private static MarketingDestinationDelivery[] CurrentExternalReceipts(
+        IReadOnlyCollection<MarketingDestinationDelivery> deliveries,
+        IReadOnlyDictionary<long, AnalyticsEvent> sourceById,
+        MarketingOwnerScope owner,
+        MarketingProviderConnectionSnapshot connection,
+        MarketingProviderMeasurementConfiguration measurement)
+    {
+        if (!connection.Ready || !measurement.MappingReady || string.IsNullOrWhiteSpace(connection.AccountId))
+            return [];
+
+        return deliveries.Where(receipt =>
+            receipt.Provider == connection.Provider &&
+            receipt.AnalyticsEventId is { } id &&
+            sourceById.ContainsKey(id) &&
+            receipt.AgentTrackingProfileId == owner.AgentTrackingProfileId &&
+            receipt.CommerceBusinessId == owner.CommerceBusinessId &&
+            string.Equals(receipt.AdvertiserAccountId, connection.AccountId, StringComparison.Ordinal) &&
+            measurement.Mappings.Any(mapping =>
+                string.Equals(mapping.CanonicalEventName, receipt.CanonicalEventName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(mapping.ProviderEventName, receipt.ProviderEventName, StringComparison.Ordinal) &&
+                string.Equals(receipt.ConversionDataSourceId,
+                    connection.Provider == MarketingDestinationKeys.Google
+                        ? mapping.DestinationId
+                        : measurement.EventSourceId,
+                    StringComparison.Ordinal)))
+            .ToArray();
+    }
+
+    private static ProviderMeasurementEvidence EvidenceForExternal(
+        IReadOnlyCollection<MarketingDestinationDelivery> receipts,
+        int accepted,
+        bool attributionObserved,
+        bool mappingReady,
+        string acceptanceEvidence) =>
+        new(
+            receipts.Count(row => row.AttemptCount > 0),
+            accepted,
+            receipts.Count(row => row.Status == "pending" ||
+                row.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+            receipts.Count(row => row.Status == "retryable"),
+            receipts.Count(row => row.Status == "permanent_failure"),
+            attributionObserved,
+            receipts.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted)
+                .Select(row => row.SentUtc).Max(),
+            accepted > 0 ? acceptanceEvidence :
+                mappingReady ? "not_observed" : "conversion_mapping_not_ready");
+
 }

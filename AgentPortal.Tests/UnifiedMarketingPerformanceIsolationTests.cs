@@ -43,7 +43,8 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .ThrowsAsync(new HttpRequestException("Meta unavailable"));
         var external = new Mock<IMarketingExternalAdsReportingService>();
         external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+            .ReturnsAsync(new ExternalAdsCampaignReport(
+                Array.Empty<ProviderDeliveryMetricRow>(), "UTC", range.FromUtc.Date, range.ToUtc.Date));
         var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Contains(result.DataQualityNotes, x => x.Contains("completed account-local hours", StringComparison.Ordinal));
@@ -82,7 +83,8 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
             .ReturnsAsync(new List<AnalyticsEvent> { paid, direct, paid });
         var external = new Mock<IMarketingExternalAdsReportingService>();
         external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+            .ReturnsAsync(new ExternalAdsCampaignReport(
+                Array.Empty<ProviderDeliveryMetricRow>(), "UTC", range.FromUtc.Date, range.ToUtc.Date));
         var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Equal(1, result.ChatGptAdsOutcomes.Customers);
@@ -98,7 +100,15 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(1, economics.CustomersAcquired);
         Assert.Null(economics.TotalMarketingSpend); Assert.Null(economics.BlendedRoas); Assert.Null(economics.CostPerCustomer);
-        Assert.Equal(2, result.DataQualityNotes.Count);
+        Assert.Equal(4, result.DataQualityNotes.Count);
+        Assert.Contains(result.DataQualityNotes, note =>
+            note.Contains("ChatGPT Ads delivery metrics are temporarily unavailable", StringComparison.Ordinal));
+        Assert.Contains(result.DataQualityNotes, note =>
+            note.Contains("Meta Ads comparison is unavailable", StringComparison.Ordinal));
+        Assert.Contains(result.DataQualityNotes, note =>
+            note.Contains("Google Ads reporting uses account-local dates", StringComparison.Ordinal));
+        Assert.Contains(result.DataQualityNotes, note =>
+            note.Contains("TikTok Ads reporting uses account-local dates", StringComparison.Ordinal));
         meta.Verify(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -8,7 +8,9 @@ public sealed class AiSafeAnalyticsPayload
     public DateTime ToUtc { get; set; }
     public string QualityMode { get; set; } = "";
     public List<AiChannelRow> Channels { get; set; } = [];
-    public List<AiCampaignRow> ChatGptCampaigns { get; set; } = [];
+    // One provider-neutral campaign-delivery projection. Canonical downstream fields are
+    // nullable and populated only when campaign-level first-party lineage is actually proven.
+    public List<AiPaidCampaignRow> PaidCampaigns { get; set; } = [];
     public List<string> ChannelCoverageNotes { get; set; } = [];
     public List<AiDeviceRow> Devices { get; set; } = [];
     public List<AiDeviceRow> OperatingSystems { get; set; } = [];
@@ -72,9 +74,6 @@ public sealed class AiSafeAnalyticsPayload
     // Form abandonment
     public List<AbandonRow> FormAbandonment { get; set; } = new();
     public List<LabelCount> TopAbandonedFields { get; set; } = new();
-
-    // Meta Ads — active campaigns only (Status == ACTIVE from Meta API), ordered by spend desc
-    public List<AiCampaignRow> ActiveCampaigns { get; set; } = new();
 
     // Meta Signal Intelligence
     public MetaSignalAiPayload? MetaSignal { get; set; }
@@ -145,18 +144,26 @@ public sealed class AbandonRow
 }
 
 /// <summary>
-/// A single active Meta Ads campaign row — safe for AI consumption.
-/// Only aggregate ad-delivery metrics; no PII.
+/// Provider-neutral paid campaign evidence safe for AI consumption. Provider delivery
+/// never becomes first-party revenue truth; downstream fields stay null unless canonical
+/// campaign lineage proves them.
 /// </summary>
-public sealed class AiCampaignRow
+public sealed class AiPaidCampaignRow
 {
+    public string Channel { get; set; } = "";
     public string CampaignName { get; set; } = "";
+    public string Status { get; set; } = "";
     public decimal Spend { get; set; }
     public long Impressions { get; set; }
     public long Clicks { get; set; }
-    public decimal Ctr { get; set; }
-    public decimal Cpc { get; set; }
-    public long Leads { get; set; }
+    public long ProviderConversions { get; set; }
+    public long? CanonicalLeads { get; set; }
+    public long? CanonicalQualifiedLeads { get; set; }
+    public long? CanonicalAppointments { get; set; }
+    public long? CanonicalApplications { get; set; }
+    public long? CanonicalCustomers { get; set; }
+    public decimal? CanonicalRevenue { get; set; }
+    public string AttributionEvidence { get; set; } = "campaign_downstream_not_proven";
 }
 
 public sealed class MetaSignalAiPayload

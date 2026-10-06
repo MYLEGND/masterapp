@@ -8,9 +8,15 @@ using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
+public sealed record ExternalAdsCampaignReport(
+    IReadOnlyList<ProviderDeliveryMetricRow> Rows,
+    string AccountTimeZone,
+    DateTime ProviderFromDate,
+    DateTime ProviderToDate);
+
 public interface IMarketingExternalAdsReportingService
 {
-    Task<IReadOnlyList<ProviderDeliveryMetricRow>> GetCampaignsAsync(
+    Task<ExternalAdsCampaignReport> GetCampaignsAsync(
         MarketingOwnerScope owner,
         string provider,
         TimeRangeRequest range,
@@ -23,7 +29,7 @@ public sealed class MarketingExternalAdsReportingService(
     IHttpClientFactory clients,
     IConfiguration configuration) : IMarketingExternalAdsReportingService
 {
-    public async Task<IReadOnlyList<ProviderDeliveryMetricRow>> GetCampaignsAsync(
+    public async Task<ExternalAdsCampaignReport> GetCampaignsAsync(
         MarketingOwnerScope owner,
         string provider,
         TimeRangeRequest range,
@@ -38,7 +44,7 @@ public sealed class MarketingExternalAdsReportingService(
         };
     }
 
-    private async Task<IReadOnlyList<ProviderDeliveryMetricRow>> GetGoogleCampaignsAsync(
+    private async Task<ExternalAdsCampaignReport> GetGoogleCampaignsAsync(
         MarketingOwnerScope owner,
         TimeRangeRequest range,
         CancellationToken ct)
@@ -54,8 +60,9 @@ public sealed class MarketingExternalAdsReportingService(
         if (!System.Text.RegularExpressions.Regex.IsMatch(version, @"^v\d{1,3}$"))
             throw new InvalidOperationException("GoogleAds:ApiVersion is invalid.");
 
-        var from = range.FromUtc.ToUniversalTime().Date;
-        var to = range.ToUtc.ToUniversalTime().AddTicks(-1).Date;
+        var accountTimeZone = await GetGoogleAccountTimeZoneAsync(
+            connection.AccountId, access.AccessToken, version, ct);
+        var (from, to) = ProviderDateWindow(range, accountTimeZone);
         var query =
             "SELECT campaign.id, campaign.name, campaign.status, " +
             "metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions " +
@@ -80,7 +87,7 @@ public sealed class MarketingExternalAdsReportingService(
 
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Array)
-            return [];
+            return new ExternalAdsCampaignReport([], accountTimeZone, from, to);
 
         var output = new List<ProviderDeliveryMetricRow>();
         foreach (var batch in document.RootElement.EnumerateArray())
@@ -112,10 +119,10 @@ public sealed class MarketingExternalAdsReportingService(
                     row.Clone()));
             }
         }
-        return output;
+        return new ExternalAdsCampaignReport(output, accountTimeZone, from, to);
     }
 
-    private async Task<IReadOnlyList<ProviderDeliveryMetricRow>> GetTikTokCampaignsAsync(
+    private async Task<ExternalAdsCampaignReport> GetTikTokCampaignsAsync(
         MarketingOwnerScope owner,
         TimeRangeRequest range,
         CancellationToken ct)
@@ -132,8 +139,9 @@ public sealed class MarketingExternalAdsReportingService(
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var baseUri) || baseUri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException("TikTokAds:ReportingEndpoint is invalid.");
 
-        var from = range.FromUtc.ToUniversalTime().Date;
-        var to = range.ToUtc.ToUniversalTime().AddTicks(-1).Date;
+        var accountTimeZone = await GetTikTokAccountTimeZoneAsync(
+            connection.AccountId, accessToken, ct);
+        var (from, to) = ProviderDateWindow(range, accountTimeZone);
         var output = new List<ProviderDeliveryMetricRow>();
         for (var page = 1; page <= 20; page++)
         {
@@ -198,7 +206,129 @@ public sealed class MarketingExternalAdsReportingService(
                 : page;
             if (totalPages <= page) break;
         }
-        return output;
+        return new ExternalAdsCampaignReport(output, accountTimeZone, from, to);
+    }
+
+    private async Task<string> GetGoogleAccountTimeZoneAsync(
+        string customerId,
+        string accessToken,
+        string version,
+        CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"https://googleads.googleapis.com/{version}/customers/{customerId}/googleAds:searchStream")
+        {
+            Content = JsonContent.Create(new { query = "SELECT customer.time_zone FROM customer LIMIT 1" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.TryAddWithoutValidation("developer-token", Required("GoogleAds:DeveloperToken"));
+        var loginCustomer = Digits(configuration["GoogleAds:LoginCustomerId"]);
+        if (!string.IsNullOrWhiteSpace(loginCustomer))
+            request.Headers.TryAddWithoutValidation("login-customer-id", loginCustomer);
+
+        using var response = await clients.CreateClient("MarketingExternalAds").SendAsync(request, ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw ProviderFailure("Google Ads account timezone lookup failed.", response.StatusCode, json);
+
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var batch in document.RootElement.EnumerateArray())
+            {
+                if (!batch.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var row in results.EnumerateArray())
+                {
+                    if (!row.TryGetProperty("customer", out var customer) || customer.ValueKind != JsonValueKind.Object)
+                        continue;
+                    var zone = Text(customer, "timeZone") ?? Text(customer, "time_zone");
+                    if (!string.IsNullOrWhiteSpace(zone))
+                    {
+                        ValidateTimeZone(zone);
+                        return zone;
+                    }
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Google Ads account timezone is unavailable; comparative reporting is blocked rather than using UTC dates.");
+    }
+
+    private async Task<string> GetTikTokAccountTimeZoneAsync(
+        string advertiserId,
+        string accessToken,
+        CancellationToken ct)
+    {
+        var endpoint = Clean(configuration["TikTokAds:AdvertiserInfoEndpoint"])
+            ?? "https://business-api.tiktok.com/open_api/v1.3/advertiser/info/";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var baseUri) || baseUri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("TikTokAds:AdvertiserInfoEndpoint is invalid.");
+
+        var url = QueryHelpers.AddQueryString(baseUri.ToString(),
+            new Dictionary<string, string?>
+            {
+                ["advertiser_ids"] = JsonSerializer.Serialize(new[] { advertiserId }),
+                ["fields"] = JsonSerializer.Serialize(new[] { "advertiser_id", "timezone" })
+            });
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("Access-Token", accessToken);
+        using var response = await clients.CreateClient("MarketingExternalAds").SendAsync(request, ct);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw ProviderFailure("TikTok Ads account timezone lookup failed.", response.StatusCode, json);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.Number &&
+            code.TryGetInt32(out var providerCode) && providerCode != 0)
+            throw new InvalidOperationException("TikTok Ads account timezone lookup was rejected.");
+
+        if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object &&
+            data.TryGetProperty("list", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var row in list.EnumerateArray())
+            {
+                var rowId = Text(row, "advertiser_id");
+                if (!string.IsNullOrWhiteSpace(rowId) &&
+                    !string.Equals(rowId, advertiserId, StringComparison.Ordinal))
+                    continue;
+                var zone = Text(row, "timezone");
+                if (!string.IsNullOrWhiteSpace(zone))
+                {
+                    ValidateTimeZone(zone);
+                    return zone;
+                }
+            }
+        }
+
+        throw new InvalidOperationException("TikTok Ads account timezone is unavailable; comparative reporting is blocked rather than using UTC dates.");
+    }
+
+    internal static (DateTime FromDate, DateTime ToDate) ProviderDateWindow(
+        TimeRangeRequest range,
+        string accountTimeZone)
+    {
+        ArgumentNullException.ThrowIfNull(range);
+        var zone = ValidateTimeZone(accountTimeZone);
+        var fromUtc = DateTime.SpecifyKind(range.FromUtc, DateTimeKind.Utc);
+        var toUtc = DateTime.SpecifyKind(range.ToUtc, DateTimeKind.Utc);
+        if (toUtc <= fromUtc)
+            throw new ArgumentException("Reporting range must have a positive duration.", nameof(range));
+
+        var from = TimeZoneInfo.ConvertTimeFromUtc(fromUtc, zone).Date;
+        var inclusiveEnd = TimeZoneInfo.ConvertTimeFromUtc(toUtc.AddTicks(-1), zone).Date;
+        return (from, inclusiveEnd);
+    }
+
+    private static TimeZoneInfo ValidateTimeZone(string value)
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById(value.Trim()); }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            throw new InvalidOperationException($"Provider account timezone '{value}' is invalid.", ex);
+        }
     }
 
     private string Required(string key) =>

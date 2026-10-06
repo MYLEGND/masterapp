@@ -1594,7 +1594,7 @@ internal sealed partial class LegendFounderToolAuthority
                     take is < 1 or > 100)
                     return """{"ok":false,"error":"growth_operator_arguments_invalid"}""";
 
-                var range = TimeRangeRequest.FromPreset(preset, qualityMode: TrafficQualityMode.AllTraffic);
+                var range = TimeRangeRequest.FromPreset(preset, qualityMode: TrafficQualityMode.RealHumanTraffic);
                 await using var scope = _authorizationScopes.CreateAsyncScope();
                 var manager = scope.ServiceProvider.GetRequiredService<Infrastructure.Analytics.IMarketingManagerService>();
 

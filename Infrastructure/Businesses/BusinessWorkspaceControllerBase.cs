@@ -684,7 +684,9 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 metaCustomPixel = !string.IsNullOrWhiteSpace(profile.Settings.MetaPixelId),
                 openAiReady = accountReady,
                 googleReady = setup.Google.Ready,
+                googleOptimizationReady = setup.GoogleMeasurement.MappingReady,
                 tiktokReady = setup.TikTok.Ready,
+                tiktokOptimizationReady = setup.TikTokMeasurement.MappingReady,
                 bookingPersonalLive = profile.Settings.BookingEnabled &&
                     (!string.IsNullOrWhiteSpace(profile.Settings.BookingEmbedUrl) || !string.IsNullOrWhiteSpace(profile.Settings.BookingFallbackUrl)),
                 calendarLinked = calendarConnection.Connected
@@ -701,8 +703,10 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 metaCapiConfiguredSecurely = setup.Meta.CapiConfigured,
                 metaCapiManagedAutomatically = true
             },
-            google = setup.Google,
-            tiktok = setup.TikTok,
+            google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.Google, setup.GoogleMeasurement),
+            tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.TikTok, setup.TikTokMeasurement),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -883,6 +887,33 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
             return await MarketingSetup(businessId, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("analytics/external-ads/measurement")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsMeasurement(
+        Guid businessId,
+        [FromBody] MarketingProviderMeasurementUpdate request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        try
+        {
+            var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+            await store.SaveProviderMeasurementConfigurationAsync(
+                MarketingOwnerScope.Business(businessId),
+                request,
+                cancellationToken);
+            return await MarketingSetup(businessId, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Marketing provider connection changed. Reload and try again." });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
             return BadRequest(new { message = ex.Message });
         }

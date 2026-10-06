@@ -727,17 +727,23 @@ jobs:
     def test_step5_workflow_delegates_resume_and_baseline_decisions_to_canonical_authority(self):
         path = ROOT / ".github" / "workflows" / "step5-isolated-conversion-mapping-validation.yml"
         workflow = path.read_text()
-        self.assertIn("scripts/validation-resume.py plan", workflow)
-        self.assertIn("scripts/validation-resume.py step5-decision", workflow)
+        self.assertNotIn("scripts/validation-resume.py plan", workflow)
+        self.assertEqual(1, workflow.count("scripts/validation-resume.py step5-decision"))
         self.assertIn("scripts/validation-resume.py step5-baseline", workflow)
         self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', workflow)
+        self.assertIn("historical_evidence_unavailable_run_full_step5", workflow)
+        self.assertIn("refusing to discard completed evidence and rerun the full suite", workflow)
+        self.assertIn("baseline_run_required", workflow)
         self.assertIn("candidate_restore_run", workflow)
         self.assertIn("candidate_build_run", workflow)
         self.assertIn("candidate_focused_run", workflow)
         self.assertIn("candidate_full_run", workflow)
         self.assertIn("comparison_run", workflow)
+        self.assertIn("Recheck only newly introduced Step 5 failure classes", workflow)
         self.assertIn("Preserve effective Step 5 candidate evidence", workflow)
         self.assertIn("Preserve effective Step 5 baseline evidence", workflow)
+        self.assertIn("Preserve bounded Step 5 recovery state", workflow)
+        self.assertIn("Enforce final Step 5 outcome after bounded recovery", workflow)
         self.assertIn("/tmp/step5-effective/candidate.trx", workflow)
         self.assertIn("/tmp/step5-effective/baseline.trx", workflow)
 
@@ -1866,6 +1872,20 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.assertTrue(m._step5_baseline_inputs_equivalent(self.base, head))
         self.assertEqual([], m.step5_dependency_change(head, self.commit()))
 
+    def test_control_only_change_short_circuits_before_test_archive(self):
+        path = "scripts/validation-resume.py"
+        self.write(path, Path(path).read_text() + "\n# control-only fixture change\n")
+        head = self.commit()
+        original_run = m.subprocess.run
+
+        def guarded_run(args, *pargs, **kwargs):
+            if list(args[:2]) == ["git", "archive"]:
+                raise AssertionError("Step 5 control-authority proof must not archive the test graph")
+            return original_run(args, *pargs, **kwargs)
+
+        with patch.object(m.subprocess, "run", side_effect=guarded_run):
+            self.assertEqual([], m.step5_dependency_change(self.base, head))
+
     def test_manifest_content_identity_survives_unrelated_commit(self):
         workflow = "step5-isolated-conversion-mapping-validation.yml"
         prior = m.gate_dependency_manifests(workflow, self.base)
@@ -2003,11 +2023,14 @@ class Step5ChildEvidenceTests(unittest.TestCase):
             body = body.replace("/tmp/step5-", str(root / "step5-"))
             result = subprocess.run(["python3", "-c", body], cwd=ROOT, capture_output=True, text=True,
                 env={**os.environ, "VALIDATION_MODE": "repair", "REPAIR_CLASSES": "AgentPortal.Tests.One", "GITHUB_OUTPUT": str(root / "outputs")})
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             effective = m.read_step5_results(root / "step5-effective/candidate.trx")
             self.assertEqual("Passed", effective["AgentPortal.Tests.One.Case"])
             self.assertEqual("Failed", effective["AgentPortal.Tests.Two.Case"])
-            self.assertIn("effective_evidence=true", (root / "outputs").read_text())
+            outputs = (root / "outputs").read_text()
+            self.assertIn("effective_evidence=true", outputs)
+            self.assertIn("introduced=true", outputs)
+            self.assertIn("introduced_classes=AgentPortal.Tests.Two", outputs)
 
 
 if __name__ == "__main__":
