@@ -381,6 +381,8 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
             }
 
             var canonicalEvent = CanonicalAdvertisingEventProjection.ResolveEventName(source);
+            if (string.IsNullOrWhiteSpace(canonicalEvent))
+                continue;
             var canonicalId = CanonicalAdvertisingEventProjection.ResolveEventId(source);
             foreach (var provider in Providers)
             {
