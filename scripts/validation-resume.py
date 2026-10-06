@@ -3681,7 +3681,8 @@ def _historical_publication_names(target):
     labels = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect',
               'parfait': 'Parfait', 'website': 'Website'}
     label = labels[target]
-    return {'Publish selected head as one transaction', f'Publish canonical target ({target})',
+    return {'Publish selected head as one transaction', 'Publish canonical pending targets',
+            f'Publish canonical target ({target})',
             f'Direct deploy {label}', f'Direct deploy {label} immutable ZIP'}
 
 
@@ -4200,7 +4201,11 @@ def _failed_transaction_preparation_without_writes(source, owner):
     current = named_step_blocks(_job_blocks(
         Path('.github/workflows/' + DIRECT_RELEASE_WORKFLOW).read_text()).get('release', ''))
     later = list(blocks)[list(blocks).index(prepare) + 1:]
-    if not all(f'Publish canonical target ({key})' in later for key in RELEASE_TARGETS):
+    has_batch_publication = 'Publish canonical pending targets' in later
+    has_legacy_target_publications = all(
+        f'Publish canonical target ({key})' in later for key in RELEASE_TARGETS
+    )
+    if not (has_batch_publication or has_legacy_target_publications):
         return False
     for name in later:
         if name in observers and blocks[name] == current.get(name):
