@@ -808,12 +808,18 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         recovery=workflow.split(
             '      - name: Recover authorized direct release when needed\n',1
         )[1].split('      - name:',1)[0]
+        self.assertEqual(
+            2,
+            recovery.count('python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"'),
+        )
+        self.assertIn('python3 scripts/release-lifecycle.py package-evidence', recovery)
+        self.assertIn('--revision "$package_revision"', recovery)
         self.assertIn('for attempt in $(seq 1 20); do', recovery)
-        self.assertIn('python3 scripts/release-lifecycle.py reconcile "\${args[@]}" --output "$state_file"', recovery)
         self.assertIn('dispatched for exact green automatic application revision', recovery)
         self.assertIn('dispatched for exact green historical application revision', recovery)
         self.assertIn('already queued or running', recovery)
         self.assertIn('sleep 60', recovery)
+        self.assertIn('polling only canonical package evidence', recovery)
         self.assertNotIn('deploy-approved-app.py', recovery)
         self.assertNotIn('gh workflow run', recovery)
         self.assertNotIn('actions/workflows/', recovery)
