@@ -77,6 +77,11 @@ class DeploymentStatusUnavailable(DeploymentReconciliationRequired):
     """Azure deployment state could not be read within the bounded outage budget."""
 
 
+FINALIZE_RECONCILE_TIMEOUT_SECONDS = 90
+FINALIZE_RECONCILE_ATTEMPTS = 3
+FINALIZE_RETRY_DELAY_SECONDS = 10
+
+
 def read_deployments_bounded(azure, *, attempts=3, interval=15, sleep=None, phase='before any upload'):
     """Read Azure deployment state with one canonical bounded read-only retry policy."""
     if attempts < 1:
@@ -549,9 +554,11 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
     return results
 
 
-def finalize_prepared_transaction(plan, package_root, revision, *, timeout=1200):
-    # Finalization owns only read-only proof. Targets are provider-independent,
-    # so prove them concurrently and commit only after every proof succeeds.
+def finalize_prepared_transaction(plan, package_root, revision, *, sleep=time.sleep):
+    """Finalize durable receipts with one canonical bounded read-only retry policy."""
+    pending = {row['app']: row for row in plan['targets']}
+    last_errors = {}
+
     def finalize(row):
         target = TARGETS[row['app']]
         digest = verify_package(package_root / target['package'], revision, target['static'])
@@ -561,18 +568,56 @@ def finalize_prepared_transaction(plan, package_root, revision, *, timeout=1200)
             target_azure(row['app'], package_root / target['package'], revision),
             baseline=row['revision'],
             reconcile_only=True,
-            timeout=timeout,
+            timeout=FINALIZE_RECONCILE_TIMEOUT_SECONDS,
+            max_status_failures=1,
         )
         return row['app']
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(plan['targets']))) as executor:
-        futures = [executor.submit(finalize, row) for row in plan['targets']]
-        completed = [future.result() for future in futures]
-    if set(completed) != {row['app'] for row in plan['targets']}:
-        raise DeploymentReconciliationRequired('Final transaction proof is incomplete')
-    print(json.dumps({'revision': revision, 'transaction': 'committed',
-                      'targets': [TARGETS[row['app']]['releaseName'] for row in plan['targets']]}, sort_keys=True))
+    for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):
+        retryable = {}
+        hard_errors = {}
+        rows = list(pending.values())
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(rows))) as executor:
+            futures = {executor.submit(finalize, row): row['app'] for row in rows}
+            for future in concurrent.futures.as_completed(futures):
+                key = futures[future]
+                try:
+                    future.result()
+                    pending.pop(key, None)
+                    last_errors.pop(key, None)
+                except DeploymentDrift as exc:
+                    hard_errors[key] = exc
+                except DeploymentReconciliationRequired as exc:
+                    retryable[key] = exc
+                    last_errors[key] = exc
+                except Exception as exc:
+                    hard_errors[key] = exc
 
+        if hard_errors:
+            key = sorted(hard_errors)[0]
+            raise hard_errors[key]
+        if not pending:
+            print(json.dumps({'revision': revision, 'transaction': 'committed',
+                              'targets': [TARGETS[row['app']]['releaseName'] for row in plan['targets']]}, sort_keys=True))
+            return
+        if set(pending) != set(retryable):
+            raise DeploymentReconciliationRequired('Final transaction proof is incomplete')
+        if attempt < FINALIZE_RECONCILE_ATTEMPTS:
+            unresolved = ', '.join(sorted(pending))
+            print(
+                f'::warning::Durable receipt proof remains unresolved for {unresolved}; '
+                f'bounded read-only finalization retry {attempt}/{FINALIZE_RECONCILE_ATTEMPTS}.',
+                flush=True,
+            )
+            sleep(attempt * FINALIZE_RETRY_DELAY_SECONDS)
+
+    details = '; '.join(
+        f'{key}: {last_errors[key]}' for key in sorted(pending) if key in last_errors
+    )
+    raise DeploymentReconciliationRequired(
+        'Durable receipt proof remains unresolved after the canonical bounded finalization budget'
+        + (f': {details}' if details else '')
+    )
 
 def transaction_disposition(plan, package_root, revision):
     def observe(row):
@@ -618,8 +663,6 @@ def main():
     parser.add_argument('--disposition-only', action='store_true')
     parser.add_argument('--transaction-plan', type=Path)
     parser.add_argument('--reconcile-only', action='store_true', help='Never issue deployment writes; reconcile preserved immutable candidate')
-    parser.add_argument('--reconcile-timeout-seconds', type=int, default=1200,
-                        help='Read-only reconciliation deadline for finalize-only proof')
     parser.add_argument('--publish-prepared-parallel', action='store_true',
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
@@ -658,13 +701,10 @@ def main():
         names = json.loads(args.targets_json)
         if set(_RELEASE_AUTHORITY.selected_release_target_keys(names)) != {row['app'] for row in plan['targets']}:
             raise ValueError('Finalization target scope changed')
-        if not 30 <= args.reconcile_timeout_seconds <= 1200:
-            raise ValueError('Read-only reconciliation timeout must be between 30 and 1200 seconds')
         finalize_prepared_transaction(
             plan,
             Path(args.package_root),
             revision,
-            timeout=args.reconcile_timeout_seconds,
         )
         return
 
