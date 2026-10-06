@@ -6,6 +6,8 @@ public static class MarketingChannels
 {
     public const string ChatGptAds = "chatgpt_ads";
     public const string MetaAds = "meta_ads";
+    public const string GoogleAds = "google_ads";
+    public const string TikTokAds = "tiktok_ads";
     public const string Organic = "organic";
     public const string Direct = "direct";
     public const string Referral = "referral";
