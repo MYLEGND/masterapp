@@ -93,21 +93,23 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.Contains("--rollback-root /tmp/rollback-packages", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("--rollback-only", workflow, StringComparison.Ordinal);
         Assert.Contains("--prepare-only --transaction-plan", workflow, StringComparison.Ordinal);
+        Assert.Contains("--publish-selected", workflow, StringComparison.Ordinal);
+        Assert.Contains("--publication-outcomes /tmp/release-publication-outcomes.json", workflow, StringComparison.Ordinal);
         Assert.Contains("--finalize-only --transaction-plan", workflow, StringComparison.Ordinal);
         var start = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
         var end = workflow.IndexOf("# END GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start);
-        var targetSteps = Regex.Matches(workflow[start..end],
-            @"      - name: Publish canonical target \(([^)]+)\)\n(?<body>.*?)(?=\n      - name:|\z)",
-            RegexOptions.Singleline);
-        Assert.NotEmpty(targetSteps);
-        foreach (Match step in targetSteps)
-        {
-            var body = step.Groups["body"].Value;
-            Assert.Contains("--target " + step.Groups[1].Value, body, StringComparison.Ordinal);
-            Assert.Contains("--transaction-plan /tmp/release-transaction.json", body, StringComparison.Ordinal);
-            Assert.Contains("steps.transactionprepare.outcome == 'success'", body, StringComparison.Ordinal);
-        }
+        var publication = workflow[start..end];
+        Assert.Contains("name: Publish canonical pending targets", publication, StringComparison.Ordinal);
+        Assert.Contains("id: publish_targets", publication, StringComparison.Ordinal);
+        Assert.Contains("PENDING_TARGETS: ${{ steps.resumestate.outputs.pending_targets }}", publication, StringComparison.Ordinal);
+        Assert.Contains("steps.transactionprepare.outcome == 'success'", publication, StringComparison.Ordinal);
+        Assert.Contains("--transaction-plan /tmp/release-transaction.json", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("id: publish_portal", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("id: publish_client", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("id: publish_protect", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("id: publish_parfait", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("id: publish_website", publication, StringComparison.Ordinal);
         Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 
