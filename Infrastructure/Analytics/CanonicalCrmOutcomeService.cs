@@ -203,6 +203,7 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intake?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intake?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intake?.Fbclid ?? websiteLead?.Fbclid,
+            Oppref = OpenAiClickReference.Normalize(intake?.Oppref ?? websiteLead?.Oppref),
             Fbc = intake?.Fbc ?? websiteLead?.Fbc,
             Fbp = intake?.Fbp ?? websiteLead?.Fbp,
             PageVariant = intake?.PageVariant,
