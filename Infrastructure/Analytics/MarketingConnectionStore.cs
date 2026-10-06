@@ -368,6 +368,12 @@ public static class MarketingServiceRegistration
         services.AddSingleton(sp => MarketingCredentialProtector.CreateShared(
             sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
         services.AddScoped<MarketingConnectionStore>();
+        services.AddScoped<MarketingExternalAdsOAuthService>();
+        services.AddScoped<IMarketingExternalAdsReportingService, MarketingExternalAdsReportingService>();
+        services.AddHttpClient("MarketingExternalAds", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(20);
+        });
         services.TryAddSingleton<MetaCapiCredentialProtector>();
         services.TryAddScoped<AgentTrackingResolver>();
         services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
@@ -376,6 +382,8 @@ public static class MarketingServiceRegistration
         services.TryAddScoped<MarketingProviderSetupProjection>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, MetaMarketingDestination>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, OpenAiMarketingDestination>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, GoogleMarketingDestination>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IMarketingDestination, TikTokMarketingDestination>());
         services.TryAddScoped<IMarketingDestinationRegistry, MarketingDestinationRegistry>();
         services.AddScoped<IOpenAiAdsAccountConnectionAuthority, OpenAiAdsAccountConnectionAuthority>();
         services.AddScoped<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority, Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority>();
