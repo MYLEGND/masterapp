@@ -239,8 +239,6 @@ public sealed class MarketingExternalAdsOAuthService(
             ? "TikTokAds:BusinessAdvertiserAuthorizationUrl"
             : "TikTokAds:AdvertiserAuthorizationUrl";
         var configured = Clean(configuration[key]);
-        if (string.IsNullOrWhiteSpace(configured) && owner.CommerceBusinessId.HasValue)
-            configured = Clean(configuration["TikTokAds:AdvertiserAuthorizationUrl"]);
         if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException($"{key} must be the HTTPS advertiser authorization URL generated in TikTok My Apps.");
         return QueryHelpers.AddQueryString(uri.ToString(), "state", stateToken);
