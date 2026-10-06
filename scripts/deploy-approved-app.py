@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import urllib.request
 import zipfile
@@ -490,6 +491,55 @@ def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only
     return deploy_one(key, revision, package_root, baseline=row['revision'], reconcile_only=reconcile_only)
 
 
+def publish_prepared_targets(target_names, revision, package_root, plan_path, outcomes_path=None):
+    """Publish independent targets concurrently inside one prepared transaction.
+
+    Shared configuration, migrations, rollback capture, admission and transaction
+    preparation remain serialized before this boundary. Each subprocess executes
+    the existing single-target authority with a distinct target/package journal;
+    successful siblings are never replayed when another target fails.
+    """
+    keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
+    plan = read_transaction_plan(plan_path, revision)
+    planned = {row['app'] for row in plan['targets']}
+    if any(key not in planned for key in keys):
+        raise ValueError('Parallel publication target is outside prepared transaction')
+    if not keys:
+        outcomes = {}
+        if outcomes_path is not None:
+            outcomes_path.write_text(json.dumps(outcomes, sort_keys=True) + '\n')
+        print('All selected targets are already live; no application publication child started.', flush=True)
+        return outcomes
+
+    children = []
+    for key in keys:
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            '--target', key,
+            '--package-root', str(package_root),
+            '--transaction-plan', str(plan_path),
+        ]
+        print(f'Starting canonical target publication child: {key}', flush=True)
+        children.append((key, subprocess.Popen(command, env=os.environ.copy())))
+
+    outcomes = {}
+    for key, child in children:
+        code = child.wait()
+        outcomes[key] = 'success' if code == 0 else 'failure'
+        print(f'Canonical target publication child {key}: {outcomes[key]}', flush=True)
+
+    if outcomes_path is not None:
+        outcomes_path.write_text(json.dumps(outcomes, sort_keys=True) + '\n')
+    failed = [key for key, outcome in outcomes.items() if outcome != 'success']
+    if failed:
+        raise DeploymentReconciliationRequired(
+            'Target publication child failed; successful siblings remain preserved: ' +
+            ', '.join(failed)
+        )
+    return outcomes
+
+
 def finalize_prepared_transaction(plan, package_root, revision):
     # Finalization owns only read-only proof. A failed or ambiguous target cannot
     # authorize replay or erase siblings' completed candidate publications.
@@ -540,6 +590,8 @@ def main():
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
     parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--publish-selected', action='store_true')
+    parser.add_argument('--publication-outcomes', type=Path)
     parser.add_argument('--finalize-only', action='store_true')
     parser.add_argument('--disposition-only', action='store_true')
     parser.add_argument('--transaction-plan', type=Path)
@@ -560,6 +612,18 @@ def main():
     if args.disposition_only:
         plan = read_transaction_plan(args.transaction_plan, revision)
         print(json.dumps(transaction_disposition(plan, Path(args.package_root), revision), sort_keys=True))
+        return
+    if args.publish_selected:
+        if args.transaction_plan is None:
+            raise ValueError('Parallel publication requires an all-target preflight plan')
+        names = json.loads(args.targets_json)
+        publish_prepared_targets(
+            names,
+            revision,
+            Path(args.package_root),
+            args.transaction_plan,
+            args.publication_outcomes,
+        )
         return
     if args.finalize_only:
         plan = read_transaction_plan(args.transaction_plan, revision)
