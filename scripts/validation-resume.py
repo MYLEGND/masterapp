@@ -32,6 +32,27 @@ PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
 RELEASE_RESOURCE_GROUP = "masterapp-rg"
 MIGRATION_BUNDLE_NAME = "masterapp-migrations"
+
+def require_canonical_release_runtime():
+    """Fail closed unless a production mutation is running in the sole protected release workflow."""
+    repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    expected_ref = f"refs/heads/{TRUSTED_PR_BASE}"
+    expected_workflow_ref = (
+        f"{repository}/.github/workflows/{DIRECT_RELEASE_WORKFLOW}@{expected_ref}"
+        if repository else ""
+    )
+    if (
+        os.environ.get("GITHUB_ACTIONS") != "true"
+        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or os.environ.get("GITHUB_REF") != expected_ref
+        or not repository
+        or os.environ.get("GITHUB_WORKFLOW_REF") != expected_workflow_ref
+    ):
+        raise RuntimeError(
+            "Production mutation requires the canonical protected direct-release workflow"
+        )
+    return True
+
 ROUTING_WORKER_NAME = "legend-business-website-router"
 ROUTING_PASS_THROUGH_HOSTS = (
     "mylegnd.com",
@@ -577,6 +598,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/release-child-receipt.py",
     "scripts/release-router.py",
     "scripts/release-auxiliary.py",
+    "scripts/cloudflare-routing-authority.py",
     "scripts/test-release-children.py",
     "scripts/MigrationReleaseProbe/**",
     "scripts/release-migration.py",
