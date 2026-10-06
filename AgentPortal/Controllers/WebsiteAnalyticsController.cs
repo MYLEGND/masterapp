@@ -219,7 +219,9 @@ namespace AgentPortal.Controllers;
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
                 openAiReady = openAiAccountReady,
                 googleReady = setup.Google.Ready,
+                googleOptimizationReady = setup.GoogleMeasurement.MappingReady,
                 tiktokReady = setup.TikTok.Ready,
+                tiktokOptimizationReady = setup.TikTokMeasurement.MappingReady,
                 bookingPersonalLive = bookingLive,
                 calendarLinked = calendarConnection.Connected
             },
@@ -236,8 +238,10 @@ namespace AgentPortal.Controllers;
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },
-            google = setup.Google,
-            tiktok = setup.TikTok,
+            google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.Google, setup.GoogleMeasurement),
+            tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.TikTok, setup.TikTokMeasurement),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -313,6 +317,14 @@ namespace AgentPortal.Controllers;
     public sealed record ExternalAdsDisconnectRequest(
         Guid? AgentProfileId,
         string Provider);
+
+    public sealed record ExternalAdsMeasurementRequest(
+        Guid? AgentProfileId,
+        string Provider,
+        string? EventSourceId,
+        string? EventSourceType,
+        IReadOnlyList<MarketingProviderEventMapping> Mappings,
+        Guid ExpectedRevision);
 
     [HttpGet("external-ads/connect")]
     public async Task<IActionResult> ExternalAdsConnect(
@@ -412,6 +424,37 @@ namespace AgentPortal.Controllers;
             return await MarketingSetup(request.AgentProfileId, cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/measurement")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsMeasurement(
+        [FromBody] ExternalAdsMeasurementRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            await MarketingConnections.SaveProviderMeasurementConfigurationAsync(
+                owner,
+                new MarketingProviderMeasurementUpdate(
+                    request.Provider,
+                    request.EventSourceId,
+                    request.EventSourceType,
+                    request.Mappings ?? [],
+                    request.ExpectedRevision),
+                cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Marketing provider connection changed. Reload and try again." });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
             return BadRequest(new { message = ex.Message });
         }
