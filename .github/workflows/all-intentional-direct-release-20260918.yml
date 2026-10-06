@@ -1024,9 +1024,36 @@ jobs:
             --targets-json "$SELECTED_TARGETS" \
             --package-root /tmp/diagnostics-packages \
             --finalize-only --transaction-plan /tmp/release-transaction.json
+      - name: Recover exact-live transaction receipts without publication replay
+        id: transactionrecovery
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.transaction.outcome == 'failure' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          # Strictly read-only: finalize-only may recover durable success receipts,
+          # but it never submits an application package.
+          for attempt in 1 2 3 4; do
+            if python3 scripts/deploy-approved-app.py \
+              --targets-json "$SELECTED_TARGETS" \
+              --package-root /tmp/diagnostics-packages \
+              --finalize-only --transaction-plan /tmp/release-transaction.json; then
+              echo "Recovered exact-live transaction proof without replay on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::Exact-live transaction proof remains unresolved; all successful target publications stay preserved."
+          exit 1
+
       - name: Deploy and activate LEGEND Founder Cloudflare baseline
         id: foundercloud
-        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         env:
@@ -1055,7 +1082,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1107,7 +1134,7 @@ jobs:
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1237,7 +1264,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
+        if: ${{ !cancelled() && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1262,6 +1289,7 @@ jobs:
           PACKAGE: ${{ steps.package.outcome }}
           AZURE: ${{ steps.azure.outcome }}
           TRANSACTION: ${{ steps.transaction.outcome }}
+          TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}
           LIVE: ${{ steps.live.outcome }}
           ROUTING_LIVE: ${{ steps.routinglive.outcome }}
           FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
@@ -1284,6 +1312,8 @@ jobs:
           package=os.environ['PACKAGE']
           azure=os.environ['AZURE']
           transaction=os.environ['TRANSACTION']
+          transaction_recovery=os.environ.get('TRANSACTION_RECOVERY','skipped')
+          effective_transaction='success' if transaction=='success' or transaction_recovery=='success' else transaction
           live=os.environ['LIVE']
           routing_live=os.environ['ROUTING_LIVE']
           founder_cloud=os.environ['FOUNDER_CLOUD']
@@ -1291,21 +1321,21 @@ jobs:
           if validate_only:
               assert not preserve_live and not exact_live
               assert base=='success' and package=='success'
-              assert transaction=='skipped' and live=='skipped'
+              assert effective_transaction=='skipped' and live=='skipped'
               mode='validate-only'
           elif exact_live:
               assert not preserve_live and not website_routing and not founder_cloudflare
               assert base=='success' and live=='success'
-              assert transaction=='skipped'
+              assert effective_transaction=='skipped'
               mode='exact-live-noop'
           elif preserve_live:
               assert website_routing
               assert base=='success' and azure=='success' and live=='success'
-              assert transaction=='skipped'
+              assert effective_transaction=='skipped'
               mode='preserve-live-routing-recovery'
           else:
               assert base=='success' and package=='success' and azure=='success'
-              assert transaction=='success'
+              assert effective_transaction=='success'
               assert live=='success'
               if founder_cloudflare:
                   assert founder_cloud=='success'
@@ -1322,7 +1352,7 @@ jobs:
               'selectedTargets':selected,
               'packageIdentity':os.environ['PACKAGE_IDENTITY'],
               'founderCloudflare':founder_cloudflare,
-              'transaction':'committed' if transaction=='success' else 'preserved',
+              'transaction':'committed' if effective_transaction=='success' else 'preserved',
           }
           with open('/tmp/approved-release-receipt.json','w') as output:
               json.dump(receipt,output,sort_keys=True,indent=2)
