@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Analytics;
@@ -120,7 +122,7 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
     [Fact]
     public void CanonicalSourceContractsKeepGrowthLearningAndFounderToolsOnExistingAuthorities()
     {
-        var root = ControllerTestHelpers.FindRepoRoot();
+        var root = GetRepoRoot();
         var manager = System.IO.File.ReadAllText(System.IO.Path.Combine(
             root, "Infrastructure", "Analytics", "MarketingManagerService.cs"));
         var builder = System.IO.File.ReadAllText(System.IO.Path.Combine(
@@ -141,5 +143,12 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
         Assert.Contains("lead.CrmStage = leadTargetStage", calendar, StringComparison.Ordinal);
         Assert.DoesNotContain("qualified: \"Contacted\"", System.IO.File.ReadAllText(System.IO.Path.Combine(
             root, "AgentPortal", "wwwroot", "js", "leads-index.js")), StringComparison.Ordinal);
+    }
+
+    private static string GetRepoRoot([CallerFilePath] string currentFile = "")
+    {
+        var directory = Path.GetDirectoryName(currentFile)
+            ?? throw new DirectoryNotFoundException("Could not resolve test file path.");
+        return Path.GetFullPath(Path.Combine(directory, ".."));
     }
 }
