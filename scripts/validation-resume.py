@@ -887,7 +887,7 @@ WORKFLOWS = {
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
                 "paths": DIAGNOSTICS_SOURCE + DIAGNOSTICS_TESTS,
-                "consumes": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "domain-release": {
                 "step": "Compile shared domain release refresh",
@@ -908,7 +908,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
                 ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "consumes": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "meta-regressions": {
                 "step": "Run Meta authority regressions",
@@ -922,13 +922,13 @@ WORKFLOWS = {
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
                 ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "consumes": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
                 "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "consumes": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "crm-regressions": {
                 "step": "Run CRM outcome regressions",
@@ -940,7 +940,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "consumes": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
@@ -964,7 +964,8 @@ WORKFLOWS = {
                     "scripts/test-diagnostic-project-impact.py",
                     "scripts/test-sync-published-checkout.py",
                 ),
-                "consumes": ("compile-regression", "domain-release"),
+                "materializes": ("compile-regression",),
+                "consumes": ("domain-release",),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",
@@ -2113,16 +2114,12 @@ def compute_plan(
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 
-    # Close only real execution prerequisites. "requires" means a runtime
-    # prerequisite that must execute when a child executes. "consumes" is a
-    # materialization edge only: it tells the workflow what exact producer
-    # material a child needs, but it does not invalidate otherwise-green sibling
-    # evidence merely because that shared producer had to be rematerialized.
-    #
-    # Each consumer already declares its own semantic source/test inputs. A
-    # shared application-source change therefore invalidates the relevant
-    # consumers directly, while a booking-test-only correction can rebuild the
-    # common test assembly without rerunning Meta/Website/CRM regressions.
+    # Close only real execution/evidence edges. "requires" is a runtime
+    # prerequisite and "consumes" is a semantic evidence dependency: both
+    # legitimately propagate invalidation. "materializes" is deliberately
+    # different; it means a child needs exact producer bytes locally, but a
+    # producer rematerialization alone must not invalidate otherwise-green
+    # sibling evidence.
     changed = True
     while changed:
         changed = False
@@ -2132,6 +2129,17 @@ def compute_plan(
                     run.add(required)
                     reasons[required] = f"required_by:{key}"
                     changed = True
+        for key, gate in gates.items():
+            if key in run:
+                continue
+            invalidated = next(
+                (dependency for dependency in gate.get("consumes", ()) if dependency in run),
+                None,
+            )
+            if invalidated:
+                run.add(key)
+                reasons[key] = f"evidence_dependency_invalidated:{invalidated}"
+                changed = True
 
     for key, gate in gates.items():
         should_run = key in run
@@ -2295,7 +2303,9 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
             "executionContractIdentity": control_digest,
             "gateDefinitionIdentity": definition_digest,
             "contentIdentity": hashlib.sha256((source_digest + control_digest + definition_digest).encode()).hexdigest(),
-            "requires": list(gate.get("requires", ())), "consumes": list(gate.get("consumes", ())),
+            "requires": list(gate.get("requires", ())),
+            "consumes": list(gate.get("consumes", ())),
+            "materializes": list(gate.get("materializes", ())),
             "toolchainPolicy": "producer-execution-contract",
         }
     return result
