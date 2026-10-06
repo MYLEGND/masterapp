@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace AgentPortal.Services.Analytics;
@@ -19,7 +20,6 @@ namespace AgentPortal.Services.Analytics;
 /// </summary>
 public sealed class WebsiteAnalyticsReviewService
 {
-    private const string DefaultBaseUrl = "https://api.openai.com";
     private const int MaxPayloadChars = 200_000;
 
     private const string SystemPrompt =
@@ -112,7 +112,7 @@ public sealed class WebsiteAnalyticsReviewService
         var result = await _modelInference.GenerateAsync(
             selected.ModelVersion,
             new LegendModelTaskRequest(
-                LegendModelCapabilityKeys.GovernedReasoning,
+                "governed.reasoning",
                 systemPrompt + "\nReturn JSON only. Conform exactly to the supplied output contract.",
                 userContent,
                 outputContract,
