@@ -124,6 +124,24 @@ class ReleaseScopeSelection(unittest.TestCase):
                 self.baseline.reusable_live_application_revision(rows, "b" * 40),
             )
 
+    def test_approved_automatic_release_reuses_live_identity_after_validated_control_only_change(self):
+        source=(ROOT / 'approved-release-baseline.py').read_text()
+        approved_block=source.split(
+            "elif release_mode == 'approved-only' and github_release_context:", 1
+        )[1].split("elif release_mode == 'approved-only':", 1)[0]
+        self.assertIn(
+            'validated_revision = validated_application_revision(',
+            approved_block,
+        )
+        self.assertIn(
+            'reusable_live_application_revision(rows, validated_revision)',
+            approved_block,
+        )
+        self.assertIn(
+            'Preserving exact live application identity across validated control/test-only changes:',
+            approved_block,
+        )
+
     def test_runtime_change_invalidates_live_application_identity(self):
         rows = [{"revision": "a" * 40}]
         with patch.object(
