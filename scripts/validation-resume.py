@@ -1109,7 +1109,6 @@ WORKFLOWS = {
             "vulnerabilities": {
                 "step": "Audit dependency vulnerabilities",
                 "paths": GLOBAL_DOTNET_INPUTS,
-                "requires": ("restore",),
             },
             "secret-scan": {
                 "step": "Scan committed configuration for secrets",
