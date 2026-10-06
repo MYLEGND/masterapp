@@ -1711,10 +1711,15 @@ def _historical_release_mutation_steps(source):
         'Prepare canonical business website routing authority',
         'Apply additive diagnostics migrations before restarting apps',
     }
+    auxiliary = 'Run independent auxiliary release fanout'
+    legacy_auxiliary = {
+        'Deploy and activate LEGEND Founder Cloudflare baseline',
+        'Reconcile public custom-hostname Cloudflare policy',
+        'Deploy shared Cloudflare business website router',
+    }
     mutation = {
         prepare,
         'Reconcile complete immutable release transaction',
-        'Reconcile public custom-hostname Cloudflare policy',
     }
     if prepublication in blocks:
         mutation.add(prepublication)
@@ -1723,10 +1728,21 @@ def _historical_release_mutation_steps(source):
     else:
         return None
 
+    if auxiliary in blocks:
+        mutation.add(auxiliary)
+    elif legacy_auxiliary.issubset(blocks):
+        mutation.update(legacy_auxiliary)
+    else:
+        return None
+
     mutation.update(
         gate['step']
         for child, gate in VALIDATION_AUTHORITY.DIRECT_RELEASE_CHILDREN.items()
-        if child not in {'live-proof', 'migrations', 'shared-config', 'editor-config'}
+        if child not in {
+            'live-proof',
+            'migrations', 'shared-config', 'editor-config',
+            'founder-cloudflare', 'routing-cloudflare',
+        }
     )
     mutation.update(
         f'Publish canonical target ({key})'
