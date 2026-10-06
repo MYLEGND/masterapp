@@ -293,8 +293,19 @@ def main():
     if preserve_live_targets:
         application_release_sha = preserve_live_revision
     elif release_mode == 'approved-only' and github_release_context:
-        application_release_sha = validated_application_revision(validated_source_sha, head, selected_names)
-        if application_release_sha != head:
+        validated_revision = validated_application_revision(
+            validated_source_sha, head, selected_names
+        )
+        application_release_sha = (
+            reusable_live_application_revision(rows, validated_revision)
+            or validated_revision
+        )
+        if application_release_sha != validated_revision:
+            print(
+                "Preserving exact live application identity across validated control/test-only changes:",
+                application_release_sha,
+            )
+        elif application_release_sha != head:
             print(
                 "Using exact validated PR head as application provenance:",
                 application_release_sha,
