@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,17 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 CF = ROOT / "Legend-Cloudflare"
+
+
+def release_authority():
+    path = ROOT / "scripts" / "validation-resume.py"
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = release_authority()
 RESULT_ROOT = Path(os.environ.get("RELEASE_AUXILIARY_RESULT_DIR", "/tmp/release-auxiliary-results"))
 
 
@@ -125,6 +137,7 @@ def first_party_router_proof():
 
 
 def router_lane():
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     result = {
         "schemaVersion": 1,
         "lane": "router",
