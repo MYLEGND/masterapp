@@ -729,7 +729,7 @@ class AutomaticReleaseRecovery(unittest.TestCase):
 
 class DurableCandidateQueue(unittest.TestCase):
     closed_path = "pulls?state=closed&base=legend%2Fapproved-changes"
-    runs_path = "actions/runs?branch=legend%2Fapproved-changes"
+    runs_path = "actions/runs?branch=legend%2Fapproved-changes&event=workflow_dispatch"
 
     def test_direct_release_history_uses_repository_run_inventory_and_filters_canonical_workflow(self):
         api = Api()
@@ -747,6 +747,7 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual([1], [row["id"] for row in runs])
         requested = [call.args[0] for call in pages.call_args_list]
         self.assertIn(self.runs_path, requested)
+        self.assertTrue(all("event=workflow_dispatch" in path for path in requested if path.startswith("actions/runs?branch=")))
         self.assertFalse(any(path.startswith("actions/workflows/") for path in requested))
 
     def setUp(self):
