@@ -639,12 +639,23 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened canonical lifecycle absent-path identity'
 
+    publication_proof_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_historical_application_publications_completed'
+    )
     live_settlement_source = _function_source(
         source['lifecycle'], lifecycle_tree, '_admission_covered_by_live_provenance'
     )
     admission_conflict_source = _function_source(
         source['lifecycle'], lifecycle_tree, 'admission_conflicts'
     )
+    if not all(token in publication_proof_source for token in (
+        "run.get('status') != 'completed'",
+        "actions/runs/{run['id']}/jobs?filter=latest",
+        "'Publish canonical selected targets in parallel'",
+        "f'Publish canonical target ({key})'",
+        "== ['success']",
+    )):
+        return 'Candidate weakened positive historical publication proof'
     if not all(token in live_settlement_source for token in (
         '_validate_admission_record_scope(record)',
         "'read/schema/masterapp'",
@@ -656,6 +667,7 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened canonical live-provenance stale-lease settlement'
     if not all(token in admission_conflict_source for token in (
         'live_snapshot_loaded = False',
+        '_historical_application_publications_completed(api, run, record)',
         'live_revisions()',
         '_admission_covered_by_live_provenance(record, live_snapshot)',
         "run.get('status') == 'completed'",
@@ -2143,6 +2155,33 @@ def _admission_superseded_by_terminal_success(api, run, record, runs):
                 return True
     return False
 
+def _historical_application_publications_completed(api, run, record):
+    """Require positive per-target publication completion before live settlement."""
+    if run.get('status') != 'completed':
+        return False
+    try:
+        keys = _validate_admission_record_scope(record)
+    except Exception:
+        return False
+    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+    release_jobs = [job for job in jobs if job.get('name') == 'release']
+    if len(release_jobs) != 1:
+        return False
+    steps = release_jobs[0].get('steps')
+    if not isinstance(steps, list):
+        return False
+    outcomes = {}
+    for step in steps:
+        outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
+    parallel = outcomes.get('Publish canonical selected targets in parallel', [])
+    if parallel != ['success']:
+        return False
+    return all(
+        outcomes.get(f'Publish canonical target ({key})', []) == ['success']
+        for key in keys
+    )
+
+
 def _admission_covered_by_live_provenance(record, rows):
     """Discharge only completed historical app leases production has already passed.
 
@@ -2230,7 +2269,11 @@ def admission_conflicts(api, candidate, *, current_run):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
                 continue
-            if not own_run and run.get('status') == 'completed':
+            if (
+                not own_run
+                and run.get('status') == 'completed'
+                and _historical_application_publications_completed(api, run, record)
+            ):
                 if not live_snapshot_loaded:
                     live_snapshot_loaded = True
                     try:
