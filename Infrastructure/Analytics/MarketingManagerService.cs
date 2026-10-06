@@ -429,18 +429,21 @@ public sealed class MarketingManagerService(
                 MarketingChannels.ChatGptAds));
         }
 
-        var meta = performance.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.MetaAds);
-        if (meta is not null && meta.Spend > 0)
+        foreach (var paid in performance.Channels
+                     .Where(x => x.Channel is MarketingChannels.MetaAds or MarketingChannels.GoogleAds or MarketingChannels.TikTokAds)
+                     .Where(x => x.Spend is > 0m)
+                     .OrderByDescending(x => x.Spend))
         {
+            var provider = PaidChannelLabel(paid.Channel);
             result.Add(new(
                 priority++,
                 "advertising",
-                "Review Meta budget allocation against downstream qualified leads, appointments, customers, revenue, and ROAS before increasing total spend.",
-                $"Meta spend is {Money(meta.Spend)} with {meta.QualifiedLeads:N0} qualified leads, {meta.Appointments:N0} appointments, and {Money(meta.Revenue)} attributed revenue.",
-                "Directs budget toward channels producing business outcomes rather than clicks alone.",
+                $"Review {provider} budget allocation against downstream qualified leads, appointments, customers, revenue, and ROAS before increasing total spend.",
+                $"{provider} spend is {Money(paid.Spend)} with {paid.QualifiedLeads:N0} qualified leads, {paid.Appointments:N0} appointments, and {Money(paid.Revenue)} canonically attributed revenue.",
+                "Directs budget toward channels producing business outcomes rather than clicks alone; campaign-level revenue is used only when explicitly proven.",
                 true,
-                MarketingChannels.MetaAds,
-                "meta_budget_review"));
+                paid.Channel,
+                paid.Channel + "_budget_review"));
         }
 
         result.Add(new(
@@ -453,6 +456,15 @@ public sealed class MarketingManagerService(
 
         return result.Take(8).ToList();
     }
+
+    private static string PaidChannelLabel(string channel) => channel switch
+    {
+        MarketingChannels.ChatGptAds => "ChatGPT Ads",
+        MarketingChannels.MetaAds => "Meta Ads",
+        MarketingChannels.GoogleAds => "Google Ads",
+        MarketingChannels.TikTokAds => "TikTok Ads",
+        _ => channel
+    };
 
     private static int ParseTargetIncrement(string goal)
     {
