@@ -561,24 +561,16 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate release-control changes no longer require canonical security validation'
 
-    validation_snapshot_source = _function_source(
-        source['lifecycle'], lifecycle_tree, '_candidate_validation_snapshot'
-    )
     candidate_validation_source = _function_source(
         source['lifecycle'], lifecycle_tree, 'candidate_validation'
     )
-    if not all(token in validation_snapshot_source for token in (
+    if not all(token in candidate_validation_source for token in (
         'VALIDATION_AUTHORITY.required_validation_topology(names)',
         "run.get('event') != 'pull_request'",
-        "run.get('status') != 'completed'",
-        "run.get('conclusion') != 'success'",
-    )):
-        return 'Candidate weakened exact-head validation inventory'
-    if not all(token in candidate_validation_source for token in (
-        '_candidate_validation_snapshot(api, pr)',
-        "state['failed']",
-        "state['missing']",
-        "state['active']",
+        "latest[path].get('status') != 'completed'",
+        "latest[path].get('conclusion') != 'success'",
+        "for attempt in range(4)",
+        "time.sleep((attempt + 1) * 5)",
     )):
         return 'Candidate weakened exact-head merge validation'
 
@@ -672,57 +664,48 @@ def publish_trusted_validation_status(api, revision, state, detail):
     api.status(revision, state, descriptions[state] if not detail else detail)
 
 
-def _candidate_validation_snapshot(api, pr):
-    head = pr['head']['sha']
-    runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
-    latest = {}
-    for run in sorted(
-        runs,
-        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
-        reverse=True,
-    ):
-        if run.get('head_sha') != head or run.get('event') != 'pull_request':
-            continue
-        latest.setdefault(run['path'].split('@')[0], run)
+def candidate_validation(api, pr):
+    """Require exact-head validators and retry only provider observation lag.
 
+    This is the sole merge-readiness observer. Validators own child-level reuse;
+    lifecycle never reruns their children here. GitHub's cross-workflow run
+    inventory is eventually consistent, so missing/active observations receive
+    bounded read-only retries. A completed failure remains immediately blocking.
+    """
+    head = pr['head']['sha']
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row['filename'] for row in files if row.get('filename')]
     required = tuple(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
 
-    missing = []
-    active = []
-    failed = []
-    for path in required:
-        run = latest.get(path)
-        if run is None:
-            missing.append(path)
-        elif run.get('status') != 'completed':
-            active.append(path)
-        elif run.get('conclusion') != 'success':
-            failed.append(path)
-    return {
-        'required': required,
-        'missing': missing,
-        'active': active,
-        'failed': failed,
-    }
-
-
-def candidate_validation(api, pr):
-    """Require exact-head validators, tolerating only provider observation lag.
-
-    Validators own their own child-level resume. Lifecycle never reruns them here.
-    GitHub's cross-workflow run inventory is eventually consistent, so a completed
-    validator may be temporarily absent or still appear active after its check-run
-    has already closed. Retry only this read boundary; a real completed failure is
-    returned immediately and remains blocking.
-    """
     state = None
     for attempt in range(4):
-        state = _candidate_validation_snapshot(api, pr)
-        if not state['missing'] and not state['active'] and not state['failed']:
+        runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
+        latest = {}
+        for run in sorted(
+            runs,
+            key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+            reverse=True,
+        ):
+            if run.get('head_sha') != head or run.get('event') != 'pull_request':
+                continue
+            latest.setdefault(run['path'].split('@')[0], run)
+
+        missing = []
+        active = []
+        failed = []
+        for path in required:
+            run = latest.get(path)
+            if run is None:
+                missing.append(path)
+            elif latest[path].get('status') != 'completed':
+                active.append(path)
+            elif latest[path].get('conclusion') != 'success':
+                failed.append(path)
+
+        state = {'missing': missing, 'active': active, 'failed': failed}
+        if not missing and not active and not failed:
             return None
-        if state['failed']:
+        if failed:
             break
         if attempt < 3 and os.environ.get('GITHUB_ACTIONS') == 'true':
             time.sleep((attempt + 1) * 5)
