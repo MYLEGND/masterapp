@@ -278,6 +278,10 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
                         @"^customers/[0-9]{6,20}/conversionActions/[0-9]{1,20}$",
                         System.Text.RegularExpressions.RegexOptions.CultureInvariant))
                     throw new ArgumentException($"Google conversion action for '{canonical}' must be a full conversion-action resource name.", nameof(update));
+                var mappedCustomerId = destinationId.Split('/')[1];
+                var selectedCustomerId = new string(row.AdAccountId.Where(char.IsDigit).ToArray());
+                if (!string.Equals(mappedCustomerId, selectedCustomerId, StringComparison.Ordinal))
+                    throw new ArgumentException($"Google conversion action for '{canonical}' belongs to a different advertiser account.", nameof(update));
             }
 
             mappings.Add(new(canonical, providerEvent, destinationId));
