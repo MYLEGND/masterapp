@@ -1,11 +1,53 @@
 using System;
 using System.IO;
+using Infrastructure.Analytics;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
 
 public sealed class MarketingManagerCentralizationTests
 {
+    [Fact]
+    public void FounderGrowthOperator_DefaultsRevenueDecisionsToRealHumanTraffic()
+    {
+        var root = Root();
+        var tools = Read(root, "AgentPortal", "Services", "LegendFounderToolAuthority.cs");
+        var start = tools.IndexOf("case \"legend_growth_operator\"", StringComparison.Ordinal);
+        var end = tools.IndexOf("case \"legend_propose_ad_change\"", start, StringComparison.Ordinal);
+        Assert.True(start >= 0, "Founder growth operator case is required.");
+        if (end < 0) end = tools.Length;
+        var growth = tools[start..end];
+        Assert.Contains("TrafficQualityMode.RealHumanTraffic", growth, StringComparison.Ordinal);
+        Assert.DoesNotContain("TrafficQualityMode.AllTraffic", growth, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LeadPriority_UsesStageConditionedPaidProbabilityWithoutEarlyStageInversion()
+    {
+        var calibration = new SignalOutcomeCalibrationAiRow
+        {
+            QualifiedRate = 60m,
+            AppointmentRate = 30m,
+            ApplicationRate = 24m,
+            IssuedRate = 20m,
+            PaidRate = 12m
+        };
+
+        var newLead = MarketingManagerService.PaidProbabilityForStage("New", calibration);
+        var qualified = MarketingManagerService.PaidProbabilityForStage("Qualified", calibration);
+        var booked = MarketingManagerService.PaidProbabilityForStage("Booked", calibration);
+        var application = MarketingManagerService.PaidProbabilityForStage("ApplicationSubmitted", calibration);
+        var issued = MarketingManagerService.PaidProbabilityForStage("PolicyIssued", calibration);
+
+        Assert.Equal(12m, newLead);
+        Assert.Equal(20m, qualified);
+        Assert.Equal(40m, booked);
+        Assert.Equal(50m, application);
+        Assert.Equal(60m, issued);
+        Assert.True(newLead < qualified && qualified < booked && booked < application && application < issued);
+    }
+
     [Fact]
     public void SharedAnalyticsUi_UsesOneMarketingManagerAndUnifiedPerformanceSurface()
     {
@@ -142,7 +184,7 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("CanonicalMarketingOutcomeProjection.ConfirmedOutcomes", performance, StringComparison.Ordinal);
         Assert.DoesNotContain("MetaSignalEvents", performance, StringComparison.Ordinal);
         Assert.Contains("OpenAiClickReference.Normalize", Read(root, "Infrastructure", "Analytics", "CanonicalMarketingOutcomeProjection.cs"), StringComparison.Ordinal);
-        Assert.Contains("Campaign-level revenue is not inferred", performance, StringComparison.Ordinal);
+        Assert.Contains("Campaign-level downstream attribution is used only where canonical campaign lineage is proven", performance, StringComparison.Ordinal);
     }
 
     [Fact]
