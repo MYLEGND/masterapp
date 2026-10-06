@@ -429,8 +429,9 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
             baselines = _baseline_map(json.dumps(prior['targets']))
             if prior.get('historySnapshot') is not None:
                 _RELEASE_AUTHORITY.import_release_history_snapshot(prior['historySnapshot'], revision)
-    entries = []
-    for key in keys:
+    prior_targets = {row['app']: row for row in prior['targets']} if prior else {}
+
+    def prepare_target(key):
         if key not in baselines:
             raise ValueError('Missing preserved transaction baseline')
         target = TARGETS[key]
@@ -439,10 +440,18 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
         baseline = journal.baseline if journal is not None else baselines[key]
         if baseline != baselines[key]:
             raise DeploymentDrift('Target operation disagrees with original transaction baseline')
-        preserved = next((row.get('rollbackEvidence') for row in prior['targets'] if row['app'] == key), None) if prior else None
+        preserved = prior_targets.get(key, {}).get('rollbackEvidence')
         rollback = retained_rollback_package(rollback_root, key, baseline, preserved) if baseline != revision else None
         preflight_target(key, package_root / target['package'], revision, baseline, journal)
-        entries.append({'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback})
+        return {'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback}
+
+    prepared = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(keys))) as executor:
+        futures = {executor.submit(prepare_target, key): key for key in keys}
+        for future in concurrent.futures.as_completed(futures):
+            key = futures[future]
+            prepared[key] = future.result()
+    entries = [prepared[key] for key in keys]
     plan = {'schemaVersion': 1, 'planId': plan_id, 'candidateRevision': revision, 'targets': entries,
             'producingRun': int(os.environ.get('GITHUB_RUN_ID', '0')),
             'producingAttempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
@@ -541,22 +550,31 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
 
 
 def finalize_prepared_transaction(plan, package_root, revision):
-    # Finalization owns only read-only proof. A failed or ambiguous target cannot
-    # authorize replay or erase siblings' completed candidate publications.
-    for row in plan['targets']:
+    # Finalization owns only read-only proof. Targets are provider-independent,
+    # so prove them concurrently and commit only after every proof succeeds.
+    def finalize(row):
         target = TARGETS[row['app']]
         digest = verify_package(package_root / target['package'], revision, target['static'])
         if digest != row['packageDigest']:
             raise ValueError('Prepared immutable package changed')
-        reconcile(target_azure(row['app'], package_root / target['package'], revision),
-                  baseline=row['revision'], reconcile_only=True)
+        reconcile(
+            target_azure(row['app'], package_root / target['package'], revision),
+            baseline=row['revision'],
+            reconcile_only=True,
+        )
+        return row['app']
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(plan['targets']))) as executor:
+        futures = [executor.submit(finalize, row) for row in plan['targets']]
+        completed = [future.result() for future in futures]
+    if set(completed) != {row['app'] for row in plan['targets']}:
+        raise DeploymentReconciliationRequired('Final transaction proof is incomplete')
     print(json.dumps({'revision': revision, 'transaction': 'committed',
                       'targets': [TARGETS[row['app']]['releaseName'] for row in plan['targets']]}, sort_keys=True))
 
 
 def transaction_disposition(plan, package_root, revision):
-    observations = []
-    for row in plan['targets']:
+    def observe(row):
         key = row['app']
         target = TARGETS[key]
         digest = verify_package(package_root / target['package'], revision, target['static'])
@@ -578,7 +596,12 @@ def transaction_disposition(plan, package_root, revision):
             published = [item for item in rows if item['id'] not in original]
             if len(published) != 1 or published[0]['status'] not in (3, 4):
                 raise DeploymentReconciliationRequired('Original upload outcome remains ambiguous; lease must remain held')
-        observations.append({'target': key, 'revision': observed, 'idle': True})
+        return {'target': key, 'revision': observed, 'idle': True}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(plan['targets']))) as executor:
+        futures = {executor.submit(observe, row): row['app'] for row in plan['targets']}
+        by_target = {futures[future]: future.result() for future in concurrent.futures.as_completed(futures)}
+    observations = [by_target[row['app']] for row in plan['targets']]
     return {'schemaVersion': 1, 'candidateRevision': revision, 'terminal': True, 'targets': observations}
 
 def main():
