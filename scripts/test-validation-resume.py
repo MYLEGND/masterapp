@@ -520,6 +520,71 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertEqual("success", effective["gate-b"])
         self.assertEqual("success", effective["gate-c"])
 
+    def test_computed_single_file_readers_do_not_poison_gate_with_entire_repository(self):
+        source = """
+        var root = FindRepositoryRoot();
+        var path = Path.Combine(root, "Protect-Website", "Controllers", fileName);
+        var text = File.ReadAllText(path);
+        var info = new DirectoryInfo(Directory.GetCurrentDirectory());
+        Assert.False(File.Exists(path));
+        """
+        self.assertNotIn("**", m._test_file_dependency_patterns(source))
+        self.assertEqual(
+            ("**",),
+            m._test_file_dependency_patterns("Directory.GetFiles(root);"),
+        )
+
+    def test_compile_regression_does_not_claim_runtime_source_contract_files(self):
+        gate = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]["compile-regression"]
+        self.assertFalse(gate["runtime_file_dependencies"])
+
+    def test_successful_parent_is_complete_gate_proof_without_plan_artifact_download(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        run = {"id": 77, "conclusion": "success"}
+        steps = m._successful_parent_steps(workflow, run)
+        expected = {gate["step"] for gate in m.WORKFLOWS[workflow]["gates"].values()}
+        self.assertEqual(expected, set(steps))
+        self.assertTrue(all(value == "success" for value in steps.values()))
+        self.assertTrue(all(row["runId"] == 77 for row in steps.producers.values()))
+
+    def test_content_equivalent_lookup_stops_at_nearest_successful_parent(self):
+        workflow = "masterapp-platform-architecture-validation.yml"
+        args = SimpleNamespace(
+            event="pull_request",
+            workflow=workflow,
+            repository="MYLEGND/masterapp",
+            current_run_id=99,
+            current_sha="c" * 40,
+        )
+        plan = {
+            "workflow": workflow,
+            "gates": {
+                key: {"step": gate["step"], "run": True, "reason": "no_prior_success_evidence"}
+                for key, gate in m.WORKFLOWS[workflow]["gates"].items()
+            },
+        }
+        candidate = {
+            "workflow": workflow,
+            "gates": {
+                key: {"step": gate["step"], "run": True, "reason": "gate_inputs_changed"}
+                for key, gate in m.WORKFLOWS[workflow]["gates"].items()
+            },
+        }
+        runs = [
+            {"id": 77, "head_sha": "a" * 40, "conclusion": "success", "run_attempt": 1},
+            {"id": 66, "head_sha": "b" * 40, "conclusion": "success", "run_attempt": 1},
+        ]
+        with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}), \
+             patch.object(m, "_trusted_historical_runs", return_value=runs), \
+             patch.object(m, "_historical_plan_steps",
+                          side_effect=AssertionError("successful parent must not download plan artifact")), \
+             patch.object(m, "_plan_against_prior", return_value=candidate) as compare, \
+             patch.object(m, "merge_content_equivalent_evidence", return_value=False):
+            result = m._apply_content_equivalent_evidence(args, plan)
+        self.assertIs(result, plan)
+        self.assertEqual(1, compare.call_count)
+        self.assertEqual(1, result["historicalEvidenceRunsExamined"])
+
     def test_unchanged_successes_are_preserved(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
