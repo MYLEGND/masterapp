@@ -1702,10 +1702,19 @@ def _historical_release_mutation_steps(source):
         for child, gate in VALIDATION_AUTHORITY.DIRECT_RELEASE_CHILDREN.items()
         if child != 'live-proof'
     )
-    mutation.update(
-        f'Publish canonical target ({key})'
-        for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
-    )
+    # Current writers own one canonical batch publication step. Historical
+    # generations used one named step per target; recognize those only when
+    # reading old run evidence so they cannot become a second live writer.
+    if 'Publish canonical pending targets' in blocks:
+        mutation.add('Publish canonical pending targets')
+    else:
+        historical_publications = {
+            f'Publish canonical target ({key})'
+            for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
+        }
+        if not historical_publications.issubset(blocks):
+            return None
+        mutation.update(historical_publications)
     if not mutation.issubset(blocks):
         return None
     return mutation
