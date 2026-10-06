@@ -662,9 +662,11 @@ class PreparedTransactionTests(unittest.TestCase):
         with patch.object(deploy, 'verify_package', return_value='c' * 64), \
              patch.object(deploy, 'reconcile', side_effect=['preserved', deploy.DeploymentReconciliationRequired('unverified')]) as reconcile:
             with self.assertRaises(deploy.DeploymentReconciliationRequired):
-                deploy.finalize_prepared_transaction(plan, Path('/packages'), 'a' * 40)
+                deploy.finalize_prepared_transaction(
+                    plan, Path('/packages'), 'a' * 40, timeout=90)
         self.assertEqual(2, reconcile.call_count)
         self.assertTrue(all(call.kwargs['reconcile_only'] for call in reconcile.call_args_list))
+        self.assertTrue(all(call.kwargs['timeout'] == 90 for call in reconcile.call_args_list))
 
     def test_target_cannot_publish_modified_package_after_preflight(self):
         plan = self.plan()
