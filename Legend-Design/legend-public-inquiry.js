@@ -94,6 +94,8 @@
         utmTerm: attribution.utmTerm || null,
         utmContent: attribution.utmContent || null,
         fbclid: attribution.fbclid || null,
+        gclid: attribution.gclid || null,
+        ttclid: attribution.ttclid || null,
         oppref: attribution.oppref || null,
         obref: measurementAllowed ? cookie('__obref') : null,
         fbp: measurementAllowed ? cookie('_fbp') : null,

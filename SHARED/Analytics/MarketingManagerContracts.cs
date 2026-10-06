@@ -6,6 +6,8 @@ public static class MarketingChannels
 {
     public const string ChatGptAds = "chatgpt_ads";
     public const string MetaAds = "meta_ads";
+    public const string GoogleAds = "google_ads";
+    public const string TikTokAds = "tiktok_ads";
     public const string Organic = "organic";
     public const string Direct = "direct";
     public const string Referral = "referral";
@@ -47,6 +49,28 @@ public sealed record MarketingManagerPlan(
     UnifiedChannelPerformanceSnapshot ChannelPerformance,
     IReadOnlyList<string> Guardrails,
     AiSafeAnalyticsPayload AnalyticsContext);
+
+public sealed record LeadPrioritySnapshot(
+    MarketingOwnerScope Owner,
+    DateTime GeneratedUtc,
+    string CalibrationBasis,
+    decimal? AveragePaidCustomerValue,
+    IReadOnlyList<LeadPriorityRow> Leads,
+    IReadOnlyList<string> Guardrails);
+
+public sealed record LeadPriorityRow(
+    string LeadId,
+    string Stage,
+    string? ProductInterest,
+    string IntentSignal,
+    decimal LikelihoodToProgressPercent,
+    decimal? ExpectedDownstreamValue,
+    decimal PriorityIndex,
+    string PriorityBand,
+    DateTime UpdatedUtc,
+    DateTime? NextActionDate,
+    string OperatorPriority,
+    string Reason);
 
 public sealed record AdvertisingCommandCenterSummary(
     bool ChatGptAdsConnected,
@@ -96,10 +120,16 @@ public sealed record UnifiedChannelPerformanceSnapshot(
     DateTime FromUtc,
     DateTime ToUtc,
     DateTime GeneratedUtc,
-    IReadOnlyList<ProviderDeliveryMetricRow> ChatGptAdsDelivery,
+    IReadOnlyList<ProviderDeliveryMetricRow> ProviderDelivery,
     CanonicalOutcomeTotals ChatGptAdsOutcomes,
     IReadOnlyList<ChannelPerformanceRow> Channels,
     IReadOnlyList<string> DataQualityNotes)
 {
     public BlendedGrowthEconomicsSnapshot? Economics { get; init; }
+
+    // Compatibility projection only. ProviderDelivery is the single delivery collection.
+    public IReadOnlyList<ProviderDeliveryMetricRow> ChatGptAdsDelivery =>
+        ProviderDelivery.Where(x =>
+            string.Equals(x.Provider, MarketingChannels.ChatGptAds, StringComparison.Ordinal))
+        .ToArray();
 }

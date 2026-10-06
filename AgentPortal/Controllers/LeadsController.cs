@@ -51,6 +51,7 @@ public class LeadsController : Controller
         WorkstationLeadBuckets.CommercialInsurance,
         "CallBack",
         "Contacted",
+        "Qualified",
         "Booked",
         "FollowUp",
         "NeedsDocs",
@@ -104,6 +105,7 @@ public class LeadsController : Controller
         ["donotcalllist"] = "DoNotCallList",
         ["dnc"] = "DoNotCallList",
         ["contacted"] = "Contacted",
+        ["qualified"] = "Qualified",
         ["booked"] = "Booked",
         ["followup"] = "FollowUp",
         ["needsdocs"] = "NeedsDocs",
@@ -123,6 +125,7 @@ public class LeadsController : Controller
     private static readonly IReadOnlyDictionary<string, string> OutcomeStageMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["Contacted"] = "Contacted",
+        ["Qualified"] = "Qualified",
         ["Booked"] = "Booked",
         ["FollowUp"] = "FollowUp",
         ["NeedsDocs"] = "NeedsDocs",
@@ -2316,7 +2319,7 @@ public class LeadsController : Controller
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
 
         return Json(new { payload = await BuildLeadPayloadAsync(lead, dialTimeZone: dialTimeZone) });
     }
@@ -2515,7 +2518,7 @@ public class LeadsController : Controller
         lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
 
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
@@ -2656,7 +2659,7 @@ public class LeadsController : Controller
             lead.UpdatedUtc = now;
         }
 
-        await _db.SaveChangesAsync();
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, HttpContext.RequestAborted);
         return Json(new { ok = true, updated = leads.Count });
     }
 

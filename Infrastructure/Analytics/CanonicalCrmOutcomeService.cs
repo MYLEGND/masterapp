@@ -57,6 +57,263 @@ public sealed class CanonicalCrmOutcomeService
         if (transaction is not null) await transaction.CommitAsync(ct);
     }
 
+
+    /// <summary>
+    /// Persists CRM lead mutations and their canonical qualification truth in one transaction.
+    /// Callers remain responsible for authorization and for staging the intended CRM change;
+    /// this is the single persistence boundary for WorkstationLeadProfile stage mutations.
+    /// </summary>
+    public static async Task SaveLeadChangesAsync(MasterAppDbContext db, CancellationToken ct = default)
+    {
+        db.ChangeTracker.DetectChanges();
+        var changes = db.ChangeTracker.Entries<WorkstationLeadProfile>()
+            .Where(e => e.State == EntityState.Added ||
+                e.State == EntityState.Modified && e.Property(x => x.CrmStage).IsModified)
+            .Select(e => (
+                Lead: e.Entity,
+                PreviousStage: e.State == EntityState.Added ? null : e.Property(x => x.CrmStage).OriginalValue,
+                CurrentStage: e.Entity.CrmStage))
+            .Where(x => !string.Equals(x.PreviousStage, x.CurrentStage, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct) : null;
+
+        await db.SaveChangesAsync(ct);
+
+        if (changes.Length != 0)
+        {
+            var authority = new CanonicalCrmOutcomeService(
+                db,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<CanonicalCrmOutcomeService>.Instance);
+            foreach (var change in changes)
+                await authority.RecordQualificationTransitionAsync(
+                    change.Lead,
+                    change.PreviousStage,
+                    change.CurrentStage,
+                    ct);
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+    }
+
+    private async Task RecordQualificationTransitionAsync(
+        WorkstationLeadProfile lead,
+        string? previousStage,
+        string? currentStage,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(lead.LeadId) ||
+            string.Equals(previousStage, currentStage, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var now = lead.UpdatedUtc == default ? DateTime.UtcNow : lead.UpdatedUtc;
+        var identity = QualificationIdentity(lead.LeadId);
+        var authorityClientEventId = StableTextEventId($"qualified:v1|{identity}");
+        var identityMarker = "\"qualificationIdentity\":\"" + identity + "\"";
+        var persistedQualificationFacts = await _db.AnalyticsEvents.AsNoTracking()
+            .Where(x =>
+                (x.TrackingVersion == "crm-qualification-authority-v1" ||
+                 x.TrackingVersion == "crm-qualification-state-v1") &&
+                x.MetadataJson != null &&
+                x.MetadataJson.Contains(identityMarker))
+            .ToListAsync(ct);
+        var localQualificationFacts = _db.AnalyticsEvents.Local
+            .Where(x =>
+                (x.TrackingVersion == "crm-qualification-authority-v1" ||
+                 x.TrackingVersion == "crm-qualification-state-v1") &&
+                x.MetadataJson != null &&
+                x.MetadataJson.Contains(identityMarker))
+            .ToArray();
+        var qualificationFacts = persistedQualificationFacts
+            .Concat(localQualificationFacts)
+            .DistinctBy(x => x.ClientEventId)
+            .OrderByDescending(x => x.EventUtc)
+            .ThenByDescending(x => x.Id)
+            .ToArray();
+        var existingAuthority = qualificationFacts.Any(x =>
+            x.ClientEventId == authorityClientEventId ||
+            x.TrackingVersion == "crm-qualification-authority-v1");
+        var previousActive = existingAuthority &&
+            (CanonicalAdvertisingEventProjection.ReadBoolean(
+                qualificationFacts.First().MetadataJson, "qualificationActive") ?? true);
+
+        var desiredActive = IsQualifiedStage(currentStage)
+            ? true
+            : IsQualificationReversalStage(currentStage)
+                ? false
+                : previousActive;
+
+        // A downstream stage does not manufacture qualification. Once a real
+        // qualification exists, forward progression preserves that historical
+        // truth. Only an explicit move back into a pre-qualification stage
+        // reconciles it inactive.
+        if (!existingAuthority && !desiredActive)
+            return;
+        if (existingAuthority && desiredActive == previousActive)
+            return;
+
+        var active = desiredActive;
+
+        var intake = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
+            .Where(x => x.WorkstationLeadId == lead.LeadId)
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .FirstOrDefaultAsync(ct);
+        WebsiteLead? websiteLead = null;
+        if (intake is not null)
+            websiteLead = await _db.WebsiteLeads.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.LeadId == intake.WebsiteLeadPublicId, ct);
+
+        var trackingProfile = lead.CommerceBusinessId.HasValue
+            ? null
+            : await _db.AgentTrackingProfiles.AsNoTracking()
+                .Where(x => x.AgentUserId == lead.AgentUserId && x.Status == "active")
+                .OrderByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync(ct);
+        var qualificationPaidRefs = await ResolvePaidClickReferencesAsync(websiteLead, intake, now, ct);
+
+        var lineage = new UnifiedEventContext
+        {
+            SiteKey = MetaSignalSingleTruthPolicy.ReadString(websiteLead?.MetadataJson, "siteKey")
+                ?? (lead.CommerceBusinessId.HasValue ? "BusinessWebsite" : "ProtectWebsite"),
+            CommerceBusinessId = lead.CommerceBusinessId ?? websiteLead?.CommerceBusinessId ?? intake?.CommerceBusinessId,
+            AgentTrackingProfileId = lead.CommerceBusinessId.HasValue
+                ? null
+                : websiteLead?.AgentTrackingProfileId ?? trackingProfile?.Id,
+            AgentSlug = lead.CommerceBusinessId.HasValue
+                ? null
+                : websiteLead?.AgentSlug ?? trackingProfile?.Slug,
+            WebsiteContentVersionId = websiteLead?.WebsiteContentVersionId,
+            WebsiteBindingId = websiteLead?.WebsiteBindingId,
+            EventUtc = now,
+            SessionId = intake?.SessionId ?? websiteLead?.SessionId,
+            VisitorId = intake?.VisitorId ?? websiteLead?.VisitorId,
+            PageKey = intake?.SourcePageKey ?? websiteLead?.SourcePageKey,
+            Referrer = intake?.ReferrerUrl,
+            UtmSource = intake?.UtmSource ?? websiteLead?.UtmSource,
+            UtmMedium = intake?.UtmMedium ?? websiteLead?.UtmMedium,
+            UtmCampaign = intake?.UtmCampaign ?? websiteLead?.UtmCampaign,
+            UtmId = intake?.UtmId ?? websiteLead?.UtmId,
+            UtmTerm = intake?.UtmTerm,
+            UtmContent = intake?.UtmContent,
+            MetaCampaignId = intake?.MetaCampaignId ?? websiteLead?.MetaCampaignId,
+            MetaAdSetId = intake?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
+            MetaAdId = intake?.MetaAdId ?? websiteLead?.MetaAdId,
+            Fbclid = intake?.Fbclid ?? websiteLead?.Fbclid,
+            Gclid = qualificationPaidRefs.Gclid,
+            Ttclid = qualificationPaidRefs.Ttclid,
+            Oppref = OpenAiClickReference.Normalize(intake?.Oppref ?? websiteLead?.Oppref),
+            Fbc = intake?.Fbc ?? websiteLead?.Fbc,
+            Fbp = intake?.Fbp ?? websiteLead?.Fbp,
+            PageVariant = intake?.PageVariant,
+            PageMode = intake?.PageMode,
+            Environment = websiteLead?.Environment,
+            Host = websiteLead?.Host,
+            Url = intake?.LandingPageUrl,
+            UserAgent = intake?.ClientUserAgent ?? websiteLead?.ClientUserAgent,
+            IpAddress = intake?.ClientIpAddress ?? websiteLead?.ClientIpAddress
+        };
+
+        var metadata = new
+        {
+            workstationLeadId = lead.LeadId,
+            agentUserId = lead.AgentUserId,
+            commerceBusinessId = lead.CommerceBusinessId,
+            qualificationIdentity = identity,
+            qualificationActive = active,
+            previousCrmStage = previousStage,
+            currentCrmStage = currentStage
+        };
+
+        if (active && !existingAuthority)
+        {
+            var authority = BuildAnalyticsOutcome(
+                eventName: "QualifiedLead",
+                eventId: $"qualified_{identity}",
+                dedupKey: $"qualifiedlead:workstation:{identity}",
+                websiteLeadId: intake?.WebsiteLeadPublicId,
+                agentTrackingProfileId: trackingProfile?.Id,
+                agentSlug: trackingProfile?.Slug,
+                quoteType: intake?.InterestType ?? intake?.ProductType ?? websiteLead?.InterestType ?? "crm",
+                funnelStep: 5,
+                stepName: "crm_qualified",
+                scoreTier: "QualifiedLead",
+                totalScore: 180,
+                metadata: metadata,
+                lineage: lineage);
+            authority.ClientEventId = authorityClientEventId;
+            authority.EventId = authorityClientEventId;
+            authority.TrackingVersion = "crm-qualification-authority-v1";
+            UnifiedAnalyticsWriter.Write(_db, authority);
+            return;
+        }
+
+        var stateEventId = StableTextEventId(
+            $"qualified-state:v1|{identity}|{now.Ticks}|{active}|{previousStage}|{currentStage}");
+        if (_db.AnalyticsEvents.Local.Any(x => x.ClientEventId == stateEventId) ||
+            await _db.AnalyticsEvents.AsNoTracking().AnyAsync(x => x.ClientEventId == stateEventId, ct))
+            return;
+
+        var state = BuildAnalyticsOutcome(
+            eventName: "QualifiedLead",
+            eventId: $"qualified_state_{identity}_{now.Ticks}",
+            dedupKey: $"qualifiedlead-state:{identity}:{now.Ticks}",
+            websiteLeadId: intake?.WebsiteLeadPublicId,
+            agentTrackingProfileId: trackingProfile?.Id,
+            agentSlug: trackingProfile?.Slug,
+            quoteType: intake?.InterestType ?? intake?.ProductType ?? websiteLead?.InterestType ?? "crm",
+            funnelStep: 5,
+            stepName: active ? "crm_requalified" : "crm_qualification_reversed",
+            scoreTier: active ? "QualifiedLead" : "QualificationReversed",
+            totalScore: active ? 180 : 0,
+            metadata: metadata,
+            lineage: lineage);
+        state.ClientEventId = stateEventId;
+        state.EventId = stateEventId;
+        state.TrackingVersion = "crm-qualification-state-v1";
+        var stateMetadata = JsonNode.Parse(state.MetadataJson ?? "{}")!.AsObject();
+        stateMetadata["measurementServerAuthorityEligible"] = false;
+        stateMetadata["metaServerAuthorityEligible"] = false;
+        stateMetadata["metaSingleTruthDispatchEligible"] = false;
+        stateMetadata["reportingOnlyReason"] = "qualification_state_reconciliation";
+        state.MetadataJson = stateMetadata.ToJsonString();
+        UnifiedAnalyticsWriter.Write(_db, state);
+    }
+
+    private static bool IsQualifiedStage(string? stage) =>
+        string.Equals(stage?.Trim(), "Qualified", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsQualificationReversalStage(string? stage)
+    {
+        var value = stage?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.Equals("New", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("NewLead", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Opportunities", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Contacted", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("CallBack", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Voicemail", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("NoAnswer", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("AIReception", StringComparison.OrdinalIgnoreCase) ||
+               Infrastructure.Leads.WorkstationLeadBuckets.ProductBuckets.Any(bucket =>
+                   bucket.Equals(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string QualificationIdentity(string leadId) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(leadId.Trim().ToLowerInvariant())))[..24].ToLowerInvariant();
+
+    private static Guid StableTextEventId(string value)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return new Guid(bytes.AsSpan(0, 16));
+    }
+
     private async Task StageProductionSnapshotAsync(ProductionRecord record, bool deleted, CancellationToken ct)
     {
         var recordKey = record.Id.ToString();
@@ -151,6 +408,9 @@ public sealed class CanonicalCrmOutcomeService
         }
 
         appointment.Oppref ??= OpenAiClickReference.Normalize(intakeLink?.Oppref ?? websiteLead?.Oppref);
+        var appointmentEventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc;
+        var appointmentPaidRefs = await ResolvePaidClickReferencesAsync(
+            websiteLead, intakeLink, appointmentEventUtc, cancellationToken);
 
         var metaEligible = appointment.Status is LeadAppointmentStatus.Booked
             or LeadAppointmentStatus.Confirmed
@@ -168,7 +428,7 @@ public sealed class CanonicalCrmOutcomeService
             Fbp = intakeLink?.Fbp ?? websiteLead?.Fbp,
             UserAgent = intakeLink?.ClientUserAgent ?? websiteLead?.ClientUserAgent,
             IpAddress = intakeLink?.ClientIpAddress ?? websiteLead?.ClientIpAddress,
-            EventUtc = appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
+            EventUtc = appointmentEventUtc,
             SessionId = intakeLink?.SessionId ?? websiteLead?.SessionId,
             VisitorId = intakeLink?.VisitorId ?? websiteLead?.VisitorId,
             PageKey = intakeLink?.SourcePageKey ?? websiteLead?.SourcePageKey,
@@ -185,6 +445,8 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
+            Gclid = appointmentPaidRefs.Gclid,
+            Ttclid = appointmentPaidRefs.Ttclid,
             Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
             AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
                 ? null
@@ -311,6 +573,10 @@ public sealed class CanonicalCrmOutcomeService
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var productionEventUtc = productionRecord?.UpdatedUtc ?? DateTime.UtcNow;
+        var productionPaidRefs = await ResolvePaidClickReferencesAsync(
+            productionWebsiteLead, productionIntake, productionEventUtc, cancellationToken);
+
         var row = BuildAnalyticsOutcome(
             eventName: eventName,
             eventId: $"{eventName.ToLowerInvariant()}_{productionRecordId:N}",
@@ -365,7 +631,7 @@ public sealed class CanonicalCrmOutcomeService
                 AgentSlug = productionWebsiteLead?.AgentSlug ?? trackingProfile?.Slug,
                 WebsiteContentVersionId = productionWebsiteLead?.WebsiteContentVersionId,
                 WebsiteBindingId = productionWebsiteLead?.WebsiteBindingId,
-                EventUtc = productionRecord?.UpdatedUtc ?? DateTime.UtcNow,
+                EventUtc = productionEventUtc,
                 SessionId = productionIntake?.SessionId ?? productionWebsiteLead?.SessionId,
                 VisitorId = productionIntake?.VisitorId ?? productionWebsiteLead?.VisitorId,
                 PageKey = productionIntake?.SourcePageKey ?? productionWebsiteLead?.SourcePageKey,
@@ -380,6 +646,8 @@ public sealed class CanonicalCrmOutcomeService
                 MetaAdSetId = productionIntake?.MetaAdSetId ?? productionWebsiteLead?.MetaAdSetId,
                 MetaAdId = productionIntake?.MetaAdId ?? productionWebsiteLead?.MetaAdId,
                 Fbclid = productionIntake?.Fbclid ?? productionWebsiteLead?.Fbclid,
+                Gclid = productionPaidRefs.Gclid,
+                Ttclid = productionPaidRefs.Ttclid,
                 Fbc = productionIntake?.Fbc ?? productionWebsiteLead?.Fbc,
                 Fbp = productionIntake?.Fbp ?? productionWebsiteLead?.Fbp,
                 PageVariant = productionIntake?.PageVariant,
@@ -411,6 +679,63 @@ public sealed class CanonicalCrmOutcomeService
             side,
             contactKey,
             amount);
+    }
+
+    private async Task<(string? Gclid, string? Ttclid)> ResolvePaidClickReferencesAsync(
+        WebsiteLead? websiteLead,
+        WebsiteLeadIntakeLink? intake,
+        DateTime eventUtc,
+        CancellationToken ct)
+    {
+        var gclid = PaidAdsClickReference.NormalizeGoogle(
+            CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
+            CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Gclid"));
+        var ttclid = PaidAdsClickReference.NormalizeTikTok(
+            CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
+            CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Ttclid"));
+        if (gclid is not null && ttclid is not null)
+            return (gclid, ttclid);
+
+        var sessionId = intake?.SessionId ?? websiteLead?.SessionId;
+        var visitorId = intake?.VisitorId ?? websiteLead?.VisitorId;
+        if (string.IsNullOrWhiteSpace(sessionId) && string.IsNullOrWhiteSpace(visitorId))
+            return (gclid, ttclid);
+
+        var commerceBusinessId = websiteLead?.CommerceBusinessId ?? intake?.CommerceBusinessId;
+        var agentTrackingProfileId = commerceBusinessId.HasValue ? null : websiteLead?.AgentTrackingProfileId;
+        var from = (websiteLead?.CreatedUtc ?? intake?.SubmittedUtc ?? eventUtc).AddDays(-1);
+        var to = eventUtc.AddDays(1);
+
+        var query = _db.AnalyticsEvents.AsNoTracking()
+            .Where(x => x.EventUtc >= from && x.EventUtc <= to &&
+                        x.CommerceBusinessId == commerceBusinessId);
+        if (commerceBusinessId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == null);
+        else if (agentTrackingProfileId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == agentTrackingProfileId);
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            query = query.Where(x => x.SessionId == sessionId);
+        else
+            query = query.Where(x => x.VisitorId == visitorId);
+
+        var metadataRows = await query
+            .OrderBy(x => x.EventUtc)
+            .ThenBy(x => x.Id)
+            .Select(x => x.MetadataJson)
+            .Take(250)
+            .ToListAsync(ct);
+
+        foreach (var metadataJson in metadataRows)
+        {
+            gclid ??= PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(metadataJson, "gclid"));
+            ttclid ??= PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(metadataJson, "ttclid"));
+            if (gclid is not null && ttclid is not null)
+                break;
+        }
+
+        return (gclid, ttclid);
     }
 
     private async Task<Guid?> ResolveProductionWebsiteLeadIdAsync(
@@ -494,8 +819,14 @@ public sealed class CanonicalCrmOutcomeService
     {
         var payload = JsonSerializer.SerializeToNode(metadata)!.AsObject();
         payload["LeadId"] = websiteLeadId?.ToString("D");
+        payload["oppref"] = OpenAiClickReference.Normalize(
+            payload["oppref"]?.GetValue<string>() ?? lineage?.Oppref);
+        payload["gclid"] = PaidAdsClickReference.NormalizeGoogle(lineage?.Gclid);
+        payload["ttclid"] = PaidAdsClickReference.NormalizeTikTok(lineage?.Ttclid);
         payload["fbc"] = lineage?.Fbc;
         payload["fbp"] = lineage?.Fbp;
+        payload["gclid"] = PaidAdsClickReference.NormalizeGoogle(lineage?.Gclid);
+        payload["ttclid"] = PaidAdsClickReference.NormalizeTikTok(lineage?.Ttclid);
         payload["pageVariant"] = lineage?.PageVariant;
         payload["pageMode"] = lineage?.PageMode;
         payload["canonicalOutcomeEventId"] = eventId;
@@ -517,7 +848,7 @@ public sealed class CanonicalCrmOutcomeService
             EventUtc = lineage?.EventUtc ?? DateTime.UtcNow, QuoteType = quoteType,
             AgentTrackingProfileId = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentTrackingProfileId ?? agentTrackingProfileId,
             AgentSlug = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentSlug ?? agentSlug,
-            Oppref = OpenAiClickReference.Normalize(payload["oppref"]?.GetValue<string>()),
+            Oppref = OpenAiClickReference.Normalize(payload["oppref"]?.GetValue<string>() ?? lineage?.Oppref),
             Environment = lineage?.Environment ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
             Host = lineage?.Host ?? "AgentPortal", IsBrowserSignal = false, IsServerAuthority = true,
             MetaServerAuthorityEligible = true, Metadata = payload

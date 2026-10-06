@@ -41,7 +41,10 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         var meta = new Mock<IMetaAdsService>();
         meta.Setup(x => x.GetCampaignsAsync(range, scope, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Meta unavailable"));
-        var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object)
+        var external = new Mock<IMarketingExternalAdsReportingService>();
+        external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+        var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Contains(result.DataQualityNotes, x => x.Contains("completed account-local hours", StringComparison.Ordinal));
         analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
@@ -77,7 +80,10 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         var analytics = new Mock<IAnalyticsQueryService>();
         analytics.Setup(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AnalyticsEvent> { paid, direct, paid });
-        var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object)
+        var external = new Mock<IMarketingExternalAdsReportingService>();
+        external.Setup(x => x.GetCampaignsAsync(owner, It.IsAny<string>(), range, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProviderDeliveryMetricRow>());
+        var result = await new UnifiedMarketingPerformanceService(openai.Object, connections.Object, analytics.Object, meta.Object, external.Object)
             .GetAsync(owner, scope, range);
         Assert.Equal(1, result.ChatGptAdsOutcomes.Customers);
         Assert.Equal(125m, result.ChatGptAdsOutcomes.Revenue);

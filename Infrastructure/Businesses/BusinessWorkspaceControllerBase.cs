@@ -683,6 +683,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 publicReady = business.IsActive && string.Equals(business.Status, "Active", StringComparison.OrdinalIgnoreCase),
                 metaCustomPixel = !string.IsNullOrWhiteSpace(profile.Settings.MetaPixelId),
                 openAiReady = accountReady,
+                googleReady = setup.Google.Ready,
+                tiktokReady = setup.TikTok.Ready,
                 bookingPersonalLive = profile.Settings.BookingEnabled &&
                     (!string.IsNullOrWhiteSpace(profile.Settings.BookingEmbedUrl) || !string.IsNullOrWhiteSpace(profile.Settings.BookingFallbackUrl)),
                 calendarLinked = calendarConnection.Connected
@@ -699,6 +701,8 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 metaCapiConfiguredSecurely = setup.Meta.CapiConfigured,
                 metaCapiManagedAutomatically = true
             },
+            google = setup.Google,
+            tiktok = setup.TikTok,
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -765,6 +769,146 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
                 calendarEmail = profile.Settings.BookingCalendarEmail
             }
         });
+    }
+
+    public sealed record BusinessExternalAdsAccountRequest(string Provider, string AccountId);
+    public sealed record BusinessExternalAdsDisconnectRequest(string Provider);
+
+    [HttpGet("analytics/external-ads/connect")]
+    public async Task<IActionResult> ExternalAdsConnect(
+        Guid businessId,
+        [FromQuery] string provider,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        var fallback = $"/business/{businessId:D}/analytics";
+        var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : fallback;
+        try
+        {
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/business/external-ads/callback";
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Redirect(oauth.BuildConnectUrl(
+                MarketingOwnerScope.Business(businessId),
+                provider,
+                target,
+                callback));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("/business/external-ads/callback")]
+    public async Task<IActionResult> ExternalAdsCallback(
+        [FromQuery] string? code = null,
+        [FromQuery(Name = "auth_code")] string? authCode = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fallback = "/";
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            var inspected = oauth.InspectState(state ?? string.Empty);
+            var businessId = inspected.Owner.CommerceBusinessId
+                ?? throw new InvalidOperationException("External Ads OAuth state is not business-scoped.");
+            fallback = $"/business/{businessId:D}/analytics";
+            if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+            var target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : fallback;
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+            }
+
+            var result = await oauth.CompleteCallbackAsync(
+                inspected.Provider,
+                authCode ?? code ?? string.Empty,
+                state ?? string.Empty,
+                cancellationToken);
+            if (result.Owner != inspected.Owner)
+                throw new InvalidOperationException("External Ads OAuth owner scope changed during authorization.");
+
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return Redirect($"{fallback}{(fallback.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("analytics/external-ads/accounts")]
+    public async Task<IActionResult> ExternalAdsAccounts(
+        Guid businessId,
+        [FromQuery] string provider,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Json(new
+            {
+                provider,
+                accounts = await oauth.GetAccountsAsync(MarketingOwnerScope.Business(businessId), provider, cancellationToken)
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("analytics/external-ads/select-account")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsSelectAccount(
+        Guid businessId,
+        [FromBody] BusinessExternalAdsAccountRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            await oauth.SelectAccountAsync(
+                MarketingOwnerScope.Business(businessId),
+                request.Provider,
+                request.AccountId,
+                cancellationToken);
+            return await MarketingSetup(businessId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("analytics/external-ads/disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsDisconnect(
+        Guid businessId,
+        [FromBody] BusinessExternalAdsDisconnectRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "settings", cancellationToken) is null) return Forbid();
+        try
+        {
+            var store = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
+            await store.DisconnectAsync(
+                MarketingOwnerScope.Business(businessId),
+                request.Provider,
+                cancellationToken);
+            return await MarketingSetup(businessId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     public sealed record BusinessCalendarConnectionRevisionRequest(Guid ConnectionRevision);

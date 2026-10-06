@@ -132,3 +132,56 @@ public sealed class OpenAiMarketingDestination(
         return new(Key, Supported: true, Configured: true, MappingReady: true, Reason: "mapping_ready");
     }
 }
+
+
+/// <summary>
+/// Google Ads connection participates in the canonical destination registry for
+/// discovery/readiness. Conversion upload remains fail-closed until an exact
+/// conversion-action mapping is configured; reporting still uses canonical outcomes.
+/// </summary>
+public sealed class GoogleMarketingDestination(MarketingConnectionStore connections) : IMarketingDestination
+{
+    public string Key => MarketingDestinationKeys.Google;
+
+    public async ValueTask<MarketingDestinationDecision> EvaluateAsync(
+        MarketingOwnerScope owner,
+        MarketingOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        var eventName = outcome.NormalizedEventName;
+        if (!outcome.IsServerAuthority || !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName))
+            return new(Key, false, false, false, "event_not_supported");
+        var connection = await connections.GetProviderConnectionAsync(owner, Key, cancellationToken);
+        if (!connection.Connected)
+            return new(Key, true, false, false, "destination_not_configured");
+        if (!connection.Ready)
+            return new(Key, true, false, false, "account_selection_required");
+        return new(Key, true, true, false, "reporting_ready_conversion_delivery_not_configured");
+    }
+}
+
+/// <summary>
+/// TikTok Ads connection participates in the canonical destination registry for
+/// discovery/readiness. Conversion upload remains fail-closed until an exact
+/// event-source mapping is configured; reporting still uses canonical outcomes.
+/// </summary>
+public sealed class TikTokMarketingDestination(MarketingConnectionStore connections) : IMarketingDestination
+{
+    public string Key => MarketingDestinationKeys.TikTok;
+
+    public async ValueTask<MarketingDestinationDecision> EvaluateAsync(
+        MarketingOwnerScope owner,
+        MarketingOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        var eventName = outcome.NormalizedEventName;
+        if (!outcome.IsServerAuthority || !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName))
+            return new(Key, false, false, false, "event_not_supported");
+        var connection = await connections.GetProviderConnectionAsync(owner, Key, cancellationToken);
+        if (!connection.Connected)
+            return new(Key, true, false, false, "destination_not_configured");
+        if (!connection.Ready)
+            return new(Key, true, false, false, "account_selection_required");
+        return new(Key, true, true, false, "reporting_ready_conversion_delivery_not_configured");
+    }
+}

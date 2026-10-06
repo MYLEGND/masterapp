@@ -8,8 +8,15 @@ namespace Infrastructure.Analytics;
 
 public sealed record ProviderMeasurementEvidence(int Attempted, int Accepted, int Pending, int Retrying,
     int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence);
-public sealed record MarketingMeasurementEvidenceSnapshot(string OwnerKey, DateTime WindowFromUtc,
-    bool ReceivingEvents, DateTime? LastReceivedUtc, ProviderMeasurementEvidence Meta, ProviderMeasurementEvidence OpenAi);
+public sealed record MarketingMeasurementEvidenceSnapshot(
+    string OwnerKey,
+    DateTime WindowFromUtc,
+    bool ReceivingEvents,
+    DateTime? LastReceivedUtc,
+    ProviderMeasurementEvidence Meta,
+    ProviderMeasurementEvidence OpenAi,
+    ProviderMeasurementEvidence Google,
+    ProviderMeasurementEvidence TikTok);
 
 /// <summary>
 /// Single read-only interpretation policy for provider delivery evidence.
@@ -87,6 +94,18 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
                 openAi.Count(r => r.Status == "retryable"), openAi.Count(r => r.Status == "permanent_failure"),
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
                 openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
-                openAiAccepted > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed"));
+                openAiAccepted > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed"),
+            new(0, 0, 0, 0, 0,
+                sources.Any(e => PaidAdsClickReference.NormalizeGoogle(
+                    CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid")) is not null ||
+                    CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.GoogleAds),
+                null,
+                "conversion_delivery_not_configured"),
+            new(0, 0, 0, 0, 0,
+                sources.Any(e => PaidAdsClickReference.NormalizeTikTok(
+                    CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid")) is not null ||
+                    CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.TikTokAds),
+                null,
+                "conversion_delivery_not_configured"));
     }
 }

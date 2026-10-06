@@ -1,4 +1,7 @@
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
+using Shared.Crm;
 
 namespace Infrastructure.Analytics;
 
@@ -16,11 +19,19 @@ public interface IMarketingManagerService
         PromotionProposalRequest request,
         string actorUserId,
         CancellationToken ct = default);
+
+    Task<LeadPrioritySnapshot> PrioritizeLeadsAsync(
+        MarketingOwnerScope owner,
+        ScopeContext analyticsScope,
+        TimeRangeRequest range,
+        int take = 25,
+        CancellationToken ct = default);
 }
 
 public sealed class MarketingManagerService(
     IAdvertisingCommandCenterService advertising,
-    WebsiteAnalyticsAiDataBuilder context) : IMarketingManagerService
+    WebsiteAnalyticsAiDataBuilder context,
+    MasterAppDbContext db) : IMarketingManagerService
 {
     public async Task<MarketingManagerPlan> PlanAsync(
         MarketingOwnerScope owner,
@@ -115,6 +126,199 @@ public sealed class MarketingManagerService(
             channel,
             guardrails, safeContext);
     }
+
+    public async Task<LeadPrioritySnapshot> PrioritizeLeadsAsync(
+        MarketingOwnerScope owner,
+        ScopeContext analyticsScope,
+        TimeRangeRequest range,
+        int take = 25,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(analyticsScope);
+        ArgumentNullException.ThrowIfNull(range);
+        take = Math.Clamp(take, 1, 100);
+
+        var safeContext = await context.BuildAsync(
+            range, analyticsScope, range.Label, owner.OwnerType,
+            "All Traffic", TrafficType.All, ct, owner);
+        var calibrations = (safeContext.OutcomeCalibration?.Signals ?? [])
+            .ToDictionary(x => x.Signal, StringComparer.OrdinalIgnoreCase);
+
+        IQueryable<Domain.Entities.WorkstationLeadProfile> leadQuery = db.WorkstationLeadProfiles.AsNoTracking();
+        if (owner.CommerceBusinessId is { } businessId)
+        {
+            leadQuery = leadQuery.Where(x => x.CommerceBusinessId == businessId);
+        }
+        else if (owner.AgentTrackingProfileId is { } trackingId)
+        {
+            var agentUserId = await db.AgentTrackingProfiles.AsNoTracking()
+                .Where(x => x.Id == trackingId)
+                .Select(x => x.AgentUserId)
+                .SingleOrDefaultAsync(ct);
+            if (string.IsNullOrWhiteSpace(agentUserId))
+                return EmptyPriority(owner, "The selected agent owner could not be resolved.");
+            leadQuery = leadQuery.Where(x =>
+                x.CommerceBusinessId == null && x.AgentUserId == agentUserId);
+        }
+        else
+        {
+            return EmptyPriority(owner,
+                "Lead priority requires one exact agent or business owner. Global Founder data is not merged into one sales queue.");
+        }
+
+        var leads = await leadQuery
+            .Where(x => x.CrmStatus != "Converted" && x.CrmStage != "PolicyPlaced")
+            .OrderByDescending(x => x.UpdatedUtc)
+            .Take(2000)
+            .ToListAsync(ct);
+        if (leads.Count == 0)
+            return EmptyPriority(owner, "No active CRM leads exist for this exact owner.");
+
+        var leadIds = leads.Select(x => x.LeadId).ToArray();
+        var intakeRows = await db.WebsiteLeadIntakeLinks.AsNoTracking()
+            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .ToListAsync(ct);
+        var intakeByLead = intakeRows
+            .GroupBy(x => x.WorkstationLeadId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        var visitorIds = intakeRows.Select(x => x.VisitorId)
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Cast<string>().ToArray();
+        var sessionIds = intakeRows.Select(x => x.SessionId)
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Cast<string>().ToArray();
+
+        var signalEvents = await db.AnalyticsEvents.AsNoTracking()
+            .Where(x => x.EventUtc >= range.FromUtc && x.EventUtc < range.ToUtc &&
+                (x.EventType == "HighIntentLeadSignal" || x.EventType == "LeadReadySignal") &&
+                ((x.VisitorId != null && visitorIds.Contains(x.VisitorId)) ||
+                 (x.SessionId != null && sessionIds.Contains(x.SessionId))))
+            .Select(x => new { x.EventType, x.VisitorId, x.SessionId, x.EventUtc })
+            .ToListAsync(ct);
+
+        var totalPaidCustomers = safeContext.Channels.Sum(x => x.Customers);
+        var totalRevenue = safeContext.Channels.Sum(x => x.Revenue);
+        decimal? averagePaidValue = totalPaidCustomers > 0
+            ? Math.Round(totalRevenue / totalPaidCustomers, 2)
+            : null;
+        var now = DateTime.UtcNow;
+
+        var rows = new List<LeadPriorityRow>(leads.Count);
+        foreach (var lead in leads)
+        {
+            intakeByLead.TryGetValue(lead.LeadId, out var intake);
+            var matchingSignals = signalEvents.Where(x =>
+                    (!string.IsNullOrWhiteSpace(intake?.VisitorId) &&
+                     string.Equals(x.VisitorId, intake.VisitorId, StringComparison.Ordinal)) ||
+                    (!string.IsNullOrWhiteSpace(intake?.SessionId) &&
+                     string.Equals(x.SessionId, intake.SessionId, StringComparison.Ordinal)))
+                .ToArray();
+
+            var signal = matchingSignals.Any(x =>
+                    string.Equals(x.EventType, "LeadReadySignal", StringComparison.OrdinalIgnoreCase))
+                ? "LeadReadySignal"
+                : matchingSignals.Any(x =>
+                    string.Equals(x.EventType, "HighIntentLeadSignal", StringComparison.OrdinalIgnoreCase))
+                    ? "HighIntentLeadSignal"
+                    : "NoCalibratedIntentSignal";
+
+            calibrations.TryGetValue(signal, out var calibration);
+            var likelihood = ProgressRateForStage(lead.CrmStage, calibration);
+            decimal? expectedValue = averagePaidValue.HasValue && calibration is not null
+                ? Math.Round(averagePaidValue.Value * calibration.PaidRate / 100m, 2)
+                : null;
+
+            var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+            var recencyMultiplier = RecencyMultiplier(now - lead.UpdatedUtc);
+            var urgencyMultiplier = UrgencyMultiplier(meta.CrmPriority, meta.CrmNextDate, now);
+            var evidenceBase = expectedValue is > 0m
+                ? expectedValue.Value * Math.Max(likelihood / 100m, 0.05m)
+                : Math.Max(likelihood, 1m);
+            var priorityIndex = Math.Round(evidenceBase * recencyMultiplier * urgencyMultiplier, 2);
+            var band = priorityIndex >= (averagePaidValue ?? 100m) * 0.25m ? "High"
+                : priorityIndex >= (averagePaidValue ?? 100m) * 0.10m ? "Medium"
+                : "Normal";
+
+            rows.Add(new LeadPriorityRow(
+                lead.LeadId,
+                lead.CrmStage,
+                intake?.InterestType ?? intake?.ProductType ?? lead.OriginalLeadType,
+                signal,
+                likelihood,
+                expectedValue,
+                priorityIndex,
+                band,
+                lead.UpdatedUtc,
+                meta.CrmNextDate,
+                meta.CrmPriority ?? "Normal",
+                BuildPriorityReason(signal, likelihood, expectedValue, recencyMultiplier, urgencyMultiplier)));
+        }
+
+        return new LeadPrioritySnapshot(
+            owner,
+            now,
+            safeContext.OutcomeCalibration?.LearningScopeNote ??
+                "No calibrated browser-intent evidence is available in the selected range.",
+            averagePaidValue,
+            rows.OrderByDescending(x => x.PriorityIndex)
+                .ThenByDescending(x => x.UpdatedUtc)
+                .Take(take)
+                .ToList(),
+            [
+                "Priority is advisory only; CRM stage and canonical server outcomes remain the source of truth.",
+                "No name, email, phone, address, age, gender, health, or other sensitive personal attribute is used in this ranking.",
+                "Behavioral intent remains observational. Canonical downstream outcomes are the learning labels.",
+                "Advertising decisions must use aggregate owner-scoped evidence, never an individual lead's priority."
+            ]);
+    }
+
+    private static LeadPrioritySnapshot EmptyPriority(MarketingOwnerScope owner, string reason) =>
+        new(owner, DateTime.UtcNow, reason, null, [], [reason]);
+
+    private static decimal ProgressRateForStage(
+        string? stage,
+        SignalOutcomeCalibrationAiRow? calibration)
+    {
+        if (calibration is null) return 0m;
+        return stage?.Trim().ToLowerInvariant() switch
+        {
+            "qualified" => calibration.AppointmentRate,
+            "booked" or "meetingscheduled" => calibration.ApplicationRate,
+            "needsdocs" or "applicationstarted" or "followup" => calibration.IssuedRate,
+            _ => calibration.QualifiedRate
+        };
+    }
+
+    private static decimal RecencyMultiplier(TimeSpan age) =>
+        age.TotalDays <= 1 ? 1.25m :
+        age.TotalDays <= 3 ? 1.15m :
+        age.TotalDays <= 7 ? 1.05m :
+        age.TotalDays <= 30 ? 1.00m : 0.85m;
+
+    private static decimal UrgencyMultiplier(string? priority, DateTime? nextActionDate, DateTime now)
+    {
+        var priorityMultiplier = priority?.Trim().ToLowerInvariant() switch
+        {
+            "urgent" => 1.25m,
+            "high" => 1.15m,
+            "low" => 0.85m,
+            _ => 1m
+        };
+        var dueMultiplier = nextActionDate.HasValue && nextActionDate.Value.Date <= now.Date ? 1.15m : 1m;
+        return priorityMultiplier * dueMultiplier;
+    }
+
+    private static string BuildPriorityReason(
+        string signal,
+        decimal likelihood,
+        decimal? expectedValue,
+        decimal recencyMultiplier,
+        decimal urgencyMultiplier) =>
+        $"{signal}; observed next-outcome likelihood {likelihood:0.##}%; " +
+        (expectedValue.HasValue ? $"historical expected downstream value {Money(expectedValue)}; " : "paid-value history unavailable; ") +
+        $"recency x{recencyMultiplier:0.##}; CRM urgency x{urgencyMultiplier:0.##}.";
 
     public Task<AdvertisingActionProposalSnapshot> ProposeChatGptPromotionAsync(
         MarketingOwnerScope owner,

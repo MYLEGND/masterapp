@@ -63,6 +63,8 @@ public class WebsiteInquiryAuthority : ControllerBase
         string? UtmTerm = null,
         string? UtmContent = null,
         string? Fbclid = null,
+        string? Gclid = null,
+        string? Ttclid = null,
         string? Oppref = null,
         string? Obref = null,
         string? Fbp = null,
@@ -219,6 +221,8 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Oppref = lead.Oppref,
+            Gclid = PaidAdsClickReference.NormalizeGoogle(request.Gclid),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(request.Ttclid),
             Obref = measurementConsent.Allowed
                 ? UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, request.Obref)
                 : null,
@@ -421,6 +425,8 @@ public class WebsiteInquiryAuthority : ControllerBase
             UtmTerm = Optional(request.UtmTerm, 160),
             UtmContent = Optional(request.UtmContent, 160),
             Fbclid = lead.Fbclid,
+            Gclid = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Gclid"),
+            Ttclid = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Ttclid"),
             Oppref = lead.Oppref,
             Obref = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "Obref"),
             Fbp = lead.Fbp,

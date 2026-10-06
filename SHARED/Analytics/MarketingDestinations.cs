@@ -8,6 +8,8 @@ public static class MarketingDestinationKeys
 {
     public const string Meta = "meta";
     public const string OpenAi = "openai";
+    public const string Google = "google";
+    public const string TikTok = "tiktok";
 
     public static string Normalize(string provider)
     {

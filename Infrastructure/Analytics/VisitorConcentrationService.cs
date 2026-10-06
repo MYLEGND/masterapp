@@ -186,7 +186,9 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             isInternal: e.IsInternal,
             environment: e.Environment,
             host: e.Host,
-            oppref: e.Oppref);
+            oppref: e.Oppref,
+            gclid: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid"),
+            ttclid: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid"));
 
     private static string ResolveTop(IEnumerable<string?> values, string fallback)
     {

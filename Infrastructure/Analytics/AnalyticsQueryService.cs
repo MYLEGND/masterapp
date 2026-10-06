@@ -938,6 +938,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmCampaign,
         string? UtmId,
         string? Fbclid,
+        string? Gclid,
+        string? Ttclid,
         string? Oppref,
         string? UtmTerm,
         string? UtmContent,
@@ -992,6 +994,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmCampaign),
             NormalizeAttributionToken(e.UtmId),
             NormalizeAttributionToken(e.Fbclid),
+            NormalizeAttributionToken(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid")),
+            NormalizeAttributionToken(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid")),
             NormalizeAttributionToken(e.Oppref),
             NormalizeAttributionToken(e.UtmTerm),
             NormalizeAttributionToken(e.UtmContent),
@@ -1009,6 +1013,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.UtmCampaign) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmId) ||
         !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Gclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Ttclid) ||
         !string.IsNullOrWhiteSpace(snapshot.Oppref) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
@@ -1028,7 +1034,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             isInternal: snapshot.IsInternal,
             environment: snapshot.Environment,
             host: snapshot.Host,
-            oppref: snapshot.Oppref);
+            oppref: snapshot.Oppref,
+            gclid: snapshot.Gclid,
+            ttclid: snapshot.Ttclid);
 
     private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.IsMetaAttributedPaid(
@@ -1055,6 +1063,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         if (IsMetaAttributedPaid(snapshot))
             return 500;
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Gclid) ||
+            !string.IsNullOrWhiteSpace(snapshot.Ttclid))
+            return 475;
 
         if (!string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
             !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
@@ -1181,6 +1193,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? MetaCampaignId,
         string? MetaAdSetId,
         string? MetaAdId,
+        string? Gclid,
+        string? Ttclid,
         string? PageMode,
         MetaLeadTrackingState? MetaTracking);
 
@@ -1194,7 +1208,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null, null, null);
 
         try
         {
@@ -1213,12 +1227,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 ReadString("MetaCampaignId"),
                 ReadString("MetaAdSetId"),
                 ReadString("MetaAdId"),
+                ReadString("Gclid") ?? ReadString("gclid"),
+                ReadString("Ttclid") ?? ReadString("ttclid"),
                 ReadString("PageMode"),
                 MetaLeadTrackingJson.Read(lead.MetadataJson));
         }
         catch
         {
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -1234,6 +1250,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(lead.UtmCampaign),
             NormalizeAttributionToken(lead.UtmId) ?? metadata.UtmId,
             NormalizeAttributionToken(lead.Fbclid),
+            metadata.Gclid,
+            metadata.Ttclid,
             NormalizeAttributionToken(lead.Oppref),
             metadata.UtmTerm,
             metadata.UtmContent,

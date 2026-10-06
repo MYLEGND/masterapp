@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Shared.Analytics;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Analytics;
 
@@ -112,6 +113,13 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var metaSignal = await SafeLoadAsync("MetaSignal",
             () => _metaSignalAnalytics.GetAiSummaryAsync(range, scope, trafficType, ct),
             () => new MetaSignalAiSummaryDto(), warnings);
+
+        var outcomeCalibration = await SafeLoadAsync("OutcomeCalibration",
+            () => BuildOutcomeCalibrationAsync(range, scope, ct),
+            () => new OutcomeCalibrationAiPayload
+            {
+                LearningScopeNote = "Outcome calibration unavailable; intent signals remain observational only."
+            }, warnings);
 
         if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
         {
@@ -333,10 +341,108 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                 TestTrafficSessions = marketingHealth.TestTrafficSessions,
                 BotSuspiciousSessions = marketingHealth.BotSuspiciousSessions,
                 Warnings = (marketingHealth.Warnings ?? new List<string>()).ToList()
-            }
+            },
+            OutcomeCalibration = outcomeCalibration
 
         };
         return WebsiteAnalyticsAiRedactor.Redact(payload, _logger);
+    }
+
+    private async Task<OutcomeCalibrationAiPayload> BuildOutcomeCalibrationAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct)
+    {
+        var events = await _analytics.ScopedEvents(range, scope)
+            .AsNoTracking()
+            .ToListAsync(ct);
+        var outcomes = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events);
+
+        static string? Identity(Domain.Entities.AnalyticsEvent row) =>
+            !string.IsNullOrWhiteSpace(row.VisitorId)
+                ? "visitor:" + row.VisitorId.Trim()
+                : !string.IsNullOrWhiteSpace(row.SessionId)
+                    ? "session:" + row.SessionId.Trim()
+                    : null;
+
+        var outcomeByIdentity = outcomes
+            .Select(row => (Row: row, Identity: Identity(row)))
+            .Where(x => x.Identity is not null)
+            .GroupBy(x => x.Identity!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Row).ToArray(), StringComparer.Ordinal);
+
+        SignalOutcomeCalibrationAiRow Calibrate(string signal)
+        {
+            var observations = events
+                .Where(row => string.Equals(row.EventType, signal, StringComparison.OrdinalIgnoreCase))
+                .Select(row => (Identity: Identity(row), row.EventUtc))
+                .Where(x => x.Identity is not null)
+                .GroupBy(x => x.Identity!, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Min(x => x.EventUtc),
+                    StringComparer.Ordinal);
+            var identities = observations.Keys.ToArray();
+
+            Domain.Entities.AnalyticsEvent[] Downstream(string identity) =>
+                outcomeByIdentity.TryGetValue(identity, out var rows)
+                    ? rows.Where(row => row.EventUtc >= observations[identity]).ToArray()
+                    : [];
+
+            var matched = identities
+                .SelectMany(identity => Downstream(identity).Select(row => (identity, row)))
+                .ToArray();
+
+            bool HasOutcome(string identity, params string[] names) =>
+                Downstream(identity).Any(row => names.Contains(
+                    CanonicalMarketingOutcomeProjection.OutcomeName(row) ?? "",
+                    StringComparer.OrdinalIgnoreCase));
+
+            var qualified = identities.Count(identity => HasOutcome(identity, "QualifiedLead"));
+            var appointments = identities.Count(identity => HasOutcome(identity, "AppointmentBooked", "AppointmentCompleted"));
+            var applications = identities.Count(identity => HasOutcome(identity, "ApplicationSubmitted"));
+            var issued = identities.Count(identity => HasOutcome(identity, "PolicyIssued"));
+            var paid = identities.Count(identity => HasOutcome(identity, "PolicyPaid", "Purchase"));
+            var revenue = matched
+                .Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.row.EventType))
+                .GroupBy(x => (x.identity, Customer: CanonicalMarketingOutcomeProjection.CustomerIdentity(x.row)))
+                .Select(g => g.OrderByDescending(x => x.row.EventUtc).ThenByDescending(x => x.row.Id).First().row)
+                .Sum(row => CanonicalMarketingOutcomeProjection.ReadMoney(row.MetadataJson));
+            decimal Rate(int count) => identities.Length == 0 ? 0m : Math.Round(count * 100m / identities.Length, 2);
+
+            return new SignalOutcomeCalibrationAiRow
+            {
+                Signal = signal,
+                ObservedVisitors = identities.Length,
+                QualifiedLeads = qualified,
+                Appointments = appointments,
+                Applications = applications,
+                PoliciesIssued = issued,
+                PaidCustomers = paid,
+                QualifiedRate = Rate(qualified),
+                AppointmentRate = Rate(appointments),
+                ApplicationRate = Rate(applications),
+                IssuedRate = Rate(issued),
+                PaidRate = Rate(paid),
+                ObservedRevenue = revenue,
+                ExpectedRevenuePerObservedVisitor = identities.Length == 0
+                    ? 0m
+                    : Math.Round(revenue / identities.Length, 2)
+            };
+        }
+
+        return new OutcomeCalibrationAiPayload
+        {
+            LearningScopeNote =
+                "Selected-window observational calibration only. HighIntentLeadSignal and LeadReadySignal are features; " +
+                "QualifiedLead, appointment, application, issued-policy and paid outcomes are canonical server labels. " +
+                "Do not treat these rates as causal lift or as guaranteed predictions.",
+            Signals =
+            [
+                Calibrate("HighIntentLeadSignal"),
+                Calibrate("LeadReadySignal")
+            ]
+        };
     }
 
     public static string FormatSnapshot(AiSafeAnalyticsPayload payload) =>

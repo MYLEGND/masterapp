@@ -198,7 +198,7 @@ builder.Services.AddSingleton<ILandingRouteDiscoveryService, LandingRouteDiscove
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorConcentrationService, AgentPortal.Services.Analytics.VisitorConcentrationService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IKpiDetailBreakdownService, AgentPortal.Services.Analytics.KpiDetailBreakdownService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorTrustScoringService, AgentPortal.Services.Analytics.VisitorTrustScoringService>();
-builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsReviewService>();
 builder.Services.AddHttpClient("OpenAI", c =>
 {
     // IsNullOrWhiteSpace so an empty string in config ("BaseUrl": "") falls through
@@ -222,11 +222,6 @@ builder.Services.AddHttpClient("FounderGitHubRemediation", c =>
     c.BaseAddress = new Uri("https://api.github.com/");
     c.Timeout = TimeSpan.FromSeconds(30);
 });
-// Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
-if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Configuration))
-{
-    Console.WriteLine("[WARN] OpenAI API key is not configured. AI insights features will return error results until a key is set via OpenAI:ApiKey (config) or the OPENAI_API_KEY environment variable.");
-}
 // Retain the migration adapter as the sole registration; it delegates to SQL.
 builder.Services.Replace(ServiceDescriptor.Scoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>());
 builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();

@@ -218,6 +218,8 @@ namespace AgentPortal.Controllers;
                 publicReady = !string.IsNullOrWhiteSpace(profile?.FullName) && !string.IsNullOrWhiteSpace(profile?.Phone),
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
                 openAiReady = openAiAccountReady,
+                googleReady = setup.Google.Ready,
+                tiktokReady = setup.TikTok.Ready,
                 bookingPersonalLive = bookingLive,
                 calendarLinked = calendarConnection.Connected
             },
@@ -234,6 +236,8 @@ namespace AgentPortal.Controllers;
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },
+            google = setup.Google,
+            tiktok = setup.TikTok,
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -299,6 +303,137 @@ namespace AgentPortal.Controllers;
                 calendarEmail = profile?.CalendarEmail
             }
         });
+    }
+
+    public sealed record ExternalAdsAccountRequest(
+        Guid? AgentProfileId,
+        string Provider,
+        string AccountId);
+
+    public sealed record ExternalAdsDisconnectRequest(
+        Guid? AgentProfileId,
+        string Provider);
+
+    [HttpGet("external-ads/connect")]
+    public async Task<IActionResult> ExternalAdsConnect(
+        [FromQuery] string provider,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : "/WebsiteAnalytics/Index";
+        try
+        {
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/WebsiteAnalytics/external-ads/callback";
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Redirect(oauth.BuildConnectUrl(owner, provider, target, callback));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            var key = Uri.EscapeDataString((provider ?? "provider").Trim().ToLowerInvariant());
+            return Redirect($"{target}?provider={key}&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("external-ads/callback")]
+    public async Task<IActionResult> ExternalAdsCallback(
+        [FromQuery] string? code = null,
+        [FromQuery(Name = "auth_code")] string? authCode = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var target = "/WebsiteAnalytics/Index";
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            var inspected = oauth.InspectState(state ?? string.Empty);
+            if (!await IsAuthorizedExternalAdsOwnerAsync(inspected.Owner, cancellationToken)) return Forbid();
+            target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{target}?provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+            }
+
+            var result = await oauth.CompleteCallbackAsync(
+                inspected.Provider,
+                authCode ?? code ?? string.Empty,
+                state ?? string.Empty,
+                cancellationToken);
+            if (result.Owner != inspected.Owner ||
+                !await IsAuthorizedExternalAdsOwnerAsync(result.Owner, cancellationToken))
+                return Forbid();
+
+            var separator = target.Contains('?') ? '&' : '?';
+            return Redirect($"{target}{separator}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("external-ads/accounts")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ExternalAdsAccounts(
+        [FromQuery] string provider,
+        [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Json(new { provider, accounts = await oauth.GetAccountsAsync(owner, provider, cancellationToken) });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/select-account")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsSelectAccount(
+        [FromBody] ExternalAdsAccountRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            await oauth.SelectAccountAsync(owner, request.Provider, request.AccountId, cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsDisconnect(
+        [FromBody] ExternalAdsDisconnectRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            await MarketingConnections.DisconnectAsync(owner, request.Provider, cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     public sealed record CalendarConnectionRevisionRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -1802,6 +1937,16 @@ namespace AgentPortal.Controllers;
     {
         if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue) return false;
         var resolved = await ResolveAdvertisingOwnerAsync(owner.AgentTrackingProfileId, HttpContext.RequestAborted);
+        return resolved == owner;
+    }
+
+    private async Task<bool> IsAuthorizedExternalAdsOwnerAsync(
+        Shared.Analytics.MarketingOwnerScope owner,
+        CancellationToken cancellationToken)
+    {
+        if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue)
+            return false;
+        var resolved = await ResolveAdvertisingOwnerAsync(owner.AgentTrackingProfileId, cancellationToken);
         return resolved == owner;
     }
 

@@ -314,6 +314,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
             Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref),
             MetaCampaignId = Clean(req.MetaCampaignId),
@@ -413,6 +415,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             UtmId = Clean(req.UtmId),
             UtmContent = Clean(req.UtmContent),
             Fbclid = Clean(req.Fbclid),
+            Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid),
             Oppref = OpenAiClickReference.Normalize(req.Oppref),
             Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref),
             MetaCampaignId = Clean(req.MetaCampaignId),
@@ -461,6 +465,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.Gclid = PaidAdsClickReference.NormalizeGoogle(req.Gclid);
+        req.Ttclid = PaidAdsClickReference.NormalizeTikTok(req.Ttclid);
         req.Oppref = OpenAiClickReference.Normalize(req.Oppref)
             ?? OpenAiClickReference.Normalize(Request.Cookies["__oppref"]);
         req.Obref = UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(Request, req.Obref);
@@ -869,6 +875,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? UtmTerm { get; set; }
         public string? UtmContent { get; set; }
         public string? Fbclid { get; set; }
+        public string? Gclid { get; set; }
+        public string? Ttclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
@@ -938,6 +946,8 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         public string? MetaAdSetId { get; set; }
         public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
+        public string? Gclid { get; set; }
+        public string? Ttclid { get; set; }
         public string? Oppref { get; set; }
         public string? Obref { get; set; }
         public string? Fbp { get; set; }

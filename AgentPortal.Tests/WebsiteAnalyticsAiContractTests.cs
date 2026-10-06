@@ -13,7 +13,7 @@ public class WebsiteAnalyticsAiContractTests
         var repoRoot = GetRepoRoot();
         var dtoFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Models", "Analytics", "AiInsightsDtos.cs"));
         var controllerFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Controllers", "WebsiteAnalyticsAiController.cs"));
-        var serviceFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Services", "Analytics", "OpenAiWebsiteAnalyticsReviewService.cs"));
+        var serviceFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Services", "Analytics", "WebsiteAnalyticsReviewService.cs"));
         var uiFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "wwwroot", "js", "website-analytics-ai.js"));
 
         Assert.Contains("public int? GrowthOperatorScore { get; set; }", dtoFile, StringComparison.Ordinal);
@@ -22,6 +22,7 @@ public class WebsiteAnalyticsAiContractTests
         Assert.Contains("public List<string> DoNotScaleBecause { get; set; } = new();", dtoFile, StringComparison.Ordinal);
         Assert.Contains("public List<string> NextThreeActions { get; set; } = new();", dtoFile, StringComparison.Ordinal);
         Assert.Contains("public MarketingHealthAiPayload? MarketingHealth { get; set; }", File.ReadAllText(Path.Combine(repoRoot, "SHARED", "Analytics", "AiSafeAnalyticsPayload.cs")), StringComparison.Ordinal);
+        Assert.Contains("public OutcomeCalibrationAiPayload? OutcomeCalibration { get; set; }", File.ReadAllText(Path.Combine(repoRoot, "SHARED", "Analytics", "AiSafeAnalyticsPayload.cs")), StringComparison.Ordinal);
 
         Assert.Contains("ScaleReadinessVerdict = \"DoNotScale\"", controllerFile, StringComparison.Ordinal);
         Assert.Contains("DataTrustWarning = message", controllerFile, StringComparison.Ordinal);
@@ -31,6 +32,11 @@ public class WebsiteAnalyticsAiContractTests
         Assert.Contains("STEP 3 — TRACKING / PIPELINE HEALTH", serviceFile, StringComparison.Ordinal);
         Assert.Contains("scaleReadinessVerdict MUST be either DoNotScale or StabilizeFirst", serviceFile, StringComparison.Ordinal);
         Assert.Contains("dataTrustWarning should be a short blunt statement", serviceFile, StringComparison.Ordinal);
+        Assert.Contains("ILegendConnectModelInferenceTransport", serviceFile, StringComparison.Ordinal);
+        Assert.Contains("ILegendConnectActiveModelInference", serviceFile, StringComparison.Ordinal);
+        Assert.Contains("LegendConnectExternalProviderPolicy.CloudflareFoundation", serviceFile, StringComparison.Ordinal);
+        Assert.DoesNotContain("OpenAiKeyResolver", serviceFile, StringComparison.Ordinal);
+        Assert.DoesNotContain("api.openai.com", serviceFile, StringComparison.Ordinal);
 
         Assert.Contains("result.scaleReadinessVerdict", uiFile, StringComparison.Ordinal);
         Assert.Contains("result.growthOperatorScore", uiFile, StringComparison.Ordinal);

@@ -19,8 +19,7 @@ namespace AgentPortal.Controllers;
 
 /// <summary>
 /// Serves AI-powered analytics insights. Scoped exclusively to Website Analytics data.
-/// No PII reaches OpenAI — all payloads are redacted by <see cref="WebsiteAnalyticsAiRedactor"/>
-/// before any external call.
+/// All model-visible analytics are redacted by <see cref="WebsiteAnalyticsAiRedactor"/> before governed LEGEND reasoning.
 /// </summary>
 [Authorize]
 [Route("website-analytics/ai")]
@@ -34,7 +33,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
         new(@"(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}", RegexOptions.Compiled);
 
     private readonly WebsiteAnalyticsAiDataBuilder _dataBuilder;
-    private readonly OpenAiWebsiteAnalyticsReviewService _reviewService;
+    private readonly WebsiteAnalyticsReviewService _reviewService;
     private readonly EffectiveAgentContext _effectiveContext;
     private readonly IAgentTrackingService _tracking;
     private readonly MasterAppDbContext _db;
@@ -44,7 +43,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
 
     public WebsiteAnalyticsAiController(
         WebsiteAnalyticsAiDataBuilder dataBuilder,
-        OpenAiWebsiteAnalyticsReviewService reviewService,
+        WebsiteAnalyticsReviewService reviewService,
         EffectiveAgentContext effectiveContext,
         IAgentTrackingService tracking,
         MasterAppDbContext db,

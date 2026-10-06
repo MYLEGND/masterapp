@@ -52,6 +52,8 @@
                         <div class="marketing-setup-status" data-status-key="publicReady"><span>Public</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="metaCustomPixel"><span>Meta</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="openAiReady"><span>ChatGPT Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="googleReady"><span>Google Ads</span><strong>—</strong></div>
+                        <div class="marketing-setup-status" data-status-key="tiktokReady"><span>TikTok Ads</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="bookingPersonalLive"><span>Booking</span><strong>—</strong></div>
                         <div class="marketing-setup-status" data-status-key="calendarLinked"><span>Calendar</span><strong>—</strong></div>
                     </div>
@@ -167,6 +169,48 @@
 
                     </section>
 
+                    <section class="marketing-setup-section marketing-setup-external-ads" id="marketing-setup-external-ads">
+                        <div class="marketing-setup-section-head">
+                            <div>
+                                <div class="marketing-setup-eyebrow">Marketing</div>
+                                <h6>Google Ads &amp; TikTok Ads</h6>
+                            </div>
+                        </div>
+                        <p class="marketing-setup-help">These providers use the same scoped MarketingConnection authority and canonical website → CRM → revenue outcomes as Meta and ChatGPT Ads. Provider conversion upload remains fail-closed until an exact conversion/event-source mapping is configured.</p>
+                        <div class="marketing-setup-detail-grid">
+                            <div class="marketing-setup-provider-card" data-external-provider="google">
+                                <div>
+                                    <strong id="marketing-setup-google-status">Google Ads not connected</strong>
+                                    <div class="marketing-setup-help" id="marketing-setup-google-account">No scoped advertiser account</div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-google-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect Google Ads</a>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-google-load-accounts" hidden>Choose account</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-google-disconnect" hidden>Disconnect</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-google-account-picker" hidden>
+                                    <label class="marketing-setup-field" for="marketing-setup-google-account-select"><span>Authorized Google Ads account</span><select id="marketing-setup-google-account-select" class="form-select"></select></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-select-account">Use selected account</button>
+                                </div>
+                            </div>
+                            <div class="marketing-setup-provider-card" data-external-provider="tiktok">
+                                <div>
+                                    <strong id="marketing-setup-tiktok-status">TikTok Ads not connected</strong>
+                                    <div class="marketing-setup-help" id="marketing-setup-tiktok-account">No scoped advertiser account</div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <a class="btn btn-sm btn-gold" id="marketing-setup-tiktok-connect" href="" data-dynamic-destination aria-disabled="true" tabindex="-1">Connect TikTok Ads</a>
+                                    <button type="button" class="btn btn-sm btn-outline-light" id="marketing-setup-tiktok-load-accounts" hidden>Choose account</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="marketing-setup-tiktok-disconnect" hidden>Disconnect</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-tiktok-account-picker" hidden>
+                                    <label class="marketing-setup-field" for="marketing-setup-tiktok-account-select"><span>Authorized TikTok advertiser</span><select id="marketing-setup-tiktok-account-select" class="form-select"></select></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-select-account">Use selected account</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
                     <section class="marketing-setup-section">
                         <h6>Measurement evidence</h6>
                         <p class="marketing-setup-help">Connection and configuration do not prove delivery or campaign attribution. Evidence below covers the selected owner over the last 30 days. A click reference is not proof of campaign credit.</p>
@@ -176,6 +220,8 @@
                             <tbody>
                                 <tr id="marketing-setup-meta-evidence"><th>Meta</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
                                 <tr id="marketing-setup-openai-evidence"><th>ChatGPT Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">—</td><td data-evidence="accepted">—</td><td data-evidence="attribution">—</td></tr>
+                                <tr id="marketing-setup-google-evidence"><th>Google Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">Fail-closed</td><td data-evidence="accepted">Not enabled</td><td data-evidence="attribution">gclid / paid UTM</td></tr>
+                                <tr id="marketing-setup-tiktok-evidence"><th>TikTok Ads</th><td data-evidence="connected">—</td><td data-evidence="configured">—</td><td data-evidence="attempted">Fail-closed</td><td data-evidence="accepted">Not enabled</td><td data-evidence="attribution">ttclid / paid UTM</td></tr>
                             </tbody>
                         </table></div>
                         <p id="marketing-setup-meta-receipt-evidence">Meta receipt evidence: unavailable</p>

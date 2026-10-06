@@ -17,6 +17,15 @@ internal static class CanonicalMarketingOutcomeProjection
             row.IsInternal, row.Environment, row.Host, row.ReferrerHost))
             return MarketingChannels.MetaAds;
 
+        var gclid = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "gclid");
+        var ttclid = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "ttclid");
+        if (PaidAdsClickReference.NormalizeGoogle(gclid) is not null ||
+            IsProviderPaidTraffic(row.UtmSource, row.UtmMedium, "google"))
+            return MarketingChannels.GoogleAds;
+        if (PaidAdsClickReference.NormalizeTikTok(ttclid) is not null ||
+            IsProviderPaidTraffic(row.UtmSource, row.UtmMedium, "tiktok"))
+            return MarketingChannels.TikTokAds;
+
         return TrafficAttribution.Classify(
             row.UtmSource, row.UtmMedium, row.UtmCampaign, row.Fbclid,
             row.ReferrerHost, row.MetaCampaignId, row.MetaAdSetId, row.MetaAdId,
@@ -33,14 +42,42 @@ internal static class CanonicalMarketingOutcomeProjection
     public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events)
     {
         var facts = events.Where(e => CanonicalAdvertisingEventProjection.CanProjectServer(e) ||
-            e.TrackingVersion == "crm-production-state-v1").ToArray();
+            e.TrackingVersion is "crm-production-state-v1" or "crm-qualification-state-v1").ToArray();
+
         var production = facts.Where(e => !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
             .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
             .Select(g => g.OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).First())
             .Where(e => CanonicalAdvertisingEventProjection.ReadBoolean(e.MetadataJson, "productionDeleted") != true);
-        var other = facts.Where(e => string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
+
+        var qualification = facts.Where(e =>
+                !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
+            .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId,
+                Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
+            .Select(g => g.OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).First())
+            .Where(e => CanonicalAdvertisingEventProjection.ReadBoolean(e.MetadataJson, "qualificationActive") == true);
+
+        var other = facts.Where(e =>
+                string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")) &&
+                string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
             .DistinctBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, CanonicalAdvertisingEventProjection.ResolveEventId(e), OutcomeName(e)));
-        return production.Concat(other).ToArray();
+
+        return production.Concat(qualification).Concat(other).ToArray();
+    }
+
+    private static bool IsProviderPaidTraffic(string? source, string? medium, string provider)
+    {
+        var s = source?.Trim().ToLowerInvariant() ?? "";
+        var m = medium?.Trim().ToLowerInvariant() ?? "";
+        var paidMedium = m is "cpc" or "ppc" or "paid" or "paidsearch" or "paid_search" or
+            "paid-social" or "paid_social" or "social_paid" or "display" or "remarketing" or "retargeting";
+        return provider switch
+        {
+            "google" => s is "adwords" or "googleads" or "google_ads" or "gads" ||
+                (s == "google" && paidMedium),
+            "tiktok" => s is "tiktokads" or "tiktok_ads" ||
+                (s == "tiktok" && paidMedium),
+            _ => false
+        };
     }
 
     public static string CustomerIdentity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|" +
