@@ -789,34 +789,58 @@ jobs:
           echo "::error::Exact-live transaction proof remains unresolved; all successful target publications stay preserved."
           exit 1
 
-      - name: Deploy and activate LEGEND Founder Cloudflare baseline
-        id: foundercloud
-        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') && env.VALIDATE_ONLY != 'true' }}
+      - name: Run independent auxiliary release fanout
+        id: auxiliary
+        if: >-
+          ${{ !cancelled() && env.VALIDATE_ONLY != 'true' && (
+            (env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success')) ||
+            (env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true'))
+          ) }}
         continue-on-error: true
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          RUN_FOUNDER_AUXILIARY: ${{ env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') }}
+          RUN_ROUTER_AUXILIARY: ${{ env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') }}
         run: |
           set -euo pipefail
-          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Central Cloudflare Workers authority is not configured."; exit 1; }
-          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Central Cloudflare account authority is not configured."; exit 1; }
-          echo "::add-mask::$CLOUDFLARE_API_TOKEN"
-          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
-          mkdir -p /tmp/translation-results
-          python3 scripts/deploy-founder-cloudflare.py deploy \
-            --state /tmp/legend-founder-cloudflare-state.json \
-            --receipt /tmp/translation-results/legend-founder-cloudflare.json
+          python3 scripts/release-auxiliary.py
+
+      - name: Deploy and activate LEGEND Founder Cloudflare baseline
+        id: foundercloud
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - /tmp/release-auxiliary-results/founder.json <<'PYAUXFOUNDER'
+          import json,pathlib,sys
+          path=pathlib.Path(sys.argv[1])
+          if not path.is_file():
+              raise SystemExit('Founder auxiliary result missing')
+          data=json.loads(path.read_text())
+          if data.get('schemaVersion') != 1 or data.get('lane') != 'founder' or data.get('success') is not True:
+              raise SystemExit('Founder Cloudflare auxiliary lane did not succeed')
+          print(json.dumps(data,sort_keys=True))
+          PYAUXFOUNDER
 
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingauthority.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          python3 scripts/cloudflare-routing-authority.py reconcile-bot-fight
-          python3 scripts/cloudflare-routing-authority.py reconcile-bic
+          python3 - /tmp/release-auxiliary-results/router.json <<'PYAUXPOLICY'
+          import json,pathlib,sys
+          path=pathlib.Path(sys.argv[1])
+          if not path.is_file():
+              raise SystemExit('Router auxiliary result missing')
+          data=json.loads(path.read_text())
+          if data.get('schemaVersion') != 1 or data.get('lane') != 'router' or data.get('policySuccess') is not True:
+              raise SystemExit('Cloudflare routing policy lane did not succeed')
+          print(json.dumps(data,sort_keys=True))
+          PYAUXPOLICY
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
@@ -824,52 +848,17 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          cd Legend-Cloudflare
+          python3 - /tmp/release-auxiliary-results/router.json <<'PYAUXROUTER'
+          import json,pathlib,sys
+          path=pathlib.Path(sys.argv[1])
+          if not path.is_file():
+              raise SystemExit('Router auxiliary result missing')
+          data=json.loads(path.read_text())
+          if data.get('schemaVersion') != 1 or data.get('lane') != 'router' or data.get('deploySuccess') is not True:
+              raise SystemExit('Cloudflare router auxiliary lane did not succeed')
+          print(json.dumps(data,sort_keys=True))
+          PYAUXROUTER
 
-          decision="$(python3 ../scripts/release-router.py prepare)"
-          if [ "$decision" = publish ]; then
-            npx wrangler deploy --config wrangler.website-routing.jsonc
-            printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
-            python3 ../scripts/release-router.py complete
-          elif [ "$decision" != preserve ]; then
-            echo "::error::Unknown router publication decision; no write authorized."
-            exit 1
-          fi
-
-          if ! python3 - <<'PYFIRSTPARTY'
-          import http.client, json, os, ssl, time
-          hosts=tuple(json.loads(os.environ['ROUTING_PASS_THROUGH_HOSTS']))
-          context=ssl.create_default_context()
-          failures=[]
-          for host in hosts:
-              last=None
-              for attempt in range(1,7):
-                  conn=http.client.HTTPSConnection(host,443,timeout=15,context=context)
-                  try:
-                      conn.request('GET','/',headers={'User-Agent':'LEGEND-worker-release-smoke/1.0','Cache-Control':'no-cache'})
-                      response=conn.getresponse()
-                      body=response.read(1025)
-                      last=f'HTTP {response.status}'
-                      print(host,attempt,response.status,len(body))
-                      if 200 <= response.status < 400:
-                          break
-                  except Exception as error:
-                      last=type(error).__name__
-                      print(host,attempt,last)
-                  finally:
-                      conn.close()
-                  time.sleep(5)
-              else:
-                  failures.append(f'{host}: {last}')
-          if failures:
-              raise SystemExit('LEGEND-owned host smoke failed after bounded retries: '+'; '.join(failures))
-          PYFIRSTPARTY
-          then
-            echo "::error::Router live proof unresolved; successful immutable publication preserved."
-            exit 1
-          fi
-          echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
       - name: Verify custom-domain bridge end to end
         id: routinglive
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') }}
