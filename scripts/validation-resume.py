@@ -1430,6 +1430,45 @@ def api_get(repository: str, path: str, token: str):
 
 
 
+def assert_protected_release_execution():
+    """Require live GitHub evidence that this process belongs to the sole protected release workflow."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        raise RuntimeError("Production release mutation requires GitHub Actions")
+    if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
+        raise RuntimeError("Production release mutation requires canonical workflow_dispatch")
+    expected_ref = "refs/heads/" + TRUSTED_PR_BASE
+    if os.environ.get("GITHUB_REF") != expected_ref:
+        raise RuntimeError("Production release mutation requires the protected approved branch")
+    repository = os.environ.get("GITHUB_REPOSITORY", "")
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+    sha = os.environ.get("GITHUB_SHA", "")
+    run_id_raw = os.environ.get("GITHUB_RUN_ID", "")
+    if (
+        not repository
+        or not token
+        or not re.fullmatch(r"[a-f0-9]{40}", sha)
+        or not run_id_raw.isdigit()
+        or not workflow_ref.endswith(
+            f"/.github/workflows/{DIRECT_RELEASE_WORKFLOW}@{expected_ref}"
+        )
+    ):
+        raise RuntimeError("Production release execution identity is incomplete")
+    run_id = int(run_id_raw)
+    run = api_get(repository, f"actions/runs/{run_id}", token)
+    if (
+        run.get("id") != run_id
+        or run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW
+        or run.get("head_branch") != TRUSTED_PR_BASE
+        or run.get("event") != "workflow_dispatch"
+        or run.get("head_sha") != sha
+        or run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()
+        or run.get("status") not in {"queued", "in_progress"}
+    ):
+        raise RuntimeError("Production release mutation is not owned by the protected canonical workflow")
+    return run
+
+
 def approved_head_preflight(repository: str, current_sha: str, token: str):
     """Prove the candidate already contains the exact current approved head.
 
