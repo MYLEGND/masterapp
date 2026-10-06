@@ -5,6 +5,12 @@ import argparse, base64, hashlib, hmac, importlib.util, json, os, re, secrets, s
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+def release_authority():
+    spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 CF = Path(os.environ.get("LEGEND_CLOUDFLARE_ROOT", str(ROOT / "Legend-Cloudflare"))).resolve()
 CONFIG = CF / "wrangler.founder-baseline.jsonc"
 CANARY = CF / "scripts" / "founder-canary.mjs"
@@ -462,6 +468,7 @@ def main():
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, default=Path("/tmp/legend-founder-cloudflare-release.json"))
     args = parser.parse_args()
+    release_authority().assert_protected_release_execution()
     if args.command == "deploy": deploy(args.state, args.receipt)
     else: rollback(args.state)
 

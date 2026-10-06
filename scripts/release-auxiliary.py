@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,12 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+def release_authority():
+    spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 CF = ROOT / "Legend-Cloudflare"
 RESULT_ROOT = Path(os.environ.get("RELEASE_AUXILIARY_RESULT_DIR", "/tmp/release-auxiliary-results"))
 
@@ -184,6 +191,7 @@ def guarded(name, callback):
 
 
 def main():
+    release_authority().assert_protected_release_execution()
     founder = os.environ.get("RUN_FOUNDER_AUXILIARY") == "true"
     router = os.environ.get("RUN_ROUTER_AUXILIARY") == "true"
     lanes = []

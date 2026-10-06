@@ -668,6 +668,7 @@ def main():
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
+    _RELEASE_AUTHORITY.assert_protected_release_execution()
 
     revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')
     if not revision:

@@ -66,6 +66,92 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class GitHubEvidenceTransportTests(unittest.TestCase):
+    def test_transient_remote_disconnect_is_retried_without_restarting_evidence_flow(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self):
+                return b'{"ok":true}'
+
+        with patch.object(
+            m.urllib.request,
+            "urlopen",
+            side_effect=[m.http.client.RemoteDisconnected("transient"), Response()],
+        ) as request, patch.object(m.time, "sleep") as sleep:
+            result = m.api_get("owner/repo", "branches/legend%2Fapproved-changes", "token")
+
+        self.assertEqual({"ok": True}, result)
+        self.assertEqual(2, request.call_count)
+        sleep.assert_called_once_with(1)
+
+
+class ProtectedReleaseExecutionTests(unittest.TestCase):
+    def environment(self):
+        return {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/legend/approved-changes",
+            "GITHUB_REPOSITORY": "MYLEGND/masterapp",
+            "GITHUB_TOKEN": "fixture-token",
+            "GITHUB_WORKFLOW_REF": (
+                "MYLEGND/masterapp/.github/workflows/"
+                + m.DIRECT_RELEASE_WORKFLOW
+                + "@refs/heads/legend/approved-changes"
+            ),
+            "GITHUB_SHA": "a" * 40,
+            "GITHUB_RUN_ID": "42",
+        }
+
+    def run_record(self, **changes):
+        value = {
+            "id": 42,
+            "path": ".github/workflows/" + m.DIRECT_RELEASE_WORKFLOW,
+            "head_branch": m.TRUSTED_PR_BASE,
+            "event": "workflow_dispatch",
+            "head_sha": "a" * 40,
+            "head_repository": {"full_name": "MYLEGND/masterapp"},
+            "status": "in_progress",
+        }
+        value.update(changes)
+        return value
+
+    def test_authenticated_protected_release_execution_is_accepted(self):
+        with patch.dict(m.os.environ, self.environment(), clear=True), \
+             patch.object(m, "api_get", return_value=self.run_record()) as api:
+            result = m.assert_protected_release_execution()
+        self.assertEqual(42, result["id"])
+        api.assert_called_once_with("MYLEGND/masterapp", "actions/runs/42", "fixture-token")
+
+    def test_local_or_wrong_workflow_execution_is_rejected(self):
+        with patch.dict(m.os.environ, {}, clear=True), \
+             patch.object(m, "api_get") as api:
+            with self.assertRaisesRegex(RuntimeError, "GitHub Actions"):
+                m.assert_protected_release_execution()
+        api.assert_not_called()
+
+        env = self.environment()
+        env["GITHUB_WORKFLOW_REF"] = (
+            "MYLEGND/masterapp/.github/workflows/deployment-diagnostics.yml"
+            "@refs/heads/legend/approved-changes"
+        )
+        with patch.dict(m.os.environ, env, clear=True), \
+             patch.object(m, "api_get") as api:
+            with self.assertRaisesRegex(RuntimeError, "identity is incomplete"):
+                m.assert_protected_release_execution()
+        api.assert_not_called()
+
+    def test_forged_environment_without_matching_run_is_rejected(self):
+        with patch.dict(m.os.environ, self.environment(), clear=True), \
+             patch.object(m, "api_get", return_value=self.run_record(head_branch="other")):
+            with self.assertRaisesRegex(RuntimeError, "not owned"):
+                m.assert_protected_release_execution()
+
+
 class Step5DecisionFastFailTests(unittest.TestCase):
     def test_changed_step5_job_skips_expensive_baseline_history_scan(self):
         candidate = {
@@ -1566,6 +1652,13 @@ jobs:
         self.assertTrue(m.release_control_only_path("scripts/release-auxiliary.py"))
         self.assertEqual((), m.release_targets_for_paths(["scripts/release-auxiliary.py"]))
 
+    def test_cloudflare_routing_authority_is_release_control_not_package_input(self):
+        path = "scripts/cloudflare-routing-authority.py"
+        self.assertTrue(m.release_control_authority_path(path))
+        self.assertTrue(m.release_control_only_path(path))
+        self.assertFalse(m.package_canary_input_path(path))
+        self.assertEqual((), m.release_targets_for_paths([path]))
+
     def test_pr488_shaped_control_plane_changes_have_zero_application_targets(self):
         paths = [
             ".github/workflows/all-intentional-direct-release-20260918.yml",
@@ -1577,6 +1670,7 @@ jobs:
             "AgentPortal.Tests/LegendFounderAiContractTests.cs",
             "AgentPortal.Tests/ScopedParfaitCommerceAuthorityTests.cs",
             "scripts/deploy-founder-cloudflare.py",
+            "scripts/cloudflare-routing-authority.py",
             "scripts/release-auxiliary.py",
             "scripts/release-lifecycle.py",
             "scripts/release-package.py",
