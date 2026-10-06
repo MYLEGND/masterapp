@@ -579,7 +579,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
         gate = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]["compile-regression"]
         self.assertFalse(gate["runtime_file_dependencies"])
 
-    def test_regression_consumers_depend_semantically_without_forcing_compile_execution(self):
+    def test_regression_consumers_materialize_compile_without_semantic_sibling_invalidation(self):
         gates = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]
         for key in (
             "founder-diagnostics-regressions",
@@ -588,12 +588,14 @@ class ValidationResumePlannerTests(unittest.TestCase):
             "booking-regressions",
             "crm-regressions",
         ):
-            self.assertEqual(("compile-regression",), gates[key]["consumes"], key)
+            self.assertEqual(("compile-regression",), gates[key]["materializes"], key)
             self.assertNotIn("requires", gates[key], key)
+            self.assertNotIn("consumes", gates[key], key)
         self.assertEqual(
-            ("compile-regression", "domain-release"),
-            gates["release-web-contracts"]["consumes"],
+            ("compile-regression",),
+            gates["release-web-contracts"]["materializes"],
         )
+        self.assertEqual(("domain-release",), gates["release-web-contracts"]["consumes"])
         self.assertNotIn("requires", gates["release-web-contracts"])
 
     def test_successful_parent_is_complete_gate_proof_without_plan_artifact_download(self):
