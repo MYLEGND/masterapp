@@ -883,10 +883,10 @@ jobs:
 
         lifecycle = (ROOT / "scripts" / "release-lifecycle.py").read_text()
         self.assertIn("VALIDATION_AUTHORITY.required_validation_topology(names)", lifecycle)
-        self.assertIn("def _candidate_validation_snapshot(api, pr):", lifecycle)
+        self.assertIn("def candidate_validation(api, pr):", lifecycle)
         self.assertIn("run.get('status') != 'completed'", lifecycle)
         self.assertIn("run.get('conclusion') != 'success'", lifecycle)
-        self.assertIn("_candidate_validation_snapshot(api, pr)", lifecycle)
+        self.assertIn("for attempt in range(4)", lifecycle)
         self.assertNotIn("validation_neutral_path", lifecycle)
         self.assertNotIn("architecture_product_validation", lifecycle)
         self.assertNotIn("architecture_public_website_validation", lifecycle)
