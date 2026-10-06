@@ -87,7 +87,7 @@ public sealed class MarketingExternalAdsReportingService(
 
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Array)
-            return [];
+            return new ExternalAdsCampaignReport([], accountTimeZone, from, to);
 
         var output = new List<ProviderDeliveryMetricRow>();
         foreach (var batch in document.RootElement.EnumerateArray())
