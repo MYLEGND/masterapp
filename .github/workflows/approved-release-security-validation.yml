@@ -83,7 +83,7 @@ jobs:
 
   security_database:
     needs: validation_plan
-    name: security-database-chain
+    name: approved-release-security
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -108,7 +108,6 @@ jobs:
 
       - name: Run independent security validation fanout
         id: securityfanout
-        if: always() && steps.plan.outcome == 'success'
         shell: bash
         env:
           DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
@@ -228,6 +227,8 @@ jobs:
           (
             if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then
               echo preserved > "$root/vulnerabilities.status"
+            elif [ "$(cat "$restore_status")" = failure ]; then
+              echo dependency_failure > "$root/vulnerabilities.status"
             else
               set +e
               ( set -euo pipefail; vulnerabilities ) >"$root/vulnerabilities.log" 2>&1
@@ -293,7 +294,7 @@ jobs:
 
       - name: Restore security validation graph
         id: gate_restore
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
@@ -302,7 +303,7 @@ jobs:
 
       - name: Build migration validation graph
         id: gate_build
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
@@ -311,7 +312,7 @@ jobs:
 
       - name: Validate database migration artifacts
         id: gate_db_validation
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
@@ -320,7 +321,7 @@ jobs:
 
       - name: Reject skipped security tests
         id: gate_no_skips
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips; then exit 0; fi
@@ -329,7 +330,7 @@ jobs:
 
       - name: Audit dependency vulnerabilities
         id: gate_vulnerabilities
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
@@ -338,7 +339,7 @@ jobs:
 
       - name: Scan committed configuration for secrets
         id: gate_secret_scan
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan; then exit 0; fi
@@ -347,7 +348,7 @@ jobs:
 
       - name: Verify shared composition authorities
         id: gate_composition
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate composition; then exit 0; fi
@@ -356,7 +357,7 @@ jobs:
 
       - name: Reject inline Azure key-ring wiring
         id: gate_keyring
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring; then exit 0; fi
@@ -365,7 +366,7 @@ jobs:
 
       - name: Verify patch whitespace integrity
         id: gate_diff_check
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
@@ -373,8 +374,10 @@ jobs:
           test "$(cat "$RUNNER_TEMP/security-fanout/diff-check.status")" = success
 
       - name: Record canonical child execution evidence
+        if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
@@ -383,6 +386,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --cache-output /tmp/validation-resume-cache/validation-resume.json
       - name: Preserve exact validation resume plan
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: validation-resume-security-${{ github.run_id }}-${{ github.run_attempt }}
@@ -392,7 +396,7 @@ jobs:
           overwrite: true
       - name: Check PR-local validation gate cache readiness
         id: gatecache
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         shell: bash
         run: |
           if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
@@ -401,7 +405,7 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Save PR-local validation gate evidence
-        if: steps.gatecache.outputs.ready == 'true'
+        if: always() && steps.gatecache.outputs.ready == 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/validation-resume-cache
