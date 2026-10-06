@@ -63,6 +63,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             ["TikTokAds:AppId"] = "tiktok-app",
             ["TikTokAds:AppSecret"] = "tiktok-secret",
             ["TikTokAds:AdvertiserAuthorizationUrl"] = "https://ads.tiktok.com/marketing_api/auth?app_id=tiktok-app",
+            ["TikTokAds:BusinessAdvertiserAuthorizationUrl"] = "https://ads.tiktok.com/marketing_api/auth?app_id=tiktok-app&business=1",
             ["TikTokAds:RedirectUri"] = "https://portal.example.test/business/external-ads/callback"
         }).Build();
 
