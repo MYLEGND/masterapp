@@ -2543,6 +2543,11 @@ def _compute_validation_plan_once(args):
         prior, steps, source = cached
         plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
         _stamp_evidence(plan, prior, source)
+        # A failed parent can checkpoint only the children it observed successful.
+        # Missing cache entries are unknown, not invalidated. Backfill only those
+        # unresolved gates from trusted content-equivalent historical producers;
+        # changed inputs/definitions remain runnable and fail closed.
+        plan = _apply_content_equivalent_evidence(args, plan)
     else:
         prior, steps, source = prior_evidence(args)
         if prior:
