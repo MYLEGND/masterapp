@@ -549,7 +549,7 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
     return results
 
 
-def finalize_prepared_transaction(plan, package_root, revision):
+def finalize_prepared_transaction(plan, package_root, revision, *, timeout=1200):
     # Finalization owns only read-only proof. Targets are provider-independent,
     # so prove them concurrently and commit only after every proof succeeds.
     def finalize(row):
@@ -561,6 +561,7 @@ def finalize_prepared_transaction(plan, package_root, revision):
             target_azure(row['app'], package_root / target['package'], revision),
             baseline=row['revision'],
             reconcile_only=True,
+            timeout=timeout,
         )
         return row['app']
 
@@ -617,6 +618,8 @@ def main():
     parser.add_argument('--disposition-only', action='store_true')
     parser.add_argument('--transaction-plan', type=Path)
     parser.add_argument('--reconcile-only', action='store_true', help='Never issue deployment writes; reconcile preserved immutable candidate')
+    parser.add_argument('--reconcile-timeout-seconds', type=int, default=1200,
+                        help='Read-only reconciliation deadline for finalize-only proof')
     parser.add_argument('--publish-prepared-parallel', action='store_true',
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
@@ -655,7 +658,14 @@ def main():
         names = json.loads(args.targets_json)
         if set(_RELEASE_AUTHORITY.selected_release_target_keys(names)) != {row['app'] for row in plan['targets']}:
             raise ValueError('Finalization target scope changed')
-        finalize_prepared_transaction(plan, Path(args.package_root), revision)
+        if not 30 <= args.reconcile_timeout_seconds <= 1200:
+            raise ValueError('Read-only reconciliation timeout must be between 30 and 1200 seconds')
+        finalize_prepared_transaction(
+            plan,
+            Path(args.package_root),
+            revision,
+            timeout=args.reconcile_timeout_seconds,
+        )
         return
 
     if args.baselines_json is None:
