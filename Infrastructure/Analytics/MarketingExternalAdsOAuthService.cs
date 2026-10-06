@@ -9,6 +9,11 @@ using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
+public sealed record MarketingExternalOAuthInspection(
+    MarketingOwnerScope Owner,
+    string Provider,
+    string ReturnUrl);
+
 internal sealed record MarketingExternalOAuthState(
     string Provider,
     string OwnerType,
@@ -55,12 +60,18 @@ public sealed class MarketingExternalAdsOAuthService(
         };
     }
 
-    public MarketingOwnerScope InspectOwner(string stateToken, string provider)
+    public MarketingExternalOAuthInspection InspectState(string stateToken)
     {
         var state = UnprotectState(stateToken);
-        if (!string.Equals(state.Provider, RequireProvider(provider), StringComparison.Ordinal))
+        return new(Owner(state), state.Provider, state.ReturnUrl);
+    }
+
+    public MarketingOwnerScope InspectOwner(string stateToken, string provider)
+    {
+        var inspected = InspectState(stateToken);
+        if (!string.Equals(inspected.Provider, RequireProvider(provider), StringComparison.Ordinal))
             throw new InvalidOperationException("Marketing OAuth provider mismatch.");
-        return Owner(state);
+        return inspected.Owner;
     }
 
     public async Task<MarketingProviderOAuthCompletion> CompleteCallbackAsync(
