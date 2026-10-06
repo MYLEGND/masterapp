@@ -56,6 +56,55 @@ public sealed class MarketingConnectionIsolationTests
     }
 
     [Fact]
+    public async Task ExternalAdsCredentialsAreIsolatedByOwnerAndProviderAndCannotDisconnectOtherAuthorities()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var ownerA = MarketingOwnerScope.Business(Guid.NewGuid());
+        var ownerB = MarketingOwnerScope.Business(Guid.NewGuid());
+
+        await store.SaveProviderCredentialAsync(
+            ownerA, MarketingDestinationKeys.Google, "shared-secret",
+            MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken,
+            """{"accessibleAccountCount":1}""", null, "1111111111", "Google A");
+        await store.SaveProviderCredentialAsync(
+            ownerA, MarketingDestinationKeys.TikTok, "shared-secret",
+            MarketingProviderAuthorizationMethods.TikTokOAuthAccessToken,
+            """{"authorizedAccountIds":["2222222222"]}""", null, "2222222222", "TikTok A");
+        await store.SaveProviderCredentialAsync(
+            ownerB, MarketingDestinationKeys.Google, "owner-b-secret",
+            MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken,
+            """{"accessibleAccountCount":1}""", null, "1111111111", "Google B");
+
+        Assert.Equal("shared-secret",
+            (await store.GetProviderCredentialAsync(ownerA, MarketingDestinationKeys.Google))!.PrimarySecret);
+        Assert.Equal("shared-secret",
+            (await store.GetProviderCredentialAsync(ownerA, MarketingDestinationKeys.TikTok))!.PrimarySecret);
+        Assert.Equal("owner-b-secret",
+            (await store.GetProviderCredentialAsync(ownerB, MarketingDestinationKeys.Google))!.PrimarySecret);
+
+        var rows = await db.MarketingConnections.AsNoTracking().ToListAsync();
+        var ownerAGoogle = rows.Single(x => x.OwnerKey == ownerA.Key && x.Provider == MarketingDestinationKeys.Google);
+        var ownerATikTok = rows.Single(x => x.OwnerKey == ownerA.Key && x.Provider == MarketingDestinationKeys.TikTok);
+        Assert.NotEqual(ownerAGoogle.AdsAccessTokenCiphertext, ownerATikTok.AdsAccessTokenCiphertext);
+        Assert.DoesNotContain("shared-secret", ownerAGoogle.AdsAccessTokenCiphertext!);
+        Assert.DoesNotContain("shared-secret", ownerATikTok.AdsAccessTokenCiphertext!);
+
+        await store.DisconnectAsync(ownerA, MarketingDestinationKeys.Google);
+        Assert.Null(await store.GetProviderCredentialAsync(ownerA, MarketingDestinationKeys.Google));
+        Assert.Equal("shared-secret",
+            (await store.GetProviderCredentialAsync(ownerA, MarketingDestinationKeys.TikTok))!.PrimarySecret);
+        Assert.Equal("owner-b-secret",
+            (await store.GetProviderCredentialAsync(ownerB, MarketingDestinationKeys.Google))!.PrimarySecret);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.DisconnectAsync(ownerA, MarketingDestinationKeys.OpenAi));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.DisconnectAsync(ownerA, MarketingDestinationKeys.Meta));
+    }
+
+    [Fact]
     public async Task SwappedCiphertextCannotDecryptForAnotherOwner()
     {
         using var db = ControllerTestHelpers.BuildDb();
