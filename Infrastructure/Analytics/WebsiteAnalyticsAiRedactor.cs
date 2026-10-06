@@ -129,7 +129,8 @@ public static class WebsiteAnalyticsAiRedactor
             FormAbandonment = RedactAbandonment(payload.FormAbandonment, logger),
             TopAbandonedFields = RedactLabelCounts(payload.TopAbandonedFields, "TopAbandonedFields", logger),
             ActiveCampaigns = RedactCampaigns(payload.ActiveCampaigns, logger),
-            MetaSignal = RedactMetaSignal(payload.MetaSignal, logger)
+            MetaSignal = RedactMetaSignal(payload.MetaSignal, logger),
+            OutcomeCalibration = RedactOutcomeCalibration(payload.OutcomeCalibration)
         };
 
         return safe;
@@ -291,6 +292,34 @@ public static class WebsiteAnalyticsAiRedactor
         })
         .Where(x => x.CampaignName != "[redacted]")
         .ToList();
+    }
+
+    private static OutcomeCalibrationAiPayload? RedactOutcomeCalibration(OutcomeCalibrationAiPayload? payload)
+    {
+        if (payload is null) return null;
+        return new OutcomeCalibrationAiPayload
+        {
+            LearningScopeNote = "Selected-window observational calibration; browser intent is a feature and canonical server outcomes are labels. No causal or guaranteed prediction is implied.",
+            Signals = (payload.Signals ?? [])
+                .Where(row => row.Signal is "HighIntentLeadSignal" or "LeadReadySignal")
+                .Select(row => new SignalOutcomeCalibrationAiRow
+                {
+                    Signal = row.Signal,
+                    ObservedVisitors = row.ObservedVisitors,
+                    QualifiedLeads = row.QualifiedLeads,
+                    Appointments = row.Appointments,
+                    Applications = row.Applications,
+                    PoliciesIssued = row.PoliciesIssued,
+                    PaidCustomers = row.PaidCustomers,
+                    QualifiedRate = row.QualifiedRate,
+                    AppointmentRate = row.AppointmentRate,
+                    ApplicationRate = row.ApplicationRate,
+                    IssuedRate = row.IssuedRate,
+                    PaidRate = row.PaidRate,
+                    ObservedRevenue = row.ObservedRevenue,
+                    ExpectedRevenuePerObservedVisitor = row.ExpectedRevenuePerObservedVisitor
+                }).ToList()
+        };
     }
 
     private static MetaSignalAiPayload? RedactMetaSignal(MetaSignalAiPayload? payload, ILogger? logger)
