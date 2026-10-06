@@ -171,6 +171,8 @@
     const source = asTrimmed(attribution?.utmSource).toLowerCase();
     const medium = asTrimmed(attribution?.utmMedium).toLowerCase();
     const fbclid = asTrimmed(attribution?.fbclid);
+    const gclid = asTrimmed(attribution?.gclid);
+    const ttclid = asTrimmed(attribution?.ttclid);
     const hasMetaIds = Boolean(
       asTrimmed(attribution?.metaCampaignId) ||
       asTrimmed(attribution?.metaAdSetId) ||
@@ -178,6 +180,8 @@
     );
 
     if (fbclid || hasMetaIds) return 'meta';
+    if (gclid) return 'google_ads';
+    if (ttclid) return 'tiktok_ads';
     if (source && medium) return `${source}:${medium}`;
     if (source) return source;
     if (medium) return medium;
@@ -220,6 +224,8 @@
       utmId: normalizeAttributionValue(raw?.utmId),
       utmContent: normalizeAttributionValue(raw?.utmContent),
       fbclid: preserveFbclidValue(raw?.fbclid),
+      gclid: normalizeAttributionValue(raw?.gclid),
+      ttclid: normalizeAttributionValue(raw?.ttclid),
       fbc: asTrimmed(raw?.fbc),
       fbp: asTrimmed(raw?.fbp),
       metaCampaignId: normalizeAttributionValue(raw?.metaCampaignId),
@@ -1029,9 +1035,9 @@
         asTrimmed(attribution?.metaAdId)
       );
 
-      if (asTrimmed(attribution?.fbclid) || hasMetaIds) return 'PaidAds';
+      if (asTrimmed(attribution?.fbclid) || asTrimmed(attribution?.gclid) || asTrimmed(attribution?.ttclid) || hasMetaIds) return 'PaidAds';
       if (['cpc', 'ppc', 'paid', 'paidsearch', 'display', 'paid_social', 'social_paid', 'remarketing', 'retargeting', 'paid_search', 'paid-social'].includes(medium)) return 'PaidAds';
-      if (['adwords', 'googleads', 'google_ads', 'gads', 'bingads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'paidsearch', 'display', 'paid_social', 'cpc', 'ppc', 'remarketing', 'retargeting'].includes(source)) return 'PaidAds';
+      if (['adwords', 'googleads', 'google_ads', 'gads', 'tiktokads', 'tiktok_ads', 'bingads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'paidsearch', 'display', 'paid_social', 'cpc', 'ppc', 'remarketing', 'retargeting'].includes(source)) return 'PaidAds';
       if (['organic', 'seo', 'organic_search'].includes(medium)) return 'Organic';
       if (['(none)', 'direct'].includes(medium)) return 'Direct';
       if (['referral', 'partner'].includes(medium)) return 'Referral';
