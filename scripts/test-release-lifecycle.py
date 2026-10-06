@@ -1767,6 +1767,43 @@ class CandidateValidation(unittest.TestCase):
         api.pages_map["actions/runs?head_sha=" + "b" * 40] = runs
         self.assertIsNone(m.candidate_validation(api, pr))
 
+    def test_validation_readiness_retries_observation_only_until_green(self):
+        pr, _ = self.pr(["AgentPortal/Program.cs"])
+        pending = {
+            "required": (".github/workflows/masterapp-platform-architecture-validation.yml",),
+            "missing": [".github/workflows/masterapp-platform-architecture-validation.yml"],
+            "active": [],
+            "failed": [],
+        }
+        green = {
+            "required": pending["required"],
+            "missing": [],
+            "active": [],
+            "failed": [],
+        }
+        with patch.object(m, "_candidate_validation_snapshot", side_effect=[pending, pending, green]) as snapshot, \
+             patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
+             patch.object(m.time, "sleep") as sleeper:
+            self.assertIsNone(m.candidate_validation(Api(), pr))
+        self.assertEqual(3, snapshot.call_count)
+        self.assertEqual([((5,),), ((10,),)], [call.call_args for call in sleeper.mock_calls])
+
+    def test_validation_readiness_never_retries_completed_failure(self):
+        pr, _ = self.pr(["AgentPortal/Program.cs"])
+        failed = {
+            "required": (".github/workflows/masterapp-platform-architecture-validation.yml",),
+            "missing": [],
+            "active": [],
+            "failed": [".github/workflows/masterapp-platform-architecture-validation.yml"],
+        }
+        with patch.object(m, "_candidate_validation_snapshot", return_value=failed) as snapshot, \
+             patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
+             patch.object(m.time, "sleep") as sleeper:
+            pending = m.candidate_validation(Api(), pr)
+        self.assertIn("architecture", pending)
+        snapshot.assert_called_once()
+        sleeper.assert_not_called()
+
     def test_security_authority_change_requires_security_validator(self):
         pr, files = self.pr([".github/workflows/approved-release-security-validation.yml"])
         api = Api()
