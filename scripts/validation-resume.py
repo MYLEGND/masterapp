@@ -4329,15 +4329,19 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
     # by _step5_jobs_unchanged before child evidence is reused.
     if not changed:
         return []
-    if all(
-        not path.startswith("AgentPortal.Tests/") and
-        (
-            matches(path, config.get("neutral", ())) or
-            gate_matches(path, config["gates"]["comparison"]) or
-            release_control_only_path(path)
-        )
-        for path in changed
-    ):
+    # Narrow control-only fast path. These files govern Step 5 planning and
+    # comparison, but are not runtime inputs to the AgentPortal.Tests suite.
+    # Candidate/baseline workflow execution compatibility is authenticated
+    # separately by _step5_jobs_unchanged. Other nominally "control" files
+    # (for example the direct-release workflow/request) may be copied/read by
+    # regression tests and therefore MUST continue through consumer discovery.
+    fast_neutral = {
+        WORKFLOW_PATHS[workflow],
+        "scripts/validation-resume.py",
+        "scripts/test-validation-resume.py",
+        "scripts/test-release-policy.py",
+    }
+    if all(path in fast_neutral for path in changed):
         return []
 
     # One archive read avoids hundreds of subprocesses per historical producer.
