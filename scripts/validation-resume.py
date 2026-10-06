@@ -4524,39 +4524,204 @@ def _step5_prior_candidate_evidence(
     return None
 
 
+def _csharp_call_arguments(tail):
+    """Split one C# call's top-level arguments without pretending to parse C#."""
+    args, current = [], []
+    depth = 0
+    quote = None
+    verbatim = False
+    escape = False
+    index = 0
+    while index < len(tail):
+        char = tail[index]
+        if quote is not None:
+            current.append(char)
+            if verbatim:
+                if char == '"' and index + 1 < len(tail) and tail[index + 1] == '"':
+                    current.append(tail[index + 1])
+                    index += 1
+                elif char == '"':
+                    quote = None
+                    verbatim = False
+            elif escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char == '@' and index + 1 < len(tail) and tail[index + 1] == '"':
+            current.extend((char, '"'))
+            quote, verbatim = '"', True
+            index += 2
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            current.append(char)
+            index += 1
+            continue
+        if char in "([{":
+            depth += 1
+            current.append(char)
+        elif char in ")]}":
+            if char == ")" and depth == 0:
+                value = "".join(current).strip()
+                if value or args:
+                    args.append(value)
+                return args
+            depth = max(0, depth - 1)
+            current.append(char)
+        elif char == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    return args
+
+
+def _csharp_temp_root_names(source):
+    """Names proven to be rooted exclusively under Path.GetTempPath()."""
+    candidates = set(re.findall(
+        r"\b(?:var|string)\s+(\w+)\s*=\s*Path\.Combine\(\s*Path\.GetTempPath\(\)",
+        source,
+    ))
+    candidates.update(re.findall(
+        r"\b(?:public|private|internal|protected)\s+string\s+(\w+)\s*\{[^}]*\}\s*=\s*"
+        r"Path\.Combine\(\s*Path\.GetTempPath\(\)",
+        source,
+    ))
+    safe = set()
+    for name in candidates:
+        assignments = re.findall(
+            rf"\b(?:var|string)\s+{re.escape(name)}\s*=\s*([^;\r\n]+)",
+            source,
+        )
+        property_assignments = re.findall(
+            rf"\b(?:public|private|internal|protected)\s+string\s+{re.escape(name)}\s*"
+            rf"\{{[^}}]*\}}\s*=\s*([^;\r\n]+)",
+            source,
+        )
+        values = assignments + property_assignments
+        if values and all("Path.GetTempPath()" in value for value in values):
+            safe.add(name)
+    return safe
+
+
+def _csharp_directory_globs(source, call_offset, argument):
+    """Resolve a directory search suffix when source makes it statically finite."""
+    argument = argument.strip()
+    literal = re.fullmatch(r'@?"([^"\r\n]+)"', argument)
+    if literal:
+        value = literal.group(1).replace("\\\\", "/")
+        return (value,)
+
+    dynamic = re.fullmatch(r'@?"\*"\s*\+\s*(\w+)', argument)
+    if not dynamic:
+        return ()
+    parameter = dynamic.group(1)
+    signatures = []
+    for match in re.finditer(
+        rf"\b(\w+)\s*\([^)]*\bstring\s+{re.escape(parameter)}\b[^)]*\)",
+        source,
+    ):
+        if match.start() < call_offset:
+            signatures.append((match.start(), match.group(1)))
+    if not signatures:
+        return ()
+    method = max(signatures)[1]
+    values = {
+        "*" + item
+        for item in re.findall(
+            rf"\b{re.escape(method)}\s*\(\s*\"(\.[A-Za-z0-9_.-]+)\"\s*\)",
+            source,
+        )
+    }
+    return tuple(sorted(values))
+
+
+def _csharp_pathcombine_literal_prefix(argument):
+    """Return repository-relative literal suffix from Path.Combine(root, ...)."""
+    match = re.fullmatch(r"\s*Path\.Combine\((.*)\)\s*", argument, re.DOTALL)
+    if not match:
+        return None
+    args = _csharp_call_arguments(match.group(1) + ")")
+    if len(args) < 2:
+        return None
+    literals = []
+    for value in args[1:]:
+        item = re.fullmatch(r'@?"([^"\r\n]+)"', value.strip())
+        if not item:
+            break
+        literals.append(item.group(1).replace("\\\\", "/").strip("/"))
+    return "/".join(item for item in literals if item) or None
+
+
 def _test_file_dependency_patterns(source):
     """Conservatively bind repository files actually read by source-contract tests.
 
-    Compile proof never consumes these runtime dependencies. For executing tests,
-    literal files/directories and copied AppContext fixtures are exact inputs.
-    Computed single-file paths are resolved by the existing literal-token and
-    copied-alias pass below instead of poisoning the gate with the whole repo.
-    Computed directory enumeration remains fail-closed because it can observe an
-    arbitrary repository subtree whose members are not statically enumerable.
+    Compile proof never consumes these runtime dependencies. Directory readers
+    keep statically visible repository subtrees or file suffixes instead of
+    collapsing every computed root to the whole repository. Readers proven to be
+    rooted only under Path.GetTempPath() are test-runtime state, not repository
+    dependencies. Unknown directory enumeration remains fail-closed.
     """
-    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream))\s*\(")
+    calls = re.compile(
+        r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|"
+        r"File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream))\s*\("
+    )
     patterns = set()
+    temp_roots = _csharp_temp_root_names(source)
+
     for match in calls.finditer(source):
-        tail = source[match.end():]
-        literal = re.match(r'\s*(@?)"((?:[^"\\]|\\.)*)"\s*(?=[,)])', tail)
+        arguments = _csharp_call_arguments(source[match.end():])
+        first = arguments[0].strip() if arguments else ""
         directory = match.group(1).startswith("Directory.")
+
+        literal = re.fullmatch(r'@?"([^"\r\n]+)"', first)
         if literal:
-            path = literal.group(2).replace("\\\\", "/").replace("\\", "/").strip("/")
+            path = literal.group(1).replace("\\\\", "/").replace("\\", "/").strip("/")
             if not path or path == "." or ".." in path.split("/"):
                 patterns.add("**")
             else:
-                patterns.add(path.rstrip("/") + "/**" if directory else path)
-                # A relative runtime file can be a csproj Link alias; retain all
-                # matching source basenames as well as exact repository paths.
+                patterns.add(path.rstrip("/") + "/*" if directory else path)
                 if not directory:
-                    patterns.add("**/" + Path(path).name)
+                    patterns.add("*/" + Path(path).name)
             continue
-        copied = re.match(r'\s*Path\.Combine\(\s*AppContext\.BaseDirectory\s*,\s*"([^"\r\n]+)"\s*\)', tail)
+
+        copied = re.fullmatch(
+            r'\s*Path\.Combine\(\s*AppContext\.BaseDirectory\s*,\s*"([^"\r\n]+)"\s*\)\s*',
+            first,
+        )
         if copied and not directory:
-            patterns.add("**/" + Path(copied.group(1)).name)
+            patterns.add("*/" + Path(copied.group(1)).name)
             continue
-        if directory:
-            patterns.add("**")
+
+        if not directory:
+            # Computed single-file readers are bounded by literal/copy tokens in
+            # the existing consumer pass. They must not poison unrelated gates.
+            continue
+
+        identifiers = set(re.findall(r"\b[A-Za-z_]\w*\b", first))
+        if identifiers & temp_roots or "Path.GetTempPath()" in first:
+            continue
+
+        prefix = _csharp_pathcombine_literal_prefix(first)
+        if prefix:
+            patterns.add(prefix.rstrip("/") + "/*")
+            continue
+
+        globs = _csharp_directory_globs(
+            source,
+            match.start(),
+            arguments[1] if len(arguments) > 1 else "",
+        )
+        if globs and all(glob not in {"*", "*.*"} for glob in globs):
+            patterns.update(globs)
+            continue
+
+        patterns.add("**")
     return tuple(sorted(patterns))
 
 
