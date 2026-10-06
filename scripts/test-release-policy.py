@@ -911,27 +911,23 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('STEP78_VALIDATION_PATHS', lifecycle_script)
         self.assertNotIn('VALIDATION_NEUTRAL_PATHS =', lifecycle_script)
 
-    def test_direct_release_recovers_receipts_without_replaying_target_publication(self):
+    def test_direct_release_has_one_canonical_bounded_receipt_finalizer(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
-        self.assertIn('Recover exact-live transaction receipts without publication replay', workflow)
-        recovery=workflow.split(
-            '      - name: Recover exact-live transaction receipts without publication replay\n',1
-        )[1].split('      - name:',1)[0]
-        self.assertIn('--finalize-only --transaction-plan /tmp/release-transaction.json', recovery)
-        self.assertIn('--reconcile-timeout-seconds 90', recovery)
-        self.assertIn('for attempt in 1 2 3; do', recovery)
-        self.assertNotIn('for attempt in 1 2 3 4; do', recovery)
+        deploy=(ROOT / 'deploy-approved-app.py').read_text()
         transaction=workflow.split(
             '      - name: Reconcile complete immutable release transaction\n',1
         )[1].split('      - name:',1)[0]
-        self.assertIn('--reconcile-timeout-seconds 90', transaction)
-        self.assertNotIn('--target portal', recovery)
-        self.assertNotIn('--target client', recovery)
-        self.assertNotIn('--target protect', recovery)
-        self.assertNotIn('--target parfait', recovery)
-        self.assertNotIn('--target website', recovery)
-        self.assertIn("steps.transactionrecovery.outcome == 'success'", workflow)
-        self.assertIn('TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}', workflow)
+        self.assertIn('--finalize-only --transaction-plan /tmp/release-transaction.json', transaction)
+        self.assertNotIn('--reconcile-timeout-seconds', workflow)
+        self.assertNotIn('Recover exact-live transaction receipts without publication replay', workflow)
+        self.assertNotIn('transactionrecovery', workflow)
+        self.assertNotIn('TRANSACTION_RECOVERY', workflow)
+        self.assertIn('FINALIZE_RECONCILE_TIMEOUT_SECONDS = 90', deploy)
+        self.assertIn('FINALIZE_RECONCILE_ATTEMPTS = 3', deploy)
+        self.assertIn('FINALIZE_RETRY_DELAY_SECONDS = 10', deploy)
+        self.assertIn('for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):', deploy)
+        self.assertIn('max_status_failures=1', deploy)
+        self.assertNotIn('--reconcile-timeout-seconds', deploy)
 
     def test_terminal_children_wake_only_the_protected_lifecycle(self):
         architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
