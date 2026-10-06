@@ -373,22 +373,28 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 
         SignalOutcomeCalibrationAiRow Calibrate(string signal)
         {
-            var identities = events
+            var observations = events
                 .Where(row => string.Equals(row.EventType, signal, StringComparison.OrdinalIgnoreCase))
-                .Select(Identity)
-                .Where(identity => identity is not null)
-                .Select(identity => identity!)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+                .Select(row => (Identity: Identity(row), row.EventUtc))
+                .Where(x => x.Identity is not null)
+                .GroupBy(x => x.Identity!, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Min(x => x.EventUtc),
+                    StringComparer.Ordinal);
+            var identities = observations.Keys.ToArray();
+
+            AnalyticsEvent[] Downstream(string identity) =>
+                outcomeByIdentity.TryGetValue(identity, out var rows)
+                    ? rows.Where(row => row.EventUtc >= observations[identity]).ToArray()
+                    : [];
 
             var matched = identities
-                .Where(outcomeByIdentity.ContainsKey)
-                .SelectMany(identity => outcomeByIdentity[identity].Select(row => (identity, row)))
+                .SelectMany(identity => Downstream(identity).Select(row => (identity, row)))
                 .ToArray();
 
             bool HasOutcome(string identity, params string[] names) =>
-                outcomeByIdentity.TryGetValue(identity, out var rows) &&
-                rows.Any(row => names.Contains(
+                Downstream(identity).Any(row => names.Contains(
                     CanonicalMarketingOutcomeProjection.OutcomeName(row) ?? "",
                     StringComparer.OrdinalIgnoreCase));
 
