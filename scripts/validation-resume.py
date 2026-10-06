@@ -47,8 +47,8 @@ DOMAIN_REFRESH_PROJECT = "scripts/DomainReleaseRefresh/DomainReleaseRefresh.cspr
 # can suppress a write; a receipt alone never proves current configuration.
 DIRECT_RELEASE_CHILDREN = {
     "founder-cloudflare": {
-        "step": "Deploy and activate LEGEND Founder Cloudflare baseline",
-        "paths": ("Legend-Cloudflare/", "scripts/deploy-founder-cloudflare.py"),
+        "step": "Run independent auxiliary release fanout",
+        "paths": ("Legend-Cloudflare/", "scripts/deploy-founder-cloudflare.py", "scripts/release-auxiliary.py"),
         "operation_paths": ("Legend-Cloudflare/src/", "Legend-Cloudflare/wrangler.founder-baseline.jsonc", "Legend-Cloudflare/package.json", "Legend-Cloudflare/package-lock.json"),
         "operation_exclusions": ("Legend-Cloudflare/src/website-routing/",),
     },
@@ -58,6 +58,7 @@ DIRECT_RELEASE_CHILDREN = {
             "scripts/MigrationReleaseProbe/",
             "scripts/release-migration.py",
             "scripts/release-prepublication.py",
+    "scripts/release-auxiliary.py",
         ),
     },
     "shared-config": {
@@ -69,8 +70,8 @@ DIRECT_RELEASE_CHILDREN = {
         "paths": ("scripts/release-child-receipt.py", "scripts/release-prepublication.py"),
     },
     "routing-cloudflare": {
-        "step": "Deploy shared Cloudflare business website router",
-        "paths": ("Legend-Cloudflare/", "scripts/cloudflare-routing-authority.py", "scripts/release-router.py"),
+        "step": "Run independent auxiliary release fanout",
+        "paths": ("Legend-Cloudflare/", "scripts/cloudflare-routing-authority.py", "scripts/release-router.py", "scripts/release-auxiliary.py"),
         "operation_paths": ("Legend-Cloudflare/src/website-routing/", "Legend-Cloudflare/wrangler.website-routing.jsonc", "Legend-Cloudflare/package.json", "Legend-Cloudflare/package-lock.json"),
     },
     "live-proof": {
