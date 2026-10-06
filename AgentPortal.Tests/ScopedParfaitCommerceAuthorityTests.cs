@@ -59,7 +59,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.DoesNotContain("id: editorauth", workflow, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__BlobUri", prepublication, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection__KeyVaultKeyId", prepublication, StringComparison.Ordinal);
-        Assert.Contains("("editor-config", "editor")", prepublication, StringComparison.Ordinal);
+        Assert.Contains("(\"editor-config\", \"editor\")", prepublication, StringComparison.Ordinal);
         Assert.Contains("\"pattern\": \"mylegnd.com/store*\"", routingConfig, StringComparison.Ordinal);
         Assert.Contains("\"pattern\": \"www.mylegnd.com/store*\"", routingConfig, StringComparison.Ordinal);
         Assert.Contains("\"pattern\": \"mylegnd.com/commerce/manage/*\"", routingConfig, StringComparison.Ordinal);
