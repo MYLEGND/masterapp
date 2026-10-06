@@ -9,6 +9,16 @@ using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
+internal sealed record MarketingProviderCredential(
+    string Provider,
+    string PrimarySecret,
+    string? AccountId,
+    string? AccountName,
+    string? AuthorizationMethod,
+    string? AuthorizationMetadataJson,
+    DateTime? CredentialExpiresUtc,
+    Guid Revision);
+
 public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCredentialProtector protector)
 {
     public Task<bool> ExistsAsync(MarketingOwnerScope owner, CancellationToken ct = default) =>
@@ -28,6 +38,157 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         var key = MarketingDestinationKeys.Normalize(provider);
         return db.MarketingConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+    }
+
+    public async Task<MarketingProviderConnectionSnapshot> GetProviderConnectionAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var key = MarketingDestinationKeys.Normalize(provider);
+        if (key is not (MarketingDestinationKeys.Google or MarketingDestinationKeys.TikTok))
+            throw new ArgumentException("Unsupported external ads provider.", nameof(provider));
+
+        var row = await GetStatusAsync(owner, key, ct);
+        if (row is null)
+            return new(owner, key, false, false, false, false, null, null, null,
+                null, null, null, Guid.Empty, "not_connected");
+
+        var connected = row.DisconnectedUtc is null && !string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext);
+        var ready = connected && !string.IsNullOrWhiteSpace(row.AdAccountId);
+        return new(
+            owner,
+            key,
+            true,
+            connected,
+            ready,
+            connected && !ready,
+            row.AdAccountId,
+            row.AdAccountName,
+            row.ProviderAuthorizationMethod,
+            row.ConnectedUtc,
+            row.LastVerifiedUtc,
+            row.AccessTokenExpiresUtc,
+            row.Revision,
+            ready ? "ready" : connected ? "account_selection_required" : "disconnected");
+    }
+
+    internal async Task<MarketingProviderCredential?> GetProviderCredentialAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        var row = await GetStatusAsync(owner, key, ct);
+        if (row is null || row.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
+            return null;
+
+        return new(
+            key,
+            protector.Unprotect(owner, key, row.AdsAccessTokenCiphertext)!,
+            row.AdAccountId,
+            row.AdAccountName,
+            row.ProviderAuthorizationMethod,
+            row.ProviderPermissionsJson,
+            row.AccessTokenExpiresUtc,
+            row.Revision);
+    }
+
+    internal async Task SaveProviderCredentialAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        string primarySecret,
+        string authorizationMethod,
+        string? authorizationMetadataJson,
+        DateTime? credentialExpiresUtc,
+        string? accountId,
+        string? accountName,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(primarySecret))
+            throw new ArgumentException("A provider credential is required.", nameof(primarySecret));
+        var key = MarketingDestinationKeys.Normalize(provider);
+        if (key is not (MarketingDestinationKeys.Google or MarketingDestinationKeys.TikTok))
+            throw new ArgumentException("Unsupported external ads provider.", nameof(provider));
+
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+        if (row is null)
+        {
+            row = New(owner, key);
+            db.MarketingConnections.Add(row);
+        }
+
+        row.AdsAccessTokenCiphertext = protector.Protect(owner, key, primarySecret);
+        row.CapiAccessTokenCiphertext = null;
+        row.ProviderAuthorizationMethod = authorizationMethod;
+        row.ProviderPermissionsJson = string.IsNullOrWhiteSpace(authorizationMetadataJson)
+            ? null : authorizationMetadataJson.Trim();
+        row.AccessTokenExpiresUtc = credentialExpiresUtc;
+        row.AdAccountId = CleanAccountId(accountId);
+        row.AdAccountName = CleanAccountName(accountName);
+        row.ProviderAccountRole = "advertiser";
+        row.ProviderReviewStatus = string.IsNullOrWhiteSpace(row.AdAccountId)
+            ? "account_selection_required" : "ready";
+        row.ConnectedUtc ??= DateTime.UtcNow;
+        row.LastVerifiedUtc = DateTime.UtcNow;
+        row.DisconnectedUtc = null;
+        Touch(row);
+        await db.SaveChangesAsync(ct);
+    }
+
+    internal async Task<MarketingProviderConnectionSnapshot> SelectProviderAccountAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        string accountId,
+        string? accountName,
+        CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == key, ct)
+            ?? throw new InvalidOperationException("Connect the provider before selecting an ad account.");
+        if (row.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(row.AdsAccessTokenCiphertext))
+            throw new InvalidOperationException("Connect the provider before selecting an ad account.");
+
+        row.AdAccountId = CleanAccountId(accountId)
+            ?? throw new ArgumentException("A real ad account ID is required.", nameof(accountId));
+        row.AdAccountName = CleanAccountName(accountName);
+        row.ProviderReviewStatus = "ready";
+        row.LastVerifiedUtc = DateTime.UtcNow;
+        Touch(row);
+        await db.SaveChangesAsync(ct);
+        return await GetProviderConnectionAsync(owner, key, ct);
+    }
+
+    public async Task DisconnectAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        if (key == MarketingDestinationKeys.Meta)
+        {
+            await DisconnectAsync(owner, ct);
+            return;
+        }
+
+        var row = await db.MarketingConnections.SingleOrDefaultAsync(
+            x => x.OwnerKey == owner.Key && x.Provider == key, ct);
+        if (row is null) return;
+        row.AdsAccessTokenCiphertext = null;
+        row.CapiAccessTokenCiphertext = null;
+        row.AdAccountId = row.AdAccountName = null;
+        row.ProviderAuthorizationMethod = null;
+        row.ProviderPermissionsJson = null;
+        row.ProviderAccountRole = null;
+        row.ProviderReviewStatus = null;
+        row.ProviderUserId = row.ProviderUserEmail = null;
+        row.ConnectedUtc = row.AccessTokenExpiresUtc = row.LastVerifiedUtc = null;
+        row.DisconnectedUtc = DateTime.UtcNow;
+        Touch(row);
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<MetaAdsConnectionRecord?> GetAdsAsync(MarketingOwnerScope owner, CancellationToken ct = default)
@@ -153,12 +314,33 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         db.MarketingConnections.SingleAsync(
             x => x.OwnerKey == owner.Key && x.Provider == MarketingDestinationKeys.Meta, ct);
 
-    private static MarketingConnection New(MarketingOwnerScope owner) => new()
+    private static MarketingConnection New(MarketingOwnerScope owner) =>
+        New(owner, MarketingDestinationKeys.Meta);
+
+    private static MarketingConnection New(MarketingOwnerScope owner, string provider) => new()
     {
         OwnerKey = owner.Key, OwnerType = owner.OwnerType,
         AgentTrackingProfileId = owner.AgentTrackingProfileId, CommerceBusinessId = owner.CommerceBusinessId,
-        Provider = MarketingDestinationKeys.Meta
+        Provider = MarketingDestinationKeys.Normalize(provider)
     };
+
+    private static string? CleanAccountId(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (text.Length > 100 || text.Any(char.IsControl))
+            throw new ArgumentException("Provider account ID is invalid.", nameof(value));
+        return text;
+    }
+
+    private static string? CleanAccountName(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (text.Length > 300 || text.Any(char.IsControl))
+            throw new ArgumentException("Provider account name is invalid.", nameof(value));
+        return text;
+    }
 
     private void SetAds(MarketingConnection row, MarketingOwnerScope owner, MetaAdsConnectionRecord record)
     {
