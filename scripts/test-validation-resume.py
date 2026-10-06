@@ -203,6 +203,47 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertTrue(plan["gates"]["secret-scan"]["run"])
         self.assertTrue(plan["gates"]["composition"]["run"])
 
+    def test_partial_cache_backfills_missing_unchanged_gates_from_trusted_history(self):
+        workflow = "approved-release-security-validation.yml"
+        prior = {"id": 41, "head_sha": "a" * 40, "run_attempt": 1}
+        steps = m._StepEvidence()
+        steps["Reject skipped security tests"] = "success"
+        steps.producers["Reject skipped security tests"] = {
+            "result": "success", "runId": 41, "jobId": None, "stepNumber": None,
+        }
+        initial = {
+            "workflow": workflow,
+            "gates": {
+                key: {"step": gate["step"], "run": key != "no-skips", "reason": "prior_gate_not_successful"}
+                for key, gate in m.WORKFLOWS[workflow]["gates"].items()
+            },
+        }
+        backfilled = {
+            **initial,
+            "gates": {
+                key: {**row, "run": False, "reason": "content_equivalent_success"}
+                for key, row in initial["gates"].items()
+            },
+        }
+        args = SimpleNamespace(
+            workflow=workflow,
+            current_sha="b" * 40,
+            event="pull_request",
+            repository="owner/repo",
+            current_run_id=42,
+            head_branch="repair",
+            resume_cache="fixture",
+        )
+        with patch.object(m, "_cached_success_evidence",
+                          return_value=(prior, steps, "pr_local_gate_cache")), \
+             patch.object(m, "_plan_against_prior", return_value=initial), \
+             patch.object(m, "_stamp_evidence"), \
+             patch.object(m, "_apply_content_equivalent_evidence", return_value=backfilled) as backfill, \
+             patch.object(m, "gate_dependency_manifests", return_value={}):
+            plan = m._compute_validation_plan_once(args)
+        backfill.assert_called_once_with(args, initial)
+        self.assertTrue(all(not gate["run"] for gate in plan["gates"].values()))
+
     def test_gate_cache_carries_only_proven_successful_children(self):
         workflow = "step6-openai-ads-execution-validation.yml"
         plan = {
