@@ -17,6 +17,15 @@ internal static class CanonicalMarketingOutcomeProjection
             row.IsInternal, row.Environment, row.Host, row.ReferrerHost))
             return MarketingChannels.MetaAds;
 
+        var gclid = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "gclid");
+        var ttclid = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "ttclid");
+        if (PaidAdsClickReference.NormalizeGoogle(gclid) is not null ||
+            IsProviderPaidTraffic(row.UtmSource, row.UtmMedium, "google"))
+            return MarketingChannels.GoogleAds;
+        if (PaidAdsClickReference.NormalizeTikTok(ttclid) is not null ||
+            IsProviderPaidTraffic(row.UtmSource, row.UtmMedium, "tiktok"))
+            return MarketingChannels.TikTokAds;
+
         return TrafficAttribution.Classify(
             row.UtmSource, row.UtmMedium, row.UtmCampaign, row.Fbclid,
             row.ReferrerHost, row.MetaCampaignId, row.MetaAdSetId, row.MetaAdId,
@@ -53,6 +62,22 @@ internal static class CanonicalMarketingOutcomeProjection
             .DistinctBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, CanonicalAdvertisingEventProjection.ResolveEventId(e), OutcomeName(e)));
 
         return production.Concat(qualification).Concat(other).ToArray();
+    }
+
+    private static bool IsProviderPaidTraffic(string? source, string? medium, string provider)
+    {
+        var s = source?.Trim().ToLowerInvariant() ?? "";
+        var m = medium?.Trim().ToLowerInvariant() ?? "";
+        var paidMedium = m is "cpc" or "ppc" or "paid" or "paidsearch" or "paid_search" or
+            "paid-social" or "paid_social" or "social_paid" or "display" or "remarketing" or "retargeting";
+        return provider switch
+        {
+            "google" => s is "adwords" or "googleads" or "google_ads" or "gads" ||
+                (s == "google" && paidMedium),
+            "tiktok" => s is "tiktokads" or "tiktok_ads" ||
+                (s == "tiktok" && paidMedium),
+            _ => false
+        };
     }
 
     public static string CustomerIdentity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|" +
