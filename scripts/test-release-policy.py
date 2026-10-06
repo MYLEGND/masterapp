@@ -717,18 +717,29 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("dotnet-ef','database','update", migration)
         self.assertNotIn("dotnet-ef database update", migration)
 
-    def test_architecture_validation_publishes_canonical_immutable_package(self):
+    def test_architecture_validation_publishes_one_canonical_package_from_parallel_components(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('validated-release-package-plan:', workflow)
+        self.assertIn('validated-release-package-components:', workflow)
         self.assertIn('validated-release-package:', workflow)
         self.assertIn('scripts/validation-resume.py package-canary-plan', workflow)
         package_plan = workflow.split('      - name: Resolve whether application bytes changed\n', 1)[1].split('      - name:', 1)[0]
         self.assertNotIn("git diff --name-only", package_plan)
         self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
-        self.assertIn('scripts/release-package.py build', workflow)
+        self.assertIn('component: [portal, client, protect, parfait, website, migration]', workflow)
+        self.assertIn('scripts/release-package.py build-component', workflow)
+        self.assertIn('scripts/release-package.py assemble', workflow)
+        self.assertIn('merge-multiple: true', workflow)
         self.assertIn('scripts/release-package.py verify', workflow)
         self.assertIn('Preserve immutable validated release package', workflow)
+        self.assertIn('retention-days: 90', workflow)
         self.assertIn('Run release web contract regressions', workflow)
+        component_block = workflow.split('  validated-release-package-components:\n', 1)[1].split('  validated-release-package:\n', 1)[0]
+        self.assertNotIn('scripts/release-package.py build \\', component_block)
+        final_block = workflow.split('  validated-release-package:\n', 1)[1].split('  wake-release-lifecycle-after-package-backfill:\n', 1)[0]
+        self.assertNotIn('dotnet publish', final_block)
+        self.assertNotIn('npm ci', final_block)
 
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
