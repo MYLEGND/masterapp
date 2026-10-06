@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shared.Analytics;
