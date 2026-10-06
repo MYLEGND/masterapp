@@ -1248,7 +1248,7 @@ class ResourceAdmission(unittest.TestCase):
         self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
         self.api.pages_map['actions/runs/98/artifacts'] = []
         unsafe_steps = list(safe_steps)
-        unsafe_steps = [dict(step, conclusion='success') if step['name'] == 'Publish canonical target (client)'
+        unsafe_steps = [dict(step, conclusion='success') if step['name'] == 'Publish canonical pending targets'
                         else step for step in safe_steps]
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
             {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': unsafe_steps},
