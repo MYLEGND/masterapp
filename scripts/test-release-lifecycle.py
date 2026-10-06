@@ -1800,7 +1800,7 @@ class CandidateValidation(unittest.TestCase):
              patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
              patch.object(m.time, "sleep") as sleeper:
             self.assertIsNone(m.candidate_validation(api, pr))
-        self.assertGreaterEqual(lookup.call_count, 5)
+        self.assertEqual(4, lookup.call_count)  # one file inventory + three run observations
         self.assertEqual([5, 10], [row.args[0] for row in sleeper.call_args_list])
 
     def test_validation_readiness_never_retries_completed_failure(self):
