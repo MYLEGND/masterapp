@@ -657,16 +657,45 @@ class PreparedTransactionTests(unittest.TestCase):
         plan['planId'] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         return plan
 
-    def test_finalization_is_read_only_even_after_partial_failure(self):
+    def test_finalization_is_read_only_and_retries_only_unresolved_targets(self):
         plan = self.plan()
-        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
-             patch.object(deploy, 'reconcile', side_effect=['preserved', deploy.DeploymentReconciliationRequired('unverified')]) as reconcile:
-            with self.assertRaises(deploy.DeploymentReconciliationRequired):
-                deploy.finalize_prepared_transaction(
-                    plan, Path('/packages'), 'a' * 40, timeout=90)
-        self.assertEqual(2, reconcile.call_count)
-        self.assertTrue(all(call.kwargs['reconcile_only'] for call in reconcile.call_args_list))
-        self.assertTrue(all(call.kwargs['timeout'] == 90 for call in reconcile.call_args_list))
+        calls = {}
+        sleeps = []
+
+        class FinalizeAzure:
+            def __init__(self, key):
+                self.key = key
+
+        def target_azure(key, *_):
+            return FinalizeAzure(key)
+
+        def reconcile(azure, **kwargs):
+            calls[azure.key] = calls.get(azure.key, 0) + 1
+            self.assertTrue(kwargs['reconcile_only'])
+            self.assertEqual(deploy.FINALIZE_RECONCILE_TIMEOUT_SECONDS, kwargs['timeout'])
+            self.assertEqual(1, kwargs['max_status_failures'])
+            if azure.key == plan['targets'][1]['app'] and calls[azure.key] < 3:
+                raise deploy.DeploymentReconciliationRequired('receipt pending')
+            return 'preserved'
+
+        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+            with patch.object(deploy, 'target_azure', side_effect=target_azure):
+                with patch.object(deploy, 'reconcile', side_effect=reconcile):
+                    deploy.finalize_prepared_transaction(
+                        plan, Path('/packages'), 'a' * 40, sleep=sleeps.append)
+
+        self.assertEqual(1, calls[plan['targets'][0]['app']])
+        self.assertEqual(3, calls[plan['targets'][1]['app']])
+        self.assertEqual([10, 20], sleeps)
+
+    def test_finalization_drift_fails_without_retry(self):
+        plan = self.plan([list(deploy.TARGETS)[0]])
+        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+            with patch.object(deploy, 'reconcile', side_effect=deploy.DeploymentDrift('drift')) as reconcile:
+                with self.assertRaisesRegex(deploy.DeploymentDrift, 'drift'):
+                    deploy.finalize_prepared_transaction(
+                        plan, Path('/packages'), 'a' * 40, sleep=lambda _: None)
+        self.assertEqual(1, reconcile.call_count)
 
     def test_target_cannot_publish_modified_package_after_preflight(self):
         plan = self.plan()
