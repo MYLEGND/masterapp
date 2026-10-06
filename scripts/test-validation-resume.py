@@ -1652,6 +1652,13 @@ jobs:
         self.assertTrue(m.release_control_only_path("scripts/release-auxiliary.py"))
         self.assertEqual((), m.release_targets_for_paths(["scripts/release-auxiliary.py"]))
 
+    def test_cloudflare_routing_authority_is_release_control_not_package_input(self):
+        path = "scripts/cloudflare-routing-authority.py"
+        self.assertTrue(m.release_control_authority_path(path))
+        self.assertTrue(m.release_control_only_path(path))
+        self.assertFalse(m.package_canary_input_path(path))
+        self.assertEqual((), m.release_targets_for_paths([path]))
+
     def test_pr488_shaped_control_plane_changes_have_zero_application_targets(self):
         paths = [
             ".github/workflows/all-intentional-direct-release-20260918.yml",
@@ -1663,6 +1670,7 @@ jobs:
             "AgentPortal.Tests/LegendFounderAiContractTests.cs",
             "AgentPortal.Tests/ScopedParfaitCommerceAuthorityTests.cs",
             "scripts/deploy-founder-cloudflare.py",
+            "scripts/cloudflare-routing-authority.py",
             "scripts/release-auxiliary.py",
             "scripts/release-lifecycle.py",
             "scripts/release-package.py",
