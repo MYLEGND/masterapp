@@ -59,13 +59,14 @@ jobs:
   plan:
     needs: approved-head-preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 70
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       prior_run_id: ${{ steps.plan.outputs.prior_run_id }}
       prior_head_sha: ${{ steps.plan.outputs.prior_head_sha }}
       baseline_evidence_run_id: ${{ steps.plan.outputs.baseline_evidence_run_id }}
       baseline_evidence_artifact: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+      baseline_run_required: ${{ steps.plan.outputs.baseline_run_required }}
       repair_filter: ${{ steps.plan.outputs.repair_filter }}
       repair_classes: ${{ steps.plan.outputs.repair_classes }}
       candidate_restore_run: ${{ steps.plan.outputs.candidate_restore_run }}
@@ -77,70 +78,117 @@ jobs:
       candidate_full_evidence_head_sha: ${{ steps.plan.outputs.candidate_full_evidence_head_sha }}
       comparison_run: ${{ steps.plan.outputs.comparison_run }}
     steps:
-      - name: Checkout exact isolated head for diff planning
+      - name: Checkout exact isolated head for Step 5 planning
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Preserve valid work and invalidate only repaired failures
+      - name: Resolve one canonical Step 5 resume decision
         id: plan
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          plan="$RUNNER_TEMP/validation-resume.json"
           decision="$RUNNER_TEMP/step5-decision.json"
 
-          python3 scripts/validation-resume.py plan \
-            --workflow step5-isolated-conversion-mapping-validation.yml \
-            --current-sha "${{ github.event.pull_request.head.sha }}" \
-            --current-run-id "${{ github.run_id }}" \
-            --run-attempt "${{ github.run_attempt }}" \
-            --head-branch "${{ github.head_ref }}" \
-            --event "${{ github.event_name }}" \
-            --repository "${{ github.repository }}" \
-            --output "$plan"
+          run_decision() {
+            local log="$1"
+            python3 scripts/validation-resume.py step5-decision \
+              --current-sha "${{ github.event.pull_request.head.sha }}" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --current-run-id "${{ github.run_id }}" \
+              --head-branch "${{ github.head_ref }}" \
+              --repository "${{ github.repository }}" \
+              --output "$decision" | tee "$log"
+          }
 
-          python3 scripts/validation-resume.py step5-decision \
-            --current-sha "${{ github.event.pull_request.head.sha }}" \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --current-run-id "${{ github.run_id }}" \
-            --head-branch "${{ github.head_ref }}" \
-            --repository "${{ github.repository }}" \
-            --output "$decision"
-
-          python3 - "$plan" "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          # Evidence lookup is an optimization only when it is genuinely absent.
+          # A GitHub primary/secondary rate-limit is not evidence absence and must
+          # never authorize a redundant full Step 5. Wait for the provider's own
+          # reset/retry boundary and resume the same planning operation.
+          for attempt in 1 2 3 4; do
+            log="$RUNNER_TEMP/step5-decision-$attempt.log"
+            run_decision "$log"
+            reason="$(python3 - "$decision" <<'PYREASON'
           import json,sys
-          plan=json.load(open(sys.argv[1]))
-          decision=json.load(open(sys.argv[2]))
-          gates=plan.get('gates',{})
-          mode=decision.get('mode') or 'full'
-          def gate(name):
-              return gates.get(name,{})
-          candidate_keys=('candidate-restore','candidate-build','candidate-focused','candidate-full')
-          comparison_run = True if mode in {'repair','reuse'} else bool(gate('comparison').get('run'))
-          with open(sys.argv[3],'a') as output:
+          print(json.load(open(sys.argv[1])).get("reason") or "")
+          PYREASON
+          )"
+            if [ "$reason" != "historical_evidence_unavailable_run_full_step5" ]; then
+              break
+            fi
+
+            delay="$(python3 - "$log" <<'PYWAIT'
+          import json,re,sys,time
+          reset=None
+          retry=None
+          for line in open(sys.argv[1], errors="replace"):
+              if "evidenceRateLimit" not in line:
+                  continue
+              try:
+                  payload=json.loads(line.strip())
+                  rate=payload.get("evidenceRateLimit") or {}
+                  if rate.get("Retry-After"):
+                      retry=max(retry or 0, int(rate["Retry-After"]))
+                  if rate.get("X-RateLimit-Reset"):
+                      reset=max(reset or 0, int(rate["X-RateLimit-Reset"]))
+              except Exception:
+                  pass
+          if retry is not None:
+              print(max(1, retry + 2))
+          elif reset is not None:
+              print(max(1, reset - int(time.time()) + 3))
+          else:
+              print(60)
+          PYWAIT
+          )"
+            if [ "$delay" -gt 3600 ]; then
+              echo "::error::Step 5 historical evidence is rate-limited beyond the bounded autonomous recovery window; refusing to discard completed evidence and rerun the full suite."
+              exit 75
+            fi
+            echo "Step 5 evidence lookup is rate-limited; preserving completed child evidence and retrying after provider reset in ${delay}s."
+            sleep "$delay"
+          done
+
+          reason="$(python3 - "$decision" <<'PYFINAL'
+          import json,sys
+          print(json.load(open(sys.argv[1])).get("reason") or "")
+          PYFINAL
+          )"
+          if [ "$reason" = "historical_evidence_unavailable_run_full_step5" ]; then
+            echo "::error::Historical Step 5 evidence remained unavailable after bounded autonomous retries; no redundant full validation was authorized."
+            exit 75
+          fi
+
+          python3 - "$decision" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json,sys
+          decision=json.load(open(sys.argv[1]))
+          mode=decision.get("mode") or "full"
+          if mode not in {"full","repair","reuse"}:
+              raise SystemExit(f"Unsupported Step 5 resume mode: {mode}")
+          current_run=str(${{ github.run_id }})
+          baseline_run=str(decision.get("baselineEvidenceRunId") or "")
+          full = mode == "full"
+          with open(sys.argv[2],"a") as output:
               output.write(f"mode={mode}\n")
               output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
               output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
-              output.write(f"baseline_evidence_run_id={decision.get('baselineEvidenceRunId') or ''}\n")
+              output.write(f"baseline_evidence_run_id={baseline_run}\n")
               output.write(f"baseline_evidence_artifact={decision.get('baselineEvidenceArtifact') or ''}\n")
+              output.write("baseline_run_required="+str(mode in {"repair","reuse"} and baseline_run == current_run).lower()+"\n")
               output.write(f"repair_filter={decision.get('repairFilter') or ''}\n")
               output.write("repair_classes="+';'.join(decision.get('repairClasses') or [])+"\n")
-              for key,out_name in (
-                  ('candidate-restore','candidate_restore_run'),
-                  ('candidate-build','candidate_build_run'),
-                  ('candidate-focused','candidate_focused_run'),
-                  ('candidate-full','candidate_full_run'),
-              ):
-                  output.write(f"{out_name}={str(bool(gate(key).get('run'))).lower()}\n")
-              output.write("candidate_any_run="+str(any(gate(key).get('run') for key in candidate_keys)).lower()+"\n")
-              output.write(f"candidate_full_evidence_run_id={gate('candidate-full').get('evidenceRunId') or ''}\n")
-              output.write(f"candidate_full_evidence_head_sha={gate('candidate-full').get('evidenceHeadSha') or ''}\n")
-              output.write("comparison_run="+str(comparison_run).lower()+"\n")
+              output.write("candidate_restore_run="+str(full).lower()+"\n")
+              output.write("candidate_build_run="+str(full).lower()+"\n")
+              output.write("candidate_focused_run="+str(full).lower()+"\n")
+              output.write("candidate_full_run="+str(full).lower()+"\n")
+              output.write("candidate_any_run="+str(full).lower()+"\n")
+              output.write("candidate_full_evidence_run_id=\n")
+              output.write("candidate_full_evidence_head_sha=\n")
+              output.write("comparison_run=true\n")
           PYPLAN
 
       - name: Retain exact Step 5 resume decision
@@ -152,13 +200,14 @@ jobs:
           PRIOR_HEAD_SHA: ${{ steps.plan.outputs.prior_head_sha }}
           BASELINE_EVIDENCE_RUN_ID: ${{ steps.plan.outputs.baseline_evidence_run_id }}
           BASELINE_EVIDENCE_ARTIFACT: ${{ steps.plan.outputs.baseline_evidence_artifact }}
+          BASELINE_RUN_REQUIRED: ${{ steps.plan.outputs.baseline_run_required }}
           REPAIR_CLASSES: ${{ steps.plan.outputs.repair_classes }}
           REPAIR_FILTER: ${{ steps.plan.outputs.repair_filter }}
         run: |
           python3 - <<'PY'
           import json,os
           data={
-              'schemaVersion':1,
+              'schemaVersion':2,
               'currentHeadSha':'${{ github.event.pull_request.head.sha }}',
               'currentBaseSha':'${{ github.event.pull_request.base.sha }}',
               'mode':os.environ.get('MODE') or 'full',
@@ -166,6 +215,7 @@ jobs:
               'priorHeadSha':os.environ.get('PRIOR_HEAD_SHA') or None,
               'baselineEvidenceRunId':os.environ.get('BASELINE_EVIDENCE_RUN_ID') or None,
               'baselineEvidenceArtifact':os.environ.get('BASELINE_EVIDENCE_ARTIFACT') or None,
+              'baselineRunRequired':os.environ.get('BASELINE_RUN_REQUIRED')=='true',
               'repairClasses':[x for x in os.environ.get('REPAIR_CLASSES','').split(';') if x],
               'repairFilter':os.environ.get('REPAIR_FILTER') or None,
               'gateRuns':{
@@ -173,10 +223,8 @@ jobs:
                   'candidate-build':'${{ steps.plan.outputs.candidate_build_run }}'=='true',
                   'candidate-focused':'${{ steps.plan.outputs.candidate_focused_run }}'=='true',
                   'candidate-full':'${{ steps.plan.outputs.candidate_full_run }}'=='true',
-                  'comparison':'${{ steps.plan.outputs.comparison_run }}'=='true',
+                  'comparison':True,
               },
-              'candidateFullEvidenceRunId':'${{ steps.plan.outputs.candidate_full_evidence_run_id }}' or None,
-              'candidateFullEvidenceHeadSha':'${{ steps.plan.outputs.candidate_full_evidence_head_sha }}' or None,
           }
           with open('/tmp/step5-resume-decision.json','w') as output:
               json.dump(data,output,sort_keys=True,indent=2)
@@ -190,7 +238,6 @@ jobs:
           name: step5-resume-decision-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             /tmp/step5-resume-decision.json
-            ${{ runner.temp }}/validation-resume.json
             ${{ runner.temp }}/step5-decision.json
           retention-days: 30
           if-no-files-found: error
