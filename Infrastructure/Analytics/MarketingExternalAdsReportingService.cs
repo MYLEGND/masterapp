@@ -249,8 +249,7 @@ public sealed class MarketingExternalAdsReportingService(
         System.Net.HttpStatusCode status,
         string body)
     {
-        var detail = body.Length > 400 ? body[..400] : body;
-        return new InvalidOperationException($"{message} HTTP {(int)status}. Provider response: {detail}");
+        return new InvalidOperationException($"{message} HTTP {(int)status}.");
     }
 
     private static string? Clean(string? value)
