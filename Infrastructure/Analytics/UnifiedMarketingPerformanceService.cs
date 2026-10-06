@@ -151,8 +151,8 @@ public sealed class UnifiedMarketingPerformanceService(
 
         AddNonPaidRows(channels, attributedEvents);
 
-        if (delivery.Count > 0 && outcomes.Leads > 0)
-            notes.Add("ChatGPT Ads downstream outcomes are joined only through stored oppref lineage. Campaign-level revenue is not inferred when provider campaign lineage cannot be proven.");
+        if (delivery.Count > 0)
+            notes.Add("Campaign-level downstream attribution is used only where canonical campaign lineage is proven; provider delivery totals never manufacture campaign revenue.");
 
         var snapshot = new UnifiedChannelPerformanceSnapshot(
             owner,
@@ -182,9 +182,12 @@ public sealed class UnifiedMarketingPerformanceService(
         {
             using var providerDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
             providerDeadline.CancelAfter(TimeSpan.FromSeconds(5));
-            var rows = await externalAds.GetCampaignsAsync(owner, provider, range, providerDeadline.Token);
+            var report = await externalAds.GetCampaignsAsync(owner, provider, range, providerDeadline.Token);
+            var rows = report.Rows;
             foreach (var row in rows) delivery.Add(row);
             var spend = rows.Sum(x => x.Spend);
+            var providerLabel = channel == MarketingChannels.GoogleAds ? "Google Ads" : "TikTok Ads";
+            notes.Add($"{providerLabel} reporting uses account-local dates: {report.ProviderFromDate:yyyy-MM-dd} to {report.ProviderToDate:yyyy-MM-dd} ({report.AccountTimeZone}).");
             channels.Add(new ChannelPerformanceRow(
                 channel,
                 spend,
