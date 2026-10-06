@@ -4758,6 +4758,13 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
     dynamic_inputs = {file: _test_file_dependency_patterns(source) for file, source in sources.items()}
     affected = set()
     for path in changed:
+        # These four files govern Step 5 planning/comparison only. They remain
+        # neutral even when mixed with a real test correction; otherwise one
+        # bounded test edit plus planner maintenance falsely escalates to a full
+        # AgentPortal suite. Other control files still flow through consumer
+        # discovery because tests may copy/read them directly.
+        if path in fast_neutral:
+            continue
         if path in sources:
             old = git_show_file(prior_sha, path)
             own = classes[path]
@@ -4829,12 +4836,182 @@ def _step5_discovered_repair_classes(classes, test_names, changed_paths):
     return discovered
 
 
+def _step5_cached_decision(current_sha: str, base_sha: str, resume_cache: str):
+    """Resolve PR-local child evidence through the same canonical Step 5 authority."""
+    capsule = Path(resume_cache)
+    required = (
+        capsule / "metadata.json",
+        capsule / "candidate.trx",
+        capsule / "baseline.trx",
+    )
+    if not all(path.is_file() for path in required):
+        return None, "resume_cache_incomplete"
+
+    try:
+        metadata = json.loads((capsule / "metadata.json").read_text())
+    except Exception:
+        return None, "resume_cache_metadata_invalid"
+
+    prior = metadata.get("headSha") or ""
+    prior_base = metadata.get("baseSha") or ""
+    run_id = metadata.get("runId")
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", prior)
+        or not re.fullmatch(r"[0-9a-f]{40}", prior_base)
+        or type(run_id) is not int
+        or run_id < 1
+    ):
+        return None, "resume_cache_identity_invalid"
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior, current_sha],
+        capture_output=True,
+    ).returncode:
+        return None, "resume_cache_not_ancestor"
+
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    if not _step5_jobs_unchanged(prior, workflow_path):
+        return None, "resume_cache_execution_contract_changed"
+    if not _step5_baseline_inputs_equivalent(prior_base, base_sha):
+        return None, "resume_cache_baseline_inputs_changed"
+
+    try:
+        candidate = read_step5_results(capsule / "candidate.trx")
+        read_step5_results(capsule / "baseline.trx")
+    except Exception:
+        return None, "resume_cache_test_evidence_invalid"
+
+    changed = git_changed(prior, current_sha)
+    classes = step5_dependency_change(prior, current_sha)
+    if classes is None:
+        return None, "resume_cache_unbounded_dependency_change"
+    classes = _step5_discovered_repair_classes(classes, tuple(candidate), changed)
+    if classes is None:
+        return None, "resume_cache_test_discovery_changed"
+
+    return {
+        "schemaVersion": 4,
+        "mode": "repair" if classes else "reuse",
+        "priorRunId": run_id,
+        "priorHeadSha": prior,
+        "baselineEvidenceRunId": run_id,
+        "baselineEvidenceArtifact": None,
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+        "resumeCache": True,
+        "parentSuccessReuse": False,
+        "reason": "pr_local_cached_child_evidence",
+    }, None
+
+
+def _step5_graphql_parent_success_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    token: str,
+):
+    """Cheap control-only success proof using one check-rollup request.
+
+    This is an optimization inside the canonical planner, never a second workflow
+    decision implementation. It may prove exact reuse only; repair/full decisions
+    continue through retained child artifacts below.
+    """
+    owner, name = repository.split("/", 1)
+    query = r"""
+    query($owner:String!,$name:String!,$oid:GitObjectID!){
+      repository(owner:$owner,name:$name){
+        object(oid:$oid){
+          ... on Commit {
+            history(first:30) {
+              nodes {
+                oid
+                statusCheckRollup {
+                  contexts(first:100) {
+                    nodes {
+                      __typename
+                      ... on CheckRun { name conclusion detailsUrl }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    payload = json.dumps({
+        "query": query,
+        "variables": {"owner": owner, "name": name, "oid": current_sha},
+    }).encode()
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "legend-step5-parent-proof/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+    except Exception:
+        return None
+
+    history = (((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                .get("history") or {}).get("nodes", []))
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    for row in history:
+        prior = row.get("oid") or ""
+        if prior == current_sha or not re.fullmatch(r"[0-9a-f]{40}", prior):
+            continue
+        nodes = ((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes", [])
+        success = next((
+            check for check in nodes
+            if check.get("__typename") == "CheckRun"
+            and check.get("name") == "step5-validation"
+            and check.get("conclusion") == "SUCCESS"
+        ), None)
+        if not success:
+            continue
+        if subprocess.run(
+            ["git", "merge-base", "--is-ancestor", base_sha, prior],
+            capture_output=True,
+        ).returncode:
+            continue
+        try:
+            if not _step5_jobs_unchanged(prior, workflow_path):
+                continue
+            if step5_dependency_change(prior, current_sha) != []:
+                continue
+        except Exception:
+            continue
+        run_id = None
+        match = re.search(r"/actions/runs/(\d+)", success.get("detailsUrl") or "")
+        if match:
+            run_id = int(match.group(1))
+        return {
+            "schemaVersion": 4,
+            "mode": "reuse",
+            "priorRunId": run_id,
+            "priorHeadSha": prior,
+            "baselineEvidenceRunId": None,
+            "baselineEvidenceArtifact": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "resumeCache": False,
+            "parentSuccessReuse": True,
+            "reason": "graphql_parent_success_dependency_equivalent",
+        }
+    return None
+
+
 def compute_step5_decision(
     repository: str,
     current_sha: str,
     base_sha: str,
     current_run_id: int,
     head_branch: str,
+    resume_cache: str | None = None,
 ):
     """Choose only Step 5's cross-run comparison mode.
 
@@ -4854,6 +5031,17 @@ def compute_step5_decision(
         "repairClasses": [],
         "repairFilter": None,
     }
+    cache_fallback_reason = None
+    if resume_cache:
+        cached, cache_fallback_reason = _step5_cached_decision(
+            current_sha,
+            base_sha,
+            resume_cache,
+        )
+        if cached:
+            return cached
+        decision["cacheFallbackReason"] = cache_fallback_reason
+
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         decision["reason"] = "github_token_unavailable"
@@ -4861,6 +5049,17 @@ def compute_step5_decision(
 
     workflow_name = "step5-isolated-conversion-mapping-validation.yml"
     workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    parent_success = _step5_graphql_parent_success_decision(
+        repository,
+        current_sha,
+        base_sha,
+        token,
+    )
+    if parent_success:
+        if cache_fallback_reason:
+            parent_success["cacheFallbackReason"] = cache_fallback_reason
+        return parent_success
 
     candidate_evidence = _step5_prior_candidate_evidence(
         repository,
@@ -4932,6 +5131,7 @@ def cmd_step5_decision(args):
             args.base_sha,
             args.current_run_id,
             args.head_branch,
+            args.resume_cache,
         )
     except EvidenceLookupUnavailable as exc:
         decision = {
@@ -5218,6 +5418,7 @@ def build_parser():
     step5_decision.add_argument("--current-run-id", required=True, type=int)
     step5_decision.add_argument("--head-branch", required=True)
     step5_decision.add_argument("--repository", required=True)
+    step5_decision.add_argument("--resume-cache")
     step5_decision.add_argument("--output", required=True)
     step5_decision.set_defaults(func=cmd_step5_decision)
 
