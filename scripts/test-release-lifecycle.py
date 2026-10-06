@@ -277,7 +277,7 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
                 if path == "scripts/validation-resume.py":
                     return value.replace(
                         '            digest.update(b"absent\\0")\n',
-                        '',
+                        '            digest.update(b"present\\0")\n',
                     )
                 return value
         result = m.candidate_control_plane_integrity(
