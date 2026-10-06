@@ -784,9 +784,20 @@ jobs:
           VALIDATION_MODE: ${{ needs.plan.outputs.mode }}
           REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
           COMPARISON_RUN: ${{ needs.plan.outputs.comparison_run }}
+          PARENT_SUCCESS_REUSE: ${{ needs.plan.outputs.parent_success_reuse }}
         run: |
           if [ "$COMPARISON_RUN" != "true" ]; then
             echo "PRESERVED comparison: canonical child evidence remains valid and unchanged."
+            exit 0
+          fi
+          if [ "$PARENT_SUCCESS_REUSE" = "true" ]; then
+            echo "PRESERVED comparison: a dependency-equivalent ancestor already completed Step 5 successfully."
+            {
+              echo "introduced=false"
+              echo "introduced_classes="
+              echo "introduced_filter="
+              echo "parent_success_reuse=true"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           python3 - <<'PY'
@@ -1077,6 +1088,8 @@ jobs:
           PRIOR_RUN_ID: ${{ needs.plan.outputs.prior_run_id }}
           PRIOR_HEAD_SHA: ${{ needs.plan.outputs.prior_head_sha }}
           REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+          RESUME_CACHE: ${{ needs.plan.outputs.resume_cache }}
+          PARENT_SUCCESS_REUSE: ${{ needs.plan.outputs.parent_success_reuse }}
           INTRODUCED: ${{ steps.comparison.outputs.introduced }}
           INTRODUCED_CLASSES: ${{ steps.comparison.outputs.introduced_classes }}
           SELF_RECHECK_RESOLVED: ${{ steps.selfrecheck.outputs.resolved }}
@@ -1093,6 +1106,8 @@ jobs:
               "priorRunId":int(os.environ["PRIOR_RUN_ID"]) if os.environ.get("PRIOR_RUN_ID") else None,
               "priorHeadSha":os.environ.get("PRIOR_HEAD_SHA") or None,
               "repairClasses":[x for x in os.environ.get("REPAIR_CLASSES","").split(";") if x],
+              "resumeCache":os.environ.get("RESUME_CACHE")=="true",
+              "parentSuccessReuse":os.environ.get("PARENT_SUCCESS_REUSE")=="true",
               "introduced":os.environ.get("INTRODUCED")=="true",
               "introducedClasses":[x for x in os.environ.get("INTRODUCED_CLASSES","").split(";") if x],
               "sameRunRecheckResolved":os.environ.get("SELF_RECHECK_RESOLVED")=="true",
@@ -1112,6 +1127,47 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           overwrite: true
+
+      - name: Materialize PR-local Step 5 evidence cache
+        id: cachecapsule
+        if: >-
+          always() &&
+          steps.comparison.outcome == 'success' &&
+          needs.plan.outputs.parent_success_reuse != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate=""
+          baseline=""
+          for path in /tmp/step5-effective/candidate.trx /tmp/step5-candidate/candidate.trx /tmp/step5-prior-candidate/candidate.trx; do
+            if [ -f "$path" ]; then candidate="$path"; break; fi
+          done
+          for path in /tmp/step5-effective/baseline.trx /tmp/step5-baseline/baseline.trx /tmp/step5-prior-baseline/baseline.trx; do
+            if [ -f "$path" ]; then baseline="$path"; break; fi
+          done
+          test -n "$candidate" && test -n "$baseline"
+          rm -rf /tmp/step5-resume-cache
+          mkdir -p /tmp/step5-resume-cache
+          cp "$candidate" /tmp/step5-resume-cache/candidate.trx
+          cp "$baseline" /tmp/step5-resume-cache/baseline.trx
+          python3 - <<'PY'
+          import json
+          payload={
+              "schemaVersion":1,
+              "headSha":"${{ github.event.pull_request.head.sha }}",
+              "baseSha":"${{ github.event.pull_request.base.sha }}",
+              "runId":int("${{ github.run_id }}"),
+          }
+          with open("/tmp/step5-resume-cache/metadata.json","w") as output:
+              json.dump(payload,output,sort_keys=True,indent=2)
+          PY
+
+      - name: Save PR-local Step 5 evidence cache
+        if: always() && steps.cachecapsule.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
 
       - name: Enforce final Step 5 outcome after bounded recovery
         if: always()
