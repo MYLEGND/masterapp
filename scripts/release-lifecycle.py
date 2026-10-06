@@ -1571,7 +1571,14 @@ def reconcile(api, trigger=None):
                     'retained': 'Triggered release or package attempt needs reconciliation or repair; queue lease retained',
                 }
 
-    current = [row for row in runs if row.get('head_sha') == approved]
+    current = [
+        row for row in runs
+        if row.get('head_sha') == approved
+        and not (
+            row.get('status') == 'completed'
+            and _never_admitted(api, row)
+        )
+    ]
     if current:
         latest = max(current, key=lambda row: (row.get('id', 0), row.get('run_attempt', 1)))
         return {
