@@ -4644,63 +4644,126 @@ _READONLY_FIXTURE_HELPER = re.compile(
     r'File\.ReadAllText\(Path\.Combine\(AppContext\.BaseDirectory,\s*"[^"\r\n]+"\)\);')
 
 
+def _step5_csharp_structure(source):
+    """Mask comments and literals while preserving C# declaration geometry."""
+    chars = list(source)
+    length = len(source)
+
+    def mask(begin, finish):
+        for index in range(begin, min(finish, length)):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+
+    i = 0
+    while i < length:
+        if source.startswith("//", i):
+            finish = source.find("\n", i + 2)
+            finish = length if finish < 0 else finish
+            mask(i, finish)
+            i = finish
+            continue
+        if source.startswith("/*", i):
+            finish = source.find("*/", i + 2)
+            finish = length if finish < 0 else finish + 2
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == '"':
+            quote_count = 1
+            while i + quote_count < length and source[i + quote_count] == '"':
+                quote_count += 1
+            if quote_count >= 3:
+                delimiter = '"' * quote_count
+                finish = source.find(delimiter, i + quote_count)
+                finish = length if finish < 0 else finish + quote_count
+                mask(i, finish)
+                i = finish
+                continue
+
+            verbatim = i > 0 and source[i - 1] == "@"
+            finish = i + 1
+            while finish < length:
+                if verbatim and source.startswith('""', finish):
+                    finish += 2
+                    continue
+                if source[finish] == '"' and (verbatim or source[finish - 1] != "\\"):
+                    finish += 1
+                    break
+                if not verbatim and source[finish] == "\\":
+                    finish += 2
+                else:
+                    finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == "'":
+            finish = i + 1
+            while finish < length:
+                if source[finish] == "\\":
+                    finish += 2
+                    continue
+                if source[finish] == "'":
+                    finish += 1
+                    break
+                finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        i += 1
+    return "".join(chars)
+
+
 def _step5_isolated_test_source(source):
     """Admit only standalone test classes, never arbitrary C# dependency guesses.
 
-    Structural decisions are anchored to declaration starts so comments and
-    assertion strings cannot masquerade as C# members. Exported helpers,
-    inherited/partial fixtures, extension types, static state and shared
-    registrations require full-suite proof. Private static helper methods remain
-    class-local and are safe for bounded class repair.
+    Comments and literals are masked before structural analysis, so prose cannot
+    impersonate exported/static declarations while compact one-line C# remains
+    valid input. Exported helpers, inherited/partial fixtures, extension types,
+    static state and shared registrations still require full-suite proof.
     """
     source = _READONLY_FIXTURE_HELPER.sub("", source)
-    declaration = r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed|partial|abstract|static)\s+)*class\s+\w+"
-    if len(re.findall(declaration, source)) != 1:
+    structure = _step5_csharp_structure(source)
+    if len(re.findall(r"\bclass\s+\w+", structure)) != 1:
         return False
-    if (
-        re.search(r"(?m)^[ \t]*\[Collection(?:\(|Attribute)", source)
-        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed)\s+)*(?:partial|abstract|static)\s+class\b", source)
-        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed)\s+)*class\s+\w+\s*[:<]", source)
-        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:record|struct|interface|enum|delegate)\s+\w+", source)
-        or re.search(r"(?m)^[ \t]*\[\s*(?:assembly|module)\s*:", source)
-        or re.search(r"(?m)^[ \t]*global\s+using\b", source)
-        or re.search(r"(?m)^[ \t]*\[(?:[^\]]*\b)?(?:ModuleInitializer|CollectionDefinition)\b", source)
-        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?class\s+\w+[^\n]*\bICollectionFixture\b", source)
+    if re.search(
+        r"\[Collection(?:\(|Attribute)|\b(?:partial|abstract|static)\s+class|"
+        r"\bclass\s+\w+\s*[:<]|\b(?:record|struct|interface|enum|delegate)\s+\w+|"
+        r"\[\s*(?:assembly|module)\s*:|\bglobal\s+using|ModuleInitializer|"
+        r"CollectionDefinition|ICollectionFixture",
+        structure,
     ):
         return False
 
-    # Reject static declarations except private static methods. Anchoring to the
-    # declaration line avoids false positives from comments or string literals.
-    for marker in re.finditer(
-        r"(?m)^[ \t]*(?P<prefix>(?:(?:public|internal|private|protected)\s+)?)static\b",
-        source,
-    ):
-        tail = source[marker.start():].lstrip()
+    # Reject every static construct except a private static method declaration.
+    for marker in re.finditer(r"\bstatic\b", structure):
+        tail = structure[marker.start():]
+        line_start = structure.rfind("\n", 0, marker.start()) + 1
+        prefix = structure[line_start:marker.start()]
         private_method = (
-            marker.group("prefix").strip() == "private"
+            re.search(r"\bprivate\s*$", prefix) is not None
             and re.match(
-                r"private\s+static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
+                r"static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
                 tail,
             ) is not None
         )
         if not private_method:
             return False
 
-    # Every exported declaration must be either the one class declaration or an
-    # attributed test method. Comments containing words such as "public" are
-    # intentionally invisible to this declaration-anchored scan.
-    for visibility in re.finditer(r"(?m)^[ \t]*(?:public|internal|protected)\b", source):
-        tail = source[visibility.start():].lstrip()
+    # Every exported member must be the test class or an attributed test method.
+    for visibility in re.finditer(r"\b(?:public|internal|protected)\b", structure):
+        tail = structure[visibility.start():]
         if re.match(r"(?:public|internal)\s+(?:sealed\s+)?class\s+", tail):
             continue
-        prefix = source[:visibility.start()]
+        prefix = structure[:visibility.start()]
         attributes = re.search(r"((?:\[[^\]]+\]\s*)+)$", prefix)
         if not attributes or not re.search(r"\[(?:Fact|Theory)(?:\]|\()", attributes.group(1)):
             return False
-        if not re.match(r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(", tail):
+        if not re.match(
+            r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(",
+            tail,
+        ):
             return False
-    return bool(re.search(r"(?m)^[ \t]*\[(?:Fact|Theory)(?:\]|\()", source))
-
+    return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", structure))
 
 def _step5_extension_method_names(source):
     # Ordinary calls follow their declaring type through the source closure.
@@ -5162,7 +5225,7 @@ def cmd_step5_decision(args):
             args.base_sha,
             args.current_run_id,
             args.head_branch,
-            args.resume_cache,
+            getattr(args, "resume_cache", None),
         )
     except EvidenceLookupUnavailable as exc:
         decision = {
