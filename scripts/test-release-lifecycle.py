@@ -1786,7 +1786,7 @@ class CandidateValidation(unittest.TestCase):
              patch.object(m.time, "sleep") as sleeper:
             self.assertIsNone(m.candidate_validation(Api(), pr))
         self.assertEqual(3, snapshot.call_count)
-        self.assertEqual([((5,),), ((10,),)], [call.call_args for call in sleeper.mock_calls])
+        self.assertEqual([5, 10], [row.args[0] for row in sleeper.call_args_list])
 
     def test_validation_readiness_never_retries_completed_failure(self):
         pr, _ = self.pr(["AgentPortal/Program.cs"])
