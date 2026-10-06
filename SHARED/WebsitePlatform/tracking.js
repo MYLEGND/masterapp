@@ -462,6 +462,8 @@
       utmTerm: sanitizeAttributionValue(raw?.utmTerm),
       utmContent: sanitizeAttributionValue(raw?.utmContent),
       fbclid: sanitizeAttributionValue(raw?.fbclid),
+      gclid: sanitizeAttributionValue(raw?.gclid),
+      ttclid: sanitizeAttributionValue(raw?.ttclid),
       oppref: sanitizeAttributionValue(raw?.oppref),
       metaCampaignId: sanitizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: sanitizeAttributionValue(raw?.metaAdSetId),
@@ -479,6 +481,8 @@
       attribution.utmTerm ||
       attribution.utmContent ||
       attribution.fbclid ||
+      attribution.gclid ||
+      attribution.ttclid ||
       attribution.oppref ||
       attribution.metaCampaignId ||
       attribution.metaAdSetId ||
@@ -536,6 +540,8 @@
       utmTerm: params.get('utm_term'),
       utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid'),
+      gclid: params.get('gclid'),
+      ttclid: params.get('ttclid'),
       oppref: params.get('oppref'),
       metaCampaignId: params.get('meta_campaign_id'),
       metaAdSetId: params.get('meta_adset_id'),
@@ -556,6 +562,8 @@
       utmTerm: payload.UtmTerm,
       utmContent: payload.UtmContent,
       fbclid: payload.Fbclid,
+      gclid: payload.Gclid,
+      ttclid: payload.Ttclid,
       oppref: payload.Oppref,
       metaCampaignId: payload.MetaCampaignId,
       metaAdSetId: payload.MetaAdSetId,
@@ -588,6 +596,8 @@
       utmTerm: firstTouchAttribution?.utmTerm,
       utmContent: firstTouchAttribution?.utmContent,
       fbclid: firstTouchAttribution?.fbclid,
+      gclid: firstTouchAttribution?.gclid,
+      ttclid: firstTouchAttribution?.ttclid,
       oppref: firstTouchAttribution?.oppref,
       metaCampaignId: firstTouchAttribution?.metaCampaignId,
       metaAdSetId: firstTouchAttribution?.metaAdSetId,
@@ -797,6 +807,8 @@
       UtmTerm: attribution.utmTerm || null,
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
+      Gclid: attribution.gclid || null,
+      Ttclid: attribution.ttclid || null,
       Oppref: attribution.oppref || null,
       Obref: measurementAllowed() ? readFirstPartyCookie('__obref') : null,
       MetaCampaignId: attribution.metaCampaignId || null,
@@ -2021,7 +2033,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       UtmSource: attr.utmSource, UtmMedium: attr.utmMedium, UtmCampaign: attr.utmCampaign,
       UtmId: attr.utmId, UtmTerm: attr.utmTerm, UtmContent: attr.utmContent,
       MetaCampaignId: attr.metaCampaignId, MetaAdSetId: attr.metaAdSetId, MetaAdId: attr.metaAdId,
-      Fbclid: attr.fbclid, Oppref: attr.oppref,
+      Fbclid: attr.fbclid, Gclid: attr.gclid, Ttclid: attr.ttclid, Oppref: attr.oppref,
       ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
     };
     Object.entries(values).forEach(([name, value]) => {
@@ -2345,6 +2357,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      gclid: attribution.gclid || null,
+      ttclid: attribution.ttclid || null,
       oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,
@@ -2362,6 +2376,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      gclid: attribution.gclid || null,
+      ttclid: attribution.ttclid || null,
       oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,
