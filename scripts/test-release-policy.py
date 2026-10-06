@@ -802,6 +802,42 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn("steps.transactionrecovery.outcome == 'success'", workflow)
         self.assertIn('TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}', workflow)
 
+    def test_terminal_children_wake_only_the_protected_lifecycle(self):
+        architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        direct=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        wake=(ROOT / 'wake-release-lifecycle.py').read_text()
+
+        self.assertIn('wake-release-lifecycle-after-package-backfill:', architecture)
+        package_wake=architecture.split(
+            '  wake-release-lifecycle-after-package-backfill:\n',1
+        )[1].split('\n  validated-migration-probe:',1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.package_revision != ''", package_wake)
+        self.assertIn('actions: write', package_wake)
+        self.assertIn('contents: read', package_wake)
+        self.assertIn('scripts/wake-release-lifecycle.py', package_wake)
+        self.assertNotIn('deploy-approved-app.py', package_wake)
+
+        self.assertIn('wake-release-lifecycle-after-terminal-release:', direct)
+        release_wake=direct.split(
+            '  wake-release-lifecycle-after-terminal-release:\n',1
+        )[1]
+        self.assertIn('needs: [target-release-receipts, release-state-receipt]', release_wake)
+        self.assertIn('if: always()', release_wake)
+        self.assertIn('actions: write', release_wake)
+        self.assertIn('contents: read', release_wake)
+        self.assertIn('scripts/wake-release-lifecycle.py', release_wake)
+        self.assertNotIn('deploy-approved-app.py', release_wake)
+
+        self.assertIn('release_run:', lifecycle)
+        self.assertIn("github.event.workflow_run.id || inputs.release_run || ''", lifecycle)
+        self.assertIn('actions/workflows/{LIFECYCLE}/dispatches', wake)
+        self.assertIn('"inputs": {"release_run": RUN_ID}', wake)
+        self.assertIn('APPROVED = "legend/approved-changes"', wake)
+        self.assertIn('LIFECYCLE = "legend-release-lifecycle.yml"', wake)
+        self.assertNotIn('deploy-approved-app', wake)
+        self.assertNotIn('release-package.py', wake)
+
     def test_release_mutation_authorities_remain_serialized(self):
         for name in (
             'legend-release-lifecycle.yml',

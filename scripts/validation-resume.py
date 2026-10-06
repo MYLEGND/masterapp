@@ -558,6 +558,7 @@ LIFECYCLE_AUTHORITY_PATHS = (
     "scripts/test-release-lifecycle.py",
     "scripts/test-deploy-approved-app.py",
     "scripts/deploy-founder-cloudflare.py",
+    "scripts/wake-release-lifecycle.py",
 )
 
 RELEASE_EXECUTION_CONTROL_INPUTS = (
@@ -590,6 +591,7 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
     "scripts/test-release-lifecycle.py",
     "scripts/test-deploy-approved-app.py",
     "scripts/deploy-founder-cloudflare.py",
+    "scripts/wake-release-lifecycle.py",
 })
 
 PACKAGE_AUTHORITY_PATHS = frozenset({

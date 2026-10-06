@@ -21,6 +21,12 @@ on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
+    inputs:
+      release_run:
+        description: Exact terminal package/direct-release child run that requested reconciliation
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -133,7 +139,7 @@ jobs:
       - name: Recover authorized direct release when needed
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_RUN: ${{ github.event.workflow_run.id }}
+          RELEASE_RUN: ${{ github.event.workflow_run.id || inputs.release_run || '' }}
         run: |
           args=()
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
