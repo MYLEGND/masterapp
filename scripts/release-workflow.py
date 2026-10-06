@@ -28,24 +28,30 @@ def authority():
 
 
 def target_steps(targets):
-    blocks = []
-    for key in targets:
-        blocks.append(f'''      - name: Publish canonical target ({key})
-        id: publish_{key}
-        if: ${{{{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), '{targets[key]["releaseName"]}') }}}}
+    # Target names remain inventory-derived even though execution is one bounded
+    # batch step. The deploy authority re-resolves and validates the pending list.
+    release_names = [row["releaseName"] for row in targets.values()]
+    if len(release_names) != len(set(release_names)):
+        raise ValueError("Duplicate canonical release target")
+    return '''      - name: Publish canonical pending targets
+        id: publish_targets
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
         env:
-          GH_TOKEN: ${{{{ github.token }}}}
-          PACKAGE_PRODUCER_RUN: ${{{{ steps.reusevalidated.outputs.run_id }}}}
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
+          PENDING_TARGETS: ${{ steps.resumestate.outputs.pending_targets }}
         run: |
           set -euo pipefail
-          python3 scripts/deploy-approved-app.py \\
-            --target {key} \\
-            --package-root /tmp/diagnostics-packages \\
+          test -n "$PENDING_TARGETS"
+          python3 scripts/deploy-approved-app.py \
+            --targets-json "$PENDING_TARGETS" \
+            --package-root /tmp/diagnostics-packages \
+            --publish-selected \
+            --publication-outcomes /tmp/release-publication-outcomes.json \
             --transaction-plan /tmp/release-transaction.json
-''')
-    return '\n'.join(blocks)
+'''
 
 
 def render(text, targets):
@@ -58,7 +64,7 @@ def render(text, targets):
         raise ValueError('Expected exactly one canonical target outcome block')
     before, tail = generated.split(OUTCOME_START, 1)
     _, after = tail.split(OUTCOME_END, 1)
-    outcomes = ''.join(f'          TARGET_OUTCOME_{key.upper()}: ${{{{ steps.publish_{key}.outcome }}}}\n' for key in targets)
+    outcomes = '          TARGET_OUTCOME_BATCH: ${{ steps.publish_targets.outcome }}\\n'
     return before + OUTCOME_START + outcomes + OUTCOME_END + after
 
 
@@ -69,10 +75,9 @@ def main():
     parser.add_argument('--selected-targets')
     args = parser.parse_args()
     if args.verify_outcomes:
-        keys = authority().selected_release_target_keys(json.loads(args.selected_targets))
-        failed = [key for key in keys if os.environ.get('TARGET_OUTCOME_' + key.upper()) != 'success']
-        if failed:
-            raise SystemExit('Selected target publication did not succeed: ' + ', '.join(failed))
+        authority().selected_release_target_keys(json.loads(args.selected_targets))
+        if os.environ.get('TARGET_OUTCOME_BATCH') != 'success':
+            raise SystemExit('Canonical pending-target publication batch did not succeed')
         return
     text = WORKFLOW.read_text()
     generated = render(text, authority().RELEASE_TARGETS)
