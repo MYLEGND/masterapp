@@ -582,6 +582,73 @@ class PreparedTransactionTests(unittest.TestCase):
             deploy.publish_prepared_target(plan['targets'][0]['app'], 'a' * 40, Path('/packages'), plan, reconcile_only=True)
         self.assertTrue(publish.call_args.kwargs['reconcile_only'])
 
+    def test_already_live_pending_set_starts_no_publication_child(self):
+        plan = self.plan(['portal'])
+        with patch.object(deploy, 'read_transaction_plan', return_value=plan), \
+             patch.object(deploy.subprocess, 'Popen') as spawn:
+            result = deploy.publish_prepared_targets(
+                [], 'a' * 40, Path('/packages'), Path('/transaction.json')
+            )
+        self.assertEqual({}, result)
+        spawn.assert_not_called()
+
+    def test_pending_targets_start_concurrently_before_any_child_wait(self):
+        plan = self.plan(['portal', 'client'])
+        names = [deploy.TARGETS[key]['releaseName'] for key in ('portal', 'client')]
+        events = []
+
+        class Child:
+            def __init__(self, key):
+                self.key = key
+            def wait(self):
+                events.append('wait:' + self.key)
+                return 0
+
+        def spawn(command, env):
+            key = command[command.index('--target') + 1]
+            events.append('start:' + key)
+            return Child(key)
+
+        with patch.object(deploy, 'read_transaction_plan', return_value=plan), \
+             patch.object(deploy.subprocess, 'Popen', side_effect=spawn):
+            result = deploy.publish_prepared_targets(
+                names, 'a' * 40, Path('/packages'), Path('/transaction.json')
+            )
+        self.assertEqual({'portal': 'success', 'client': 'success'}, result)
+        self.assertEqual(['start:portal', 'start:client'], events[:2])
+        self.assertEqual({'wait:portal', 'wait:client'}, set(events[2:]))
+
+    def test_failed_pending_target_preserves_completed_sibling_outcomes(self):
+        plan = self.plan(['portal', 'client'])
+        names = [deploy.TARGETS[key]['releaseName'] for key in ('portal', 'client')]
+        codes = {'portal': 1, 'client': 0}
+        events = []
+
+        class Child:
+            def __init__(self, key):
+                self.key = key
+            def wait(self):
+                events.append('wait:' + self.key)
+                return codes[self.key]
+
+        def spawn(command, env):
+            key = command[command.index('--target') + 1]
+            events.append('start:' + key)
+            return Child(key)
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy, 'read_transaction_plan', return_value=plan), \
+             patch.object(deploy.subprocess, 'Popen', side_effect=spawn):
+            outcomes = Path(directory) / 'outcomes.json'
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'successful siblings remain preserved'):
+                deploy.publish_prepared_targets(
+                    names, 'a' * 40, Path('/packages'), Path('/transaction.json'), outcomes
+                )
+            recorded = json.loads(outcomes.read_text())
+        self.assertEqual({'portal': 'failure', 'client': 'success'}, recorded)
+        self.assertEqual(['start:portal', 'start:client'], events[:2])
+        self.assertEqual({'wait:portal', 'wait:client'}, set(events[2:]))
+
     def test_prepare_restores_original_untouched_target_baseline_and_rollback_reference(self):
         prior = self.plan(['portal', 'client'])
         rollback = {'artifact': 'original-rollback', 'runId': 17, 'revision': 'b' * 40, 'packageDigest': 'd' * 64}
