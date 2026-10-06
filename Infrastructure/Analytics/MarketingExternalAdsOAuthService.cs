@@ -31,11 +31,12 @@ public sealed class MarketingExternalAdsOAuthService(
     public string BuildConnectUrl(
         MarketingOwnerScope owner,
         string provider,
-        string returnUrl)
+        string returnUrl,
+        string? explicitRedirectUri = null)
     {
         ArgumentNullException.ThrowIfNull(owner);
         var key = RequireProvider(provider);
-        var redirectUri = RequiredAbsoluteHttps($"{ProviderPrefix(key)}:RedirectUri");
+        var redirectUri = ResolveRedirectUri(key, explicitRedirectUri);
         var safeReturnUrl = SafeReturnUrl(returnUrl);
         var state = ProtectState(new(
             key,
@@ -455,6 +456,14 @@ public sealed class MarketingExternalAdsOAuthService(
     {
         var value = Clean(configuration[key]);
         return value ?? throw new InvalidOperationException($"{key} is required to connect this provider.");
+    }
+
+    private string ResolveRedirectUri(string provider, string? explicitRedirectUri)
+    {
+        var value = Clean(explicitRedirectUri) ?? Required($"{ProviderPrefix(provider)}:RedirectUri");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException($"{ProviderPrefix(provider)} redirect URI must be an absolute HTTPS URL.");
+        return uri.ToString();
     }
 
     private string RequiredAbsoluteHttps(string key)
