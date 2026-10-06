@@ -4322,6 +4322,24 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
     workflow = "step5-isolated-conversion-mapping-validation.yml"
     config = WORKFLOWS[workflow]
     changed = git_changed(prior_sha, current_sha)
+
+    # Fast path for exact reuse/control-plane continuation. Do not archive and
+    # analyze the entire AgentPortal.Tests graph when no Step 5 test/application
+    # input changed. Workflow execution compatibility is authenticated separately
+    # by _step5_jobs_unchanged before child evidence is reused.
+    if not changed:
+        return []
+    if all(
+        not path.startswith("AgentPortal.Tests/") and
+        (
+            matches(path, config.get("neutral", ())) or
+            gate_matches(path, config["gates"]["comparison"]) or
+            release_control_only_path(path)
+        )
+        for path in changed
+    ):
+        return []
+
     # One archive read avoids hundreds of subprocesses per historical producer.
     import io
     import tarfile
