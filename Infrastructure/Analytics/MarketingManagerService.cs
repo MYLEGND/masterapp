@@ -226,7 +226,7 @@ public sealed class MarketingManagerService(
 
             calibrations.TryGetValue(signal, out var calibration);
             var likelihood = ProgressRateForStage(lead.CrmStage, calibration);
-            var expectedValue = averagePaidValue.HasValue && calibration is not null
+            decimal? expectedValue = averagePaidValue.HasValue && calibration is not null
                 ? Math.Round(averagePaidValue.Value * calibration.PaidRate / 100m, 2)
                 : null;
 
