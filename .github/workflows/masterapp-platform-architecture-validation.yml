@@ -378,19 +378,6 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  validated-release-package:
-    needs: approved-head-preflight
-    name: validated-release-package
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
-      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
-      MSBUILDDISABLENODEREUSE: '1'
-    steps:
-
       - name: Check PR-local validation gate cache readiness
         id: gatecache
         if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
@@ -408,6 +395,21 @@ jobs:
         with:
           path: /tmp/validation-resume-cache
           key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+
+  validated-release-package:
+    needs: approved-head-preflight
+    name: validated-release-package
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+
       - name: Checkout exact package authority
         uses: actions/checkout@v4
         with:
