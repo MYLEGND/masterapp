@@ -30,6 +30,16 @@ ALIASES = {
 }
 ALL_SETTING_NAMES = tuple(dict.fromkeys(name for names in ALIASES.values() for name in names))
 
+def release_authority():
+    path = ROOT / "scripts" / "validation-resume.py"
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = release_authority()
+
 def run(*args, input_text=None, cwd=None, capture=False):
     completed = subprocess.run(
         list(args),
@@ -67,6 +77,8 @@ def parse_jsonc(path):
     return json.loads("\n".join(lines))
 
 def cloudflare(path, method="GET", payload=None, allow_404=False):
+    if method != "GET":
+        _RELEASE_AUTHORITY.require_canonical_release_runtime()
     token = required("CLOUDFLARE_API_TOKEN")
     url = "https://api.cloudflare.com/client/v4" + path
     body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
@@ -158,6 +170,7 @@ def snapshot(rows):
     return [{"name": row["name"], "value": row.get("value", "")} for row in rows if row.get("name") in names]
 
 def restore_settings(group, app, previous):
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     # Remove every canonical/legacy alias first, then restore exactly what existed.
     subprocess.run(["az", "webapp", "config", "appsettings", "delete", "-g", group, "-n", app,
                     "--setting-names", *ALL_SETTING_NAMES, "--output", "none"], check=False)
@@ -271,6 +284,7 @@ def wait_for_worker_route(endpoint, attempts=8, delay_seconds=2):
     raise RuntimeError("founder_workers_route_not_ready")
 
 def deploy(state_path, receipt_path):
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     group = required("RELEASE_RESOURCE_GROUP")
     app = required("DATABASE_AUTHORITY")
     account = required("CLOUDFLARE_ACCOUNT_ID")
@@ -443,6 +457,7 @@ def deploy(state_path, receipt_path):
         release_config.unlink(missing_ok=True)
 
 def rollback(state_path):
+    _RELEASE_AUTHORITY.require_canonical_release_runtime()
     if not state_path.exists(): raise RuntimeError("founder_cloudflare_state_missing")
     state = json.loads(state_path.read_text())
     group, app, account, worker = (state[k] for k in ("resourceGroup","app","accountId","worker"))
