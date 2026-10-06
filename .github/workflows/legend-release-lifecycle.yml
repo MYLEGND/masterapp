@@ -140,41 +140,56 @@ jobs:
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
           state_file="$RUNNER_TEMP/release-reconcile.json"
 
-          # Stay inside the single serialized lifecycle when this invocation
-          # dispatches or discovers an exact package backfill. GitHub does not
-          # guarantee a recursive workflow_run wake-up for GITHUB_TOKEN-created
-          # dependencies, so waiting for another parent run can strand a fully
-          # proven release. Reconcile is read-only except for its canonical,
-          # idempotent dispatch authorities; while a package is already running
-          # it cannot redispatch it.
-          for attempt in $(seq 1 20); do
-            rm -f "$state_file"
-            python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"
+          # Run the canonical reconciliation once. If it creates or discovers
+          # an immutable package backfill dependency, keep this same serialized
+          # lifecycle owner alive and poll only that package proof. Never rerun
+          # validation, never rescan the whole release history every minute, and
+          # never invoke deployment while waiting.
+          python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"
 
-            dependency_state="$(python3 - "$state_file" <<'PYDEPENDENCY'
+          package_revision="$(python3 - "$state_file" <<'PYDEPENDENCY'
           import json,sys
           data=json.load(open(sys.argv[1]))
           package=data.get("packageBackfill")
-          wait=package in {
+          waiting=package in {
               "dispatched for exact green automatic application revision",
               "dispatched for exact green historical application revision",
               "already queued or running",
           }
-          print("package" if wait else "continue")
+          print(data.get("applicationRevision") if waiting else "")
           PYDEPENDENCY
-            )"
+          )"
 
-            if [ "$dependency_state" != package ]; then
-              exit 0
+          if [ -n "$package_revision" ]; then
+            evidence="$RUNNER_TEMP/package-evidence.json"
+            proven=false
+            for attempt in $(seq 1 20); do
+              python3 scripts/release-lifecycle.py package-evidence \
+                --revision "$package_revision" \
+                --output "$evidence"
+              if python3 - "$evidence" <<'PYEVIDENCE'
+          import json,sys
+          raise SystemExit(0 if json.load(open(sys.argv[1])).get("reusable") else 1)
+          PYEVIDENCE
+              then
+                proven=true
+                break
+              fi
+              if [ "$attempt" -lt 20 ]; then
+                echo "Package proof is still resolving; preserving all release state and polling only canonical package evidence."
+                sleep 60
+              fi
+            done
+            if [ "$proven" != true ]; then
+              echo "::error::Package proof did not become readable inside the bounded lifecycle window; no release mutation was replayed."
+              exit 75
             fi
-            if [ "$attempt" -lt 20 ]; then
-              echo "Package proof is still resolving; preserving all release state and retrying reconciliation only."
-              sleep 60
-            fi
-          done
 
-          echo "::error::Package proof did not become readable inside the bounded lifecycle window; no release mutation was replayed."
-          exit 75
+            # Dependency is now proven. Continue the same canonical release
+            # reconciliation once; this may dispatch the exact-live proof-only
+            # direct release, but cannot recreate the package dependency.
+            python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"
+          fi
       - name: Refresh approved references before cleanup
         run: git fetch --no-tags --prune origin
       - name: Retire only preserved successfully deployed branches
