@@ -8,6 +8,13 @@ from pathlib import Path
 import subprocess
 
 
+def release_authority():
+    spec = importlib.util.spec_from_file_location('release_execution_authority', Path(__file__).with_name('validation-resume.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def journal_type():
     spec = importlib.util.spec_from_file_location('release_journal', Path(__file__).with_name('release-operation-evidence.py'))
     module = importlib.util.module_from_spec(spec)
@@ -89,6 +96,7 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
 
 if __name__ == '__main__':
     try:
+        release_authority().assert_protected_release_execution()
         bundle = Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
         probe = Path(os.environ.get('MIGRATION_PROBE_DLL', '/tmp/migration-probe/MigrationReleaseProbe.dll'))
         if not bundle.is_file() or not probe.is_file():
