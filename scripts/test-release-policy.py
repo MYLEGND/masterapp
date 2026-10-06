@@ -804,6 +804,13 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         ):
             self.assertIn('run_lane '+lane, fanout)
         self.assertNotIn("steps.gate_compile_regression.outcome == 'success'", fanout)
+        self.assertIn('COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}', fanout)
+        self.assertIn('[ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]', fanout)
+        compile_block=workflow.split('      - name: Compile full regression test project\n',1)[1].split(
+            '      - name: Preserve exact compiled regression material\n',1
+        )[0]
+        self.assertIn("if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'", compile_block)
+        self.assertIn('echo "material_ready=true" >> "$GITHUB_OUTPUT"', compile_block)
         release_web=fanout.split('release_web_contracts() {',1)[1].split('release_policy() {',1)[0]
         self.assertNotIn('dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', release_web)
 
