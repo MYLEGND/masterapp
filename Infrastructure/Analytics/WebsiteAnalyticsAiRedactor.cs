@@ -182,7 +182,8 @@ public static class WebsiteAnalyticsAiRedactor
         if (fieldName == "ScopeLabel") return value is "founder" or "agent" or "business" ? value : "authorized_owner";
         if (fieldName == "RangeLabel") return "Selected UTC window";
         if (fieldName == "TrafficFilter") return value is "All" or "All Traffic" or "Real Human Traffic" or "Likely Human Traffic" or
-            "Internal Traffic" or "Test Traffic" or "Bot/Suspicious Traffic" or "Paid" or "NonPaid" or "Unknown" ? value : "Selected traffic";
+            "Review Needed" or "Suspicious Activity" or "Likely Bots/Automation" or "Internal/QA Traffic" or
+            "Paid" or "NonPaid" or "Unknown" ? value : "Selected traffic";
         if (fieldName == "Warnings") {
             var area = new[] { "Summary", "Traffic", "CTA", "Dwell", "Conversions", "Devices", "Journey", "PagePerf", "QuoteFunnel", "Engagement", "Exit", "Source", "Abandon", "MarketingHealth", "MetaAds", "MetaSignal", "PublishedWebsite", "ChannelPerformance" }
                 .FirstOrDefault(x => value.StartsWith(x, StringComparison.Ordinal));
