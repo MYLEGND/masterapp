@@ -116,9 +116,14 @@ jobs:
               'lifecycle','mobile','renderer-install','renderer-build','renderer-parity','renderer-tests',
               'cms-install','cms-tests','form-tracking',
           }
+          compiled_consumers={
+              'compile-regression','founder-diagnostics-regressions','website-regressions',
+              'meta-regressions','booking-regressions','crm-regressions','release-web-contracts',
+          }
           with open(sys.argv[2],'a') as output:
               output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
               output.write('node='+str(bool(running & node)).lower()+'\n')
+              output.write('regression_material='+str(bool(running & compiled_consumers)).lower()+'\n')
               output.write('all_preserved='+str(not running).lower()+'\n')
           PYPLAN
 
@@ -262,19 +267,61 @@ jobs:
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-tests; then exit 0; fi
           npm test
 
+      - name: Resolve compiled regression material identity
+        id: compileidentity
+        if: steps.plan.outputs.regression_material == 'true'
+        shell: bash
+        run: |
+          python3 scripts/validation-resume.py gate-identity \
+            --workflow masterapp-platform-architecture-validation.yml \
+            --revision "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --gate compile-regression \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore exact compiled regression material
+        id: compiledcache
+        if: steps.plan.outputs.regression_material == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            AgentPortal.Tests/bin/Release
+            AgentPortal.Tests/obj
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
+
       - name: Compile full regression test project
         id: gate_compile_regression
         shell: bash
         run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then exit 0; fi
+          preserved=false
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then
+            preserved=true
+            if [ "${{ steps.compiledcache.outputs.cache-hit }}" = "true" ] \
+               && test -f AgentPortal.Tests/bin/Release/net10.0/AgentPortal.Tests.dll; then
+              echo "Preserved compile proof and exact material cache reused."
+              exit 0
+            fi
+            echo "Preserved compile proof has no local material; rematerializing exact compiled graph."
+          fi
+          if [ ! -f AgentPortal.Tests/obj/project.assets.json ]; then
+            dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+
+      - name: Preserve exact compiled regression material
+        if: steps.plan.outputs.regression_material == 'true' && steps.compiledcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            AgentPortal.Tests/bin/Release
+            AgentPortal.Tests/obj
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
 
       - name: Run Founder diagnostics and safe GPT Codex regressions
         id: gate_founder_diagnostics_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
 
       - name: Compile shared domain release refresh
@@ -289,7 +336,7 @@ jobs:
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
 
       - name: Run Meta authority regressions
@@ -297,7 +344,7 @@ jobs:
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
 
       - name: Run booking authority regressions
@@ -305,7 +352,7 @@ jobs:
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
 
       - name: Run CRM outcome regressions
@@ -313,7 +360,7 @@ jobs:
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
 
       - name: Run canonical form tracking tests
@@ -332,7 +379,7 @@ jobs:
           node tests/analytics/form-tracker.test.cjs .
           node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
           node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore --nologo \
             --filter 'FullyQualifiedName~WebsiteDomainImportTests'
           dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
           npm ci --prefix Legend-Cloudflare
