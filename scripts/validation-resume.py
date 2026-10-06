@@ -882,7 +882,7 @@ WORKFLOWS = {
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
                 "paths": DIAGNOSTICS_SOURCE + DIAGNOSTICS_TESTS,
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "domain-release": {
                 "step": "Compile shared domain release refresh",
@@ -903,7 +903,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
                 ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "meta-regressions": {
                 "step": "Run Meta authority regressions",
@@ -917,13 +917,13 @@ WORKFLOWS = {
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
                 ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
                 "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "crm-regressions": {
                 "step": "Run CRM outcome regressions",
@@ -935,7 +935,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
@@ -959,7 +959,7 @@ WORKFLOWS = {
                     "scripts/test-diagnostic-project-impact.py",
                     "scripts/test-sync-published-checkout.py",
                 ),
-                "requires": ("compile-regression",),
+                "consumes": ("compile-regression",),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",
@@ -2818,6 +2818,18 @@ def _read_provenance(host: str, target, revision: str):
             return response.read().decode().strip()
         payload = json.load(response)
         return payload.get("sourceRevision")
+
+
+def cmd_gate_identity(args):
+    if args.workflow not in WORKFLOWS:
+        raise ValueError("Unknown validation workflow: " + args.workflow)
+    if args.gate not in WORKFLOWS[args.workflow]["gates"]:
+        raise ValueError("Unknown validation gate: " + args.gate)
+    identity = gate_dependency_manifests(args.workflow, args.revision)[args.gate]["contentIdentity"]
+    print(identity)
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            output.write(f"identity={identity}\n")
 
 
 def cmd_live_state(args):
@@ -5104,6 +5116,13 @@ def build_parser():
     preserved.add_argument("--plan", required=True)
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
+
+    gate_identity = sub.add_parser("gate-identity")
+    gate_identity.add_argument("--workflow", required=True)
+    gate_identity.add_argument("--revision", required=True)
+    gate_identity.add_argument("--gate", required=True)
+    gate_identity.add_argument("--github-output")
+    gate_identity.set_defaults(func=cmd_gate_identity)
 
     live_state = sub.add_parser("live-state")
     live_state.add_argument("--revision", required=True)
