@@ -55,7 +55,7 @@ public sealed class MarketingExternalAdsOAuthService(
         return key switch
         {
             MarketingDestinationKeys.Google => BuildGoogleAuthorizationUrl(state, redirectUri),
-            MarketingDestinationKeys.TikTok => BuildTikTokAuthorizationUrl(state, redirectUri),
+            MarketingDestinationKeys.TikTok => BuildTikTokAuthorizationUrl(owner, state),
             _ => throw new InvalidOperationException("Unsupported external ads provider.")
         };
     }
@@ -228,15 +228,19 @@ public sealed class MarketingExternalAdsOAuthService(
             });
     }
 
-    private string BuildTikTokAuthorizationUrl(string stateToken, string redirectUri)
+    private string BuildTikTokAuthorizationUrl(
+        MarketingOwnerScope owner,
+        string stateToken)
     {
-        var configured = RequiredAbsoluteHttps("TikTokAds:AdvertiserAuthorizationUrl");
-        return QueryHelpers.AddQueryString(configured,
-            new Dictionary<string, string?>
-            {
-                ["state"] = stateToken,
-                ["redirect_uri"] = redirectUri
-            });
+        var key = owner.CommerceBusinessId.HasValue
+            ? "TikTokAds:BusinessAdvertiserAuthorizationUrl"
+            : "TikTokAds:AdvertiserAuthorizationUrl";
+        var configured = Clean(configuration[key]);
+        if (string.IsNullOrWhiteSpace(configured) && owner.CommerceBusinessId.HasValue)
+            configured = Clean(configuration["TikTokAds:AdvertiserAuthorizationUrl"]);
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException($"{key} must be the HTTPS advertiser authorization URL generated in TikTok My Apps.");
+        return QueryHelpers.AddQueryString(uri.ToString(), "state", stateToken);
     }
 
     private async Task<GoogleTokenExchange> ExchangeGoogleAsync(
