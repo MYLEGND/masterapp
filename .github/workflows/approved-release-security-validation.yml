@@ -92,25 +92,25 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Restore security validation graph
+        id: gate_restore
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate restore --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
           dotnet restore MASTERAPP.sln
 
       - name: Build migration validation graph
+        id: gate_build
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate build --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
           dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Validate database migration artifacts
+        id: gate_db_validation
         shell: bash
         env:
           DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
           DB_BUILD_CONFIGURATION: Release
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
           changed_migration_inputs="$(
             git diff --name-only "$DB_BASE_REF"...HEAD -- \
@@ -128,9 +128,9 @@ jobs:
           ./scripts/db.sh validate-artifacts
 
       - name: Reject skipped security tests
+        id: gate_no_skips
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips; then exit 0; fi
           if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
                 AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
@@ -143,9 +143,9 @@ jobs:
           fi
 
       - name: Audit dependency vulnerabilities
+        id: gate_vulnerabilities
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
           set -o pipefail
           dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
@@ -155,9 +155,9 @@ jobs:
           fi
 
       - name: Scan committed configuration for secrets
+        id: gate_secret_scan
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan; then exit 0; fi
           if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
             echo "::error::Committed publish-macos appsettings may contain secrets."
@@ -170,9 +170,9 @@ jobs:
           fi
 
       - name: Verify shared composition authorities
+        id: gate_composition
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate composition --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate composition; then exit 0; fi
           set -e
           check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
@@ -203,9 +203,9 @@ jobs:
           fi
 
       - name: Reject inline Azure key-ring wiring
+        id: gate_keyring
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring; then exit 0; fi
           if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
                 AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
@@ -214,9 +214,9 @@ jobs:
           fi
 
       - name: Verify patch whitespace integrity
+        id: gate_diff_check
         shell: bash
         run: |
-          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow approved-release-security-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
           git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
@@ -224,12 +224,14 @@ jobs:
         if: always() && steps.plan.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
             --output "$RUNNER_TEMP/validation-resume.json" \
             --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}"
+            --run-id "${{ github.run_id }}" \
+            --cache-output /tmp/validation-resume-cache/validation-resume.json
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
