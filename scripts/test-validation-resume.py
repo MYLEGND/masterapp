@@ -2146,6 +2146,18 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.write(control, Path(control).read_text() + "\n# planner-only fixture change\n")
         self.assertEqual(["AgentPortal.Tests.Two"], m.step5_dependency_change(self.base, self.commit()))
 
+    def test_prior_discovery_drops_unchanged_helper_without_escalating_changed_test(self):
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        self.assertEqual(
+            ["AgentPortal.Tests.Two"],
+            m._step5_discovered_repair_classes(
+                ["AgentPortal.Tests.Two", "AgentPortal.Tests.Shared"],
+                ["AgentPortal.Tests.Two.Case"],
+                [path],
+            ),
+        )
+
     def test_pr_local_cache_uses_canonical_bounded_repair_decision(self):
         import json
         path = "AgentPortal.Tests/Two.cs"
