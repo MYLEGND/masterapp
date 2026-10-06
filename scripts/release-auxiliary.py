@@ -2,9 +2,9 @@
 """Run independent post-publication Cloudflare release lanes concurrently.
 
 Founder baseline and business-router publication own different Workers/resources.
-They share only the installed Wrangler toolchain, which is prepared once before
-fanout. The router executes from an isolated copied project workspace so Wrangler
-runtime state cannot race the Founder lane.
+Each lane executes from its own copied Cloudflare workspace and installs its own
+lockfile-pinned toolchain, so npm/Wrangler runtime state can never race across
+lanes while the two provider operations overlap.
 
 Durable write authorization remains inside deploy-founder-cloudflare.py and
 release-router.py. This coordinator never creates an alternate receipt authority.
@@ -29,7 +29,7 @@ CF = ROOT / "Legend-Cloudflare"
 RESULT_ROOT = Path(os.environ.get("RELEASE_AUXILIARY_RESULT_DIR", "/tmp/release-auxiliary-results"))
 
 
-def run(command, *, cwd=ROOT, input_text=None, timeout=600):
+def run(command, *, cwd=ROOT, input_text=None, timeout=600, env=None):
     result = subprocess.run(
         list(command),
         cwd=cwd,
@@ -38,6 +38,7 @@ def run(command, *, cwd=ROOT, input_text=None, timeout=600):
         capture_output=True,
         timeout=timeout,
         check=False,
+        env=env,
     )
     if result.returncode:
         raise RuntimeError("Auxiliary release command failed")
@@ -52,15 +53,15 @@ def write_result(name, payload):
     temporary.replace(path)
 
 
-def install_toolchain():
-    run([
-        "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
-        "--prefix", "Legend-Cloudflare",
-    ], timeout=600)
-    wrangler = CF / "node_modules" / ".bin" / "wrangler"
-    if not wrangler.is_file():
-        raise RuntimeError("Canonical Wrangler binary missing after install")
-    return wrangler
+def isolated_cloudflare_workspace(label):
+    root = Path(tempfile.mkdtemp(prefix=f"legend-{label}-cloudflare-"))
+    target = root / "Legend-Cloudflare"
+    shutil.copytree(
+        CF,
+        target,
+        ignore=shutil.ignore_patterns("node_modules", ".wrangler", "*.log"),
+    )
+    return root, target
 
 
 def founder_lane():
@@ -71,13 +72,19 @@ def founder_lane():
     print("::add-mask::" + token, flush=True)
     print("::add-mask::" + account, flush=True)
     Path("/tmp/translation-results").mkdir(parents=True, exist_ok=True)
-    run([
-        sys.executable,
-        "scripts/deploy-founder-cloudflare.py",
-        "deploy",
-        "--state", "/tmp/legend-founder-cloudflare-state.json",
-        "--receipt", "/tmp/translation-results/legend-founder-cloudflare.json",
-    ], timeout=900)
+    workspace_root, workspace = isolated_cloudflare_workspace("founder")
+    environment = os.environ.copy()
+    environment["LEGEND_CLOUDFLARE_ROOT"] = str(workspace)
+    try:
+        run([
+            sys.executable,
+            "scripts/deploy-founder-cloudflare.py",
+            "deploy",
+            "--state", "/tmp/legend-founder-cloudflare-state.json",
+            "--receipt", "/tmp/translation-results/legend-founder-cloudflare.json",
+        ], timeout=900, env=environment)
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
     return {"schemaVersion": 1, "lane": "founder", "success": True}
 
 
@@ -117,18 +124,7 @@ def first_party_router_proof():
         raise RuntimeError("LEGEND-owned host smoke failed after bounded retries")
 
 
-def isolated_router_workspace():
-    root = Path(tempfile.mkdtemp(prefix="legend-router-cloudflare-"))
-    target = root / "Legend-Cloudflare"
-    shutil.copytree(
-        CF,
-        target,
-        ignore=shutil.ignore_patterns("node_modules", ".wrangler", "*.log"),
-    )
-    return root, target
-
-
-def router_lane(wrangler):
+def router_lane():
     result = {
         "schemaVersion": 1,
         "lane": "router",
@@ -142,8 +138,14 @@ def router_lane(wrangler):
 
         decision = run([sys.executable, "scripts/release-router.py", "prepare"])
         if decision == "publish":
-            workspace_root, workspace = isolated_router_workspace()
+            workspace_root, workspace = isolated_cloudflare_workspace("router")
             try:
+                run([
+                    "npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund",
+                ], cwd=workspace, timeout=600)
+                wrangler = workspace / "node_modules" / ".bin" / "wrangler"
+                if not wrangler.is_file():
+                    raise RuntimeError("Canonical Wrangler binary missing after router install")
                 run([
                     str(wrangler), "deploy",
                     "--config", "wrangler.website-routing.jsonc",
@@ -192,10 +194,9 @@ def main():
     if not lanes:
         raise RuntimeError("No auxiliary release lane selected")
 
-    wrangler = install_toolchain()
     callbacks = {
         "founder": founder_lane,
-        "router": lambda: router_lane(wrangler),
+        "router": router_lane,
     }
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(lanes)) as pool:
