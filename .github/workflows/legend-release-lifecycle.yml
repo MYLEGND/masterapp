@@ -38,7 +38,7 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
@@ -147,7 +147,7 @@ jobs:
           # proven release. Reconcile is read-only except for its canonical,
           # idempotent dispatch authorities; while a package is already running
           # it cannot redispatch it.
-          for attempt in $(seq 1 16); do
+          for attempt in $(seq 1 20); do
             rm -f "$state_file"
             python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"
 
@@ -155,13 +155,11 @@ jobs:
           import json,sys
           data=json.load(open(sys.argv[1]))
           package=data.get("packageBackfill")
-          wait=(
-              data.get("state")=="WAITING_FOR_DEPENDENCY"
-              and package in {
-                  "dispatched for exact green automatic application revision",
-                  "already queued or running",
-              }
-          )
+          wait=package in {
+              "dispatched for exact green automatic application revision",
+              "dispatched for exact green historical application revision",
+              "already queued or running",
+          }
           print("package" if wait else "continue")
           PYDEPENDENCY
             )"
@@ -169,7 +167,7 @@ jobs:
             if [ "$dependency_state" != package ]; then
               exit 0
             fi
-            if [ "$attempt" -lt 16 ]; then
+            if [ "$attempt" -lt 20 ]; then
               echo "Package proof is still resolving; preserving all release state and retrying reconciliation only."
               sleep 60
             fi
