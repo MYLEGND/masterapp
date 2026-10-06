@@ -48,6 +48,28 @@ public sealed record MarketingManagerPlan(
     IReadOnlyList<string> Guardrails,
     AiSafeAnalyticsPayload AnalyticsContext);
 
+public sealed record LeadPrioritySnapshot(
+    MarketingOwnerScope Owner,
+    DateTime GeneratedUtc,
+    string CalibrationBasis,
+    decimal? AveragePaidCustomerValue,
+    IReadOnlyList<LeadPriorityRow> Leads,
+    IReadOnlyList<string> Guardrails);
+
+public sealed record LeadPriorityRow(
+    string LeadId,
+    string Stage,
+    string? ProductInterest,
+    string IntentSignal,
+    decimal LikelihoodToProgressPercent,
+    decimal? ExpectedDownstreamValue,
+    decimal PriorityIndex,
+    string PriorityBand,
+    DateTime UpdatedUtc,
+    DateTime? NextActionDate,
+    string OperatorPriority,
+    string Reason);
+
 public sealed record AdvertisingCommandCenterSummary(
     bool ChatGptAdsConnected,
     bool ChatGptAdsManagementReady,
