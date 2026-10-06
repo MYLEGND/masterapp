@@ -318,7 +318,7 @@ jobs:
 
       - name: Run independent architecture gate fanout
         id: architecturefanout
-        if: always() && steps.plan.outcome == 'success' && steps.gate_compile_regression.outcome == 'success'
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         env:
           COMPILE_OUTCOME: ${{ steps.gate_compile_regression.outcome }}
