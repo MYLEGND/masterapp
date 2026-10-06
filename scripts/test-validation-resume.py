@@ -587,10 +587,14 @@ class ValidationResumePlannerTests(unittest.TestCase):
             "meta-regressions",
             "booking-regressions",
             "crm-regressions",
-            "release-web-contracts",
         ):
             self.assertEqual(("compile-regression",), gates[key]["consumes"], key)
             self.assertNotIn("requires", gates[key], key)
+        self.assertEqual(
+            ("compile-regression", "domain-release"),
+            gates["release-web-contracts"]["consumes"],
+        )
+        self.assertNotIn("requires", gates["release-web-contracts"])
 
     def test_successful_parent_is_complete_gate_proof_without_plan_artifact_download(self):
         workflow = "masterapp-platform-architecture-validation.yml"
