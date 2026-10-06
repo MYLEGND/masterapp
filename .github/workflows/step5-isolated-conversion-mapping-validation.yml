@@ -266,8 +266,14 @@ jobs:
           PYGRAPH
           }
 
+          if [ "$resolved" != "true" ] && graphql_parent_success; then
+            resolved=true
+          fi
+
           if [ "$resolved" != "true" ]; then
-            # REST evidence remains the canonical rich proof path. If the shared
+            # REST evidence remains the canonical rich proof path for actual
+            # repair/full cases. Control-only heads prove dependency-equivalent
+            # parent success first and never spend the shared REST budget.
             # bucket is exhausted, a dependency-equivalent successful parent can
             # still be proven through the separate GraphQL check-rollup budget.
             for attempt in 1 2 3 4; do
