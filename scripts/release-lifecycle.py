@@ -659,13 +659,7 @@ def publish_trusted_validation_status(api, revision, state, detail):
     api.status(revision, state, descriptions[state] if not detail else detail)
 
 
-def candidate_validation(api, pr):
-    """Require every workflow selected by the canonical topology to be green.
-
-    Child-level preservation belongs to validation-resume.py. Lifecycle never
-    reinterprets a failed parent workflow, carries a second step list, or accepts
-    partial validation as merge-ready.
-    """
+def _candidate_validation_snapshot(api, pr):
     head = pr['head']['sha']
     runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
     latest = {}
@@ -680,17 +674,53 @@ def candidate_validation(api, pr):
 
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row['filename'] for row in files if row.get('filename')]
-    required = VALIDATION_AUTHORITY.required_validation_topology(names)['required']
+    required = tuple(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
 
-    failed = [
-        path for path in required
-        if path not in latest
-        or latest[path].get('status') != 'completed'
-        or latest[path].get('conclusion') != 'success'
-    ]
-    if not failed:
-        return None
-    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed))
+    missing = []
+    active = []
+    failed = []
+    for path in required:
+        run = latest.get(path)
+        if run is None:
+            missing.append(path)
+        elif run.get('status') != 'completed':
+            active.append(path)
+        elif run.get('conclusion') != 'success':
+            failed.append(path)
+    return {
+        'required': required,
+        'missing': missing,
+        'active': active,
+        'failed': failed,
+    }
+
+
+def candidate_validation(api, pr):
+    """Require exact-head validators, tolerating only provider observation lag.
+
+    Validators own their own child-level resume. Lifecycle never reruns them here.
+    GitHub's cross-workflow run inventory is eventually consistent, so a completed
+    validator may be temporarily absent or still appear active after its check-run
+    has already closed. Retry only this read boundary; a real completed failure is
+    returned immediately and remains blocking.
+    """
+    state = None
+    for attempt in range(4):
+        state = _candidate_validation_snapshot(api, pr)
+        if not state['missing'] and not state['active'] and not state['failed']:
+            return None
+        if state['failed']:
+            break
+        if attempt < 3:
+            time.sleep((attempt + 1) * 5)
+
+    unresolved = sorted(set(
+        (state or {}).get('missing', ())
+        + (state or {}).get('active', ())
+        + (state or {}).get('failed', ())
+    ))
+    return 'Awaiting successful exact-head validation: ' + ', '.join(unresolved)
+
 
 
 def automatic_release_targets(api, pr):
