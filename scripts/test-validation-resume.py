@@ -157,10 +157,13 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 event="pull_request",
                 resume_cache=None,
             )
-            with patch.object(m, "prior_evidence", side_effect=error), \
+            with patch.object(m, "prior_evidence", side_effect=error) as lookup, \
+                 patch.object(m.time, "sleep") as sleeper, \
                  self.assertRaises(SystemExit) as stopped:
                 m.cmd_plan(args)
             self.assertEqual(1, stopped.exception.code)
+            self.assertEqual(4, lookup.call_count)
+            self.assertEqual(3, sleeper.call_count)
             plan = m.json.loads(Path(args.output).read_text())
         self.assertEqual("blocked", plan["mode"])
         self.assertEqual("planner_unavailable_resume_planning_only", plan["reason"])
