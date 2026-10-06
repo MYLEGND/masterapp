@@ -1768,40 +1768,58 @@ class CandidateValidation(unittest.TestCase):
         self.assertIsNone(m.candidate_validation(api, pr))
 
     def test_validation_readiness_retries_observation_only_until_green(self):
-        pr, _ = self.pr(["AgentPortal/Program.cs"])
-        pending = {
-            "required": (".github/workflows/masterapp-platform-architecture-validation.yml",),
-            "missing": [".github/workflows/masterapp-platform-architecture-validation.yml"],
-            "active": [],
-            "failed": [],
-        }
-        green = {
-            "required": pending["required"],
-            "missing": [],
-            "active": [],
-            "failed": [],
-        }
-        with patch.object(m, "_candidate_validation_snapshot", side_effect=[pending, pending, green]) as snapshot, \
+        pr, files = self.pr(["AgentPortal/Program.cs"])
+        api = Api()
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        required = (
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/approved-release-security-validation.yml",
+        )
+        green = [
+            {
+                "id": index,
+                "head_sha": "b" * 40,
+                "event": "pull_request",
+                "created_at": str(index),
+                "path": path,
+                "status": "completed",
+                "conclusion": "success",
+            }
+            for index, path in enumerate(required, 1)
+        ]
+        original_pages = api.pages
+        observations = iter([[], [], green])
+
+        def pages(path, key=None):
+            if path == "actions/runs?head_sha=" + "b" * 40:
+                return next(observations)
+            return original_pages(path, key)
+
+        with patch.object(api, "pages", side_effect=pages) as lookup, \
              patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
              patch.object(m.time, "sleep") as sleeper:
-            self.assertIsNone(m.candidate_validation(Api(), pr))
-        self.assertEqual(3, snapshot.call_count)
+            self.assertIsNone(m.candidate_validation(api, pr))
+        self.assertGreaterEqual(lookup.call_count, 5)
         self.assertEqual([5, 10], [row.args[0] for row in sleeper.call_args_list])
 
     def test_validation_readiness_never_retries_completed_failure(self):
-        pr, _ = self.pr(["AgentPortal/Program.cs"])
-        failed = {
-            "required": (".github/workflows/masterapp-platform-architecture-validation.yml",),
-            "missing": [],
-            "active": [],
-            "failed": [".github/workflows/masterapp-platform-architecture-validation.yml"],
-        }
-        with patch.object(m, "_candidate_validation_snapshot", return_value=failed) as snapshot, \
-             patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
+        pr, files = self.pr(["AgentPortal/Program.cs"])
+        api = Api()
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        api.pages_map["actions/runs?head_sha=" + "b" * 40] = [{
+            "id": 1,
+            "head_sha": "b" * 40,
+            "event": "pull_request",
+            "created_at": "1",
+            "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+            "status": "completed",
+            "conclusion": "failure",
+        }]
+        with patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
              patch.object(m.time, "sleep") as sleeper:
-            pending = m.candidate_validation(Api(), pr)
+            pending = m.candidate_validation(api, pr)
         self.assertIn("architecture", pending)
-        snapshot.assert_called_once()
         sleeper.assert_not_called()
 
     def test_security_authority_change_requires_security_validator(self):
