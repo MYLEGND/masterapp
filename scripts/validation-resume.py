@@ -2324,27 +2324,111 @@ def _fresh_plan_when_evidence_unavailable(args, exc):
     return plan
 
 
+def _cached_success_evidence(args):
+    """Use one PR-local successful parent capsule before any remote history lookup.
+
+    The cache is only a pointer to a prior successful workflow execution. Git
+    ancestry plus the canonical gate execution/dependency contracts decide what
+    remains reusable on the current head; the cache can never turn changed inputs
+    into preserved proof.
+    """
+    raw = getattr(args, "resume_cache", None)
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    if (
+        data.get("schemaVersion") != 1
+        or data.get("workflow") != args.workflow
+        or not re.fullmatch(r"[0-9a-f]{40}", data.get("headSha") or "")
+        or type(data.get("runId")) is not int
+        or data["runId"] < 1
+    ):
+        raise ValueError("Malformed PR-local validation success cache")
+    prior_sha = data["headSha"]
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode:
+        raise ValueError("PR-local validation cache is not in the current candidate lineage")
+
+    steps = _StepEvidence()
+    for gate in WORKFLOWS[args.workflow]["gates"].values():
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": data["runId"],
+            "stepNumber": None,
+            "artifact": "pr-local-success-cache",
+        }
+    prior = {
+        "id": data["runId"],
+        "head_sha": prior_sha,
+        "run_attempt": 1,
+        "event": args.event,
+        "head_branch": args.head_branch,
+    }
+    return prior, steps, "pr_local_success_cache"
+
+
+def cmd_cache_success(args):
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.head_sha or ""):
+        raise SystemExit("Malformed validation success head")
+    if args.run_id < 1:
+        raise SystemExit("Malformed validation success run")
+    payload = {
+        "schemaVersion": 1,
+        "workflow": args.workflow,
+        "headSha": args.head_sha,
+        "runId": args.run_id,
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(payload, sort_keys=True))
+
+
 def cmd_plan(args):
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
     try:
-        prior, steps, source = prior_evidence(args)
-        if prior:
+        cached = _cached_success_evidence(args)
+        if cached is not None:
+            prior, steps, source = cached
             plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
             _stamp_evidence(plan, prior, source)
         else:
-            plan = compute_plan(
-                args.workflow,
-                args.current_sha,
-                None,
-                {},
-                [],
-                source,
-            )
-        plan = _apply_content_equivalent_evidence(args, plan)
+            prior, steps, source = prior_evidence(args)
+            if prior:
+                plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+                _stamp_evidence(plan, prior, source)
+            else:
+                plan = compute_plan(
+                    args.workflow,
+                    args.current_sha,
+                    None,
+                    {},
+                    [],
+                    source,
+                )
+            plan = _apply_content_equivalent_evidence(args, plan)
         plan["schemaVersion"] = 2
         plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
     except EvidenceLookupUnavailable as exc:
+        # Remote history is an optimization. A rate-limit or provider outage is
+        # not permission to erase known child proof and launch a broad rerun.
+        # When no PR-local success capsule exists, fail this planning boundary
+        # explicitly so the autonomous lifecycle can retry it without executing
+        # expensive children.
+        if getattr(args, "event", None) == "pull_request":
+            _stop_unresolved_planning(args, exc)
         plan = _fresh_plan_when_evidence_unavailable(args, exc)
     except Exception as exc:
         _stop_unresolved_planning(args, exc)
@@ -4748,7 +4832,15 @@ def build_parser():
     plan.add_argument("--event", required=True)
     plan.add_argument("--repository", required=True)
     plan.add_argument("--output", required=True)
+    plan.add_argument("--resume-cache")
     plan.set_defaults(func=cmd_plan)
+
+    cache_success = sub.add_parser("cache-success")
+    cache_success.add_argument("--workflow", required=True)
+    cache_success.add_argument("--head-sha", required=True)
+    cache_success.add_argument("--run-id", required=True, type=int)
+    cache_success.add_argument("--output", required=True)
+    cache_success.set_defaults(func=cmd_cache_success)
 
     preserved = sub.add_parser("preserved")
     preserved.add_argument("--plan", required=True)
