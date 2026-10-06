@@ -77,6 +77,7 @@ class DeploymentStatusUnavailable(DeploymentReconciliationRequired):
     """Azure deployment state could not be read within the bounded outage budget."""
 
 
+PUBLICATION_RECONCILE_TIMEOUT_SECONDS = 420
 FINALIZE_RECONCILE_TIMEOUT_SECONDS = 90
 FINALIZE_RECONCILE_ATTEMPTS = 3
 FINALIZE_RETRY_DELAY_SECONDS = 10
@@ -164,7 +165,7 @@ class Azure:
             return False
 
 
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True):
     started = clock()
     submitted = False
     baseline_ids = set()

@@ -289,7 +289,7 @@ jobs:
     needs: [discover-live, preserve-rollback]
     if: ${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     environment: Production
     env:
       GITHUB_TOKEN: ${{ github.token }}

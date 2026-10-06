@@ -929,6 +929,35 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('max_status_failures=1', deploy)
         self.assertNotIn('--reconcile-timeout-seconds', deploy)
 
+    def test_release_has_bounded_parallel_publication_and_no_alternate_entrypoints(self):
+        root=ROOT.parent
+        workflow=(root / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        deploy=(ROOT / 'deploy-approved-app.py').read_text()
+        diagnostics=(root / '.github/workflows/deployment-diagnostics.yml').read_text()
+        docs=(root / 'DEPLOYMENT.md').read_text()
+
+        self.assertIn('PUBLICATION_RECONCILE_TIMEOUT_SECONDS = 420', deploy)
+        self.assertIn('timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS', deploy)
+        self.assertIn('publish_prepared_targets_parallel', deploy)
+        self.assertIn('ThreadPoolExecutor', deploy)
+        release=workflow.split('\n  release:\n',1)[1].split('\n  release-state-receipt:',1)[0]
+        self.assertIn('timeout-minutes: 30', release)
+        self.assertIn('--publish-prepared-parallel', release)
+        self.assertEqual(1, workflow.count('--finalize-only --transaction-plan /tmp/release-transaction.json'))
+
+        self.assertFalse((root / 'deploy-portal.sh').exists())
+        self.assertFalse((root / '.claude/settings.local.json').exists())
+        self.assertFalse((root / 'AgentPortal/deploy-live-zipdeploy.json').exists())
+
+        for token in (
+            'list-publishing-credentials', '/api/vfs/', '/api/command',
+            'webapp restart', 'webapp deploy', 'appsettings set',
+            'connection-string set', 'zipdeploy',
+        ):
+            self.assertNotIn(token, diagnostics)
+        self.assertIn('sole production deployment authority', docs)
+        self.assertIn('legend/approved-changes', docs)
+
     def test_terminal_children_wake_only_the_protected_lifecycle(self):
         architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
         direct=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
