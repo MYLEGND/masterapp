@@ -5141,6 +5141,29 @@ function escapeHtml(value) {
     return `${endpoints.metaConnect}?${params.toString()}`;
   }
 
+  const externalMarketingProviderControls = {
+    google: {
+      connect: 'marketing-setup-google-connect',
+      status: 'marketing-setup-google-status',
+      account: 'marketing-setup-google-account',
+      loadAccounts: 'marketing-setup-google-load-accounts',
+      disconnect: 'marketing-setup-google-disconnect',
+      picker: 'marketing-setup-google-account-picker',
+      select: 'marketing-setup-google-account-select',
+      selectAccount: 'marketing-setup-google-select-account'
+    },
+    tiktok: {
+      connect: 'marketing-setup-tiktok-connect',
+      status: 'marketing-setup-tiktok-status',
+      account: 'marketing-setup-tiktok-account',
+      loadAccounts: 'marketing-setup-tiktok-load-accounts',
+      disconnect: 'marketing-setup-tiktok-disconnect',
+      picker: 'marketing-setup-tiktok-account-picker',
+      select: 'marketing-setup-tiktok-account-select',
+      selectAccount: 'marketing-setup-tiktok-select-account'
+    }
+  };
+
   function marketingSetupExternalConnectUrl(provider, profileId) {
     const params = new URLSearchParams();
     params.set('provider', provider);
@@ -5249,12 +5272,14 @@ function escapeHtml(value) {
 
     function renderExternalProvider(provider, connection) {
       const label = provider === 'google' ? 'Google Ads' : 'TikTok Ads';
-      const statusEl = document.getElementById(`marketing-setup-${provider}-status`);
-      const accountEl = document.getElementById(`marketing-setup-${provider}-account`);
-      const connectEl = document.getElementById(`marketing-setup-${provider}-connect`);
-      const loadEl = document.getElementById(`marketing-setup-${provider}-load-accounts`);
-      const disconnectEl = document.getElementById(`marketing-setup-${provider}-disconnect`);
-      const picker = document.getElementById(`marketing-setup-${provider}-account-picker`);
+      const ids = externalMarketingProviderControls[provider];
+      if (!ids) return;
+      const statusEl = document.getElementById(ids.status);
+      const accountEl = document.getElementById(ids.account);
+      const connectEl = document.getElementById(ids.connect);
+      const loadEl = document.getElementById(ids.loadAccounts);
+      const disconnectEl = document.getElementById(ids.disconnect);
+      const picker = document.getElementById(ids.picker);
 
       if (statusEl) {
         statusEl.textContent = connection.ready
@@ -5524,8 +5549,10 @@ function escapeHtml(value) {
 
   async function loadExternalProviderAccounts(provider) {
     if (!requireMarketingOwner()) return;
-    const picker = document.getElementById(`marketing-setup-${provider}-account-picker`);
-    const select = document.getElementById(`marketing-setup-${provider}-account-select`);
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const picker = document.getElementById(ids.picker);
+    const select = document.getElementById(ids.select);
     if (!select) return;
     const params = { provider };
     if (!isBusinessAnalytics) params.agentProfileId = marketingSetupAgentProfileId() || '';
@@ -5552,7 +5579,9 @@ function escapeHtml(value) {
 
   async function selectExternalProviderAccount(provider) {
     if (!requireMarketingOwner()) return;
-    const select = document.getElementById(`marketing-setup-${provider}-account-select`);
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const select = document.getElementById(ids.select);
     const accountId = (select?.value || '').trim();
     if (!accountId) {
       setMarketingSetupStatus('Choose an authorized advertiser account.', 'error');
@@ -5585,13 +5614,14 @@ function escapeHtml(value) {
   }
 
   ['google', 'tiktok'].forEach(provider => {
-    document.getElementById(`marketing-setup-${provider}-load-accounts`)?.addEventListener('click', () => {
+    const ids = externalMarketingProviderControls[provider];
+    document.getElementById(ids.loadAccounts)?.addEventListener('click', () => {
       void loadExternalProviderAccounts(provider);
     });
-    document.getElementById(`marketing-setup-${provider}-select-account`)?.addEventListener('click', () => {
+    document.getElementById(ids.selectAccount)?.addEventListener('click', () => {
       void selectExternalProviderAccount(provider);
     });
-    document.getElementById(`marketing-setup-${provider}-disconnect`)?.addEventListener('click', () => {
+    document.getElementById(ids.disconnect)?.addEventListener('click', () => {
       void disconnectExternalProvider(provider);
     });
   });
