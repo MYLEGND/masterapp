@@ -514,8 +514,7 @@ public sealed class MarketingExternalAdsOAuthService(
         System.Net.HttpStatusCode status,
         string responseBody)
     {
-        var detail = responseBody.Length > 400 ? responseBody[..400] : responseBody;
-        return new InvalidOperationException($"{message} HTTP {(int)status}. Provider response: {detail}");
+        return new InvalidOperationException($"{message} HTTP {(int)status}.");
     }
 
     private static string? Clean(string? value)
