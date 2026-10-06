@@ -4647,39 +4647,50 @@ _READONLY_FIXTURE_HELPER = re.compile(
 def _step5_isolated_test_source(source):
     """Admit only standalone test classes, never arbitrary C# dependency guesses.
 
-    Exported helpers, inherited/partial fixtures, extension types, static state
-    and shared registrations require full-suite proof. Private static helper
-    methods remain class-local and are safe for bounded class repair as long as
-    no static state or exported helper is present. This checks structural
-    isolation; it does not purport to infer arbitrary C# runtime side effects.
+    Structural decisions are anchored to declaration starts so comments and
+    assertion strings cannot masquerade as C# members. Exported helpers,
+    inherited/partial fixtures, extension types, static state and shared
+    registrations require full-suite proof. Private static helper methods remain
+    class-local and are safe for bounded class repair.
     """
     source = _READONLY_FIXTURE_HELPER.sub("", source)
-    if len(re.findall(r"\bclass\s+\w+", source)) != 1:
+    declaration = r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed|partial|abstract|static)\s+)*class\s+\w+"
+    if len(re.findall(declaration, source)) != 1:
         return False
-    if re.search(r"\[Collection(?:\(|Attribute)|\b(?:partial|abstract|static)\s+class|\bclass\s+\w+\s*[:<]|\b(?:record|struct|interface|enum|delegate)\s+\w+|\[\s*(?:assembly|module)\s*:|\bglobal\s+using|ModuleInitializer|CollectionDefinition|ICollectionFixture", source):
+    if (
+        re.search(r"(?m)^[ \t]*\[Collection(?:\(|Attribute)", source)
+        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed)\s+)*(?:partial|abstract|static)\s+class\b", source)
+        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:(?:sealed)\s+)*class\s+\w+\s*[:<]", source)
+        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?(?:record|struct|interface|enum|delegate)\s+\w+", source)
+        or re.search(r"(?m)^[ \t]*\[\s*(?:assembly|module)\s*:", source)
+        or re.search(r"(?m)^[ \t]*global\s+using\b", source)
+        or re.search(r"(?m)^[ \t]*\[(?:[^\]]*\b)?(?:ModuleInitializer|CollectionDefinition)\b", source)
+        or re.search(r"(?m)^[ \t]*(?:(?:public|internal|private|protected)\s+)?class\s+\w+[^\n]*\bICollectionFixture\b", source)
+    ):
         return False
 
-    # Reject every static construct except a private static method declaration.
-    # That preserves the real hazard boundary (shared/static state) without
-    # forcing a full suite for deterministic class-local source-reading helpers.
-    for marker in re.finditer(r"\bstatic\b", source):
-        tail = source[marker.start():]
-        line_start = source.rfind("\n", 0, marker.start()) + 1
-        prefix = source[line_start:marker.start()]
+    # Reject static declarations except private static methods. Anchoring to the
+    # declaration line avoids false positives from comments or string literals.
+    for marker in re.finditer(
+        r"(?m)^[ \t]*(?P<prefix>(?:(?:public|internal|private|protected)\s+)?)static\b",
+        source,
+    ):
+        tail = source[marker.start():].lstrip()
         private_method = (
-            re.search(r"\bprivate\s*$", prefix) is not None
+            marker.group("prefix").strip() == "private"
             and re.match(
-                r"static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
+                r"private\s+static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
                 tail,
             ) is not None
         )
         if not private_method:
             return False
 
-    # Every exported member must be a test method; constructors, public fixture
-    # data, properties and shared helper methods are intentionally not eligible.
-    for visibility in re.finditer(r"\b(?:public|internal|protected)\b", source):
-        tail = source[visibility.start():]
+    # Every exported declaration must be either the one class declaration or an
+    # attributed test method. Comments containing words such as "public" are
+    # intentionally invisible to this declaration-anchored scan.
+    for visibility in re.finditer(r"(?m)^[ \t]*(?:public|internal|protected)\b", source):
+        tail = source[visibility.start():].lstrip()
         if re.match(r"(?:public|internal)\s+(?:sealed\s+)?class\s+", tail):
             continue
         prefix = source[:visibility.start()]
@@ -4688,7 +4699,7 @@ def _step5_isolated_test_source(source):
             return False
         if not re.match(r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(", tail):
             return False
-    return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", source))
+    return bool(re.search(r"(?m)^[ \t]*\[(?:Fact|Theory)(?:\]|\()", source))
 
 
 def _step5_extension_method_names(source):
