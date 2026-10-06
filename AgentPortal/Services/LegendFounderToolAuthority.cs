@@ -6,6 +6,7 @@ using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.DependencyInjection;
+using Shared.Analytics;
 
 namespace AgentPortal.Services;
 
@@ -165,6 +166,7 @@ internal sealed partial class LegendFounderToolAuthority
         IsSiteReadableTool(name) &&
         name is not (
             "legend_metric_detail" or
+            "legend_growth_operator" or
             "legend_search_retained_knowledge" or
             "legend_operational_diagnostics" or
             "legend_research_internet" or
@@ -176,7 +178,8 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_engineering_bootstrap" or
             "legend_engineering_complete_turn" or
             "legend_engineering_renew_turn" or
-            "legend_prepare_software_repair";
+            "legend_prepare_software_repair" or
+            "legend_propose_ad_change";
 
     private static bool IsSiteReadableTool(string name) =>
         IsReadOnlyFounderTool(name) && name is
@@ -195,7 +198,8 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_verify_repair_deployment" or
             "legend_system_overview" or
             "legend_provider_capacity" or
-            "legend_client_lead_portfolio";
+            "legend_client_lead_portfolio" or
+            "legend_growth_operator";
 
 
     // A read-only status grouping can still contain arbitrary private text.
@@ -247,6 +251,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_growth_operator" or
             "legend_read_masterapp" or
             "legend_language_state";
 
@@ -1572,6 +1577,130 @@ internal sealed partial class LegendFounderToolAuthority
                 return SerializeUnbounded(result);
             }
 
+            case "legend_growth_operator":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"growth_operator_unavailable"}""";
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                if (!TryResolveMarketingScope(arguments.RootElement, out var owner, out var analyticsScope, out var ownerError))
+                    return JsonSerializer.Serialize(new { ok = false, error = ownerError }, JsonOptions);
+
+                var operation = ReadRequiredString(arguments.RootElement, "operation");
+                var preset = ReadRequiredString(arguments.RootElement, "preset");
+                var goal = ReadOptionalString(arguments.RootElement, "goal");
+                var take = ReadRequiredInt(arguments.RootElement, "take");
+                if (operation is not ("growth_context" or "growth_plan" or "lead_priority") ||
+                    preset is not ("today" or "7d" or "30d" or "90d") ||
+                    take is < 1 or > 100)
+                    return """{"ok":false,"error":"growth_operator_arguments_invalid"}""";
+
+                var range = TimeRangeRequest.FromPreset(preset, qualityMode: TrafficQualityMode.AllTraffic);
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var manager = scope.ServiceProvider.GetRequiredService<Infrastructure.Analytics.IMarketingManagerService>();
+
+                if (operation == "lead_priority")
+                    return SerializeUnbounded(await manager.PrioritizeLeadsAsync(
+                        owner, analyticsScope, range, take, cancellationToken));
+
+                var plan = await manager.PlanAsync(
+                    owner,
+                    analyticsScope,
+                    range,
+                    new MarketingManagerGoalRequest(
+                        string.IsNullOrWhiteSpace(goal)
+                            ? "Assess current revenue growth and identify the highest-confidence next actions."
+                            : goal,
+                        Notes: "Founder Growth Operator canonical tool"),
+                    cancellationToken);
+
+                return operation == "growth_context"
+                    ? SerializeUnbounded(new
+                    {
+                        plan.Owner,
+                        plan.GeneratedUtc,
+                        plan.Evidence,
+                        plan.Advertising,
+                        plan.ChannelPerformance,
+                        plan.Guardrails,
+                        plan.AnalyticsContext
+                    })
+                    : SerializeUnbounded(plan);
+            }
+
+            case "legend_propose_ad_change":
+            {
+                if (_authorizationScopes is null)
+                    return """{"ok":false,"error":"growth_operator_unavailable"}""";
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var root = arguments.RootElement;
+                if (!TryResolveMarketingScope(root, out var owner, out _, out var ownerError))
+                    return JsonSerializer.Serialize(new { ok = false, error = ownerError }, JsonOptions);
+
+                var changeType = ReadRequiredString(root, "change_type");
+                var actorUserId = founder.Claims
+                    .FirstOrDefault(value =>
+                        value.Type.EndsWith("/objectidentifier", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(value.Type, "oid", StringComparison.OrdinalIgnoreCase))
+                    ?.Value ?? founder.Identity?.Name ?? "founder";
+
+                await using var scope = _authorizationScopes.CreateAsyncScope();
+                var advertising = scope.ServiceProvider.GetRequiredService<Infrastructure.Analytics.IAdvertisingCommandCenterService>();
+
+                if (changeType == "promotion")
+                {
+                    var sourceKind = ReadOptionalString(root, "source_kind");
+                    var dailyBudget = ReadOptionalInt64(root, "daily_budget_micros");
+                    if (string.IsNullOrWhiteSpace(sourceKind) || dailyBudget is null or <= 0)
+                        return """{"ok":false,"error":"promotion_arguments_invalid"}""";
+                    return SerializeUnbounded(await advertising.ProposePromotionAsync(
+                        owner,
+                        new PromotionProposalRequest(
+                            sourceKind,
+                            ReadOptionalString(root, "source_id"),
+                            ReadOptionalString(root, "page_path"),
+                            ReadOptionalString(root, "goal"),
+                            dailyBudget.Value),
+                        actorUserId,
+                        cancellationToken));
+                }
+
+                var campaignId = ReadOptionalString(root, "campaign_id");
+                var campaignName = ReadOptionalString(root, "campaign_name");
+                if (string.IsNullOrWhiteSpace(campaignId) || string.IsNullOrWhiteSpace(campaignName))
+                    return """{"ok":false,"error":"campaign_arguments_invalid"}""";
+
+                if (changeType == "campaign_status")
+                {
+                    var status = ReadOptionalString(root, "status");
+                    if (string.IsNullOrWhiteSpace(status))
+                        return """{"ok":false,"error":"campaign_status_required"}""";
+                    return SerializeUnbounded(await advertising.ProposeCampaignStatusAsync(
+                        owner,
+                        new Infrastructure.Analytics.AdvertisingCampaignStatusProposalRequest(
+                            campaignId, campaignName, status),
+                        actorUserId,
+                        cancellationToken));
+                }
+
+                if (changeType == "campaign_budget")
+                {
+                    var daily = ReadOptionalInt64(root, "daily_budget_micros");
+                    var lifetime = ReadOptionalInt64(root, "lifetime_budget_micros");
+                    if (daily is null && lifetime is null)
+                        return """{"ok":false,"error":"campaign_budget_required"}""";
+                    return SerializeUnbounded(await advertising.ProposeCampaignBudgetAsync(
+                        owner,
+                        new Infrastructure.Analytics.AdvertisingCampaignBudgetProposalRequest(
+                            campaignId, campaignName, new OpenAiAdsBudget(daily, lifetime)),
+                        actorUserId,
+                        cancellationToken));
+                }
+
+                return """{"ok":false,"error":"unsupported_ad_change"}""";
+            }
+
             case "legend_metric_detail":
             {
                 using var arguments =
@@ -1634,6 +1763,64 @@ internal sealed partial class LegendFounderToolAuthority
             default:
                 return """{"error":"unknown_founder_tool"}""";
         }
+    }
+
+    private static bool TryResolveMarketingScope(
+        JsonElement root,
+        out MarketingOwnerScope owner,
+        out ScopeContext analyticsScope,
+        out string error)
+    {
+        owner = MarketingOwnerScope.Founder;
+        analyticsScope = ScopeContext.Global;
+        error = "marketing_owner_invalid";
+        var ownerType = ReadRequiredString(root, "owner_type");
+        var ownerId = ReadOptionalString(root, "owner_id");
+
+        if (ownerType == "founder")
+        {
+            if (!string.IsNullOrWhiteSpace(ownerId))
+            {
+                error = "founder_owner_id_must_be_null";
+                return false;
+            }
+            error = "";
+            return true;
+        }
+
+        if (!Guid.TryParse(ownerId, out var id) || id == Guid.Empty)
+        {
+            error = "marketing_owner_id_required";
+            return false;
+        }
+
+        if (ownerType == "agent")
+        {
+            owner = MarketingOwnerScope.Agent(id);
+            analyticsScope = ScopeContext.ForAgent(id);
+            error = "";
+            return true;
+        }
+
+        if (ownerType == "business")
+        {
+            owner = MarketingOwnerScope.Business(id);
+            analyticsScope = ScopeContext.ForBusiness(id);
+            error = "";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static long? ReadOptionalInt64(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+            return null;
+        return property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var value)
+            ? value
+            : null;
     }
 
     private async Task<string?> TryConsumeMutationAuthorizationAsync(
@@ -2575,6 +2762,96 @@ internal sealed partial class LegendFounderToolAuthority
                         }
                     },
                     required = new[] { "language", "pair" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_growth_operator",
+                description =
+                    "Read one canonical owner-scoped growth context, Marketing Manager plan, or outcome-calibrated CRM lead-priority projection. This wraps existing analytics, CRM, economics and advertising authorities; it creates no parallel truth and performs no mutation.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new
+                        {
+                            type = "string",
+                            @enum = new[] { "growth_context", "growth_plan", "lead_priority" }
+                        },
+                        owner_type = new
+                        {
+                            type = "string",
+                            @enum = new[] { "founder", "agent", "business" }
+                        },
+                        owner_id = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 36,
+                            description = "Exact server-authorized agent tracking profile ID or commerce business ID. Must be null for founder aggregate context."
+                        },
+                        preset = new
+                        {
+                            type = "string",
+                            @enum = new[] { "today", "7d", "30d", "90d" }
+                        },
+                        goal = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 1000
+                        },
+                        take = new
+                        {
+                            type = "integer",
+                            minimum = 1,
+                            maximum = 100
+                        }
+                    },
+                    required = new[] { "operation", "owner_type", "owner_id", "preset", "goal", "take" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_propose_ad_change",
+                description =
+                    "Create an exact reviewable ChatGPT Ads proposal through the existing Advertising Command Center authorization ledger. This never approves or executes spend. The authenticated Founder must explicitly command this mutation.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        change_type = new
+                        {
+                            type = "string",
+                            @enum = new[] { "promotion", "campaign_status", "campaign_budget" }
+                        },
+                        owner_type = new
+                        {
+                            type = "string",
+                            @enum = new[] { "founder", "agent", "business" }
+                        },
+                        owner_id = new { type = new[] { "string", "null" }, maxLength = 36 },
+                        source_kind = new { type = new[] { "string", "null" }, maxLength = 40 },
+                        source_id = new { type = new[] { "string", "null" }, maxLength = 200 },
+                        page_path = new { type = new[] { "string", "null" }, maxLength = 500 },
+                        goal = new { type = new[] { "string", "null" }, maxLength = 1000 },
+                        campaign_id = new { type = new[] { "string", "null" }, maxLength = 200 },
+                        campaign_name = new { type = new[] { "string", "null" }, maxLength = 300 },
+                        status = new { type = new[] { "string", "null" }, maxLength = 40 },
+                        daily_budget_micros = new { type = new[] { "integer", "null" }, minimum = 1L },
+                        lifetime_budget_micros = new { type = new[] { "integer", "null" }, minimum = 1L }
+                    },
+                    required = new[]
+                    {
+                        "change_type", "owner_type", "owner_id", "source_kind", "source_id", "page_path",
+                        "goal", "campaign_id", "campaign_name", "status", "daily_budget_micros", "lifetime_budget_micros"
+                    },
                     additionalProperties = false
                 },
                 strict = true
