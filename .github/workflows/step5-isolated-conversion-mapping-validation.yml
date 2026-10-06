@@ -456,14 +456,14 @@ jobs:
       always() &&
       needs.plan.result == 'success' &&
       (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
-        (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')) ||
+        (needs.plan.outputs.baseline_run_required != 'true' || needs.baseline.result == 'success')) ||
        (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
        (needs.plan.outputs.mode == 'full' &&
         needs.plan.outputs.comparison_run == 'true' &&
         needs.candidate.result == 'success' &&
         (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - name: Load exact current candidate results
         if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
@@ -524,8 +524,19 @@ jobs:
           run-id: ${{ needs.plan.outputs.prior_run_id }}
           github-token: ${{ github.token }}
 
+      - name: Load freshly required approved baseline results
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.baseline_run_required == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: step5-baseline-${{ github.event.pull_request.base.sha }}
+          path: /tmp/step5-prior-baseline
+
       - name: Load independently proven approved baseline results
-        if: needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse'
+        if: >-
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          needs.plan.outputs.baseline_run_required != 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.plan.outputs.baseline_evidence_artifact }}
