@@ -33,16 +33,11 @@ jobs:
             --event "${{ github.event_name }}" \
             --output "$RUNNER_TEMP/approved-head-preflight.json"
 
-  validate:
+  validation_plan:
     needs: approved-head-preflight
-    name: approved-release-security
+    name: security-validation-plan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
-      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
-      MSBUILDDISABLENODEREUSE: '1'
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,18 +71,38 @@ jobs:
             --repository "${{ github.repository }}" \
             --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
-          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
-          import json, sys
-          data=json.load(open(sys.argv[1]))
-          running={key for key,row in data.get('gates',{}).items() if row.get('run')}
-          dotnet={'restore','build','db-validation','vulnerabilities'}
-          with open(sys.argv[2],'a') as output:
-              output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
-              output.write('all_preserved='+str(not running).lower()+'\n')
-          PYPLAN
 
+      - name: Preserve exact security validation plan for DAG lanes
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  security_database:
+    needs: validation_plan
+    name: security-database-chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - uses: actions/setup-dotnet@v4
-        if: steps.plan.outputs.dotnet == 'true'
         with:
           dotnet-version: '10.x'
 
@@ -127,6 +142,57 @@ jobs:
           printf '%s\n' "$changed_migration_inputs"
           ./scripts/db.sh validate-artifacts
 
+  security_vulnerabilities:
+    needs: validation_plan
+    name: security-vulnerability-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Audit dependency vulnerabilities
+        id: gate_vulnerabilities
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
+          dotnet restore MASTERAPP.sln
+          set -o pipefail
+          dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
+          if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
+            echo "::error::Vulnerable NuGet packages detected."
+            exit 1
+          fi
+
+  security_no_skips:
+    needs: validation_plan
+    name: security-no-skips
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Reject skipped security tests
         id: gate_no_skips
         shell: bash
@@ -142,18 +208,22 @@ jobs:
             exit 1
           fi
 
-      - name: Audit dependency vulnerabilities
-        id: gate_vulnerabilities
-        shell: bash
-        run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
-          set -o pipefail
-          dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
-          if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
-            echo "::error::Vulnerable NuGet packages detected."
-            exit 1
-          fi
-
+  security_secret_scan:
+    needs: validation_plan
+    name: security-secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Scan committed configuration for secrets
         id: gate_secret_scan
         shell: bash
@@ -169,6 +239,22 @@ jobs:
             exit 1
           fi
 
+  security_composition:
+    needs: validation_plan
+    name: security-composition
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Verify shared composition authorities
         id: gate_composition
         shell: bash
@@ -202,6 +288,22 @@ jobs:
             exit 1
           fi
 
+  security_keyring:
+    needs: validation_plan
+    name: security-keyring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Reject inline Azure key-ring wiring
         id: gate_keyring
         shell: bash
@@ -213,6 +315,22 @@ jobs:
             exit 1
           fi
 
+  security_diff_check:
+    needs: validation_plan
+    name: security-diff-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Verify patch whitespace integrity
         id: gate_diff_check
         shell: bash
@@ -220,11 +338,34 @@ jobs:
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
           git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
+  security_evidence:
+    needs:
+      - validation_plan
+      - security_database
+      - security_vulnerabilities
+      - security_no_skips
+      - security_secret_scan
+      - security_composition
+      - security_keyring
+      - security_diff_check
+    if: always() && needs.validation_plan.result == 'success'
+    name: approved-release-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - name: Record canonical child execution evidence
-        if: always() && steps.plan.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
@@ -232,19 +373,17 @@ jobs:
             --repository "${{ github.repository }}" \
             --run-id "${{ github.run_id }}" \
             --cache-output /tmp/validation-resume-cache/validation-resume.json
-
       - name: Preserve exact validation resume plan
-        if: always() && steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: validation-resume-security-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/validation-resume.json
           retention-days: 30
           if-no-files-found: error
-
+          overwrite: true
       - name: Check PR-local validation gate cache readiness
         id: gatecache
-        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
           if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
@@ -252,9 +391,8 @@ jobs:
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Save PR-local validation gate evidence
-        if: always() && steps.gatecache.outputs.ready == 'true'
+        if: steps.gatecache.outputs.ready == 'true'
         uses: actions/cache/save@v4
         with:
           path: /tmp/validation-resume-cache
