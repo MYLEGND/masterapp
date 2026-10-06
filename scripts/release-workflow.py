@@ -66,10 +66,10 @@ def target_steps(targets):
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
-              raise SystemExit(f'Missing parallel publication result for {key}')
+              raise SystemExit(f'Missing parallel publication result for {{key}}')
           result=json.loads(path.read_text())
           if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+              raise SystemExit(f'Canonical target publication did not succeed: {{key}}')
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 ''')
