@@ -77,6 +77,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Restore PR-local validation gate evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            validation-resume-architecture-pr-${{ github.event.pull_request.number }}-
+
       - name: Plan exact validation resume
         id: plan
         shell: bash
@@ -92,6 +101,7 @@ jobs:
             --head-branch "${{ github.head_ref || github.ref_name }}" \
             --event "${{ github.event_name }}" \
             --repository "${{ github.repository }}" \
+            --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
           python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
           import json, sys
@@ -123,6 +133,7 @@ jobs:
           node-version: '24'
 
       - name: Run branch lifecycle safety contracts
+        id: gate_lifecycle
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
@@ -135,36 +146,42 @@ jobs:
           node --test scripts/release-artifacts/test-transport.cjs
 
       - name: Run authenticated mobile authority tests
+        id: gate_mobile
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate mobile; then exit 0; fi
           node --test tests/layout/modal-content-region.test.mjs tests/layout/app-navigation-contract.test.mjs
 
       - name: Restore .NET graph
+        id: gate_restore_dotnet
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore-dotnet; then exit 0; fi
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
       - name: Build shared infrastructure
+        id: gate_build_infrastructure
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-infrastructure; then exit 0; fi
           dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore
 
       - name: Build AgentPortal and ClientApp hosts
+        id: gate_build_hosts
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-hosts; then exit 0; fi
           dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore
           dotnet build ClientApp/ClientApp.csproj -c Release --no-restore
 
       - name: Build Protect host
+        id: gate_build_protect
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-protect; then exit 0; fi
           dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
 
       - name: Verify Protect serves the exact shared tracking assets
+        id: gate_tracking_assets
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate tracking-assets; then exit 0; fi
           dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore -o "$RUNNER_TEMP/protect-authority-publish"
@@ -173,6 +190,7 @@ jobs:
           cmp SHARED/WebsitePlatform/openai-measurement.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/openai-measurement.js"
 
       - name: Install shared website renderer dependencies
+        id: gate_renderer_install
         working-directory: Legend-Website
         shell: bash
         run: |
@@ -182,6 +200,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Build shared website renderer
+        id: gate_renderer_build
         working-directory: Legend-Website
         shell: bash
         run: |
@@ -194,6 +213,7 @@ jobs:
           npm run build
 
       - name: Verify renderer authority parity
+        id: gate_renderer_parity
         working-directory: Legend-Website
         shell: bash
         run: |
@@ -201,6 +221,7 @@ jobs:
           npm run check
 
       - name: Run business renderer tests with approved-baseline no-regression proof
+        id: gate_renderer_tests
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-tests; then exit 0; fi
@@ -226,6 +247,7 @@ jobs:
           echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
+        id: gate_cms_install
         working-directory: tests/website
         shell: bash
         run: |
@@ -233,6 +255,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Run canonical shared CMS tests
+        id: gate_cms_tests
         working-directory: tests/website
         shell: bash
         run: |
@@ -240,12 +263,14 @@ jobs:
           npm test
 
       - name: Compile full regression test project
+        id: gate_compile_regression
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then exit 0; fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Run Founder diagnostics and safe GPT Codex regressions
+        id: gate_founder_diagnostics_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
@@ -253,12 +278,14 @@ jobs:
             --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
 
       - name: Compile shared domain release refresh
+        id: gate_domain_release
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release; then exit 0; fi
           dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
 
       - name: Run website ownership and publishing regressions
+        id: gate_website_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
@@ -266,6 +293,7 @@ jobs:
             --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
 
       - name: Run Meta authority regressions
+        id: gate_meta_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
@@ -273,6 +301,7 @@ jobs:
             --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
 
       - name: Run booking authority regressions
+        id: gate_booking_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
@@ -280,6 +309,7 @@ jobs:
             --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
 
       - name: Run CRM outcome regressions
+        id: gate_crm_regressions
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
@@ -287,12 +317,14 @@ jobs:
             --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
 
       - name: Run canonical form tracking tests
+        id: gate_form_tracking
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
           node --test tests/analytics/form-tracker.test.cjs
 
       - name: Run release web contract regressions
+        id: gate_release_web_contracts
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
@@ -317,6 +349,7 @@ jobs:
           python3 scripts/test-sync-published-checkout.py
 
       - name: Verify consolidated release scope and routing policy
+        id: gate_release_policy
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
           python3 scripts/test-release-policy.py
@@ -327,12 +360,14 @@ jobs:
         if: always() && steps.plan.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
             --output "$RUNNER_TEMP/validation-resume.json" \
             --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}"
+            --run-id "${{ github.run_id }}" \
+            --cache-output /tmp/validation-resume-cache/validation-resume.json
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
@@ -342,6 +377,25 @@ jobs:
           path: ${{ runner.temp }}/validation-resume.json
           retention-days: 30
           if-no-files-found: error
+
+      - name: Check PR-local validation gate cache readiness
+        id: gatecache
+        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save PR-local validation gate evidence
+        if: always() && steps.gatecache.outputs.ready == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+
 
   validated-release-package:
     needs: approved-head-preflight
@@ -355,6 +409,7 @@ jobs:
       DOTNET_CLI_USE_MSBUILD_SERVER: '0'
       MSBUILDDISABLENODEREUSE: '1'
     steps:
+
       - name: Checkout exact package authority
         uses: actions/checkout@v4
         with:

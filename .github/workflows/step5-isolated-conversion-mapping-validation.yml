@@ -455,10 +455,30 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/step5-baseline-evidence.json"
-          python3 scripts/validation-resume.py step5-baseline \
-            --base-sha "${{ github.event.pull_request.base.sha }}" \
-            --repository "${{ github.repository }}" \
-            --output "$evidence"
+          resolved=false
+          for attempt in 1 2 3 4; do
+            python3 scripts/validation-resume.py step5-baseline \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --repository "${{ github.repository }}" \
+              --output "$evidence"
+            reason="$(python3 - "$evidence" <<'PYREASON'
+          import json,sys
+          print(json.load(open(sys.argv[1])).get("reason") or "")
+          PYREASON
+          )"
+            if [ "$reason" != "historical_evidence_unavailable_run_fresh_baseline" ]; then
+              resolved=true
+              break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Step 5 baseline evidence transport unavailable; preserving prior proof and retrying lookup only."
+              sleep $((attempt * 15))
+            fi
+          done
+          if [ "$resolved" != "true" ]; then
+            echo "::error::Step 5 baseline evidence could not be authenticated after bounded retries; refusing to run the approved baseline suite redundantly."
+            exit 75
+          fi
           python3 - "$evidence" "$GITHUB_OUTPUT" <<'PYBASE'
           import json,sys
           data=json.load(open(sys.argv[1]))

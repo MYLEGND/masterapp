@@ -1355,10 +1355,11 @@ def git_changed(prior: str, current: str) -> list[str]:
 
 class EvidenceLookupUnavailable(RuntimeError):
     """Evidence transport failed; do not infer absence or invalidate proof."""
-    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None):
+    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None, rate=None):
         super().__init__(message)
         self.code = status
         self.endpoint = endpoint
+        self.rate = dict(rate or {})
 
 
 def api_get(repository: str, path: str, token: str):
@@ -1385,7 +1386,12 @@ def api_get(repository: str, path: str, token: str):
                     if headers.get(key) is not None}
                 if rate:
                     print(json.dumps({"evidenceRateLimit": rate}, sort_keys=True))
-                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None), endpoint=path.split("?", 1)[0]) from exc
+                raise EvidenceLookupUnavailable(
+                    "GitHub evidence read unavailable",
+                    status=getattr(exc, "code", None),
+                    endpoint=path.split("?", 1)[0],
+                    rate=rate,
+                ) from exc
             time.sleep(2 ** attempt)
 
 
@@ -2236,32 +2242,86 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
     return result
 
 
+def _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt):
+    if workflow not in WORKFLOWS or plan.get("workflow") != workflow:
+        raise ValueError("Validation cache workflow mismatch")
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha or "") or run_id < 1 or run_attempt < 1:
+        raise ValueError("Malformed validation cache identity")
+    gates = {}
+    for key, row in (plan.get("gates") or {}).items():
+        if key not in WORKFLOWS[workflow]["gates"] or not isinstance(row, dict):
+            continue
+        receipt = row.get("receipt") or row.get("producerReceipt") or {}
+        if receipt.get("result") == "success":
+            gates[key] = {"result": "success"}
+    return {
+        "schemaVersion": 2,
+        "workflow": workflow,
+        "headSha": head_sha,
+        "runId": run_id,
+        "runAttempt": run_attempt,
+        "gates": gates,
+    }
+
+
+def _write_gate_cache(plan, workflow, head_sha, run_id, run_attempt, output):
+    payload = _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt)
+    path = Path(output)
+    if not payload["gates"]:
+        if path.exists():
+            path.unlink()
+        return payload
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
+    return payload
+
+
 def cmd_record_evidence(args):
-    """Enrich the existing durable plan with real producer/child observations."""
+    """Enrich the plan and checkpoint successful children even if the parent later fails."""
     plan = json.loads(Path(args.plan).read_text())
-    token = os.environ.get("GITHUB_TOKEN", "")
-    if not token:
-        raise ValueError("Evidence recording requires authenticated producer observations")
-    try:
-        jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
-    except (urllib.error.HTTPError, EvidenceLookupUnavailable) as exc:
-        if exc.code != 403:
-            raise
-        # GitHub may deny self-observation while a PR run is active even with
-        # actions:read. Do not turn that transport limitation into a false gate
-        # failure or invent success. The completed run is read canonically on
-        # the next planner pass and supplies exact child step evidence.
-        plan["receiptSchemaVersion"] = 1
-        plan["recordingRunId"] = args.run_id
-        plan["receiptRecordingDeferred"] = "current_run_actions_observation_forbidden"
-        Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
-        print("Deferred current-run child receipt enrichment; completed-run evidence remains canonical.")
-        return
     observed = {}
-    for job in jobs:
-        for step in job.get("steps", []):
-            if step.get("conclusion"):
-                observed[step.get("name")] = {"result": step["conclusion"], "jobId": job.get("id"), "stepNumber": step.get("number")}
+    local_context = os.environ.get("VALIDATION_STEP_CONTEXT")
+
+    if local_context:
+        context = json.loads(local_context)
+        if not isinstance(context, dict):
+            raise ValueError("Validation step context must be an object")
+        for key in WORKFLOWS[plan["workflow"]]["gates"]:
+            step_id = "gate_" + key.replace("-", "_")
+            row = context.get(step_id) or {}
+            outcome = row.get("outcome") or row.get("conclusion")
+            if outcome:
+                observed[WORKFLOWS[plan["workflow"]]["gates"][key]["step"]] = {
+                    "result": outcome,
+                    "jobId": None,
+                    "stepNumber": None,
+                }
+    else:
+        token = os.environ.get("GITHUB_TOKEN", "")
+        if not token:
+            raise ValueError("Evidence recording requires authenticated producer observations")
+        try:
+            jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
+        except (urllib.error.HTTPError, EvidenceLookupUnavailable) as exc:
+            if exc.code != 403:
+                raise
+            plan["receiptSchemaVersion"] = 1
+            plan["recordingRunId"] = args.run_id
+            plan["receiptRecordingDeferred"] = "current_run_actions_observation_forbidden"
+            Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+            print("Deferred current-run child receipt enrichment; completed-run evidence remains canonical.")
+            return
+        for job in jobs:
+            for step in job.get("steps", []):
+                if step.get("conclusion"):
+                    observed[step.get("name")] = {
+                        "result": step["conclusion"],
+                        "jobId": job.get("id"),
+                        "stepNumber": step.get("number"),
+                    }
+
     runtime = {"python": sys.version.split()[0]}
     for tool in ("dotnet", "node"):
         try:
@@ -2270,6 +2330,7 @@ def cmd_record_evidence(args):
                 runtime[tool] = observation.stdout.strip()
         except (OSError, subprocess.TimeoutExpired):
             pass
+
     plan["receiptSchemaVersion"] = 1
     plan["recordingRunId"] = args.run_id
     for key, gate in plan.get("gates", {}).items():
@@ -2280,12 +2341,26 @@ def cmd_record_evidence(args):
             "producerJobId": observation.get("jobId") if gate.get("run") else producer.get("jobId"),
             "producerStepNumber": observation.get("stepNumber") if gate.get("run") else producer.get("stepNumber"),
             "producingRunId": args.run_id if gate.get("run") else gate.get("evidenceRunId", plan.get("priorRunId")),
-            "recordingJobId": observation.get("jobId"), "stepNumber": observation.get("stepNumber"),
+            "recordingJobId": observation.get("jobId"),
+            "stepNumber": observation.get("stepNumber"),
             "reused": not gate.get("run"),
             "actualToolchain": runtime if gate.get("run") else None,
             "toolchainPolicy": "observed-producer" if gate.get("run") else "preserved-producer-contract",
         }
+
     Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+    cache_output = getattr(args, "cache_output", None)
+    if cache_output:
+        payload = _write_gate_cache(
+            plan,
+            plan["workflow"],
+            plan["currentSha"],
+            args.run_id,
+            int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+            cache_output,
+        )
+        print(json.dumps({"cachedSuccessfulGates": sorted(payload["gates"])}, sort_keys=True))
+
 
 
 def _stop_unresolved_planning(args, exc):
@@ -2324,10 +2399,105 @@ def _fresh_plan_when_evidence_unavailable(args, exc):
     return plan
 
 
-def cmd_plan(args):
+def _cached_success_evidence(args):
+    """Use PR-local gate evidence before any remote history lookup.
+
+    Schema 1 is the older all-parent-success capsule. Schema 2 is the canonical
+    child ledger: only gates explicitly checkpointed successful are reusable.
+    Git ancestry plus _plan_against_prior still revalidates source, execution and
+    dependency identity before any cached success can suppress work.
+    """
+    raw = getattr(args, "resume_cache", None)
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    if (
+        data.get("workflow") != args.workflow
+        or not re.fullmatch(r"[0-9a-f]{40}", data.get("headSha") or "")
+        or type(data.get("runId")) is not int
+        or data["runId"] < 1
+    ):
+        raise ValueError("Malformed PR-local validation cache")
+    prior_sha = data["headSha"]
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode:
+        raise ValueError("PR-local validation cache is not in the current candidate lineage")
+
+    steps = _StepEvidence()
+    schema = data.get("schemaVersion")
+    if schema == 1:
+        successful = set(WORKFLOWS[args.workflow]["gates"])
+    elif schema == 2:
+        rows = data.get("gates")
+        if not isinstance(rows, dict):
+            raise ValueError("Malformed PR-local child gate ledger")
+        successful = {
+            key for key, row in rows.items()
+            if key in WORKFLOWS[args.workflow]["gates"]
+            and isinstance(row, dict)
+            and row.get("result") == "success"
+        }
+    else:
+        raise ValueError("Unsupported PR-local validation cache schema")
+
+    for key in successful:
+        gate = WORKFLOWS[args.workflow]["gates"][key]
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": data["runId"],
+            "stepNumber": None,
+            "artifact": "pr-local-gate-cache",
+        }
+    if not steps:
+        return None
+    prior = {
+        "id": data["runId"],
+        "head_sha": prior_sha,
+        "run_attempt": int(data.get("runAttempt") or 1),
+        "event": args.event,
+        "head_branch": args.head_branch,
+    }
+    return prior, steps, "pr_local_gate_cache"
+
+
+def cmd_cache_success(args):
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
-    try:
+    plan = {
+        "workflow": args.workflow,
+        "currentSha": args.head_sha,
+        "gates": {
+            key: {"receipt": {"result": "success"}}
+            for key in WORKFLOWS[args.workflow]["gates"]
+        },
+    }
+    payload = _write_gate_cache(
+        plan,
+        args.workflow,
+        args.head_sha,
+        args.run_id,
+        args.run_attempt,
+        args.output,
+    )
+    print(json.dumps(payload, sort_keys=True))
+
+
+def _compute_validation_plan_once(args):
+    cached = _cached_success_evidence(args)
+    if cached is not None:
+        prior, steps, source = cached
+        plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+        _stamp_evidence(plan, prior, source)
+    else:
         prior, steps, source = prior_evidence(args)
         if prior:
             plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
@@ -2342,17 +2512,64 @@ def cmd_plan(args):
                 source,
             )
         plan = _apply_content_equivalent_evidence(args, plan)
-        plan["schemaVersion"] = 2
-        plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
-    except EvidenceLookupUnavailable as exc:
-        plan = _fresh_plan_when_evidence_unavailable(args, exc)
-    except Exception as exc:
-        _stop_unresolved_planning(args, exc)
+    plan["schemaVersion"] = 2
+    plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    return plan
+
+
+def _evidence_retry_delay(exc, attempt):
+    rate = getattr(exc, "rate", {}) or {}
+    retry = rate.get("Retry-After")
+    reset = rate.get("X-RateLimit-Reset")
+    try:
+        if retry is not None:
+            return max(1, int(retry) + 2)
+        if reset is not None:
+            return max(1, int(reset) - int(time.time()) + 3)
+    except (TypeError, ValueError):
+        pass
+    return (15, 30, 60, 120)[min(attempt, 3)]
+
+
+def cmd_plan(args):
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+
+    plan = None
+    last_evidence_error = None
+    for attempt in range(4):
+        try:
+            plan = _compute_validation_plan_once(args)
+            break
+        except EvidenceLookupUnavailable as exc:
+            last_evidence_error = exc
+            if getattr(args, "event", None) != "pull_request":
+                plan = _fresh_plan_when_evidence_unavailable(args, exc)
+                break
+            if attempt == 3:
+                break
+            delay = _evidence_retry_delay(exc, attempt)
+            # The workflow timeout remains the outer safety bound. Do not turn a
+            # long provider reset into broad validation; preserve child proof and
+            # retry only the planning boundary.
+            if delay > 900:
+                break
+            print(
+                f"Validation evidence lookup unavailable; preserving known child proof "
+                f"and retrying planner boundary in {delay}s (attempt {attempt + 1}/4)."
+            )
+            time.sleep(delay)
+        except Exception as exc:
+            _stop_unresolved_planning(args, exc)
+
+    if plan is None:
+        _stop_unresolved_planning(args, last_evidence_error or RuntimeError("Validation planning unavailable"))
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: value for key, value in plan.items() if key != "dependencyManifests"}, indent=2, sort_keys=True))
+
 
 
 def cmd_preserved(args):
@@ -4748,7 +4965,16 @@ def build_parser():
     plan.add_argument("--event", required=True)
     plan.add_argument("--repository", required=True)
     plan.add_argument("--output", required=True)
+    plan.add_argument("--resume-cache")
     plan.set_defaults(func=cmd_plan)
+
+    cache_success = sub.add_parser("cache-success")
+    cache_success.add_argument("--workflow", required=True)
+    cache_success.add_argument("--head-sha", required=True)
+    cache_success.add_argument("--run-id", required=True, type=int)
+    cache_success.add_argument("--run-attempt", required=True, type=int)
+    cache_success.add_argument("--output", required=True)
+    cache_success.set_defaults(func=cmd_cache_success)
 
     preserved = sub.add_parser("preserved")
     preserved.add_argument("--plan", required=True)
@@ -4831,6 +5057,7 @@ def build_parser():
     record.add_argument("--output", required=True)
     record.add_argument("--repository", required=True)
     record.add_argument("--run-id", required=True, type=int)
+    record.add_argument("--cache-output")
     record.set_defaults(func=cmd_record_evidence)
 
     coverage = sub.add_parser("verify-release-coverage")

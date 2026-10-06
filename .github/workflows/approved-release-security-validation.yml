@@ -50,6 +50,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Restore PR-local validation gate evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-security-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            validation-resume-security-pr-${{ github.event.pull_request.number }}-
+
       - name: Plan exact validation resume
         id: plan
         shell: bash
@@ -65,6 +74,7 @@ jobs:
             --head-branch "${{ github.head_ref }}" \
             --event "${{ github.event_name }}" \
             --repository "${{ github.repository }}" \
+            --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
           python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
           import json, sys
@@ -82,17 +92,20 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Restore security validation graph
+        id: gate_restore
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
           dotnet restore MASTERAPP.sln
 
       - name: Build migration validation graph
+        id: gate_build
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
           dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Validate database migration artifacts
+        id: gate_db_validation
         shell: bash
         env:
           DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
@@ -115,6 +128,7 @@ jobs:
           ./scripts/db.sh validate-artifacts
 
       - name: Reject skipped security tests
+        id: gate_no_skips
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips; then exit 0; fi
@@ -129,6 +143,7 @@ jobs:
           fi
 
       - name: Audit dependency vulnerabilities
+        id: gate_vulnerabilities
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
@@ -140,6 +155,7 @@ jobs:
           fi
 
       - name: Scan committed configuration for secrets
+        id: gate_secret_scan
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan; then exit 0; fi
@@ -154,6 +170,7 @@ jobs:
           fi
 
       - name: Verify shared composition authorities
+        id: gate_composition
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate composition; then exit 0; fi
@@ -186,6 +203,7 @@ jobs:
           fi
 
       - name: Reject inline Azure key-ring wiring
+        id: gate_keyring
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring; then exit 0; fi
@@ -196,6 +214,7 @@ jobs:
           fi
 
       - name: Verify patch whitespace integrity
+        id: gate_diff_check
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
@@ -205,12 +224,14 @@ jobs:
         if: always() && steps.plan.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
             --output "$RUNNER_TEMP/validation-resume.json" \
             --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}"
+            --run-id "${{ github.run_id }}" \
+            --cache-output /tmp/validation-resume-cache/validation-resume.json
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
@@ -220,3 +241,21 @@ jobs:
           path: ${{ runner.temp }}/validation-resume.json
           retention-days: 30
           if-no-files-found: error
+
+      - name: Check PR-local validation gate cache readiness
+        id: gatecache
+        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save PR-local validation gate evidence
+        if: always() && steps.gatecache.outputs.ready == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-security-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}

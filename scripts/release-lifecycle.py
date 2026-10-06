@@ -20,6 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import sys
+import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
@@ -560,12 +561,16 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate release-control changes no longer require canonical security validation'
 
-    candidate_validation_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_validation')
+    candidate_validation_source = _function_source(
+        source['lifecycle'], lifecycle_tree, 'candidate_validation'
+    )
     if not all(token in candidate_validation_source for token in (
         'VALIDATION_AUTHORITY.required_validation_topology(names)',
         "run.get('event') != 'pull_request'",
         "latest[path].get('status') != 'completed'",
         "latest[path].get('conclusion') != 'success'",
+        "for attempt in range(4)",
+        "time.sleep((attempt + 1) * 5)",
     )):
         return 'Candidate weakened exact-head merge validation'
 
@@ -660,37 +665,58 @@ def publish_trusted_validation_status(api, revision, state, detail):
 
 
 def candidate_validation(api, pr):
-    """Require every workflow selected by the canonical topology to be green.
+    """Require exact-head validators and retry only provider observation lag.
 
-    Child-level preservation belongs to validation-resume.py. Lifecycle never
-    reinterprets a failed parent workflow, carries a second step list, or accepts
-    partial validation as merge-ready.
+    This is the sole merge-readiness observer. Validators own child-level reuse;
+    lifecycle never reruns their children here. GitHub's cross-workflow run
+    inventory is eventually consistent, so missing/active observations receive
+    bounded read-only retries. A completed failure remains immediately blocking.
     """
     head = pr['head']['sha']
-    runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
-    latest = {}
-    for run in sorted(
-        runs,
-        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
-        reverse=True,
-    ):
-        if run.get('head_sha') != head or run.get('event') != 'pull_request':
-            continue
-        latest.setdefault(run['path'].split('@')[0], run)
-
     files = api.pages(f"pulls/{pr['number']}/files")
     names = [row['filename'] for row in files if row.get('filename')]
-    required = VALIDATION_AUTHORITY.required_validation_topology(names)['required']
+    required = tuple(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
 
-    failed = [
-        path for path in required
-        if path not in latest
-        or latest[path].get('status') != 'completed'
-        or latest[path].get('conclusion') != 'success'
-    ]
-    if not failed:
-        return None
-    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed))
+    state = None
+    for attempt in range(4):
+        runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
+        latest = {}
+        for run in sorted(
+            runs,
+            key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+            reverse=True,
+        ):
+            if run.get('head_sha') != head or run.get('event') != 'pull_request':
+                continue
+            latest.setdefault(run['path'].split('@')[0], run)
+
+        missing = []
+        active = []
+        failed = []
+        for path in required:
+            run = latest.get(path)
+            if run is None:
+                missing.append(path)
+            elif latest[path].get('status') != 'completed':
+                active.append(path)
+            elif latest[path].get('conclusion') != 'success':
+                failed.append(path)
+
+        state = {'missing': missing, 'active': active, 'failed': failed}
+        if not missing and not active and not failed:
+            return None
+        if failed:
+            break
+        if attempt < 3 and os.environ.get('GITHUB_ACTIONS') == 'true':
+            time.sleep((attempt + 1) * 5)
+
+    unresolved = sorted(set(
+        (state or {}).get('missing', ())
+        + (state or {}).get('active', ())
+        + (state or {}).get('failed', ())
+    ))
+    return 'Awaiting successful exact-head validation: ' + ', '.join(unresolved)
+
 
 
 def automatic_release_targets(api, pr):
@@ -1320,8 +1346,8 @@ def release_run_candidate(run):
     return match.group(1) if match else None
 
 
-def automatic_release_admission(pr, approved, runs):
-    """Single fail-closed admission predicate; no independent workflow gate map."""
+def automatic_release_admission(api, pr, approved, runs):
+    """Admit once, plus one bounded exact-live proof recovery after a settled failed parent."""
     active = [row for row in runs if row.get('status') != 'completed']
     if active:
         return {'state': 'WAITING_FOR_CONFLICTING_RELEASE', 'retained': 'Queued in approved PR history until active transaction completes',
@@ -1331,7 +1357,14 @@ def automatic_release_admission(pr, approved, runs):
                  or (row.get('head_sha') == approved
                      and not row.get('display_title', '').startswith('LEGEND release pr='))]
     if attempted:
-        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; reconcile or repair without upload replay'}
+        exact = [row for row in attempted if row.get('display_title') == identity]
+        # One failed exact run may hand off to one proof-only recovery when its
+        # durable provider disposition proves every selected target is already
+        # terminal at the immutable application revision. The recovery run will
+        # discover EXACT_LIVE and therefore has no target publication authority.
+        if len(attempted) == 1 and len(exact) == 1 and _release_exact_live_terminal(api, exact[0]):
+            return None
+        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded exact-live recovery exhausted or not proven'}
     return None
 
 
@@ -1342,7 +1375,7 @@ def admit_automatic_release(api, pr, approved, targets, *, source_merge_sha=None
     transaction mutex until durable resource reservations cover every mutation.
     """
     runs = direct_release_runs(api) if runs is None else runs
-    blocked = automatic_release_admission(pr, approved, runs)
+    blocked = automatic_release_admission(api, pr, approved, runs)
     if blocked:
         return blocked
     identity = release_dispatch_identity(pr['number'], pr['head']['sha'], approved)
@@ -1368,7 +1401,7 @@ def dispatch_pending_automatic_release(api, approved):
             retained.append(pending)
             continue
         pr_identity = {'number': pending['sourcePr'], 'head': {'sha': pending['applicationRevision']}}
-        blocked = automatic_release_admission(pr_identity, approved, runs)
+        blocked = automatic_release_admission(api, pr_identity, approved, runs)
         if blocked:
             if 'blockingRuns' in blocked:
                 return {**blocked, 'pendingCandidates': queue}
@@ -1465,6 +1498,8 @@ def release_execution_state(api, run):
         settled = any(name.startswith('legend-release-disposition-') for name in names)
         if intents - successes and not settled:
             return 'DEPLOYMENT_RECONCILIATION'
+        if settled and _release_exact_live_terminal(api, run):
+            return 'LIVE_PROOF_REQUIRED'
         return 'WAITING_FOR_CONFLICTING_RELEASE' if _never_admitted(api, run) else 'FAILED_NEEDS_REPAIR'
     if any(step.get('status') == 'in_progress' for step in publications):
         return 'DEPLOYING'
@@ -1747,26 +1782,69 @@ def _admission_nonmutating_terminal(api, run):
     return True
 
 
-def _admission_settled(api, run, record):
+def _admission_disposition(api, run, record):
     if run.get('status') != 'completed':
-        return False
+        return None
     name = 'legend-release-disposition-' + record['admissionId'] + '-' + str(run.get('run_attempt', 1))
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     matching = [row for row in artifacts if row.get('name') == name and not row.get('expired')]
     if len(matching) != 1:
-        return False
+        return None
     with tempfile.TemporaryDirectory(prefix='legend-disposition-') as directory:
         VALIDATION_AUTHORITY._download_run_artifact(api.repo, run['id'], name, Path(directory))
         value = json.loads((Path(directory) / 'release-disposition.json').read_text())
+    if (
+        value.get('schemaVersion') != 1
+        or value.get('terminal') is not True
+        or value.get('mutableChildrenSettled') is not True
+        or value.get('admissionId') != record['admissionId']
+        or value.get('candidateRevision') != record['applicationRevision']
+        or value.get('producingRun') != run['id']
+        or value.get('producingAttempt') != run.get('run_attempt', 1)
+        or value.get('resources') != record['resources']
+    ):
+        return None
+    return value
+
+
+def _admission_settled(api, run, record):
+    value = _admission_disposition(api, run, record)
+    if value is None:
+        return False
     targets = {row.get('target') for row in value.get('targets', []) if row.get('idle') is True}
     expected = set(VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']))
-    return (value.get('schemaVersion') == 1 and value.get('terminal') is True
-            and value.get('mutableChildrenSettled') is True
-            and value.get('admissionId') == record['admissionId']
-            and value.get('candidateRevision') == record['applicationRevision']
-            and value.get('producingRun') == run['id']
-            and value.get('producingAttempt') == run.get('run_attempt', 1)
-            and value.get('resources') == record['resources'] and targets == expected)
+    return targets == expected
+
+
+def _admission_exact_live_terminal(api, run, record):
+    """Prove a failed parent needs proof recovery only, never another application upload."""
+    value = _admission_disposition(api, run, record)
+    if value is None:
+        return False
+    expected = set(VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']))
+    rows = value.get('targets')
+    if not isinstance(rows, list) or len(rows) != len(expected):
+        return False
+    observed = {}
+    for row in rows:
+        key = row.get('target')
+        if (
+            key in observed
+            or key not in expected
+            or row.get('idle') is not True
+            or row.get('revision') != record['applicationRevision']
+        ):
+            return False
+        observed[key] = row['revision']
+    return set(observed) == expected
+
+
+def _release_exact_live_terminal(api, run):
+    if run.get('status') != 'completed' or run.get('conclusion') == 'success':
+        return False
+    records = _admission_records(api, run)
+    return bool(records) and all(_admission_exact_live_terminal(api, run, record) for record in records)
+
 
 
 def _admission_superseded_by_terminal_success(api, run, record, runs):

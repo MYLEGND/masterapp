@@ -72,6 +72,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Restore PR-local validation gate evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-step78-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            validation-resume-step78-pr-${{ github.event.pull_request.number }}-
+
       - name: Plan exact validation resume
         id: plan
         shell: bash
@@ -87,6 +96,7 @@ jobs:
             --head-branch "${{ github.head_ref || github.ref_name }}" \
             --event "${{ github.event_name }}" \
             --repository "${{ github.repository }}" \
+            --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
           python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
           import json, sys
@@ -109,18 +119,21 @@ jobs:
           node-version: '22'
 
       - name: Restore affected graph
+        id: gate_restore
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
       - name: Build affected graph
+        id: gate_build
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
 
       - name: Run Steps 7-8 governance, promotion, execution, and scope-parity tests
+        id: gate_governance_tests
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate governance-tests; then exit 0; fi
@@ -128,6 +141,7 @@ jobs:
             --filter "FullyQualifiedName~AdvertisingActionAuthorizationServiceTests|FullyQualifiedName~PromotionOrchestrationTests|FullyQualifiedName~AdvertisingCommandCenterCentralizationTests|FullyQualifiedName~OpenAiAdsExecutionServiceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessWorkspaceTests"
 
       - name: Run shared website management UI tests
+        id: gate_website_ui_tests
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-ui-tests; then exit 0; fi
           cd tests/website
@@ -138,12 +152,14 @@ jobs:
         if: always() && steps.plan.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
         run: |
           python3 scripts/validation-resume.py record-evidence \
             --plan "$RUNNER_TEMP/validation-resume.json" \
             --output "$RUNNER_TEMP/validation-resume.json" \
             --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}"
+            --run-id "${{ github.run_id }}" \
+            --cache-output /tmp/validation-resume-cache/validation-resume.json
 
       - name: Preserve exact validation resume plan
         if: always() && steps.plan.outcome == 'success'
@@ -153,3 +169,21 @@ jobs:
           path: ${{ runner.temp }}/validation-resume.json
           retention-days: 30
           if-no-files-found: error
+
+      - name: Check PR-local validation gate cache readiness
+        id: gatecache
+        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save PR-local validation gate evidence
+        if: always() && steps.gatecache.outputs.ready == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-step78-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}

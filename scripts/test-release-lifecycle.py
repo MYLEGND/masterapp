@@ -512,6 +512,29 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual(1, len(api.dispatched))
         self.assertEqual('77', api.dispatched[0][1]['source_pr'])
 
+    def test_exact_live_failed_release_gets_one_bounded_proof_recovery(self):
+        api = Api()
+        approved = "c" * 40
+        pr = {"number": 77, "head": {"sha": "b" * 40}}
+        identity = m.release_dispatch_identity(77, pr["head"]["sha"], approved)
+        failed = {
+            "id": 100,
+            "display_title": identity,
+            "head_sha": approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        with patch.object(m, "_release_exact_live_terminal", return_value=True):
+            self.assertIsNone(
+                m.automatic_release_admission(api, pr, approved, [failed])
+            )
+            second = dict(failed, id=101)
+            blocked = m.automatic_release_admission(
+                api, pr, approved, [failed, second]
+            )
+        self.assertEqual("FAILED_NEEDS_REPAIR", blocked["state"])
+        self.assertIn("bounded exact-live recovery exhausted", blocked["retained"])
+
     @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
     def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _, __):
@@ -1743,6 +1766,61 @@ class CandidateValidation(unittest.TestCase):
         ]
         api.pages_map["actions/runs?head_sha=" + "b" * 40] = runs
         self.assertIsNone(m.candidate_validation(api, pr))
+
+    def test_validation_readiness_retries_observation_only_until_green(self):
+        pr, files = self.pr(["AgentPortal/Program.cs"])
+        api = Api()
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        required = (
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/approved-release-security-validation.yml",
+        )
+        green = [
+            {
+                "id": index,
+                "head_sha": "b" * 40,
+                "event": "pull_request",
+                "created_at": str(index),
+                "path": path,
+                "status": "completed",
+                "conclusion": "success",
+            }
+            for index, path in enumerate(required, 1)
+        ]
+        original_pages = api.pages
+        observations = iter([[], [], green])
+
+        def pages(path, key=None):
+            if path == "actions/runs?head_sha=" + "b" * 40:
+                return next(observations)
+            return original_pages(path, key)
+
+        with patch.object(api, "pages", side_effect=pages) as lookup, \
+             patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
+             patch.object(m.time, "sleep") as sleeper:
+            self.assertIsNone(m.candidate_validation(api, pr))
+        self.assertEqual(4, lookup.call_count)  # one file inventory + three run observations
+        self.assertEqual([5, 10], [row.args[0] for row in sleeper.call_args_list])
+
+    def test_validation_readiness_never_retries_completed_failure(self):
+        pr, files = self.pr(["AgentPortal/Program.cs"])
+        api = Api()
+        api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]
+        api.pages_map["actions/runs?head_sha=" + "b" * 40] = [{
+            "id": 1,
+            "head_sha": "b" * 40,
+            "event": "pull_request",
+            "created_at": "1",
+            "path": ".github/workflows/masterapp-platform-architecture-validation.yml",
+            "status": "completed",
+            "conclusion": "failure",
+        }]
+        with patch.dict(m.os.environ, {"GITHUB_ACTIONS": "true"}), \
+             patch.object(m.time, "sleep") as sleeper:
+            pending = m.candidate_validation(api, pr)
+        self.assertIn("architecture", pending)
+        sleeper.assert_not_called()
 
     def test_security_authority_change_requires_security_validator(self):
         pr, files = self.pr([".github/workflows/approved-release-security-validation.yml"])
