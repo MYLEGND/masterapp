@@ -594,6 +594,10 @@ public static class MarketingServiceRegistration
         {
             client.Timeout = TimeSpan.FromSeconds(20);
         });
+        services.AddHttpClient<IExternalAdsConversionApiService, ExternalAdsConversionApiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
         services.TryAddSingleton<MetaCapiCredentialProtector>();
         services.TryAddScoped<AgentTrackingResolver>();
         services.TryAddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
@@ -661,6 +665,7 @@ public static class MarketingServiceRegistration
         services.AddHostedService<MetaSignalAnalyticsBridge>();
         services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
         services.AddHostedService<OpenAiConversionDispatcherHostedService>();
+        services.AddHostedService<ExternalAdsConversionDispatcherHostedService>();
         return services;
     }
 }
