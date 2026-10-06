@@ -842,7 +842,7 @@ public sealed class CanonicalCrmOutcomeService
             EventUtc = lineage?.EventUtc ?? DateTime.UtcNow, QuoteType = quoteType,
             AgentTrackingProfileId = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentTrackingProfileId ?? agentTrackingProfileId,
             AgentSlug = lineage?.CommerceBusinessId.HasValue == true ? null : lineage?.AgentSlug ?? agentSlug,
-            Oppref = OpenAiClickReference.Normalize(payload["oppref"]?.GetValue<string>()),
+            Oppref = OpenAiClickReference.Normalize(payload["oppref"]?.GetValue<string>() ?? lineage?.Oppref),
             Environment = lineage?.Environment ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
             Host = lineage?.Host ?? "AgentPortal", IsBrowserSignal = false, IsServerAuthority = true,
             MetaServerAuthorityEligible = true, Metadata = payload
