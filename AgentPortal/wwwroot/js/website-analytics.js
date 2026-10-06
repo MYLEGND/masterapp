@@ -150,6 +150,10 @@
     metaConnect: analyticsEndpoint('/meta-connect'),
     metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
     metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    externalAdsConnect: analyticsEndpoint('/external-ads/connect'),
+    externalAdsAccounts: analyticsEndpoint('/external-ads/accounts'),
+    externalAdsSelect: analyticsEndpoint('/external-ads/select-account'),
+    externalAdsDisconnect: analyticsEndpoint('/external-ads/disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
     calendarConnect: analyticsEndpoint('/calendar-connect'),
     calendarDisconnect: analyticsEndpoint('/calendar-disconnect'),
@@ -5089,7 +5093,15 @@ function escapeHtml(value) {
     const scopeLabel = document.getElementById('marketing-setup-scope-label');
     if (scopeLabel) scopeLabel.textContent = 'Global reporting · no provider owner';
     setMarketingSetupStatus('Select Founder Personal or an individual owner to manage provider connections.', 'error');
-    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
+    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect,#marketing-setup-calendar-disconnect').forEach(el => { el.disabled = true; });
+    ['google', 'tiktok'].forEach(provider => {
+      const link = document.getElementById(`marketing-setup-${provider}-connect`);
+      if (link) {
+        link.removeAttribute('href');
+        link.setAttribute('aria-disabled', 'true');
+        link.setAttribute('tabindex', '-1');
+      }
+    });
     const calendarConnect = document.getElementById('marketing-setup-calendar-connect');
     if (calendarConnect) {
       calendarConnect.removeAttribute('href');
@@ -5129,6 +5141,14 @@ function escapeHtml(value) {
     return `${endpoints.metaConnect}?${params.toString()}`;
   }
 
+  function marketingSetupExternalConnectUrl(provider, profileId) {
+    const params = new URLSearchParams();
+    params.set('provider', provider);
+    params.set('returnUrl', window.location.pathname + window.location.search);
+    if (profileId && !isBusinessAnalytics) params.set('agentProfileId', profileId);
+    return `${endpoints.externalAdsConnect}?${params.toString()}`;
+  }
+
   function marketingSetupCalendarConnectUrl(profileId) {
     const params = new URLSearchParams();
     params.set('returnUrl', window.location.pathname + window.location.search);
@@ -5152,6 +5172,8 @@ function escapeHtml(value) {
     setMarketingSetupChip('publicReady', status.publicReady, 'Ready', 'Needs attention', true);
     setMarketingSetupChip('metaCustomPixel', status.metaCustomPixel, 'Custom pixel', 'LEGEND default');
     setMarketingSetupChip('openAiReady', status.openAiReady, 'Configured', 'Needs configuration', true);
+    setMarketingSetupChip('googleReady', status.googleReady, 'Connected', 'Not connected');
+    setMarketingSetupChip('tiktokReady', status.tiktokReady, 'Connected', 'Not connected');
     setMarketingSetupChip(
       'bookingPersonalLive',
       status.bookingPersonalLive,
@@ -5225,6 +5247,48 @@ function escapeHtml(value) {
       connect.textContent = marketing.metaAdsConnected ? 'Reconnect Meta Ads' : 'Connect Meta Ads';
     }
 
+    function renderExternalProvider(provider, connection) {
+      const label = provider === 'google' ? 'Google Ads' : 'TikTok Ads';
+      const statusEl = document.getElementById(`marketing-setup-${provider}-status`);
+      const accountEl = document.getElementById(`marketing-setup-${provider}-account`);
+      const connectEl = document.getElementById(`marketing-setup-${provider}-connect`);
+      const loadEl = document.getElementById(`marketing-setup-${provider}-load-accounts`);
+      const disconnectEl = document.getElementById(`marketing-setup-${provider}-disconnect`);
+      const picker = document.getElementById(`marketing-setup-${provider}-account-picker`);
+
+      if (statusEl) {
+        statusEl.textContent = connection.ready
+          ? `${label} connected`
+          : connection.connected && connection.requiresAccountSelection
+            ? `${label} connected · choose account`
+            : `${label} not connected`;
+      }
+      if (accountEl) {
+        accountEl.textContent = connection.accountName || connection.accountId ||
+          (connection.connected ? 'Authorization verified; advertiser account not selected' : 'No scoped advertiser account');
+      }
+      if (connectEl) {
+        connectEl.href = marketingSetupExternalConnectUrl(provider, profileId);
+        connectEl.removeAttribute('aria-disabled');
+        connectEl.removeAttribute('tabindex');
+        connectEl.textContent = connection.connected ? `Reconnect ${label}` : `Connect ${label}`;
+      }
+      if (loadEl) {
+        loadEl.hidden = !connection.connected || !connection.requiresAccountSelection;
+        loadEl.disabled = !connection.connected;
+      }
+      if (disconnectEl) {
+        disconnectEl.hidden = !connection.connected;
+        disconnectEl.disabled = !connection.connected;
+      }
+      if (picker && !connection.requiresAccountSelection) picker.hidden = true;
+    }
+
+    const google = payload.google || {};
+    const tiktok = payload.tiktok || {};
+    renderExternalProvider('google', google);
+    renderExternalProvider('tiktok', tiktok);
+
     const openAi = payload.openAi || {};
     const openAiHealth = openAi.health || {};
     const evidence = payload.evidence || {};
@@ -5250,6 +5314,17 @@ function escapeHtml(value) {
     }
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
+
+    function renderExternalEvidence(provider, connection) {
+      const row = document.getElementById(`marketing-setup-${provider}-evidence`);
+      const connected = row?.querySelector('[data-evidence="connected"]');
+      const configured = row?.querySelector('[data-evidence="configured"]');
+      if (connected) connected.textContent = connection.connected ? 'Yes' : 'No';
+      if (configured) configured.textContent = connection.ready ? 'Reporting ready' :
+        connection.requiresAccountSelection ? 'Choose account' : 'No';
+    }
+    renderExternalEvidence('google', google);
+    renderExternalEvidence('tiktok', tiktok);
 
     const setOpenAiText = (id, value) => {
       const el = document.getElementById(id);
@@ -5366,7 +5441,7 @@ function escapeHtml(value) {
 
   async function loadMarketingSetup() {
     if (!requireMarketingOwner()) return false;
-    marketingSetupModal?.querySelectorAll('input,button[type="submit"],#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
+    marketingSetupModal?.querySelectorAll('input,select,button,#marketing-setup-openai-verify,#marketing-setup-openai-connect-submit,#marketing-setup-openai-disconnect').forEach(el => { el.disabled = false; });
     document.getElementById('marketing-setup-meta-connect')?.removeAttribute('aria-disabled');
     if (!marketingSetupForm) return false;
     marketingSetupLoaded = false;
@@ -5446,6 +5521,80 @@ function escapeHtml(value) {
       marketingSetupSave.disabled = false;
     }
   }
+
+  async function loadExternalProviderAccounts(provider) {
+    if (!requireMarketingOwner()) return;
+    const picker = document.getElementById(`marketing-setup-${provider}-account-picker`);
+    const select = document.getElementById(`marketing-setup-${provider}-account-select`);
+    if (!select) return;
+    const params = { provider };
+    if (!isBusinessAnalytics) params.agentProfileId = marketingSetupAgentProfileId() || '';
+    setMarketingSetupStatus(`Loading authorized ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} accounts…`);
+    try {
+      const payload = await fetchJson(`externalAdsAccounts:${provider}`, endpoints.externalAdsAccounts, params);
+      const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+      select.innerHTML = '';
+      accounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account.accountId || '';
+        option.textContent = account.label || account.accountId || 'Authorized account';
+        select.appendChild(option);
+      });
+      if (picker) picker.hidden = accounts.length === 0;
+      setMarketingSetupStatus(accounts.length
+        ? 'Choose the advertiser account LEGEND should use for this scoped owner.'
+        : 'No authorized advertiser accounts were returned by the provider.',
+        accounts.length ? '' : 'error');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to load authorized ad accounts.', 'error');
+    }
+  }
+
+  async function selectExternalProviderAccount(provider) {
+    if (!requireMarketingOwner()) return;
+    const select = document.getElementById(`marketing-setup-${provider}-account-select`);
+    const accountId = (select?.value || '').trim();
+    if (!accountId) {
+      setMarketingSetupStatus('Choose an authorized advertiser account.', 'error');
+      return;
+    }
+    const body = { provider, accountId };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+    setMarketingSetupStatus('Binding the selected advertiser account to this canonical marketing owner…');
+    try {
+      const payload = await fetchPostJson(`externalAdsSelect:${provider}`, endpoints.externalAdsSelect, body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus('Advertiser account selected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to select advertiser account.', 'error');
+    }
+  }
+
+  async function disconnectExternalProvider(provider) {
+    if (!requireMarketingOwner()) return;
+    const body = { provider };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+    setMarketingSetupStatus(`Disconnecting ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} from this scope…`);
+    try {
+      const payload = await fetchPostJson(`externalAdsDisconnect:${provider}`, endpoints.externalAdsDisconnect, body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus('Provider disconnected for this scope.', 'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to disconnect provider.', 'error');
+    }
+  }
+
+  ['google', 'tiktok'].forEach(provider => {
+    document.getElementById(`marketing-setup-${provider}-load-accounts`)?.addEventListener('click', () => {
+      void loadExternalProviderAccounts(provider);
+    });
+    document.getElementById(`marketing-setup-${provider}-select-account`)?.addEventListener('click', () => {
+      void selectExternalProviderAccount(provider);
+    });
+    document.getElementById(`marketing-setup-${provider}-disconnect`)?.addEventListener('click', () => {
+      void disconnectExternalProvider(provider);
+    });
+  });
 
   marketingSetupModal?.addEventListener('show.bs.modal', () => { void loadMarketingSetup(); });
   marketingSetupForm?.addEventListener('submit', saveMarketingSetup);
