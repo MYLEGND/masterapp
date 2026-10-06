@@ -270,6 +270,21 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn("retired alternate production deployment path", result)
 
 
+    def test_guard_rejects_lifecycle_identity_that_stops_hashing_absence(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/validation-resume.py":
+                    return value.replace(
+                        '            digest.update(b"absent\\0")\n',
+                        '            digest.update(b"present\\0")\n',
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/validation-resume.py"]
+        )
+        self.assertIn("lifecycle absent-path identity", result)
+
     def test_guard_rejects_weakened_authenticated_execution_authority(self):
         class Drift(Api):
             def text(self, revision, path):

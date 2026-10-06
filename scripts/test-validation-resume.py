@@ -1052,6 +1052,36 @@ jobs:
         self.assertNotIn(m.ROUTING_WORKER_NAME, release)
         self.assertNotIn(m.DOMAIN_REFRESH_PROJECT, release)
 
+    def test_lifecycle_identity_hashes_required_absence_and_reintroduction_changes_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            present = Path(directory) / "present.py"
+            retired = Path(directory) / "retired.sh"
+            present.write_text("canonical")
+            with patch.object(m, "LIFECYCLE_AUTHORITY_PATHS", (str(present), str(retired))):
+                absent_identity = m.lifecycle_authority_identity()
+                self.assertEqual(absent_identity, m.lifecycle_authority_identity())
+                retired.write_text("legacy bypass")
+                restored_identity = m.lifecycle_authority_identity()
+                self.assertNotEqual(absent_identity, restored_identity)
+                retired.unlink()
+                self.assertEqual(absent_identity, m.lifecycle_authority_identity())
+
+    def test_lifecycle_evidence_keeps_deterministic_artifact_when_protected_path_is_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            present = Path(directory) / "present.py"
+            retired = Path(directory) / "retired.sh"
+            present.write_text("canonical")
+            with patch.object(m, "LIFECYCLE_AUTHORITY_PATHS", (str(present), str(retired))), \
+                 patch.dict(m.os.environ, {"GITHUB_TOKEN": ""}, clear=False):
+                result = m.compute_lifecycle_evidence("MYLEGND/masterapp")
+        self.assertFalse(result["reusable"])
+        self.assertEqual("github_token_unavailable", result["reason"])
+        self.assertRegex(result["identity"], r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            "legend-lifecycle-contracts-" + result["identity"],
+            result["artifact"],
+        )
+
     def test_lifecycle_and_release_evidence_lookup_are_canonicalized(self):
         lifecycle = (ROOT / ".github" / "workflows" / "legend-release-lifecycle.yml").read_text()
         self.assertIn("scripts/validation-resume.py lifecycle-evidence", lifecycle)

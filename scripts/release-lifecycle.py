@@ -627,6 +627,18 @@ def candidate_control_plane_integrity(api, pr, names):
     if 'base_state = approved_head_state(api, pr)' not in merge_source:
         return 'Candidate removed final approved-head freshness guard before merge'
 
+    lifecycle_identity_source = _function_source(
+        source['validation'], validation_tree, 'lifecycle_authority_identity'
+    )
+    if not all(token in lifecycle_identity_source for token in (
+        'source.is_file()',
+        'source.exists()',
+        'b"present\\0"',
+        'b"absent\\0"',
+        'Lifecycle authority path is not a regular file',
+    )):
+        return 'Candidate weakened canonical lifecycle absent-path identity'
+
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
     )
