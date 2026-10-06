@@ -570,6 +570,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/release-prepublication.py",
     "scripts/release-child-receipt.py",
     "scripts/release-router.py",
+    "scripts/release-auxiliary.py",
     "scripts/test-release-children.py",
     "scripts/MigrationReleaseProbe/**",
     "scripts/release-migration.py",
