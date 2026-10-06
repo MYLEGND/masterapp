@@ -200,23 +200,18 @@ class ValidationResumePlannerTests(unittest.TestCase):
         self.assertTrue(plan["gates"]["secret-scan"]["run"])
         self.assertTrue(plan["gates"]["composition"]["run"])
 
-    def test_checkpoint_gate_carries_preserved_proof_and_exact_success_only(self):
+    def test_gate_cache_carries_only_proven_successful_children(self):
         workflow = "step6-openai-ads-execution-validation.yml"
         plan = {
             "workflow": workflow,
             "gates": {
-                "restore": {"run": False},
-                "build": {"run": True},
-                "tests": {"run": True},
+                "restore": {"run": False, "producerReceipt": {"result": "success"}},
+                "build": {"run": True, "receipt": {"result": "success"}},
+                "tests": {"run": True, "receipt": {"result": "failure"}},
             },
         }
-        payload = m._checkpoint_payload(
-            plan, workflow, "a" * 40, 77, 2, successful_gate="build"
-        )
-        self.assertEqual(
-            {"restore", "build"},
-            set(payload["gates"]),
-        )
+        payload = m._gate_cache_payload(plan, workflow, "a" * 40, 77, 2)
+        self.assertEqual({"restore", "build"}, set(payload["gates"]))
         self.assertNotIn("tests", payload["gates"])
 
     def test_rate_limited_step5_decision_falls_back_to_full_validation(self):
