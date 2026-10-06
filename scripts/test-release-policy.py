@@ -744,16 +744,63 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
         self.assertIn('scripts/validation-resume.py plan', workflow)
+        self.assertIn('name: approved-release-security', workflow)
+        self.assertIn('Run independent security validation fanout', workflow)
         self.assertIn('Validate database migration artifacts', workflow)
         self.assertIn('Reject skipped security tests', workflow)
         self.assertIn('Audit dependency vulnerabilities', workflow)
         self.assertIn('Scan committed configuration for secrets', workflow)
         self.assertIn('Verify shared composition authorities', workflow)
         self.assertIn('Reject inline Azure key-ring wiring', workflow)
+        self.assertIn('run_simple no-skips no_skips', workflow)
+        self.assertIn('run_simple secret-scan secret_scan', workflow)
+        self.assertIn('run_simple composition composition', workflow)
+        self.assertIn('run_simple keyring keyring', workflow)
+        self.assertIn('run_simple diff-check diff_check', workflow)
+        self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow)
+        self.assertNotIn("steps.plan.outcome == 'success'", workflow.split('  security_database:\n',1)[1])
         self.assertIn('cancel-in-progress: true', workflow)
         self.assertNotIn('webapps-deploy', workflow)
         self.assertNotIn('database update', workflow)
         self.assertNotIn('git/ref/heads/production', workflow)
+
+    def test_architecture_independent_gates_fan_out_without_duplicate_execution(self):
+        workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('Run independent architecture gate fanout', workflow)
+        fanout=workflow.split('      - name: Run independent architecture gate fanout\n',1)[1].split(
+            '      - name: Run Founder diagnostics and safe GPT Codex regressions\n',1
+        )[0]
+        for lane in (
+            'founder-diagnostics-regressions',
+            'domain-release',
+            'website-regressions',
+            'meta-regressions',
+            'booking-regressions',
+            'crm-regressions',
+            'form-tracking',
+            'release-web-contracts',
+            'release-policy',
+        ):
+            self.assertIn('run_lane '+lane, fanout)
+        self.assertNotIn("steps.gate_compile_regression.outcome == 'success'", fanout)
+        release_web=fanout.split('release_web_contracts() {',1)[1].split('release_policy() {',1)[0]
+        self.assertNotIn('dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', release_web)
+
+    def test_steps78_parallel_lanes_join_fail_closed_under_original_check_name(self):
+        workflow=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertIn('advertising_dotnet:', workflow)
+        self.assertIn('advertising_ui:', workflow)
+        self.assertIn('advertising_evidence:', workflow)
+        self.assertIn('name: advertising-validation', workflow)
+        evidence=workflow.split('  advertising_evidence:\n',1)[1]
+        self.assertIn('needs.advertising_dotnet.result', evidence)
+        self.assertIn('needs.advertising_ui.result', evidence)
+        self.assertIn('Require all advertising validation lanes', evidence)
+        self.assertIn('Record canonical child execution evidence', evidence)
+        self.assertLess(
+            evidence.index('Record canonical child execution evidence'),
+            evidence.index('Require all advertising validation lanes'),
+        )
 
     def test_old_second_release_workflows_are_removed(self):
         workflows=ROOT.parent / '.github/workflows'
@@ -770,21 +817,34 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Validate upload keystore before building', workflow)
 
     def test_feature_validation_workflows_use_canonical_resume_authority(self):
-        for name in (
+        names = (
             'masterapp-platform-architecture-validation.yml',
             'step6-openai-ads-execution-validation.yml',
             'steps7-8-governed-advertising-validation.yml',
             'approved-release-security-validation.yml',
-        ):
+        )
+        for name in names:
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
             self.assertIn('Restore PR-local validation gate evidence', workflow, name)
             self.assertIn('--resume-cache "/tmp/validation-resume-cache/validation-resume.json"', workflow, name)
-            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
             self.assertIn('--cache-output /tmp/validation-resume-cache/validation-resume.json', workflow, name)
             self.assertIn('Save PR-local validation gate evidence', workflow, name)
             self.assertNotIn('checkpoint-gate --workflow', workflow, name)
             self.assertIn('cancel-in-progress: true', workflow, name)
+
+        for name in (
+            'masterapp-platform-architecture-validation.yml',
+            'step6-openai-ads-execution-validation.yml',
+            'approved-release-security-validation.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
+
+        step78=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertNotIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', step78)
+        self.assertIn('GITHUB_TOKEN: ${{ github.token }}', step78)
+        self.assertIn('advertising_evidence:', step78)
         step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
         self.assertNotIn('scripts/validation-resume.py plan \\\n', step5)
         self.assertIn('scripts/validation-resume.py step5-decision', step5)
