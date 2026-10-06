@@ -1299,13 +1299,15 @@ jobs:
                 "b" * 40,
             ))
 
-    def test_package_canary_preserves_original_producer_for_control_only_change(self):
+    def test_package_canary_preserves_compatible_producer_for_changed_package_input(self):
         producer = {'runId': 91, 'revision': 'a' * 40, 'packageIdentity': 'c' * 64,
                     'artifact': 'original-package', 'reason': 'dependency_equivalent_immutable_package_producer'}
         with patch.object(m, 'compatible_package_producer', return_value=producer), \
+             patch.object(m, 'git_changed', return_value=['AgentPortal/Program.cs']), \
              patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
         self.assertFalse(plan['needed'])
+        self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
         self.assertEqual('a' * 40, plan['evidenceHeadSha'])
         self.assertEqual('c' * 64, plan['packageIdentity'])
         self.assertEqual('original-package', plan['exactPackageArtifact'])
