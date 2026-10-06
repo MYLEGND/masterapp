@@ -195,19 +195,24 @@ jobs:
           spec.loader.exec_module(authority)
           workflow_path=authority.WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
 
-          ancestors=subprocess.check_output(
-              ["git","rev-list","--first-parent","--max-count=30",current+"^"],
-              text=True).splitlines()
+          # One GraphQL request returns the recent first-parent history plus each
+          # commit's check rollup. This avoids one provider request per ancestor
+          # and keeps control-only resume independent of the REST history bucket.
           query=r"""
           query($owner:String!,$name:String!,$oid:GitObjectID!){
             repository(owner:$owner,name:$name){
               object(oid:$oid){
                 ... on Commit {
-                  statusCheckRollup {
-                    contexts(first:100) {
-                      nodes {
-                        __typename
-                        ... on CheckRun { name conclusion detailsUrl }
+                  history(first:30) {
+                    nodes {
+                      oid
+                      statusCheckRollup {
+                        contexts(first:100) {
+                          nodes {
+                            __typename
+                            ... on CheckRun { name conclusion detailsUrl }
+                          }
+                        }
                       }
                     }
                   }
@@ -215,7 +220,23 @@ jobs:
               }
             }
           }"""
-          for prior in ancestors:
+          payload=json.dumps({"query":query,"variables":{"owner":owner,"name":name,"oid":current}}).encode()
+          request=urllib.request.Request(
+              "https://api.github.com/graphql",data=payload,
+              headers={"Authorization":f"Bearer {token}","Content-Type":"application/json",
+                       "User-Agent":"legend-step5-parent-proof/1.0"})
+          try:
+              with urllib.request.urlopen(request,timeout=30) as response:
+                  body=json.load(response)
+          except Exception:
+              raise SystemExit(1)
+
+          history=((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                   .get("history") or {}).get("nodes",[])
+          for row in history:
+              prior=row.get("oid") or ""
+              if prior == current or not re.fullmatch(r"[0-9a-f]{40}",prior):
+                  continue
               if subprocess.run(["git","merge-base","--is-ancestor",base,prior]).returncode:
                   continue
               try:
@@ -225,21 +246,10 @@ jobs:
                       continue
               except Exception:
                   continue
-              payload=json.dumps({"query":query,"variables":{"owner":owner,"name":name,"oid":prior}}).encode()
-              request=urllib.request.Request(
-                  "https://api.github.com/graphql",data=payload,
-                  headers={"Authorization":f"Bearer {token}","Content-Type":"application/json",
-                           "User-Agent":"legend-step5-parent-proof/1.0"})
-              try:
-                  with urllib.request.urlopen(request,timeout=30) as response:
-                      body=json.load(response)
-              except Exception:
-                  continue
-              nodes=((((body.get("data") or {}).get("repository") or {}).get("object") or {})
-                     .get("statusCheckRollup") or {}).get("contexts",{}).get("nodes",[])
-              success=next((row for row in nodes
-                  if row.get("__typename")=="CheckRun" and row.get("name")=="step5-validation"
-                  and row.get("conclusion")=="SUCCESS"),None)
+              nodes=((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes",[])
+              success=next((check for check in nodes
+                  if check.get("__typename")=="CheckRun" and check.get("name")=="step5-validation"
+                  and check.get("conclusion")=="SUCCESS"),None)
               if not success:
                   continue
               run_id=None
