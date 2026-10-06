@@ -1610,6 +1610,27 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual("not dispatched", result["pendingCandidates"][0]["packageBackfill"])
 
 
+class PackageEvidenceReadOnly(unittest.TestCase):
+    @patch.object(m, "_validated_package_evidence")
+    def test_package_evidence_reports_canonical_proof_without_dispatch(self, evidence):
+        evidence.return_value = {
+            "reusable": True,
+            "reason": "exact_validated_package",
+            "runId": 77,
+            "packageIdentity": "package-identity",
+        }
+        api = Api()
+        result = m.package_evidence(api, "a" * 40)
+        self.assertTrue(result["reusable"])
+        self.assertEqual(77, result["runId"])
+        self.assertEqual("package-identity", result["packageIdentity"])
+        evidence.assert_called_once_with(api, "a" * 40)
+        self.assertEqual([], api.dispatched)
+
+    def test_package_evidence_rejects_malformed_revision(self):
+        with self.assertRaises(ValueError):
+            m.package_evidence(Api(), "not-a-sha")
+
 
 class ReconcileSafety(unittest.TestCase):
     def setUp(self):
