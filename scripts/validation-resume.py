@@ -4835,14 +4835,34 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
 def _step5_discovered_repair_classes(classes, test_names, changed_paths):
     """Use complete prior discovery to distinguish tests from co-located helpers.
 
-    This narrowing is admitted only while C# discovery/build inputs are unchanged.
-    A source edit that could introduce a new class must retain full proof when
-    the proposed class has no prior discovery evidence.
+    Prior xUnit discovery is authoritative for unchanged source files, so helper
+    classes pulled in through a changed workflow/config consumer can be dropped.
+    Fail closed only when an undiscovered proposed class is declared by a C# file
+    that actually changed, because that edit could have introduced new tests.
     """
-    discovered = [name for name in classes
-                  if any(test.startswith(name + ".") for test in test_names)]
-    if len(discovered) != len(classes) and any(
-            path.endswith((".cs", ".csproj", ".props", ".targets")) for path in changed_paths):
+    discovered = [
+        name for name in classes
+        if any(test.startswith(name + ".") for test in test_names)
+    ]
+    undiscovered = set(classes) - set(discovered)
+    if not undiscovered:
+        return discovered
+
+    changed_declared = set()
+    for path in changed_paths:
+        if not path.endswith((".cs", ".csproj", ".props", ".targets")):
+            continue
+        if not path.endswith(".cs"):
+            # Project/build graph edits can alter discovery globally.
+            return None
+        source_path = Path(path)
+        if not source_path.is_file():
+            # Added/deleted/renamed C# source cannot be narrowed from prior
+            # discovery alone.
+            return None
+        changed_declared.update(_step5_source_classes(source_path.read_text()))
+
+    if undiscovered & changed_declared:
         return None
     return discovered
 
