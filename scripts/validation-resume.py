@@ -2806,9 +2806,16 @@ def cmd_live_state(args):
         }, sort_keys=True))
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     if args.github_output:
+        pending = [
+            RELEASE_TARGETS[key]["releaseName"]
+            for key in keys
+            if not result["targets"][key]["alreadyLive"]
+        ]
         with Path(args.github_output).open("a") as output:
             for key in RELEASE_TARGETS:
                 output.write(f"{key}_live={str(result['targets'][key]['alreadyLive']).lower()}\n")
+            output.write("pending_targets=" + json.dumps(pending, separators=(",", ":")) + "\n")
+            output.write("all_selected_live=" + str(not pending).lower() + "\n")
 
 
 def cmd_verify_live(args):
