@@ -640,10 +640,10 @@ def candidate_control_plane_integrity(api, pr, names):
         'DIRECT_RELEASE_WORKFLOW',
         'GITHUB_RUN_ID',
         'actions/runs/{run_id}',
-        "run.get("path")",
-        "run.get("head_branch")",
-        "run.get("event")",
-        "run.get("head_sha")",
+        'run.get("path")',
+        'run.get("head_branch")',
+        'run.get("event")',
+        'run.get("head_sha")',
     )):
         return 'Candidate weakened authenticated canonical release execution guard'
 
