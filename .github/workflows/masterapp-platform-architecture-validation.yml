@@ -397,20 +397,20 @@ jobs:
           key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 
-  validated-release-package:
+  validated-release-package-plan:
     needs: approved-head-preflight
-    name: validated-release-package
+    name: validated-release-package-plan
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
-      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
-      MSBUILDDISABLENODEREUSE: '1'
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.packageplan.outputs.needed }}
+      revision: ${{ steps.packageplan.outputs.revision }}
+      validation_run_id: ${{ steps.packageplan.outputs.validation_run_id }}
+      evidence_run_id: ${{ steps.packageplan.outputs.evidence_run_id }}
+      evidence_head_sha: ${{ steps.packageplan.outputs.evidence_head_sha }}
     steps:
-
-      - name: Checkout exact package authority
+      - name: Checkout exact package planning authority
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -464,41 +464,113 @@ jobs:
           PYPACKAGEPLAN
           fi
 
-      - name: Setup .NET for canonical package build
-        if: steps.packageplan.outputs.needed == 'true'
+  validated-release-package-components:
+    needs: validated-release-package-plan
+    name: validated-release-package-components (${{ matrix.component }})
+    if: needs.validated-release-package-plan.outputs.needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [portal, client, protect, parfait, website, migration]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout exact package component authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET for canonical package component build
+        if: matrix.component != 'website'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
 
-      - name: Setup Node for canonical static package build
-        if: steps.packageplan.outputs.needed == 'true'
+      - name: Setup Node for canonical static package component build
+        if: matrix.component == 'website'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: Legend-Website/package-lock.json
 
-      - name: Build immutable validated release package
-        id: package
-        if: steps.packageplan.outputs.needed == 'true'
+      - name: Build immutable validated release package component
+        id: component
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/release-package.py build \
-            --revision "${{ steps.packageplan.outputs.revision }}" \
+          python3 scripts/release-package.py build-component \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
+            --component "${{ matrix.component }}" \
+            --directory "$RUNNER_TEMP/validated-release-component" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Preserve immutable validated release package component
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-${{ matrix.component }}
+          path: ${{ runner.temp }}/validated-release-component/
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  validated-release-package:
+    needs:
+      - approved-head-preflight
+      - validated-release-package-plan
+      - validated-release-package-components
+    name: validated-release-package
+    if: >-
+      always() &&
+      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')) &&
+      needs.validated-release-package-plan.result == 'success' &&
+      (needs.validated-release-package-components.result == 'success' || needs.validated-release-package-components.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact package authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Load immutable package components
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-*
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Build immutable validated release package
+        id: package
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py assemble \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package" \
             --output "$GITHUB_OUTPUT"
 
       - name: Verify immutable validated release package
-        if: steps.packageplan.outputs.needed == 'true'
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
         shell: bash
         run: |
           python3 scripts/release-package.py verify \
-            --revision "${{ steps.packageplan.outputs.revision }}" \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package"
 
       - name: Preserve immutable validated release package
-        if: steps.packageplan.outputs.needed == 'true'
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.artifact }}
@@ -508,11 +580,11 @@ jobs:
           overwrite: true
 
       - name: Retain exact validated package backfill receipt
-        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
         shell: bash
         env:
-          REVISION: ${{ steps.packageplan.outputs.revision }}
-          VALIDATION_RUN_ID: ${{ steps.packageplan.outputs.validation_run_id }}
+          REVISION: ${{ needs.validated-release-package-plan.outputs.revision }}
+          VALIDATION_RUN_ID: ${{ needs.validated-release-package-plan.outputs.validation_run_id }}
           PACKAGE_IDENTITY: ${{ steps.package.outputs.identity }}
         run: |
           python3 - <<'PYBACKFILL'
@@ -528,10 +600,10 @@ jobs:
           PYBACKFILL
 
       - name: Preserve exact validated package backfill receipt
-        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: validated-package-backfill-${{ steps.packageplan.outputs.revision }}-${{ steps.package.outputs.identity }}
+          name: validated-package-backfill-${{ needs.validated-release-package-plan.outputs.revision }}-${{ steps.package.outputs.identity }}
           path: /tmp/validated-package-backfill.json
           retention-days: 30
           if-no-files-found: error
