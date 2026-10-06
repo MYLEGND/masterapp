@@ -862,6 +862,9 @@ WORKFLOWS = {
                 "step": "Compile full regression test project",
                 "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
+                # Compile consumes C#/project inputs only. Repository files opened
+                # later by runtime source-contract tests are not compiler inputs.
+                "repository_reads": False,
             },
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
@@ -1903,10 +1906,15 @@ def _trusted_historical_runs(args, token):
 
 
 def _apply_content_equivalent_evidence(args, plan):
-    """Fill unresolved gates from recent successful runs with identical gate inputs.
+    """Reuse the newest trusted predecessor's exact child proofs only.
 
-    This is intentionally an optimization only. Any lookup/diff uncertainty keeps
-    the existing plan unchanged, so historical reuse can never weaken validation.
+    Every recorded validation plan is already a complete child ledger: executed
+    successes plus the preserved producer proof for unchanged gates. Therefore
+    the newest usable trusted predecessor is the canonical reuse frontier.
+    Searching dozens of older runs cannot make a changed boundary unchanged; it
+    only burns wall-clock time and risks resurrecting stale proof across an
+    intervening control change. A reverted input simply runs fresh, which is
+    fail-closed and preserves validation strength.
     """
     if args.event != "pull_request" or not any(row.get("run") for row in plan["gates"].values()):
         return plan
@@ -1914,8 +1922,6 @@ def _apply_content_equivalent_evidence(args, plan):
     if not token:
         return plan
 
-    reused = False
-    examined = 0
     try:
         runs = _trusted_historical_runs(args, token)
     except EvidenceLookupUnavailable:
@@ -1924,20 +1930,28 @@ def _apply_content_equivalent_evidence(args, plan):
         plan["historicalEvidenceError"] = type(exc).__name__
         return plan
 
+    examined = 0
     for run in runs:
-        head_sha = run["head_sha"]
         try:
             steps = _historical_plan_steps(args, run, token)
-            if not steps:
-                examined += 1
-                continue
-            prior = {
-                "id": run["id"],
-                "head_sha": head_sha,
-                "run_attempt": run.get("run_attempt", 1),
-                "event": run.get("event"),
-                "head_branch": run.get("head_branch"),
-            }
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            examined += 1
+            continue
+        examined += 1
+        if not steps:
+            # Older workflows may predate durable child plans. Walk only until
+            # the newest usable canonical ledger is found.
+            continue
+        prior = {
+            "id": run["id"],
+            "head_sha": run["head_sha"],
+            "run_attempt": run.get("run_attempt", 1),
+            "event": run.get("event"),
+            "head_branch": run.get("head_branch"),
+        }
+        try:
             candidate_plan = _plan_against_prior(
                 args.workflow,
                 args.current_sha,
@@ -1947,18 +1961,20 @@ def _apply_content_equivalent_evidence(args, plan):
             )
         except EvidenceLookupUnavailable:
             raise
-        except Exception:
-            examined += 1
-            continue
-        examined += 1
-        reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
-        if not any(row.get("run") for row in plan["gates"].values()):
+        except Exception as exc:
+            plan["historicalEvidenceError"] = type(exc).__name__
             break
 
-    _enforce_runtime_requirements(plan)
-    if reused:
-        plan["mode"] = "content-addressed"
+        reused = merge_content_equivalent_evidence(plan, candidate_plan, run)
+        _enforce_runtime_requirements(plan)
         plan["historicalEvidenceRunsExamined"] = examined
+        plan["historicalEvidenceFrontierRunId"] = int(run["id"])
+        if reused:
+            plan["mode"] = "content-addressed"
+        # This ledger is complete for its head. A current identity mismatch is
+        # a real changed boundary and must execute; never mine older proof to
+        # suppress it.
+        break
     return plan
 
 
@@ -2211,21 +2227,23 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
     for key, gate in config["gates"].items():
         inputs = {path: identity for path, identity in tree.items()
                   if gate_matches(path, gate) or matches(path, config.get("force_all", ()))}
-        # Source-contract tests read copied and direct repository files. Preserve
-        # those content inputs alongside the C# fixture, even for neutral owners.
+        # Source-contract test *execution* may read copied/direct repository
+        # files. A compile-only gate must not inherit those runtime dependencies;
+        # doing so turns control/test-only edits into a needless full test compile.
         tokens = set()
         dynamic_patterns = set()
-        for path in tuple(inputs):
-            if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
-                tokens.update(test_tokens.get(path, ()))
-                dynamic_patterns.update(test_file_patterns.get(path, ()))
-        if tokens:
-            inputs.update({path: identity for path, identity in tree.items()
-                           if Path(path).name in tokens})
-            inputs.update({path: tree[path] for path, alias in copied_inputs.items()
-                           if path in tree and alias in tokens})
-        if dynamic_patterns:
-            inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
+        if gate.get("repository_reads", True):
+            for path in tuple(inputs):
+                if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
+                    tokens.update(test_tokens.get(path, ()))
+                    dynamic_patterns.update(test_file_patterns.get(path, ()))
+            if tokens:
+                inputs.update({path: identity for path, identity in tree.items()
+                               if Path(path).name in tokens})
+                inputs.update({path: tree[path] for path, alias in copied_inputs.items()
+                               if path in tree and alias in tokens})
+            if dynamic_patterns:
+                inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
         source_digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         control = _gate_execution_contract(workflow_text, config, key)
         control_digest = hashlib.sha256(control.encode()).hexdigest()
