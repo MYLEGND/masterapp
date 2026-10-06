@@ -2068,6 +2068,7 @@ public sealed class ScopedTests
         Assert.Equal("ok", ReadValue());
     }
 
+    // Public/static are prose here, not declarations; comments must not poison isolation.
     private static string ReadValue() => "ok";
 }
 """
