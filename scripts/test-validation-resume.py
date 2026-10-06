@@ -2051,6 +2051,38 @@ jobs:
         self.assertFalse(m.merge_content_equivalent_evidence(current, candidate, run))
         self.assertTrue(all(gate["run"] for gate in current["gates"].values()))
 
+    def test_step5_private_static_helpers_remain_class_local_for_bounded_repair(self):
+        source = """
+namespace AgentPortal.Tests;
+public sealed class ScopedTests
+{
+    [Fact]
+    public void Case()
+    {
+        Assert.Equal("ok", ReadValue());
+    }
+
+    private static string ReadValue() => "ok";
+}
+"""
+        self.assertTrue(m._step5_isolated_test_source(source))
+
+    def test_step5_static_state_still_requires_full_suite_proof(self):
+        source = """
+namespace AgentPortal.Tests;
+public sealed class ScopedTests
+{
+    private static int Counter;
+
+    [Fact]
+    public void Case()
+    {
+        Counter++;
+    }
+}
+"""
+        self.assertFalse(m._step5_isolated_test_source(source))
+
 
 class Step5DependencyBehaviorTests(unittest.TestCase):
     def setUp(self):
