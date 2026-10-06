@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate durable target step identities from the sole canonical release inventory.
+"""Generate the canonical target-publication boundary from the release inventory.
 
-GitHub records top-level step execution independently, so a retry can distinguish
-an untouched target from an entered target whose upload intent is unavailable.
-This file owns formatting only; targets and deployment behavior belong to the
-canonical validation and deployment authorities.
+The workflow owns one atomic release transaction. Target-local publication may
+overlap only after shared configuration, migrations and transaction preparation
+have succeeded. Per-target replay protection remains owned by deploy-approved-app
+operation journals; this file owns formatting only.
 """
 import argparse
 import importlib.util
@@ -64,7 +64,7 @@ def render(text, targets):
         raise ValueError('Expected exactly one canonical target outcome block')
     before, tail = generated.split(OUTCOME_START, 1)
     _, after = tail.split(OUTCOME_END, 1)
-    outcomes = '          TARGET_OUTCOME_BATCH: ${{ steps.publish_targets.outcome }}\\n'
+    outcomes = '          TARGET_OUTCOME_BATCH: ${{ steps.publish_targets.outcome }}\n'
     return before + OUTCOME_START + outcomes + OUTCOME_END + after
 
 
