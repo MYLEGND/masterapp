@@ -45,11 +45,11 @@ def target_steps(targets):
         run: |
           set -euo pipefail
           test -n "$PENDING_TARGETS"
-          python3 scripts/deploy-approved-app.py \
-            --targets-json "$PENDING_TARGETS" \
-            --package-root /tmp/diagnostics-packages \
-            --publish-selected \
-            --publication-outcomes /tmp/release-publication-outcomes.json \
+          python3 scripts/deploy-approved-app.py \\
+            --targets-json "$PENDING_TARGETS" \\
+            --package-root /tmp/diagnostics-packages \\
+            --publish-selected \\
+            --publication-outcomes /tmp/release-publication-outcomes.json \\
             --transaction-plan /tmp/release-transaction.json
 '''
 
