@@ -28,6 +28,13 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def release_authority():
+    spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def env_json(name, default):
     raw = os.environ.get(name)
     if not raw:
@@ -499,6 +506,7 @@ def run_migration_lane():
 
 
 def main():
+    release_authority().assert_protected_release_execution()
     output = Path(os.environ.get("RELEASE_PREPUBLICATION_RESULT", "/tmp/release-prepublication.json"))
     output.parent.mkdir(parents=True, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
