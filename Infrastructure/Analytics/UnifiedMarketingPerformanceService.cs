@@ -17,7 +17,8 @@ public sealed class UnifiedMarketingPerformanceService(
     IOpenAiAdsExecutionService openAiAds,
     IOpenAiAdsAccountConnectionAuthority openAiConnections,
     IAnalyticsQueryService analytics,
-    IMetaAdsService metaAds) : IUnifiedMarketingPerformanceService
+    IMetaAdsService metaAds,
+    IMarketingExternalAdsReportingService externalAds) : IUnifiedMarketingPerformanceService
 {
     public async Task<UnifiedChannelPerformanceSnapshot> GetAsync(
         MarketingOwnerScope owner,
@@ -72,6 +73,12 @@ public sealed class UnifiedMarketingPerformanceService(
         var outcomes = CanonicalMarketingOutcomeProjection.Totals(openAiEvents);
         var metaOutcomes = CanonicalMarketingOutcomeProjection.Totals(attributedEvents.Where(e =>
             CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.MetaAds));
+        var googleEvents = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(attributedEvents)
+            .Where(e => CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.GoogleAds).ToArray();
+        var googleOutcomes = CanonicalMarketingOutcomeProjection.Totals(googleEvents);
+        var tiktokEvents = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(attributedEvents)
+            .Where(e => CanonicalMarketingOutcomeProjection.ChannelFor(e) == MarketingChannels.TikTokAds).ToArray();
+        var tiktokOutcomes = CanonicalMarketingOutcomeProjection.Totals(tiktokEvents);
 
         var channels = new List<ChannelPerformanceRow>();
         decimal? openAiSpend = openAiDeliveryAvailable ? delivery.Sum(x => x.Spend) : null;
@@ -119,6 +126,29 @@ public sealed class UnifiedMarketingPerformanceService(
                 "unavailable", "Provider reporting unavailable; delivery and economics are unknown"));
         }
 
+        await AddExternalChannelAsync(
+            MarketingDestinationKeys.Google,
+            MarketingChannels.GoogleAds,
+            googleOutcomes,
+            googleEvents.Length,
+            owner,
+            range,
+            channels,
+            delivery,
+            notes,
+            ct);
+        await AddExternalChannelAsync(
+            MarketingDestinationKeys.TikTok,
+            MarketingChannels.TikTokAds,
+            tiktokOutcomes,
+            tiktokEvents.Length,
+            owner,
+            range,
+            channels,
+            delivery,
+            notes,
+            ct);
+
         AddNonPaidRows(channels, attributedEvents);
 
         if (delivery.Count > 0 && outcomes.Leads > 0)
@@ -134,6 +164,59 @@ public sealed class UnifiedMarketingPerformanceService(
             channels,
             notes);
         return snapshot with { Economics = BlendedGrowthEconomicsService.Calculate(owner, range, snapshot, attributedEvents) };
+    }
+
+    private async Task AddExternalChannelAsync(
+        string provider,
+        string channel,
+        CanonicalOutcomeTotals outcomes,
+        int canonicalOutcomeRows,
+        MarketingOwnerScope owner,
+        TimeRangeRequest range,
+        ICollection<ChannelPerformanceRow> channels,
+        ICollection<ProviderDeliveryMetricRow> delivery,
+        ICollection<string> notes,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var providerDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            providerDeadline.CancelAfter(TimeSpan.FromSeconds(5));
+            var rows = await externalAds.GetCampaignsAsync(owner, provider, range, providerDeadline.Token);
+            foreach (var row in rows) delivery.Add(row);
+            var spend = rows.Sum(x => x.Spend);
+            channels.Add(new ChannelPerformanceRow(
+                channel,
+                spend,
+                rows.Sum(x => x.Impressions),
+                rows.Sum(x => x.Clicks),
+                outcomes.Leads,
+                outcomes.QualifiedLeads,
+                outcomes.Appointments,
+                outcomes.Customers,
+                outcomes.Revenue,
+                spend > 0 ? Math.Round(outcomes.Revenue / spend, 2) : null,
+                canonicalOutcomeRows > 0 ? "canonical_lineage" : "not_observed",
+                "Provider delivery metrics joined to canonical first-party downstream outcomes; provider conversion totals are not treated as CRM truth"));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException ||
+            ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            notes.Add($"{channel} delivery comparison is unavailable: {ex.Message}");
+            channels.Add(new ChannelPerformanceRow(
+                channel,
+                null,
+                0,
+                0,
+                outcomes.Leads,
+                outcomes.QualifiedLeads,
+                outcomes.Appointments,
+                outcomes.Customers,
+                outcomes.Revenue,
+                null,
+                canonicalOutcomeRows > 0 ? "canonical_lineage" : "unavailable",
+                "Provider reporting unavailable; canonical downstream outcomes remain available independently"));
+        }
     }
 
     private static IReadOnlyList<ProviderDeliveryMetricRow> ParseOpenAiRows(JsonElement payload)
@@ -186,10 +269,13 @@ public sealed class UnifiedMarketingPerformanceService(
             (TrafficType.Referral, MarketingChannels.Referral)
         })
         {
-            var rows = events.Where(x => TrafficAttribution.Classify(
-                x.UtmSource, x.UtmMedium, x.UtmCampaign, x.Fbclid, x.ReferrerHost,
-                x.MetaCampaignId, x.MetaAdSetId, x.MetaAdId, x.IsInternal,
-                x.Environment, x.Host, x.Oppref) == type).ToList();
+            var rows = events.Where(x =>
+                    CanonicalMarketingOutcomeProjection.ChannelFor(x) == channel &&
+                    TrafficAttribution.Classify(
+                        x.UtmSource, x.UtmMedium, x.UtmCampaign, x.Fbclid, x.ReferrerHost,
+                        x.MetaCampaignId, x.MetaAdSetId, x.MetaAdId, x.IsInternal,
+                        x.Environment, x.Host, x.Oppref) == type)
+                .ToList();
 
             var totals = CanonicalMarketingOutcomeProjection.Totals(rows);
             channels.Add(new ChannelPerformanceRow(
