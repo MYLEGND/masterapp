@@ -272,7 +272,8 @@ public sealed class ExternalAdsConversionApiService(
         var explicitUrl = row.Url ??
             CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "sourceUrl");
         if (Uri.TryCreate(explicitUrl, UriKind.Absolute, out var uri) &&
-            uri.Scheme is Uri.UriSchemeHttp or Uri.UriSchemeHttps)
+            (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
             return uri.ToString();
 
         if (string.IsNullOrWhiteSpace(row.Host)) return null;
