@@ -81,6 +81,11 @@ public sealed class AiSafeAnalyticsPayload
 
     // Tracking + pipeline health
     public MarketingHealthAiPayload? MarketingHealth { get; set; }
+
+    // Outcome calibration — observed browser intent is a feature; canonical
+    // server outcomes are the labels. This is historical selected-window
+    // evidence, never a claim that a heuristic score itself is a conversion.
+    public OutcomeCalibrationAiPayload? OutcomeCalibration { get; set; }
 }
 
 // ── Nested safe row types ─────────────────────────────────────────────────────
@@ -211,6 +216,30 @@ public sealed class MetaSignalLadderAiRow
     public string StepLabel { get; set; } = "";
     public int Visitors { get; set; }
     public decimal? ProgressionRate { get; set; }
+}
+
+public sealed class OutcomeCalibrationAiPayload
+{
+    public string LearningScopeNote { get; set; } = "";
+    public List<SignalOutcomeCalibrationAiRow> Signals { get; set; } = new();
+}
+
+public sealed class SignalOutcomeCalibrationAiRow
+{
+    public string Signal { get; set; } = "";
+    public int ObservedVisitors { get; set; }
+    public int QualifiedLeads { get; set; }
+    public int Appointments { get; set; }
+    public int Applications { get; set; }
+    public int PoliciesIssued { get; set; }
+    public int PaidCustomers { get; set; }
+    public decimal QualifiedRate { get; set; }
+    public decimal AppointmentRate { get; set; }
+    public decimal ApplicationRate { get; set; }
+    public decimal IssuedRate { get; set; }
+    public decimal PaidRate { get; set; }
+    public decimal ObservedRevenue { get; set; }
+    public decimal ExpectedRevenuePerObservedVisitor { get; set; }
 }
 
 public sealed record AiChannelRow(string Channel, decimal? Spend, long Impressions, long Clicks,
