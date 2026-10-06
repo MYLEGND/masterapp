@@ -806,6 +806,9 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("steps.gate_compile_regression.outcome == 'success'", fanout)
         self.assertIn('COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}', fanout)
         self.assertIn('[ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]', fanout)
+        self.assertIn('/tmp/masterapp/bin/AgentPortal.Tests/Release', workflow)
+        self.assertIn('/tmp/masterapp/obj/AgentPortal.Tests', workflow)
+        self.assertNotIn('AgentPortal.Tests/bin/Release/net10.0/AgentPortal.Tests.dll', workflow)
         compile_block=workflow.split('      - name: Compile full regression test project\n',1)[1].split(
             '      - name: Preserve exact compiled regression material\n',1
         )[0]
