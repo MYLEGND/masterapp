@@ -67,6 +67,8 @@ jobs:
       baseline_evidence_run_id: ${{ steps.plan.outputs.baseline_evidence_run_id }}
       baseline_evidence_artifact: ${{ steps.plan.outputs.baseline_evidence_artifact }}
       baseline_run_required: ${{ steps.plan.outputs.baseline_run_required }}
+      resume_cache: ${{ steps.plan.outputs.resume_cache }}
+      parent_success_reuse: ${{ steps.plan.outputs.parent_success_reuse }}
       repair_filter: ${{ steps.plan.outputs.repair_filter }}
       repair_classes: ${{ steps.plan.outputs.repair_classes }}
       candidate_restore_run: ${{ steps.plan.outputs.candidate_restore_run }}
@@ -84,6 +86,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Restore latest PR-local Step 5 evidence cache
+        id: resumecache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/step5-resume-cache
+          key: step5-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          restore-keys: |
+            step5-pr-${{ github.event.pull_request.number }}-
 
       - name: Resolve one canonical Step 5 resume decision
         id: plan
