@@ -825,6 +825,8 @@ public sealed class CanonicalCrmOutcomeService
         payload["ttclid"] = PaidAdsClickReference.NormalizeTikTok(lineage?.Ttclid);
         payload["fbc"] = lineage?.Fbc;
         payload["fbp"] = lineage?.Fbp;
+        payload["gclid"] = PaidAdsClickReference.NormalizeGoogle(lineage?.Gclid);
+        payload["ttclid"] = PaidAdsClickReference.NormalizeTikTok(lineage?.Ttclid);
         payload["pageVariant"] = lineage?.PageVariant;
         payload["pageMode"] = lineage?.PageMode;
         payload["canonicalOutcomeEventId"] = eventId;
