@@ -125,7 +125,7 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         }
     }
 
-    private static object External(
+    public static object External(
         MarketingProviderConnectionSnapshot connection,
         MarketingProviderMeasurementConfiguration measurement) => new
     {
