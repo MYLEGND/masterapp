@@ -711,7 +711,7 @@ def candidate_validation(api, pr):
             return None
         if state['failed']:
             break
-        if attempt < 3:
+        if attempt < 3 and os.environ.get('GITHUB_ACTIONS') == 'true':
             time.sleep((attempt + 1) * 5)
 
     unresolved = sorted(set(
