@@ -58,7 +58,6 @@ DIRECT_RELEASE_CHILDREN = {
             "scripts/MigrationReleaseProbe/",
             "scripts/release-migration.py",
             "scripts/release-prepublication.py",
-    "scripts/release-auxiliary.py",
         ),
     },
     "shared-config": {
