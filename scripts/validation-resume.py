@@ -1355,10 +1355,11 @@ def git_changed(prior: str, current: str) -> list[str]:
 
 class EvidenceLookupUnavailable(RuntimeError):
     """Evidence transport failed; do not infer absence or invalidate proof."""
-    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None):
+    def __init__(self, message="Evidence read unavailable", *, status=None, endpoint=None, rate=None):
         super().__init__(message)
         self.code = status
         self.endpoint = endpoint
+        self.rate = dict(rate or {})
 
 
 def api_get(repository: str, path: str, token: str):
@@ -1385,7 +1386,12 @@ def api_get(repository: str, path: str, token: str):
                     if headers.get(key) is not None}
                 if rate:
                     print(json.dumps({"evidenceRateLimit": rate}, sort_keys=True))
-                raise EvidenceLookupUnavailable("GitHub evidence read unavailable", status=getattr(exc, "code", None), endpoint=path.split("?", 1)[0]) from exc
+                raise EvidenceLookupUnavailable(
+                    "GitHub evidence read unavailable",
+                    status=getattr(exc, "code", None),
+                    endpoint=path.split("?", 1)[0],
+                    rate=rate,
+                ) from exc
             time.sleep(2 ** attempt)
 
 
@@ -2484,48 +2490,85 @@ def cmd_cache_success(args):
     print(json.dumps(payload, sort_keys=True))
 
 
-def cmd_plan(args):
-    if args.workflow not in WORKFLOWS:
-        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
-    try:
-        cached = _cached_success_evidence(args)
-        if cached is not None:
-            prior, steps, source = cached
+def _compute_validation_plan_once(args):
+    cached = _cached_success_evidence(args)
+    if cached is not None:
+        prior, steps, source = cached
+        plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+        _stamp_evidence(plan, prior, source)
+    else:
+        prior, steps, source = prior_evidence(args)
+        if prior:
             plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
             _stamp_evidence(plan, prior, source)
         else:
-            prior, steps, source = prior_evidence(args)
-            if prior:
-                plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
-                _stamp_evidence(plan, prior, source)
-            else:
-                plan = compute_plan(
-                    args.workflow,
-                    args.current_sha,
-                    None,
-                    {},
-                    [],
-                    source,
-                )
-            plan = _apply_content_equivalent_evidence(args, plan)
-        plan["schemaVersion"] = 2
-        plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
-    except EvidenceLookupUnavailable as exc:
-        # Remote history is an optimization. A rate-limit or provider outage is
-        # not permission to erase known child proof and launch a broad rerun.
-        # When no PR-local success capsule exists, fail this planning boundary
-        # explicitly so the autonomous lifecycle can retry it without executing
-        # expensive children.
-        if getattr(args, "event", None) == "pull_request":
+            plan = compute_plan(
+                args.workflow,
+                args.current_sha,
+                None,
+                {},
+                [],
+                source,
+            )
+        plan = _apply_content_equivalent_evidence(args, plan)
+    plan["schemaVersion"] = 2
+    plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    return plan
+
+
+def _evidence_retry_delay(exc, attempt):
+    rate = getattr(exc, "rate", {}) or {}
+    retry = rate.get("Retry-After")
+    reset = rate.get("X-RateLimit-Reset")
+    try:
+        if retry is not None:
+            return max(1, int(retry) + 2)
+        if reset is not None:
+            return max(1, int(reset) - int(time.time()) + 3)
+    except (TypeError, ValueError):
+        pass
+    return (15, 30, 60, 120)[min(attempt, 3)]
+
+
+def cmd_plan(args):
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+
+    plan = None
+    last_evidence_error = None
+    for attempt in range(4):
+        try:
+            plan = _compute_validation_plan_once(args)
+            break
+        except EvidenceLookupUnavailable as exc:
+            last_evidence_error = exc
+            if getattr(args, "event", None) != "pull_request":
+                plan = _fresh_plan_when_evidence_unavailable(args, exc)
+                break
+            if attempt == 3:
+                break
+            delay = _evidence_retry_delay(exc, attempt)
+            # The workflow timeout remains the outer safety bound. Do not turn a
+            # long provider reset into broad validation; preserve child proof and
+            # retry only the planning boundary.
+            if delay > 900:
+                break
+            print(
+                f"Validation evidence lookup unavailable; preserving known child proof "
+                f"and retrying planner boundary in {delay}s (attempt {attempt + 1}/4)."
+            )
+            time.sleep(delay)
+        except Exception as exc:
             _stop_unresolved_planning(args, exc)
-        plan = _fresh_plan_when_evidence_unavailable(args, exc)
-    except Exception as exc:
-        _stop_unresolved_planning(args, exc)
+
+    if plan is None:
+        _stop_unresolved_planning(args, last_evidence_error or RuntimeError("Validation planning unavailable"))
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
     print(json.dumps({key: value for key, value in plan.items() if key != "dependencyManifests"}, indent=2, sort_keys=True))
+
 
 
 def cmd_preserved(args):
