@@ -579,6 +579,19 @@ class ValidationResumePlannerTests(unittest.TestCase):
         gate = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]["compile-regression"]
         self.assertFalse(gate["runtime_file_dependencies"])
 
+    def test_regression_consumers_depend_semantically_without_forcing_compile_execution(self):
+        gates = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]
+        for key in (
+            "founder-diagnostics-regressions",
+            "website-regressions",
+            "meta-regressions",
+            "booking-regressions",
+            "crm-regressions",
+            "release-web-contracts",
+        ):
+            self.assertEqual(("compile-regression",), gates[key]["consumes"], key)
+            self.assertNotIn("requires", gates[key], key)
+
     def test_successful_parent_is_complete_gate_proof_without_plan_artifact_download(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         run = {"id": 77, "conclusion": "success"}
@@ -652,8 +665,8 @@ class ValidationResumePlannerTests(unittest.TestCase):
             "prior_attempt",
         )
         self.assertTrue(plan["gates"]["booking-regressions"]["run"])
-        self.assertTrue(plan["gates"]["compile-regression"]["run"])
-        self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+        self.assertFalse(plan["gates"]["compile-regression"]["run"])
+        self.assertFalse(plan["gates"]["restore-dotnet"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
         self.assertFalse(plan["gates"]["cms-tests"]["run"])
         self.assertFalse(plan["gates"]["form-tracking"]["run"])
@@ -1601,7 +1614,7 @@ jobs:
             if key not in {"lifecycle", "release-policy"}:
                 self.assertFalse(gate["run"], key)
 
-    def test_release_web_contract_change_reruns_release_web_with_its_local_dotnet_build_chain(self):
+    def test_release_web_runtime_change_reuses_content_identical_compiled_graph(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
             workflow,
@@ -1611,10 +1624,11 @@ jobs:
             ["tests/legend-connect/example.test.mjs"],
             "prior_run",
         )
-        for key in ("release-web-contracts", "compile-regression", "restore-dotnet"):
-            self.assertTrue(plan["gates"][key]["run"], key)
+        self.assertTrue(plan["gates"]["release-web-contracts"]["run"])
+        self.assertFalse(plan["gates"]["compile-regression"]["run"])
+        self.assertFalse(plan["gates"]["restore-dotnet"]["run"])
         for key, gate in plan["gates"].items():
-            if key not in {"release-web-contracts", "compile-regression", "restore-dotnet"}:
+            if key != "release-web-contracts":
                 self.assertFalse(gate["run"], key)
 
     def test_validation_authority_change_reruns_only_declared_consumers(self):
