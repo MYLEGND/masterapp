@@ -929,6 +929,20 @@ jobs:
             set(topology["required"]),
         )
 
+    def test_terminal_lifecycle_wake_is_control_only_and_requires_owning_validation(self):
+        path="scripts/wake-release-lifecycle.py"
+        topology=m.required_validation_topology([path])
+        self.assertEqual(
+            {
+                ".github/workflows/masterapp-platform-architecture-validation.yml",
+                ".github/workflows/approved-release-security-validation.yml",
+            },
+            set(topology["required"]),
+        )
+        self.assertTrue(topology["releaseControlAuthorityChange"])
+        self.assertEqual((), m.release_targets_for_paths([path]))
+        self.assertTrue(m.release_control_only_path(path))
+
     def test_lifecycle_control_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/release-lifecycle.py",
