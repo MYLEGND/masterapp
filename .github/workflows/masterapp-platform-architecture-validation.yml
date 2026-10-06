@@ -77,6 +77,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Restore PR-local validation gate evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            validation-resume-architecture-pr-${{ github.event.pull_request.number }}-
+
       - name: Plan exact validation resume
         id: plan
         shell: bash
@@ -92,6 +101,7 @@ jobs:
             --head-branch "${{ github.head_ref || github.ref_name }}" \
             --event "${{ github.event_name }}" \
             --repository "${{ github.repository }}" \
+            --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
           python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
           import json, sys
@@ -125,6 +135,7 @@ jobs:
       - name: Run branch lifecycle safety contracts
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
           python3 scripts/test-release-lifecycle.py
           python3 scripts/test-validation-resume.py
@@ -137,23 +148,27 @@ jobs:
       - name: Run authenticated mobile authority tests
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate mobile --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate mobile; then exit 0; fi
           node --test tests/layout/modal-content-region.test.mjs tests/layout/app-navigation-contract.test.mjs
 
       - name: Restore .NET graph
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate restore-dotnet --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore-dotnet; then exit 0; fi
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
 
       - name: Build shared infrastructure
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate build-infrastructure --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-infrastructure; then exit 0; fi
           dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore
 
       - name: Build AgentPortal and ClientApp hosts
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate build-hosts --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-hosts; then exit 0; fi
           dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore
           dotnet build ClientApp/ClientApp.csproj -c Release --no-restore
@@ -161,11 +176,13 @@ jobs:
       - name: Build Protect host
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate build-protect --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-protect; then exit 0; fi
           dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
 
       - name: Verify Protect serves the exact shared tracking assets
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate tracking-assets --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate tracking-assets; then exit 0; fi
           dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore -o "$RUNNER_TEMP/protect-authority-publish"
           cmp SHARED/WebsitePlatform/tracking.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/tracking.js"
@@ -176,6 +193,7 @@ jobs:
         working-directory: Legend-Website
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-install --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           # Resume evidence can preserve the validation result, but node_modules is
           # runner-local and must be rematerialized on a fresh runner.
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-install && [ -d node_modules ]; then exit 0; fi
@@ -185,6 +203,7 @@ jobs:
         working-directory: Legend-Website
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-build --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           # dist is also runner-local. Preserve prior proof only when the exact
           # materialized outputs are already present in this workspace.
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-build \
@@ -197,12 +216,14 @@ jobs:
         working-directory: Legend-Website
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-parity --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-parity; then exit 0; fi
           npm run check
 
       - name: Run business renderer tests with approved-baseline no-regression proof
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-tests --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-tests; then exit 0; fi
           set +e
           (cd Legend-Website && npm run test:renderer)
@@ -229,6 +250,7 @@ jobs:
         working-directory: tests/website
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-install --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-install; then exit 0; fi
           npm ci --ignore-scripts --no-audit --no-fund
 
@@ -236,18 +258,21 @@ jobs:
         working-directory: tests/website
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-tests --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-tests; then exit 0; fi
           npm test
 
       - name: Compile full regression test project
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then exit 0; fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
 
       - name: Run Founder diagnostics and safe GPT Codex regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
@@ -255,12 +280,14 @@ jobs:
       - name: Compile shared domain release refresh
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release; then exit 0; fi
           dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
 
       - name: Run website ownership and publishing regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
@@ -268,6 +295,7 @@ jobs:
       - name: Run Meta authority regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
@@ -275,6 +303,7 @@ jobs:
       - name: Run booking authority regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
@@ -282,6 +311,7 @@ jobs:
       - name: Run CRM outcome regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
@@ -289,12 +319,14 @@ jobs:
       - name: Run canonical form tracking tests
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
           node --test tests/analytics/form-tracker.test.cjs
 
       - name: Run release web contract regressions
         shell: bash
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
           node --test tests/analytics/csv-export.test.cjs
           node tests/analytics/form-tracker.test.cjs .
@@ -318,6 +350,7 @@ jobs:
 
       - name: Verify consolidated release scope and routing policy
         run: |
+          trap 'rc=$?; trap - EXIT; if [ "$rc" -eq 0 ]; then python3 scripts/validation-resume.py checkpoint-gate --workflow masterapp-platform-architecture-validation.yml --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy --output /tmp/validation-resume-cache/validation-resume.json; fi; exit "$rc"' EXIT
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
           python3 scripts/test-release-policy.py
           python3 scripts/test-deploy-approved-app.py
@@ -355,6 +388,24 @@ jobs:
       DOTNET_CLI_USE_MSBUILD_SERVER: '0'
       MSBUILDDISABLENODEREUSE: '1'
     steps:
+
+      - name: Check PR-local validation gate cache readiness
+        id: gatecache
+        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save PR-local validation gate evidence
+        if: always() && steps.gatecache.outputs.ready == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Checkout exact package authority
         uses: actions/checkout@v4
         with:
