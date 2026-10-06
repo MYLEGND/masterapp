@@ -862,6 +862,7 @@ WORKFLOWS = {
                 "step": "Compile full regression test project",
                 "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
+                "runtime_file_dependencies": False,
             },
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
@@ -1902,6 +1903,30 @@ def _trusted_historical_runs(args, token):
     return rows
 
 
+def _successful_parent_steps(workflow, run):
+    """A successful PR validator proves every gate in that exact parent envelope.
+
+    Individual artifacts are only needed to salvage green children from failed
+    parents. Avoiding artifact downloads for successful parents turns history
+    reuse into one content-identity comparison instead of an N-run network scan.
+    """
+    steps = _StepEvidence()
+    run_id = int(run.get("id") or 0)
+    if run.get("conclusion") != "success" or run_id < 1:
+        return steps
+    for gate in WORKFLOWS[workflow]["gates"].values():
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": run_id,
+            "stepNumber": None,
+            "artifact": None,
+        }
+    return steps
+
+
 def _apply_content_equivalent_evidence(args, plan):
     """Fill unresolved gates from recent successful runs with identical gate inputs.
 
@@ -1926,8 +1951,13 @@ def _apply_content_equivalent_evidence(args, plan):
 
     for run in runs:
         head_sha = run["head_sha"]
+        successful_parent = run.get("conclusion") == "success"
         try:
-            steps = _historical_plan_steps(args, run, token)
+            steps = (
+                _successful_parent_steps(args.workflow, run)
+                if successful_parent
+                else _historical_plan_steps(args, run, token)
+            )
             if not steps:
                 examined += 1
                 continue
@@ -1943,7 +1973,7 @@ def _apply_content_equivalent_evidence(args, plan):
                 args.current_sha,
                 prior,
                 steps,
-                "trusted_plan_artifact_history",
+                "trusted_successful_parent" if successful_parent else "trusted_plan_artifact_history",
             )
         except EvidenceLookupUnavailable:
             raise
@@ -1953,6 +1983,12 @@ def _apply_content_equivalent_evidence(args, plan):
         examined += 1
         reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
         if not any(row.get("run") for row in plan["gates"].values()):
+            break
+        # The nearest trusted successful parent is the canonical comparison
+        # baseline. Anything whose content identity changed from it is genuinely
+        # invalidated and must execute; older generations cannot make a current
+        # source change disappear.
+        if successful_parent:
             break
 
     _enforce_runtime_requirements(plan)
@@ -2215,17 +2251,18 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
         # those content inputs alongside the C# fixture, even for neutral owners.
         tokens = set()
         dynamic_patterns = set()
-        for path in tuple(inputs):
-            if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
-                tokens.update(test_tokens.get(path, ()))
-                dynamic_patterns.update(test_file_patterns.get(path, ()))
-        if tokens:
-            inputs.update({path: identity for path, identity in tree.items()
-                           if Path(path).name in tokens})
-            inputs.update({path: tree[path] for path, alias in copied_inputs.items()
-                           if path in tree and alias in tokens})
-        if dynamic_patterns:
-            inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
+        if gate.get("runtime_file_dependencies", True):
+            for path in tuple(inputs):
+                if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
+                    tokens.update(test_tokens.get(path, ()))
+                    dynamic_patterns.update(test_file_patterns.get(path, ()))
+            if tokens:
+                inputs.update({path: identity for path, identity in tree.items()
+                               if Path(path).name in tokens})
+                inputs.update({path: tree[path] for path, alias in copied_inputs.items()
+                               if path in tree and alias in tokens})
+            if dynamic_patterns:
+                inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
         source_digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         control = _gate_execution_contract(workflow_text, config, key)
         control_digest = hashlib.sha256(control.encode()).hexdigest()
@@ -4448,18 +4485,21 @@ def _step5_prior_candidate_evidence(
 
 
 def _test_file_dependency_patterns(source):
-    """Conservatively bound direct .NET filesystem readers in source contracts.
+    """Conservatively bind repository files actually read by source-contract tests.
 
-    Literal directory readers own that subtree, including future/deleted files.
-    Computed/interpolated paths own the entire repository until a narrower
-    dependency can be proven; filename substring matching is never sufficient.
+    Compile proof never consumes these runtime dependencies. For executing tests,
+    literal files/directories and copied AppContext fixtures are exact inputs.
+    Computed single-file paths are resolved by the existing literal-token and
+    copied-alias pass below instead of poisoning the gate with the whole repo.
+    Computed directory enumeration remains fail-closed because it can observe an
+    arbitrary repository subtree whose members are not statically enumerable.
     """
-    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream|FileInfo|DirectoryInfo))\s*\(")
+    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream))\s*\(")
     patterns = set()
     for match in calls.finditer(source):
         tail = source[match.end():]
         literal = re.match(r'\s*(@?)"((?:[^"\\]|\\.)*)"\s*(?=[,)])', tail)
-        directory = match.group(1).startswith("Directory.") or "DirectoryInfo" in match.group(1)
+        directory = match.group(1).startswith("Directory.")
         if literal:
             path = literal.group(2).replace("\\\\", "/").replace("\\", "/").strip("/")
             if not path or path == "." or ".." in path.split("/"):
@@ -4475,7 +4515,8 @@ def _test_file_dependency_patterns(source):
         if copied and not directory:
             patterns.add("**/" + Path(copied.group(1)).name)
             continue
-        patterns.add("**")
+        if directory:
+            patterns.add("**")
     return tuple(sorted(patterns))
 
 
