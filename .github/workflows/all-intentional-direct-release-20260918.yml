@@ -562,248 +562,21 @@ jobs:
             --rollback-root /tmp/rollback-packages \
             --prepare-only --transaction-plan /tmp/release-transaction.json
 
-      - name: Synchronize selected shared authorization and publisher runtimes
-        id: sharedauth
-        if: ${{ !cancelled() && env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_SHARED_AUTH == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_settings=/tmp/shared-auth-source.json
-          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
-
-          selected() {
-            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
-          }
-          resolve_value() {
-            local file="$1"; shift
-            local key value
-            for key in "$@"; do
-              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
-            done
-            return 1
-          }
-          resolve_key() {
-            local file="$1"; shift
-            local key value
-            for key in "$@"; do
-              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$value" ]; then printf '%s' "$key"; return 0; fi
-            done
-            return 1
-          }
-
-          founder="$(resolve_value "$source_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
-          founder_upn="$(resolve_value "$source_settings" Founder__Upn 'Founder:Upn')"
-          blob="$(resolve_value "$source_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$source_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          ingest_secret="$(resolve_value "$source_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"
-          [ -n "$founder" ] && [ -n "$founder_upn" ] && [ -n "$blob" ] && [ -n "$keyvault" ] && [ -n "$ingest_secret" ]
-          for value in "$founder" "$founder_upn" "$blob" "$keyvault" "$ingest_secret"; do echo "::add-mask::$value"; done
-
-          while IFS= read -r app; do
-            [ -n "$app" ] || continue
-            selected "$app" || continue
-            settings="/tmp/shared-auth-${app}.json"
-            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-
-            founder_key="$(resolve_key "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-            founder_upn_key="$(resolve_key "$settings" Founder__Upn 'Founder:Upn' || true)"
-            blob_key="$(resolve_key "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-            keyvault_key="$(resolve_key "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-            updates=()
-            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)" = "$founder" ] || updates+=("${founder_key:-FOUNDER_OID}=$founder")
-            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn' || true)" = "$founder_upn" ] || updates+=("${founder_upn_key:-Founder__Upn}=$founder_upn")
-            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)" = "$blob" ] || updates+=("${blob_key:-DataProtection__BlobUri}=$blob")
-            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)" = "$keyvault" ] || updates+=("${keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault")
-            [ "$(resolve_value "$settings" WEBSITE_NODE_DEFAULT_VERSION || true)" = "~24" ] || updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24")
-            for key in Analytics__SharedSecret Tracking__SharedSecret; do
-              [ "$(resolve_value "$settings" "$key" || true)" = "$ingest_secret" ] || updates+=("$key=$ingest_secret")
-            done
-            for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
-              if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$settings" >/dev/null; then
-                [ "$(resolve_value "$settings" "$alias" || true)" = "$ingest_secret" ] || updates+=("$alias=$ingest_secret")
-              fi
-            done
-            if [ "${#updates[@]}" -gt 0 ]; then
-              python3 scripts/release-child-receipt.py shared-config --target "$app" --partition authorization --prepare
-              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
-              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            fi
-            [ "$(resolve_value "$settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
-            [ "$(resolve_value "$settings" Founder__Upn 'Founder:Upn')" = "$founder_upn" ]
-            [ "$(resolve_value "$settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-            [ "$(resolve_value "$settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            [ "$(resolve_value "$settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
-            [ "$(resolve_value "$settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
-            [ "$(resolve_value "$settings" WEBSITE_NODE_DEFAULT_VERSION)" = "~24" ]
-            for key in Analytics__SharedSecret Tracking__SharedSecret; do
-              [ "$(resolve_value "$settings" "$key")" = "$ingest_secret" ]
-            done
-            for alias in 'Analytics:SharedSecret' 'LeadIngest:SharedSecret' LeadIngest__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET; do
-              if jq -e --arg key "$alias" 'any(.[]; .name == $key)' "$settings" >/dev/null; then
-                [ "$(resolve_value "$settings" "$alias")" = "$ingest_secret" ]
-              fi
-            done
-            for update in "${updates[@]}"; do
-              [ "$(resolve_value "$settings" "${update%%=*}")" = "${update#*=}" ]
-            done
-            python3 scripts/release-child-receipt.py shared-config --target "$app" --partition authorization
-          done < <(jq -r '.[]' <<< "$SHARED_AUTH_TARGETS")
-
-          while IFS= read -r app; do
-            [ -n "$app" ] || continue
-            selected "$app" || continue
-            settings="/tmp/marketing-authority-${app}.json"
-            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            updates=()
-            for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
-              key="$(resolve_key "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              current="$(resolve_value "$settings" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
-              [ "$current" = "$expected" ] || updates+=("${key:-MarketingDataProtection__$pair}=$expected")
-            done
-            if [ "${#updates[@]}" -gt 0 ]; then
-              python3 scripts/release-child-receipt.py shared-config --target "$app" --partition marketing --prepare
-              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
-              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            fi
-            [ "$(resolve_value "$settings" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
-            [ "$(resolve_value "$settings" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            python3 scripts/release-child-receipt.py shared-config --target "$app" --partition marketing
-          done < <(jq -r '.[]' <<< "$MARKETING_TARGETS")
-          echo "Selected shared-auth and marketing runtimes consume the canonical authority."
-          python3 scripts/release-child-receipt.py shared-config
-      - name: Synchronize selected editor ticket authority
-        id: editorauth
-        if: ${{ !cancelled() && env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_HAS_EDITOR == 'true' && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_settings=/tmp/editor-ticket-source.json
-          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$DATABASE_AUTHORITY" -o json > "$source_settings"
-          value() {
-            local file="$1"; shift
-            local key found
-            for key in "$@"; do
-              found="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$found" ]; then printf '%s' "$found"; return 0; fi
-            done
-            return 1
-          }
-          selected() {
-            jq -e --arg app "$1" 'index($app) != null' <<< "$SELECTED_TARGETS" >/dev/null
-          }
-          blob="$(value "$source_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(value "$source_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$blob" ] && [ -n "$keyvault" ]
-          echo "::add-mask::$blob"
-          echo "::add-mask::$keyvault"
-          while IFS= read -r app; do
-            [ -n "$app" ] || continue
-            selected "$app" || continue
-            settings="/tmp/editor-ticket-${app}.json"
-            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            updates=()
-            for pair in BlobUri KeyVaultKeyId; do
-              expected="$blob"; [ "$pair" = KeyVaultKeyId ] && expected="$keyvault"
-              current="$(value "$settings" "WebsiteEditorDataProtection__$pair" "WebsiteEditorDataProtection:$pair" || true)"
-              [ "$current" = "$expected" ] || updates+=("WebsiteEditorDataProtection__$pair=$expected")
-            done
-            if [ "${#updates[@]}" -gt 0 ]; then
-              python3 scripts/release-child-receipt.py editor-config --target "$app" --partition editor --prepare
-              az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
-              az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            fi
-            [ "$(value "$settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$blob" ]
-            [ "$(value "$settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            python3 scripts/release-child-receipt.py editor-config --target "$app" --partition editor
-          done < <(jq -r '.[]' <<< "$EDITOR_TARGETS")
-          echo "Selected editor runtimes consume the canonical ticket authority."
-          python3 scripts/release-child-receipt.py editor-config
-
-      - name: Prepare canonical business website routing authority
-        id: routingsecret
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && (steps.sharedauth.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+      - name: Synchronize canonical pre-publication resource lanes
+        id: prepublication
+        if: ${{ !cancelled() && env.VALIDATE_ONLY != 'true' && steps.azure.outcome == 'success' && ((env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && steps.transactionprepare.outcome == 'success') || (env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true')) }}
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
           CONFIGURED_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          token="${PRIMARY_CLOUDFLARE_TOKEN:-}"
-          if [ -z "$token" ]; then
-            echo "::error::Central Cloudflare routing authority is not configured."
-            exit 1
-          fi
-          echo "::add-mask::$token"
-          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
-
-          primary_settings=/tmp/routing-primary.json
-          az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$ROUTING_PRIMARY" -o json > "$primary_settings"
-          zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$primary_settings" | head -n 1)"
-          if ! [[ "$zone_id" =~ ^[A-Fa-f0-9]{32}$ ]]; then
-            echo "::error::Configured Cloudflare SaaS zone ID is missing or invalid."
-            exit 1
-          fi
-          echo "::add-mask::$zone_id"
-          printf 'CLOUDFLARE_ZONE_ID=%s\n' "$zone_id" >> "$GITHUB_ENV"
-
-          account_id="${CONFIGURED_CLOUDFLARE_ACCOUNT_ID:-}"
-          if [ -z "$account_id" ]; then
-            response="$(curl --fail-with-body --silent --show-error \
-              -H "Authorization: Bearer $token" \
-              "https://api.cloudflare.com/client/v4/zones/$zone_id")"
-            account_id="$(printf '%s' "$response" | jq -r 'select(.success == true) | .result.account.id // empty')"
-          fi
-          if ! [[ "$account_id" =~ ^[A-Za-z0-9_-]{16,64}$ ]]; then
-            echo "::error::Cloudflare account ID could not be resolved."
-            exit 1
-          fi
-          echo "::add-mask::$account_id"
-          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
-
-          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$primary_settings" | head -n 1)"
-          if [ -z "$bridge_secret" ]; then
-            if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              echo "::error::Preserve-live routing recovery requires the existing bridge secret."
-              exit 1
-            fi
-            bridge_secret="$(openssl rand -hex 32)"
-          fi
-          if [ "${#bridge_secret}" -lt 32 ]; then
-            echo "::error::Website routing bridge secret is missing or too short."
-            exit 1
-          fi
-          echo "::add-mask::$bridge_secret"
-          printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge_secret" >> "$GITHUB_ENV"
-
-          while IFS=$'\t' read -r app origin probe_path; do
-            [ -n "$app" ] && [ -n "$origin" ] || continue
-            settings="/tmp/routing-${app}.json"
-            az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-            current_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
-            current_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
-            if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
-              [ "$current_secret" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery found bridge-secret drift for $app."; exit 1; }
-              [ "$current_origin" = "$origin" ] || { echo "::error::Preserve-live routing recovery found origin drift for $app."; exit 1; }
-            else
-              updates=()
-              [ "$current_secret" = "$bridge_secret" ] || updates+=("WebsiteRouting__BridgeSecret=$bridge_secret")
-              [ "$current_origin" = "$origin" ] || updates+=("WebsiteRouting__BridgeOriginHost=$origin")
-              if [ "${#updates[@]}" -gt 0 ]; then
-                az webapp config appsettings set -g "$RELEASE_RESOURCE_GROUP" -n "$app" --settings "${updates[@]}" --output none
-                az webapp config appsettings list -g "$RELEASE_RESOURCE_GROUP" -n "$app" -o json > "$settings"
-              fi
-            fi
-            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)" = "$bridge_secret" ]
-            [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "$origin" ]
-          done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
-          echo "Every canonical routing target shares one bridge authority and its declared origin."
+          python3 scripts/release-prepublication.py
 
       - name: Audit centralized Cloudflare routing authority
         id: routingauthority
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -811,7 +584,7 @@ jobs:
 
       - name: Diagnose preserve-live routing origin acceptance
         id: routingorigin
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -845,78 +618,6 @@ jobs:
           done < <(jq -r '.[] | [.releaseName,.azureHost,.probePath] | @tsv' <<< "$ROUTING_TARGETS")
 
 
-      - name: Apply additive diagnostics migrations before restarting apps
-        id: migrate
-        if: env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.SELECTED_DATABASE_DEPENDENT == 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test -n "$EXPECTED_DB_BASE_SHA"
-          if git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"; then
-            echo "Live database baseline is an ancestor of the validated application revision."
-          elif git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"; then
-            # A live provenance revision may be the approved merge commit whose
-            # tree is byte-for-byte identical to the validated PR head. Accept
-            # that merge alias only when there is no source drift at all.
-            git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --
-            echo "Live database baseline is a source-identical approved merge alias of the validated application revision."
-          else
-            echo "::error::Live database baseline and validated application revision do not share a safe ancestry relationship."
-            exit 1
-          fi
-
-          changed="$(
-            git diff --name-only "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA" -- Infrastructure/Migrations |
-            grep -E '^Infrastructure/Migrations/[0-9]{14}_.+\.cs$' |
-            grep -v '\.Designer\.cs$' || true
-          )"
-          if [ -z "$changed" ]; then
-            echo "No candidate migration source changed from the database baseline; migration receipt gate is not applicable."
-            exit 0
-          fi
-          printf '%s\n' "$changed"
-
-          # A prior successful database release receipt is required only when this
-          # candidate actually changes migration source and is about to mutate SQL.
-          # Schema-neutral releases authorize no database write and therefore do not
-          # require historical database-receipt evidence.
-          python3 - <<'PYBASELINE'
-          import importlib.util, os, sys
-          from pathlib import Path
-          scripts=Path('scripts').resolve()
-          sys.path.insert(0,str(scripts))
-          path=scripts / 'release-lifecycle.py'
-          spec=importlib.util.spec_from_file_location('release_lifecycle',path)
-          module=importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-          base=os.environ['EXPECTED_DB_BASE_SHA']
-          authority=os.environ['DATABASE_AUTHORITY']
-          if not module.release_proven(module.GitHub(),base,app=authority):
-              raise SystemExit('Live database baseline lacks a successful canonical release receipt; no migration authorized.')
-          print('Database baseline release receipt verified:',base)
-          PYBASELINE
-
-          bundle="/tmp/diagnostics-packages/$MIGRATION_BUNDLE"
-          test -x "$bundle"
-          python3 scripts/release-package.py verify \
-            --revision "$APPLICATION_RELEASE_SHA" \
-            --directory /tmp/diagnostics-packages
-
-          python3 scripts/migration-probe-package.py resolve \
-            --tool-revision "$(git rev-parse HEAD)" \
-            --application-revision "$APPLICATION_RELEASE_SHA" \
-            --directory /tmp/migration-probe > /tmp/migration-probe-plan.json
-          gh run download "$(jq -r .runId /tmp/migration-probe-plan.json)" \
-            --repo "$GITHUB_REPOSITORY" \
-            --name "$(jq -r .artifact /tmp/migration-probe-plan.json)" \
-            --dir /tmp/migration-probe
-          python3 scripts/migration-probe-package.py verify \
-            --tool-revision "$(git rev-parse HEAD)" \
-            --application-revision "$APPLICATION_RELEASE_SHA" \
-            --directory /tmp/migration-probe
-          python3 scripts/release-migration.py
       - name: Refresh Azure OIDC before transactional publication
         id: azuredeploy
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
@@ -928,7 +629,7 @@ jobs:
       # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS
       - name: Publish canonical selected targets in parallel
         id: publish_targets
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
         env:
@@ -945,7 +646,7 @@ jobs:
 
       - name: Publish canonical target (portal)
         id: publish_portal
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -964,7 +665,7 @@ jobs:
 
       - name: Publish canonical target (client)
         id: publish_client
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -983,7 +684,7 @@ jobs:
 
       - name: Publish canonical target (protect)
         id: publish_protect
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1002,7 +703,7 @@ jobs:
 
       - name: Publish canonical target (parfait)
         id: publish_parfait
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1021,7 +722,7 @@ jobs:
 
       - name: Publish canonical target (website)
         id: publish_website
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1119,7 +820,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1408,10 +1109,7 @@ jobs:
         id: disposition
         if: >-
           always() && steps.transactionprepare.outcome == 'success' &&
-          (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') &&
-          (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') &&
-          (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') &&
-          (steps.routingsecret.outcome == 'success' || steps.routingsecret.outcome == 'skipped') &&
+          (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') &&
           (steps.routingauthority.outcome == 'success' || steps.routingauthority.outcome == 'skipped') &&
           (steps.routingpolicy.outcome == 'success' || steps.routingpolicy.outcome == 'skipped') &&
           (steps.routingdeploy.outcome == 'success' || steps.routingdeploy.outcome == 'skipped') &&
