@@ -517,6 +517,57 @@ class PackageProducerTests(unittest.TestCase):
                     self.assertFalse(authority.package_inputs_compatible('a' * 40, 'b' * 40))
 
 
+class ParallelPublicationTests(unittest.TestCase):
+    def plan(self, keys):
+        return {'targets': [{'app': key} for key in keys]}
+
+    def test_parallel_publication_settles_every_prepared_target_and_records_results(self):
+        keys = ('portal', 'client', 'protect')
+        names = [deploy.TARGETS[key]['releaseName'] for key in keys]
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target',
+                          side_effect=lambda key, revision, package_root, plan: 'deployed'):
+            results = deploy.publish_prepared_targets_parallel(
+                names,
+                'a' * 40,
+                Path(directory),
+                self.plan(keys),
+                Path(directory) / 'results',
+            )
+            self.assertEqual(set(keys), set(results))
+            for key in keys:
+                payload = json.loads((Path(directory) / 'results' / f'{key}.json').read_text())
+                self.assertTrue(payload['success'])
+                self.assertEqual(key, payload['target'])
+
+    def test_parallel_publication_preserves_successful_sibling_when_one_target_fails(self):
+        keys = ('portal', 'protect')
+        names = [deploy.TARGETS[key]['releaseName'] for key in keys]
+
+        def publish(key, revision, package_root, plan):
+            if key == 'protect':
+                raise deploy.DeploymentReconciliationRequired('fixture failure')
+            return 'deployed'
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target', side_effect=publish), \
+             self.assertRaisesRegex(RuntimeError, 'protect'):
+            deploy.publish_prepared_targets_parallel(
+                names,
+                'a' * 40,
+                Path(directory),
+                self.plan(keys),
+                Path(directory) / 'results',
+            )
+        root = Path(directory) / 'results'
+        self.assertTrue(json.loads((root / 'portal.json').read_text())['success'])
+        failed = json.loads((root / 'protect.json').read_text())
+        self.assertFalse(failed['success'])
+        self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
+
+
 class MigrationProbeEvidenceTests(unittest.TestCase):
     def test_probe_tool_changes_do_not_relabel_application_or_accept_runtime_drift(self):
         authority = deploy._RELEASE_AUTHORITY
