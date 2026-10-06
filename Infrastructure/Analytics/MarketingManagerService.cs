@@ -281,9 +281,10 @@ public sealed class MarketingManagerService(
         {
             TrafficQualityMode.RealHumanTraffic => "Real Human Traffic",
             TrafficQualityMode.LikelyHuman => "Likely Human Traffic",
-            TrafficQualityMode.InternalTraffic => "Internal Traffic",
-            TrafficQualityMode.TestTraffic => "Test Traffic",
-            TrafficQualityMode.BotOrSuspicious => "Bot/Suspicious Traffic",
+            TrafficQualityMode.ReviewedNeeded => "Review Needed",
+            TrafficQualityMode.SuspiciousActivity => "Suspicious Activity",
+            TrafficQualityMode.LikelyBotsAutomation => "Likely Bots/Automation",
+            TrafficQualityMode.InternalQa => "Internal/QA Traffic",
             _ => "All Traffic"
         };
 
