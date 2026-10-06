@@ -8,6 +8,17 @@ from pathlib import Path
 import subprocess
 
 
+def release_authority():
+    path = Path(__file__).with_name('validation-resume.py')
+    spec = importlib.util.spec_from_file_location('validation_resume_authority', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RELEASE_AUTHORITY = release_authority()
+
+
 def journal_type():
     spec = importlib.util.spec_from_file_location('release_journal', Path(__file__).with_name('release-operation-evidence.py'))
     module = importlib.util.module_from_spec(spec)
@@ -70,6 +81,7 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
     # pending work is ambiguous. Neither authorizes rerunning an EF side effect.
     journal.before_mutation(observation)
     if execute is None:
+        _RELEASE_AUTHORITY.require_canonical_release_runtime()
         env = os.environ | {'DOTNET_ENVIRONMENT': 'Development',
                             'ASPNETCORE_ENVIRONMENT': 'Development',
                             'SQLCONNSTR_MasterAppDb': connection}
