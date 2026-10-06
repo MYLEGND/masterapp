@@ -512,6 +512,29 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual(1, len(api.dispatched))
         self.assertEqual('77', api.dispatched[0][1]['source_pr'])
 
+    def test_exact_live_failed_release_gets_one_bounded_proof_recovery(self):
+        api = Api()
+        approved = "c" * 40
+        pr = {"number": 77, "head": {"sha": "b" * 40}}
+        identity = m.release_dispatch_identity(77, pr["head"]["sha"], approved)
+        failed = {
+            "id": 100,
+            "display_title": identity,
+            "head_sha": approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        with patch.object(m, "_release_exact_live_terminal", return_value=True):
+            self.assertIsNone(
+                m.automatic_release_admission(api, pr, approved, [failed])
+            )
+            second = dict(failed, id=101)
+            blocked = m.automatic_release_admission(
+                api, pr, approved, [failed, second]
+            )
+        self.assertEqual("FAILED_NEEDS_REPAIR", blocked["state"])
+        self.assertIn("bounded exact-live recovery exhausted", blocked["retained"])
+
     @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
     def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _, __):
