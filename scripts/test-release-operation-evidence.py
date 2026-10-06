@@ -502,7 +502,7 @@ class TransactionPreflightResumeTests(unittest.TestCase):
         self.assertTrue(self.prove())
 
     def test_started_or_missing_publication_does_not_authorize_new_baseline(self):
-        target = next(row for row in self.owner['steps'] if row['name'] == 'Publish canonical target (client)')
+        target = next(row for row in self.owner['steps'] if row['name'] == 'Publish canonical pending targets')
         target['conclusion'] = 'failure'
         self.assertFalse(self.prove())
         self.owner['steps'].remove(target)
