@@ -182,8 +182,8 @@ def guarded(name, callback):
 
 
 def main():
-    founder = os.environ.get("FOUNDER_CLOUDFLARE") == "true"
-    router = os.environ.get("WEBSITE_ROUTING") == "true"
+    founder = os.environ.get("RUN_FOUNDER_AUXILIARY") == "true"
+    router = os.environ.get("RUN_ROUTER_AUXILIARY") == "true"
     lanes = []
     if founder:
         lanes.append("founder")
