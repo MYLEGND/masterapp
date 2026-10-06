@@ -761,42 +761,13 @@ jobs:
           python3 scripts/deploy-approved-app.py \
             --targets-json "$SELECTED_TARGETS" \
             --package-root /tmp/diagnostics-packages \
-            --reconcile-timeout-seconds 90 \
             --finalize-only --transaction-plan /tmp/release-transaction.json
-      - name: Recover exact-live transaction receipts without publication replay
-        id: transactionrecovery
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.transaction.outcome == 'failure' }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          # Strictly read-only: finalize-only may recover durable success receipts,
-          # but it never submits an application package.
-          for attempt in 1 2 3; do
-            if python3 scripts/deploy-approved-app.py \
-              --targets-json "$SELECTED_TARGETS" \
-              --package-root /tmp/diagnostics-packages \
-              --reconcile-timeout-seconds 90 \
-              --finalize-only --transaction-plan /tmp/release-transaction.json; then
-              echo "Recovered exact-live transaction proof without replay on attempt $attempt."
-              exit 0
-            fi
-            if [ "$attempt" -lt 4 ]; then
-              sleep $((attempt * 10))
-            fi
-          done
-          echo "::error::Exact-live transaction proof remains unresolved; all successful target publications stay preserved."
-          exit 1
-
       - name: Run independent auxiliary release fanout
         id: auxiliary
         if: >-
           ${{ !cancelled() && env.VALIDATE_ONLY != 'true' && (
-            (env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success')) ||
-            (env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true'))
+            (env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success') ||
+            (env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true'))
           ) }}
         continue-on-error: true
         shell: bash
@@ -804,15 +775,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          RUN_FOUNDER_AUXILIARY: ${{ env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') }}
-          RUN_ROUTER_AUXILIARY: ${{ env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') }}
+          RUN_FOUNDER_AUXILIARY: ${{ env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' }}
+          RUN_ROUTER_AUXILIARY: ${{ env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         run: |
           set -euo pipefail
           python3 scripts/release-auxiliary.py
 
       - name: Deploy and activate LEGEND Founder Cloudflare baseline
         id: foundercloud
-        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && (steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.FOUNDER_CLOUDFLARE == 'true' && steps.transaction.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -829,7 +800,7 @@ jobs:
 
       - name: Reconcile public custom-hostname Cloudflare policy
         id: routingpolicy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -846,7 +817,7 @@ jobs:
 
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.prepublication.outcome == 'success' && steps.routingauthority.outcome == 'success' && steps.routingpolicy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -863,7 +834,7 @@ jobs:
 
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -993,7 +964,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && ((steps.transaction.outcome == 'success' || steps.transactionrecovery.outcome == 'success') || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1018,7 +989,6 @@ jobs:
           PACKAGE: ${{ steps.package.outcome }}
           AZURE: ${{ steps.azure.outcome }}
           TRANSACTION: ${{ steps.transaction.outcome }}
-          TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}
           LIVE: ${{ steps.live.outcome }}
           ROUTING_LIVE: ${{ steps.routinglive.outcome }}
           FOUNDER_CLOUD: ${{ steps.foundercloud.outcome }}
@@ -1041,8 +1011,7 @@ jobs:
           package=os.environ['PACKAGE']
           azure=os.environ['AZURE']
           transaction=os.environ['TRANSACTION']
-          transaction_recovery=os.environ.get('TRANSACTION_RECOVERY','skipped')
-          effective_transaction='success' if transaction=='success' or transaction_recovery=='success' else transaction
+          effective_transaction=transaction
           live=os.environ['LIVE']
           routing_live=os.environ['ROUTING_LIVE']
           founder_cloud=os.environ['FOUNDER_CLOUD']
