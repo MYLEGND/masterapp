@@ -2127,11 +2127,28 @@ def cleanup(api, apply=False):
         rows.append(row)
     return {'approvedSha': approved, 'live': live, 'branches': rows}
 
+def package_evidence(api, revision):
+    """Read canonical immutable package proof without mutating release state."""
+    if not SHA.fullmatch(revision or ''):
+        raise ValueError('Malformed package evidence revision')
+    evidence = _validated_package_evidence(api, revision)
+    return {
+        'schemaVersion': 1,
+        'revision': revision,
+        'reusable': bool(evidence.get('reusable')),
+        'reason': evidence.get('reason'),
+        'runId': evidence.get('runId'),
+        'packageIdentity': evidence.get('packageIdentity'),
+    }
+
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'package-evidence'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
+    parser.add_argument('--revision')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
@@ -2150,6 +2167,8 @@ def main():
         result = pending_updates(api)
     elif args.command == 'reconcile':
         result = reconcile(api, args.run)
+    elif args.command == 'package-evidence':
+        result = package_evidence(api, args.revision)
     else:
         result = cleanup(api, args.apply)
     if args.output:
