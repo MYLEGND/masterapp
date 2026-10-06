@@ -207,7 +207,7 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
             return new(owner, key, sourceId, sourceType, mappings, row.Revision, ready,
                 ready ? "mapping_ready" : "measurement_mapping_required");
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or ArgumentException)
         {
             return EmptyMeasurement(owner, key, row.Revision, "measurement_mapping_invalid");
         }
