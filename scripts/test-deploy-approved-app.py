@@ -552,20 +552,20 @@ class ParallelPublicationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
-             patch.object(deploy, 'publish_prepared_target', side_effect=publish), \
-             self.assertRaisesRegex(RuntimeError, 'protect'):
-            deploy.publish_prepared_targets_parallel(
-                names,
-                'a' * 40,
-                Path(directory),
-                self.plan(keys),
-                Path(directory) / 'results',
-            )
-        root = Path(directory) / 'results'
-        self.assertTrue(json.loads((root / 'portal.json').read_text())['success'])
-        failed = json.loads((root / 'protect.json').read_text())
-        self.assertFalse(failed['success'])
-        self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
+             patch.object(deploy, 'publish_prepared_target', side_effect=publish):
+            with self.assertRaisesRegex(RuntimeError, 'protect'):
+                deploy.publish_prepared_targets_parallel(
+                    names,
+                    'a' * 40,
+                    Path(directory),
+                    self.plan(keys),
+                    Path(directory) / 'results',
+                )
+            root = Path(directory) / 'results'
+            self.assertTrue(json.loads((root / 'portal.json').read_text())['success'])
+            failed = json.loads((root / 'protect.json').read_text())
+            self.assertFalse(failed['success'])
+            self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
 
 
 class MigrationProbeEvidenceTests(unittest.TestCase):
