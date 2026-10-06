@@ -6,6 +6,7 @@ replayed. Terminal provider failures require bounded repair through the canonica
 release lifecycle; no alternate upload path can bypass durable operation intent.
 """
 import argparse
+import concurrent.futures
 import hashlib
 import importlib.util
 import json
@@ -490,6 +491,55 @@ def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only
     return deploy_one(key, revision, package_root, baseline=row['revision'], reconcile_only=reconcile_only)
 
 
+def publish_prepared_targets_parallel(target_names, revision, package_root, plan, results_root):
+    """Publish independent prepared targets concurrently, then report each child.
+
+    The all-target preflight transaction is still the write barrier. Each worker
+    owns a different canonical app, immutable package digest, Azure deployment
+    stream, and durable operation journal. A sibling failure never authorizes a
+    replay of a successful target; final transaction reconciliation remains the
+    sole commit decision after all workers settle.
+    """
+    keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
+    if set(keys) != {row['app'] for row in plan['targets']}:
+        raise ValueError('Parallel publication target scope changed')
+    results_root.mkdir(parents=True, exist_ok=True)
+
+    def record(key, payload):
+        path = results_root / (key + '.json')
+        temporary = path.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps(payload, sort_keys=True) + '\n')
+        temporary.replace(path)
+
+    def worker(key):
+        try:
+            outcome = publish_prepared_target(key, revision, package_root, plan)
+            payload = {'schemaVersion': 1, 'target': key, 'success': True, 'outcome': outcome}
+            record(key, payload)
+            return payload
+        except Exception as exc:
+            payload = {
+                'schemaVersion': 1,
+                'target': key,
+                'success': False,
+                'errorType': type(exc).__name__,
+            }
+            record(key, payload)
+            return payload
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(keys))) as executor:
+        futures = {executor.submit(worker, key): key for key in keys}
+        for future in concurrent.futures.as_completed(futures):
+            key = futures[future]
+            results[key] = future.result()
+
+    failed = [key for key in keys if not results.get(key, {}).get('success')]
+    if failed:
+        raise RuntimeError('Canonical target publication failed: ' + ', '.join(failed))
+    return results
+
+
 def finalize_prepared_transaction(plan, package_root, revision):
     # Finalization owns only read-only proof. A failed or ambiguous target cannot
     # authorize replay or erase siblings' completed candidate publications.
@@ -544,6 +594,9 @@ def main():
     parser.add_argument('--disposition-only', action='store_true')
     parser.add_argument('--transaction-plan', type=Path)
     parser.add_argument('--reconcile-only', action='store_true', help='Never issue deployment writes; reconcile preserved immutable candidate')
+    parser.add_argument('--publish-prepared-parallel', action='store_true',
+                        help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
+    parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
 
     revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')
@@ -556,6 +609,19 @@ def main():
             raise ValueError('Target publication requires an all-target preflight plan')
         plan = read_transaction_plan(args.transaction_plan, revision, args.target)
         publish_prepared_target(args.target, revision, Path(args.package_root), plan, reconcile_only=reconcile_only)
+        return
+    if args.publish_prepared_parallel:
+        if args.transaction_plan is None:
+            raise ValueError('Parallel target publication requires an all-target preflight plan')
+        plan = read_transaction_plan(args.transaction_plan, revision)
+        names = json.loads(args.targets_json)
+        publish_prepared_targets_parallel(
+            names,
+            revision,
+            Path(args.package_root),
+            plan,
+            args.target_results_dir,
+        )
         return
     if args.disposition_only:
         plan = read_transaction_plan(args.transaction_plan, revision)
