@@ -776,10 +776,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
     def test_release_lifecycle_has_no_parallel_validation_path_registry(self):
         lifecycle_script=(ROOT / 'release-lifecycle.py').read_text()
         self.assertIn('VALIDATION_AUTHORITY.required_validation_topology(names)', lifecycle_script)
-        self.assertIn('def _candidate_validation_snapshot(api, pr):', lifecycle_script)
+        self.assertIn('def candidate_validation(api, pr):', lifecycle_script)
         self.assertIn("run.get('status') != 'completed'", lifecycle_script)
         self.assertIn("run.get('conclusion') != 'success'", lifecycle_script)
-        self.assertIn('_candidate_validation_snapshot(api, pr)', lifecycle_script)
+        self.assertIn('for attempt in range(4)', lifecycle_script)
         self.assertNotIn('validation_neutral_path', lifecycle_script)
         self.assertNotIn('architecture_product_validation', lifecycle_script)
         self.assertNotIn('architecture_public_website_validation', lifecycle_script)
