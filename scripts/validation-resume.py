@@ -2325,12 +2325,12 @@ def _fresh_plan_when_evidence_unavailable(args, exc):
 
 
 def _cached_success_evidence(args):
-    """Use one PR-local successful parent capsule before any remote history lookup.
+    """Use PR-local gate evidence before any remote history lookup.
 
-    The cache is only a pointer to a prior successful workflow execution. Git
-    ancestry plus the canonical gate execution/dependency contracts decide what
-    remains reusable on the current head; the cache can never turn changed inputs
-    into preserved proof.
+    Schema 1 is the older all-parent-success capsule. Schema 2 is the canonical
+    child ledger: only gates explicitly checkpointed successful are reusable.
+    Git ancestry plus _plan_against_prior still revalidates source, execution and
+    dependency identity before any cached success can suppress work.
     """
     raw = getattr(args, "resume_cache", None)
     if not raw:
@@ -2340,13 +2340,12 @@ def _cached_success_evidence(args):
         return None
     data = json.loads(path.read_text())
     if (
-        data.get("schemaVersion") != 1
-        or data.get("workflow") != args.workflow
+        data.get("workflow") != args.workflow
         or not re.fullmatch(r"[0-9a-f]{40}", data.get("headSha") or "")
         or type(data.get("runId")) is not int
         or data["runId"] < 1
     ):
-        raise ValueError("Malformed PR-local validation success cache")
+        raise ValueError("Malformed PR-local validation cache")
     prior_sha = data["headSha"]
     if subprocess.run(
         ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
@@ -2356,7 +2355,24 @@ def _cached_success_evidence(args):
         raise ValueError("PR-local validation cache is not in the current candidate lineage")
 
     steps = _StepEvidence()
-    for gate in WORKFLOWS[args.workflow]["gates"].values():
+    schema = data.get("schemaVersion")
+    if schema == 1:
+        successful = set(WORKFLOWS[args.workflow]["gates"])
+    elif schema == 2:
+        rows = data.get("gates")
+        if not isinstance(rows, dict):
+            raise ValueError("Malformed PR-local child gate ledger")
+        successful = {
+            key for key, row in rows.items()
+            if key in WORKFLOWS[args.workflow]["gates"]
+            and isinstance(row, dict)
+            and row.get("result") == "success"
+        }
+    else:
+        raise ValueError("Unsupported PR-local validation cache schema")
+
+    for key in successful:
+        gate = WORKFLOWS[args.workflow]["gates"][key]
         step = gate["step"]
         steps[step] = "success"
         steps.producers[step] = {
@@ -2364,31 +2380,92 @@ def _cached_success_evidence(args):
             "jobId": None,
             "runId": data["runId"],
             "stepNumber": None,
-            "artifact": "pr-local-success-cache",
+            "artifact": "pr-local-gate-cache",
         }
+    if not steps:
+        return None
     prior = {
         "id": data["runId"],
         "head_sha": prior_sha,
-        "run_attempt": 1,
+        "run_attempt": int(data.get("runAttempt") or 1),
         "event": args.event,
         "head_branch": args.head_branch,
     }
-    return prior, steps, "pr_local_success_cache"
+    return prior, steps, "pr_local_gate_cache"
+
+
+def _checkpoint_payload(plan, workflow, head_sha, run_id, run_attempt, successful_gate=None):
+    if workflow not in WORKFLOWS or plan.get("workflow") != workflow:
+        raise ValueError("Validation checkpoint workflow mismatch")
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha or "") or run_id < 1 or run_attempt < 1:
+        raise ValueError("Malformed validation checkpoint identity")
+    gates = {}
+    for key, row in (plan.get("gates") or {}).items():
+        if key not in WORKFLOWS[workflow]["gates"] or not isinstance(row, dict):
+            continue
+        # A preserved gate already carries successful producer evidence. A gate
+        # that actually ran becomes reusable only after its owning step exits 0
+        # and checkpoint-gate is called for that exact key.
+        if row.get("run") is False or key == successful_gate:
+            gates[key] = {"result": "success"}
+    return {
+        "schemaVersion": 2,
+        "workflow": workflow,
+        "headSha": head_sha,
+        "runId": run_id,
+        "runAttempt": run_attempt,
+        "gates": gates,
+    }
+
+
+def cmd_checkpoint_gate(args):
+    plan = json.loads(Path(args.plan).read_text())
+    if args.gate not in WORKFLOWS.get(args.workflow, {}).get("gates", {}):
+        raise SystemExit(f"Unknown validation gate: {args.gate}")
+    payload = _checkpoint_payload(
+        plan,
+        args.workflow,
+        args.head_sha,
+        args.run_id,
+        args.run_attempt,
+        successful_gate=args.gate,
+    )
+    output = Path(args.output)
+    if output.exists():
+        existing = json.loads(output.read_text())
+        if (
+            existing.get("schemaVersion") == 2
+            and existing.get("workflow") == args.workflow
+            and existing.get("headSha") == args.head_sha
+            and existing.get("runId") == args.run_id
+        ):
+            for key, row in (existing.get("gates") or {}).items():
+                if isinstance(row, dict) and row.get("result") == "success":
+                    payload["gates"].setdefault(key, {"result": "success"})
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(output)
+    print(json.dumps({"checkpointedGate": args.gate, "successfulGates": sorted(payload["gates"])}, sort_keys=True))
 
 
 def cmd_cache_success(args):
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
-    if not re.fullmatch(r"[0-9a-f]{40}", args.head_sha or ""):
-        raise SystemExit("Malformed validation success head")
-    if args.run_id < 1:
-        raise SystemExit("Malformed validation success run")
-    payload = {
-        "schemaVersion": 1,
+    plan = {
         "workflow": args.workflow,
-        "headSha": args.head_sha,
-        "runId": args.run_id,
+        "gates": {
+            key: {"run": False}
+            for key in WORKFLOWS[args.workflow]["gates"]
+        },
     }
+    payload = _checkpoint_payload(
+        plan,
+        args.workflow,
+        args.head_sha,
+        args.run_id,
+        args.run_attempt,
+    )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
@@ -4839,8 +4916,19 @@ def build_parser():
     cache_success.add_argument("--workflow", required=True)
     cache_success.add_argument("--head-sha", required=True)
     cache_success.add_argument("--run-id", required=True, type=int)
+    cache_success.add_argument("--run-attempt", required=True, type=int)
     cache_success.add_argument("--output", required=True)
     cache_success.set_defaults(func=cmd_cache_success)
+
+    checkpoint = sub.add_parser("checkpoint-gate")
+    checkpoint.add_argument("--workflow", required=True)
+    checkpoint.add_argument("--head-sha", required=True)
+    checkpoint.add_argument("--run-id", required=True, type=int)
+    checkpoint.add_argument("--run-attempt", required=True, type=int)
+    checkpoint.add_argument("--plan", required=True)
+    checkpoint.add_argument("--gate", required=True)
+    checkpoint.add_argument("--output", required=True)
+    checkpoint.set_defaults(func=cmd_checkpoint_gate)
 
     preserved = sub.add_parser("preserved")
     preserved.add_argument("--plan", required=True)
