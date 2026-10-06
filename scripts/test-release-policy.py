@@ -600,8 +600,22 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Live revision drifted outside preserved baseline/candidate', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('Reconcile complete immutable release transaction', workflow)
+        self.assertIn('Run independent auxiliary release fanout', workflow)
         self.assertIn('Deploy and activate LEGEND Founder Cloudflare baseline', workflow)
-        self.assertIn('scripts/deploy-founder-cloudflare.py deploy', workflow)
+        self.assertIn('scripts/release-auxiliary.py', workflow)
+        self.assertNotIn('scripts/deploy-founder-cloudflare.py deploy', workflow)
+        self.assertNotIn('npx wrangler deploy --config wrangler.website-routing.jsonc', workflow)
+        auxiliary=(ROOT / 'release-auxiliary.py').read_text()
+        self.assertIn('ThreadPoolExecutor', auxiliary)
+        self.assertIn('isolated_cloudflare_workspace("founder")', auxiliary)
+        self.assertIn('isolated_cloudflare_workspace("router")', auxiliary)
+        self.assertEqual(1, auxiliary.count('"npm", "ci"'))
+        self.assertNotIn('install_toolchain', auxiliary)
+        self.assertIn('"scripts/deploy-founder-cloudflare.py"', auxiliary)
+        self.assertIn('"scripts/release-router.py"', auxiliary)
+        founder_owner=(ROOT / 'deploy-founder-cloudflare.py').read_text()
+        self.assertIn('LEGEND_CLOUDFLARE_ROOT', founder_owner)
+        self.assertEqual(1, founder_owner.count('run("npm", "ci"'))
         self.assertNotIn('Restore Founder Cloudflare baseline after downstream release failure', workflow)
         self.assertNotIn('scripts/deploy-founder-cloudflare.py rollback', workflow)
         self.assertIn('FOUNDER_CLOUDFLARE', workflow)
@@ -693,56 +707,131 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('dotnet build', step('Build exact selected release candidate'))
         self.assertNotIn('dotnet publish', step('Publish exact selected application packages'))
         self.assertNotIn('npm ', step('Publish exact selected application packages'))
-        migration = step('Apply additive diagnostics migrations before restarting apps')
-        self.assertIn("sys.path.insert(0,str(scripts))", migration)
-        self.assertIn("MIGRATION_BUNDLE", migration)
-        self.assertIn("DATABASE_AUTHORITY", migration)
-        self.assertIn("scripts/release-migration.py", migration)
-        self.assertIn("RELEASE_RESOURCE_GROUP", (ROOT / 'release-migration.py').read_text())
-        self.assertIn("release_proven", migration)
+        prepublication = step('Synchronize canonical pre-publication resource lanes')
+        self.assertIn('scripts/release-prepublication.py', prepublication)
+        self.assertEqual(1, workflow.count('Synchronize canonical pre-publication resource lanes'))
+        for stale in (
+            'Synchronize selected shared authorization and publisher runtimes',
+            'Synchronize selected editor ticket authority',
+            'Prepare canonical business website routing authority',
+            'Apply additive diagnostics migrations before restarting apps',
+        ):
+            self.assertNotIn(stale, workflow)
+
+        prepublication_owner = (ROOT / 'release-prepublication.py').read_text()
+        self.assertIn('ThreadPoolExecutor', prepublication_owner)
+        self.assertIn('configure_all_targets', prepublication_owner)
+        self.assertIn('run_migration_lane', prepublication_owner)
+        self.assertIn('pool.submit(configure_all_targets)', prepublication_owner)
+        self.assertIn('pool.submit(run_migration_lane)', prepublication_owner)
+        self.assertIn('child_receipt(child, app, partition, prepare=True)', prepublication_owner)
+        self.assertIn('"az", "webapp", "config", "appsettings", "set"', prepublication_owner)
+        self.assertIn('scripts/release-package.py', prepublication_owner)
+        self.assertIn('scripts/migration-probe-package.py', prepublication_owner)
+        self.assertIn('scripts/release-migration.py', prepublication_owner)
+        self.assertIn('release_proven', prepublication_owner)
+        self.assertNotIn("dotnet-ef database update", prepublication_owner)
+
         migration_owner = (ROOT / 'release-migration.py').read_text()
+        self.assertIn("RELEASE_RESOURCE_GROUP", migration_owner)
         self.assertIn("'SQLCONNSTR_MasterAppDb': connection", migration_owner)
         self.assertIn('capture_output=True', migration_owner)
         self.assertNotIn("print(connection)", migration_owner)
-        changed_index = migration.index('changed="$(')
-        no_change_index = migration.index('if [ -z "$changed" ]')
-        receipt_index = migration.index("release_proven")
-        self.assertLess(changed_index, receipt_index)
-        self.assertLess(no_change_index, receipt_index)
-        self.assertIn("migration receipt gate is not applicable", migration)
-        self.assertIn('git merge-base --is-ancestor "$EXPECTED_DB_BASE_SHA" "$APPLICATION_RELEASE_SHA"', migration)
-        self.assertIn('git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA"', migration)
-        self.assertIn('git diff --quiet "$APPLICATION_RELEASE_SHA" "$EXPECTED_DB_BASE_SHA" --', migration)
-        self.assertIn('source-identical approved merge alias', migration)
-        self.assertNotIn("dotnet-ef','database','update", migration)
-        self.assertNotIn("dotnet-ef database update", migration)
 
-    def test_architecture_validation_publishes_canonical_immutable_package(self):
+    def test_architecture_validation_publishes_one_canonical_package_from_parallel_components(self):
         workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('validated-release-package-plan:', workflow)
+        self.assertIn('validated-release-package-components:', workflow)
         self.assertIn('validated-release-package:', workflow)
         self.assertIn('scripts/validation-resume.py package-canary-plan', workflow)
         package_plan = workflow.split('      - name: Resolve whether application bytes changed\n', 1)[1].split('      - name:', 1)[0]
         self.assertNotIn("git diff --name-only", package_plan)
         self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
-        self.assertIn('scripts/release-package.py build', workflow)
+        self.assertIn('component: [portal, client, protect, parfait, website, migration]', workflow)
+        self.assertIn('scripts/release-package.py build-component', workflow)
+        self.assertIn('scripts/release-package.py assemble', workflow)
+        self.assertIn('merge-multiple: true', workflow)
         self.assertIn('scripts/release-package.py verify', workflow)
         self.assertIn('Preserve immutable validated release package', workflow)
+        self.assertIn('retention-days: 90', workflow)
         self.assertIn('Run release web contract regressions', workflow)
+        component_block = workflow.split('  validated-release-package-components:\n', 1)[1].split('  validated-release-package:\n', 1)[0]
+        self.assertNotIn('scripts/release-package.py build \\', component_block)
+        final_block = workflow.split('  validated-release-package:\n', 1)[1].split('  wake-release-lifecycle-after-package-backfill:\n', 1)[0]
+        self.assertNotIn('dotnet publish', final_block)
+        self.assertNotIn('npm ci', final_block)
 
     def test_approved_security_validation_preserves_static_release_safety_gates(self):
         workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
         self.assertIn('scripts/validation-resume.py plan', workflow)
+        self.assertIn('name: approved-release-security', workflow)
+        self.assertIn('Run independent security validation fanout', workflow)
         self.assertIn('Validate database migration artifacts', workflow)
         self.assertIn('Reject skipped security tests', workflow)
         self.assertIn('Audit dependency vulnerabilities', workflow)
         self.assertIn('Scan committed configuration for secrets', workflow)
         self.assertIn('Verify shared composition authorities', workflow)
         self.assertIn('Reject inline Azure key-ring wiring', workflow)
+        self.assertIn('run_simple no-skips no_skips', workflow)
+        self.assertIn('run_simple secret-scan secret_scan', workflow)
+        self.assertIn('run_simple composition composition', workflow)
+        self.assertIn('run_simple keyring keyring', workflow)
+        self.assertIn('run_simple diff-check diff_check', workflow)
+        self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow)
+        self.assertNotIn("steps.plan.outcome == 'success'", workflow.split('  security_database:\n',1)[1])
         self.assertIn('cancel-in-progress: true', workflow)
         self.assertNotIn('webapps-deploy', workflow)
         self.assertNotIn('database update', workflow)
         self.assertNotIn('git/ref/heads/production', workflow)
+
+    def test_architecture_independent_gates_fan_out_without_duplicate_execution(self):
+        workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('Run independent architecture gate fanout', workflow)
+        fanout=workflow.split('      - name: Run independent architecture gate fanout\n',1)[1].split(
+            '      - name: Run Founder diagnostics and safe GPT Codex regressions\n',1
+        )[0]
+        for lane in (
+            'founder-diagnostics-regressions',
+            'domain-release',
+            'website-regressions',
+            'meta-regressions',
+            'booking-regressions',
+            'crm-regressions',
+            'form-tracking',
+            'release-web-contracts',
+            'release-policy',
+        ):
+            self.assertIn('run_lane '+lane, fanout)
+        self.assertNotIn("steps.gate_compile_regression.outcome == 'success'", fanout)
+        self.assertIn('COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}', fanout)
+        self.assertIn('[ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]', fanout)
+        self.assertIn('/tmp/masterapp/bin/AgentPortal.Tests/Release', workflow)
+        self.assertIn('/tmp/masterapp/obj/AgentPortal.Tests', workflow)
+        self.assertNotIn('AgentPortal.Tests/bin/Release/net10.0/AgentPortal.Tests.dll', workflow)
+        compile_block=workflow.split('      - name: Compile full regression test project\n',1)[1].split(
+            '      - name: Preserve exact compiled regression material\n',1
+        )[0]
+        self.assertIn("if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'", compile_block)
+        self.assertIn('echo "material_ready=true" >> "$GITHUB_OUTPUT"', compile_block)
+        release_web=fanout.split('release_web_contracts() {',1)[1].split('release_policy() {',1)[0]
+        self.assertNotIn('dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', release_web)
+
+    def test_steps78_parallel_lanes_join_fail_closed_under_original_check_name(self):
+        workflow=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertIn('advertising_dotnet:', workflow)
+        self.assertIn('advertising_ui:', workflow)
+        self.assertIn('advertising_evidence:', workflow)
+        self.assertIn('name: advertising-validation', workflow)
+        evidence=workflow.split('  advertising_evidence:\n',1)[1]
+        self.assertIn('needs.advertising_dotnet.result', evidence)
+        self.assertIn('needs.advertising_ui.result', evidence)
+        self.assertIn('Require all advertising validation lanes', evidence)
+        self.assertIn('Record canonical child execution evidence', evidence)
+        self.assertLess(
+            evidence.index('Record canonical child execution evidence'),
+            evidence.index('Require all advertising validation lanes'),
+        )
 
     def test_old_second_release_workflows_are_removed(self):
         workflows=ROOT.parent / '.github/workflows'
@@ -759,24 +848,41 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Validate upload keystore before building', workflow)
 
     def test_feature_validation_workflows_use_canonical_resume_authority(self):
-        for name in (
+        names = (
             'masterapp-platform-architecture-validation.yml',
             'step6-openai-ads-execution-validation.yml',
             'steps7-8-governed-advertising-validation.yml',
             'approved-release-security-validation.yml',
-        ):
+        )
+        for name in names:
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
             self.assertIn('Restore PR-local validation gate evidence', workflow, name)
             self.assertIn('--resume-cache "/tmp/validation-resume-cache/validation-resume.json"', workflow, name)
-            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
             self.assertIn('--cache-output /tmp/validation-resume-cache/validation-resume.json', workflow, name)
             self.assertIn('Save PR-local validation gate evidence', workflow, name)
             self.assertNotIn('checkpoint-gate --workflow', workflow, name)
             self.assertIn('cancel-in-progress: true', workflow, name)
+
+        for name in (
+            'masterapp-platform-architecture-validation.yml',
+            'step6-openai-ads-execution-validation.yml',
+            'approved-release-security-validation.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
+
+        step78=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertNotIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', step78)
+        self.assertIn('GITHUB_TOKEN: ${{ github.token }}', step78)
+        self.assertIn('advertising_evidence:', step78)
         step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
         self.assertNotIn('scripts/validation-resume.py plan \\\n', step5)
-        self.assertIn('scripts/validation-resume.py step5-decision', step5)
+        self.assertEqual(1, step5.count('scripts/validation-resume.py step5-decision'))
+        self.assertIn('--resume-cache /tmp/step5-resume-cache', step5)
+        self.assertNotIn('PYCACHE', step5)
+        self.assertNotIn('PYGRAPH', step5)
+        self.assertNotIn('graphql_parent_success', step5)
         self.assertIn('Resolve one canonical Step 5 resume decision', step5)
         self.assertIn('scripts/validation-resume.py step5-baseline', step5)
         self.assertIn('candidate_restore_run', step5)

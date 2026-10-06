@@ -61,14 +61,17 @@ public sealed class ClientAppDeploymentWorkflowTests
     }
 
     [Fact]
-    public void MigrationGateRunsBeforeTheApplicationTransaction()
+    public void CanonicalPrepublicationRunsBeforeTheApplicationTransaction()
     {
         var workflow = DirectRelease();
-        var migration = workflow.IndexOf("Apply additive diagnostics migrations before restarting apps", StringComparison.Ordinal);
+        var prepublication = workflow.IndexOf("Synchronize canonical pre-publication resource lanes", StringComparison.Ordinal);
         var transaction = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
-        Assert.True(migration >= 0);
-        Assert.True(transaction > migration);
-        Assert.Contains("steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped'", workflow, StringComparison.Ordinal);
+        Assert.True(prepublication >= 0);
+        Assert.True(transaction > prepublication);
+        Assert.Contains("steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped'", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Apply additive diagnostics migrations before restarting apps", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Synchronize selected shared authorization and publisher runtimes", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Synchronize selected editor ticket authority", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

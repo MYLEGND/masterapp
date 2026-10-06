@@ -116,9 +116,14 @@ jobs:
               'lifecycle','mobile','renderer-install','renderer-build','renderer-parity','renderer-tests',
               'cms-install','cms-tests','form-tracking',
           }
+          compiled_consumers={
+              'compile-regression','founder-diagnostics-regressions','website-regressions',
+              'meta-regressions','booking-regressions','crm-regressions','release-web-contracts',
+          }
           with open(sys.argv[2],'a') as output:
               output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
               output.write('node='+str(bool(running & node)).lower()+'\n')
+              output.write('regression_material='+str(bool(running & compiled_consumers)).lower()+'\n')
               output.write('all_preserved='+str(not running).lower()+'\n')
           PYPLAN
 
@@ -262,99 +267,249 @@ jobs:
           if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-tests; then exit 0; fi
           npm test
 
-      - name: Compile full regression test project
-        id: gate_compile_regression
+      - name: Resolve compiled regression material identity
+        id: compileidentity
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
         shell: bash
         run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then exit 0; fi
+          python3 scripts/validation-resume.py gate-identity \
+            --workflow masterapp-platform-architecture-validation.yml \
+            --revision "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --gate compile-regression \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore exact compiled regression material
+        id: compiledcache
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/masterapp/bin/AgentPortal.Tests/Release
+            /tmp/masterapp/obj/AgentPortal.Tests
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
+
+      - name: Compile full regression test project
+        id: gate_compile_regression
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then
+            if [ "${{ steps.compiledcache.outputs.cache-hit }}" = "true" ] \
+               && test -f /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/AgentPortal.Tests.dll; then
+              echo "Preserved compile proof and exact material cache reused."
+              echo "material_ready=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Preserved compile proof has no local material; rematerializing exact compiled graph."
+          fi
+          if [ ! -f /tmp/masterapp/obj/AgentPortal.Tests/project.assets.json ]; then
+            dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+          test -f /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/AgentPortal.Tests.dll
+          echo "material_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve exact compiled regression material
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true' && steps.gate_compile_regression.outputs.material_ready == 'true' && steps.compiledcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/masterapp/bin/AgentPortal.Tests/Release
+            /tmp/masterapp/obj/AgentPortal.Tests
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
+
+      - name: Run independent architecture gate fanout
+        id: architecturefanout
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        env:
+          COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/architecture-fanout"
+          mkdir -p "$root"
+          pids=()
+
+          founder_diagnostics_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/founder-tests" \
+              --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+          }
+          domain_release() {
+            dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          }
+          website_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/website-tests" \
+              --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
+          }
+          meta_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/meta-tests" \
+              --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          }
+          booking_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/booking-tests" \
+              --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
+          }
+          crm_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/crm-tests" \
+              --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
+          }
+          form_tracking() {
+            node --test tests/analytics/form-tracker.test.cjs
+          }
+          release_web_contracts() {
+            node --test tests/analytics/csv-export.test.cjs
+            node tests/analytics/form-tracker.test.cjs .
+            node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+            node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore --nologo \
+              --results-directory "$root/release-web-tests" \
+              --filter 'FullyQualifiedName~WebsiteDomainImportTests'
+            npm ci --prefix Legend-Cloudflare
+            npm --prefix Legend-Cloudflare run check:founder-baseline
+            npm --prefix Legend-Cloudflare run test:website-routing
+            npm --prefix Legend-Cloudflare run check:website-routing
+            python3 -m py_compile scripts/cloudflare-routing-authority.py
+            legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+            if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+              echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+              return 1
+            fi
+            python3 scripts/test-diagnostic-project-impact.py
+            python3 scripts/test-sync-published-checkout.py
+          }
+          release_policy() {
+            python3 scripts/test-release-policy.py
+            python3 scripts/test-deploy-approved-app.py
+          }
+
+          run_lane() {
+            gate="$1"
+            needs_compile="$2"
+            fn="$3"
+            (
+              status="$root/$gate.status"
+              log="$root/$gate.log"
+              if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate "$gate"; then
+                echo preserved > "$status"
+                exit 0
+              fi
+              if [ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]; then
+                echo dependency_failure > "$status"
+                exit 0
+              fi
+              set +e
+              ( set -euo pipefail; "$fn" ) >"$log" 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -eq 0 ]; then
+                echo success > "$status"
+              else
+                echo failure > "$status"
+              fi
+              exit 0
+            ) &
+            pids+=("$!")
+          }
+
+          run_lane founder-diagnostics-regressions true founder_diagnostics_regressions
+          run_lane domain-release false domain_release
+          run_lane website-regressions true website_regressions
+          run_lane meta-regressions true meta_regressions
+          run_lane booking-regressions true booking_regressions
+          run_lane crm-regressions true crm_regressions
+          run_lane form-tracking false form_tracking
+          run_lane release-web-contracts true release_web_contracts
+          run_lane release-policy false release_policy
+
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
 
       - name: Run Founder diagnostics and safe GPT Codex regressions
         id: gate_founder_diagnostics_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+          cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.status")" = success
 
       - name: Compile shared domain release refresh
         id: gate_domain_release
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release; then exit 0; fi
-          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          cat "$RUNNER_TEMP/architecture-fanout/domain-release.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/domain-release.status")" = success
 
       - name: Run website ownership and publishing regressions
         id: gate_website_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
+          cat "$RUNNER_TEMP/architecture-fanout/website-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/website-regressions.status")" = success
 
       - name: Run Meta authority regressions
         id: gate_meta_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.status")" = success
 
       - name: Run booking authority regressions
         id: gate_booking_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
+          cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.status")" = success
 
       - name: Run CRM outcome regressions
         id: gate_crm_regressions
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
+          cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.status")" = success
 
       - name: Run canonical form tracking tests
         id: gate_form_tracking
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
-          node --test tests/analytics/form-tracker.test.cjs
+          cat "$RUNNER_TEMP/architecture-fanout/form-tracking.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/form-tracking.status")" = success
 
       - name: Run release web contract regressions
         id: gate_release_web_contracts
+        if: always() && steps.plan.outcome == 'success'
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
-          node --test tests/analytics/csv-export.test.cjs
-          node tests/analytics/form-tracker.test.cjs .
-          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
-          node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
-            --filter 'FullyQualifiedName~WebsiteDomainImportTests'
-          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
-          npm ci --prefix Legend-Cloudflare
-          npm --prefix Legend-Cloudflare run check:founder-baseline
-          npm --prefix Legend-Cloudflare run test:website-routing
-          npm --prefix Legend-Cloudflare run check:website-routing
-          python3 -m py_compile scripts/cloudflare-routing-authority.py
-          legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
-          if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
-            echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
-            exit 1
-          fi
-          python3 scripts/test-diagnostic-project-impact.py
-          python3 scripts/test-sync-published-checkout.py
+          cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.status")" = success
 
       - name: Verify consolidated release scope and routing policy
         id: gate_release_policy
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
-          python3 scripts/test-release-policy.py
-          python3 scripts/test-deploy-approved-app.py
-
+          cat "$RUNNER_TEMP/architecture-fanout/release-policy.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-policy.status")" = success
 
       - name: Record canonical child execution evidence
         if: always() && steps.plan.outcome == 'success'
@@ -397,20 +552,20 @@ jobs:
           key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 
-  validated-release-package:
+  validated-release-package-plan:
     needs: approved-head-preflight
-    name: validated-release-package
+    name: validated-release-package-plan
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
-      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
-      MSBUILDDISABLENODEREUSE: '1'
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.packageplan.outputs.needed }}
+      revision: ${{ steps.packageplan.outputs.revision }}
+      validation_run_id: ${{ steps.packageplan.outputs.validation_run_id }}
+      evidence_run_id: ${{ steps.packageplan.outputs.evidence_run_id }}
+      evidence_head_sha: ${{ steps.packageplan.outputs.evidence_head_sha }}
     steps:
-
-      - name: Checkout exact package authority
+      - name: Checkout exact package planning authority
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -464,41 +619,113 @@ jobs:
           PYPACKAGEPLAN
           fi
 
-      - name: Setup .NET for canonical package build
-        if: steps.packageplan.outputs.needed == 'true'
+  validated-release-package-components:
+    needs: validated-release-package-plan
+    name: validated-release-package-components (${{ matrix.component }})
+    if: needs.validated-release-package-plan.outputs.needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [portal, client, protect, parfait, website, migration]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout exact package component authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET for canonical package component build
+        if: matrix.component != 'website'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
 
-      - name: Setup Node for canonical static package build
-        if: steps.packageplan.outputs.needed == 'true'
+      - name: Setup Node for canonical static package component build
+        if: matrix.component == 'website'
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: Legend-Website/package-lock.json
 
-      - name: Build immutable validated release package
-        id: package
-        if: steps.packageplan.outputs.needed == 'true'
+      - name: Build immutable validated release package component
+        id: component
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/release-package.py build \
-            --revision "${{ steps.packageplan.outputs.revision }}" \
+          python3 scripts/release-package.py build-component \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
+            --component "${{ matrix.component }}" \
+            --directory "$RUNNER_TEMP/validated-release-component" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Preserve immutable validated release package component
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-${{ matrix.component }}
+          path: ${{ runner.temp }}/validated-release-component/
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  validated-release-package:
+    needs:
+      - approved-head-preflight
+      - validated-release-package-plan
+      - validated-release-package-components
+    name: validated-release-package
+    if: >-
+      always() &&
+      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')) &&
+      needs.validated-release-package-plan.result == 'success' &&
+      (needs.validated-release-package-components.result == 'success' || needs.validated-release-package-components.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact package authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Load immutable package components
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-*
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Build immutable validated release package
+        id: package
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release-package.py assemble \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package" \
             --output "$GITHUB_OUTPUT"
 
       - name: Verify immutable validated release package
-        if: steps.packageplan.outputs.needed == 'true'
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
         shell: bash
         run: |
           python3 scripts/release-package.py verify \
-            --revision "${{ steps.packageplan.outputs.revision }}" \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package"
 
       - name: Preserve immutable validated release package
-        if: steps.packageplan.outputs.needed == 'true'
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.artifact }}
@@ -508,11 +735,11 @@ jobs:
           overwrite: true
 
       - name: Retain exact validated package backfill receipt
-        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
         shell: bash
         env:
-          REVISION: ${{ steps.packageplan.outputs.revision }}
-          VALIDATION_RUN_ID: ${{ steps.packageplan.outputs.validation_run_id }}
+          REVISION: ${{ needs.validated-release-package-plan.outputs.revision }}
+          VALIDATION_RUN_ID: ${{ needs.validated-release-package-plan.outputs.validation_run_id }}
           PACKAGE_IDENTITY: ${{ steps.package.outputs.identity }}
         run: |
           python3 - <<'PYBACKFILL'
@@ -528,10 +755,10 @@ jobs:
           PYBACKFILL
 
       - name: Preserve exact validated package backfill receipt
-        if: github.event_name == 'workflow_dispatch' && steps.packageplan.outputs.needed == 'true'
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: validated-package-backfill-${{ steps.packageplan.outputs.revision }}-${{ steps.package.outputs.identity }}
+          name: validated-package-backfill-${{ needs.validated-release-package-plan.outputs.revision }}-${{ steps.package.outputs.identity }}
           path: /tmp/validated-package-backfill.json
           retention-days: 30
           if-no-files-found: error

@@ -32,9 +32,7 @@ def target_steps(targets):
     condition = (
         "!cancelled() && steps.transactionprepare.outcome == 'success' && "
         "env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && "
-        "(steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && "
-        "(steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && "
-        "(steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped')"
+        "(steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped')"
     )
     blocks = [f'''      - name: Publish canonical selected targets in parallel
         id: publish_targets

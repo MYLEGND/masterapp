@@ -47,26 +47,30 @@ DOMAIN_REFRESH_PROJECT = "scripts/DomainReleaseRefresh/DomainReleaseRefresh.cspr
 # can suppress a write; a receipt alone never proves current configuration.
 DIRECT_RELEASE_CHILDREN = {
     "founder-cloudflare": {
-        "step": "Deploy and activate LEGEND Founder Cloudflare baseline",
-        "paths": ("Legend-Cloudflare/", "scripts/deploy-founder-cloudflare.py"),
+        "step": "Run independent auxiliary release fanout",
+        "paths": ("Legend-Cloudflare/", "scripts/deploy-founder-cloudflare.py", "scripts/release-auxiliary.py"),
         "operation_paths": ("Legend-Cloudflare/src/", "Legend-Cloudflare/wrangler.founder-baseline.jsonc", "Legend-Cloudflare/package.json", "Legend-Cloudflare/package-lock.json"),
         "operation_exclusions": ("Legend-Cloudflare/src/website-routing/",),
     },
     "migrations": {
-        "step": "Apply additive diagnostics migrations before restarting apps",
-        "paths": ("scripts/MigrationReleaseProbe/", "scripts/release-migration.py"),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": (
+            "scripts/MigrationReleaseProbe/",
+            "scripts/release-migration.py",
+            "scripts/release-prepublication.py",
+        ),
     },
     "shared-config": {
-        "step": "Synchronize selected shared authorization and publisher runtimes",
-        "paths": ("scripts/release-child-receipt.py",),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": ("scripts/release-child-receipt.py", "scripts/release-prepublication.py"),
     },
     "editor-config": {
-        "step": "Synchronize selected editor ticket authority",
-        "paths": ("scripts/release-child-receipt.py",),
+        "step": "Synchronize canonical pre-publication resource lanes",
+        "paths": ("scripts/release-child-receipt.py", "scripts/release-prepublication.py"),
     },
     "routing-cloudflare": {
-        "step": "Deploy shared Cloudflare business website router",
-        "paths": ("Legend-Cloudflare/", "scripts/cloudflare-routing-authority.py", "scripts/release-router.py"),
+        "step": "Run independent auxiliary release fanout",
+        "paths": ("Legend-Cloudflare/", "scripts/cloudflare-routing-authority.py", "scripts/release-router.py", "scripts/release-auxiliary.py"),
         "operation_paths": ("Legend-Cloudflare/src/website-routing/", "Legend-Cloudflare/wrangler.website-routing.jsonc", "Legend-Cloudflare/package.json", "Legend-Cloudflare/package-lock.json"),
     },
     "live-proof": {
@@ -563,6 +567,7 @@ LIFECYCLE_AUTHORITY_PATHS = (
 
 RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/migration-probe-package.py",
+    "scripts/release-prepublication.py",
     "scripts/release-child-receipt.py",
     "scripts/release-router.py",
     "scripts/test-release-children.py",
@@ -611,28 +616,41 @@ def release_control_authority_path(path: str) -> bool:
 
 
 PACKAGE_BUILD_WORKFLOW = '.github/workflows/masterapp-platform-architecture-validation.yml'
-PACKAGE_BUILD_STEPS = (
-    'Setup .NET for canonical package build',
-    'Setup Node for canonical static package build',
+PACKAGE_COMPONENT_BUILD_STEPS = (
+    'Checkout exact package component authority',
+    'Setup .NET for canonical package component build',
+    'Setup Node for canonical static package component build',
+    'Build immutable validated release package component',
+)
+PACKAGE_ASSEMBLY_BUILD_STEPS = (
+    'Checkout exact package authority',
+    'Load immutable package components',
     'Build immutable validated release package',
 )
 
 
 def package_builder_workflow_contract(text: str) -> str:
-    """Only builder/toolchain execution affects immutable package bytes."""
-    block = _job_blocks(text).get('validated-release-package')
-    if block is None:
-        raise ValueError('Canonical package builder job missing')
-    steps = named_step_blocks(block)
-    if any(name not in steps for name in PACKAGE_BUILD_STEPS):
-        raise ValueError('Canonical package builder steps missing')
-    lines, spans = _named_step_spans(block)
-    build_end = next(end for name, start, end in spans if name == PACKAGE_BUILD_STEPS[-1])
-    build = ''.join(lines[:build_end])
-    # Only the canonical read-only evidence planner is excluded. Unknown inserted
-    # steps, checkout, job environment/container/defaults and tool setup remain
-    # inputs, so a new build-affecting command cannot escape invalidation.
-    build = _mask_named_steps(build, ('Resolve whether application bytes changed',))
+    """Hash the complete fan-out/fan-in byte-production execution envelope.
+
+    Planning and artifact retention are not byte producers. The isolated component
+    matrix and the single assembly barrier are: their job configuration, checkout,
+    toolchains, component set, download shape and build commands all remain package
+    identity inputs so concurrency cannot create an alternate packaging authority.
+    """
+    jobs = _job_blocks(text)
+    component = jobs.get('validated-release-package-components')
+    assembly = jobs.get('validated-release-package')
+    if component is None or assembly is None:
+        raise ValueError('Canonical package fan-out/fan-in jobs missing')
+
+    def through(block, required):
+        steps = named_step_blocks(block)
+        if any(name not in steps for name in required):
+            raise ValueError('Canonical package builder steps missing')
+        lines, spans = _named_step_spans(block)
+        end = next(finish for name, start, finish in spans if name == required[-1])
+        return ''.join(lines[:end]).rstrip() + '\n'
+
     header = text.split('\njobs:', 1)[0]
     execution = []
     header_lines = header.splitlines(keepends=True)
@@ -642,7 +660,9 @@ def package_builder_workflow_contract(text: str) -> str:
             while end < len(header_lines) and (not header_lines[end].strip() or header_lines[end][0].isspace()):
                 end += 1
             execution.append(''.join(header_lines[i:end]))
-    return ''.join(execution) + build.rstrip() + '\n'
+    execution.append(through(component, PACKAGE_COMPONENT_BUILD_STEPS))
+    execution.append(through(assembly, PACKAGE_ASSEMBLY_BUILD_STEPS))
+    return ''.join(execution)
 
 
 def release_control_only_path(path: str) -> bool:
@@ -867,7 +887,7 @@ WORKFLOWS = {
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
                 "paths": DIAGNOSTICS_SOURCE + DIAGNOSTICS_TESTS,
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "domain-release": {
                 "step": "Compile shared domain release refresh",
@@ -888,7 +908,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
                 ) + WEBSITE_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "meta-regressions": {
                 "step": "Run Meta authority regressions",
@@ -902,13 +922,13 @@ WORKFLOWS = {
                     "AgentPortal.Tests/ProtectLeadModalInquiryTests.cs",
                 ) + MARKETING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "booking-regressions": {
                 "step": "Run booking authority regressions",
                 "paths": ("AgentPortal.Tests/*Booking*Tests.cs",) + BOOKING_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "crm-regressions": {
                 "step": "Run CRM outcome regressions",
@@ -920,7 +940,7 @@ WORKFLOWS = {
                     "AgentPortal.Tests/CanonicalCrmOutcomeLineageTests.cs",
                 ) + CRM_SOURCE + WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS,
                 "exclude_paths": DIAGNOSTICS_SOURCE,
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
             },
             "form-tracking": {
                 "step": "Run canonical form tracking tests",
@@ -944,7 +964,8 @@ WORKFLOWS = {
                     "scripts/test-diagnostic-project-impact.py",
                     "scripts/test-sync-published-checkout.py",
                 ),
-                "requires": ("compile-regression",),
+                "materializes": ("compile-regression",),
+                "consumes": ("domain-release",),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",
@@ -1094,7 +1115,6 @@ WORKFLOWS = {
             "vulnerabilities": {
                 "step": "Audit dependency vulnerabilities",
                 "paths": GLOBAL_DOTNET_INPUTS,
-                "requires": ("restore",),
             },
             "secret-scan": {
                 "step": "Scan committed configuration for secrets",
@@ -2094,11 +2114,12 @@ def compute_plan(
             run.add(key)
             reasons[key] = "gate_inputs_changed"
 
-    # Close only real execution/evidence edges. "requires" means a runtime
-    # prerequisite that must exist when a child executes; "consumes" means the
-    # child's preserved evidence is semantically derived from that node and must
-    # be invalidated when the consumed evidence changes. Keeping these distinct
-    # prevents a repaired sibling test from cascading across unrelated suites.
+    # Close only real execution/evidence edges. "requires" is a runtime
+    # prerequisite and "consumes" is a semantic evidence dependency: both
+    # legitimately propagate invalidation. "materializes" is deliberately
+    # different; it means a child needs exact producer bytes locally, but a
+    # producer rematerialization alone must not invalidate otherwise-green
+    # sibling evidence.
     changed = True
     while changed:
         changed = False
@@ -2282,7 +2303,9 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
             "executionContractIdentity": control_digest,
             "gateDefinitionIdentity": definition_digest,
             "contentIdentity": hashlib.sha256((source_digest + control_digest + definition_digest).encode()).hexdigest(),
-            "requires": list(gate.get("requires", ())), "consumes": list(gate.get("consumes", ())),
+            "requires": list(gate.get("requires", ())),
+            "consumes": list(gate.get("consumes", ())),
+            "materializes": list(gate.get("materializes", ())),
             "toolchainPolicy": "producer-execution-contract",
         }
     return result
@@ -2805,6 +2828,18 @@ def _read_provenance(host: str, target, revision: str):
         return payload.get("sourceRevision")
 
 
+def cmd_gate_identity(args):
+    if args.workflow not in WORKFLOWS:
+        raise ValueError("Unknown validation workflow: " + args.workflow)
+    if args.gate not in WORKFLOWS[args.workflow]["gates"]:
+        raise ValueError("Unknown validation gate: " + args.gate)
+    identity = gate_dependency_manifests(args.workflow, args.revision)[args.gate]["contentIdentity"]
+    print(identity)
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            output.write(f"identity={identity}\n")
+
+
 def cmd_live_state(args):
     keys = _selected_release_targets(args.selected_targets)
     result = {
@@ -2812,16 +2847,28 @@ def cmd_live_state(args):
         "revision": args.revision,
         "targets": {},
     }
+
+    def probe(key):
+        target = RELEASE_TARGETS[key]
+        try:
+            actual = _read_provenance(target["host"], target, args.revision)
+            return key, actual, actual == args.revision
+        except Exception as exc:
+            return key, type(exc).__name__, False
+
+    selected_results = {}
+    if keys:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+            selected_results = {
+                key: (actual, live)
+                for key, actual, live in pool.map(probe, keys)
+            }
+
+    # Preserve the canonical inventory order in receipts/GITHUB_OUTPUT even
+    # though independent network reads execute concurrently.
     for key, target in RELEASE_TARGETS.items():
         selected = key in keys
-        actual = None
-        live = False
-        if selected:
-            try:
-                actual = _read_provenance(target["host"], target, args.revision)
-                live = actual == args.revision
-            except Exception as exc:
-                actual = type(exc).__name__
+        actual, live = selected_results.get(key, (None, False))
         result["targets"][key] = {
             "releaseName": target["releaseName"],
             "selected": selected,
@@ -2835,7 +2882,10 @@ def cmd_live_state(args):
             "actual": actual,
             "expected": args.revision if selected else None,
         }, sort_keys=True))
-    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    # Keep canonical RELEASE_TARGETS insertion order in the persisted receipt.
+    # Sorting nested object keys would alphabetize target names and destroy the
+    # deterministic inventory order even though the probes themselves are parallel.
+    Path(args.output).write_text(json.dumps(result, indent=2) + "\n")
     if args.github_output:
         with Path(args.github_output).open("a") as output:
             for key in RELEASE_TARGETS:
@@ -2994,6 +3044,21 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
     result = {"schemaVersion": 1, "needed": True, "currentSha": current_sha,
               "evidenceRunId": None, "evidenceHeadSha": None, "changedInputs": [],
               "reason": "compatible_immutable_package_missing"}
+    # Package production is driven by package-producing inputs, not artifact
+    # discovery. A control/test/lifecycle-only head has no new application bytes
+    # to stamp with the current commit and therefore must not manufacture a
+    # redundant immutable package merely because historical artifact lookup misses.
+    result['changedInputs'] = sorted(
+        path for path in git_changed(base_sha, current_sha)
+        if package_canary_input_path(path)
+    )
+    if not result['changedInputs']:
+        result.update({
+            "needed": False,
+            "reason": "no_package_producing_inputs_changed",
+        })
+        return result
+
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
     if token:
         compatible = compatible_package_producer(repository, current_sha, token)
@@ -3005,7 +3070,6 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
                            "exactPackageRunId": compatible['runId'],
                            "exactPackageArtifact": compatible['artifact']})
             return result
-    result['changedInputs'] = sorted(path for path in git_changed(base_sha, current_sha) if package_canary_input_path(path))
     return result
 
 
@@ -3275,7 +3339,14 @@ def package_inputs_compatible(prior: str, current: str) -> bool:
             if builder(git_show_file(prior, path)) != builder(git_show_file(current, path)):
                 return False
         elif path == PACKAGE_BUILD_WORKFLOW:
-            if package_builder_workflow_contract(git_show_file(prior, path)) != package_builder_workflow_contract(git_show_file(current, path)):
+            try:
+                prior_contract = package_builder_workflow_contract(git_show_file(prior, path))
+                current_contract = package_builder_workflow_contract(git_show_file(current, path))
+            except ValueError:
+                # A historical workflow that predates the current canonical
+                # builder shape is incompatible evidence, not a planner fault.
+                return False
+            if prior_contract != current_contract:
                 return False
         elif path == 'scripts/validation-resume.py':
             # Topology is literal canonical data, never execute historical code.
@@ -4573,32 +4644,126 @@ _READONLY_FIXTURE_HELPER = re.compile(
     r'File\.ReadAllText\(Path\.Combine\(AppContext\.BaseDirectory,\s*"[^"\r\n]+"\)\);')
 
 
+def _step5_csharp_structure(source):
+    """Mask comments and literals while preserving C# declaration geometry."""
+    chars = list(source)
+    length = len(source)
+
+    def mask(begin, finish):
+        for index in range(begin, min(finish, length)):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+
+    i = 0
+    while i < length:
+        if source.startswith("//", i):
+            finish = source.find("\n", i + 2)
+            finish = length if finish < 0 else finish
+            mask(i, finish)
+            i = finish
+            continue
+        if source.startswith("/*", i):
+            finish = source.find("*/", i + 2)
+            finish = length if finish < 0 else finish + 2
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == '"':
+            quote_count = 1
+            while i + quote_count < length and source[i + quote_count] == '"':
+                quote_count += 1
+            if quote_count >= 3:
+                delimiter = '"' * quote_count
+                finish = source.find(delimiter, i + quote_count)
+                finish = length if finish < 0 else finish + quote_count
+                mask(i, finish)
+                i = finish
+                continue
+
+            verbatim = i > 0 and source[i - 1] == "@"
+            finish = i + 1
+            while finish < length:
+                if verbatim and source.startswith('""', finish):
+                    finish += 2
+                    continue
+                if source[finish] == '"' and (verbatim or source[finish - 1] != "\\"):
+                    finish += 1
+                    break
+                if not verbatim and source[finish] == "\\":
+                    finish += 2
+                else:
+                    finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == "'":
+            finish = i + 1
+            while finish < length:
+                if source[finish] == "\\":
+                    finish += 2
+                    continue
+                if source[finish] == "'":
+                    finish += 1
+                    break
+                finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        i += 1
+    return "".join(chars)
+
+
 def _step5_isolated_test_source(source):
     """Admit only standalone test classes, never arbitrary C# dependency guesses.
 
-    Exported helpers, inherited/partial fixtures, extension types, static state
-    and shared registrations require full-suite proof. This checks structural
-    isolation; it does not purport to infer arbitrary C# runtime side effects.
+    Comments and literals are masked before structural analysis, so prose cannot
+    impersonate exported/static declarations while compact one-line C# remains
+    valid input. Exported helpers, inherited/partial fixtures, extension types,
+    static state and shared registrations still require full-suite proof.
     """
     source = _READONLY_FIXTURE_HELPER.sub("", source)
-    if len(re.findall(r"\bclass\s+\w+", source)) != 1:
+    structure = _step5_csharp_structure(source)
+    if len(re.findall(r"\bclass\s+\w+", structure)) != 1:
         return False
-    if re.search(r"\bstatic\b|\[Collection(?:\(|Attribute)|\b(?:partial|abstract)\s+class|\bclass\s+\w+\s*[:<]|\b(?:record|struct|interface|enum|delegate)\s+\w+|\[\s*(?:assembly|module)\s*:|\bglobal\s+using|ModuleInitializer|CollectionDefinition|ICollectionFixture", source):
+    if re.search(
+        r"\[Collection(?:\(|Attribute)|\b(?:partial|abstract|static)\s+class|"
+        r"\bclass\s+\w+\s*[:<]|\b(?:record|struct|interface|enum|delegate)\s+\w+|"
+        r"\[\s*(?:assembly|module)\s*:|\bglobal\s+using|ModuleInitializer|"
+        r"CollectionDefinition|ICollectionFixture",
+        structure,
+    ):
         return False
-    # Every exported member must be a test method; constructors, public fixture
-    # data, properties and shared helper methods are intentionally not eligible.
-    for visibility in re.finditer(r"\b(?:public|internal|protected)\b", source):
-        tail = source[visibility.start():]
+
+    # Reject every static construct except a private static method declaration.
+    for marker in re.finditer(r"\bstatic\b", structure):
+        tail = structure[marker.start():]
+        line_start = structure.rfind("\n", 0, marker.start()) + 1
+        prefix = structure[line_start:marker.start()]
+        private_method = (
+            re.search(r"\bprivate\s*$", prefix) is not None
+            and re.match(
+                r"static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
+                tail,
+            ) is not None
+        )
+        if not private_method:
+            return False
+
+    # Every exported member must be the test class or an attributed test method.
+    for visibility in re.finditer(r"\b(?:public|internal|protected)\b", structure):
+        tail = structure[visibility.start():]
         if re.match(r"(?:public|internal)\s+(?:sealed\s+)?class\s+", tail):
             continue
-        prefix = source[:visibility.start()]
+        prefix = structure[:visibility.start()]
         attributes = re.search(r"((?:\[[^\]]+\]\s*)+)$", prefix)
         if not attributes or not re.search(r"\[(?:Fact|Theory)(?:\]|\()", attributes.group(1)):
             return False
-        if not re.match(r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(", tail):
+        if not re.match(
+            r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(",
+            tail,
+        ):
             return False
-    return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", source))
-
+    return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", structure))
 
 def _step5_extension_method_names(source):
     # Ordinary calls follow their declaring type through the source closure.
@@ -4667,6 +4832,13 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
     dynamic_inputs = {file: _test_file_dependency_patterns(source) for file, source in sources.items()}
     affected = set()
     for path in changed:
+        # These four files govern Step 5 planning/comparison only. They remain
+        # neutral even when mixed with a real test correction; otherwise one
+        # bounded test edit plus planner maintenance falsely escalates to a full
+        # AgentPortal suite. Other control files still flow through consumer
+        # discovery because tests may copy/read them directly.
+        if path in fast_neutral:
+            continue
         if path in sources:
             old = git_show_file(prior_sha, path)
             own = classes[path]
@@ -4726,16 +4898,205 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
 def _step5_discovered_repair_classes(classes, test_names, changed_paths):
     """Use complete prior discovery to distinguish tests from co-located helpers.
 
-    This narrowing is admitted only while C# discovery/build inputs are unchanged.
-    A source edit that could introduce a new class must retain full proof when
-    the proposed class has no prior discovery evidence.
+    Prior xUnit discovery is authoritative for unchanged source files, so helper
+    classes pulled in through a changed workflow/config consumer can be dropped.
+    Fail closed only when an undiscovered proposed class is declared by a C# file
+    that actually changed, because that edit could have introduced new tests.
     """
-    discovered = [name for name in classes
-                  if any(test.startswith(name + ".") for test in test_names)]
-    if len(discovered) != len(classes) and any(
-            path.endswith((".cs", ".csproj", ".props", ".targets")) for path in changed_paths):
+    discovered = [
+        name for name in classes
+        if any(test.startswith(name + ".") for test in test_names)
+    ]
+    undiscovered = set(classes) - set(discovered)
+    if not undiscovered:
+        return discovered
+
+    changed_declared = set()
+    for path in changed_paths:
+        if not path.endswith((".cs", ".csproj", ".props", ".targets")):
+            continue
+        if not path.endswith(".cs"):
+            # Project/build graph edits can alter discovery globally.
+            return None
+        source_path = Path(path)
+        if not source_path.is_file():
+            # Added/deleted/renamed C# source cannot be narrowed from prior
+            # discovery alone.
+            return None
+        changed_declared.update(_step5_source_classes(source_path.read_text()))
+
+    if undiscovered & changed_declared:
         return None
     return discovered
+
+
+def _step5_cached_decision(current_sha: str, base_sha: str, resume_cache: str):
+    """Resolve PR-local child evidence through the same canonical Step 5 authority."""
+    capsule = Path(resume_cache)
+    required = (
+        capsule / "metadata.json",
+        capsule / "candidate.trx",
+        capsule / "baseline.trx",
+    )
+    if not all(path.is_file() for path in required):
+        return None, "resume_cache_incomplete"
+
+    try:
+        metadata = json.loads((capsule / "metadata.json").read_text())
+    except Exception:
+        return None, "resume_cache_metadata_invalid"
+
+    prior = metadata.get("headSha") or ""
+    prior_base = metadata.get("baseSha") or ""
+    run_id = metadata.get("runId")
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", prior)
+        or not re.fullmatch(r"[0-9a-f]{40}", prior_base)
+        or type(run_id) is not int
+        or run_id < 1
+    ):
+        return None, "resume_cache_identity_invalid"
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior, current_sha],
+        capture_output=True,
+    ).returncode:
+        return None, "resume_cache_not_ancestor"
+
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    if not _step5_jobs_unchanged(prior, workflow_path):
+        return None, "resume_cache_execution_contract_changed"
+    if not _step5_baseline_inputs_equivalent(prior_base, base_sha):
+        return None, "resume_cache_baseline_inputs_changed"
+
+    try:
+        candidate = read_step5_results(capsule / "candidate.trx")
+        read_step5_results(capsule / "baseline.trx")
+    except Exception:
+        return None, "resume_cache_test_evidence_invalid"
+
+    changed = git_changed(prior, current_sha)
+    classes = step5_dependency_change(prior, current_sha)
+    if classes is None:
+        return None, "resume_cache_unbounded_dependency_change"
+    classes = _step5_discovered_repair_classes(classes, tuple(candidate), changed)
+    if classes is None:
+        return None, "resume_cache_test_discovery_changed"
+
+    return {
+        "schemaVersion": 4,
+        "mode": "repair" if classes else "reuse",
+        "priorRunId": run_id,
+        "priorHeadSha": prior,
+        "baselineEvidenceRunId": run_id,
+        "baselineEvidenceArtifact": None,
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+        "resumeCache": True,
+        "parentSuccessReuse": False,
+        "reason": "pr_local_cached_child_evidence",
+    }, None
+
+
+def _step5_graphql_parent_success_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    token: str,
+):
+    """Cheap control-only success proof using one check-rollup request.
+
+    This is an optimization inside the canonical planner, never a second workflow
+    decision implementation. It may prove exact reuse only; repair/full decisions
+    continue through retained child artifacts below.
+    """
+    owner, name = repository.split("/", 1)
+    query = r"""
+    query($owner:String!,$name:String!,$oid:GitObjectID!){
+      repository(owner:$owner,name:$name){
+        object(oid:$oid){
+          ... on Commit {
+            history(first:30) {
+              nodes {
+                oid
+                statusCheckRollup {
+                  contexts(first:100) {
+                    nodes {
+                      __typename
+                      ... on CheckRun { name conclusion detailsUrl }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    payload = json.dumps({
+        "query": query,
+        "variables": {"owner": owner, "name": name, "oid": current_sha},
+    }).encode()
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "legend-step5-parent-proof/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+    except Exception:
+        return None
+
+    history = (((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                .get("history") or {}).get("nodes", []))
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    for row in history:
+        prior = row.get("oid") or ""
+        if prior == current_sha or not re.fullmatch(r"[0-9a-f]{40}", prior):
+            continue
+        nodes = ((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes", [])
+        success = next((
+            check for check in nodes
+            if check.get("__typename") == "CheckRun"
+            and check.get("name") == "step5-validation"
+            and check.get("conclusion") == "SUCCESS"
+        ), None)
+        if not success:
+            continue
+        if subprocess.run(
+            ["git", "merge-base", "--is-ancestor", base_sha, prior],
+            capture_output=True,
+        ).returncode:
+            continue
+        try:
+            if not _step5_jobs_unchanged(prior, workflow_path):
+                continue
+            if step5_dependency_change(prior, current_sha) != []:
+                continue
+        except Exception:
+            continue
+        run_id = None
+        match = re.search(r"/actions/runs/(\d+)", success.get("detailsUrl") or "")
+        if match:
+            run_id = int(match.group(1))
+        return {
+            "schemaVersion": 4,
+            "mode": "reuse",
+            "priorRunId": run_id,
+            "priorHeadSha": prior,
+            "baselineEvidenceRunId": None,
+            "baselineEvidenceArtifact": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "resumeCache": False,
+            "parentSuccessReuse": True,
+            "reason": "graphql_parent_success_dependency_equivalent",
+        }
+    return None
 
 
 def compute_step5_decision(
@@ -4744,6 +5105,7 @@ def compute_step5_decision(
     base_sha: str,
     current_run_id: int,
     head_branch: str,
+    resume_cache: str | None = None,
 ):
     """Choose only Step 5's cross-run comparison mode.
 
@@ -4763,6 +5125,17 @@ def compute_step5_decision(
         "repairClasses": [],
         "repairFilter": None,
     }
+    cache_fallback_reason = None
+    if resume_cache:
+        cached, cache_fallback_reason = _step5_cached_decision(
+            current_sha,
+            base_sha,
+            resume_cache,
+        )
+        if cached:
+            return cached
+        decision["cacheFallbackReason"] = cache_fallback_reason
+
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         decision["reason"] = "github_token_unavailable"
@@ -4770,6 +5143,17 @@ def compute_step5_decision(
 
     workflow_name = "step5-isolated-conversion-mapping-validation.yml"
     workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    parent_success = _step5_graphql_parent_success_decision(
+        repository,
+        current_sha,
+        base_sha,
+        token,
+    )
+    if parent_success:
+        if cache_fallback_reason:
+            parent_success["cacheFallbackReason"] = cache_fallback_reason
+        return parent_success
 
     candidate_evidence = _step5_prior_candidate_evidence(
         repository,
@@ -4841,6 +5225,7 @@ def cmd_step5_decision(args):
             args.base_sha,
             args.current_run_id,
             args.head_branch,
+            getattr(args, "resume_cache", None),
         )
     except EvidenceLookupUnavailable as exc:
         decision = {
@@ -5064,6 +5449,13 @@ def build_parser():
     preserved.add_argument("--gate", required=True)
     preserved.set_defaults(func=cmd_preserved)
 
+    gate_identity = sub.add_parser("gate-identity")
+    gate_identity.add_argument("--workflow", required=True)
+    gate_identity.add_argument("--revision", required=True)
+    gate_identity.add_argument("--gate", required=True)
+    gate_identity.add_argument("--github-output")
+    gate_identity.set_defaults(func=cmd_gate_identity)
+
     live_state = sub.add_parser("live-state")
     live_state.add_argument("--revision", required=True)
     live_state.add_argument("--selected-targets", required=True)
@@ -5120,6 +5512,7 @@ def build_parser():
     step5_decision.add_argument("--current-run-id", required=True, type=int)
     step5_decision.add_argument("--head-branch", required=True)
     step5_decision.add_argument("--repository", required=True)
+    step5_decision.add_argument("--resume-cache")
     step5_decision.add_argument("--output", required=True)
     step5_decision.set_defaults(func=cmd_step5_decision)
 

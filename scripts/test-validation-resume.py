@@ -579,6 +579,25 @@ class ValidationResumePlannerTests(unittest.TestCase):
         gate = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]["compile-regression"]
         self.assertFalse(gate["runtime_file_dependencies"])
 
+    def test_regression_consumers_materialize_compile_without_semantic_sibling_invalidation(self):
+        gates = m.WORKFLOWS["masterapp-platform-architecture-validation.yml"]["gates"]
+        for key in (
+            "founder-diagnostics-regressions",
+            "website-regressions",
+            "meta-regressions",
+            "booking-regressions",
+            "crm-regressions",
+        ):
+            self.assertEqual(("compile-regression",), gates[key]["materializes"], key)
+            self.assertNotIn("requires", gates[key], key)
+            self.assertNotIn("consumes", gates[key], key)
+        self.assertEqual(
+            ("compile-regression",),
+            gates["release-web-contracts"]["materializes"],
+        )
+        self.assertEqual(("domain-release",), gates["release-web-contracts"]["consumes"])
+        self.assertNotIn("requires", gates["release-web-contracts"])
+
     def test_successful_parent_is_complete_gate_proof_without_plan_artifact_download(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         run = {"id": 77, "conclusion": "success"}
@@ -652,8 +671,8 @@ class ValidationResumePlannerTests(unittest.TestCase):
             "prior_attempt",
         )
         self.assertTrue(plan["gates"]["booking-regressions"]["run"])
-        self.assertTrue(plan["gates"]["compile-regression"]["run"])
-        self.assertTrue(plan["gates"]["restore-dotnet"]["run"])
+        self.assertFalse(plan["gates"]["compile-regression"]["run"])
+        self.assertFalse(plan["gates"]["restore-dotnet"]["run"])
         self.assertFalse(plan["gates"]["renderer-tests"]["run"])
         self.assertFalse(plan["gates"]["cms-tests"]["run"])
         self.assertFalse(plan["gates"]["form-tracking"]["run"])
@@ -884,6 +903,10 @@ jobs:
         workflow = path.read_text()
         self.assertNotIn("scripts/validation-resume.py plan", workflow)
         self.assertEqual(1, workflow.count("scripts/validation-resume.py step5-decision"))
+        self.assertIn("--resume-cache /tmp/step5-resume-cache", workflow)
+        self.assertNotIn("PYCACHE", workflow)
+        self.assertNotIn("PYGRAPH", workflow)
+        self.assertNotIn("graphql_parent_success", workflow)
         self.assertIn("scripts/validation-resume.py step5-baseline", workflow)
         self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', workflow)
         self.assertIn("historical_evidence_unavailable_run_full_step5", workflow)
@@ -1282,24 +1305,27 @@ jobs:
                 "b" * 40,
             ))
 
-    def test_package_canary_preserves_original_producer_for_control_only_change(self):
+    def test_package_canary_preserves_compatible_producer_for_changed_package_input(self):
         producer = {'runId': 91, 'revision': 'a' * 40, 'packageIdentity': 'c' * 64,
                     'artifact': 'original-package', 'reason': 'dependency_equivalent_immutable_package_producer'}
         with patch.object(m, 'compatible_package_producer', return_value=producer), \
+             patch.object(m, 'git_changed', return_value=['AgentPortal/Program.cs']), \
              patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
         self.assertFalse(plan['needed'])
+        self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
         self.assertEqual('a' * 40, plan['evidenceHeadSha'])
         self.assertEqual('c' * 64, plan['packageIdentity'])
         self.assertEqual('original-package', plan['exactPackageArtifact'])
 
-    def test_package_canary_requires_build_when_no_compatible_artifact_exists(self):
-        with patch.object(m, 'compatible_package_producer', return_value=None), \
+    def test_package_canary_skips_control_only_head_when_artifact_lookup_misses(self):
+        with patch.object(m, 'compatible_package_producer',
+                          side_effect=AssertionError('zero-input head must not need artifact lookup')), \
              patch.object(m, 'git_changed', return_value=['scripts/test-release-policy.py']), \
              patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
-        self.assertTrue(plan['needed'])
-        self.assertEqual('compatible_immutable_package_missing', plan['reason'])
+        self.assertFalse(plan['needed'])
+        self.assertEqual('no_package_producing_inputs_changed', plan['reason'])
         self.assertEqual([], plan['changedInputs'])
 
     def test_package_canary_reports_application_inputs_when_no_compatible_package(self):
@@ -1309,6 +1335,39 @@ jobs:
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
         self.assertTrue(plan['needed'])
         self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
+
+    def test_live_state_probes_selected_targets_concurrently_and_keeps_inventory_order(self):
+        selected = ['masterapp-portal', 'masterapp-client']
+        calls = []
+
+        def read(host, target, revision):
+            calls.append(host)
+            return revision if target['releaseName'] == 'masterapp-portal' else 'older'
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'live.json'
+            github_output = Path(directory) / 'github-output'
+            args = SimpleNamespace(
+                selected_targets=__import__('json').dumps(selected),
+                revision='a' * 40,
+                output=str(output),
+                github_output=str(github_output),
+            )
+            with patch.object(m, '_read_provenance', side_effect=read):
+                m.cmd_live_state(args)
+
+            payload = __import__('json').loads(output.read_text())
+            self.assertEqual(['portal', 'client', 'protect', 'parfait', 'website'],
+                             list(payload['targets']))
+            self.assertTrue(payload['targets']['portal']['alreadyLive'])
+            self.assertFalse(payload['targets']['client']['alreadyLive'])
+            self.assertEqual(
+                {m.RELEASE_TARGETS['portal']['host'], m.RELEASE_TARGETS['client']['host']},
+                set(calls),
+            )
+            lines = github_output.read_text().splitlines()
+            self.assertEqual('portal_live=true', lines[0])
+            self.assertEqual('client_live=false', lines[1])
 
     def test_package_backfill_requires_green_exact_revision_and_control_only_descendants(self):
         revision = "a" * 40
@@ -1567,7 +1626,7 @@ jobs:
             if key not in {"lifecycle", "release-policy"}:
                 self.assertFalse(gate["run"], key)
 
-    def test_release_web_contract_change_reruns_release_web_with_its_local_dotnet_build_chain(self):
+    def test_release_web_runtime_change_reuses_content_identical_compiled_graph(self):
         workflow = "masterapp-platform-architecture-validation.yml"
         plan = m.compute_plan(
             workflow,
@@ -1577,10 +1636,11 @@ jobs:
             ["tests/legend-connect/example.test.mjs"],
             "prior_run",
         )
-        for key in ("release-web-contracts", "compile-regression", "restore-dotnet"):
-            self.assertTrue(plan["gates"][key]["run"], key)
+        self.assertTrue(plan["gates"]["release-web-contracts"]["run"])
+        self.assertFalse(plan["gates"]["compile-regression"]["run"])
+        self.assertFalse(plan["gates"]["restore-dotnet"]["run"])
         for key, gate in plan["gates"].items():
-            if key not in {"release-web-contracts", "compile-regression", "restore-dotnet"}:
+            if key != "release-web-contracts":
                 self.assertFalse(gate["run"], key)
 
     def test_validation_authority_change_reruns_only_declared_consumers(self):
@@ -1997,6 +2057,39 @@ jobs:
         self.assertFalse(m.merge_content_equivalent_evidence(current, candidate, run))
         self.assertTrue(all(gate["run"] for gate in current["gates"].values()))
 
+    def test_step5_private_static_helpers_remain_class_local_for_bounded_repair(self):
+        source = """
+namespace AgentPortal.Tests;
+public sealed class ScopedTests
+{
+    [Fact]
+    public void Case()
+    {
+        Assert.Equal("ok", ReadValue());
+    }
+
+    // Public/static are prose here, not declarations; comments must not poison isolation.
+    private static string ReadValue() => "ok";
+}
+"""
+        self.assertTrue(m._step5_isolated_test_source(source))
+
+    def test_step5_static_state_still_requires_full_suite_proof(self):
+        source = """
+namespace AgentPortal.Tests;
+public sealed class ScopedTests
+{
+    private static int Counter;
+
+    [Fact]
+    public void Case()
+    {
+        Counter++;
+    }
+}
+"""
+        self.assertFalse(m._step5_isolated_test_source(source))
+
 
 class Step5DependencyBehaviorTests(unittest.TestCase):
     def setUp(self):
@@ -2045,6 +2138,58 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         path = "AgentPortal.Tests/One.cs"
         self.write(path, Path(path).read_text().replace("Shared.Value();", "Shared.Value(); Shared.Value();"))
         self.assertEqual(["AgentPortal.Tests.One"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_test_fix_mixed_with_step5_control_changes_stays_bounded(self):
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        control = "scripts/validation-resume.py"
+        self.write(control, Path(control).read_text() + "\n# planner-only fixture change\n")
+        self.assertEqual(["AgentPortal.Tests.Two"], m.step5_dependency_change(self.base, self.commit()))
+
+    def test_prior_discovery_drops_unchanged_helper_without_escalating_changed_test(self):
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        self.assertEqual(
+            ["AgentPortal.Tests.Two"],
+            m._step5_discovered_repair_classes(
+                ["AgentPortal.Tests.Two", "AgentPortal.Tests.Shared"],
+                ["AgentPortal.Tests.Two.Case"],
+                [path],
+            ),
+        )
+
+    def test_pr_local_cache_uses_canonical_bounded_repair_decision(self):
+        import json
+        path = "AgentPortal.Tests/Two.cs"
+        self.write(path, Path(path).read_text().replace("Case() {}", "Case() { Assert.True(true); }"))
+        control = "scripts/validation-resume.py"
+        self.write(control, Path(control).read_text() + "\n# planner-only fixture change\n")
+        head = self.commit()
+        capsule = Path("step5-cache")
+        capsule.mkdir()
+        (capsule / "metadata.json").write_text(json.dumps({
+            "schemaVersion": 1,
+            "headSha": self.base,
+            "baseSha": self.base,
+            "runId": 71,
+        }))
+        trx = (
+            '<TestRun><Results>'
+            '<UnitTestResult testName="AgentPortal.Tests.Two.Case" outcome="Passed" />'
+            '</Results><ResultSummary outcome="Completed">'
+            '<Counters total="1" passed="1" failed="0" error="0" timeout="0" '
+            'aborted="0" disconnected="0" inProgress="0" pending="0" />'
+            '</ResultSummary></TestRun>'
+        )
+        (capsule / "candidate.trx").write_text(trx)
+        (capsule / "baseline.trx").write_text(trx)
+
+        decision, rejection = m._step5_cached_decision(head, self.base, str(capsule))
+        self.assertIsNone(rejection)
+        self.assertEqual("repair", decision["mode"])
+        self.assertEqual(["AgentPortal.Tests.Two"], decision["repairClasses"])
+        self.assertTrue(decision["resumeCache"])
+        self.assertEqual("pr_local_cached_child_evidence", decision["reason"])
 
     def test_shared_fixture_change_requires_full_proof(self):
         path = "AgentPortal.Tests/Shared.cs"

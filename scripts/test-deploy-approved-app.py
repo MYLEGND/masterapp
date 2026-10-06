@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 import subprocess
-import textwrap
 from pathlib import Path
 import tempfile
 import threading
@@ -442,6 +441,17 @@ class PackageContractTests(unittest.TestCase):
             self.assertNotEqual(original, package.contract_hash())
 
 
+    def test_isolated_migration_component_owns_its_project_restore(self):
+        source = (ROOT / 'release-package.py').read_text()
+        block = source.split('def build_migration_bundle(output: Path):', 1)[1].split(
+            '\ndef ', 1
+        )[0]
+        restore = block.index('run("dotnet", "restore", "AgentPortal/AgentPortal.csproj"')
+        bundle = block.index('"migrations", "bundle"')
+        self.assertLess(restore, bundle)
+        self.assertIn('previously serialized app publish', block)
+
+
     def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
         package = importlib.util.module_from_spec(spec)
@@ -505,6 +515,13 @@ class PackageProducerTests(unittest.TestCase):
             self.assertEqual('c' * 64, result['packageIdentity'])
             jobs['jobs'][0]['steps'][1]['conclusion'] = 'failure'
             self.assertIsNone(authority.compatible_package_producer('MYLEGND/masterapp', 'b' * 40, 'test-token'))
+
+    def test_historical_package_workflow_shape_is_incompatible_not_planner_failure(self):
+        authority = deploy._RELEASE_AUTHORITY
+        with patch.object(authority, 'git_changed', return_value=[authority.PACKAGE_BUILD_WORKFLOW]), \
+             patch.object(authority, 'git_show_file', side_effect=['old workflow', 'new workflow']), \
+             patch.object(authority, 'package_builder_workflow_contract', side_effect=ValueError('old shape')):
+            self.assertFalse(authority.package_inputs_compatible('a' * 40, 'b' * 40))
 
     def test_builder_globals_and_invoked_helpers_invalidate_compatibility(self):
         authority = deploy._RELEASE_AUTHORITY
@@ -731,77 +748,76 @@ class PreparedTransactionTests(unittest.TestCase):
 
 class SettingsIdempotenceTests(unittest.TestCase):
     def run_settings(self, drift=False):
-        workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
-        names = ['Synchronize selected shared authorization and publisher runtimes',
-                 'Synchronize selected editor ticket authority']
         authority = deploy._RELEASE_AUTHORITY
         all_names = [row['releaseName'] for row in deploy.TARGETS.values()]
         profile = authority.release_runtime_profile(all_names)
         shared_target = profile['sharedAuthTargets'][0]
         editor_target = next(name for name in profile['editorTargets'] if name != shared_target)
-        with tempfile.TemporaryDirectory() as folder:
-            directory = Path(folder)
-            common = {'FOUNDER_OID': 'test-founder', 'Founder__Upn': 'test@example.invalid',
-                      'DataProtection__BlobUri': 'test-blob', 'DataProtection__KeyVaultKeyId': 'test-key',
-                      'MarketingDataProtection__BlobUri': 'test-blob',
-                      'MarketingDataProtection__KeyVaultKeyId': 'test-key',
-                      'WebsiteEditorDataProtection__BlobUri': 'test-blob',
-                      'WebsiteEditorDataProtection__KeyVaultKeyId': 'test-key',
-                      'Analytics__SharedSecret': 'test-secret', 'Tracking__SharedSecret': 'test-secret',
-                      'Tracking:SharedSecret': 'test-secret', 'WEBSITE_NODE_DEFAULT_VERSION': '~24'}
-            state = {row['releaseName']: dict(common) for row in deploy.TARGETS.values()}
-            if drift:
-                state[shared_target]['Tracking:SharedSecret'] = 'stale'
-                state[editor_target]['WebsiteEditorDataProtection__BlobUri'] = 'stale'
-            (directory / 'state.json').write_text(json.dumps(state))
-            (directory / 'writes.json').write_text('[]')
-            # Exercise the real settings owner while replacing only the remote
-            # Actions evidence boundary (covered by release-child protocol tests).
-            receipt = directory / 'fake-child-receipt.py'
-            receipt.write_text("import sys\nassert sys.argv[1] in {'shared-config', 'editor-config'}\n")
-            executable = directory / 'az'
-            executable.write_text("""#!/usr/bin/env python3
-import json, os, sys
-from pathlib import Path
-root = Path(os.environ['FAKE_AZ_ROOT'])
-state = json.loads((root / 'state.json').read_text())
-args = sys.argv[1:]
-assert args[:3] == ['webapp', 'config', 'appsettings']
-app = args[args.index('-n') + 1]
-if args[3] == 'list':
-    print(json.dumps([{'name': key, 'value': value} for key, value in state[app].items()]))
-elif args[3] == 'set':
-    pairs = args[args.index('--settings') + 1:args.index('--output')]
-    updates = dict(pair.split('=', 1) for pair in pairs)
-    assert updates and all(state[app].get(k) != v for k, v in updates.items()), 'Unnecessary setting write'
-    state[app].update(updates)
-    (root / 'state.json').write_text(json.dumps(state))
-    writes = json.loads((root / 'writes.json').read_text())
-    writes.append({'app': app, 'keys': list(updates)})
-    (root / 'writes.json').write_text(json.dumps(writes))
-else:
-    raise AssertionError('Unexpected Azure mutation')
-""")
-            executable.chmod(0o755)
-            env = os.environ | {
-                'PATH': str(directory) + os.pathsep + os.environ['PATH'],
-                'FAKE_AZ_ROOT': folder,
-                'SELECTED_TARGETS': json.dumps(list(state)),
-                'RELEASE_RESOURCE_GROUP': profile['resourceGroup'],
-                'DATABASE_AUTHORITY': profile['databaseAuthority'],
-                'SHARED_AUTH_TARGETS': json.dumps(profile['sharedAuthTargets']),
-                'MARKETING_TARGETS': json.dumps(profile['marketingTargets']),
-                'EDITOR_TARGETS': json.dumps(profile['editorTargets']),
-            }
-            for _ in range(2):
-                for name in names:
-                    block = workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
-                    script = textwrap.dedent(block.split('        run: |\n', 1)[1])
-                    script = script.replace('/tmp/', folder + '/')
-                    script = script.replace('scripts/release-child-receipt.py', str(receipt))
-                    result = subprocess.run(['bash', '-c', script], env=env, text=True, capture_output=True)
-                    self.assertEqual(0, result.returncode, result.stderr)
-            return json.loads((directory / 'writes.json').read_text()), shared_target, editor_target
+
+        spec = importlib.util.spec_from_file_location(
+            'release_prepublication_test',
+            ROOT / 'release-prepublication.py',
+        )
+        prepublication = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(prepublication)
+
+        common = {
+            'FOUNDER_OID': 'test-founder',
+            'Founder__Upn': 'test@example.invalid',
+            'DataProtection__BlobUri': 'test-blob',
+            'DataProtection__KeyVaultKeyId': 'test-key',
+            'MarketingDataProtection__BlobUri': 'test-blob',
+            'MarketingDataProtection__KeyVaultKeyId': 'test-key',
+            'WebsiteEditorDataProtection__BlobUri': 'test-blob',
+            'WebsiteEditorDataProtection__KeyVaultKeyId': 'test-key',
+            'Analytics__SharedSecret': 'test-secret',
+            'Tracking__SharedSecret': 'test-secret',
+            'Tracking:SharedSecret': 'test-secret',
+            'WEBSITE_NODE_DEFAULT_VERSION': '~24',
+        }
+        state = {row['releaseName']: dict(common) for row in deploy.TARGETS.values()}
+        if drift:
+            state[shared_target]['Tracking:SharedSecret'] = 'stale'
+            state[editor_target]['WebsiteEditorDataProtection__BlobUri'] = 'stale'
+
+        writes = []
+        lock = threading.Lock()
+
+        def fake_settings(app):
+            with lock:
+                return dict(state[app])
+
+        def fake_run(command, *, capture=False, timeout=300, env=None):
+            self.assertEqual(['az', 'webapp', 'config', 'appsettings', 'set'], command[:5])
+            app = command[command.index('-n') + 1]
+            pairs = command[command.index('--settings') + 1:command.index('--output')]
+            updates = dict(pair.split('=', 1) for pair in pairs)
+            with lock:
+                self.assertTrue(updates)
+                self.assertTrue(all(state[app].get(key) != value for key, value in updates.items()))
+                state[app].update(updates)
+                writes.append({'app': app, 'keys': sorted(updates)})
+            return ''
+
+        environment = {
+            'SELECTED_TARGETS': json.dumps(list(state)),
+            'RELEASE_RESOURCE_GROUP': profile['resourceGroup'],
+            'DATABASE_AUTHORITY': profile['databaseAuthority'],
+            'SHARED_AUTH_TARGETS': json.dumps(profile['sharedAuthTargets']),
+            'MARKETING_TARGETS': json.dumps(profile['marketingTargets']),
+            'EDITOR_TARGETS': json.dumps(profile['editorTargets']),
+            'ROUTING_TARGETS': '[]',
+            'WEBSITE_ROUTING': 'false',
+            'PRESERVE_LIVE_TARGETS': 'false',
+        }
+        with patch.dict(os.environ, environment, clear=False), \
+             patch.object(prepublication, 'app_settings', side_effect=fake_settings), \
+             patch.object(prepublication, 'run', side_effect=fake_run), \
+             patch.object(prepublication, 'child_receipt'):
+            prepublication.configure_all_targets()
+            prepublication.configure_all_targets()
+
+        return sorted(writes, key=lambda row: row['app']), shared_target, editor_target
 
     def test_matching_settings_make_zero_azure_writes_across_repeated_runs(self):
         writes, _, _ = self.run_settings()
@@ -809,10 +825,11 @@ else:
 
     def test_only_drifted_keys_are_updated_once_and_then_preserved(self):
         writes, shared_target, editor_target = self.run_settings(drift=True)
-        self.assertEqual([
+        expected = sorted([
             {'app': shared_target, 'keys': ['Tracking:SharedSecret']},
             {'app': editor_target, 'keys': ['WebsiteEditorDataProtection__BlobUri']},
-        ], writes)
+        ], key=lambda row: row['app'])
+        self.assertEqual(expected, writes)
 
 if __name__ == '__main__':
     unittest.main()

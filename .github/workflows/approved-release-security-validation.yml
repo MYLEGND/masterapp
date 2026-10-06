@@ -33,16 +33,11 @@ jobs:
             --event "${{ github.event_name }}" \
             --output "$RUNNER_TEMP/approved-head-preflight.json"
 
-  validate:
+  validation_plan:
     needs: approved-head-preflight
-    name: approved-release-security
+    name: security-validation-plan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_NOLOGO: '1'
-      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
-      MSBUILDDISABLENODEREUSE: '1'
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,152 +71,310 @@ jobs:
             --repository "${{ github.repository }}" \
             --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
             --output "$plan"
-          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
-          import json, sys
-          data=json.load(open(sys.argv[1]))
-          running={key for key,row in data.get('gates',{}).items() if row.get('run')}
-          dotnet={'restore','build','db-validation','vulnerabilities'}
-          with open(sys.argv[2],'a') as output:
-              output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
-              output.write('all_preserved='+str(not running).lower()+'\n')
-          PYPLAN
 
+      - name: Preserve exact security validation plan for DAG lanes
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  security_database:
+    needs: validation_plan
+    name: approved-release-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
       - uses: actions/setup-dotnet@v4
-        if: steps.plan.outputs.dotnet == 'true'
         with:
           dotnet-version: '10.x'
 
-      - name: Restore security validation graph
-        id: gate_restore
-        run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
-          dotnet restore MASTERAPP.sln
-
-      - name: Build migration validation graph
-        id: gate_build
-        shell: bash
-        run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
-          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false
-
-      - name: Validate database migration artifacts
-        id: gate_db_validation
+      - name: Run independent security validation fanout
+        id: securityfanout
         shell: bash
         env:
           DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
           DB_BUILD_CONFIGURATION: Release
         run: |
-          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
-          changed_migration_inputs="$(
-            git diff --name-only "$DB_BASE_REF"...HEAD -- \
-              Infrastructure/Migrations \
-              Infrastructure/Data/MasterAppDbContext.cs \
-              Infrastructure \
-              Domain/Entities |
-            grep -E '^(Infrastructure/Migrations/|Infrastructure/Data/MasterAppDbContext\.cs$|Infrastructure/.*DbContext.*\.cs$|Domain/Entities/)' || true
-          )"
-          if [ -z "$changed_migration_inputs" ]; then
-            echo "No migration/model inputs changed from the approved base; historical approved migration artifacts are outside this PR's invalidation scope."
-            exit 0
+          set -euo pipefail
+          root="$RUNNER_TEMP/security-fanout"
+          mkdir -p "$root"
+          pids=()
+
+          no_skips() {
+            if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
+                  AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
+                  AgentPortal.Tests/Phase4PlatformSecurityTests.cs \
+                  AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs \
+                  AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs \
+                  AgentPortal.Tests/CalendarControllerTests.cs 2>/dev/null; then
+              echo "::error::A security test is marked Skip."
+              return 1
+            fi
+          }
+          secret_scan() {
+            if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
+              echo "::error::Committed publish-macos appsettings may contain secrets."
+              return 1
+            fi
+            if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' \
+               | grep -vE '"[[:space:]]*"' ; then
+              echo "::error::A tracked appsettings file appears to contain a committed secret value."
+              return 1
+            fi
+          }
+          composition() {
+            check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; return 1; }; }
+            check AgentPortal/Program.cs AddPlatformDataProtection
+            check AgentPortal/Program.cs PlatformRateLimiting
+            check AgentPortal/Program.cs AddLegendConnectHostedWorkers
+            check ClientApp/Program.cs AddPlatformDataProtection
+            check ClientApp/Program.cs PlatformRateLimiting
+            check ClientApp/Program.cs PlatformSecurityHeaders
+            check Protect-Website/Program.cs AddPlatformDataProtection
+            check Protect-Website/Program.cs PlatformRateLimiting
+            check Protect-Website/Program.cs PlatformSecurityHeaders
+            check ParfaitApp/Program.cs PlatformConfigValidation
+            check ParfaitApp/Program.cs AddPlatformDataProtection
+            check ParfaitApp/Program.cs PlatformRateLimiting
+            if grep -REn 'AddHostedService<[^>]*LegendConnect' \
+                  AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+              echo "::error::An application composition root directly registers a LEGEND worker outside the canonical worker set."
+              return 1
+            fi
+            if grep -q 'AddLegendConnectHostedWorkers' ClientApp/Program.cs; then
+              echo "::error::ClientApp must consume messaging services without becoming a competing LEGEND worker host."
+              return 1
+            fi
+            if grep -q '_legend.TryInferConversationAsync' AgentPortal/Services/LegendFounderAiConversationService.cs; then
+              echo "::error::Founder production chat must not fall back to the legacy non-discourse LEGEND responder."
+              return 1
+            fi
+          }
+          keyring() {
+            if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
+                  AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+              echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
+              return 1
+            fi
+          }
+          diff_check() {
+            git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          }
+          vulnerabilities() {
+            set -o pipefail
+            dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee "$root/vuln.log"
+            if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' "$root/vuln.log" || grep -qi 'has the following vulnerable' "$root/vuln.log"; then
+              echo "::error::Vulnerable NuGet packages detected."
+              return 1
+            fi
+          }
+
+          run_simple() {
+            gate="$1"
+            fn="$2"
+            (
+              status="$root/$gate.status"
+              log="$root/$gate.log"
+              if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate "$gate"; then
+                echo preserved > "$status"
+                exit 0
+              fi
+              set +e
+              ( set -euo pipefail; "$fn" ) >"$log" 2>&1
+              rc=$?
+              set -e
+              [ "$rc" -eq 0 ] && echo success > "$status" || echo failure > "$status"
+              exit 0
+            ) &
+            pids+=("$!")
+          }
+
+          run_simple no-skips no_skips
+          run_simple secret-scan secret_scan
+          run_simple composition composition
+          run_simple keyring keyring
+          run_simple diff-check diff_check
+
+          restore_status="$root/restore.status"
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then
+            echo preserved > "$restore_status"
+          else
+            set +e
+            dotnet restore MASTERAPP.sln >"$root/restore.log" 2>&1
+            rc=$?
+            set -e
+            [ "$rc" -eq 0 ] && echo success > "$restore_status" || echo failure > "$restore_status"
           fi
-          printf '%s\n' "$changed_migration_inputs"
-          ./scripts/db.sh validate-artifacts
+
+          (
+            if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then
+              echo preserved > "$root/vulnerabilities.status"
+            elif [ "$(cat "$restore_status")" = failure ]; then
+              echo dependency_failure > "$root/vulnerabilities.status"
+            else
+              set +e
+              ( set -euo pipefail; vulnerabilities ) >"$root/vulnerabilities.log" 2>&1
+              rc=$?
+              set -e
+              [ "$rc" -eq 0 ] && echo success > "$root/vulnerabilities.status" || echo failure > "$root/vulnerabilities.status"
+            fi
+            exit 0
+          ) &
+          pids+=("$!")
+
+          (
+            build_state=preserved
+            if ! python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then
+              if [ "$(cat "$restore_status")" = failure ]; then
+                build_state=dependency_failure
+              else
+                set +e
+                dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo -warnaserror -m:1 -nr:false -p:UseSharedCompilation=false >"$root/build.log" 2>&1
+                rc=$?
+                set -e
+                [ "$rc" -eq 0 ] && build_state=success || build_state=failure
+              fi
+            fi
+            echo "$build_state" > "$root/build.status"
+
+            if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then
+              echo preserved > "$root/db-validation.status"
+              exit 0
+            fi
+            if [ "$build_state" != success ]; then
+              echo dependency_failure > "$root/db-validation.status"
+              exit 0
+            fi
+            set +e
+            (
+              set -euo pipefail
+              changed_migration_inputs="$(
+                git diff --name-only "$DB_BASE_REF"...HEAD -- \
+                  Infrastructure/Migrations \
+                  Infrastructure/Data/MasterAppDbContext.cs \
+                  Infrastructure \
+                  Domain/Entities |
+                grep -E '^(Infrastructure/Migrations/|Infrastructure/Data/MasterAppDbContext\.cs$|Infrastructure/.*DbContext.*\.cs$|Domain/Entities/)' || true
+              )"
+              if [ -z "$changed_migration_inputs" ]; then
+                echo "No migration/model inputs changed from the approved base; historical approved migration artifacts are outside this PR's invalidation scope."
+                exit 0
+              fi
+              printf '%s\n' "$changed_migration_inputs"
+              ./scripts/db.sh validate-artifacts
+            ) >"$root/db-validation.log" 2>&1
+            rc=$?
+            set -e
+            [ "$rc" -eq 0 ] && echo success > "$root/db-validation.status" || echo failure > "$root/db-validation.status"
+            exit 0
+          ) &
+          pids+=("$!")
+
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+
+      - name: Restore security validation graph
+        id: gate_restore
+        if: always()
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore; then exit 0; fi
+          cat "$RUNNER_TEMP/security-fanout/restore.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/restore.status")" = success
+
+      - name: Build migration validation graph
+        id: gate_build
+        if: always()
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build; then exit 0; fi
+          cat "$RUNNER_TEMP/security-fanout/build.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/build.status")" = success
+
+      - name: Validate database migration artifacts
+        id: gate_db_validation
+        if: always()
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate db-validation; then exit 0; fi
+          cat "$RUNNER_TEMP/security-fanout/db-validation.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/db-validation.status")" = success
 
       - name: Reject skipped security tests
         id: gate_no_skips
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate no-skips; then exit 0; fi
-          if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
-                AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
-                AgentPortal.Tests/Phase4PlatformSecurityTests.cs \
-                AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs \
-                AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs \
-                AgentPortal.Tests/CalendarControllerTests.cs 2>/dev/null; then
-            echo "::error::A security test is marked Skip."
-            exit 1
-          fi
+          cat "$RUNNER_TEMP/security-fanout/no-skips.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/no-skips.status")" = success
 
       - name: Audit dependency vulnerabilities
         id: gate_vulnerabilities
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate vulnerabilities; then exit 0; fi
-          set -o pipefail
-          dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
-          if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
-            echo "::error::Vulnerable NuGet packages detected."
-            exit 1
-          fi
+          cat "$RUNNER_TEMP/security-fanout/vulnerabilities.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/vulnerabilities.status")" = success
 
       - name: Scan committed configuration for secrets
         id: gate_secret_scan
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate secret-scan; then exit 0; fi
-          if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
-            echo "::error::Committed publish-macos appsettings may contain secrets."
-            exit 1
-          fi
-          if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' \
-             | grep -vE '"[[:space:]]*"' ; then
-            echo "::error::A tracked appsettings file appears to contain a committed secret value."
-            exit 1
-          fi
+          cat "$RUNNER_TEMP/security-fanout/secret-scan.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/secret-scan.status")" = success
 
       - name: Verify shared composition authorities
         id: gate_composition
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate composition; then exit 0; fi
-          set -e
-          check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
-          check AgentPortal/Program.cs AddPlatformDataProtection
-          check AgentPortal/Program.cs PlatformRateLimiting
-          check AgentPortal/Program.cs AddLegendConnectHostedWorkers
-          check ClientApp/Program.cs AddPlatformDataProtection
-          check ClientApp/Program.cs PlatformRateLimiting
-          check ClientApp/Program.cs PlatformSecurityHeaders
-          check Protect-Website/Program.cs AddPlatformDataProtection
-          check Protect-Website/Program.cs PlatformRateLimiting
-          check Protect-Website/Program.cs PlatformSecurityHeaders
-          check ParfaitApp/Program.cs PlatformConfigValidation
-          check ParfaitApp/Program.cs AddPlatformDataProtection
-          check ParfaitApp/Program.cs PlatformRateLimiting
-          if grep -REn 'AddHostedService<[^>]*LegendConnect' \
-                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
-            echo "::error::An application composition root directly registers a LEGEND worker outside the canonical worker set."
-            exit 1
-          fi
-          if grep -q 'AddLegendConnectHostedWorkers' ClientApp/Program.cs; then
-            echo "::error::ClientApp must consume messaging services without becoming a competing LEGEND worker host."
-            exit 1
-          fi
-          if grep -q '_legend.TryInferConversationAsync' AgentPortal/Services/LegendFounderAiConversationService.cs; then
-            echo "::error::Founder production chat must not fall back to the legacy non-discourse LEGEND responder."
-            exit 1
-          fi
+          cat "$RUNNER_TEMP/security-fanout/composition.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/composition.status")" = success
 
       - name: Reject inline Azure key-ring wiring
         id: gate_keyring
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate keyring; then exit 0; fi
-          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
-                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
-            echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
-            exit 1
-          fi
+          cat "$RUNNER_TEMP/security-fanout/keyring.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/keyring.status")" = success
 
       - name: Verify patch whitespace integrity
         id: gate_diff_check
+        if: always()
         shell: bash
         run: |
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate diff-check; then exit 0; fi
-          git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          cat "$RUNNER_TEMP/security-fanout/diff-check.log" || true
+          test "$(cat "$RUNNER_TEMP/security-fanout/diff-check.status")" = success
 
       - name: Record canonical child execution evidence
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
@@ -232,19 +385,18 @@ jobs:
             --repository "${{ github.repository }}" \
             --run-id "${{ github.run_id }}" \
             --cache-output /tmp/validation-resume-cache/validation-resume.json
-
       - name: Preserve exact validation resume plan
-        if: always() && steps.plan.outcome == 'success'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: validation-resume-security-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/validation-resume.json
           retention-days: 30
           if-no-files-found: error
-
+          overwrite: true
       - name: Check PR-local validation gate cache readiness
         id: gatecache
-        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         shell: bash
         run: |
           if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
@@ -252,7 +404,6 @@ jobs:
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Save PR-local validation gate evidence
         if: always() && steps.gatecache.outputs.ready == 'true'
         uses: actions/cache/save@v4

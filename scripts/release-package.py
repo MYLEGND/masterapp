@@ -119,6 +119,9 @@ def build_dotnet(app: str, revision: str, output: Path):
         json.dumps({"releaseSha": revision, "release": SCHEMA}, separators=(",", ":")) + "\n"
     )
     zip_directory(publish, output / archive_name)
+    # Only immutable deployable bytes cross the component boundary. Build trees
+    # stay runner-local instead of bloating the retained validation artifact.
+    shutil.rmtree(publish, ignore_errors=True)
 
 
 def build_static(app: str, revision: str, output: Path):
@@ -139,6 +142,10 @@ def build_migration_bundle(output: Path):
         "DOTNET_ENVIRONMENT": "Development",
         "ASPNETCORE_ENVIRONMENT": "Development",
     }
+    # This component runs in an isolated package lane. It must materialize the
+    # project graph it consumes instead of inheriting project.assets.json from a
+    # previously serialized app publish.
+    run("dotnet", "restore", "AgentPortal/AgentPortal.csproj", "--nologo", env=env)
     run("dotnet", "tool", "restore", env=env)
     destination = output / MIGRATION_BUNDLE
     run(
@@ -154,24 +161,77 @@ def build_migration_bundle(output: Path):
     destination.chmod(0o755)
 
 
-def build_all(revision: str, output: Path):
+COMPONENT_SCHEMA = "legend-validated-release-package-component.v1"
+
+
+def component_file(component: str) -> str:
+    if component in APPS:
+        return APPS[component][1]
+    if component == "migration":
+        return MIGRATION_BUNDLE
+    raise ValueError("Unknown release package component: " + component)
+
+
+def build_component(revision: str, component: str, output: Path):
     revision = validate_revision(revision)
-    shutil.rmtree(output, ignore_errors=True)
     output.mkdir(parents=True, exist_ok=True)
+    destination = output / component_file(component)
+    if destination.exists():
+        destination.unlink()
 
-    for app, (_, _, static) in APPS.items():
+    if component == "migration":
+        build_migration_bundle(output)
+    else:
+        static = APPS[component][2]
         if static:
-            build_static(app, revision, output)
+            build_static(component, revision, output)
         else:
-            build_dotnet(app, revision, output)
-    build_migration_bundle(output)
+            build_dotnet(component, revision, output)
 
-    files = [output / APPS[app][1] for app in APPS] + [output / MIGRATION_BUNDLE]
-    sums = []
-    for path in files:
-        sums.append(f"{sha256_file(path)}  {path.name}")
-    (output / "SHA256SUMS").write_text("\n".join(sums) + "\n")
+    receipt = {
+        "schema": COMPONENT_SCHEMA,
+        "applicationReleaseSha": revision,
+        "packageContractSha256": contract_hash(),
+        "packageIdentity": package_identity(revision),
+        "component": component,
+        "file": destination.name,
+        "sha256": sha256_file(destination),
+    }
+    (output / f"{component}.component.json").write_text(
+        json.dumps(receipt, sort_keys=True, indent=2) + "\n"
+    )
+    return receipt
 
+
+def assemble_components(revision: str, output: Path):
+    revision = validate_revision(revision)
+    expected_contract = contract_hash()
+    expected_identity = package_identity(revision)
+    components = list(APPS) + ["migration"]
+    files = []
+
+    for component in components:
+        path = output / component_file(component)
+        receipt_path = output / f"{component}.component.json"
+        if not path.is_file() or not receipt_path.is_file():
+            raise ValueError("Validated package component missing: " + component)
+        receipt = json.loads(receipt_path.read_text())
+        expected = {
+            "schema": COMPONENT_SCHEMA,
+            "applicationReleaseSha": revision,
+            "packageContractSha256": expected_contract,
+            "packageIdentity": expected_identity,
+            "component": component,
+            "file": path.name,
+            "sha256": sha256_file(path),
+        }
+        if receipt != expected:
+            raise ValueError("Validated package component receipt mismatch: " + component)
+        files.append(path)
+
+    (output / "SHA256SUMS").write_text(
+        "\n".join(f"{sha256_file(path)}  {path.name}" for path in files) + "\n"
+    )
     tree = subprocess.check_output(
         ["git", "rev-parse", revision + "^{tree}"], cwd=ROOT, text=True
     ).strip()
@@ -179,13 +239,22 @@ def build_all(revision: str, output: Path):
         "schema": SCHEMA,
         "applicationReleaseSha": revision,
         "applicationTreeSha": tree,
-        "packageContractSha256": contract_hash(),
-        "packageIdentity": package_identity(revision),
+        "packageContractSha256": expected_contract,
+        "packageIdentity": expected_identity,
         "files": {path.name: sha256_file(path) for path in files},
     }
     (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
     verify_all(revision, output)
     return manifest
+
+
+def build_all(revision: str, output: Path):
+    revision = validate_revision(revision)
+    shutil.rmtree(output, ignore_errors=True)
+    output.mkdir(parents=True, exist_ok=True)
+    for component in list(APPS) + ["migration"]:
+        build_component(revision, component, output)
+    return assemble_components(revision, output)
 
 
 def embedded_revision(package: Path, static: bool):
@@ -275,6 +344,17 @@ def main():
     build.add_argument("--directory", required=True)
     build.add_argument("--output")
 
+    component = sub.add_parser("build-component")
+    component.add_argument("--revision", required=True)
+    component.add_argument("--component", required=True, choices=[*APPS.keys(), "migration"])
+    component.add_argument("--directory", required=True)
+    component.add_argument("--output")
+
+    assemble = sub.add_parser("assemble")
+    assemble.add_argument("--revision", required=True)
+    assemble.add_argument("--directory", required=True)
+    assemble.add_argument("--output")
+
     verify = sub.add_parser("verify")
     verify.add_argument("--revision", required=True)
     verify.add_argument("--directory", required=True)
@@ -288,6 +368,21 @@ def main():
         }
     elif args.command == "build":
         manifest = build_all(args.revision, Path(args.directory))
+        data = {
+            "artifact": artifact_name(args.revision),
+            "identity": manifest["packageIdentity"],
+            "contract": manifest["packageContractSha256"],
+        }
+    elif args.command == "build-component":
+        receipt = build_component(args.revision, args.component, Path(args.directory))
+        data = {
+            "component": receipt["component"],
+            "file": receipt["file"],
+            "identity": receipt["packageIdentity"],
+            "contract": receipt["packageContractSha256"],
+        }
+    elif args.command == "assemble":
+        manifest = assemble_components(args.revision, Path(args.directory))
         data = {
             "artifact": artifact_name(args.revision),
             "identity": manifest["packageIdentity"],

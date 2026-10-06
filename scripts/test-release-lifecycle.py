@@ -923,6 +923,53 @@ class GeneratedPublicationStages(unittest.TestCase):
         self.assertIsNotNone(mutation)
         self.assertIn('Publish canonical selected targets in parallel', mutation)
 
+    def test_historical_serial_prepublication_generation_remains_recognizable(self):
+        source = self.generator.WORKFLOW.read_text()
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(source)['release']
+        )
+        current = 'Synchronize canonical pre-publication resource lanes'
+        self.assertIn(current, blocks)
+        legacy_names = (
+            'Synchronize selected shared authorization and publisher runtimes',
+            'Synchronize selected editor ticket authority',
+            'Prepare canonical business website routing authority',
+            'Apply additive diagnostics migrations before restarting apps',
+        )
+        legacy = ''.join(
+            f"      - name: {name}\n        run: echo historical-owner\n"
+            for name in legacy_names
+        )
+        historical = source.replace(blocks[current], legacy)
+        mutation = m._historical_release_mutation_steps(historical)
+        self.assertIsNotNone(mutation)
+        self.assertNotIn(current, mutation)
+        for name in legacy_names:
+            self.assertIn(name, mutation)
+
+    def test_historical_serial_auxiliary_generation_remains_recognizable(self):
+        source = self.generator.WORKFLOW.read_text()
+        blocks = m.VALIDATION_AUTHORITY.named_step_blocks(
+            m.VALIDATION_AUTHORITY._job_blocks(source)['release']
+        )
+        current = 'Run independent auxiliary release fanout'
+        self.assertIn(current, blocks)
+        legacy_names = (
+            'Deploy and activate LEGEND Founder Cloudflare baseline',
+            'Reconcile public custom-hostname Cloudflare policy',
+            'Deploy shared Cloudflare business website router',
+        )
+        legacy = ''.join(
+            f"      - name: {name}\n        run: echo historical-auxiliary-owner\n"
+            for name in legacy_names
+        )
+        historical = source.replace(blocks[current], legacy)
+        mutation = m._historical_release_mutation_steps(historical)
+        self.assertIsNotNone(mutation)
+        self.assertNotIn(current, mutation)
+        for name in legacy_names:
+            self.assertIn(name, mutation)
+
     def test_new_inventory_target_generates_its_own_durable_step_and_gate(self):
         text = self.generator.WORKFLOW.read_text()
         targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,

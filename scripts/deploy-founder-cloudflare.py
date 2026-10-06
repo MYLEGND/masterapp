@@ -5,7 +5,7 @@ import argparse, base64, hashlib, hmac, importlib.util, json, os, re, secrets, s
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CF = ROOT / "Legend-Cloudflare"
+CF = Path(os.environ.get("LEGEND_CLOUDFLARE_ROOT", str(ROOT / "Legend-Cloudflare"))).resolve()
 CONFIG = CF / "wrangler.founder-baseline.jsonc"
 CANARY = CF / "scripts" / "founder-canary.mjs"
 CALLBACK_PATH = "/api/founder/legend-ai/cloudflare-tools"
@@ -91,9 +91,9 @@ def required(name):
 def exact_models():
     text = subprocess.check_output([
         "node", "--input-type=module", "-e",
-        "import {FOUNDER_BASELINE_MODEL_IDS} from './Legend-Cloudflare/src/runtime/registry.mjs';"
+        "import {FOUNDER_BASELINE_MODEL_IDS} from './src/runtime/registry.mjs';"
         "process.stdout.write(JSON.stringify(FOUNDER_BASELINE_MODEL_IDS));"
-    ], cwd=ROOT, text=True)
+    ], cwd=CF, text=True)
     models = json.loads(text)
     if not isinstance(models, list) or len(models) != 5 or any(not isinstance(item, str) for item in models):
         raise RuntimeError("founder_model_registry_invalid")
