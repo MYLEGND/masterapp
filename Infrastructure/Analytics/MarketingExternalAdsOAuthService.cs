@@ -95,9 +95,12 @@ public sealed class MarketingExternalAdsOAuthService(
             var token = await ExchangeGoogleAsync(code.Trim(), state.RedirectUri, ct);
             var previous = await connections.GetProviderCredentialAsync(owner, key, ct);
             var refreshToken = Clean(token.RefreshToken) ??
-                (string.Equals(previous?.AuthorizationMethod,
+                (previous is not null &&
+                 string.Equals(previous.AuthorizationMethod,
                     MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken,
-                    StringComparison.Ordinal) ? previous.PrimarySecret : null);
+                    StringComparison.Ordinal)
+                    ? previous.PrimarySecret
+                    : null);
             if (string.IsNullOrWhiteSpace(refreshToken))
                 throw new InvalidOperationException("Google Ads did not return a refresh credential. Reconnect with consent enabled.");
 
