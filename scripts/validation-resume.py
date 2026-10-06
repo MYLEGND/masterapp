@@ -2349,14 +2349,15 @@ def cmd_record_evidence(args):
         }
 
     Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
-    if args.cache_output:
+    cache_output = getattr(args, "cache_output", None)
+    if cache_output:
         payload = _write_gate_cache(
             plan,
             plan["workflow"],
             plan["currentSha"],
             args.run_id,
             int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
-            args.cache_output,
+            cache_output,
         )
         print(json.dumps({"cachedSuccessfulGates": sorted(payload["gates"])}, sort_keys=True))
 
