@@ -558,6 +558,18 @@ class DirectReleaseAuthorizationResolution(unittest.TestCase):
 
 
 class ApprovedReleaseResumePolicy(unittest.TestCase):
+    def test_step5_recovery_preserves_evidence_and_rechecks_only_introduced_classes(self):
+        workflow=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        self.assertNotIn('scripts/validation-resume.py plan \\\n', workflow)
+        self.assertIn('Resolve one canonical Step 5 resume decision', workflow)
+        self.assertIn('historical_evidence_unavailable_run_full_step5', workflow)
+        self.assertIn('refusing to discard completed evidence and rerun the full suite', workflow)
+        self.assertIn("needs.plan.outputs.baseline_run_required", workflow)
+        self.assertIn('Recheck only newly introduced Step 5 failure classes', workflow)
+        self.assertIn('Bounded same-run Step 5 recheck reconciled all introduced failures.', workflow)
+        self.assertIn('Preserve bounded Step 5 recovery state', workflow)
+        self.assertIn('Enforce final Step 5 outcome after bounded recovery', workflow)
+
     def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         base=workflow.split('      - name: Verify current live base before publication\n',1)[1].split('      - name:',1)[0]
