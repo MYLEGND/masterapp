@@ -66,6 +66,30 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class GitHubEvidenceTransportTests(unittest.TestCase):
+    def test_transient_remote_disconnect_is_retried_without_restarting_evidence_flow(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self):
+                return b'{"ok":true}'
+
+        with patch.object(
+            m.urllib.request,
+            "urlopen",
+            side_effect=[m.http.client.RemoteDisconnected("transient"), Response()],
+        ) as request, patch.object(m.time, "sleep") as sleep:
+            result = m.api_get("owner/repo", "branches/legend%2Fapproved-changes", "token")
+
+        self.assertEqual({"ok": True}, result)
+        self.assertEqual(2, request.call_count)
+        sleep.assert_called_once_with(1)
+
+
 class ProtectedReleaseExecutionTests(unittest.TestCase):
     def environment(self):
         return {
