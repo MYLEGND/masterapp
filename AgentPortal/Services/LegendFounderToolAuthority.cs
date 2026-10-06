@@ -115,9 +115,8 @@ internal sealed partial class LegendFounderToolAuthority
     internal IReadOnlyList<object> GetAvailableFounderSiteTools()
     {
         // Authenticated Founder GPT Work/browser sessions consume the same
-        // executable registry. Add only bounded engineering workflow mutations
-        // whose own canonical authorities remain responsible for authorization,
-        // isolated repair preparation, validation and release gating.
+        // executable registry. Bounded mutations remain proposal/control-plane
+        // requests whose canonical authorities retain authorization and execution.
         return Tools.Where(tool =>
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
