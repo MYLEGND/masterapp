@@ -21,6 +21,21 @@ namespace AgentPortal.Tests;
 public sealed class ExternalAdsCanonicalIntegrationTests
 {
     [Fact]
+    public void ExternalAdsReportingUsesProviderAccountCalendarInsteadOfUtcCalendar()
+    {
+        var range = TimeRangeRequest.FromPreset(
+            "custom",
+            new DateTime(2026, 10, 6, 0, 30, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 6, 8, 30, 0, DateTimeKind.Utc));
+
+        var (from, to) = MarketingExternalAdsReportingService.ProviderDateWindow(range, "America/Phoenix");
+
+        Assert.Equal(new DateTime(2026, 10, 5), from);
+        Assert.Equal(new DateTime(2026, 10, 6), to);
+    }
+
+
+    [Fact]
     public void GoogleAndTikTokClickIdsUseCanonicalEventMetadataAndChannelResolution()
     {
         var google = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
