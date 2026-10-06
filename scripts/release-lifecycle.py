@@ -449,9 +449,17 @@ def _assignment_strings(tree, name):
             isinstance(target, ast.Name) and target.id == name
             for target in node.targets
         ):
-            if isinstance(node.value, (ast.Tuple, ast.List, ast.Set)):
+            value = node.value
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == 'frozenset'
+                and len(value.args) == 1
+            ):
+                value = value.args[0]
+            if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
                 return {
-                    item.value for item in node.value.elts
+                    item.value for item in value.elts
                     if isinstance(item, ast.Constant) and isinstance(item.value, str)
                 }
     return set()
@@ -523,11 +531,18 @@ def candidate_control_plane_integrity(api, pr, names):
         'step6_workflow': '.github/workflows/step6-openai-ads-execution-validation.yml',
         'step78_workflow': '.github/workflows/steps7-8-governed-advertising-validation.yml',
         'security_workflow': '.github/workflows/approved-release-security-validation.yml',
+        'deployment': 'scripts/deploy-approved-app.py',
+        'workflow_renderer': 'scripts/release-workflow.py',
+        'deployment_docs': 'DEPLOYMENT.md',
+        'deployment_diagnostics': '.github/workflows/deployment-diagnostics.yml',
+        'production_readonly': '.github/workflows/legend-production-readonly-diagnostic.yml',
     }
     try:
         source = {key: api.text(head, path) for key, path in paths.items()}
         validation_tree = ast.parse(source['validation'])
         lifecycle_tree = ast.parse(source['lifecycle'])
+        deployment_tree = ast.parse(source['deployment'])
+        renderer_tree = ast.parse(source['workflow_renderer'])
     except (RuntimeError, SyntaxError):
         return 'Candidate release-control authority cannot be parsed from exact head'
 
@@ -542,10 +557,24 @@ def candidate_control_plane_integrity(api, pr, names):
     if assignments.get('DIRECT_RELEASE_WORKFLOW') != DIRECT:
         return 'Candidate changed the sole approved direct-release workflow authority'
 
-    candidate_paths = _assignment_strings(validation_tree, 'LIFECYCLE_AUTHORITY_PATHS')
-    required_paths = set(VALIDATION_AUTHORITY.LIFECYCLE_AUTHORITY_PATHS)
-    if not required_paths <= candidate_paths:
-        return 'Candidate removed protected lifecycle authority paths: ' + ', '.join(sorted(required_paths - candidate_paths))
+    protected_sets = (
+        ('lifecycle authority paths', 'LIFECYCLE_AUTHORITY_PATHS', set(VALIDATION_AUTHORITY.LIFECYCLE_AUTHORITY_PATHS)),
+        ('release execution control inputs', 'RELEASE_EXECUTION_CONTROL_INPUTS', set(VALIDATION_AUTHORITY.RELEASE_EXECUTION_CONTROL_INPUTS)),
+        ('package authority paths', 'PACKAGE_AUTHORITY_PATHS', set(VALIDATION_AUTHORITY.PACKAGE_AUTHORITY_PATHS)),
+        ('control-only exact paths', 'RELEASE_CONTROL_ONLY_EXACT', set(VALIDATION_AUTHORITY.RELEASE_CONTROL_ONLY_EXACT)),
+    )
+    for label, assignment, required in protected_sets:
+        candidate = _assignment_strings(validation_tree, assignment)
+        if not required <= candidate:
+            return f'Candidate removed protected {label}: ' + ', '.join(sorted(required - candidate))
+
+    retired = {
+        'deploy-portal.sh',
+        '.claude/settings.local.json',
+        'AgentPortal/deploy-live-zipdeploy.json',
+    }
+    if retired.intersection(names):
+        return 'Candidate reintroduced or modified a retired alternate production deployment path'
 
     predicate = _function_source(source['validation'], validation_tree, 'release_control_authority_path')
     if not all(token in predicate for token in (
@@ -592,6 +621,98 @@ def candidate_control_plane_integrity(api, pr, names):
     if 'base_state = approved_head_state(api, pr)' not in merge_source:
         return 'Candidate removed final approved-head freshness guard before merge'
 
+    deployment_assignments = {}
+    for node in deployment_tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
+                    deployment_assignments[target.id] = node.value.value
+    expected_limits = {
+        'PUBLICATION_RECONCILE_TIMEOUT_SECONDS': 420,
+        'FINALIZE_RECONCILE_TIMEOUT_SECONDS': 90,
+        'FINALIZE_RECONCILE_ATTEMPTS': 3,
+        'FINALIZE_RETRY_DELAY_SECONDS': 10,
+    }
+    if any(deployment_assignments.get(name) != value for name, value in expected_limits.items()):
+        return 'Candidate changed canonical bounded deployment timing authority'
+
+    reconcile_source = _function_source(source['deployment'], deployment_tree, 'reconcile')
+    publish_source = _function_source(source['deployment'], deployment_tree, 'publish_prepared_targets_parallel')
+    finalizer_source = _function_source(source['deployment'], deployment_tree, 'finalize_prepared_transaction')
+    if 'timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS' not in reconcile_source or 'timeout=1200' in reconcile_source:
+        return 'Candidate restored unbounded or legacy publication reconciliation'
+    if not all(token in publish_source for token in (
+        'ThreadPoolExecutor',
+        'executor.submit(worker, key)',
+        'as_completed',
+    )):
+        return 'Candidate removed canonical parallel target publication'
+    if not all(token in finalizer_source for token in (
+        "pending = {row['app']: row for row in plan['targets']}",
+        'for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):',
+        'pending.pop(key, None)',
+        'reconcile_only=True',
+        'timeout=FINALIZE_RECONCILE_TIMEOUT_SECONDS',
+        'max_status_failures=1',
+        'if attempt < FINALIZE_RECONCILE_ATTEMPTS:',
+    )):
+        return 'Candidate weakened canonical unresolved-only receipt finalization'
+    if '1200' in finalizer_source or '--reconcile-timeout-seconds' in source['deployment']:
+        return 'Candidate restored legacy receipt-finalization timing override'
+
+    render_source = _function_source(source['workflow_renderer'], renderer_tree, 'render')
+    if not all(token in render_source for token in (
+        'text.count(START) != 1',
+        'text.count(END) != 1',
+        'text.split(START, 1)',
+        'tail.split(END, 1)',
+        'generated.count(OUTCOME_START) != 1',
+        'generated.count(OUTCOME_END) != 1',
+    )):
+        return 'Candidate workflow renderer can rewrite outside canonical generated target blocks'
+    renderer_writes = [
+        ast.get_source_segment(source['workflow_renderer'], node) or ''
+        for node in ast.walk(renderer_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == 'write_text'
+    ]
+    if renderer_writes != ['WORKFLOW.write_text(generated)']:
+        return 'Candidate workflow renderer gained an alternate file-write authority'
+    if any(token in source['workflow_renderer'] for token in (
+        'subprocess.', 'urllib.', 'requests.', 'os.system', '.unlink(', '.rename(', '.replace('
+    )):
+        return 'Candidate workflow renderer gained external mutation authority'
+
+    docs = source['deployment_docs']
+    if not all(token in docs for token in (
+        'legend/approved-changes',
+        'all-intentional-direct-release-20260918.yml',
+        'sole production deployment authority',
+    )):
+        return 'Candidate deployment guidance no longer points exclusively to canonical release authority'
+    if any(token in docs for token in (
+        'dotnet ef database update',
+        'az webapp deploy',
+        'zipdeploy',
+        'Deployment Center',
+    )):
+        return 'Candidate deployment guidance restored a manual production path'
+
+    diagnostic_forbidden = (
+        'list-publishing-credentials',
+        '/api/vfs/',
+        '/api/command',
+        'webapp restart',
+        'webapp deploy',
+        'appsettings set',
+        'connection-string set',
+        'zipdeploy',
+    )
+    for label in ('deployment_diagnostics', 'production_readonly'):
+        if any(token in source[label] for token in diagnostic_forbidden):
+            return f'Candidate {label} workflow is no longer read-only'
+
     lifecycle_workflow = source['lifecycle_workflow']
     if not all(token in lifecycle_workflow for token in (
         'pull_request_target:',
@@ -617,9 +738,24 @@ def candidate_control_plane_integrity(api, pr, names):
         'Reconcile terminal release resource disposition',
         'Preserve terminal release resource disposition',
         'release-state-receipt:',
+        'python3 scripts/release-workflow.py --check',
+        '--publish-prepared-parallel',
     ):
         if token not in direct_workflow:
             return 'Candidate direct-release workflow lost required invariant: ' + token
+
+    release_job = direct_workflow.split('\n  release:\n', 1)[1].split('\n  release-state-receipt:', 1)[0]
+    if 'timeout-minutes: 30' not in release_job:
+        return 'Candidate direct-release outer timeout drifted from canonical 30-minute fail-safe'
+    if direct_workflow.count('--finalize-only --transaction-plan /tmp/release-transaction.json') != 1:
+        return 'Candidate direct-release workflow gained duplicate receipt finalization'
+    if any(token in direct_workflow for token in (
+        'transactionrecovery',
+        'TRANSACTION_RECOVERY',
+        '--reconcile-timeout-seconds',
+        'Recover exact-live transaction receipts without publication replay',
+    )):
+        return 'Candidate restored legacy workflow-owned receipt recovery'
 
     architecture = source['architecture_workflow']
     if 'name: architecture-validation' not in architecture and 'name: candidate-architecture-validation' not in architecture:
