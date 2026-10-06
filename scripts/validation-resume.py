@@ -14,6 +14,7 @@ import functools
 import concurrent.futures
 import fnmatch
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -1411,7 +1412,7 @@ def api_get(repository: str, path: str, token: str):
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.load(response)
-        except (TimeoutError, urllib.error.URLError) as exc:
+        except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
             if not retryable or attempt == 2:
                 headers = getattr(exc, "headers", None) or {}
