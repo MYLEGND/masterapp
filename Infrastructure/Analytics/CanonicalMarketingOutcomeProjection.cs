@@ -33,14 +33,26 @@ internal static class CanonicalMarketingOutcomeProjection
     public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events)
     {
         var facts = events.Where(e => CanonicalAdvertisingEventProjection.CanProjectServer(e) ||
-            e.TrackingVersion == "crm-production-state-v1").ToArray();
+            e.TrackingVersion is "crm-production-state-v1" or "crm-qualification-state-v1").ToArray();
+
         var production = facts.Where(e => !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
             .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
             .Select(g => g.OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).First())
             .Where(e => CanonicalAdvertisingEventProjection.ReadBoolean(e.MetadataJson, "productionDeleted") != true);
-        var other = facts.Where(e => string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
+
+        var qualification = facts.Where(e =>
+                !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
+            .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId,
+                Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
+            .Select(g => g.OrderByDescending(e => e.EventUtc).ThenByDescending(e => e.Id).First())
+            .Where(e => CanonicalAdvertisingEventProjection.ReadBoolean(e.MetadataJson, "qualificationActive") == true);
+
+        var other = facts.Where(e =>
+                string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")) &&
+                string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "qualificationIdentity")))
             .DistinctBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, CanonicalAdvertisingEventProjection.ResolveEventId(e), OutcomeName(e)));
-        return production.Concat(other).ToArray();
+
+        return production.Concat(qualification).Concat(other).ToArray();
     }
 
     public static string CustomerIdentity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|" +
