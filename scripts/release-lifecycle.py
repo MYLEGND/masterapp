@@ -536,6 +536,12 @@ def candidate_control_plane_integrity(api, pr, names):
         'deployment_docs': 'DEPLOYMENT.md',
         'deployment_diagnostics': '.github/workflows/deployment-diagnostics.yml',
         'production_readonly': '.github/workflows/legend-production-readonly-diagnostic.yml',
+        'prepublication': 'scripts/release-prepublication.py',
+        'migration': 'scripts/release-migration.py',
+        'founder_cloudflare': 'scripts/deploy-founder-cloudflare.py',
+        'auxiliary': 'scripts/release-auxiliary.py',
+        'router': 'scripts/release-router.py',
+        'cloudflare_routing': 'scripts/cloudflare-routing-authority.py',
     }
     try:
         source = {key: api.text(head, path) for key, path in paths.items()}
@@ -620,6 +626,39 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened automatic current-approved-head synchronization'
     if 'base_state = approved_head_state(api, pr)' not in merge_source:
         return 'Candidate removed final approved-head freshness guard before merge'
+
+    execution_guard_source = _function_source(
+        source['validation'], validation_tree, 'assert_protected_release_execution'
+    )
+    if not all(token in execution_guard_source for token in (
+        'GITHUB_ACTIONS',
+        'GITHUB_EVENT_NAME',
+        'workflow_dispatch',
+        'GITHUB_REF',
+        'TRUSTED_PR_BASE',
+        'GITHUB_WORKFLOW_REF',
+        'DIRECT_RELEASE_WORKFLOW',
+        'GITHUB_RUN_ID',
+        'actions/runs/{run_id}',
+        "run.get("path")",
+        "run.get("head_branch")",
+        "run.get("event")",
+        "run.get("head_sha")",
+    )):
+        return 'Candidate weakened authenticated canonical release execution guard'
+
+    guarded_sources = {
+        'deployment': '_RELEASE_AUTHORITY.assert_protected_release_execution()',
+        'prepublication': 'release_authority().assert_protected_release_execution()',
+        'migration': 'release_authority().assert_protected_release_execution()',
+        'founder_cloudflare': 'release_authority().assert_protected_release_execution()',
+        'auxiliary': 'release_authority().assert_protected_release_execution()',
+        'router': "load('validation-resume').assert_protected_release_execution()",
+        'cloudflare_routing': 'release_authority().assert_protected_release_execution()',
+    }
+    for label, token in guarded_sources.items():
+        if token not in source[label]:
+            return f'Candidate {label} mutation authority lost protected release execution guard'
 
     deployment_assignments = {}
     for node in deployment_tree.body:
