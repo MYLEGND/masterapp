@@ -1293,13 +1293,14 @@ jobs:
         self.assertEqual('c' * 64, plan['packageIdentity'])
         self.assertEqual('original-package', plan['exactPackageArtifact'])
 
-    def test_package_canary_requires_build_when_no_compatible_artifact_exists(self):
-        with patch.object(m, 'compatible_package_producer', return_value=None), \
+    def test_package_canary_skips_control_only_head_when_artifact_lookup_misses(self):
+        with patch.object(m, 'compatible_package_producer',
+                          side_effect=AssertionError('zero-input head must not need artifact lookup')), \
              patch.object(m, 'git_changed', return_value=['scripts/test-release-policy.py']), \
              patch.dict(m.os.environ, {'GITHUB_TOKEN': 'token'}):
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
-        self.assertTrue(plan['needed'])
-        self.assertEqual('compatible_immutable_package_missing', plan['reason'])
+        self.assertFalse(plan['needed'])
+        self.assertEqual('no_package_producing_inputs_changed', plan['reason'])
         self.assertEqual([], plan['changedInputs'])
 
     def test_package_canary_reports_application_inputs_when_no_compatible_package(self):
@@ -1309,6 +1310,39 @@ jobs:
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
         self.assertTrue(plan['needed'])
         self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
+
+    def test_live_state_probes_selected_targets_concurrently_and_keeps_inventory_order(self):
+        selected = ['masterapp-portal', 'masterapp-client']
+        calls = []
+
+        def read(host, target, revision):
+            calls.append(host)
+            return revision if target['releaseName'] == 'masterapp-portal' else 'older'
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'live.json'
+            github_output = Path(directory) / 'github-output'
+            args = SimpleNamespace(
+                selected_targets=__import__('json').dumps(selected),
+                revision='a' * 40,
+                output=str(output),
+                github_output=str(github_output),
+            )
+            with patch.object(m, '_read_provenance', side_effect=read):
+                m.cmd_live_state(args)
+
+            payload = __import__('json').loads(output.read_text())
+            self.assertEqual(['portal', 'client', 'protect', 'parfait', 'website'],
+                             list(payload['targets']))
+            self.assertTrue(payload['targets']['portal']['alreadyLive'])
+            self.assertFalse(payload['targets']['client']['alreadyLive'])
+            self.assertEqual(
+                {m.RELEASE_TARGETS['portal']['host'], m.RELEASE_TARGETS['client']['host']},
+                set(calls),
+            )
+            lines = github_output.read_text().splitlines()
+            self.assertEqual('portal_live=true', lines[0])
+            self.assertEqual('client_live=false', lines[1])
 
     def test_package_backfill_requires_green_exact_revision_and_control_only_descendants(self):
         revision = "a" * 40
