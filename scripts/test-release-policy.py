@@ -749,6 +749,12 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         ):
             workflow=(ROOT.parent / '.github/workflows' / name).read_text()
             self.assertIn('scripts/validation-resume.py plan', workflow, name)
+            self.assertIn('Restore PR-local validation gate evidence', workflow, name)
+            self.assertIn('--resume-cache "/tmp/validation-resume-cache/validation-resume.json"', workflow, name)
+            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
+            self.assertIn('--cache-output /tmp/validation-resume-cache/validation-resume.json', workflow, name)
+            self.assertIn('Save PR-local validation gate evidence', workflow, name)
+            self.assertNotIn('checkpoint-gate --workflow', workflow, name)
             self.assertIn('cancel-in-progress: true', workflow, name)
         step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
         self.assertNotIn('scripts/validation-resume.py plan \\\n', step5)
@@ -777,6 +783,21 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn('STEP6_VALIDATION_PATHS', lifecycle_script)
         self.assertNotIn('STEP78_VALIDATION_PATHS', lifecycle_script)
         self.assertNotIn('VALIDATION_NEUTRAL_PATHS =', lifecycle_script)
+
+    def test_direct_release_recovers_receipts_without_replaying_target_publication(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertIn('Recover exact-live transaction receipts without publication replay', workflow)
+        recovery=workflow.split(
+            '      - name: Recover exact-live transaction receipts without publication replay\n',1
+        )[1].split('      - name:',1)[0]
+        self.assertIn('--finalize-only --transaction-plan /tmp/release-transaction.json', recovery)
+        self.assertNotIn('--target portal', recovery)
+        self.assertNotIn('--target client', recovery)
+        self.assertNotIn('--target protect', recovery)
+        self.assertNotIn('--target parfait', recovery)
+        self.assertNotIn('--target website', recovery)
+        self.assertIn("steps.transactionrecovery.outcome == 'success'", workflow)
+        self.assertIn('TRANSACTION_RECOVERY: ${{ steps.transactionrecovery.outcome }}', workflow)
 
     def test_release_mutation_authorities_remain_serialized(self):
         for name in (
