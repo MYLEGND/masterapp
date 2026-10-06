@@ -3000,12 +3000,23 @@ def release_target_rows():
 
 
 def lifecycle_authority_identity():
+    """Hash both present authority bytes and intentionally absent protected paths."""
     digest = hashlib.sha256()
     for path in LIFECYCLE_AUTHORITY_PATHS:
-        payload = Path(path).read_bytes()
+        source = Path(path)
         digest.update(path.encode())
         digest.update(b"\0")
-        digest.update(hashlib.sha256(payload).digest())
+        if source.is_file():
+            digest.update(b"present\0")
+            digest.update(hashlib.sha256(source.read_bytes()).digest())
+        elif source.exists():
+            raise RuntimeError(f"Lifecycle authority path is not a regular file: {path}")
+        else:
+            # Retired production bypasses remain in the protected authority set.
+            # Their required absence is therefore part of the canonical identity,
+            # and any future reintroduction changes the identity instead of
+            # crashing receipt generation or silently escaping protection.
+            digest.update(b"absent\0")
     return digest.hexdigest()
 
 
