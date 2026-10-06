@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Infrastructure.Analytics;
 using Shared.Analytics;
