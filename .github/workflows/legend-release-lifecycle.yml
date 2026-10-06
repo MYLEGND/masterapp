@@ -135,9 +135,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_RUN: ${{ github.event.workflow_run.id }}
         run: |
+          set -euo pipefail
           args=()
           if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
-          python3 scripts/release-lifecycle.py reconcile "${args[@]}"
+          state_file="$RUNNER_TEMP/release-reconcile.json"
+
+          # Stay inside the single serialized lifecycle when this invocation
+          # dispatches or discovers an exact package backfill. GitHub does not
+          # guarantee a recursive workflow_run wake-up for GITHUB_TOKEN-created
+          # dependencies, so waiting for another parent run can strand a fully
+          # proven release. Reconcile is read-only except for its canonical,
+          # idempotent dispatch authorities; while a package is already running
+          # it cannot redispatch it.
+          for attempt in $(seq 1 16); do
+            rm -f "$state_file"
+            python3 scripts/release-lifecycle.py reconcile "${args[@]}" --output "$state_file"
+
+            dependency_state="$(python3 - "$state_file" <<'PYDEPENDENCY'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          package=data.get("packageBackfill")
+          wait=(
+              data.get("state")=="WAITING_FOR_DEPENDENCY"
+              and package in {
+                  "dispatched for exact green automatic application revision",
+                  "already queued or running",
+              }
+          )
+          print("package" if wait else "continue")
+          PYDEPENDENCY
+            )"
+
+            if [ "$dependency_state" != package ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 16 ]; then
+              echo "Package proof is still resolving; preserving all release state and retrying reconciliation only."
+              sleep 60
+            fi
+          done
+
+          echo "::error::Package proof did not become readable inside the bounded lifecycle window; no release mutation was replayed."
+          exit 75
       - name: Refresh approved references before cleanup
         run: git fetch --no-tags --prune origin
       - name: Retire only preserved successfully deployed branches
