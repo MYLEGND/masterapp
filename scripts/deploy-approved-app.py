@@ -158,7 +158,7 @@ class Azure:
             return False
 
 
-def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None):
+def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, interval=15, max_status_failures=3, baseline=None, reconcile_only=False, journal=None, require_receipt=True):
     started = clock()
     submitted = False
     baseline_ids = set()
@@ -216,9 +216,16 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
                 try:
                     journal.record_success([])
                 except Exception as exc:
-                    raise DeploymentReconciliationRequired(
-                        'Exact candidate live after terminal provider failure but durable reconciliation receipt unavailable; preserve publication'
-                    ) from exc
+                    if require_receipt:
+                        raise DeploymentReconciliationRequired(
+                            'Exact candidate live after terminal provider failure but durable reconciliation receipt unavailable; preserve publication'
+                        ) from exc
+                    print(
+                        '::warning::Exact candidate is live and idle after terminal provider failure; '
+                        'durable success receipt is pending final read-only transaction reconciliation.',
+                        flush=True,
+                    )
+                    return 'preserved-receipt-pending'
                 print(
                     f'Azure deployment {failed["id"]} is terminal-failed, but the retained immutable candidate '
                     'is repeatedly proven live and idle; preserving without replay.',
@@ -239,7 +246,16 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=1200, in
                         try:
                             journal.record_success([row['id'] for row in rows if row['status'] == 4])
                         except Exception as exc:
-                            raise DeploymentReconciliationRequired('Exact candidate live but durable success receipt unavailable; preserve publication') from exc
+                            if require_receipt:
+                                raise DeploymentReconciliationRequired(
+                                    'Exact candidate live but durable success receipt unavailable; preserve publication'
+                                ) from exc
+                            print(
+                                '::warning::Exact candidate is live and idle; durable success receipt is pending '
+                                'final read-only transaction reconciliation.',
+                                flush=True,
+                            )
+                            return 'deployed-receipt-pending' if submitted and not reconcile_only else 'preserved-receipt-pending'
                     return 'deployed' if submitted and not reconcile_only else 'preserved'
         else:
             stable = 0
@@ -304,7 +320,17 @@ def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, re
         flush=True,
     )
     journal = journal or operation_journal(key, revision, digest, baseline)
-    result = reconcile(target_azure(key, package, revision), baseline=baseline, reconcile_only=reconcile_only, journal=journal)
+    result = reconcile(
+        target_azure(key, package, revision),
+        baseline=baseline,
+        reconcile_only=reconcile_only,
+        journal=journal,
+        # Publication owns the provider mutation once. A transient receipt-channel
+        # failure after exact-live proof must not mark the target failed and force
+        # sibling replay. Final transaction reconciliation is read-only and requires
+        # the durable receipt before the release can become terminal-successful.
+        require_receipt=reconcile_only,
+    )
     print(
         f'{target["releaseName"]}: {result}; exact revision healthy and no Azure deployment pending.',
         flush=True,
