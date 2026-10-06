@@ -270,6 +270,37 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn("retired alternate production deployment path", result)
 
 
+    def test_guard_rejects_weakened_authenticated_execution_authority(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/validation-resume.py":
+                    return value.replace(
+                        'def assert_protected_release_execution():',
+                        'def assert_unprotected_release_execution():',
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/validation-resume.py"]
+        )
+        self.assertIn("authenticated canonical release execution guard", result)
+
+    def test_guard_rejects_mutation_worker_that_drops_execution_authentication(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-prepublication.py":
+                    return value.replace(
+                        "    release_authority().assert_protected_release_execution()\n",
+                        "",
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-prepublication.py"]
+        )
+        self.assertIn("lost protected release execution guard", result)
+
+
 class DirectAuthorization(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
