@@ -506,6 +506,13 @@ class PackageProducerTests(unittest.TestCase):
             jobs['jobs'][0]['steps'][1]['conclusion'] = 'failure'
             self.assertIsNone(authority.compatible_package_producer('MYLEGND/masterapp', 'b' * 40, 'test-token'))
 
+    def test_historical_package_workflow_shape_is_incompatible_not_planner_failure(self):
+        authority = deploy._RELEASE_AUTHORITY
+        with patch.object(authority, 'git_changed', return_value=[authority.PACKAGE_BUILD_WORKFLOW]), \
+             patch.object(authority, 'git_show_file', side_effect=['old workflow', 'new workflow']), \
+             patch.object(authority, 'package_builder_workflow_contract', side_effect=ValueError('old shape')):
+            self.assertFalse(authority.package_inputs_compatible('a' * 40, 'b' * 40))
+
     def test_builder_globals_and_invoked_helpers_invalidate_compatibility(self):
         authority = deploy._RELEASE_AUTHORITY
         source = (ROOT / 'release-package.py').read_text()
