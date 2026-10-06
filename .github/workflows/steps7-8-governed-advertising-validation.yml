@@ -228,3 +228,16 @@ jobs:
         with:
           path: /tmp/validation-resume-cache
           key: validation-resume-step78-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Require all advertising validation lanes
+        if: always()
+        shell: bash
+        env:
+          DOTNET_RESULT: ${{ needs.advertising_dotnet.result }}
+          UI_RESULT: ${{ needs.advertising_ui.result }}
+        run: |
+          set -euo pipefail
+          if [ "$DOTNET_RESULT" != success ] || [ "$UI_RESULT" != success ]; then
+            echo "::error::Advertising validation lane failure: dotnet=$DOTNET_RESULT ui=$UI_RESULT"
+            exit 1
+          fi
