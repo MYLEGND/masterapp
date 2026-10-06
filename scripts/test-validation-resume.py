@@ -1873,13 +1873,14 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.assertEqual([], m.step5_dependency_change(head, self.commit()))
 
     def test_control_only_change_short_circuits_before_test_archive(self):
-        self.write("scripts/release-lifecycle.py", "changed without test inputs")
+        path = "scripts/validation-resume.py"
+        self.write(path, Path(path).read_text() + "\n# control-only fixture change\n")
         head = self.commit()
         original_run = m.subprocess.run
 
         def guarded_run(args, *pargs, **kwargs):
             if list(args[:2]) == ["git", "archive"]:
-                raise AssertionError("control-only Step 5 dependency proof must not archive the test graph")
+                raise AssertionError("Step 5 control-authority proof must not archive the test graph")
             return original_run(args, *pargs, **kwargs)
 
         with patch.object(m.subprocess, "run", side_effect=guarded_run):
