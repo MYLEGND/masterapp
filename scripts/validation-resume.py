@@ -1880,8 +1880,13 @@ def _trusted_historical_runs(args, token):
         f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
         token,
     )
+    candidates = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
     rows = []
-    for run in payload.get("workflow_runs", []):
+    for run in candidates:
         if int(run.get("id", 0)) == args.current_run_id:
             continue
         trusted = _trusted_lineage_run(
@@ -1894,12 +1899,14 @@ def _trusted_historical_runs(args, token):
                 )
             except urllib.error.HTTPError:
                 trusted = False
-        if trusted:
-            rows.append(run)
-    rows.sort(
-        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
-        reverse=True,
-    )
+        if not trusted:
+            continue
+        rows.append(run)
+        # Newer failed parents may salvage exact successful children. Once the
+        # nearest trusted successful parent is reached, it is the canonical
+        # content baseline; older generations cannot override newer source truth.
+        if run.get("conclusion") == "success":
+            break
     return rows
 
 
