@@ -579,7 +579,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
              patch.object(m, "_historical_plan_steps",
                           side_effect=AssertionError("successful parent must not download plan artifact")), \
              patch.object(m, "_plan_against_prior", return_value=candidate) as compare, \
-             patch.object(m, "merge_content_equivalent_evidence", return_value=False):
+             patch.object(m, "merge_content_equivalent_evidence", return_value=True):
             result = m._apply_content_equivalent_evidence(args, plan)
         self.assertIs(result, plan)
         self.assertEqual(1, compare.call_count)
