@@ -55,6 +55,7 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
             UtmSource = "meta",
             UtmMedium = "paid",
             UtmCampaign = "qualified-campaign",
+            Oppref = "qualified-openai-click",
             SubmittedUtc = DateTime.UtcNow,
             CapturedUtc = DateTime.UtcNow
         });
@@ -83,6 +84,7 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
         Assert.Equal("qualified-session", authority.SessionId);
         Assert.Equal("qualified-visitor", authority.VisitorId);
         Assert.Equal("qualified-campaign", authority.UtmCampaign);
+        Assert.Equal("qualified-openai-click", authority.Oppref);
         Assert.True(CanonicalAdvertisingEventProjection.ReadBoolean(
             authority.MetadataJson, "qualificationActive"));
 
