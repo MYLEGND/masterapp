@@ -1341,7 +1341,8 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("dotnet-ef database update", security, StringComparison.Ordinal);
 
         Assert.Contains("name: LEGEND approved direct release", release, StringComparison.Ordinal);
-        Assert.Contains("Apply additive diagnostics migrations before restarting apps", release, StringComparison.Ordinal);
+        Assert.Contains("Synchronize canonical pre-publication resource lanes", release, StringComparison.Ordinal);
+        Assert.DoesNotContain("Apply additive diagnostics migrations before restarting apps", release, StringComparison.Ordinal);
         Assert.Contains("Preserve targets already live at exact candidate", release, StringComparison.Ordinal);
         Assert.Contains("Verify every deployed target and collect all failures", release, StringComparison.Ordinal);
         Assert.Contains("Enforce complete direct deployment outcome", release, StringComparison.Ordinal);
