@@ -862,6 +862,7 @@ WORKFLOWS = {
                 "step": "Compile full regression test project",
                 "paths": WEB_DOTNET_SOURCE + ("AgentPortal.Tests/**",) + GLOBAL_DOTNET_INPUTS,
                 "requires": ("restore-dotnet",),
+                "runtime_file_dependencies": False,
             },
             "founder-diagnostics-regressions": {
                 "step": "Run Founder diagnostics and safe GPT Codex regressions",
@@ -1879,8 +1880,13 @@ def _trusted_historical_runs(args, token):
         f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
         token,
     )
+    candidates = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
     rows = []
-    for run in payload.get("workflow_runs", []):
+    for run in candidates:
         if int(run.get("id", 0)) == args.current_run_id:
             continue
         trusted = _trusted_lineage_run(
@@ -1893,13 +1899,39 @@ def _trusted_historical_runs(args, token):
                 )
             except urllib.error.HTTPError:
                 trusted = False
-        if trusted:
-            rows.append(run)
-    rows.sort(
-        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
-        reverse=True,
-    )
+        if not trusted:
+            continue
+        rows.append(run)
+        # Newer failed parents may salvage exact successful children. Once the
+        # nearest trusted successful parent is reached, it is the canonical
+        # content baseline; older generations cannot override newer source truth.
+        if run.get("conclusion") == "success":
+            break
     return rows
+
+
+def _successful_parent_steps(workflow, run):
+    """A successful PR validator proves every gate in that exact parent envelope.
+
+    Individual artifacts are only needed to salvage green children from failed
+    parents. Avoiding artifact downloads for successful parents turns history
+    reuse into one content-identity comparison instead of an N-run network scan.
+    """
+    steps = _StepEvidence()
+    run_id = int(run.get("id") or 0)
+    if run.get("conclusion") != "success" or run_id < 1:
+        return steps
+    for gate in WORKFLOWS[workflow]["gates"].values():
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": run_id,
+            "stepNumber": None,
+            "artifact": None,
+        }
+    return steps
 
 
 def _apply_content_equivalent_evidence(args, plan):
@@ -1926,8 +1958,13 @@ def _apply_content_equivalent_evidence(args, plan):
 
     for run in runs:
         head_sha = run["head_sha"]
+        successful_parent = run.get("conclusion") == "success"
         try:
-            steps = _historical_plan_steps(args, run, token)
+            steps = (
+                _successful_parent_steps(args.workflow, run)
+                if successful_parent
+                else _historical_plan_steps(args, run, token)
+            )
             if not steps:
                 examined += 1
                 continue
@@ -1943,7 +1980,7 @@ def _apply_content_equivalent_evidence(args, plan):
                 args.current_sha,
                 prior,
                 steps,
-                "trusted_plan_artifact_history",
+                "trusted_successful_parent" if successful_parent else "trusted_plan_artifact_history",
             )
         except EvidenceLookupUnavailable:
             raise
@@ -1953,6 +1990,12 @@ def _apply_content_equivalent_evidence(args, plan):
         examined += 1
         reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
         if not any(row.get("run") for row in plan["gates"].values()):
+            break
+        # The nearest trusted successful parent is the canonical comparison
+        # baseline. Anything whose content identity changed from it is genuinely
+        # invalidated and must execute; older generations cannot make a current
+        # source change disappear.
+        if successful_parent:
             break
 
     _enforce_runtime_requirements(plan)
@@ -2215,17 +2258,18 @@ def _gate_dependency_manifests(workflow, revision, definition_json):
         # those content inputs alongside the C# fixture, even for neutral owners.
         tokens = set()
         dynamic_patterns = set()
-        for path in tuple(inputs):
-            if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
-                tokens.update(test_tokens.get(path, ()))
-                dynamic_patterns.update(test_file_patterns.get(path, ()))
-        if tokens:
-            inputs.update({path: identity for path, identity in tree.items()
-                           if Path(path).name in tokens})
-            inputs.update({path: tree[path] for path, alias in copied_inputs.items()
-                           if path in tree and alias in tokens})
-        if dynamic_patterns:
-            inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
+        if gate.get("runtime_file_dependencies", True):
+            for path in tuple(inputs):
+                if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
+                    tokens.update(test_tokens.get(path, ()))
+                    dynamic_patterns.update(test_file_patterns.get(path, ()))
+            if tokens:
+                inputs.update({path: identity for path, identity in tree.items()
+                               if Path(path).name in tokens})
+                inputs.update({path: tree[path] for path, alias in copied_inputs.items()
+                               if path in tree and alias in tokens})
+            if dynamic_patterns:
+                inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
         source_digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
         control = _gate_execution_contract(workflow_text, config, key)
         control_digest = hashlib.sha256(control.encode()).hexdigest()
@@ -2499,6 +2543,11 @@ def _compute_validation_plan_once(args):
         prior, steps, source = cached
         plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
         _stamp_evidence(plan, prior, source)
+        # A failed parent can checkpoint only the children it observed successful.
+        # Missing cache entries are unknown, not invalidated. Backfill only those
+        # unresolved gates from trusted content-equivalent historical producers;
+        # changed inputs/definitions remain runnable and fail closed.
+        plan = _apply_content_equivalent_evidence(args, plan)
     else:
         prior, steps, source = prior_evidence(args)
         if prior:
@@ -3969,10 +4018,33 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
                         if name in _historical_publication_names(target)), None)
     if publication is None:
         raise ReleaseOperationHistoryUnproven('Historical publication source is unknown')
-    publish_body = ''.join(lines[publication[1]:publication[2]])
+    target_body = ''.join(lines[publication[1]:publication[2]])
+    publish_body = target_body
+    publication_start = publication[1]
+    parallel_mode = False
     if 'python3 scripts/deploy-approved-app.py' not in publish_body:
-        raise ReleaseOperationHistoryUnproven('Historical publication does not use canonical immutable verifier')
-    verified = any(start < publication[1] and steps.get(name, {}).get('conclusion') == 'success' and
+        parallel_name = 'Publish canonical selected targets in parallel'
+        parallel = next(((name, start, end) for name, start, end in spans
+                         if name == parallel_name), None)
+        release_name = RELEASE_TARGETS[target]['releaseName']
+        if (
+            parallel is None or parallel[1] >= publication[1] or
+            f'/tmp/release-target-results/{target}.json' not in target_body or
+            f"contains(fromJSON(env.SELECTED_TARGETS), '{release_name}')" not in target_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical publication does not use canonical immutable verifier')
+        parallel_body = ''.join(lines[parallel[1]:parallel[2]])
+        if (
+            'python3 scripts/deploy-approved-app.py' not in parallel_body or
+            '--publish-prepared-parallel' not in parallel_body or
+            '--targets-json "$SELECTED_TARGETS"' not in parallel_body or
+            '--transaction-plan /tmp/release-transaction.json' not in parallel_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical parallel publication contract is incompatible')
+        publish_body = parallel_body
+        publication_start = parallel[1]
+        parallel_mode = True
+    verified = any(start < publication_start and steps.get(name, {}).get('conclusion') == 'success' and
                    'scripts/release-package.py verify' in ''.join(lines[start:end]) and
                    f'--revision "${revision_variable}"' in ''.join(lines[start:end])
                    for name, start, end in spans)
@@ -3982,7 +4054,12 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     tree = ast.parse(deployment_source)
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
-    current_verify = next(node for node in current.body if isinstance(node, ast.FunctionDef) and node.name == 'verify_package')
+    current_functions = {node.name: node for node in current.body if isinstance(node, ast.FunctionDef)}
+    current_verify = current_functions['verify_package']
+    if parallel_mode:
+        for name in ('publish_prepared_targets_parallel', 'publish_prepared_target'):
+            if name not in functions or name not in current_functions or ast.dump(functions[name]) != ast.dump(current_functions[name]):
+                raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
     expected = [ast.parse("revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')").body[0]]
     if revision_variable == 'RELEASE_SHA':
         expected.extend(ast.parse(text).body[0] for text in ("revision = os.environ['RELEASE_SHA']", "revision = os.environ.get('RELEASE_SHA')"))
@@ -4448,18 +4525,21 @@ def _step5_prior_candidate_evidence(
 
 
 def _test_file_dependency_patterns(source):
-    """Conservatively bound direct .NET filesystem readers in source contracts.
+    """Conservatively bind repository files actually read by source-contract tests.
 
-    Literal directory readers own that subtree, including future/deleted files.
-    Computed/interpolated paths own the entire repository until a narrower
-    dependency can be proven; filename substring matching is never sufficient.
+    Compile proof never consumes these runtime dependencies. For executing tests,
+    literal files/directories and copied AppContext fixtures are exact inputs.
+    Computed single-file paths are resolved by the existing literal-token and
+    copied-alias pass below instead of poisoning the gate with the whole repo.
+    Computed directory enumeration remains fail-closed because it can observe an
+    arbitrary repository subtree whose members are not statically enumerable.
     """
-    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream|FileInfo|DirectoryInfo))\s*\(")
+    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream))\s*\(")
     patterns = set()
     for match in calls.finditer(source):
         tail = source[match.end():]
         literal = re.match(r'\s*(@?)"((?:[^"\\]|\\.)*)"\s*(?=[,)])', tail)
-        directory = match.group(1).startswith("Directory.") or "DirectoryInfo" in match.group(1)
+        directory = match.group(1).startswith("Directory.")
         if literal:
             path = literal.group(2).replace("\\\\", "/").replace("\\", "/").strip("/")
             if not path or path == "." or ".." in path.split("/"):
@@ -4475,7 +4555,8 @@ def _test_file_dependency_patterns(source):
         if copied and not directory:
             patterns.add("**/" + Path(copied.group(1)).name)
             continue
-        patterns.add("**")
+        if directory:
+            patterns.add("**")
     return tuple(sorted(patterns))
 
 

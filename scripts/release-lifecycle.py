@@ -1318,7 +1318,7 @@ def direct_release_runs(api):
     filter it locally to the one canonical workflow and approved branch.
     """
     return [row for row in api.pages(
-        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe=''),
+        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe='') + '&event=workflow_dispatch',
         'workflow_runs')
         if row.get('head_branch') == APPROVED
         and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT]
@@ -1487,7 +1487,7 @@ def release_execution_state(api, run):
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
     release_jobs = [job for job in jobs if job.get('name') == 'release']
     steps = release_jobs[0].get('steps', []) if release_jobs else []
-    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical target (')]
+    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical')]
     if run.get('status') == 'completed':
         artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
         names = {item.get('name', '') for item in artifacts if not item.get('expired')}
@@ -1571,7 +1571,14 @@ def reconcile(api, trigger=None):
                     'retained': 'Triggered release or package attempt needs reconciliation or repair; queue lease retained',
                 }
 
-    current = [row for row in runs if row.get('head_sha') == approved]
+    current = [
+        row for row in runs
+        if row.get('head_sha') == approved
+        and not (
+            row.get('status') == 'completed'
+            and _never_admitted(api, row)
+        )
+    ]
     if current:
         latest = max(current, key=lambda row: (row.get('id', 0), row.get('run_attempt', 1)))
         return {
@@ -1706,6 +1713,13 @@ def _historical_release_mutation_steps(source):
         f'Publish canonical target ({key})'
         for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
     )
+    parallel = {
+        name for name, block in blocks.items()
+        if '--publish-prepared-parallel' in block
+    }
+    if len(parallel) > 1:
+        return None
+    mutation.update(parallel)
     if not mutation.issubset(blocks):
         return None
     return mutation

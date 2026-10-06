@@ -7,6 +7,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -515,6 +516,85 @@ class PackageProducerTests(unittest.TestCase):
                             source.replace('bundle.chmod(0o755)', 'bundle.chmod(0o644)')):
                 with patch.object(authority, 'git_show_file', side_effect=[source, changed]):
                     self.assertFalse(authority.package_inputs_compatible('a' * 40, 'b' * 40))
+
+
+class ParallelPublicationTests(unittest.TestCase):
+    def plan(self, keys):
+        return {'targets': [{'app': key} for key in keys]}
+
+    def test_parallel_publication_settles_every_prepared_target_and_records_results(self):
+        keys = ('portal', 'client', 'protect')
+        names = [deploy.TARGETS[key]['releaseName'] for key in keys]
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target',
+                          side_effect=lambda key, revision, package_root, plan: 'deployed'):
+            results = deploy.publish_prepared_targets_parallel(
+                names,
+                'a' * 40,
+                Path(directory),
+                self.plan(keys),
+                Path(directory) / 'results',
+            )
+            self.assertEqual(set(keys), set(results))
+            for key in keys:
+                payload = json.loads((Path(directory) / 'results' / f'{key}.json').read_text())
+                self.assertTrue(payload['success'])
+                self.assertEqual(key, payload['target'])
+
+    def test_parallel_publication_enters_all_selected_targets_before_any_worker_finishes(self):
+        keys = ('portal', 'client', 'protect', 'parfait', 'website')
+        names = [deploy.TARGETS[key]['releaseName'] for key in keys]
+        barrier = threading.Barrier(len(keys))
+        entered = []
+        entered_lock = threading.Lock()
+
+        def publish(key, revision, package_root, plan):
+            with entered_lock:
+                entered.append(key)
+            barrier.wait(timeout=5)
+            return 'deployed'
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target', side_effect=publish):
+            results = deploy.publish_prepared_targets_parallel(
+                names,
+                'a' * 40,
+                Path(directory),
+                self.plan(keys),
+                Path(directory) / 'results',
+            )
+
+        self.assertEqual(set(keys), set(entered))
+        self.assertEqual(set(keys), set(results))
+        self.assertTrue(all(result['success'] for result in results.values()))
+
+    def test_parallel_publication_preserves_successful_sibling_when_one_target_fails(self):
+        keys = ('portal', 'protect')
+        names = [deploy.TARGETS[key]['releaseName'] for key in keys]
+
+        def publish(key, revision, package_root, plan):
+            if key == 'protect':
+                raise deploy.DeploymentReconciliationRequired('fixture failure')
+            return 'deployed'
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target', side_effect=publish):
+            with self.assertRaisesRegex(RuntimeError, 'protect'):
+                deploy.publish_prepared_targets_parallel(
+                    names,
+                    'a' * 40,
+                    Path(directory),
+                    self.plan(keys),
+                    Path(directory) / 'results',
+                )
+            root = Path(directory) / 'results'
+            self.assertTrue(json.loads((root / 'portal.json').read_text())['success'])
+            failed = json.loads((root / 'protect.json').read_text())
+            self.assertFalse(failed['success'])
+            self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
 
 
 class MigrationProbeEvidenceTests(unittest.TestCase):

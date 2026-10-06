@@ -729,7 +729,7 @@ class AutomaticReleaseRecovery(unittest.TestCase):
 
 class DurableCandidateQueue(unittest.TestCase):
     closed_path = "pulls?state=closed&base=legend%2Fapproved-changes"
-    runs_path = "actions/runs?branch=legend%2Fapproved-changes"
+    runs_path = "actions/runs?branch=legend%2Fapproved-changes&event=workflow_dispatch"
 
     def test_direct_release_history_uses_repository_run_inventory_and_filters_canonical_workflow(self):
         api = Api()
@@ -747,6 +747,7 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual([1], [row["id"] for row in runs])
         requested = [call.args[0] for call in pages.call_args_list]
         self.assertIn(self.runs_path, requested)
+        self.assertTrue(all("event=workflow_dispatch" in path for path in requested if path.startswith("actions/runs?branch=")))
         self.assertFalse(any(path.startswith("actions/workflows/") for path in requested))
 
     def setUp(self):
@@ -842,6 +843,52 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual(2, result["sourcePr"])
         self.assertEqual([m.DIRECT], [workflow for workflow, _ in self.api.dispatched])
 
+    def test_nonmutating_current_approved_release_does_not_block_queue_promotion(self):
+        run = {
+            "id": 99,
+            "run_attempt": 1,
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "head_sha": self.approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.api.pages_map[self.runs_path] = [run]
+        promoted = {"state": "RELEASE_QUEUE_ACQUIRED", "pr": 487}
+        with patch.object(m, "release_queue_lease", return_value={
+                 "approved": self.approved, "ownerPr": None, "status": None}), \
+             patch.object(m, "dispatch_pending_automatic_release", return_value=None), \
+             patch.object(m, "dispatch_pending_legacy_release", return_value=None), \
+             patch.object(m, "_never_admitted", return_value=True) as never, \
+             patch.object(m, "promote_next_release_queue", return_value=promoted) as promote:
+            result = m.reconcile(self.api)
+        self.assertEqual(promoted, result)
+        never.assert_called_once_with(self.api, run)
+        promote.assert_called_once_with(self.api)
+
+    def test_ambiguous_current_approved_release_remains_blocking(self):
+        run = {
+            "id": 99,
+            "run_attempt": 1,
+            "path": ".github/workflows/" + m.DIRECT,
+            "head_branch": m.APPROVED,
+            "head_sha": self.approved,
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.api.pages_map[self.runs_path] = [run]
+        with patch.object(m, "release_queue_lease", return_value={
+                 "approved": self.approved, "ownerPr": None, "status": None}), \
+             patch.object(m, "dispatch_pending_automatic_release", return_value=None), \
+             patch.object(m, "dispatch_pending_legacy_release", return_value=None), \
+             patch.object(m, "_never_admitted", return_value=False), \
+             patch.object(m, "release_execution_state", return_value="FAILED_NEEDS_REPAIR"), \
+             patch.object(m, "promote_next_release_queue") as promote:
+            result = m.reconcile(self.api)
+        self.assertEqual("FAILED_NEEDS_REPAIR", result["state"])
+        self.assertIn("terminal proof", result["retained"])
+        promote.assert_not_called()
+
     def test_changed_source_pr_identity_is_retained_after_queue_discovery(self):
         self.candidate(1, "b" * 40, "d" * 40, ["Protect-Website/Program.cs"])
         self.api.api_map["pulls/1"] = {"number": 1, "head": {"sha": "f" * 40}}
@@ -859,6 +906,22 @@ class GeneratedPublicationStages(unittest.TestCase):
     def test_workflow_target_steps_and_outcome_checks_are_derived_from_inventory(self):
         text = self.generator.WORKFLOW.read_text()
         self.assertEqual(text, self.generator.render(text, m.VALIDATION_AUTHORITY.RELEASE_TARGETS))
+
+    def test_parallel_publication_is_one_mutation_fanout_with_target_specific_result_gates(self):
+        text = self.generator.WORKFLOW.read_text()
+        self.assertEqual(1, text.count('name: Publish canonical selected targets in parallel'))
+        self.assertEqual(1, text.count('--publish-prepared-parallel'))
+        parallel = text.index('name: Publish canonical selected targets in parallel')
+        for key in m.VALIDATION_AUTHORITY.RELEASE_TARGETS:
+            child = text.index(f'name: Publish canonical target ({key})')
+            self.assertGreater(child, parallel)
+            self.assertIn(f'/tmp/release-target-results/{key}.json', text)
+
+    def test_parallel_publication_is_classified_as_mutation_for_historical_fail_closed_proof(self):
+        source = self.generator.WORKFLOW.read_text()
+        mutation = m._historical_release_mutation_steps(source)
+        self.assertIsNotNone(mutation)
+        self.assertIn('Publish canonical selected targets in parallel', mutation)
 
     def test_new_inventory_target_generates_its_own_durable_step_and_gate(self):
         text = self.generator.WORKFLOW.read_text()

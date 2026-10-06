@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generate durable target step identities from the sole canonical release inventory.
 
-GitHub records top-level step execution independently, so a retry can distinguish
-an untouched target from an entered target whose upload intent is unavailable.
-This file owns formatting only; targets and deployment behavior belong to the
-canonical validation and deployment authorities.
+GitHub records target-specific outcome steps independently while the canonical
+deployment worker may publish prepared, disjoint app targets concurrently. Durable
+operation journals distinguish untouched targets from entered writes, so retries
+preserve successful siblings. This file owns formatting only; targets and deployment
+behavior belong to the canonical validation and deployment authorities.
 """
 import argparse
 import importlib.util
@@ -28,11 +29,16 @@ def authority():
 
 
 def target_steps(targets):
-    blocks = []
-    for key in targets:
-        blocks.append(f'''      - name: Publish canonical target ({key})
-        id: publish_{key}
-        if: ${{{{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), '{targets[key]["releaseName"]}') }}}}
+    condition = (
+        "!cancelled() && steps.transactionprepare.outcome == 'success' && "
+        "env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && "
+        "(steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && "
+        "(steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && "
+        "(steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped')"
+    )
+    blocks = [f'''      - name: Publish canonical selected targets in parallel
+        id: publish_targets
+        if: ${{{{ {condition} }}}}
         continue-on-error: true
         shell: bash
         env:
@@ -41,9 +47,31 @@ def target_steps(targets):
         run: |
           set -euo pipefail
           python3 scripts/deploy-approved-app.py \\
-            --target {key} \\
+            --targets-json "$SELECTED_TARGETS" \\
             --package-root /tmp/diagnostics-packages \\
-            --transaction-plan /tmp/release-transaction.json
+            --transaction-plan /tmp/release-transaction.json \\
+            --publish-prepared-parallel \\
+            --target-results-dir /tmp/release-target-results
+''']
+    for key in targets:
+        blocks.append(f'''      - name: Publish canonical target ({key})
+        id: publish_{key}
+        if: ${{{{ {condition} && contains(fromJSON(env.SELECTED_TARGETS), '{targets[key]["releaseName"]}') }}}}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - /tmp/release-target-results/{key}.json {key} <<'PYTARGET'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1])
+          key=sys.argv[2]
+          if not path.is_file():
+              raise SystemExit(f'Missing parallel publication result for {{key}}')
+          result=json.loads(path.read_text())
+          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
+              raise SystemExit(f'Canonical target publication did not succeed: {{key}}')
+          print(json.dumps(result,sort_keys=True))
+          PYTARGET
 ''')
     return '\n'.join(blocks)
 
