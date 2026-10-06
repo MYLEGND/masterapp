@@ -1690,7 +1690,13 @@ def _never_admitted(api, run):
 
 
 def _historical_release_mutation_steps(source):
-    """Return the mutation-capable steps owned by one historical release generation."""
+    """Return mutation-capable steps for the exact historical workflow generation.
+
+    The current release has one canonical pre-publication owner. Older trusted
+    generations used four serial owners. Historical verification recognizes the
+    shape that actually exists in the supplied workflow text; it never restores a
+    legacy execution path to the current workflow.
+    """
     blocks = VALIDATION_AUTHORITY.named_step_blocks(
         VALIDATION_AUTHORITY._job_blocks(source).get('release', '')
     )
@@ -1698,16 +1704,29 @@ def _historical_release_mutation_steps(source):
     if prepare not in blocks or '--prepare-only' not in blocks[prepare]:
         return None
 
+    prepublication = 'Synchronize canonical pre-publication resource lanes'
+    legacy_prepublication = {
+        'Synchronize selected shared authorization and publisher runtimes',
+        'Synchronize selected editor ticket authority',
+        'Prepare canonical business website routing authority',
+        'Apply additive diagnostics migrations before restarting apps',
+    }
     mutation = {
         prepare,
-        'Prepare canonical business website routing authority',
         'Reconcile complete immutable release transaction',
         'Reconcile public custom-hostname Cloudflare policy',
     }
+    if prepublication in blocks:
+        mutation.add(prepublication)
+    elif legacy_prepublication.issubset(blocks):
+        mutation.update(legacy_prepublication)
+    else:
+        return None
+
     mutation.update(
         gate['step']
         for child, gate in VALIDATION_AUTHORITY.DIRECT_RELEASE_CHILDREN.items()
-        if child != 'live-proof'
+        if child not in {'live-proof', 'migrations', 'shared-config', 'editor-config'}
     )
     mutation.update(
         f'Publish canonical target ({key})'
