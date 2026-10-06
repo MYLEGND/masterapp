@@ -298,7 +298,7 @@ public sealed class CanonicalCrmOutcomeService
                value.Equals("Voicemail", StringComparison.OrdinalIgnoreCase) ||
                value.Equals("NoAnswer", StringComparison.OrdinalIgnoreCase) ||
                value.Equals("AIReception", StringComparison.OrdinalIgnoreCase) ||
-               WorkstationLeadBuckets.ProductBuckets.Any(bucket =>
+               Infrastructure.Leads.WorkstationLeadBuckets.ProductBuckets.Any(bucket =>
                    bucket.Equals(value, StringComparison.OrdinalIgnoreCase));
     }
 
