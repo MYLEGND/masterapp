@@ -599,6 +599,13 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('exact candidate already live; preserve and continue reconciliation', workflow)
         self.assertIn('Live revision drifted outside preserved baseline/candidate', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
+        self.assertIn('pending_targets=', (ROOT / 'validation-resume.py').read_text())
+        self.assertIn('Publish canonical pending targets', workflow)
+        self.assertIn('PENDING_TARGETS: ${{ steps.resumestate.outputs.pending_targets }}', workflow)
+        self.assertIn('--publish-selected', workflow)
+        self.assertEqual(1, workflow.count('id: publish_targets'))
+        for old in ('publish_portal', 'publish_client', 'publish_protect', 'publish_parfait', 'publish_website'):
+            self.assertNotIn('id: ' + old, workflow)
         self.assertIn('Reconcile complete immutable release transaction', workflow)
         self.assertIn('Deploy and activate LEGEND Founder Cloudflare baseline', workflow)
         self.assertIn('scripts/deploy-founder-cloudflare.py deploy', workflow)
