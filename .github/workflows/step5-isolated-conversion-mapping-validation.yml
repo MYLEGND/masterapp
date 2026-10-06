@@ -244,9 +244,9 @@ jobs:
 
   baseline-evidence:
     needs: plan
-    if: needs.plan.outputs.comparison_run == 'true'
+    if: needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 70
     outputs:
       reusable: ${{ steps.lookup.outputs.reusable }}
       run_id: ${{ steps.lookup.outputs.run_id }}
@@ -396,7 +396,11 @@ jobs:
 
   baseline:
     needs: [plan, baseline-evidence]
-    if: needs.plan.outputs.comparison_run == 'true' && needs.baseline-evidence.outputs.reusable != 'true'
+    if: >-
+      needs.plan.outputs.comparison_run == 'true' &&
+      ((needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable != 'true') ||
+       ((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+        needs.plan.outputs.baseline_run_required == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
