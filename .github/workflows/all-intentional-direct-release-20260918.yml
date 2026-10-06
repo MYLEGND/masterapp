@@ -926,79 +926,23 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS
-      - name: Publish canonical target (portal)
-        id: publish_portal
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
+      - name: Publish canonical pending targets
+        id: publish_targets
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') }}
         continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
+          PENDING_TARGETS: ${{ steps.resumestate.outputs.pending_targets }}
         run: |
           set -euo pipefail
+          test -n "$PENDING_TARGETS"
           python3 scripts/deploy-approved-app.py \
-            --target portal \
+            --targets-json "$PENDING_TARGETS" \
             --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
-
-      - name: Publish canonical target (client)
-        id: publish_client
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target client \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
-
-      - name: Publish canonical target (protect)
-        id: publish_protect
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target protect \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
-
-      - name: Publish canonical target (parfait)
-        id: publish_parfait
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target parfait \
-            --package-root /tmp/diagnostics-packages \
-            --transaction-plan /tmp/release-transaction.json
-
-      - name: Publish canonical target (website)
-        id: publish_website
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.sharedauth.outcome == 'success' || steps.sharedauth.outcome == 'skipped') && (steps.editorauth.outcome == 'success' || steps.editorauth.outcome == 'skipped') && (steps.migrate.outcome == 'success' || steps.migrate.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
-        run: |
-          set -euo pipefail
-          python3 scripts/deploy-approved-app.py \
-            --target website \
-            --package-root /tmp/diagnostics-packages \
+            --publish-selected \
+            --publication-outcomes /tmp/release-publication-outcomes.json \
             --transaction-plan /tmp/release-transaction.json
       # END GENERATED CANONICAL TARGET PUBLICATIONS
 
@@ -1009,11 +953,7 @@ jobs:
         shell: bash
         env:
           # BEGIN GENERATED CANONICAL TARGET OUTCOMES
-          TARGET_OUTCOME_PORTAL: ${{ steps.publish_portal.outcome }}
-          TARGET_OUTCOME_CLIENT: ${{ steps.publish_client.outcome }}
-          TARGET_OUTCOME_PROTECT: ${{ steps.publish_protect.outcome }}
-          TARGET_OUTCOME_PARFAIT: ${{ steps.publish_parfait.outcome }}
-          TARGET_OUTCOME_WEBSITE: ${{ steps.publish_website.outcome }}
+          TARGET_OUTCOME_BATCH: ${{ steps.publish_targets.outcome }}
           # END GENERATED CANONICAL TARGET OUTCOMES
           GH_TOKEN: ${{ github.token }}
           PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
