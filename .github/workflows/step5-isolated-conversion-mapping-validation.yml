@@ -846,19 +846,100 @@ jobs:
           PY
 
       - name: Preserve effective Step 5 candidate evidence
-        if: always() && (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') && steps.comparison.outputs.effective_evidence == 'true'
+        if: >-
+          always() &&
+          (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+            steps.comparison.outputs.effective_evidence == 'true') ||
+           (needs.plan.outputs.mode == 'full' &&
+            steps.selfrecheck.outputs.effective_evidence == 'true'))
         uses: actions/upload-artifact@v4
         with:
           name: step5-candidate-${{ github.event.pull_request.head.sha }}
           path: /tmp/step5-effective/candidate.trx
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
 
       - name: Preserve effective Step 5 baseline evidence
-        if: always() && steps.comparison.outputs.effective_evidence == 'true' && needs.baseline.result != 'success'
+        if: >-
+          always() &&
+          (needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+          steps.comparison.outputs.effective_evidence == 'true' &&
+          needs.baseline.result != 'success'
         uses: actions/upload-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}
           path: /tmp/step5-effective/baseline.trx
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
+
+      - name: Record bounded Step 5 recovery state
+        if: always()
+        shell: bash
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          PRIOR_RUN_ID: ${{ needs.plan.outputs.prior_run_id }}
+          PRIOR_HEAD_SHA: ${{ needs.plan.outputs.prior_head_sha }}
+          REPAIR_CLASSES: ${{ needs.plan.outputs.repair_classes }}
+          INTRODUCED: ${{ steps.comparison.outputs.introduced }}
+          INTRODUCED_CLASSES: ${{ steps.comparison.outputs.introduced_classes }}
+          SELF_RECHECK_RESOLVED: ${{ steps.selfrecheck.outputs.resolved }}
+          SELF_RECHECK_UNRESOLVED_COUNT: ${{ steps.selfrecheck.outputs.unresolved_count }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          receipt={
+              "schemaVersion":1,
+              "headSha":"${{ github.event.pull_request.head.sha }}",
+              "baseSha":"${{ github.event.pull_request.base.sha }}",
+              "runId":int("${{ github.run_id }}"),
+              "mode":os.environ.get("MODE") or "unknown",
+              "priorRunId":int(os.environ["PRIOR_RUN_ID"]) if os.environ.get("PRIOR_RUN_ID") else None,
+              "priorHeadSha":os.environ.get("PRIOR_HEAD_SHA") or None,
+              "repairClasses":[x for x in os.environ.get("REPAIR_CLASSES","").split(";") if x],
+              "introduced":os.environ.get("INTRODUCED")=="true",
+              "introducedClasses":[x for x in os.environ.get("INTRODUCED_CLASSES","").split(";") if x],
+              "sameRunRecheckResolved":os.environ.get("SELF_RECHECK_RESOLVED")=="true",
+              "sameRunUnresolvedCount":int(os.environ.get("SELF_RECHECK_UNRESOLVED_COUNT") or 0),
+          }
+          with open("/tmp/step5-recovery-state.json","w") as output:
+              json.dump(receipt,output,sort_keys=True,indent=2)
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+
+      - name: Preserve bounded Step 5 recovery state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-recovery-state-${{ github.event.pull_request.head.sha }}
+          path: /tmp/step5-recovery-state.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+      - name: Enforce final Step 5 outcome after bounded recovery
+        if: always()
+        shell: bash
+        env:
+          MODE: ${{ needs.plan.outputs.mode }}
+          COMPARISON_OUTCOME: ${{ steps.comparison.outcome }}
+          INTRODUCED: ${{ steps.comparison.outputs.introduced }}
+          SELF_RECHECK_OUTCOME: ${{ steps.selfrecheck.outcome }}
+          SELF_RECHECK_RESOLVED: ${{ steps.selfrecheck.outputs.resolved }}
+        run: |
+          set -euo pipefail
+          if [ "$COMPARISON_OUTCOME" != "success" ]; then
+            echo "::error::Step 5 comparison evidence itself is invalid or incomplete."
+            exit 1
+          fi
+          if [ "$INTRODUCED" != "true" ]; then
+            echo "Step 5 final comparison is green."
+            exit 0
+          fi
+          if [ "$MODE" = "full" ] && [ "$SELF_RECHECK_OUTCOME" = "success" ] && [ "$SELF_RECHECK_RESOLVED" = "true" ]; then
+            echo "Step 5 introduced failures were transient and were reconciled by the bounded same-run class recheck."
+            exit 0
+          fi
+          echo "::error::Step 5 still proves a deterministic candidate-only regression. Full-suite and baseline evidence were preserved; the next repair head must rerun only the recorded affected classes."
+          exit 1
