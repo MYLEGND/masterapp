@@ -110,6 +110,74 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(0, azure.uploads)
         self.assertEqual([[]], journal.successes)
 
+    def test_exact_live_receipt_transport_failure_is_deferred_without_upload_replay(self):
+        class Journal:
+            baseline = 'b' * 40
+            history_error = None
+            intent = None
+
+            def __init__(self):
+                self.receipt_attempts = 0
+
+            def before_submit(self, baseline_ids, *, allow_recovered_baseline=False):
+                self.intent = {'baselineDeploymentIds': sorted(baseline_ids)}
+                return True
+
+            def record_success(self, deployment_ids):
+                self.receipt_attempts += 1
+                if self.receipt_attempts == 1:
+                    raise RuntimeError('receipt transport unavailable')
+                return {'phase': 'success'}
+
+        journal = Journal()
+        first = FakeAzure(
+            [[row('old', 4)], [row('old', 4), row('fresh', 4)]],
+            [False, True, True],
+        )
+        first.revision = 'a' * 40
+        observed = iter(['b' * 40, 'a' * 40, 'a' * 40])
+        first.observed_revision = lambda: next(observed)
+
+        self.assertEqual(
+            'deployed-receipt-pending',
+            deploy.reconcile(
+                first,
+                baseline='b' * 40,
+                journal=journal,
+                require_receipt=False,
+                clock=lambda: first.now,
+                sleep=first.sleep,
+                interval=1,
+                timeout=10,
+            ),
+        )
+        self.assertEqual(1, first.uploads)
+
+        # The final read-only reconciliation must retry only the receipt. It
+        # observes the exact candidate and never submits the package again.
+        second = FakeAzure(
+            [[row('old', 4), row('fresh', 4)]],
+            [True, True],
+        )
+        second.revision = 'a' * 40
+        second.observed_revision = lambda: 'a' * 40
+        self.assertEqual(
+            'preserved',
+            deploy.reconcile(
+                second,
+                baseline='b' * 40,
+                reconcile_only=True,
+                journal=journal,
+                require_receipt=True,
+                clock=lambda: second.now,
+                sleep=second.sleep,
+                interval=1,
+                timeout=10,
+            ),
+        )
+        self.assertEqual(0, second.uploads)
+        self.assertEqual(2, journal.receipt_attempts)
+
     def test_retained_failed_upload_still_fails_when_candidate_not_live(self):
         class Journal:
             baseline = 'b' * 40
