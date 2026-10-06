@@ -761,6 +761,7 @@ jobs:
           python3 scripts/deploy-approved-app.py \
             --targets-json "$SELECTED_TARGETS" \
             --package-root /tmp/diagnostics-packages \
+            --reconcile-timeout-seconds 90 \
             --finalize-only --transaction-plan /tmp/release-transaction.json
       - name: Recover exact-live transaction receipts without publication replay
         id: transactionrecovery
@@ -774,10 +775,11 @@ jobs:
           set -euo pipefail
           # Strictly read-only: finalize-only may recover durable success receipts,
           # but it never submits an application package.
-          for attempt in 1 2 3 4; do
+          for attempt in 1 2 3; do
             if python3 scripts/deploy-approved-app.py \
               --targets-json "$SELECTED_TARGETS" \
               --package-root /tmp/diagnostics-packages \
+              --reconcile-timeout-seconds 90 \
               --finalize-only --transaction-plan /tmp/release-transaction.json; then
               echo "Recovered exact-live transaction proof without replay on attempt $attempt."
               exit 0
