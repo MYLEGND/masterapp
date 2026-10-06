@@ -1487,7 +1487,7 @@ def release_execution_state(api, run):
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
     release_jobs = [job for job in jobs if job.get('name') == 'release']
     steps = release_jobs[0].get('steps', []) if release_jobs else []
-    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical target (')]
+    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical')]
     if run.get('status') == 'completed':
         artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
         names = {item.get('name', '') for item in artifacts if not item.get('expired')}
@@ -1706,6 +1706,13 @@ def _historical_release_mutation_steps(source):
         f'Publish canonical target ({key})'
         for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
     )
+    parallel = {
+        name for name, block in blocks.items()
+        if '--publish-prepared-parallel' in block
+    }
+    if len(parallel) > 1:
+        return None
+    mutation.update(parallel)
     if not mutation.issubset(blocks):
         return None
     return mutation
