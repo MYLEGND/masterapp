@@ -918,6 +918,13 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
             '      - name: Recover exact-live transaction receipts without publication replay\n',1
         )[1].split('      - name:',1)[0]
         self.assertIn('--finalize-only --transaction-plan /tmp/release-transaction.json', recovery)
+        self.assertIn('--reconcile-timeout-seconds 90', recovery)
+        self.assertIn('for attempt in 1 2 3; do', recovery)
+        self.assertNotIn('for attempt in 1 2 3 4; do', recovery)
+        transaction=workflow.split(
+            '      - name: Reconcile complete immutable release transaction\n',1
+        )[1].split('      - name:',1)[0]
+        self.assertIn('--reconcile-timeout-seconds 90', transaction)
         self.assertNotIn('--target portal', recovery)
         self.assertNotIn('--target client', recovery)
         self.assertNotIn('--target protect', recovery)
