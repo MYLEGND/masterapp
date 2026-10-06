@@ -153,6 +153,7 @@
     externalAdsConnect: analyticsEndpoint('/external-ads/connect'),
     externalAdsAccounts: analyticsEndpoint('/external-ads/accounts'),
     externalAdsSelect: analyticsEndpoint('/external-ads/select-account'),
+    externalAdsMeasurement: analyticsEndpoint('/external-ads/measurement'),
     externalAdsDisconnect: analyticsEndpoint('/external-ads/disconnect'),
     marketingSetup: analyticsEndpoint('/marketing-setup'),
     calendarConnect: analyticsEndpoint('/calendar-connect'),
@@ -5150,7 +5151,10 @@ function escapeHtml(value) {
       disconnect: 'marketing-setup-google-disconnect',
       picker: 'marketing-setup-google-account-picker',
       select: 'marketing-setup-google-account-select',
-      selectAccount: 'marketing-setup-google-select-account'
+      selectAccount: 'marketing-setup-google-select-account',
+      measurement: 'marketing-setup-google-measurement',
+      measurementStatus: 'marketing-setup-google-measurement-status',
+      saveMeasurement: 'marketing-setup-google-save-measurement'
     },
     tiktok: {
       connect: 'marketing-setup-tiktok-connect',
@@ -5160,7 +5164,10 @@ function escapeHtml(value) {
       disconnect: 'marketing-setup-tiktok-disconnect',
       picker: 'marketing-setup-tiktok-account-picker',
       select: 'marketing-setup-tiktok-account-select',
-      selectAccount: 'marketing-setup-tiktok-select-account'
+      selectAccount: 'marketing-setup-tiktok-select-account',
+      measurement: 'marketing-setup-tiktok-measurement',
+      measurementStatus: 'marketing-setup-tiktok-measurement-status',
+      saveMeasurement: 'marketing-setup-tiktok-save-measurement'
     }
   };
 
@@ -5280,10 +5287,13 @@ function escapeHtml(value) {
       const loadEl = document.getElementById(ids.loadAccounts);
       const disconnectEl = document.getElementById(ids.disconnect);
       const picker = document.getElementById(ids.picker);
+      const measurement = document.getElementById(ids.measurement);
+      const measurementStatus = document.getElementById(ids.measurementStatus);
+      const saveMeasurement = document.getElementById(ids.saveMeasurement);
 
       if (statusEl) {
         statusEl.textContent = connection.ready
-          ? `${label} connected`
+          ? `${label} connected · ${connection.optimizationReady ? 'optimization ready' : 'mapping required'}`
           : connection.connected && connection.requiresAccountSelection
             ? `${label} connected · choose account`
             : `${label} not connected`;
@@ -5307,6 +5317,49 @@ function escapeHtml(value) {
         disconnectEl.disabled = !connection.connected;
       }
       if (picker && !connection.requiresAccountSelection) picker.hidden = true;
+
+      if (measurement) {
+        measurement.hidden = !connection.ready;
+        measurement.dataset.revision = connection.revision || '';
+      }
+      if (measurementStatus) {
+        measurementStatus.textContent = connection.optimizationReady
+          ? 'Optimization mapping ready'
+          : connection.ready
+            ? `Optimization mapping required · ${String(connection.measurementStatus || 'not configured').replaceAll('_', ' ')}`
+            : 'Select an advertiser account first';
+      }
+      if (saveMeasurement) {
+        saveMeasurement.disabled = !connection.ready || !connection.revision;
+      }
+
+      const configuredMappings = Array.isArray(connection.measurementMappings)
+        ? connection.measurementMappings
+        : [];
+      document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`).forEach(input => {
+        const canonical = input.dataset.canonicalEvent || '';
+        const mapping = configuredMappings.find(row =>
+          String(row?.canonicalEventName || '').toLowerCase() === canonical.toLowerCase());
+        input.value = provider === 'google'
+          ? (mapping?.destinationId || '')
+          : (mapping?.providerEventName || '');
+        input.disabled = !connection.ready;
+      });
+
+      if (provider === 'tiktok') {
+        const sourceId = document.getElementById('marketing-setup-tiktok-event-source-id');
+        const sourceType = document.getElementById('marketing-setup-tiktok-event-source-type');
+        if (sourceId) {
+          sourceId.value = connection.measurementEventSourceId || '';
+          sourceId.disabled = !connection.ready;
+        }
+        if (sourceType) {
+          sourceType.value = ['web', 'crm', 'offline'].includes(connection.measurementEventSourceType)
+            ? connection.measurementEventSourceType
+            : 'crm';
+          sourceType.disabled = !connection.ready;
+        }
+      }
     }
 
     const google = payload.google || {};
@@ -5340,8 +5393,8 @@ function escapeHtml(value) {
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
 
-    renderEvidence('google', google.connected, google.ready);
-    renderEvidence('tiktok', tiktok.connected, tiktok.ready);
+    renderEvidence('google', google.connected, google.optimizationReady === true);
+    renderEvidence('tiktok', tiktok.connected, tiktok.optimizationReady === true);
 
     const setOpenAiText = (id, value) => {
       const el = document.getElementById(id);
@@ -5591,6 +5644,61 @@ function escapeHtml(value) {
     }
   }
 
+  async function saveExternalProviderMeasurement(provider) {
+    if (!requireMarketingOwner()) return;
+    const ids = externalMarketingProviderControls[provider];
+    if (!ids) return;
+    const measurement = document.getElementById(ids.measurement);
+    const revision = measurement?.dataset?.revision || '';
+    if (!revision) {
+      setMarketingSetupStatus('Reload Marketing Setup before saving provider optimization mappings.', 'error');
+      return;
+    }
+
+    const mappings = Array.from(document.querySelectorAll(`[data-external-mapping-provider="${provider}"]`))
+      .map(input => {
+        const canonicalEventName = input.dataset.canonicalEvent || '';
+        const value = String(input.value || '').trim();
+        if (!canonicalEventName || !value) return null;
+        return provider === 'google'
+          ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
+          : { canonicalEventName, providerEventName: value, destinationId: null };
+      })
+      .filter(Boolean);
+
+    if (!mappings.length) {
+      setMarketingSetupStatus('Map at least one canonical revenue outcome before saving.', 'error');
+      return;
+    }
+
+    const body = {
+      provider,
+      eventSourceId: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-event-source-id')?.value || '').trim() || null
+        : null,
+      eventSourceType: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-event-source-type')?.value || 'crm')
+        : 'click',
+      mappings,
+      expectedRevision: revision
+    };
+    if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
+
+    setMarketingSetupStatus(`Saving exact ${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping…`);
+    try {
+      const payload = await fetchPostJson(
+        `externalAdsMeasurement:${provider}`,
+        endpoints.externalAdsMeasurement,
+        body);
+      renderMarketingSetup(payload?.setup || payload);
+      setMarketingSetupStatus(
+        `${provider === 'google' ? 'Google Ads' : 'TikTok Ads'} optimization mapping saved.`,
+        'success');
+    } catch (error) {
+      setMarketingSetupStatus(error?.message || 'Unable to save provider optimization mapping.', 'error');
+    }
+  }
+
   async function disconnectExternalProvider(provider) {
     if (!requireMarketingOwner()) return;
     const body = { provider };
@@ -5615,6 +5723,9 @@ function escapeHtml(value) {
     });
     document.getElementById(ids.disconnect)?.addEventListener('click', () => {
       void disconnectExternalProvider(provider);
+    });
+    document.getElementById(ids.saveMeasurement)?.addEventListener('click', () => {
+      void saveExternalProviderMeasurement(provider);
     });
   });
 
