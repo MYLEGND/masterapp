@@ -3328,7 +3328,14 @@ def package_inputs_compatible(prior: str, current: str) -> bool:
             if builder(git_show_file(prior, path)) != builder(git_show_file(current, path)):
                 return False
         elif path == PACKAGE_BUILD_WORKFLOW:
-            if package_builder_workflow_contract(git_show_file(prior, path)) != package_builder_workflow_contract(git_show_file(current, path)):
+            try:
+                prior_contract = package_builder_workflow_contract(git_show_file(prior, path))
+                current_contract = package_builder_workflow_contract(git_show_file(current, path))
+            except ValueError:
+                # A historical workflow that predates the current canonical
+                # builder shape is incompatible evidence, not a planner fault.
+                return False
+            if prior_contract != current_contract:
                 return False
         elif path == 'scripts/validation-resume.py':
             # Topology is literal canonical data, never execute historical code.
