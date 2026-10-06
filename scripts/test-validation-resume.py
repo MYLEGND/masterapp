@@ -1562,6 +1562,35 @@ jobs:
             ]),
         )
 
+    def test_auxiliary_release_fanout_is_control_only_and_never_expands_app_scope(self):
+        self.assertTrue(m.release_control_only_path("scripts/release-auxiliary.py"))
+        self.assertEqual((), m.release_targets_for_paths(["scripts/release-auxiliary.py"]))
+
+    def test_pr488_shaped_control_plane_changes_have_zero_application_targets(self):
+        paths = [
+            ".github/workflows/all-intentional-direct-release-20260918.yml",
+            ".github/workflows/approved-release-security-validation.yml",
+            ".github/workflows/masterapp-platform-architecture-validation.yml",
+            ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+            ".github/workflows/steps7-8-governed-advertising-validation.yml",
+            "AgentPortal.Tests/ClientAppDeploymentWorkflowTests.cs",
+            "AgentPortal.Tests/LegendFounderAiContractTests.cs",
+            "AgentPortal.Tests/ScopedParfaitCommerceAuthorityTests.cs",
+            "scripts/deploy-founder-cloudflare.py",
+            "scripts/release-auxiliary.py",
+            "scripts/release-lifecycle.py",
+            "scripts/release-package.py",
+            "scripts/release-prepublication.py",
+            "scripts/release-workflow.py",
+            "scripts/test-deploy-approved-app.py",
+            "scripts/test-release-lifecycle.py",
+            "scripts/test-release-policy.py",
+            "scripts/test-validation-resume.py",
+            "scripts/validation-resume.py",
+        ]
+        self.assertTrue(all(m.release_control_only_path(path) for path in paths))
+        self.assertEqual((), m.release_targets_for_paths(paths))
+
     def test_release_baseline_delegates_application_identity_classification(self):
         baseline = (ROOT / "scripts" / "approved-release-baseline.py").read_text()
         self.assertIn("_validation_authority.release_control_only_path(path)", baseline)
