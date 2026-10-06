@@ -146,6 +146,7 @@ public sealed class MarketingProviderSetupProjection(MarketingConnectionStore co
         measurementStatus = measurement.Status,
         measurementEventSourceId = measurement.EventSourceId,
         measurementEventSourceType = measurement.EventSourceType,
+        measurementHasCredential = measurement.HasMeasurementCredential,
         measurementMappings = measurement.Mappings
     };
 }

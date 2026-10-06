@@ -324,7 +324,8 @@ namespace AgentPortal.Controllers;
         string? EventSourceId,
         string? EventSourceType,
         IReadOnlyList<MarketingProviderEventMapping> Mappings,
-        Guid ExpectedRevision);
+        Guid ExpectedRevision,
+        string? MeasurementAccessToken = null);
 
     [HttpGet("external-ads/connect")]
     public async Task<IActionResult> ExternalAdsConnect(
@@ -446,7 +447,8 @@ namespace AgentPortal.Controllers;
                     request.EventSourceId,
                     request.EventSourceType,
                     request.Mappings ?? [],
-                    request.ExpectedRevision),
+                    request.ExpectedRevision,
+                    request.MeasurementAccessToken),
                 cancellationToken);
             return await MarketingSetup(request.AgentProfileId, cancellationToken);
         }

@@ -261,7 +261,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             store,
             NullLogger<MarketingExternalAdsOAuthService>.Instance);
         var transport = new ExternalAdsConversionApiService(
-            new HttpClient(handler), oauth, configuration);
+            new HttpClient(handler), oauth, store, configuration);
 
         var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
         {
@@ -314,7 +314,8 @@ public sealed class ExternalAdsCanonicalIntegrationTests
                 "crm-event-source-1",
                 "crm",
                 [new("QualifiedLead", "QualifiedLeadReady")],
-                connection.Revision));
+                connection.Revision,
+                "tiktok-events-token"));
 
         string? eventBody = null;
         var handler = new StubHandler(request =>
@@ -324,7 +325,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             {
                 eventBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
                 Assert.True(request.Headers.TryGetValues("Access-Token", out var values));
-                Assert.Contains("tiktok-access", values);
+                Assert.Contains("tiktok-events-token", values);
                 return Json("""{"code":0,"message":"OK","data":{}}""");
             }
             throw new InvalidOperationException("Unexpected provider request: " + uri);
@@ -337,7 +338,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             store,
             NullLogger<MarketingExternalAdsOAuthService>.Instance);
         var transport = new ExternalAdsConversionApiService(
-            new HttpClient(handler), oauth, configuration);
+            new HttpClient(handler), oauth, store, configuration);
 
         var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
         {
@@ -347,6 +348,12 @@ public sealed class ExternalAdsCanonicalIntegrationTests
             IsServerAuthority = true,
             Ttclid = "ttclid-canonical-1"
         });
+        Assert.True(measurement.HasMeasurementCredential);
+        var stored = await db.MarketingConnections.AsNoTracking()
+            .SingleAsync(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.TikTok);
+        Assert.False(string.IsNullOrWhiteSpace(stored.CapiAccessTokenCiphertext));
+        Assert.DoesNotContain("tiktok-events-token", stored.CapiAccessTokenCiphertext!, StringComparison.Ordinal);
+
         var mapping = Assert.Single(measurement.Mappings);
         var result = await transport.SendAsync(
             owner, connection, measurement, mapping, source, "ttclid-canonical-1");

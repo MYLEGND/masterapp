@@ -122,8 +122,8 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
             db.MarketingConnections.Add(row);
         }
 
+        var previousAccountId = row.AdAccountId;
         row.AdsAccessTokenCiphertext = protector.Protect(owner, key, primarySecret);
-        row.CapiAccessTokenCiphertext = null;
         row.ProviderAuthorizationMethod = authorizationMethod;
         row.ProviderPermissionsJson = MergeAuthorizationMetadata(
             row.ProviderPermissionsJson,
@@ -131,6 +131,11 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         row.AccessTokenExpiresUtc = credentialExpiresUtc;
         row.AdAccountId = CleanAccountId(accountId);
         row.AdAccountName = CleanAccountName(accountName);
+        if (!string.Equals(previousAccountId, row.AdAccountId, StringComparison.Ordinal))
+        {
+            row.ProviderPermissionsJson = RemoveMeasurementMetadata(row.ProviderPermissionsJson);
+            row.CapiAccessTokenCiphertext = null;
+        }
         row.ProviderAccountRole = "advertiser";
         row.ProviderReviewStatus = string.IsNullOrWhiteSpace(row.AdAccountId)
             ? "account_selection_required" : "ready";
@@ -158,7 +163,10 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         var selectedAccountId = CleanAccountId(accountId)
             ?? throw new ArgumentException("A real ad account ID is required.", nameof(accountId));
         if (!string.Equals(row.AdAccountId, selectedAccountId, StringComparison.Ordinal))
+        {
             row.ProviderPermissionsJson = RemoveMeasurementMetadata(row.ProviderPermissionsJson);
+            row.CapiAccessTokenCiphertext = null;
+        }
         row.AdAccountId = selectedAccountId;
         row.AdAccountName = CleanAccountName(accountName);
         row.ProviderReviewStatus = "ready";
@@ -200,12 +208,20 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
             var sourceType = Text(measurement["eventSourceType"]) ??
                 (key == MarketingDestinationKeys.Google ? "click" : "web");
             var mappings = ReadMappings(measurement["mappings"]);
-            var ready = key == MarketingDestinationKeys.Google
+            var hasMeasurementCredential = key == MarketingDestinationKeys.Google ||
+                !string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext);
+            var mappingConfigured = key == MarketingDestinationKeys.Google
                 ? mappings.Count > 0 && mappings.All(x => !string.IsNullOrWhiteSpace(x.DestinationId))
                 : !string.IsNullOrWhiteSpace(sourceId) && mappings.Count > 0;
+            var ready = mappingConfigured && hasMeasurementCredential;
+            var status = ready
+                ? "mapping_ready"
+                : key == MarketingDestinationKeys.TikTok && mappingConfigured && !hasMeasurementCredential
+                    ? "measurement_credential_required"
+                    : "measurement_mapping_required";
 
             return new(owner, key, sourceId, sourceType, mappings, row.Revision, ready,
-                ready ? "mapping_ready" : "measurement_mapping_required");
+                status, hasMeasurementCredential);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or ArgumentException)
         {
@@ -249,6 +265,19 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
                 throw new ArgumentException("TikTok event source type must be web, crm, or offline.", nameof(update));
             if (sourceId is null)
                 throw new ArgumentException("TikTok event source ID is required.", nameof(update));
+        }
+
+        if (key == MarketingDestinationKeys.TikTok)
+        {
+            var replacementMeasurementToken = CleanMeasurementSecret(update.MeasurementAccessToken);
+            if (replacementMeasurementToken is not null)
+                row.CapiAccessTokenCiphertext = protector.Protect(owner, key, replacementMeasurementToken);
+            if (string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
+                throw new ArgumentException("TikTok Events Manager access token is required.", nameof(update));
+        }
+        else if (!string.IsNullOrWhiteSpace(update.MeasurementAccessToken))
+        {
+            throw new ArgumentException("Google Ads measurement uses the existing OAuth connection and does not accept a separate measurement token.", nameof(update));
         }
 
         var incoming = update.Mappings ?? [];
@@ -310,6 +339,20 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         Touch(row);
         await db.SaveChangesAsync(ct);
         return await GetProviderMeasurementConfigurationAsync(owner, key, ct);
+    }
+
+    internal async Task<string?> GetProviderMeasurementAccessTokenAsync(
+        MarketingOwnerScope owner,
+        string provider,
+        CancellationToken ct = default)
+    {
+        var key = MarketingDestinationKeys.Normalize(provider);
+        if (key != MarketingDestinationKeys.TikTok)
+            return null;
+        var row = await GetStatusAsync(owner, key, ct);
+        if (row is null || row.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(row.CapiAccessTokenCiphertext))
+            return null;
+        return protector.Unprotect(owner, key, row.CapiAccessTokenCiphertext);
     }
 
     public async Task DisconnectAsync(
@@ -541,6 +584,15 @@ public sealed class MarketingConnectionStore(MasterAppDbContext db, MarketingCre
         if (string.IsNullOrWhiteSpace(text)) return null;
         if (text.Length > max || text.Any(char.IsControl))
             throw new ArgumentException("Provider measurement value is invalid.", nameof(value));
+        return text;
+    }
+
+    private static string? CleanMeasurementSecret(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (text.Length > 4000 || text.Any(char.IsControl))
+            throw new ArgumentException("Provider measurement credential is invalid.", nameof(value));
         return text;
     }
 

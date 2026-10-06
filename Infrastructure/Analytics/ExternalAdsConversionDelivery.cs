@@ -42,6 +42,7 @@ public interface IExternalAdsConversionApiService
 public sealed class ExternalAdsConversionApiService(
     HttpClient httpClient,
     MarketingExternalAdsOAuthService oauth,
+    MarketingConnectionStore connections,
     IConfiguration configuration) : IExternalAdsConversionApiService
 {
     public Task<ExternalAdsConversionApiResult> SendAsync(
@@ -151,7 +152,9 @@ public sealed class ExternalAdsConversionApiService(
         if (PaidAdsClickReference.NormalizeTikTok(ttclid) is not { } click)
             return Invalid("tiktok_click_reference_required");
 
-        var accessToken = await oauth.GetTikTokAccessTokenAsync(owner, ct);
+        var accessToken = await connections.GetProviderMeasurementAccessTokenAsync(owner, MarketingDestinationKeys.TikTok, ct);
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return Invalid("tiktok_events_access_token_required");
         var endpoint = Clean(configuration["TikTokAds:EventsEndpoint"])
             ?? "https://business-api.tiktok.com/open_api/v1.3/event/track/";
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)

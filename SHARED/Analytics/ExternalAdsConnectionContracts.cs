@@ -46,11 +46,13 @@ public sealed record MarketingProviderMeasurementConfiguration(
     IReadOnlyList<MarketingProviderEventMapping> Mappings,
     Guid Revision,
     bool MappingReady,
-    string Status);
+    string Status,
+    bool HasMeasurementCredential = false);
 
 public sealed record MarketingProviderMeasurementUpdate(
     string Provider,
     string? EventSourceId,
     string? EventSourceType,
     IReadOnlyList<MarketingProviderEventMapping> Mappings,
-    Guid ExpectedRevision);
+    Guid ExpectedRevision,
+    string? MeasurementAccessToken = null);

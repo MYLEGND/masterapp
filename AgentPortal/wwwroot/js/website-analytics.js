@@ -5349,6 +5349,14 @@ function escapeHtml(value) {
       if (provider === 'tiktok') {
         const sourceId = document.getElementById('marketing-setup-tiktok-event-source-id');
         const sourceType = document.getElementById('marketing-setup-tiktok-event-source-type');
+        const eventsToken = document.getElementById('marketing-setup-tiktok-events-token');
+        if (eventsToken) {
+          eventsToken.value = '';
+          eventsToken.placeholder = connection.measurementHasCredential
+            ? 'Stored securely — leave blank to keep'
+            : 'Events Manager access token required';
+          eventsToken.disabled = !connection.ready;
+        }
         if (sourceId) {
           sourceId.value = connection.measurementEventSourceId || '';
           sourceId.disabled = !connection.ready;
@@ -5680,7 +5688,10 @@ function escapeHtml(value) {
         ? (document.getElementById('marketing-setup-tiktok-event-source-type')?.value || 'crm')
         : 'click',
       mappings,
-      expectedRevision: revision
+      expectedRevision: revision,
+      measurementAccessToken: provider === 'tiktok'
+        ? (document.getElementById('marketing-setup-tiktok-events-token')?.value || '').trim() || null
+        : null
     };
     if (!isBusinessAnalytics) body.agentProfileId = marketingSetupAgentProfileId() || null;
 
