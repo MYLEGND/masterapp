@@ -203,6 +203,12 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intake?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intake?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intake?.Fbclid ?? websiteLead?.Fbclid,
+            Gclid = PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
+                CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Gclid")),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
+                CanonicalAdvertisingEventProjection.ReadString(intake?.SnapshotJson, "Ttclid")),
             Oppref = OpenAiClickReference.Normalize(intake?.Oppref ?? websiteLead?.Oppref),
             Fbc = intake?.Fbc ?? websiteLead?.Fbc,
             Fbp = intake?.Fbp ?? websiteLead?.Fbp,
@@ -439,6 +445,12 @@ public sealed class CanonicalCrmOutcomeService
             MetaAdSetId = intakeLink?.MetaAdSetId ?? websiteLead?.MetaAdSetId,
             MetaAdId = intakeLink?.MetaAdId ?? websiteLead?.MetaAdId,
             Fbclid = intakeLink?.Fbclid ?? websiteLead?.Fbclid,
+            Gclid = PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Gclid") ??
+                CanonicalAdvertisingEventProjection.ReadString(intakeLink?.SnapshotJson, "Gclid")),
+            Ttclid = PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(websiteLead?.MetadataJson, "Ttclid") ??
+                CanonicalAdvertisingEventProjection.ReadString(intakeLink?.SnapshotJson, "Ttclid")),
             Oppref = OpenAiClickReference.Normalize(appointment.Oppref ?? intakeLink?.Oppref ?? websiteLead?.Oppref),
             AgentTrackingProfileId = websiteLead?.CommerceBusinessId.HasValue == true
                 ? null
@@ -634,6 +646,12 @@ public sealed class CanonicalCrmOutcomeService
                 MetaAdSetId = productionIntake?.MetaAdSetId ?? productionWebsiteLead?.MetaAdSetId,
                 MetaAdId = productionIntake?.MetaAdId ?? productionWebsiteLead?.MetaAdId,
                 Fbclid = productionIntake?.Fbclid ?? productionWebsiteLead?.Fbclid,
+                Gclid = PaidAdsClickReference.NormalizeGoogle(
+                    CanonicalAdvertisingEventProjection.ReadString(productionWebsiteLead?.MetadataJson, "Gclid") ??
+                    CanonicalAdvertisingEventProjection.ReadString(productionIntake?.SnapshotJson, "Gclid")),
+                Ttclid = PaidAdsClickReference.NormalizeTikTok(
+                    CanonicalAdvertisingEventProjection.ReadString(productionWebsiteLead?.MetadataJson, "Ttclid") ??
+                    CanonicalAdvertisingEventProjection.ReadString(productionIntake?.SnapshotJson, "Ttclid")),
                 Fbc = productionIntake?.Fbc ?? productionWebsiteLead?.Fbc,
                 Fbp = productionIntake?.Fbp ?? productionWebsiteLead?.Fbp,
                 PageVariant = productionIntake?.PageVariant,
