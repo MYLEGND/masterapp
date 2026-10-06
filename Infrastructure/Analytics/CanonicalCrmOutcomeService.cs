@@ -73,7 +73,7 @@ public sealed class CanonicalCrmOutcomeService
                 Lead: e.Entity,
                 PreviousStage: e.State == EntityState.Added ? null : e.Property(x => x.CrmStage).OriginalValue,
                 CurrentStage: e.Entity.CrmStage))
-            .Where(x => IsQualifiedStage(x.PreviousStage) || IsQualifiedStage(x.CurrentStage))
+            .Where(x => !string.Equals(x.PreviousStage, x.CurrentStage, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         await using var transaction = db.Database.IsRelational() && db.Database.CurrentTransaction is null
@@ -111,12 +111,52 @@ public sealed class CanonicalCrmOutcomeService
             return;
 
         var now = lead.UpdatedUtc == default ? DateTime.UtcNow : lead.UpdatedUtc;
-        var active = IsQualifiedStage(currentStage);
         var identity = QualificationIdentity(lead.LeadId);
         var authorityClientEventId = StableTextEventId($"qualified:v1|{identity}");
-        var existingAuthority = _db.AnalyticsEvents.Local.Any(x => x.ClientEventId == authorityClientEventId) ||
-            await _db.AnalyticsEvents.AsNoTracking()
-                .AnyAsync(x => x.ClientEventId == authorityClientEventId, ct);
+        var identityMarker = "\"qualificationIdentity\":\"" + identity + "\"";
+        var persistedQualificationFacts = await _db.AnalyticsEvents.AsNoTracking()
+            .Where(x =>
+                (x.TrackingVersion == "crm-qualification-authority-v1" ||
+                 x.TrackingVersion == "crm-qualification-state-v1") &&
+                x.MetadataJson != null &&
+                x.MetadataJson.Contains(identityMarker))
+            .ToListAsync(ct);
+        var localQualificationFacts = _db.AnalyticsEvents.Local
+            .Where(x =>
+                (x.TrackingVersion == "crm-qualification-authority-v1" ||
+                 x.TrackingVersion == "crm-qualification-state-v1") &&
+                x.MetadataJson != null &&
+                x.MetadataJson.Contains(identityMarker))
+            .ToArray();
+        var qualificationFacts = persistedQualificationFacts
+            .Concat(localQualificationFacts)
+            .DistinctBy(x => x.ClientEventId)
+            .OrderByDescending(x => x.EventUtc)
+            .ThenByDescending(x => x.Id)
+            .ToArray();
+        var existingAuthority = qualificationFacts.Any(x =>
+            x.ClientEventId == authorityClientEventId ||
+            x.TrackingVersion == "crm-qualification-authority-v1");
+        var previousActive = existingAuthority &&
+            (CanonicalAdvertisingEventProjection.ReadBoolean(
+                qualificationFacts.First().MetadataJson, "qualificationActive") ?? true);
+
+        var desiredActive = IsQualifiedStage(currentStage)
+            ? true
+            : IsQualificationReversalStage(currentStage)
+                ? false
+                : previousActive;
+
+        // A downstream stage does not manufacture qualification. Once a real
+        // qualification exists, forward progression preserves that historical
+        // truth. Only an explicit move back into a pre-qualification stage
+        // reconciles it inactive.
+        if (!existingAuthority && !desiredActive)
+            return;
+        if (existingAuthority && desiredActive == previousActive)
+            return;
+
+        var active = desiredActive;
 
         var intake = await _db.WebsiteLeadIntakeLinks.AsNoTracking()
             .Where(x => x.WorkstationLeadId == lead.LeadId)
@@ -242,6 +282,24 @@ public sealed class CanonicalCrmOutcomeService
 
     private static bool IsQualifiedStage(string? stage) =>
         string.Equals(stage?.Trim(), "Qualified", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsQualificationReversalStage(string? stage)
+    {
+        var value = stage?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.Equals("New", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("NewLead", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Opportunities", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Contacted", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("CallBack", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Voicemail", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("NoAnswer", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("AIReception", StringComparison.OrdinalIgnoreCase) ||
+               WorkstationLeadBuckets.ProductBuckets.Any(bucket =>
+                   bucket.Equals(value, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static string QualificationIdentity(string leadId) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(leadId.Trim().ToLowerInvariant())))[..24].ToLowerInvariant();
