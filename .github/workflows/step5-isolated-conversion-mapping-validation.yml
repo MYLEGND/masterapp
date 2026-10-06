@@ -237,6 +237,15 @@ jobs:
               prior=row.get("oid") or ""
               if prior == current or not re.fullmatch(r"[0-9a-f]{40}",prior):
                   continue
+              # Check-rollup is the cheap discriminator. Run the expensive
+              # source/test dependency closure only for an ancestor that
+              # actually completed Step 5 successfully.
+              nodes=((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes",[])
+              success=next((check for check in nodes
+                  if check.get("__typename")=="CheckRun" and check.get("name")=="step5-validation"
+                  and check.get("conclusion")=="SUCCESS"),None)
+              if not success:
+                  continue
               if subprocess.run(["git","merge-base","--is-ancestor",base,prior]).returncode:
                   continue
               try:
@@ -245,12 +254,6 @@ jobs:
                   if authority.step5_dependency_change(prior,current) != []:
                       continue
               except Exception:
-                  continue
-              nodes=((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes",[])
-              success=next((check for check in nodes
-                  if check.get("__typename")=="CheckRun" and check.get("name")=="step5-validation"
-                  and check.get("conclusion")=="SUCCESS"),None)
-              if not success:
                   continue
               run_id=None
               match=re.search(r"/actions/runs/(\d+)",success.get("detailsUrl") or "")
