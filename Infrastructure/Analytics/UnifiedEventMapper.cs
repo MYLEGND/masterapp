@@ -188,6 +188,8 @@ public static class UnifiedEventMapper
         behaviorKey = AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var behavior) ? behavior.Key : null,
         actionKey = ctx.ActionKey ?? (AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var action) ? action.Key : null),
         oppref = OpenAiClickReference.Normalize(ctx.Oppref),
+        gclid = PaidAdsClickReference.NormalizeGoogle(ctx.Gclid),
+        ttclid = PaidAdsClickReference.NormalizeTikTok(ctx.Ttclid),
         obref = OpenAiBrowserReference.Normalize(ctx.Obref),
         fbc = ctx.Fbc,
         fbp = ctx.Fbp,
