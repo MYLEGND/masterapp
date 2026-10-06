@@ -5340,16 +5340,8 @@ function escapeHtml(value) {
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
 
-    function renderExternalEvidence(provider, connection) {
-      const row = document.getElementById(`marketing-setup-${provider}-evidence`);
-      const connected = row?.querySelector('[data-evidence="connected"]');
-      const configured = row?.querySelector('[data-evidence="configured"]');
-      if (connected) connected.textContent = connection.connected ? 'Yes' : 'No';
-      if (configured) configured.textContent = connection.ready ? 'Reporting ready' :
-        connection.requiresAccountSelection ? 'Choose account' : 'No';
-    }
-    renderExternalEvidence('google', google);
-    renderExternalEvidence('tiktok', tiktok);
+    renderEvidence('google', google.connected, google.ready);
+    renderEvidence('tiktok', tiktok.connected, tiktok.ready);
 
     const setOpenAiText = (id, value) => {
       const el = document.getElementById(id);
