@@ -176,7 +176,7 @@
                                 <h6>Google Ads &amp; TikTok Ads</h6>
                             </div>
                         </div>
-                        <p class="marketing-setup-help">These providers use the same scoped MarketingConnection authority and canonical website → CRM → revenue outcomes as Meta and ChatGPT Ads. Provider conversion upload remains fail-closed until an exact conversion/event-source mapping is configured.</p>
+                        <p class="marketing-setup-help">These providers use the same scoped MarketingConnection authority and canonical website → CRM → revenue outcomes as Meta and ChatGPT Ads. Reporting can be connected independently; conversion optimization remains fail-closed until the exact provider mapping below is saved.</p>
                         <div class="marketing-setup-detail-grid">
                             <div class="marketing-setup-provider-card" data-external-provider="google">
                                 <div>
@@ -192,6 +192,15 @@
                                     <label class="marketing-setup-field" for="marketing-setup-google-account-select"><span>Authorized Google Ads account</span><select id="marketing-setup-google-account-select" class="form-select"></select></label>
                                     <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-select-account">Use selected account</button>
                                 </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-google-measurement" hidden>
+                                    <div class="marketing-setup-help"><strong id="marketing-setup-google-measurement-status">Optimization mapping required</strong><br/>Paste only conversion actions from the selected Google Ads customer. Unmapped outcomes remain first-party truth but are not uploaded.</div>
+                                    <label class="marketing-setup-field"><span>Qualified lead conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="QualifiedLead" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Appointment conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="AppointmentBooked" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Application conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="ApplicationSubmitted" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Issued conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyIssued" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <label class="marketing-setup-field"><span>Paid/revenue conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyPaid" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-save-measurement">Save Google optimization mapping</button>
+                                </div>
                             </div>
                             <div class="marketing-setup-provider-card" data-external-provider="tiktok">
                                 <div>
@@ -206,6 +215,17 @@
                                 <div class="marketing-setup-connect-controls w-100" id="marketing-setup-tiktok-account-picker" hidden>
                                     <label class="marketing-setup-field" for="marketing-setup-tiktok-account-select"><span>Authorized TikTok advertiser</span><select id="marketing-setup-tiktok-account-select" class="form-select"></select></label>
                                     <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-select-account">Use selected account</button>
+                                </div>
+                                <div class="marketing-setup-connect-controls w-100" id="marketing-setup-tiktok-measurement" hidden>
+                                    <div class="marketing-setup-help"><strong id="marketing-setup-tiktok-measurement-status">Optimization mapping required</strong><br/>Use the exact TikTok Events Manager event source and event names for this advertiser. No event names are guessed.</div>
+                                    <label class="marketing-setup-field"><span>Event source type</span><select id="marketing-setup-tiktok-event-source-type" class="form-select"><option value="crm">CRM</option><option value="web">Web</option><option value="offline">Offline</option></select></label>
+                                    <label class="marketing-setup-field"><span>Event source ID</span><input id="marketing-setup-tiktok-event-source-id" class="form-control" placeholder="TikTok Event Source ID" /></label>
+                                    <label class="marketing-setup-field"><span>Qualified lead event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="QualifiedLead" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Appointment event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="AppointmentBooked" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Application event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="ApplicationSubmitted" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Issued event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyIssued" placeholder="Exact TikTok event name" /></label>
+                                    <label class="marketing-setup-field"><span>Paid/revenue event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyPaid" placeholder="Exact TikTok event name" /></label>
+                                    <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-save-measurement">Save TikTok optimization mapping</button>
                                 </div>
                             </div>
                         </div>
