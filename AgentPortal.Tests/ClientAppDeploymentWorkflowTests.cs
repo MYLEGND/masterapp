@@ -94,20 +94,38 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.DoesNotContain("--rollback-only", workflow, StringComparison.Ordinal);
         Assert.Contains("--prepare-only --transaction-plan", workflow, StringComparison.Ordinal);
         Assert.Contains("--finalize-only --transaction-plan", workflow, StringComparison.Ordinal);
+
         var start = workflow.IndexOf("# BEGIN GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
         var end = workflow.IndexOf("# END GENERATED CANONICAL TARGET PUBLICATIONS", StringComparison.Ordinal);
-        Assert.True(start >= 0 && end > start);
-        var targetSteps = Regex.Matches(workflow[start..end],
+        var finalize = workflow.IndexOf("Reconcile complete immutable release transaction", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start && finalize > end);
+
+        var publication = workflow[start..end];
+        var fanout = Regex.Match(publication,
+            @"      - name: Publish canonical selected targets in parallel\n(?<body>.*?)(?=\n      - name:|\z)",
+            RegexOptions.Singleline);
+        Assert.True(fanout.Success);
+        var fanoutBody = fanout.Groups["body"].Value;
+        Assert.Contains("--targets-json \"$SELECTED_TARGETS\"", fanoutBody, StringComparison.Ordinal);
+        Assert.Contains("--transaction-plan /tmp/release-transaction.json", fanoutBody, StringComparison.Ordinal);
+        Assert.Contains("--publish-prepared-parallel", fanoutBody, StringComparison.Ordinal);
+        Assert.Contains("--target-results-dir /tmp/release-target-results", fanoutBody, StringComparison.Ordinal);
+        Assert.Contains("steps.transactionprepare.outcome == 'success'", fanoutBody, StringComparison.Ordinal);
+
+        var targetSteps = Regex.Matches(publication,
             @"      - name: Publish canonical target \(([^)]+)\)\n(?<body>.*?)(?=\n      - name:|\z)",
             RegexOptions.Singleline);
-        Assert.NotEmpty(targetSteps);
+        Assert.Equal(5, targetSteps.Count);
         foreach (Match step in targetSteps)
         {
+            var key = step.Groups[1].Value;
             var body = step.Groups["body"].Value;
-            Assert.Contains("--target " + step.Groups[1].Value, body, StringComparison.Ordinal);
-            Assert.Contains("--transaction-plan /tmp/release-transaction.json", body, StringComparison.Ordinal);
+            Assert.Contains($"/tmp/release-target-results/{key}.json", body, StringComparison.Ordinal);
+            Assert.Contains("result.get('success') is not True", body, StringComparison.Ordinal);
             Assert.Contains("steps.transactionprepare.outcome == 'success'", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("--target " + key, body, StringComparison.Ordinal);
         }
+
         Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 
