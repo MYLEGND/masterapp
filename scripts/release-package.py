@@ -142,6 +142,10 @@ def build_migration_bundle(output: Path):
         "DOTNET_ENVIRONMENT": "Development",
         "ASPNETCORE_ENVIRONMENT": "Development",
     }
+    # This component runs in an isolated package lane. It must materialize the
+    # project graph it consumes instead of inheriting project.assets.json from a
+    # previously serialized app publish.
+    run("dotnet", "restore", "AgentPortal/AgentPortal.csproj", "--nologo", env=env)
     run("dotnet", "tool", "restore", env=env)
     destination = output / MIGRATION_BUNDLE
     run(
