@@ -89,9 +89,19 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
         var current = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events);
         Assert.Single(current.Where(x => x.EventType == "QualifiedLead"));
 
+        lead.CrmStage = "Booked";
+        lead.Bucket = "Booked";
+        lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(2);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db);
+
+        events = await db.AnalyticsEvents.AsNoTracking().ToListAsync();
+        Assert.Empty(events.Where(x => x.TrackingVersion == "crm-qualification-state-v1"));
+        Assert.Single(CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events)
+            .Where(x => x.EventType == "QualifiedLead"));
+
         lead.CrmStage = "Contacted";
         lead.Bucket = "Contacted";
-        lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(2);
+        lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(3);
         await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db);
 
         events = await db.AnalyticsEvents.AsNoTracking().ToListAsync();
@@ -109,7 +119,7 @@ public sealed class CanonicalQualifiedLeadOutcomeTests
 
         lead.CrmStage = "Qualified";
         lead.Bucket = "Qualified";
-        lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(3);
+        lead.UpdatedUtc = DateTime.UtcNow.AddMinutes(4);
         await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db);
 
         events = await db.AnalyticsEvents.AsNoTracking().ToListAsync();
