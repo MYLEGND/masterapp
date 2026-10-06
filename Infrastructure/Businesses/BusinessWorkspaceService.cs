@@ -156,7 +156,7 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
             Note = $"CRM updated: {before} → {input.Kind}/{input.Stage}", Date = DateTime.UtcNow.ToString("O") });
         row.CrmNotes = ClientCrmMetaSerializer.Serialize(meta, preferences.Stages);
         row.UpdatedUtc = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db, ct);
         return true;
     }
 
