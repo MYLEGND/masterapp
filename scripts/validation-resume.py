@@ -959,7 +959,7 @@ WORKFLOWS = {
                     "scripts/test-diagnostic-project-impact.py",
                     "scripts/test-sync-published-checkout.py",
                 ),
-                "consumes": ("compile-regression",),
+                "consumes": ("compile-regression", "domain-release"),
             },
             "release-policy": {
                 "step": "Verify consolidated release scope and routing policy",
