@@ -441,6 +441,17 @@ class PackageContractTests(unittest.TestCase):
             self.assertNotEqual(original, package.contract_hash())
 
 
+    def test_isolated_migration_component_owns_its_project_restore(self):
+        source = (ROOT / 'release-package.py').read_text()
+        block = source.split('def build_migration_bundle(output: Path):', 1)[1].split(
+            '\ndef ', 1
+        )[0]
+        restore = block.index('run("dotnet", "restore", "AgentPortal/AgentPortal.csproj"')
+        bundle = block.index('"migrations", "bundle"')
+        self.assertLess(restore, bundle)
+        self.assertIn('previously serialized app publish', block)
+
+
     def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
         package = importlib.util.module_from_spec(spec)
