@@ -1872,6 +1872,19 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.assertTrue(m._step5_baseline_inputs_equivalent(self.base, head))
         self.assertEqual([], m.step5_dependency_change(head, self.commit()))
 
+    def test_control_only_change_short_circuits_before_test_archive(self):
+        self.write("scripts/release-lifecycle.py", "changed without test inputs")
+        head = self.commit()
+        original_run = m.subprocess.run
+
+        def guarded_run(args, *pargs, **kwargs):
+            if list(args[:2]) == ["git", "archive"]:
+                raise AssertionError("control-only Step 5 dependency proof must not archive the test graph")
+            return original_run(args, *pargs, **kwargs)
+
+        with patch.object(m.subprocess, "run", side_effect=guarded_run):
+            self.assertEqual([], m.step5_dependency_change(self.base, head))
+
     def test_manifest_content_identity_survives_unrelated_commit(self):
         workflow = "step5-isolated-conversion-mapping-validation.yml"
         prior = m.gate_dependency_manifests(workflow, self.base)
