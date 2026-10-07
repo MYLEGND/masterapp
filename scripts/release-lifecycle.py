@@ -796,10 +796,15 @@ def candidate_control_plane_integrity(api, pr, names):
         'text.count(END) != 1',
         'text.split(START, 1)',
         'tail.split(END, 1)',
-        'generated.count(OUTCOME_START) != 1',
-        'generated.count(OUTCOME_END) != 1',
     )):
         return 'Candidate workflow renderer can rewrite outside canonical generated target blocks'
+    if any(token in source['workflow_renderer'] for token in (
+        'OUTCOME_START',
+        'OUTCOME_END',
+        'TARGET_OUTCOME_',
+        '--verify-outcomes',
+    )):
+        return 'Candidate restored ephemeral target outcomes as transaction authority'
     renderer_writes = [
         ast.get_source_segment(source['workflow_renderer'], node) or ''
         for node in ast.walk(renderer_tree)
@@ -879,6 +884,18 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate direct-release outer timeout drifted from canonical 30-minute fail-safe'
     if direct_workflow.count('--finalize-only --transaction-plan /tmp/release-transaction.json') != 1:
         return 'Candidate direct-release workflow gained duplicate receipt finalization'
+    transaction_step = direct_workflow.split(
+        '      - name: Reconcile complete immutable release transaction\n', 1
+    )[1].split('      - name: Run independent auxiliary release fanout\n', 1)[0]
+    if (
+        transaction_step.count('--finalize-only --transaction-plan /tmp/release-transaction.json') != 1
+        or 'TARGET_OUTCOME_' in transaction_step
+        or 'steps.publish_' in transaction_step
+        or '--verify-outcomes' in transaction_step
+    ):
+        return 'Candidate restored first-pass target outcome authority ahead of canonical finalization'
+    if 'TARGET_OUTCOME_' in direct_workflow or '--verify-outcomes' in direct_workflow:
+        return 'Candidate restored ephemeral target outcome transaction gate'
     if any(token in direct_workflow for token in (
         'transactionrecovery',
         'TRANSACTION_RECOVERY',
