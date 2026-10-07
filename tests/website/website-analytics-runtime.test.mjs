@@ -24,6 +24,12 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
   const { window } = dom;
   await new Promise(resolve => window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   const calls = [], errors = [], polls = [], deadlines = [], requests = [];
+  const pending = new Set();
+  const track = promise => {
+    const tracked = Promise.resolve(promise).finally(() => pending.delete(tracked));
+    pending.add(tracked);
+    return tracked;
+  };
   window.setInterval = callback => { polls.push(callback); return polls.length; };
   const setTimeout = window.setTimeout.bind(window);
   window.setTimeout = (callback, delay, ...args) => {
@@ -35,7 +41,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
   window.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {}, hide() {} }) } };
   const copied = [];
   window.navigator.clipboard = { writeText: value => { copied.push(value); return Promise.resolve(); } };
-  window.fetch = async (url, options = {}) => {
+  const fetchFixture = async (url, options = {}) => {
     calls.push(String(url));
     requests.push({ url: String(url), ...options });
     const path = new URL(url, window.location.href).pathname;
@@ -44,12 +50,29 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
       : path.endsWith('/DeviceIntelligence') ? { sessions: 2, events: 7 }
       : path.endsWith('/marketing-manager/performance') ? { channels: [], economics: { totalMarketingSpend: 12, channels: [] } }
       : { channels: [] };
-    return new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+    const response = new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+    for (const method of ['json', 'text']) {
+      const read = response[method].bind(response);
+      response[method] = (...args) => track(read(...args));
+    }
+    return response;
+  };
+  window.fetch = (...args) => track(fetchFixture(...args));
+  const dispose = async () => {
+    let observedCalls;
+    do {
+      observedCalls = calls.length;
+      await Promise.all([...pending]);
+      // Fetch/JSON continuations can enqueue supporting requests. Drain the
+      // current event-loop turn before deciding the fixture is idle.
+      await new Promise(resolve => setImmediate(resolve));
+    } while (pending.size || calls.length !== observedCalls);
+    window.close();
   };
   window.eval(source);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { dom, window, calls, errors, copied, polls, deadlines, requests };
+  return { dom, window, calls, errors, copied, polls, deadlines, requests, dispose };
 }
 
 for (const initialSite of ['legend', 'protect']) {
@@ -67,7 +90,7 @@ for (const initialSite of ['legend', 'protect']) {
         const product = f.window.document.querySelector('.product-link-copy');
         assert.equal(product.dataset.linkUrl, 'https://protect.example.test/quote/life');
       }
-    } finally { f.dom.window.close(); }
+    } finally { await f.dispose(); }
   });
 }
 
@@ -80,7 +103,7 @@ for (const selectedAgent of [false, true]) {
         assert.equal(f.window.document.getElementById('growth-open-base').href, 'https://protect.example.test/a/agent-one');
         assert.equal(f.window.document.querySelector('.product-link-copy').dataset.linkUrl, 'https://protect.example.test/a/agent-one/quote/life');
       }
-    } finally { f.dom.window.close(); }
+    } finally { await f.dispose(); }
   });
 }
 
