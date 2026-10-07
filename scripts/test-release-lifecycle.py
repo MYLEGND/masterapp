@@ -1189,6 +1189,22 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual([], self.api.dispatched)
 
 
+class ReleaseExecutionStateTests(unittest.TestCase):
+    def test_renamed_parallel_mutation_fanout_reports_deploying(self):
+        api = Api()
+        run = {'id': 99, 'status': 'in_progress', 'conclusion': None}
+        api.pages_map['actions/runs/99/jobs?filter=latest'] = [{
+            'name': 'release',
+            'steps': [{
+                'name': 'Submit canonical selected targets in parallel',
+                'status': 'in_progress',
+                'conclusion': None,
+            }],
+        }]
+        self.assertEqual('DEPLOYING', m.release_execution_state(api, run))
+
+
+
 class GeneratedPublicationStages(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('workflow_generation', Path(__file__).with_name('release-workflow.py'))
