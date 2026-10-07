@@ -1517,6 +1517,31 @@ class ResourceAdmission(unittest.TestCase):
         lineage.assert_called_with('c' * 40, 'd' * 40)
         observed.assert_not_called()
 
+    def test_descendant_schema_writer_rolls_forward_completed_app_lease_without_stale_read_lock(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.resources(['ClientApp/Program.cs']),
+        )
+        paths = ['ClientApp/Program.cs', 'Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs']
+        self.candidate.update(
+            applicationRevision='d' * 40,
+            selectedTargets=list(m.VALIDATION_AUTHORITY.release_targets_for_paths(paths)),
+            resources=self.resources(paths),
+        )
+        self.assertIn('read/schema/masterapp', self.prior['resources'])
+        self.assertIn('write/schema/masterapp', self.candidate['resources'])
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('roll-forward needs no live shortcut')) as observed:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+        observed.assert_not_called()
+
     def test_descendant_target_slice_rolls_forward_without_claiming_unrelated_stale_apps(self):
         self.run.update(status='completed', conclusion='failure')
         all_paths = [
