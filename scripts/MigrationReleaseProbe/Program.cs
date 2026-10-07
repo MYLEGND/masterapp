@@ -21,28 +21,51 @@ try
     if (known.Length == 0)
         throw new ProbeObservationFailure("MIGRATIONS_MISSING");
 
-    // The immutable historical production audit records one EF history stamp
-    // for which no original migration source was ever committed:
-    // Infrastructure/MigrationAudit/production-migrations-current.txt.
-    // Preserve that exact already-applied marker without fabricating Up/Down SQL,
-    // modifying __EFMigrationsHistory, or accepting any other unknown identifier.
-    // The adjacent original EF migrations must both be registered and applied.
-    const string auditedLegacy = "20260213015339_FinanceToolStates_ByClientProfile";
-    const string preceding = "20260213015112_InitialBaseline";
-    const string following = "20260217173126_20260217_ModelSync";
+    // A historical, immutable production audit records these applied EF history
+    // stamps even though their legacy source cannot be registered in the current
+    // EF assembly. Frozen manual migrations may not be changed to repair this.
+    // This allowlist is strictly read-only and tied to exact neighboring
+    // registered+applied migrations. No fabricated Up/Down SQL, history update,
+    // or unknown migration is authorized by this compatibility observation.
+    // Evidence: Infrastructure/MigrationAudit/production-migrations-current.txt
+    // and scripts/db-legacy-manual-migrations.txt.
+    var auditedLegacy = new Dictionary<string, (string Before, string After)>(
+        StringComparer.Ordinal)
+    {
+        ["20260213015339_FinanceToolStates_ByClientProfile"] =
+            ("20260213015112_InitialBaseline", "20260217173126_20260217_ModelSync"),
+        ["20260321020000_AddAgentAssistants"] =
+            ("20260319141942_20260319_SnapshotSync", "20260321130615_AddAgentAssistantsRuntimeFix"),
+        ["20260329093000_ExecutionMvp"] =
+            ("20260328071506_AddAnalyticsScaleIndexes", "20260330000618_ExecutionMvp_Regen"),
+        ["20260330094500_RepairAgentProfilesSqlite"] =
+            ("20260330011403_ActionSurfaceSeparation", "20260331000000_CommitmentsMvp"),
+    };
     var unknown = applied.Except(known, StringComparer.Ordinal).ToArray();
-    var legacyApplied = unknown.Length == 1 &&
-        string.Equals(unknown[0], auditedLegacy, StringComparison.Ordinal);
-    if (unknown.Length != 0 && !legacyApplied)
+    if (unknown.Any(id => !auditedLegacy.ContainsKey(id)))
         throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION");
-    if (applied.Length != applied.Distinct(StringComparer.Ordinal).Count() ||
-        (legacyApplied && (!known.Contains(preceding, StringComparer.Ordinal) ||
-                           !known.Contains(following, StringComparer.Ordinal) ||
-                           !applied.Contains(preceding, StringComparer.Ordinal) ||
-                           !applied.Contains(following, StringComparer.Ordinal))))
+    if (applied.Length != applied.Distinct(StringComparer.Ordinal).Count())
         throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
-    var appliedRegistered = applied.Where(id =>
-        !string.Equals(id, auditedLegacy, StringComparison.Ordinal)).ToArray();
+    foreach (var (id, anchors) in auditedLegacy)
+    {
+        var beforeKnown = known.Contains(anchors.Before, StringComparer.Ordinal);
+        var afterKnown = known.Contains(anchors.After, StringComparer.Ordinal);
+        var beforeApplied = applied.Contains(anchors.Before, StringComparer.Ordinal);
+        var afterApplied = applied.Contains(anchors.After, StringComparer.Ordinal);
+        if (unknown.Contains(id, StringComparer.Ordinal))
+        {
+            if (!beforeKnown || !afterKnown || !beforeApplied || !afterApplied)
+                throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+        }
+        else if (!known.Contains(id, StringComparer.Ordinal) &&
+                 beforeApplied && afterApplied)
+        {
+            // A previously required legacy stage cannot silently disappear
+            // while both chronological neighbors are already applied.
+            throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+        }
+    }
+    var appliedRegistered = applied.Where(id => !auditedLegacy.ContainsKey(id)).ToArray();
     if (!appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length), StringComparer.Ordinal))
         throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
     var pending = known.Except(appliedRegistered, StringComparer.Ordinal).Count();
@@ -52,7 +75,7 @@ try
         ready = pending == 0,
         // Counts include only an attested historical stamp when actually applied.
         // schemaIdentity still binds the exact registered EF assembly migrations.
-        knownCount = known.Length + (legacyApplied ? 1 : 0),
+        knownCount = known.Length + unknown.Length,
         appliedCount = applied.Length,
         pendingCount = pending,
         schemaIdentity = Convert.ToHexStringLower(SHA256.HashData(
