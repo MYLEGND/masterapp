@@ -10602,6 +10602,13 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("FounderAssistantRulesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16000)
+                        .HasColumnType("nvarchar(16000)")
+                        .HasDefaultValue("[]");
+
                     b.Property<bool>("IsEmailVisible")
                         .HasColumnType("bit");
 
