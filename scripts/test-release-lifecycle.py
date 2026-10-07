@@ -1522,6 +1522,47 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
         self.steps[:] = [step for step in self.steps if step['name'] != 'Synchronize canonical pre-publication resource lanes']
         self.assertFalse(self.proven())
 
+    def test_two_failed_attempts_discharge_only_if_each_proves_no_write(self):
+        self.run['head_sha'] = '261fd32ba559d6f2bab0324b538068ee7d7541d7'
+        self.run['run_attempt'] = 2
+        self.BLOBS.update({
+            'scripts/release-migration.py': '4d04187b13f1212c709237d4632c509e5c9696b9',
+            'scripts/validation-resume.py': 'db82785acd1dcf8c2f84a43ec22d8c5116959199',
+        })
+        path = f"actions/runs/{self.run['id']}/artifacts"
+        for row in self.api.pages_map[path]:
+            if row['name'].startswith('diagnostics-rollback-'):
+                row['name'] = row['name'].replace(self.HEAD, self.run['head_sha'])
+        self.api.pages_map[path].append({
+            'name': f"legend-release-step-state-{self.record['applicationRevision']}-{self.run['id']}-2",
+            'expired': False,
+        })
+        prior = [
+            dict(step, conclusion=(
+                'failure' if step['name'] == 'Prepare complete immutable release transaction'
+                else 'skipped'))
+            for step in self.steps
+        ]
+        self.api.pages_map[f"actions/runs/{self.run['id']}/attempts/1/jobs"] = [{
+            'name':'release', 'status':'completed', 'conclusion':'failure', 'steps': prior
+        }]
+        self.api.pages_map[f"actions/runs/{self.run['id']}/attempts/2/jobs"] = [{
+            'name':'release', 'status':'completed', 'conclusion':'failure', 'steps': self.steps
+        }]
+        self.assertTrue(self.proven())
+
+        # A single entered mutation step in any attempt restores the lease.
+        prior[0]['conclusion'] = 'success'
+        self.assertFalse(self.proven())
+        prior[0]['conclusion'] = 'failure'
+
+        # Missing the earlier immutable attempt receipt also retains ownership.
+        self.api.pages_map[path] = [
+            row for row in self.api.pages_map[path]
+            if not row['name'].endswith(f"-{self.run['id']}-1")
+        ]
+        self.assertFalse(self.proven())
+
     def test_multiple_attempts_and_schema_write_intent_remain_blocked(self):
         self.run['run_attempt'] = 2
         self.assertFalse(self.proven())
