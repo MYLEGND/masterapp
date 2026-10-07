@@ -1519,6 +1519,43 @@ class ResourceAdmission(unittest.TestCase):
         lineage.assert_called_with('c' * 40, 'd' * 40)
         observed.assert_not_called()
 
+    def test_descendant_app_lease_rolls_forward_when_successor_also_owns_schema(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.candidate['applicationRevision'] = 'd' * 40
+        self.candidate['resources'] = self.candidate['resources'] + ['write/schema/masterapp']
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('app-slice roll-forward needs no live shortcut')) as observed:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+        observed.assert_not_called()
+
+    def test_historical_schema_write_lease_remains_fail_closed_on_descendant(self):
+        self.run.update(status='completed', conclusion='failure')
+        historical = dict(
+            self.prior,
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'] + ['write/schema/masterapp'],
+        )
+        self.candidate['applicationRevision'] = 'd' * 40
+        with patch.object(m, '_admission_records', return_value=[historical]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, 'live_revisions', side_effect=RuntimeError('schema lease cannot use app-only roll-forward')):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual([98], [row['runId'] for row in blocked])
+
     def test_descendant_target_slice_rolls_forward_without_claiming_unrelated_stale_apps(self):
         self.run.update(status='completed', conclusion='failure')
         all_paths = [
