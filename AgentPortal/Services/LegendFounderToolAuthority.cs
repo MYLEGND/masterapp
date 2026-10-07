@@ -2653,6 +2653,8 @@ internal sealed partial class LegendFounderToolAuthority
                     ? "founder_exact_proposal_review"
                     : name == "legend_remember_conversation_facts"
                     ? "authenticated_conversation_state"
+                    : name == "legend_remember_founder_rule"
+                    ? "founder_explicit_account_preference_write"
                     : conditionallyRestrictedResearch
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
                     : readOnly ? "founder_governed_read" : "founder_governed_mutation",
