@@ -217,16 +217,50 @@
                           aria-label="Legend® Ai conversation">
                         <div class="legend-founder-ai-welcome"
                              id="legendFounderAiWelcome">
-                            <div class="legend-founder-ai-welcome-mark">
-                                <img src="~/images/legend-ai/legendai.png"
-                                     asp-append-version="true"
-                                     alt=""
-                                     class="legend-founder-ai-logo-image" />
+                            <div class="legend-founder-ai-welcome-brand">
+                                <h3>
+                                    <span>LEGEND<sup>®</sup></span>
+                                    <span class="legend-founder-ai-welcome-ai">AI</span>
+                                </h3>
+                                <p>Ideas. Answers. Next Steps.</p>
                             </div>
 
-                            <h3>
-                                Ask Legend<sup>®</sup> Ai
-                            </h3>
+                            <div class="legend-founder-ai-welcome-greeting">
+                                <span class="legend-founder-ai-welcome-mark" aria-hidden="true">
+                                    <img src="~/images/legend-ai/legendai.png"
+                                         asp-append-version="true"
+                                         alt=""
+                                         class="legend-founder-ai-logo-image" />
+                                </span>
+                                <div class="legend-founder-ai-welcome-bubble">
+                                    Hi! I’m Legend<sup>®</sup> Ai.<br />
+                                    How can I help you today?
+                                </div>
+                            </div>
+
+                            <div class="legend-founder-ai-suggestions"
+                                 aria-label="Suggested prompts">
+                                <button type="button"
+                                        class="legend-founder-ai-suggestion"
+                                        data-legend-ai-suggestion="Summarize this page">
+                                    Summarize this page
+                                </button>
+                                <button type="button"
+                                        class="legend-founder-ai-suggestion"
+                                        data-legend-ai-suggestion="Help me plan">
+                                    Help me plan
+                                </button>
+                                <button type="button"
+                                        class="legend-founder-ai-suggestion"
+                                        data-legend-ai-suggestion="Answer a question">
+                                    Answer a question
+                                </button>
+                                <button type="button"
+                                        class="legend-founder-ai-suggestion"
+                                        data-legend-ai-suggestion="Explore ideas">
+                                    Explore ideas
+                                </button>
+                            </div>
                         </div>
 
                         <div class="legend-founder-ai-status"
@@ -247,11 +281,29 @@
                             @Html.AntiForgeryToken()
 
                             <div class="legend-founder-ai-input-wrap">
+                                <button type="button"
+                                        id="legendFounderAiComposerMenu"
+                                        class="legend-founder-ai-composer-tool"
+                                        aria-controls="legendFounderAiSidebar"
+                                        aria-label="Open conversations and Legend® Ai controls">
+                                    <span aria-hidden="true">＋</span>
+                                </button>
+
                                 <textarea id="legendFounderAiInput"
                                           rows="1"
                                           maxlength="20000"
                                           placeholder="Message Legend® Ai…"
                                           aria-label="Message Legend® Ai"></textarea>
+
+                                <button type="button"
+                                        id="legendFounderAiVoiceFocus"
+                                        class="legend-founder-ai-voice-focus"
+                                        aria-label="Focus message field for device dictation">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 15.25a3.75 3.75 0 0 0 3.75-3.75V6.25a3.75 3.75 0 1 0-7.5 0v5.25A3.75 3.75 0 0 0 12 15.25Z"></path>
+                                        <path d="M5.75 11.25a6.25 6.25 0 0 0 12.5 0M12 17.5V21M8.75 21h6.5"></path>
+                                    </svg>
+                                </button>
 
                                 <button type="submit"
                                         id="legendFounderAiSend"
