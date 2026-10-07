@@ -6121,6 +6121,7 @@ function escapeHtml(value) {
   }
 
   let marketingPerformanceRequest = 0;
+  let marketingPerformanceInFlight = null;
 
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
@@ -6129,26 +6130,35 @@ function escapeHtml(value) {
     if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
       params.siteKey = state.scope.siteKey;
     }
+    const key = JSON.stringify(params);
+    if (marketingPerformanceInFlight?.key === key) return marketingPerformanceInFlight.promise;
     const request = ++marketingPerformanceRequest;
+    const active = { key, promise: null };
+    marketingPerformanceInFlight = active;
     grid.textContent = 'Loading current channel performance…';
     setText('channel-performance-note', '');
     renderGrowthEconomics(null);
-    try {
-      const data = await fetchJson(
-        'marketingManagerPerformance',
-        endpoints.marketingManagerPerformance,
-        params,
-        45000);
-      if (!data || request !== marketingPerformanceRequest) return false;
-      renderMarketingPerformance(data);
-      renderGrowthEconomics(data.economics);
-      return true;
-    } catch (error) {
-      if (request !== marketingPerformanceRequest) return false;
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
-      renderGrowthEconomics(null);
-      return false;
-    }
+    active.promise = (async () => {
+      try {
+        const data = await fetchJson(
+          'marketingManagerPerformance',
+          endpoints.marketingManagerPerformance,
+          params,
+          45000);
+        if (!data || request !== marketingPerformanceRequest) return false;
+        renderMarketingPerformance(data);
+        renderGrowthEconomics(data.economics);
+        return true;
+      } catch (error) {
+        if (request !== marketingPerformanceRequest) return false;
+        grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+        renderGrowthEconomics(null);
+        return false;
+      } finally {
+        if (marketingPerformanceInFlight === active) marketingPerformanceInFlight = null;
+      }
+    })();
+    return active.promise;
   }
 
   function renderGrowthEconomics(data) {

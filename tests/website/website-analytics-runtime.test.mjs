@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../AgentPortal/wwwroot/js/website-analytics.js', import.meta.url), 'utf8');
-async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false, business = false, global = false } = {}) {
+async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false, business = false, global = false, performanceHandler = null, captureDeadlines = false } = {}) {
   const founderLinks = { legend: 'https://legend.example.test/', protect: 'https://protect.example.test/' };
   const agentLink = 'https://protect.example.test/a/agent-one';
   const agents = founder ? [{ id: 'founder-profile', primaryUrl: founderLinks[siteKey] }, { id: 'agent-profile', primaryUrl: agentLink }] : [];
@@ -21,15 +21,22 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     { url: 'https://portal.example.test/WebsiteAnalytics', runScripts: 'outside-only' });
   const { window } = dom;
   await new Promise(resolve => window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
-  const calls = [], errors = [];
+  const calls = [], errors = [], polls = [], deadlines = [];
+  window.setInterval = callback => { polls.push(callback); return polls.length; };
+  const setTimeout = window.setTimeout.bind(window);
+  window.setTimeout = (callback, delay, ...args) => {
+    if (captureDeadlines && delay === 45000) { deadlines.push(callback); return -deadlines.length; }
+    return setTimeout(callback, delay, ...args);
+  };
   window.console.error = (...args) => errors.push(args.map(String).join(' '));
   window.console.warn = () => {};
   window.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {}, hide() {} }) } };
   const copied = [];
   window.navigator.clipboard = { writeText: value => { copied.push(value); return Promise.resolve(); } };
-  window.fetch = async url => {
+  window.fetch = async (url, options = {}) => {
     calls.push(String(url));
     const path = new URL(url, window.location.href).pathname;
+    if (path.endsWith('/marketing-manager/performance') && performanceHandler) return performanceHandler(url, options);
     const data = path.endsWith('/summary') ? { isAvailable: true, scopeLabel: 'Founder Personal', pageViews: 7, uniqueVisitors: 2, sessions: 2, verifiedLeads: 0, sessionConversionRate: 0 }
       : path.endsWith('/DeviceIntelligence') ? { sessions: 2, events: 7 }
       : path.endsWith('/marketing-manager/performance') ? { channels: [], economics: { totalMarketingSpend: 12, channels: [] } }
@@ -39,7 +46,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
   window.eval(source);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { dom, window, calls, errors, copied };
+  return { dom, window, calls, errors, copied, polls, deadlines };
 }
 
 for (const initialSite of ['legend', 'protect']) {
@@ -156,24 +163,62 @@ test('loading the script again does not duplicate initialization or summary requ
 });
 
 
-test('refresh removes prior totals and ignores an older response arriving last', async () => {
-  const f = await fixture();
+test('refresh removes prior totals and a scope change ignores an older response arriving last', async () => {
+  const f = await fixture({ founder: true });
   try {
     const pending = [];
-    f.window.fetch = () => new Promise(resolve => pending.push(resolve));
+    const originalFetch = f.window.fetch;
+    f.window.fetch = (url, options) => String(url).includes('/marketing-manager/performance')
+      ? new Promise(resolve => pending.push({ resolve, signal: options.signal }))
+      : originalFetch(url, options);
     const refresh = f.window.document.getElementById('channel-performance-refresh');
     refresh.click();
     assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
-    refresh.click();
-    const response = spend => new Response(JSON.stringify({ channels: [], economics: { totalMarketingSpend: spend, channels: [] } }));
-    pending[1](response(24));
+    f.window.document.querySelector('[data-site-key="protect"]').click();
     await new Promise(resolve => setTimeout(resolve, 10));
-    pending[0](response(99));
+    assert.equal(pending[0].signal.aborted, true);
+    const response = spend => new Response(JSON.stringify({ channels: [], economics: { totalMarketingSpend: spend, channels: [] } }));
+    pending[1].resolve(response(24));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    pending[0].resolve(response(99));
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.match(f.window.document.getElementById('growth-economics-spend').textContent, /24/);
     f.window.fetch = async () => new Response('', { status: 503 });
     refresh.click();
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
+  } finally { f.dom.window.close(); }
+});
+
+test('repeated summary polls reuse a delayed same-scope channel read until it renders', async () => {
+  const pending = [];
+  const f = await fixture({ founder: true, performanceHandler: (url, options) => new Promise(resolve => pending.push({ resolve, signal: options.signal })) });
+  try {
+    assert.equal(pending.length, 1);
+    for (let i = 0; i < 3; i++) await f.polls[0]();
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].signal.aborted, false);
+    pending[0].resolve(new Response(JSON.stringify({ channels: [], economics: { totalMarketingSpend: 42, channels: [] } })));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.match(f.window.document.getElementById('growth-economics-spend').textContent, /42/);
+    assert.match(f.window.document.getElementById('channel-performance-grid').textContent, /No channel outcomes/);
+  } finally { f.dom.window.close(); }
+});
+
+test('a channel request deadline remains unavailable and releases the in-flight read', async () => {
+  const pending = [];
+  const f = await fixture({ founder: true, captureDeadlines: true, performanceHandler: (url, options) => new Promise((resolve, reject) => {
+    pending.push({ resolve, signal: options.signal });
+    options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+  }) });
+  try {
+    assert.equal(f.deadlines.length, 1);
+    f.deadlines[0]();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.match(f.window.document.getElementById('channel-performance-grid').textContent, /timed out/);
+    assert.equal(f.window.document.getElementById('growth-economics-spend').textContent, 'Unavailable');
+    await f.polls[0]();
+    assert.equal(pending.length, 2);
+    assert.equal(pending[1].signal.aborted, false);
   } finally { f.dom.window.close(); }
 });
