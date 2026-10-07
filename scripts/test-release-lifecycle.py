@@ -1478,7 +1478,7 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
     def git(self, *args, **_):
         if args[0] == 'rev-parse':
             path = args[1].split(':',1)[1]
-            return SimpleNamespace(returncode=0, stdout=self.BLOBS.get(path, '') + '\\n')
+            return SimpleNamespace(returncode=0, stdout=self.BLOBS.get(path, ''))
         if args[0] == 'show':
             return SimpleNamespace(returncode=0, stdout=self.workflow)
         return SimpleNamespace(returncode=1, stdout='')
