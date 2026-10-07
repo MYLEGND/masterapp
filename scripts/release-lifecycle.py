@@ -684,14 +684,27 @@ def candidate_control_plane_integrity(api, pr, names):
         "return set(observed) == set(keys)",
     )):
         return 'Candidate weakened durable historical publication proof'
-    if not all(token in forward_supersession_source for token in (
+    forward_supersession_common = (
         '_app_only_admission_keys(record)',
         '_app_only_admission_keys(candidate)',
         "old_revision == new_revision",
-        "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
         'ancestor(old_revision, new_revision)',
-    )):
-        return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
+    )
+    forward_supersession_full_coverage = (
+        "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
+    )
+    forward_supersession_target_scoped = (
+        'overlap = set(old_keys).intersection(new_keys)',
+        'if not overlap',
+    )
+    if (
+        not all(token in forward_supersession_source for token in forward_supersession_common)
+        or not (
+            all(token in forward_supersession_source for token in forward_supersession_full_coverage)
+            or all(token in forward_supersession_source for token in forward_supersession_target_scoped)
+        )
+    ):
+        return 'Candidate weakened strict descendant stale-lease supersession'
     if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
