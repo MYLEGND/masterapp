@@ -41,8 +41,10 @@ internal static class CanonicalMarketingOutcomeProjection
 
     public static IReadOnlyList<AnalyticsEvent> ConfirmedOutcomes(IEnumerable<AnalyticsEvent> events)
     {
-        var facts = events.Where(e => CanonicalAdvertisingEventProjection.CanProjectServer(e) ||
-            e.TrackingVersion is "crm-production-state-v1" or "crm-qualification-state-v1").ToArray();
+        var facts = events.Where(IsProductionBusinessOutcome)
+            .Where(e => CanonicalAdvertisingEventProjection.CanProjectServer(e) ||
+                e.TrackingVersion is "crm-production-state-v1" or "crm-qualification-state-v1")
+            .ToArray();
 
         var production = facts.Where(e => !string.IsNullOrWhiteSpace(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
             .GroupBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, Id: CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "productionRecordId")))
@@ -62,6 +64,24 @@ internal static class CanonicalMarketingOutcomeProjection
             .DistinctBy(e => (e.AgentTrackingProfileId, e.CommerceBusinessId, CanonicalAdvertisingEventProjection.ResolveEventId(e), OutcomeName(e)));
 
         return production.Concat(qualification).Concat(other).ToArray();
+    }
+
+    private static bool IsProductionBusinessOutcome(AnalyticsEvent row)
+    {
+        if (row.IsInternal) return false;
+        var environment = row.Environment?.Trim().ToLowerInvariant();
+        if (environment is not null &&
+            (environment.StartsWith("dev") || environment.StartsWith("stag") ||
+             environment.StartsWith("preview") || environment.StartsWith("sandbox") ||
+             environment.StartsWith("qa") || environment.StartsWith("test") ||
+             environment.StartsWith("local")))
+            return false;
+        var host = row.Host?.Trim().ToLowerInvariant();
+        return host is null ||
+            (!host.Contains("localhost", StringComparison.Ordinal) &&
+             !host.StartsWith("127.0.0.1", StringComparison.Ordinal) &&
+             !host.StartsWith("::1", StringComparison.Ordinal) &&
+             !host.StartsWith("[::1]", StringComparison.Ordinal));
     }
 
     private static bool IsProviderPaidTraffic(string? source, string? medium, string provider)

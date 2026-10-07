@@ -1215,7 +1215,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.StartsWith("The second governed read succeeded and supports this assessment.", response.Message);
-        Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
+        Assert.Contains("Some requested governed reads remain unavailable; their state was not verified.", response.Message);
+        Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
         Assert.Equal("partial_governed_inspection", response.Reason);
         Assert.Equal(3, handler.RequestCount);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
@@ -2157,7 +2158,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
         else
         {
             Assert.True(response.Succeeded, Describe(response));
-            Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message, StringComparison.Ordinal);
+            Assert.Contains("The completed read supports only its own scope.", response.Message, StringComparison.Ordinal);
+            Assert.Contains("Some requested governed reads remain unavailable; their state was not verified.", response.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message, StringComparison.Ordinal);
             Assert.Equal("partial_governed_inspection", response.Reason);
             Assert.Equal("OpenAITeacher", response.ResponseAuthority);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);

@@ -13,6 +13,7 @@
         : initialScopeLabelRaw;
     var personalLink = ViewData["PersonalLink"] as string;
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
+    var founderSiteLinksJson = ViewData["FounderSiteLinksJson"] as string ?? "{}";
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
@@ -30,7 +31,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-initial-site-key="@initialSiteKey" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-founder-site-links='@founderSiteLinksJson' data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-can-meta-ads="@(analyticsCanMetaAds ? "true" : "false")" data-can-ai-review="@(analyticsCanAiReview ? "true" : "false")" data-can-agent-performance="@(analyticsCanAgentPerformance ? "true" : "false")" data-can-incident-monitor="@(analyticsCanIncidentMonitor ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div class="modal fade fa-modal" id="marketingSetupModal" tabindex="-1" aria-labelledby="marketingSetupModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
         <div class="modal-content wa-modal-shell">

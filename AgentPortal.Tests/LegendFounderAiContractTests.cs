@@ -708,40 +708,47 @@ public sealed class LegendFounderAiContractTests
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToHashSet(System.StringComparer.Ordinal);
 
-        Assert.Equal(executableNames, discoveredNames);
+        var repositoryControlTools = new[]
+        {
+            "legend_prepare_software_repair", "legend_release_approved_repair",
+            "legend_engineering_bootstrap", "legend_engineering_renew_turn",
+            "legend_engineering_complete_turn", "legend_engineering_approve_release"
+        }.ToHashSet(System.StringComparer.Ordinal);
+        Assert.True(repositoryControlTools.IsSubsetOf(executableNames));
+        Assert.True(discoveredNames.IsProperSubsetOf(executableNames));
+        Assert.True(executableNames.Except(discoveredNames).ToHashSet(System.StringComparer.Ordinal)
+            .SetEquals(repositoryControlTools));
         Assert.Contains("legend_capabilities", discoveredNames);
+        Assert.Contains("legend_remember_founder_rule", discoveredNames);
         Assert.Contains("legend_operational_diagnostics", discoveredNames);
         Assert.Contains("legend_submit_machine_learning_candidate", discoveredNames);
         Assert.Contains("legend_software_remediation_status", discoveredNames);
         Assert.Contains("legend_inspect_repository", discoveredNames);
-        Assert.Contains("legend_prepare_software_repair", discoveredNames);
+        Assert.DoesNotContain("legend_prepare_software_repair", discoveredNames);
         Assert.Contains("legend_inspect_repair_validation", discoveredNames);
         Assert.Contains("legend_request_repair_release", discoveredNames);
-        Assert.Contains("legend_release_approved_repair", discoveredNames);
+        Assert.DoesNotContain("legend_release_approved_repair", discoveredNames);
         Assert.Contains("legend_verify_repair_deployment", discoveredNames);
         Assert.All(discovered, item =>
         {
-            var mutation = item.GetProperty("access").GetString() ==
-                "founder_governed_mutation";
-            Assert.Equal(mutation,
+            var access = item.GetProperty("access").GetString();
+            var consequentialMutation = access == "founder_governed_mutation";
+            Assert.Equal(consequentialMutation,
                 item.GetProperty("requiresExplicitFounderCommand").GetBoolean());
+            if (item.GetProperty("name").GetString() == "legend_remember_founder_rule")
+            {
+                Assert.Equal("founder_explicit_account_preference_write", access);
+                Assert.False(item.GetProperty("requiresExplicitFounderCommand").GetBoolean());
+            }
             Assert.False(item.GetProperty("canOverrideAuthorities").GetBoolean());
+            Assert.False(item.GetProperty("canModifyRepository").GetBoolean());
+            Assert.False(item.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
+            Assert.False(item.GetProperty("canMergeExactApprovedRepair").GetBoolean());
             Assert.False(item.GetProperty("canDeploy").GetBoolean());
             Assert.False(item.GetProperty("arbitrarySql").GetBoolean());
             Assert.False(item.GetProperty("arbitraryShell").GetBoolean());
             Assert.False(item.GetProperty("arbitraryCodeExecution").GetBoolean());
         });
-
-        var repairPreparation = discovered.Single(item =>
-            item.GetProperty("name").GetString() == "legend_prepare_software_repair");
-        Assert.True(repairPreparation.GetProperty("canModifyRepository").GetBoolean());
-        Assert.True(repairPreparation.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
-        Assert.False(repairPreparation.GetProperty("canMergeExactApprovedRepair").GetBoolean());
-
-        var release = discovered.Single(item =>
-            item.GetProperty("name").GetString() == "legend_release_approved_repair");
-        Assert.False(release.GetProperty("canModifyRepository").GetBoolean());
-        Assert.True(release.GetProperty("canMergeExactApprovedRepair").GetBoolean());
 
         Assert.DoesNotContain("run_shell", discoveredNames);
         Assert.DoesNotContain("execute_sql", discoveredNames);

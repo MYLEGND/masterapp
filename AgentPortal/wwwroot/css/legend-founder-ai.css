@@ -1647,3 +1647,46 @@
         animation-iteration-count: 1;
     }
 }
+
+.legend-founder-ai-content {
+    white-space: normal;
+}
+
+.legend-founder-ai-content > * {
+    margin: 0 0 .65em;
+}
+
+.legend-founder-ai-content > :last-child {
+    margin-bottom: 0;
+}
+
+.legend-founder-ai-content p,
+.legend-founder-ai-content li {
+    white-space: pre-wrap;
+}
+
+.legend-founder-ai-content :is(h1, h2, h3, h4, h5, h6) {
+    color: inherit;
+    font-size: 1.05em;
+    font-weight: 750;
+    line-height: 1.4;
+}
+
+.legend-founder-ai-content :is(ul, ol) {
+    padding-left: 1.5em;
+}
+
+.legend-founder-ai-content li + li {
+    margin-top: .25em;
+}
+
+.legend-founder-ai-content pre {
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.legend-founder-ai-content code {
+    color: inherit;
+    font-size: .92em;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}

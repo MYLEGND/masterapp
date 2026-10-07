@@ -73,8 +73,9 @@ public sealed class LegendFounderDiagnosticExecutionTests
         if (includeUnrelated)
         {
             Assert.Equal("partial_governed_inspection", response.Reason);
-            Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
-            Assert.Contains(LegendFounderAiConversationService.ReadScopeIdentity(
+            Assert.Contains("Some requested governed reads remain unavailable; their state was not verified.", response.Message);
+            Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
+            Assert.DoesNotContain(LegendFounderAiConversationService.ReadScopeIdentity(
                 "legend_search_retained_knowledge", arguments[0]), response.Message);
         }
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
