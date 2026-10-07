@@ -10606,7 +10606,7 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(16000)
-                        .HasColumnType("nvarchar(16000)")
+                        .HasColumnType("nvarchar(max)")
                         .HasDefaultValue("[]");
 
                     b.Property<bool>("IsEmailVisible")
