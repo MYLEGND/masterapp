@@ -858,6 +858,141 @@
         }
     }
 
+    function appendAssistantInline(parent, text, depth = 0) {
+        if (depth > 8) {
+            parent.appendChild(document.createTextNode(text));
+            return;
+        }
+        let plain = '';
+        const flush = () => {
+            if (plain) parent.appendChild(document.createTextNode(plain));
+            plain = '';
+        };
+        const closing = (token, from) => {
+            for (let at = from; at < text.length; at++) {
+                let escapes = 0;
+                for (let i = at - 1; i >= 0 && text[i] === '\\'; i--) escapes++;
+                // A bold delimiter inside literal inline code cannot close bold.
+                if (token[0] !== '`' && text[at] === '`' && escapes % 2 === 0) {
+                    const run = /^`+/.exec(text.slice(at))[0];
+                    const end = closing(run, at + run.length);
+                    if (end !== -1) { at = end + run.length - 1; continue; }
+                    at += run.length - 1;
+                    continue;
+                }
+                if (!text.startsWith(token, at)) continue;
+                const exactCodeRun = token[0] !== '`' || (text[at - 1] !== '`' && text[at + token.length] !== '`');
+                if (exactCodeRun && (token[0] === '`' || escapes % 2 === 0)) return at;
+            }
+            return -1;
+        };
+        for (let i = 0; i < text.length;) {
+            if (text[i] === '\\' && /[\\`*{}\[\]()#+\-.!_>]/.test(text[i + 1] || '')) {
+                plain += text[i + 1];
+                i += 2;
+                continue;
+            }
+            let token = null;
+            let tag = null;
+            if (text[i] === '`') {
+                token = /^`+/.exec(text.slice(i))[0];
+                tag = 'code';
+            } else if (text.startsWith('**', i) || text.startsWith('__', i)) {
+                token = text.slice(i, i + 2);
+                tag = 'strong';
+            }
+            if (token) {
+                const end = closing(token, i + token.length);
+                const value = end < 0 ? '' : text.slice(i + token.length, end);
+                if (value && (tag === 'code' || (!/^\s|\s$/.test(value)))) {
+                    flush();
+                    const node = document.createElement(tag);
+                    if (tag === 'code') node.textContent = value;
+                    else appendAssistantInline(node, value, depth + 1);
+                    parent.appendChild(node);
+                    i = end + token.length;
+                    continue;
+                }
+                plain += token;
+                i += token.length;
+                continue;
+            }
+            plain += text[i++];
+        }
+        flush();
+    }
+
+    function renderAssistantContent(body, content) {
+        const text = String(content ?? '');
+        body.className = 'legend-founder-ai-content';
+        // Exact machine-readable JSON is content, not Markdown. Never interpret
+        // formatting tokens inside its string values.
+        if (/^\s*(?:[\[{"]|-?\d|true\b|false\b|null\b)/.test(text)) {
+            try {
+                JSON.parse(text);
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.textContent = text;
+                pre.appendChild(code);
+                body.appendChild(pre);
+                return;
+            } catch { /* Ordinary prose or incomplete JSON stays literal below. */ }
+        }
+        const lines = text.split('\n');
+        const fence = line => /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        const heading = line => /^ {0,3}(#{1,6})[ \t]+(.+?)\s*$/.exec(line);
+        const item = line => /^ {0,3}(?:([-+*])|([0-9]{1,9})[.)])[ \t]+(.*)$/.exec(line);
+        for (let i = 0; i < lines.length;) {
+            if (!lines[i].trim()) { i++; continue; }
+            const block = fence(lines[i]);
+            if (block) {
+                const marker = block[1];
+                const closing = new RegExp('^ {0,3}' + marker[0] + '{' + marker.length + ',}[ \\t\\r]*$');
+                const codeLines = [];
+                i++;
+                while (i < lines.length && !closing.test(lines[i])) codeLines.push(lines[i++]);
+                if (i < lines.length) i++;
+                const pre = document.createElement('pre');
+                const code = document.createElement('code');
+                code.textContent = codeLines.join('\n');
+                pre.appendChild(code);
+                body.appendChild(pre);
+                continue;
+            }
+            const title = heading(lines[i]);
+            if (title) {
+                const node = document.createElement('h' + title[1].length);
+                appendAssistantInline(node, title[2]);
+                body.appendChild(node);
+                i++;
+                continue;
+            }
+            const entry = item(lines[i]);
+            if (entry) {
+                const ordered = !!entry[2];
+                const list = document.createElement(ordered ? 'ol' : 'ul');
+                if (ordered) list.start = Number(entry[2]);
+                while (i < lines.length) {
+                    const next = item(lines[i]);
+                    if (!next || !!next[2] !== ordered) break;
+                    const row = document.createElement('li');
+                    appendAssistantInline(row, next[3]);
+                    list.appendChild(row);
+                    i++;
+                }
+                body.appendChild(list);
+                continue;
+            }
+            const paragraph = [lines[i++]];
+            while (i < lines.length && lines[i].trim() && !fence(lines[i]) && !heading(lines[i]) && !item(lines[i])) {
+                paragraph.push(lines[i++]);
+            }
+            const node = document.createElement('p');
+            appendAssistantInline(node, paragraph.join('\n'));
+            body.appendChild(node);
+        }
+    }
+
     function appendBubble(
         role,
         content,
@@ -916,9 +1051,10 @@
         // Conversation content already carries the server's response language.
         // The app-copy catalog may translate the authority label, never user
         // text or a completed/streamed model response that happens to match it.
-        const body = document.createElement('span');
+        const body = document.createElement(role === 'assistant' ? 'div' : 'span');
         if (role !== 'service') body.setAttribute('data-user-content', '');
-        body.textContent = content;
+        if (role === 'assistant') renderAssistantContent(body, content);
+        else body.textContent = content;
         bubble.appendChild(body);
 
         // Provider/model provenance remains on the governed response contract for

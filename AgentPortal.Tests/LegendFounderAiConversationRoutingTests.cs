@@ -13,6 +13,49 @@ namespace AgentPortal.Tests;
 public sealed class LegendFounderAiConversationRoutingTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReadFailurePresentation_PreservesAnswerWithoutDumpingDiagnostics(bool failed)
+    {
+        var owner = typeof(LegendFounderAiConversationService);
+        var diagnosticType = owner.GetNestedType("FounderAiReadDiagnostic", BindingFlags.NonPublic);
+        Assert.NotNull(diagnosticType);
+        var failures = Array.CreateInstance(diagnosticType!, failed ? 1 : 0);
+        if (failed)
+            failures.SetValue(Activator.CreateInstance(diagnosticType!,
+                new object[] { "private-tool-name", "private-scope-hash", "private-diagnostic-reason" }), 0);
+        var method = owner.GetMethod("AppendReadDiagnostics", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        const string answer = "Four leads are verified.";
+        var result = Assert.IsType<string>(method!.Invoke(null, new object[] { answer, failures }));
+        Assert.Equal(failed
+            ? answer + "\n\nSome requested governed reads remain unavailable; their state was not verified."
+            : answer, result);
+        Assert.DoesNotContain("private-", result);
+        Assert.DoesNotContain("LEGEND_GOVERNED_READ_DIAGNOSTICS", result);
+        Assert.DoesNotContain("{", result);
+    }
+
+    [Theory]
+    [InlineData("legend", false)]
+    [InlineData("legend", true)]
+    [InlineData("teacher", false)]
+    public void Instructions_UseDirectEvidenceBasedStyleAndPreserveExplicitFormats(string mode, bool cloudflareHosted)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var instructions = Assert.IsType<string>(method!.Invoke(null,
+            new object?[] { mode, null, null, cloudflareHosted }));
+        Assert.Contains("Lead with the direct answer. Keep simple answers concise", instructions);
+        Assert.Contains("Distinguish known facts, inferences, unknowns, unavailable evidence and restricted information", instructions);
+        Assert.Contains("Do not add canned greetings, generic capability advertising", instructions);
+        Assert.Contains("Do not dump raw tool payloads or JSON unless explicitly requested", instructions);
+        Assert.Contains("An explicit exact-format, raw-text or machine-readable request takes priority", instructions);
+        Assert.Contains("Never expose credentials, another user's identity or private content", instructions);
+    }
+
+    [Theory]
     [InlineData("Hi")]
     [InlineData("Hello")]
     [InlineData("Hello legend")]

@@ -3276,8 +3276,7 @@ public sealed class LegendFounderAiConversationService
         ICollection<FounderAiReadDiagnostic> failures) =>
         failures.Count == 0
             ? answer
-            : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.\n" +
-              "LEGEND_GOVERNED_READ_DIAGNOSTICS\n" + JsonSerializer.Serialize(failures, JsonOptions);
+            : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.";
 
     internal static string ReadScopeIdentity(string tool, string arguments)
     {
@@ -3720,6 +3719,10 @@ You are Legend® Ai in the authenticated Founder interface.
 
 ANSWER THE REQUEST
 Understand the user's intent, supplied facts, constraints, corrections and conversation references. Give a clear, relevant answer in the requested language and exact requested format. When only a machine-readable value is requested, output that value without Markdown fences, preambles or commentary. For hypothetical scenarios, writing, reasoning and plans, reason from the supplied premises; they do not require organizational records. Distinguish what necessarily follows from what is merely possible. Answer the parts that can be resolved, identify the missing information for the rest, and avoid unsupported certainty.
+
+RESPONSE STYLE
+Lead with the direct answer. Keep simple answers concise; use short paragraphs and, only when useful, headings or lists for complex answers. Present the conclusion, relevant evidence, important uncertainty and next useful action without repeating the request or conclusion. Distinguish known facts, inferences, unknowns, unavailable evidence and restricted information. Provide concise reasoning summaries, never private scratchpad reasoning.
+Do not add canned greetings, generic capability advertising, repetitive disclaimers or unnecessary tool names. Describe current capabilities only when asked and only from the exposed capability evidence. Do not dump raw tool payloads or JSON unless explicitly requested. Use clean Markdown with balanced formatting and restrained spacing for prose; preserve literal code and quoted content. An explicit exact-format, raw-text or machine-readable request takes priority over these presentation defaults: return precisely that format without decorations or extra commentary.
 
 USE EVIDENCE AND TOOLS APPROPRIATELY
 Tools are optional. Select an exposed tool only when its result helps the actual request. The tool catalog defines its arguments, purpose and prerequisites; do not invent tools, records, dashboards, citations or results. Use executable calculations when they help verify arithmetic. A calculation verifies the supplied operands, not whether those operands describe real records.
