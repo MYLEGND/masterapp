@@ -8236,6 +8236,10 @@ header .legend-global-nav .container-fluid {
         padding-left: 0.62rem;
     }
 
+    .messaging-command-center-thread {
+        padding-bottom: max(0.62rem, env(safe-area-inset-bottom));
+    }
+
     .messaging-command-center-header {
         gap: 0.55rem;
         padding-top: 0.55rem;
@@ -8252,7 +8256,7 @@ header .legend-global-nav .container-fluid {
     }
 
     .messaging-command-center-grid {
-        grid-template-rows: minmax(166px, 0.36fr) minmax(0, 1fr);
+        grid-template-rows: minmax(120px, 0.24fr) minmax(0, 1fr);
     }
 
     .messaging-command-center-sidebar {
@@ -8291,9 +8295,56 @@ header .legend-global-nav .container-fluid {
         max-width: 91%;
     }
 
+    .messaging-send-form {
+        gap: 0.5rem;
+        margin-top: 0.55rem;
+        padding: 0.72rem;
+        border: 1px solid #d9a53a;
+        border-radius: 22px;
+        background: #ffffff;
+        box-shadow:
+            0 10px 28px rgba(2,10,28,.16),
+            inset 0 1px 0 rgba(255,255,255,.94);
+    }
+
+    .messaging-compose-target {
+        padding-inline: 0.16rem;
+        font-size: 0.7rem;
+    }
+
+    .messaging-send-form textarea {
+        min-height: 64px;
+        max-height: min(320px, 38dvh);
+        padding: 1px 0.16rem 4px;
+        overflow-y: hidden;
+        border: 0;
+        border-radius: 0;
+        background: #ffffff;
+        box-shadow: none;
+        font-size: 16px;
+        line-height: 1.48;
+    }
+
+    .messaging-send-form textarea:focus {
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    .messaging-send-actions {
+        align-items: center;
+        gap: 0.55rem;
+    }
+
     .messaging-file-label,
     .messaging-primary-button {
+        min-height: 42px;
+        border-radius: 999px;
         text-align: center;
+    }
+
+    .messaging-attachment-note {
+        font-size: 0.68rem;
+        line-height: 1.3;
     }
 }
 
