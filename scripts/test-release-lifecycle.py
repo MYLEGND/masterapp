@@ -277,8 +277,8 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
                 value = super().text(revision, path)
                 if path == "scripts/release-lifecycle.py":
                     return value.replace(
-                        '        "legend-release-operation-success-",\n',
-                        '        "legend-release-operation-intent-",\n',
+                        "        match = re.fullmatch(r'legend-release-operation-success-([a-f0-9]{64})', name)\n",
+                        "        match = re.fullmatch(r'legend-release-operation-intent-([a-f0-9]{64})', name)\n",
                     )
                 return value
         result = m.candidate_control_plane_integrity(
