@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Adversarial tests for the single protected approved-branch release lifecycle."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
