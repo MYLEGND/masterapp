@@ -16,6 +16,11 @@ multiple instruction copies.
 - Production truth is established by canonical release evidence and exact live provenance.
 - Follow `Docs/releases/branch-lifecycle.md` and `DEPLOYMENT.md` for current release
   mechanics; never reconstruct release behavior from memory.
+- **One canonical source of truth is absolute:** never add overrides, patches, stacked files,
+  duplicate writers, shadow paths, fallback authorities, or parallel implementations for the
+  same decision/fact. Repair the canonical owner, prove the replacement, and remove the
+  superseded competing path. Shape-only compatibility adapters may delegate one-way into the
+  canonical owner but may never become an independent policy/state/write authority.
 - Ordinary application/product work must not modify the protected release-control plane.
   AI may inspect, diagnose, recommend, and prepare a proposed release-control change, but
   protected release-control mutation requires explicit Founder approval of that specific
