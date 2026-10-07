@@ -1221,6 +1221,23 @@ jobs:
         self.assertEqual((), m.release_targets_for_paths([path]))
         self.assertTrue(m.release_control_only_path(path))
 
+    def test_ai_governance_files_never_select_application_publication(self):
+        paths = [
+            ".github/CODEOWNERS",
+            ".github/agents/legend-intelligence-engineer.agent.md",
+            ".github/agents/masterapp-chief-architect.agent.md",
+            ".github/agents/masterapp-cross-platform-engineer.agent.md",
+            ".github/agents/masterapp-release-reviewer.agent.md",
+            ".github/agents/masterapp-runtime-engineer.agent.md",
+            ".github/agents/masterapp-verification-engineer.agent.md",
+            ".github/copilot-instructions.md",
+            "AGENTS.md",
+        ]
+
+        self.assertTrue(all(m.release_control_only_path(path) for path in paths))
+        self.assertEqual((), m.release_targets_for_paths(paths))
+        self.assertTrue(all(not m.package_canary_input_path(path) for path in paths))
+
     def test_lifecycle_control_change_requires_architecture_and_security(self):
         topology = m.required_validation_topology([
             "scripts/release-lifecycle.py",

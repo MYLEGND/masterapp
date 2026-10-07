@@ -594,6 +594,8 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
 # shared by release baseline resolution and package-canary preservation.
 RELEASE_CONTROL_ONLY_EXACT = frozenset({
     "AGENTS.md",
+    ".github/CODEOWNERS",
+    ".github/copilot-instructions.md",
     "DEPLOYMENT.md",
     ".claude/settings.local.json",
     "deploy-portal.sh",
@@ -681,6 +683,7 @@ def package_builder_workflow_contract(text: str) -> str:
 def release_control_only_path(path: str) -> bool:
     return (
         path.startswith(".github/workflows/")
+        or path.startswith(".github/agents/")
         or path.startswith("scripts/MigrationReleaseProbe/")
         or path == "scripts/migration-probe-package.py"
         or path.startswith("Docs/")

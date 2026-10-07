@@ -387,11 +387,20 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.match(shell,/--legend-app-panel:var\(--legend-app-surface-elevated\)/);
   assert.match(shared,/\.messaging-send-form textarea[\s\S]*background: var\(--legend-app-surface-elevated\);/);
   assert.doesNotMatch(aiCss,/--legend-ai-response/);
-  assert.match(aiCss,/background: linear-gradient\(145deg,#f8fbff,#eef4fb\)/);
+  assert.match(aiCss,/--legend-ai-blue: var\(--legend-design-aiResponseRoyal, #315FD1\)/);
+  assert.match(aiCss,/--legend-ai-blue-bright: var\(--legend-design-verified, #1F7AEB\)/);
   assert.match(aiCss,/\.legend-founder-ai-main[\s\S]*linear-gradient\(180deg, var\(--legend-ai-navy-925\), var\(--legend-ai-ink\)\)/);
-  assert.match(aiCss,/\.legend-founder-ai-transcript[\s\S]*background: #ffffff;[\s\S]*color: var\(--legend-ai-canvas-ink\);[\s\S]*border-radius: 18px/);
+  assert.match(aiCss,/\.legend-founder-ai-transcript[\s\S]*linear-gradient\(180deg, var\(--legend-ai-navy-950\), var\(--legend-ai-ink\)\)[\s\S]*color: var\(--legend-ai-text\)/);
+  assert.doesNotMatch(aiCss,/\.legend-founder-ai-transcript\s*\{[^}]*background:\s*#ffffff/);
+  assert.match(aiCss,/\.legend-founder-ai-message\.is-user \.legend-founder-ai-bubble[\s\S]*linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
+  assert.match(aiCss,/\.legend-founder-ai-message\.is-assistant \.legend-founder-ai-bubble[\s\S]*linear-gradient\(145deg, var\(--legend-ai-navy-925\), var\(--legend-ai-navy-950\)\)/);
   assert.match(aiCss,/\.legend-founder-ai-title-row sup,[\s\S]*color: inherit;/);
-  assert.match(aiView,/Ask Legend<sup>®<\/sup> Ai/);
+  assert.match(aiView,/legend-founder-ai-welcome-ai">AI<\/span>/);
+  assert.match(aiView,/Ideas\. Answers\. Next Steps\./);
+  assert.match(aiView,/Hi! I’m Legend<sup>®<\/sup> Ai\./);
+  assert.equal(aiView.split('data-legend-ai-suggestion=').length-1,4);
+  assert.match(aiView,/id="legendFounderAiComposerMenu"/);
+  assert.match(aiView,/id="legendFounderAiVoiceFocus"/);
   assert.ok(aiView.indexOf('id="legendFounderAiModebar"') > aiView.indexOf('id="legendFounderAiMobileControls"'));
   assert.ok(aiView.indexOf('id="legendFounderAiModebar"') < aiView.indexOf('legend-founder-ai-conversations-section'));
   assert.ok(aiView.indexOf('id="legendFounderAiRetry"') < aiView.indexOf('legend-founder-ai-conversations-section'));
@@ -399,6 +408,9 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.ok(aiView.indexOf('id="legendFounderAiFounderCommandConfirmed"') < aiView.indexOf('legend-founder-ai-conversations-section'));
   assert.doesNotMatch(aiView,/legend-founder-ai-composer-meta[\s\S]{0,800}id="legendFounderAiFounderCommandConfirmed"/);
   assert.match(aiJs,/modebar\.parentElement !== mobileControls[\s\S]*mobileControls\.appendChild\(modebar\)/);
+  assert.match(aiJs,/data-legend-ai-suggestion/);
+  assert.match(aiJs,/composerMenu\?\.addEventListener[\s\S]*setSidebarOpen\(true\)/);
+  assert.match(aiJs,/userMark\.className = 'legend-founder-ai-user-mark'/);
   assert.match(aiJs,/conversation\.messages\.push\(\{[\s\S]*role: 'user',[\s\S]*content: text,[\s\S]*pending: true/);
   assert.match(aiJs,/renderAll\(\{ forceBottom: true \}\);[\s\S]*await executeConversationRequest\(conversation, operation\)/);
   assert.match(aiJs,/optimisticUser\.id = result\.userMessageId;[\s\S]*optimisticUser\.pending = false/);
@@ -414,9 +426,9 @@ test('mobile conversational composers own the available viewport and grow with t
 
   assert.match(aiCss,/\.legend-founder-ai-workspace,[\s\S]*?flex: 1 1 auto;[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
   assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
-  assert.match(aiCss,/\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 94px;[\s\S]*?border-radius: 22px;/);
-  assert.match(aiCss,/\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 64px;[\s\S]*?max-height: min\(320px, 38dvh\);/);
-  assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.38\)/);
+  assert.match(aiCss,/\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 56px;[\s\S]*?border-radius: 30px;/);
+  assert.match(aiCss,/\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 36px;[\s\S]*?max-height: min\(132px, 22dvh\);/);
+  assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.22\)/);
   assert.match(aiJs,/event\.key === 'Enter'[\s\S]{0,120}!event\.shiftKey[\s\S]{0,120}!isMobile\(\)/);
 
   assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(button, \.btn, a\.btn\)/);
