@@ -1410,6 +1410,126 @@ class GeneratedPublicationStages(unittest.TestCase):
         self.assertNotIn('--verify-outcomes', workflow)
 
 
+
+class HistoricalPrepublicationLeaseProof(unittest.TestCase):
+    """The two prior generation fingerprints establish *non-entry*, not success."""
+
+    HEAD = 'a0bec5ab2e66a394b6ac64c937333cbe01c49809'
+    BLOBS = {
+        '.github/workflows/' + m.DIRECT: 'bd84c42297a50b29dfa20c2ed926b8233074720e',
+        'scripts/release-prepublication.py': '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+        'scripts/release-child-receipt.py': 'b1e262458f8ccac1132f7f71cb434d47b805116a',
+        'scripts/release-operation-evidence.py': 'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9',
+        'scripts/release-migration.py': '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
+        'scripts/deploy-approved-app.py': '39d5b972bf47d9f29146fe44929e005843ffd234',
+        'scripts/validation-resume.py': '34e30ff044dada73593f3662f71fc3f442f869b2',
+    }
+
+    def setUp(self):
+        self.api = Api()
+        self.workflow = (Path(__file__).resolve().parents[1] / '.github/workflows' / m.DIRECT).read_text()
+        mutation = m._historical_release_mutation_steps(self.workflow)
+        self.assertIn('Synchronize canonical pre-publication resource lanes', mutation)
+        self.steps = [
+            {'name': name, 'conclusion': (
+                'failure' if name == 'Synchronize canonical pre-publication resource lanes'
+                else 'success' if name in (
+                    'Prepare complete immutable release transaction',
+                    'Reconcile complete immutable release transaction',
+                ) else 'skipped')}
+            for name in sorted(mutation)
+        ]
+        self.steps.extend([
+            {'name': name, 'conclusion': 'skipped'}
+            for name in ('Reconcile terminal release resource disposition',
+                         'Preserve terminal release resource disposition',
+                         'Retain exact approved release receipt')
+        ])
+        self.run = dict(id=37674186895, run_attempt=1, status='completed', conclusion='failure',
+                        head_sha=self.HEAD, path='.github/workflows/' + m.DIRECT,
+                        head_branch=m.APPROVED, event='workflow_dispatch',
+                        head_repository={'full_name': self.api.repo})
+        self.record = dict(
+            admissionId='9' * 64,
+            applicationRevision='9e1fe088ff640893706f7c469a69417cfa24ee8e',
+            producingAttempt=1,
+            selectedTargets=[canonical_name(key) for key in ('portal','client','protect','parfait','website')],
+            resources=sorted(['write/schema/masterapp'] + [
+                'write/app/' + canonical_name(key)
+                for key in ('portal','client','protect','parfait','website')
+            ]),
+        )
+        names = [
+            'legend-release-admission-' + self.record['admissionId'],
+            f"legend-release-step-state-{self.record['applicationRevision']}-{self.run['id']}-1",
+            'legend-release-transaction-plan-' + '8' * 64,
+        ]
+        names.extend(
+            f"diagnostics-rollback-{key}-{self.HEAD}"
+            for key in ('portal','client','protect','parfait','website')
+        )
+        self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
+            {'name': name, 'expired': False} for name in names
+        ]
+        self.api.pages_map[f"actions/runs/{self.run['id']}/attempts/1/jobs"] = [
+            {'name':'release', 'status':'completed','conclusion':'failure','steps': self.steps}
+        ]
+
+    def git(self, *args, **_):
+        if args[0] == 'rev-parse':
+            path = args[1].split(':',1)[1]
+            return SimpleNamespace(returncode=0, stdout=self.BLOBS.get(path, '') + '\\n')
+        if args[0] == 'show':
+            return SimpleNamespace(returncode=0, stdout=self.workflow)
+        return SimpleNamespace(returncode=1, stdout='')
+
+    def proven(self):
+        with patch.object(m, 'git', side_effect=self.git):
+            return m._historical_fenced_prepublication_nonentry(
+                self.api, self.run, self.record
+            )
+
+    def test_exact_historical_no_write_failure_disposes_old_lease(self):
+        self.assertTrue(self.proven())
+        self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
+            row for row in self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+            if not row['name'].startswith('legend-release-transaction-plan-')
+        ]
+        self.assertTrue(self.proven())  # Reused immutable plan is valid history.
+
+    def test_any_durable_intent_blocks_discharge(self):
+        artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+        for prefix in ('legend-release-child-intent-', 'legend-release-operation-intent-'):
+            with self.subTest(prefix=prefix):
+                artifacts.append({'name': prefix + 'f' * 64, 'expired': False})
+                self.assertFalse(self.proven())
+                artifacts.pop()
+
+    def test_incomplete_artifacts_or_untrusted_history_blocks_discharge(self):
+        artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+        missing = artifacts.pop()
+        self.assertFalse(self.proven())
+        artifacts.append(missing)
+        with patch.dict(self.BLOBS, {'scripts/release-migration.py': 'a' * 40}):
+            self.assertFalse(self.proven())
+        self.run['head_repository'] = {'full_name': 'attacker/repo'}
+        self.assertFalse(self.proven())
+
+    def test_publication_entry_or_missing_step_blocks_discharge(self):
+        self.steps.append({'name': 'Submit canonical selected targets in parallel', 'conclusion': 'success'})
+        self.assertFalse(self.proven())
+        self.steps.pop()
+        self.steps[:] = [step for step in self.steps if step['name'] != 'Synchronize canonical pre-publication resource lanes']
+        self.assertFalse(self.proven())
+
+    def test_multiple_attempts_and_schema_write_intent_remain_blocked(self):
+        self.run['run_attempt'] = 2
+        self.assertFalse(self.proven())
+        self.run['run_attempt'] = 1
+        self.record['producingAttempt'] = 2
+        self.assertFalse(self.proven())
+
+
 class ResourceAdmission(unittest.TestCase):
     def resources(self, paths):
         authority = m.VALIDATION_AUTHORITY
