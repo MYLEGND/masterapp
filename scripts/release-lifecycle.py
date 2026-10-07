@@ -10,6 +10,7 @@ import ast
 import base64
 import importlib.util
 import hashlib
+import http.client
 import tempfile
 import json
 import os
@@ -92,18 +93,29 @@ class GitHub:
 
     def api(self, path, data=None, method=None):
         payload = json.dumps(data).encode() if data is not None else None
-        request = urllib.request.Request(self.root + '/' + path, data=payload,
-            method=method or ('POST' if payload is not None else 'GET'), headers={
-                'Authorization': 'Bearer ' + self.token,
-                'Accept': 'application/vnd.github+json',
-                'Content-Type': 'application/json', 'User-Agent': 'legend-release-lifecycle'})
-        try:
-            with urllib.request.urlopen(request, timeout=45) as response:
-                body = response.read()
-                return json.loads(body) if body else None
-        except urllib.error.HTTPError as error:
-            # Do not log tokens, response bodies or environment dumps.
-            raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
+        verb = method or ('POST' if payload is not None else 'GET')
+        attempts = 3 if verb == 'GET' else 1
+        for attempt in range(attempts):
+            request = urllib.request.Request(self.root + '/' + path, data=payload,
+                method=verb, headers={
+                    'Authorization': 'Bearer ' + self.token,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json', 'User-Agent': 'legend-release-lifecycle'})
+            try:
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    body = response.read()
+                    return json.loads(body) if body else None
+            except urllib.error.HTTPError as error:
+                retryable = verb == 'GET' and error.code in {408, 429, 500, 502, 503, 504}
+                if not retryable or attempt + 1 >= attempts:
+                    # Do not log tokens, response bodies or environment dumps.
+                    raise RuntimeError(f'GitHub {verb} {path}: HTTP {error.code}') from None
+            except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected):
+                if verb != 'GET' or attempt + 1 >= attempts:
+                    # Never replay an ambiguous mutation request.
+                    raise RuntimeError(f'GitHub {verb} {path}: transient transport failure') from None
+            time.sleep(attempt + 1)
+        raise RuntimeError(f'GitHub {verb} {path}: retry budget exhausted')
 
     def pages(self, path, key=None):
         rows = []
@@ -472,6 +484,15 @@ def _function_source(source, tree, name):
     return ''
 
 
+def _class_method_source(source, tree, class_name, method_name):
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == method_name:
+                    return ast.get_source_segment(source, item) or ''
+    return ''
+
+
 def repository_ruleset_integrity(api):
     """The protected branch must retain the external safety rails the lifecycle assumes."""
     rows = api.api('rulesets')
@@ -695,6 +716,19 @@ def candidate_control_plane_integrity(api, pr, names):
         'not own_run',
     )):
         return 'Candidate removed fail-closed live-provenance lease discharge'
+
+    github_api_source = _class_method_source(
+        source['lifecycle'], lifecycle_tree, 'GitHub', 'api'
+    )
+    if not all(token in github_api_source for token in (
+        "attempts = 3 if verb == 'GET' else 1",
+        "error.code in {408, 429, 500, 502, 503, 504}",
+        "http.client.RemoteDisconnected",
+        "if verb != 'GET' or attempt + 1 >= attempts",
+        "Never replay an ambiguous mutation request",
+        "time.sleep(attempt + 1)",
+    )):
+        return 'Candidate weakened bounded read-only GitHub transport recovery'
 
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
