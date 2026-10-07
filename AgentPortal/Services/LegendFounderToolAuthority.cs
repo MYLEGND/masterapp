@@ -90,6 +90,7 @@ internal sealed partial class LegendFounderToolAuthority
         return Tools.Where(tool =>
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            if (IsRepositoryControlPlaneMutation(name)) return false;
             if (name == "legend_remember_conversation_facts")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
@@ -135,24 +136,17 @@ internal sealed partial class LegendFounderToolAuthority
         // Reuse the executable registry's original schemas. Read-only does not
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
-        // Read callbacks can be live while every cloud mutation remains
-        // independently fail-closed. Future write enablement reuses this same
-        // registry and still requires the existing exact-action approval gates.
-        var mutationsEnabled =
-            CloudToolFeatureEnabled("LegendConnect:Foundation:Cloudflare:MutationsEnabled") &&
-            CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        // Repository/control-plane writes are never model capabilities, even
+        // when historical cloud mutation flags or approvals remain enabled.
         var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
-            .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
-                .GetProperty("name").GetString() == CloudRepairTool))
             .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
-                .GetProperty("name").GetString()!, mutationsEnabled, repositoryEnabled)).ToArray();
+                .GetProperty("name").GetString()!, false, repositoryEnabled)).ToArray();
     }
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
-        name == CloudRepairTool ? mutationsEnabled
-        : name == "legend_inspect_repository" ? repositoryEnabled
-        : IsCloudReadableTool(name);
+        !IsRepositoryControlPlaneMutation(name) &&
+        (name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name));
 
     // Cloudflare consumes the same canonical read projection exposed by the
     // Founder GPT/site-tool path. This is intentionally a deny-classification,
@@ -171,6 +165,18 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_request_teacher_escalation" or
             "legend_request_repair_release");
+
+    // One classification for model catalog, capability projection and dispatch.
+    // The authenticated Founder Work site path retains its existing guarded
+    // workflow tools; model confirmation and cloud approval never grant access.
+    private static bool IsRepositoryControlPlaneMutation(string name) =>
+        name is
+            "legend_prepare_software_repair" or
+            "legend_release_approved_repair" or
+            "legend_engineering_bootstrap" or
+            "legend_engineering_renew_turn" or
+            "legend_engineering_complete_turn" or
+            "legend_engineering_approve_release";
 
     private static bool IsFounderSiteWorkflowMutationTool(string name) =>
         name is
@@ -453,6 +459,14 @@ internal sealed partial class LegendFounderToolAuthority
         FounderAiActionScope? serverDerivedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (IsRepositoryControlPlaneMutation(call.Name) &&
+            (serverDerivedScope is not null || mode != "founder_work" ||
+             !IsFounderSiteWorkflowMutationTool(call.Name)))
+            return serverDerivedScope is not null
+                ? CloudActionFailure("cloud_action_tool_not_exposed")
+                : MutationFailure("model_repository_write_forbidden",
+                    "Repository and engineering control-plane writes are unavailable to LEGEND AI.");
 
         if (serverDerivedScope is not null)
         {
@@ -2534,7 +2548,7 @@ internal sealed partial class LegendFounderToolAuthority
             var name = root.TryGetProperty("name", out var nameElement)
                 ? nameElement.GetString()
                 : null;
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(name) || IsRepositoryControlPlaneMutation(name))
                 continue;
             if (cloudExposureOnly && !IsCloudExposedTool(name, mutationsEnabled, repositoryEnabled))
                 continue;

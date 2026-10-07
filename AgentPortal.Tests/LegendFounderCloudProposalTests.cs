@@ -29,31 +29,22 @@ public sealed class LegendFounderCloudProposalTests
         "Review this fixed replacement.", [new("AgentPortal.Tests/Synthetic.cs", "// reviewed synthetic source\n")]);
 
     [Fact]
-    public async Task UnapprovedCloudToolOnlyCreatesOneNonExecutableProposalAndReviewLink()
+    public async Task ModelRepairCallCannotCreateProposalOrReviewLink()
     {
         await using var fixture = await Fixture.CreateAsync();
         var first = await fixture.ExecuteAsync(fixture.Source, Arguments(Patch));
         using var output = JsonDocument.Parse(first);
-        Assert.True(output.RootElement.GetProperty("ok").GetBoolean());
-        Assert.True(output.RootElement.GetProperty("pendingApproval").GetBoolean());
-        Assert.False(output.RootElement.GetProperty("executed").GetBoolean());
-        Assert.False(output.RootElement.GetProperty("githubStaged").GetBoolean());
-        Assert.StartsWith("/founder/legend-ai/actions/", output.RootElement.GetProperty("reviewUrl").GetString());
+        Assert.False(output.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("cloud_action_tool_not_exposed", output.RootElement.GetProperty("error").GetString());
         Assert.Equal(first, await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)));
-        var row = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
-        Assert.Equal("FounderProposal", row.AuthorizationKind);
-        Assert.Equal("Proposed", row.State);
-        Assert.Null(row.ApprovedUtc);
-        Assert.Null(row.ParentProposalId);
-        Assert.True(row.ExpiresUtc > fixture.Source.ExpiresUtc);
-        Assert.True(row.ExpiresUtc <= DateTime.UtcNow.AddHours(24));
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ClosedSourceTurnCanBeReviewedThenApprovedInANewSessionAndFreshOperation(bool relational)
+    public async Task ReviewedProposalAndFreshApprovalStillCannotAuthorizeModelRepositoryWrite(bool relational)
     {
         await using var fixture = await Fixture.CreateAsync(relational);
         var staged = await fixture.StageAsync();
@@ -70,17 +61,14 @@ public sealed class LegendFounderCloudProposalTests
         Assert.True(approved.Succeeded, approved.Error);
         Assert.NotEqual(review.ReviewDigest, approved.ActionDigest);
         var output = await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson);
-        Assert.Contains("STAGED_UNPUBLISHED", output);
+        Assert.Contains("cloud_action_tool_not_exposed", output);
         Assert.Equal(output, await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
-        fixture.Remediation.Verify(service => service.PrepareAsync("founder",
-            It.Is<FounderSoftwareRepairProposal>(proposal => proposal.BaseSha == Patch.BaseSha && proposal.Changes.Single().Content == Patch.Changes.Single().Content),
-            It.IsAny<CancellationToken>()), Times.Once);
         fixture.Remediation.VerifyNoOtherCalls();
         var rows = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().ToListAsync();
         Assert.Equal(2, rows.Count);
         Assert.Equal("Consumed", rows.Single(row => row.Id == review.ProposalId).State);
         var execution = rows.Single(row => row.ParentProposalId == review.ProposalId);
-        Assert.Equal("Completed", execution.State);
+        Assert.Equal("Approved", execution.State);
         Assert.Equal("fresh-session", execution.SessionId);
         Assert.Equal(Guid.Parse(fresh.RequestId), execution.RequestId);
         Assert.Equal(review.CanonicalArgumentsJson, execution.CanonicalArgumentsJson);
@@ -92,7 +80,7 @@ public sealed class LegendFounderCloudProposalTests
     [InlineData("\n")]
     [InlineData("\r\n")]
     [InlineData("\t")]
-    public async Task SourceWhitespaceIsPreservedExactlyInReviewedArgumentsAndExecution(string whitespace)
+    public async Task SourceWhitespaceIsPreservedInReviewButModelExecutionIsForbidden(string whitespace)
     {
         await using var fixture = await Fixture.CreateAsync();
         var content = "\t  // first" + whitespace + "// second  \r\n";
@@ -108,11 +96,7 @@ public sealed class LegendFounderCloudProposalTests
         var fresh = await fixture.BeginApprovalAsync();
         var approval = await fixture.ApproveAsync(staged.Review, fresh);
         Assert.True(approval.Succeeded, approval.Error);
-        Assert.Contains("STAGED_UNPUBLISHED", await fixture.ExecuteAsync(fresh, staged.Review.CanonicalArgumentsJson));
-        fixture.Remediation.Verify(service => service.PrepareAsync("founder",
-            It.Is<FounderSoftwareRepairProposal>(actual => actual.BaseSha == patch.BaseSha && actual.Title == patch.Title &&
-                actual.Summary == patch.Summary && actual.Changes.Single().Path == patch.Changes.Single().Path &&
-                actual.Changes.Single().Content == content), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fresh, staged.Review.CanonicalArgumentsJson));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
@@ -159,7 +143,7 @@ public sealed class LegendFounderCloudProposalTests
     public async Task ModelConfirmationFieldsAndOriginalOperationCannotApprove()
     {
         await using var fixture = await Fixture.CreateAsync();
-        Assert.Contains("cloud_action_arguments_invalid", await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)[..^1] + ",\"confirmed\":true}"));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)[..^1] + ",\"confirmed\":true}"));
         var review = (await fixture.StageAsync()).Review!;
         Assert.False((await fixture.ApproveAsync(review, fixture.Source)).Succeeded);
         Assert.Equal("Proposed", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
@@ -189,7 +173,7 @@ public sealed class LegendFounderCloudProposalTests
         var approval = await fixture.Authority().IssueCloudActionApprovalAsync(fixture.Principal, fixture.Source,
             Tool, Arguments(Patch), fixture.Source.ExpiresUtc, CancellationToken.None);
         Assert.True(approval.Succeeded, approval.Error);
-        Assert.Contains("cloud_action_reviewed_proposal_required", await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
@@ -268,12 +252,12 @@ public sealed class LegendFounderCloudProposalTests
         var fresh = await fixture.BeginApprovalAsync();
         Assert.True((await fixture.ApproveAsync(review, fresh)).Succeeded);
         fixture.Configuration["FounderSoftwareRemediation:CandidateValidation:TrustedWorkflowSha"] = new string('b', 40);
-        Assert.Contains("cloud_action_reviewed_proposal_required", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task UnknownGitHubOutcomeCannotCreateAnotherApprovalOrRetryExecution()
+    public async Task ModelRepairNeverReachesGitHubEvenWithApprovalAndPotentialServiceFailure()
     {
         await using var fixture = await Fixture.CreateAsync(true);
         var review = (await fixture.StageAsync()).Review!;
@@ -282,10 +266,12 @@ public sealed class LegendFounderCloudProposalTests
         Assert.True((await fixture.ApproveAsync(review, fresh)).Succeeded);
         fixture.Remediation.Setup(service => service.PrepareAsync("founder", It.IsAny<FounderSoftwareRepairProposal>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("Synthetic unknown GitHub outcome."));
-        Assert.Contains("cloud_action_outcome_unknown", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
-        Assert.Contains("cloud_action_approval_consumed", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fresh, review.CanonicalArgumentsJson));
         Assert.False((await fixture.ApproveAsync(review, fresh)).Succeeded);
-        fixture.Remediation.Verify(service => service.PrepareAsync("founder", It.IsAny<FounderSoftwareRepairProposal>(), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Remediation.VerifyNoOtherCalls();
+        Assert.Equal("Approved", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking()
+            .SingleAsync(row => row.ParentProposalId == review.ProposalId)).State);
     }
 
     [Fact]
