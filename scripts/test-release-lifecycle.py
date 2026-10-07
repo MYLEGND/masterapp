@@ -1756,6 +1756,31 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_settled', return_value=False):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
 
+    def test_admission_false_gate_with_omitted_downstream_jobs_is_nonentry(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'admission', 'conclusion': 'success'},
+            {'name': 'preserve-rollback', 'conclusion': 'skipped'},
+        ]
+        self.assertTrue(m._never_admitted(self.api, self.run))
+
+    def test_omitted_downstream_jobs_with_unexpected_wrapper_remain_blocking(self):
+        self.run.update(status='completed', conclusion='failure')
+        for jobs in (
+            [{'name': 'admission', 'conclusion': 'success'}],
+            [
+                {'name': 'admission', 'conclusion': 'success'},
+                {'name': 'preserve-rollback', 'conclusion': 'success'},
+            ],
+            [
+                {'name': 'admission', 'conclusion': 'success'},
+                {'name': 'unexpected-release-wrapper', 'conclusion': 'skipped'},
+            ],
+        ):
+            with self.subTest(jobs=jobs):
+                self.api.pages_map['actions/runs/98/attempts/1/jobs'] = jobs
+                self.assertFalse(m._never_admitted(self.api, self.run))
+
     def test_skipped_latest_attempt_does_not_erase_earlier_mutation(self):
         self.run.update(run_attempt=2, status='completed', conclusion='success')
         skipped = [{'name': 'admission', 'conclusion': 'success'},
