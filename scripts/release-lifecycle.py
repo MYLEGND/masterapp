@@ -702,6 +702,8 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened durable historical publication proof'
     if not all(token in forward_supersession_source for token in (
         '_app_only_admission_keys(record)',
+        '_app_only_admission_keys(candidate)',
+        'if new_keys is None',
         '_validate_admission_record_scope(candidate)',
         'except Exception',
         "old_revision == new_revision",
@@ -1961,14 +1963,19 @@ def _validate_admission_record_scope(record):
             value) for value in resources)):
         raise RuntimeError('Release admission resource ownership is malformed')
 
+    owned = set(resources)
     required = {
         'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
         for key in keys
     }
-    if any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys):
-        required.add('read/schema/masterapp')
-    if not required.issubset(set(resources)):
+    if not required.issubset(owned):
         raise RuntimeError('Release admission record is missing canonical target ownership')
+    if (
+        any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys)
+        and 'read/schema/masterapp' not in owned
+        and 'write/schema/masterapp' not in owned
+    ):
+        raise RuntimeError('Release admission record is missing canonical schema ownership')
     return tuple(keys)
 
 
@@ -2368,16 +2375,18 @@ def _forward_supersedes_completed_app_lease(record, candidate):
     about to publish. The historical lease itself must remain app-only: no schema
     write or auxiliary write can be discharged here.
 
-    A completed workflow cannot retain a read-only schema lease after its runner
-    has exited. The newer candidate may therefore also own schema or auxiliary
-    resources; those resources are validated independently and are never inherited
-    from, or used to settle, the historical app lease.
+    Preserve the original app-only candidate boundary when it applies. A newer
+    candidate that additionally owns schema or auxiliary resources may fall back
+    to the canonical admission-scope validator; those newer resources are never
+    inherited from, or used to settle, the historical app-only lease.
     """
     old_keys = _app_only_admission_keys(record)
-    try:
-        new_keys = _validate_admission_record_scope(candidate)
-    except Exception:
-        new_keys = None
+    new_keys = _app_only_admission_keys(candidate)
+    if new_keys is None:
+        try:
+            new_keys = _validate_admission_record_scope(candidate)
+        except Exception:
+            new_keys = None
     old_revision = record.get('applicationRevision')
     new_revision = candidate.get('applicationRevision')
     if (
