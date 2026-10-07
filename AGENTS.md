@@ -204,7 +204,81 @@ writable paths, less ambiguity, and one obvious source to inspect when truth is 
   and request; they must not independently redefine authorization, provider selection,
   production eligibility, conversion truth, or protected runtime execution.
 
-## 7. Website Studio and public-site protection
+## 7. Additional non-negotiable integrity rules
+
+### Proof integrity
+
+- Never make a failing candidate look green by deleting, skipping, renaming, weakening, narrowing,
+  mocking, short-circuiting, or changing the expected result of a valid test/check.
+- Never change timeout/retry/error handling merely to hide a real failure or convert unknown into
+  success. Fix the owning defect or classify the dependency honestly.
+- A test may change only when independent evidence proves the test/expectation is stale or wrong;
+  preserve or strengthen the behavior it was intended to protect.
+- Never suppress exceptions, swallow terminal errors, replace an error with an empty/default
+  success object, or make a consequential operation "best effort" when the canonical contract is
+  fail-closed.
+- Required proof stays required. Local, mocked, cached, historical, or lower-layer evidence cannot
+  substitute for the exact evidence class the contract requires.
+
+### Immutable identity and lineage
+
+- Stable identities are architecture, not implementation detail. Preserve canonical IDs, keys,
+  routes, owner/scope identity, node IDs, action/event names, binding IDs, schema identity,
+  correlation/dedupe identities, provider request identity, and publication/version lineage unless
+  the task explicitly requires a governed identity migration.
+- Never generate a new identity to escape a conflict, broken reference, duplicate, or validation
+  failure. Resolve the canonical identity/lineage problem.
+- If an identity must change, define the migration, compatibility boundary, affected readers and
+  writers, historical interpretation, rollback, and proof before implementation.
+- Never infer or backfill historical identity, ownership, attribution, consent, or business outcome
+  from incomplete evidence.
+
+### Generated artifacts and configuration authority
+
+- Generated, compiled, cached, vendored, copied, exported, or published artifacts are never the
+  editable source of truth when a canonical source exists. Change the generator/source and
+  regenerate; do not hand-edit the artifact to make behavior differ.
+- Configuration has one owner per setting. Do not duplicate the same setting across code, workflow,
+  environment, JSON, database, client, and provider layers with independent precedence rules.
+- Secrets/credentials are never copied into source or alternate configuration to bypass the
+  canonical secret authority.
+- Environment-specific behavior must be expressed through the canonical configuration authority;
+  do not add hostname/user/device/tenant/test-specific production branches to force one environment
+  to behave differently unless that distinction is an explicit product/security contract.
+
+### No hardcoded special-case production behavior
+
+- Never hardcode a particular user, Founder, tenant, business, domain, campaign, prompt, answer,
+  language, device, browser, timestamp, test fixture, or current incident as the production fix.
+- A concrete incident may reveal a general invariant; fix that invariant at its owner and prove both
+  the reported case and representative neighboring cases.
+- Feature flags, allowlists, compatibility switches, and exception lists may not become hidden
+  permanent overrides. They require one canonical owner, explicit semantics, bounded scope, and a
+  reason they are part of the intended product/security model.
+
+### Scope, blast radius, and shared capability ownership
+
+- Change only the smallest coherent authority/impact set, but inspect every dependent consumer that
+  can be semantically affected.
+- Shared capabilities must remain shared. Do not fix one app by copying the capability into that app
+  when a shared authority already owns it.
+- A local presentation difference is allowed; a local reimplementation of shared business,
+  authorization, measurement, provider, persistence, or release truth is not.
+- Do not bundle unrelated cleanup, formatting churn, opportunistic refactors, or speculative
+  architecture changes with the requested repair.
+- Before merge, prove unrelated applications/owners/platforms either remain unaffected or are
+  intentionally included in the validated impact set.
+
+### No temporary production debt
+
+- Debug probes, temporary branches in production logic, local overrides, emergency fallbacks,
+  migration scaffolding, compatibility shims, and diagnostic instrumentation must not silently
+  become permanent architecture.
+- If temporary code is genuinely required, its owner, activation condition, removal condition, and
+  inability to become a second authority must be explicit and validated.
+- Never call a workaround "temporary" as justification for violating the one-canonical-source rule.
+
+## 8. Website Studio and public-site protection
 
 Website creativity should be maximal **without breaking runtime truth**.
 
@@ -225,7 +299,7 @@ When working in Website Studio, inspect
 `Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs` and the current protection
 authorities/tests before editing. Do not rely on a remembered editor contract.
 
-## 8. Measurement, attribution, CRM, and advertising truth
+## 9. Measurement, attribution, CRM, and advertising truth
 
 Revenue decisions depend on first-party truth remaining coherent.
 
@@ -253,7 +327,7 @@ explicitly changed them:
 Do not create website-only, dashboard-only, Meta-only, OpenAI-only, or other provider-specific
 parallel conversion truth.
 
-## 9. LEGEND intelligence and autonomous engineering truth
+## 10. LEGEND intelligence and autonomous engineering truth
 
 When a server-issued `EngineeringContext` exists, it is the enforced runtime work contract.
 Repository prose and conversation context cannot broaden its role, lease, source classes,
@@ -274,7 +348,7 @@ Roles remain separated:
 
 Never substitute an unapproved provider/API execution path for a governed plan/tool path.
 
-## 10. Preparing changes for seamless validation and release
+## 11. Preparing changes for seamless validation and release
 
 The goal is not merely "code that works locally." Prepare a candidate that the existing
 validation/release system can evaluate without avoidable repair loops.
@@ -301,7 +375,7 @@ Before handoff:
 A candidate should arrive at protected validation with known application defects resolved,
 not with release machinery modified to tolerate them.
 
-## 11. Failure disposition: resolve the failure class, not the release system
+## 12. Failure disposition: resolve the failure class, not the release system
 
 Use this decision model:
 
@@ -330,7 +404,7 @@ Use this decision model:
 
 No failure class authorizes an AI to make the release system fit its preferred implementation.
 
-## 12. Founder approval and consequential actions
+## 13. Founder approval and consequential actions
 
 AI may inspect, diagnose, reason, recommend, simulate, and prepare proposed changes within
 authorized source scope.
@@ -344,7 +418,7 @@ approval from urgency, previous deployments, broad product intent, or a model's 
 In particular, protected release-control mutation requires explicit Founder approval of that
 specific control-plane change.
 
-## 13. Verification and claims
+## 14. Verification and claims
 
 Evidence classes are not interchangeable. Unit, mocked/in-process, SQL-backed,
 provider-backed, authenticated live-production, and physical-device evidence prove different
@@ -362,7 +436,7 @@ Never claim:
 After deployment, require applicable exact runtime provenance and the original functional
 reproducer/live acceptance proof.
 
-## 14. Required engineering handoff
+## 15. Required engineering handoff
 
 Every implementation handoff must include:
 
