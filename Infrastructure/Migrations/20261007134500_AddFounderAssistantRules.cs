@@ -15,7 +15,7 @@ public partial class AddFounderAssistantRules : Migration
         migrationBuilder.AddColumn<string>(
             name: "FounderAssistantRulesJson",
             table: "MobileProfileSettings",
-            type: "nvarchar(16000)",
+            type: "nvarchar(max)",
             maxLength: 16000,
             nullable: false,
             defaultValue: "[]");
