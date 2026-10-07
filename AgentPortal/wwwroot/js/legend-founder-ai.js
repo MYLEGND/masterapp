@@ -938,9 +938,11 @@
             if (userAvatarSource) {
                 const avatar = document.createElement('img');
                 avatar.className = 'legend-founder-ai-user-avatar';
+                avatar.hidden = true;
                 avatar.src = userAvatarSource;
                 avatar.alt = '';
                 avatar.addEventListener('load', () => {
+                    avatar.hidden = false;
                     fallback.hidden = true;
                 }, { once: true });
                 avatar.addEventListener('error', () => {
