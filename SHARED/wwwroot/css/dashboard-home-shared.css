@@ -731,7 +731,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         overscroll-behavior: contain;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal :is(.modal-title, h2, h3) {
+    html[data-legend-modal-region] body.legend-app .modal:not(.legend-founder-ai-modal) :is(.modal-title, h2, h3) {
         margin-block: 0;
         font-size: 1rem;
         line-height: 1.15;
@@ -744,7 +744,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         line-height: 1.15 !important;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal :is(button, .btn, a.btn) {
+    html[data-legend-modal-region] body.legend-app .modal:not(.legend-founder-ai-modal) :is(button, .btn, a.btn) {
         min-height: var(--legend-mobile-control-height);
         padding: 6px 9px;
         border-radius: 8px;
@@ -752,7 +752,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         line-height: 1.1;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    html[data-legend-modal-region] body.legend-app .modal:not(.legend-founder-ai-modal) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
         min-height: 38px;
         padding: 7px 8px;
         border-radius: 8px;
