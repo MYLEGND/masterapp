@@ -702,7 +702,8 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened durable historical publication proof'
     if not all(token in forward_supersession_source for token in (
         '_app_only_admission_keys(record)',
-        '_app_only_admission_keys(candidate)',
+        '_validate_admission_record_scope(candidate)',
+        'except Exception',
         "old_revision == new_revision",
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
