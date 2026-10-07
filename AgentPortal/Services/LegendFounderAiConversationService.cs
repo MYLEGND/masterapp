@@ -1804,12 +1804,12 @@ public sealed class LegendFounderAiConversationService
                         try
                         {
                             using var ruleArguments = JsonDocument.Parse(call.Arguments);
-                            var root = ruleArguments.RootElement;
+                            var ruleRoot = ruleArguments.RootElement;
                             var saved = await _languagePreferences.UpsertFounderAssistantRuleAsync(
                                 new MessagingActor(founder.GetCanonicalUserId(), MessagingParticipantTypes.Agent),
-                                root.GetProperty("key").GetString()!,
-                                root.GetProperty("scope").GetString()!,
-                                root.GetProperty("rule_text").GetString()!,
+                                ruleRoot.GetProperty("key").GetString()!,
+                                ruleRoot.GetProperty("scope").GetString()!,
+                                ruleRoot.GetProperty("rule_text").GetString()!,
                                 conversation[^1].Content ?? string.Empty,
                                 effectiveToken);
                             toolOutput = JsonSerializer.Serialize(new
