@@ -892,5 +892,70 @@ class SettingsIdempotenceTests(unittest.TestCase):
         ], key=lambda row: row['app'])
         self.assertEqual(expected, writes)
 
+
+class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import io
+        from types import SimpleNamespace
+        cls.io = io
+        cls.SimpleNamespace = SimpleNamespace
+        spec = importlib.util.spec_from_file_location(
+            'prepublication_diagnostics_test', ROOT / 'release-prepublication.py')
+        cls.owner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.owner)
+
+    def test_canonical_schema_reason_is_preserved_without_retry(self):
+        owner = self.owner
+        text = ('Schema probe runtime invalid operation; history status unknown'
+                '; preserve prior evidence and reconcile without replay.')
+        result = subprocess.CompletedProcess([], 1, '', text)
+        with patch.object(owner.subprocess, 'run', return_value=result) as call:
+            with self.assertRaisesRegex(RuntimeError, 'LEGEND_PREPUBLICATION_MIGRATION:Schema probe runtime invalid operation'):
+                owner._invoke_migration_bundle()
+        call.assert_called_once()
+
+    def test_unknown_provider_text_never_reaches_diagnostics(self):
+        owner = self.owner
+        result = subprocess.CompletedProcess([], 1, '',
+            'Authentication error at https://secret.invalid/?sig=hidden')
+        with patch.object(owner.subprocess, 'run', return_value=result) as call:
+            with self.assertRaisesRegex(RuntimeError, 'LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE') as caught:
+                owner._invoke_migration_bundle()
+        self.assertNotIn('hidden', str(caught.exception))
+        call.assert_called_once()
+
+    def test_both_lanes_are_observed_even_when_configuration_fails(self):
+        owner = self.owner
+        output = self.io.StringIO()
+        errors = self.io.StringIO()
+        authority = self.SimpleNamespace(assert_protected_release_execution=lambda: None)
+        safe = 'LEGEND_PREPUBLICATION_MIGRATION:Applied database migration history is not in validated sequence'
+        with patch.object(owner, 'release_authority', return_value=authority), \
+             patch.object(owner, 'configure_all_targets', side_effect=RuntimeError('private config detail')), \
+             patch.object(owner, 'run_migration_lane', side_effect=RuntimeError(safe)), \
+             patch('sys.stdout', output), patch('sys.stderr', errors):
+            with self.assertRaisesRegex(RuntimeError, 'Pre-publication lanes require exact reconciliation'):
+                owner.main()
+        self.assertIn('LEGEND_PREPUBLICATION:CONFIGURATION:FAILED', errors.getvalue())
+        self.assertIn(safe, errors.getvalue())
+        self.assertNotIn('private config detail', errors.getvalue())
+
+    def test_successful_configuration_is_preserved_when_migrations_fail(self):
+        owner = self.owner
+        output = self.io.StringIO()
+        errors = self.io.StringIO()
+        authority = self.SimpleNamespace(assert_protected_release_execution=lambda: None)
+        with patch.object(owner, 'release_authority', return_value=authority), \
+             patch.object(owner, 'configure_all_targets', return_value={'targets': []}), \
+             patch.object(owner, 'run_migration_lane', side_effect=RuntimeError('secret DB provider detail')), \
+             patch('sys.stdout', output), patch('sys.stderr', errors):
+            with self.assertRaises(RuntimeError):
+                owner.main()
+        self.assertIn('LEGEND_PREPUBLICATION:CONFIGURATION:READY', output.getvalue())
+        self.assertIn('LEGEND_PREPUBLICATION:MIGRATION:FAILED', errors.getvalue())
+        self.assertNotIn('secret DB provider detail', errors.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()
