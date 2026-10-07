@@ -1530,6 +1530,22 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
         self.steps[:] = [step for step in self.steps if step['name'] != 'Synchronize canonical pre-publication resource lanes']
         self.assertFalse(self.proven())
 
+    def test_latest_proven_nonpublishing_release_generation_preserves_history(self):
+        # Exact content from run 37695940420: no app upload, configuration
+        # intent, migration intent, or Cloudflare/router lease is asserted.
+        source = 'f2b18bf3b1a236fa172616dae0b49abecfcf5730'
+        for row in self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]:
+            if row['name'].startswith('diagnostics-rollback-'):
+                row['name'] = row['name'].replace(self.HEAD, source)
+        self.run['head_sha'] = source
+        self.BLOBS.update({
+            'scripts/release-migration.py': 'd108377faf267915d86c856523a7992a4a6d500f',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        })
+        self.assertTrue(self.proven())
+        self.record['resources'].append('write/cloudflare/router')
+        self.assertFalse(self.proven())
+
     def test_two_failed_attempts_discharge_only_if_each_proves_no_write(self):
         self.run['head_sha'] = '261fd32ba559d6f2bab0324b538068ee7d7541d7'
         self.run['run_attempt'] = 2

@@ -2303,11 +2303,13 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
             '3dc53852fc30df96e9e79779bae89b0cbeb65248',
             '4d04187b13f1212c709237d4632c509e5c9696b9',
+            'd108377faf267915d86c856523a7992a4a6d500f',
         },
         'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
         'scripts/validation-resume.py': {
             '34e30ff044dada73593f3662f71fc3f442f869b2',
             'db82785acd1dcf8c2f84a43ec22d8c5116959199',
+            '3b78151ca2f2b463d0d553a9967dc0254e577156',
         },
     }
     revision = run['head_sha']
