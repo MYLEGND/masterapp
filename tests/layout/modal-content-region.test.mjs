@@ -418,17 +418,60 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
 
-test('mobile conversational composers own the available viewport and grow with the draft',()=>{
+test('Legend AI uses canonical profile identity, backdrop dismissal, and one drawer entry control',()=>{
+  const view=readFileSync(new URL('../../AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml',import.meta.url),'utf8');
+  const layout=readFileSync(new URL('../../AgentPortal/Views/Shared/_Layout.cshtml',import.meta.url),'utf8');
+  const script=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+
+  assert.match(view,/@model Shared\.PortalShell\.PortalShellIdentity/);
+  assert.match(view,/data-user-avatar-url="@Model\.AvatarUrl"/);
+  assert.match(view,/data-user-initials="@Model\.Initials"/);
+  assert.match(layout,/_LegendFounderAiModal\.cshtml", portalShellIdentity/);
+  assert.doesNotMatch(view,/legendFounderAiMobileMenu|legendFounderAiSidebarCollapse/);
+  assert.doesNotMatch(script,/legendFounderAiMobileMenu|legendFounderAiSidebarCollapse|sidebarCollapsed|UI_STORAGE_KEY/);
+  assert.doesNotMatch(css,/is-sidebar-collapsed|legend-founder-ai-mobile-menu|legend-founder-ai-sidebar-collapse/);
+  assert.match(script,/event\.target === modalElement[\s\S]{0,120}modal\.hide\(\)/);
+  assert.match(script,/const userAvatarSource = \(modalElement\.dataset\.userAvatarUrl/);
+  assert.match(script,/avatar\.className = 'legend-founder-ai-user-avatar'/);
+  assert.match(script,/fallback\.className = 'legend-founder-ai-user-initials'/);
+  assert.match(css,/\.legend-founder-ai-user-avatar \{[\s\S]*object-fit: cover/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-user-mark \{[^}]*radial-gradient/);
+  assert.match(script,/composerMenu\?\.addEventListener[\s\S]*setSidebarOpen\(true\)/);
+});
+
+test('Legend AI panel controls are gold by default and blue when selected without light fallback surfaces',()=>{
+  const css=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+
+  assert.match(css,/\.legend-founder-ai-mode \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\.legend-founder-ai-mode\.is-active \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
+  assert.match(css,/\.legend-founder-ai-native-only \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\.legend-founder-ai-native-only\.is-active \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
+  assert.match(css,/\.legend-founder-ai-mutation-confirmation \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\.legend-founder-ai-mutation-confirmation:has\(input:checked\) \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
+  assert.match(css,/\.legend-founder-ai-settings-action \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\.legend-founder-ai-settings-action:hover,[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-settings-panel \{[^}]*background:\s*#ffffff/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-settings-action \{[^}]*background:\s*#ffffff/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-mutation-confirmation \{[^}]*background:\s*#ffffff/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-mobile-controls[\s\S]{0,1200}background:\s*#ffffff/);
+});
+
+test('mobile conversational composers own the visual viewport and stay compact above the keyboard',()=>{
   const aiCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
   const aiJs=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const messagingJs=readFileSync(new URL('../../SHARED/wwwroot/js/messaging.js',import.meta.url),'utf8');
 
-  assert.match(aiCss,/\.legend-founder-ai-workspace,[\s\S]*?flex: 1 1 auto;[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
+  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-workspace \{[\s\S]*?flex: 1 1 auto;[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
   assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
-  assert.match(aiCss,/\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 56px;[\s\S]*?border-radius: 30px;/);
-  assert.match(aiCss,/\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 36px;[\s\S]*?max-height: min\(132px, 22dvh\);/);
-  assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.22\)/);
+  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 48px;[\s\S]*?border-radius: 26px;/);
+  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 34px;[\s\S]*?max-height: min\(112px, 20dvh\);/);
+  assert.match(aiCss,/\.legend-founder-ai-composer \{[\s\S]*?margin: 0 0 var\(--legend-ai-visual-bottom, 0px\)/);
+  assert.match(aiJs,/window\.innerHeight - height - top/);
+  assert.match(aiJs,/--legend-ai-visual-bottom/);
+  assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.20\)/);
+  assert.match(aiJs,/Math\.min\([\s\S]{0,80}112,/);
   assert.match(aiJs,/event\.key === 'Enter'[\s\S]{0,120}!event\.shiftKey[\s\S]{0,120}!isMobile\(\)/);
 
   assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(button, \.btn, a\.btn\)/);
