@@ -1189,8 +1189,19 @@ class GeneratedPublicationStages(unittest.TestCase):
 
     def test_workflow_generator_has_no_second_target_outcome_authority(self):
         source = Path(__file__).with_name('release-workflow.py').read_text()
-        for retired in ('OUTCOME_START', 'OUTCOME_END', 'TARGET_OUTCOME_', '--verify-outcomes'):
-            self.assertNotIn(retired, source)
+        workflow = self.generator.WORKFLOW.read_text()
+        self.assertIn('OUTCOME_START', source)
+        self.assertIn('OUTCOME_END', source)
+        self.assertNotIn('TARGET_OUTCOME_', source)
+        self.assertNotIn('--verify-outcomes', source)
+        diagnostics = workflow.split(
+            '          # BEGIN GENERATED CANONICAL TARGET OUTCOMES\n', 1
+        )[1].split(
+            '          # END GENERATED CANONICAL TARGET OUTCOMES\n', 1
+        )[0]
+        self.assertEqual('', diagnostics)
+        self.assertNotIn('TARGET_OUTCOME_', workflow)
+        self.assertNotIn('--verify-outcomes', workflow)
 
 
 class ResourceAdmission(unittest.TestCase):
