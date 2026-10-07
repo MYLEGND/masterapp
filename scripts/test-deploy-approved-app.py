@@ -556,8 +556,12 @@ class ParallelPublicationTests(unittest.TestCase):
             self.assertEqual(set(keys), set(results))
             for key in keys:
                 payload = json.loads((Path(directory) / 'results' / f'{key}.json').read_text())
-                self.assertTrue(payload['success'])
+                self.assertTrue(payload['liveProven'])
+                self.assertTrue(payload['durableReceiptProven'])
+                self.assertEqual('publication', payload['phase'])
+                self.assertEqual('a' * 40, payload['candidateRevision'])
                 self.assertEqual(key, payload['target'])
+                self.assertNotIn('success', payload)
 
     def test_parallel_publication_enters_all_selected_targets_before_any_worker_finishes(self):
         keys = ('portal', 'client', 'protect', 'parfait', 'website')
@@ -585,7 +589,29 @@ class ParallelPublicationTests(unittest.TestCase):
 
         self.assertEqual(set(keys), set(entered))
         self.assertEqual(set(keys), set(results))
-        self.assertTrue(all(result['success'] for result in results.values()))
+        self.assertTrue(all(
+            result['liveProven'] and result['durableReceiptProven']
+            for result in results.values()
+        ))
+
+    def test_receipt_pending_is_never_reported_as_deployment_success(self):
+        keys = ('portal',)
+        names = [deploy.TARGETS['portal']['releaseName']]
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+             patch.object(deploy, 'publish_prepared_target', return_value='deployed-receipt-pending'):
+            results = deploy.publish_prepared_targets_parallel(
+                names,
+                'a' * 40,
+                Path(directory),
+                self.plan(keys),
+                Path(directory) / 'results',
+            )
+            payload = results['portal']
+            self.assertTrue(payload['liveProven'])
+            self.assertFalse(payload['durableReceiptProven'])
+            self.assertEqual('deployed-receipt-pending', payload['outcome'])
+            self.assertNotIn('success', payload)
 
     def test_parallel_publication_preserves_successful_sibling_when_one_target_fails(self):
         keys = ('portal', 'protect')
@@ -608,9 +634,13 @@ class ParallelPublicationTests(unittest.TestCase):
                     Path(directory) / 'results',
                 )
             root = Path(directory) / 'results'
-            self.assertTrue(json.loads((root / 'portal.json').read_text())['success'])
+            portal = json.loads((root / 'portal.json').read_text())
+            self.assertTrue(portal['liveProven'])
+            self.assertTrue(portal['durableReceiptProven'])
             failed = json.loads((root / 'protect.json').read_text())
-            self.assertFalse(failed['success'])
+            self.assertFalse(failed['liveProven'])
+            self.assertFalse(failed['durableReceiptProven'])
+            self.assertNotIn('success', failed)
             self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
 
 

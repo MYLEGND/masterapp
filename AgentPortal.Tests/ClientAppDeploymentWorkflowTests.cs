@@ -105,7 +105,7 @@ public sealed class ClientAppDeploymentWorkflowTests
 
         var publication = workflow[start..end];
         var fanout = Regex.Match(publication,
-            @"      - name: Publish canonical selected targets in parallel\n(?<body>.*?)(?=\n      - name:|\z)",
+            @"      - name: Submit canonical selected targets in parallel\n(?<body>.*?)(?=\n      - name:|\z)",
             RegexOptions.Singleline);
         Assert.True(fanout.Success);
         var fanoutBody = fanout.Groups["body"].Value;
@@ -116,7 +116,7 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.Contains("steps.transactionprepare.outcome == 'success'", fanoutBody, StringComparison.Ordinal);
 
         var targetSteps = Regex.Matches(publication,
-            @"      - name: Publish canonical target \(([^)]+)\)\n(?<body>.*?)(?=\n      - name:|\z)",
+            @"      - name: Confirm first-pass durable publication receipt \(([^)]+)\)\n(?<body>.*?)(?=\n      - name:|\z)",
             RegexOptions.Singleline);
         Assert.Equal(5, targetSteps.Count);
         foreach (Match step in targetSteps)
@@ -124,11 +124,16 @@ public sealed class ClientAppDeploymentWorkflowTests
             var key = step.Groups[1].Value;
             var body = step.Groups["body"].Value;
             Assert.Contains($"/tmp/release-target-results/{key}.json", body, StringComparison.Ordinal);
-            Assert.Contains("result.get('success') is not True", body, StringComparison.Ordinal);
+            Assert.Contains("result.get('durableReceiptProven') is not True", body, StringComparison.Ordinal);
+            Assert.Contains("result.get('liveProven') is not True", body, StringComparison.Ordinal);
+            Assert.Contains("result.get('durableReceiptProven') is not True", body, StringComparison.Ordinal);
             Assert.Contains("steps.transactionprepare.outcome == 'success'", body, StringComparison.Ordinal);
             Assert.DoesNotContain("--target " + key, body, StringComparison.Ordinal);
         }
 
+        Assert.DoesNotContain("name: Publish canonical target (", workflow, StringComparison.Ordinal);
+        Assert.Contains("Preserve target-specific live-proven deployment receipt", workflow, StringComparison.Ordinal);
+        Assert.Contains("'liveProven':True", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("azure/webapps-deploy@v3", workflow, StringComparison.Ordinal);
     }
 

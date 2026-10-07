@@ -1201,11 +1201,13 @@ class GeneratedPublicationStages(unittest.TestCase):
 
     def test_parallel_publication_is_one_mutation_fanout_with_target_specific_result_gates(self):
         text = self.generator.WORKFLOW.read_text()
-        self.assertEqual(1, text.count('name: Publish canonical selected targets in parallel'))
+        self.assertEqual(1, text.count('name: Submit canonical selected targets in parallel'))
         self.assertEqual(1, text.count('--publish-prepared-parallel'))
-        parallel = text.index('name: Publish canonical selected targets in parallel')
+        self.assertNotIn('name: Publish canonical target (', text)
+        self.assertIn("result.get('durableReceiptProven') is not True", text)
+        parallel = text.index('name: Submit canonical selected targets in parallel')
         for key in m.VALIDATION_AUTHORITY.RELEASE_TARGETS:
-            child = text.index(f'name: Publish canonical target ({key})')
+            child = text.index(f'name: Confirm first-pass durable publication receipt ({key})')
             self.assertGreater(child, parallel)
             self.assertIn(f'/tmp/release-target-results/{key}.json', text)
 
@@ -1213,7 +1215,7 @@ class GeneratedPublicationStages(unittest.TestCase):
         source = self.generator.WORKFLOW.read_text()
         mutation = m._historical_release_mutation_steps(source)
         self.assertIsNotNone(mutation)
-        self.assertIn('Publish canonical selected targets in parallel', mutation)
+        self.assertIn('Submit canonical selected targets in parallel', mutation)
 
     def test_historical_serial_prepublication_generation_remains_recognizable(self):
         source = self.generator.WORKFLOW.read_text()
@@ -1267,7 +1269,7 @@ class GeneratedPublicationStages(unittest.TestCase):
         targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,
                    'extra': {'releaseName': 'isolated-extra-app'}}
         rendered = self.generator.render(text, targets)
-        self.assertIn('name: Publish canonical target (extra)', rendered)
+        self.assertIn('name: Confirm first-pass durable publication receipt (extra)', rendered)
         self.assertNotIn('TARGET_OUTCOME_EXTRA', rendered)
         self.assertIn("contains(fromJSON(env.SELECTED_TARGETS), 'isolated-extra-app')", rendered)
 

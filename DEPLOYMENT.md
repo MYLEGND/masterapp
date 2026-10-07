@@ -15,10 +15,11 @@ No local shell script, developer workstation command, diagnostic workflow, manua
 3. Derive affected applications from the single release-target authority in `scripts/validation-resume.py`.
 4. Reuse the exact validated immutable package when its content identity remains valid; otherwise build only the invalidated package components.
 5. Prepare one immutable all-target transaction before any application publication.
-6. Publish selected Azure application targets concurrently through `scripts/deploy-approved-app.py`.
-7. Never replay an ambiguous upload. Preserve successful siblings and reconcile only the unresolved target state.
-8. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
-9. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
+6. Submit selected Azure application targets concurrently through `scripts/deploy-approved-app.py`.
+7. Treat upload acceptance and first-pass exact-live observation as non-terminal publication evidence. They must never be labeled deployment success; only durable receipt reconciliation plus exact live runtime provenance can establish that truth.
+8. Never replay an ambiguous upload. Preserve successful siblings and reconcile only the unresolved target state.
+9. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
+10. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
 
 ## Timing invariants
 
