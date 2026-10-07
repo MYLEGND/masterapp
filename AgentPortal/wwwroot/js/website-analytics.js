@@ -6126,10 +6126,7 @@ function escapeHtml(value) {
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
-    const params = marketingManagerRequestBody();
-    if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
-      params.siteKey = state.scope.siteKey;
-    }
+    const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };
     const key = JSON.stringify(params);
     if (marketingPerformanceInFlight?.key === key) return marketingPerformanceInFlight.promise;
     const request = ++marketingPerformanceRequest;
@@ -6784,6 +6781,13 @@ function escapeHtml(value) {
     return { ...scope, ...marketingManagerRangePayload(), ...extra };
   }
 
+  function marketingManagerSiteParams() {
+    if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
+      return { siteKey: state.scope.siteKey };
+    }
+    return {};
+  }
+
   function marketingManagerMoney(value) {
     if (value == null) return "Unavailable";
     const n = Number(value);
@@ -6923,9 +6927,10 @@ function escapeHtml(value) {
     if (button) button.disabled = true;
     marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
     try {
+      const siteQuery = new URLSearchParams(marketingManagerSiteParams()).toString();
       const plan = await fetchPostJson(
         'marketingManagerPlan',
-        endpoints.marketingManagerPlan,
+        siteQuery ? `${endpoints.marketingManagerPlan}?${siteQuery}` : endpoints.marketingManagerPlan,
         marketingManagerRequestBody({ goal }),
         20000);
       renderMarketingManagerPlan(plan);

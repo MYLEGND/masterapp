@@ -17,11 +17,13 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     <div id="product-links-list"></div><span id="landing-routes-base-url"></span>
     <div id="kpi-pageviews"></div><div id="kpi-session"></div>
     <button id="channel-performance-refresh"></button><div id="channel-performance-grid"></div><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div>
+    <textarea id="marketing-manager-goal">Find the next qualified lead</textarea><button id="marketing-manager-build"></button>
+    <input type="hidden" name="__RequestVerificationToken" value="test-request-token" />
     ${device ? '<button id="mod-device-intelligence"></button><div id="deviceIntelligenceModal"></div><div id="deviceIntelligenceContent"></div><div id="deviceSessions"></div>' : ''}`,
     { url: 'https://portal.example.test/WebsiteAnalytics', runScripts: 'outside-only' });
   const { window } = dom;
   await new Promise(resolve => window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
-  const calls = [], errors = [], polls = [], deadlines = [];
+  const calls = [], errors = [], polls = [], deadlines = [], requests = [];
   window.setInterval = callback => { polls.push(callback); return polls.length; };
   const setTimeout = window.setTimeout.bind(window);
   window.setTimeout = (callback, delay, ...args) => {
@@ -35,6 +37,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
   window.navigator.clipboard = { writeText: value => { copied.push(value); return Promise.resolve(); } };
   window.fetch = async (url, options = {}) => {
     calls.push(String(url));
+    requests.push({ url: String(url), ...options });
     const path = new URL(url, window.location.href).pathname;
     if (path.endsWith('/marketing-manager/performance') && performanceHandler) return performanceHandler(url, options);
     const data = path.endsWith('/summary') ? { isAvailable: true, scopeLabel: 'Founder Personal', pageViews: 7, uniqueVisitors: 2, sessions: 2, verifiedLeads: 0, sessionConversionRate: 0 }
@@ -46,7 +49,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
   window.eval(source);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { dom, window, calls, errors, copied, polls, deadlines };
+  return { dom, window, calls, errors, copied, polls, deadlines, requests };
 }
 
 for (const initialSite of ['legend', 'protect']) {
@@ -117,6 +120,44 @@ for (const scope of [{}, { founder: true, selectedAgent: true }, { business: tru
       const request = new URL(f.calls.filter(url => url.includes('/marketing-manager/performance')).at(-1), f.window.location.href);
       assert.equal(request.searchParams.has('siteKey'), false);
       assert.equal(request.searchParams.get('agentProfileId'), scope.business ? null : scope.selectedAgent ? 'agent-profile' : 'founder-profile');
+    } finally { f.dom.window.close(); }
+  });
+}
+
+for (const global of [false, true]) {
+  test(`growth plan POST follows both Founder sites with omitted profile ${global}`, async () => {
+    const f = await fixture({ founder: true, global });
+    try {
+      for (const siteKey of ['legend', 'protect', 'legend']) {
+        f.window.document.querySelector(`[data-site-key="${siteKey}"]`).click();
+        f.window.document.getElementById('marketing-manager-build').click();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        const request = f.requests.filter(r => r.method === 'POST').at(-1);
+        const url = new URL(request.url, f.window.location.href);
+        assert.equal(url.pathname, '/WebsiteAnalytics/marketing-manager/plan');
+        assert.equal(url.searchParams.get('siteKey'), siteKey);
+        assert.equal(request.headers.RequestVerificationToken, 'test-request-token');
+        const body = JSON.parse(request.body);
+        assert.equal(body.agentProfileId, global ? undefined : 'founder-profile');
+        assert.equal(body.siteKey, undefined);
+        assert.equal(body.goal.goal, 'Find the next qualified lead');
+      }
+    } finally { f.dom.window.close(); }
+  });
+}
+
+for (const scope of [{}, { founder: true, selectedAgent: true }, { business: true }]) {
+  test(`growth plan POST keeps its existing owner and omits Founder site in scope ${JSON.stringify(scope)}`, async () => {
+    const f = await fixture(scope);
+    try {
+      f.window.document.getElementById('marketing-manager-build').click();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      const request = f.requests.filter(r => r.method === 'POST').at(-1);
+      const url = new URL(request.url, f.window.location.href);
+      assert.equal(url.searchParams.has('siteKey'), false);
+      assert.equal(url.pathname, scope.business ? '/business/11111111-1111-1111-1111-111111111111/analytics/marketing-manager/plan' : '/WebsiteAnalytics/marketing-manager/plan');
+      assert.equal(JSON.parse(request.body).agentProfileId, scope.business ? undefined : scope.selectedAgent ? 'agent-profile' : 'founder-profile');
+      assert.equal(request.headers.RequestVerificationToken, 'test-request-token');
     } finally { f.dom.window.close(); }
   });
 }
