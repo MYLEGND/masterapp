@@ -270,6 +270,21 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn("retired alternate production deployment path", result)
 
 
+    def test_guard_rejects_removing_positive_live_lease_discharge_proof(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        '                and _historical_application_publications_completed(api, run, record)\n',
+                        '                and True\n',
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("live-provenance lease discharge", result)
+
     def test_guard_rejects_lifecycle_identity_that_stops_hashing_absence(self):
         class Drift(Api):
             def text(self, revision, path):
@@ -1184,6 +1199,107 @@ class ResourceAdmission(unittest.TestCase):
         with patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=True):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def publication_jobs(self, *keys):
+        return [{
+            'name': 'release',
+            'status': 'completed',
+            'conclusion': 'failure',
+            'steps': [
+                {'name': 'Publish canonical selected targets in parallel', 'conclusion': 'success'},
+                *[
+                    {'name': f'Publish canonical target ({key})', 'conclusion': 'success'}
+                    for key in keys
+                ],
+            ],
+        }]
+
+    def test_completed_failed_app_release_is_discharged_when_live_provenance_covers_it(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
+        live = [{'app': 'client', 'revision': 'd' * 40}]
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'live_revisions', return_value=live) as observed, \
+             patch.object(m, 'ancestor', return_value=True) as lineage:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        observed.assert_called_once_with()
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+
+    def test_live_provenance_cannot_discharge_without_positive_publication_proof(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = [{
+            'name': 'release',
+            'status': 'completed',
+            'conclusion': 'failure',
+            'steps': [
+                {'name': 'Publish canonical selected targets in parallel', 'conclusion': 'success'},
+                {'name': 'Publish canonical target (client)', 'conclusion': 'failure'},
+            ],
+        }]
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('live proof must not run')) as observed:
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual(98, blocked[0]['runId'])
+        observed.assert_not_called()
+
+    def test_live_provenance_failure_or_non_descendant_remains_blocking(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
+        common = (
+            patch.object(m, '_admission_records', return_value=[self.prior]),
+            patch.object(m, '_admission_settled', return_value=False),
+            patch.object(m, '_admission_nonmutating_terminal', return_value=False),
+            patch.object(m, '_admission_superseded_by_terminal_success', return_value=False),
+        )
+        for ctx in common:
+            ctx.start()
+        try:
+            with patch.object(m, 'live_revisions', side_effect=RuntimeError('unreachable')):
+                self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
+            with patch.object(m, 'live_revisions', return_value=[{'app': 'client', 'revision': 'd' * 40}]), \
+                 patch.object(m, 'ancestor', return_value=False):
+                self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
+        finally:
+            for ctx in reversed(common):
+                ctx.stop()
+
+    def test_live_app_provenance_cannot_settle_auxiliary_resource_lease(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'] + ['write/cloudflare/router'],
+        )
+        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'live_revisions', return_value=[{'app': 'client', 'revision': 'd' * 40}]), \
+             patch.object(m, 'ancestor', return_value=True):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual(98, blocked[0]['runId'])
 
     def test_later_successful_same_validated_pr_discharges_stale_historical_lease(self):
         source = 'a' * 40
