@@ -54,6 +54,27 @@ class GitHubTransportRetry(unittest.TestCase):
         }, clear=False):
             return m.GitHub()
 
+    def test_job_pagination_requires_complete_stable_authenticated_inventory(self):
+        api = self.client()
+        jobs = [{'id': 1, 'name': 'admission', 'conclusion': 'success'},
+                {'id': 2, 'name': 'preserve-rollback', 'conclusion': 'skipped'}]
+        for payload in [{'jobs': jobs, 'total_count': 3}, {'jobs': jobs},
+                        {'jobs': jobs, 'total_count': True},
+                        {'jobs': jobs + [jobs[0]], 'total_count': 3}]:
+            with self.subTest(payload=payload), patch.object(api, 'api', return_value=payload):
+                with self.assertRaises(RuntimeError):
+                    api.pages('actions/runs/98/attempts/1/jobs', 'jobs')
+        full = [{'id': i + 1} for i in range(100)]
+        with patch.object(api, 'api', side_effect=[{'jobs': full, 'total_count': 101},
+                                                  {'jobs': [{'id': 101}], 'total_count': 102}]):
+            with self.assertRaisesRegex(RuntimeError, 'changing'):
+                api.pages('actions/runs/98/attempts/1/jobs', 'jobs')
+        with patch.object(api, 'api', side_effect=[{'jobs': full, 'total_count': 101},
+                                                  {'jobs': [{'id': 101}], 'total_count': 101}]):
+            self.assertEqual(101, len(api.pages('actions/runs/98/attempts/1/jobs', 'jobs')))
+        with patch.object(api, 'api', return_value=['unchanged']):
+            self.assertEqual(['unchanged'], api.pages('keyless'))
+
     def test_remote_disconnect_retries_read_only_get_in_place(self):
         api = self.client()
         with patch.object(
@@ -1326,7 +1347,7 @@ class ResourceAdmission(unittest.TestCase):
 
     def setUp(self):
         self.api = Api()
-        self.run = {'id': 98, 'run_attempt': 1, 'status': 'in_progress', 'conclusion': None,
+        self.run = {'id': 98, 'head_sha': 'b' * 40, 'run_attempt': 1, 'status': 'in_progress', 'conclusion': None,
                     'path': '.github/workflows/' + m.DIRECT, 'head_branch': m.APPROVED,
                     'event': 'workflow_dispatch',
                     'head_repository': {'full_name': self.api.repo}}
@@ -1763,6 +1784,20 @@ class ResourceAdmission(unittest.TestCase):
             {'name': 'preserve-rollback', 'conclusion': 'skipped'},
         ]
         self.assertTrue(m._never_admitted(self.api, self.run))
+
+    def test_omitted_attempt_requires_historical_source_and_positive_attempt_inventory(self):
+        self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
+            {'name': 'admission', 'conclusion': 'success'},
+            {'name': 'preserve-rollback', 'conclusion': 'skipped'},
+        ]
+        with patch.object(self.api, 'text', return_value='unknown historical source'):
+            self.assertFalse(m._never_admitted(self.api, self.run))
+        for count in [0, -1, None, True]:
+            with self.subTest(count=count):
+                self.assertFalse(m._never_admitted(self.api, {**self.run, 'run_attempt': count}))
+        with patch.object(self.api, 'pages', side_effect=RuntimeError('incomplete pagination')):
+            with self.assertRaisesRegex(RuntimeError, 'incomplete'):
+                m._never_admitted(self.api, self.run)
 
     def test_omitted_downstream_jobs_with_unexpected_wrapper_remain_blocking(self):
         self.run.update(status='completed', conclusion='failure')

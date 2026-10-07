@@ -4244,6 +4244,69 @@ def _release_history_runs(repository, token):
         page += 1
 
 
+def release_attempt_never_entered(jobs, source=None):
+    """Recognize a complete trusted attempt whose downstream jobs never entered.
+
+    Callers own authenticated producer/source and complete attempt enumeration.
+    GitHub can omit both impossible downstream jobs after admission. Only its
+    exact admission plus skipped rollback wrapper shape proves that omission;
+    partial, duplicate, unknown, or entered job shapes remain unproven.
+    """
+    if not isinstance(jobs, list) or not jobs or any(not isinstance(job, dict) for job in jobs):
+        return False
+    names = [job.get('name') for job in jobs]
+    allowed = {'admission', 'discover-live', 'release', 'preserve-rollback'}
+    if (any(name not in allowed for name in names) or
+            len(names) != len(set(names)) or names.count('admission') != 1):
+        return False
+    downstream = set(names) - {'admission', 'preserve-rollback'}
+    if downstream not in (set(), {'discover-live', 'release'}):
+        return False
+    if not downstream and set(names) != {'admission', 'preserve-rollback'}:
+        return False
+    if not downstream:
+        # Omission is meaningful only for this historical admission/needs
+        # generation. An evolved or unavailable source is not absence proof.
+        if not isinstance(source, str):
+            return False
+        blocks = _job_blocks(source)
+        if set(blocks) != {'admission', 'discover-live', 'preserve-rollback', 'release',
+                           'target-release-receipts', 'release-state-receipt',
+                           'wake-release-lifecycle-after-terminal-release'}:
+            return False
+        gates = {
+            'discover-live': {
+                'needs': 'admission',
+                'if': "needs.admission.outputs.admitted == 'true' && needs.admission.outputs.state == 'RELEASE_READY'",
+            },
+            'preserve-rollback': {
+                'needs': 'discover-live',
+                'if': "needs.discover-live.outputs.preserve_live_targets != 'true' && needs.discover-live.outputs.exact_live != 'true'",
+            },
+            'release': {
+                'needs': '[discover-live, preserve-rollback]',
+                'if': "${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}",
+            },
+        }
+        for name, fields in gates.items():
+            for field, expected in fields.items():
+                values = re.findall(r'^    ' + field + r': (.*)$', blocks[name], re.MULTILINE)
+                if values != [expected]:
+                    return False
+    for job in jobs:
+        if job['name'] == 'admission':
+            continue
+        if job.get('conclusion') != 'skipped':
+            return False
+        # Contradictory execution detail cannot be treated as non-entry.
+        steps = job.get('steps', [])
+        if not isinstance(steps, list) or any(
+                not isinstance(step, dict) or step.get('conclusion') != 'skipped'
+                for step in steps):
+            return False
+    return True
+
+
 def release_operation_history(repository, operation_id, application_revision, target, current_run, current_attempt, token, *, phase="intent"):
     """Return retained write-ahead intent, or prove publication never started.
 
@@ -4327,17 +4390,27 @@ def release_operation_history(repository, operation_id, application_revision, ta
             if comparison.get("status") not in {"ahead", "identical"}:
                 raise ReleaseOperationHistoryUnproven("Unknown candidate ancestry in release history")
         attempts = run.get("run_attempt", 1)
+        if type(attempts) is not int or attempts < 1:
+            raise ReleaseOperationHistoryUnproven("Invalid prior deployment attempt inventory")
         for attempt in range(1, attempts + 1):
             if run_id == current_run and attempt == current_attempt:
                 continue
             jobs_payload = read_api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
             jobs = jobs_payload.get("jobs")
-            if not isinstance(jobs, list) or jobs_payload.get("total_count", 0) > len(jobs):
+            count = jobs_payload.get("total_count")
+            if (not isinstance(jobs, list) or type(count) is not int or count != len(jobs)):
                 raise ReleaseOperationHistoryUnproven("Incomplete prior deployment job history")
             if (not jobs and jobs_payload.get('total_count') == 0 and
                     (run.get('status') == 'completed' or attempt < attempts)):
                 # Complete Actions enumeration proves this attempt never started a job.
                 continue
+            if release_attempt_never_entered(jobs):
+                continue
+            if (any(job.get('name') == 'admission' for job in jobs) and
+                    not any(job.get('name') in {'release', 'discover-live'} for job in jobs)):
+                source = _release_history_source(repository, run['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+                if release_attempt_never_entered(jobs, source):
+                    continue
             owners = [job for job in jobs if job.get("name") in {"release", f"publish-target ({target})"}]
             if len(owners) != 1:
                 raise ReleaseOperationHistoryUnproven("Release execution generation lacks one canonical publication owner")
@@ -4504,13 +4577,19 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
             # This historical generation had no durable all-target plan to lose.
             # Its writes remain governed by the operation history proof below.
             continue
-        for previous_attempt in range(1, prior.get('run_attempt', 1) + 1):
+        attempts = prior.get('run_attempt', 1)
+        if type(attempts) is not int or attempts < 1:
+            raise ReleaseOperationHistoryUnproven('Invalid original transaction attempt inventory')
+        for previous_attempt in range(1, attempts + 1):
             if prior['id'] == run and previous_attempt == attempt:
                 continue
             jobs = _release_history_api(repository, f"actions/runs/{prior['id']}/attempts/{previous_attempt}/jobs?per_page=100", token)
             rows = jobs.get('jobs')
-            if not isinstance(rows, list) or jobs.get('total_count', 0) > len(rows):
+            count = jobs.get('total_count')
+            if (not isinstance(rows, list) or type(count) is not int or count != len(rows)):
                 raise ReleaseOperationHistoryUnproven('Original transaction execution history is incomplete')
+            if release_attempt_never_entered(rows, source):
+                continue
             owners = [row for row in rows if row.get('name') == 'release']
             if len(owners) != 1:
                 raise ReleaseOperationHistoryUnproven('Original transaction publication owner is missing')

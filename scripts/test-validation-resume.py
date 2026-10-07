@@ -2553,5 +2553,119 @@ class Step5ChildEvidenceTests(unittest.TestCase):
             self.assertIn("introduced_classes=AgentPortal.Tests.Two", outputs)
 
 
+class ReleaseAttemptNonentryTests(unittest.TestCase):
+    def setUp(self):
+        self.source = (ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
+        self.omitted = [{'name': 'admission', 'conclusion': 'success'},
+                        {'name': 'preserve-rollback', 'conclusion': 'skipped'}]
+        self.skipped = [{'name': 'admission', 'conclusion': 'success'},
+                        {'name': 'discover-live', 'conclusion': 'skipped'},
+                        {'name': 'release', 'conclusion': 'skipped'}]
+
+    def test_exact_omitted_and_complete_skipped_shapes(self):
+        for jobs in [self.omitted, self.skipped, self.skipped + [self.omitted[1]]]:
+            with self.subTest(jobs=jobs):
+                self.assertTrue(m.release_attempt_never_entered(jobs, self.source))
+
+    def test_ambiguous_entered_duplicate_and_partial_shapes_fail_closed(self):
+        invalid = [None, [], self.omitted[1:], self.omitted + [self.omitted[0]],
+                   self.omitted[:1], self.skipped[:2], self.omitted + [{'name': 'schema-write', 'conclusion': 'skipped'}],
+                   [self.omitted[0], {'name': 'preserve-rollback', 'conclusion': 'success'}],
+                   self.skipped + [{'name': 'schema-write', 'conclusion': 'success'}],
+                   [self.skipped[0], self.skipped[1], {'name': 'release', 'conclusion': 'failure'}],
+                   [self.omitted[0], dict(self.omitted[1], steps=[{'name': 'write', 'conclusion': 'success'}])]]
+        for jobs in invalid:
+            with self.subTest(jobs=jobs):
+                self.assertFalse(m.release_attempt_never_entered(jobs, self.source))
+
+    def test_omitted_jobs_require_the_exact_historical_admission_gates(self):
+        self.assertFalse(m.release_attempt_never_entered(self.omitted))
+        for source in ['', self.source.replace("needs: admission", "needs: unknown"),
+                       self.source.replace("needs.admission.outputs.admitted == 'true'", "always()"),
+                       self.source + "\n  schema-write:\n    runs-on: ubuntu-latest\n"]:
+            self.assertFalse(m.release_attempt_never_entered(self.omitted, source))
+        self.assertTrue(m.release_attempt_never_entered(self.skipped))
+
+    def history(self, attempts, *, total_extra=0, untrusted=False, run_attempt=1, malformed_attempt=False, missing_count=False):
+        prior = {'id': 8, 'head_branch': m.TRUSTED_PR_BASE, 'event': 'workflow_dispatch',
+                 'head_repository': {'full_name': 'owner/repo'}, 'head_sha': 'b' * 40,
+                 'path': '.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW,
+                 'run_attempt': len(attempts), 'status': 'completed'}
+        if malformed_attempt:
+            prior['run_attempt'] = run_attempt
+        if untrusted:
+            prior['head_repository']['full_name'] = 'other/repo'
+        def api(repository, path, token):
+            if path.startswith('actions/artifacts?'):
+                return {'artifacts': [], 'total_count': 0}
+            if '/attempts/' in path:
+                number = int(path.split('/attempts/')[1].split('/')[0])
+                result = {'jobs': attempts[number-1], 'total_count': len(attempts[number-1]) + total_extra}
+                if missing_count:
+                    result.pop('total_count')
+                return result
+            if path == 'actions/runs/8/artifacts?per_page=100':
+                return {'artifacts': [], 'total_count': 0}
+            raise AssertionError(path)
+        return prior, api
+
+    def check_history(self, kind, attempts, **kwargs):
+        prior, api = self.history(attempts, **kwargs)
+        revision = 'a' * 40
+        targets = {'portal': 'c' * 64}
+        # Use the real target authority, avoiding a fabricated application key.
+        targets = {next(iter(m.RELEASE_TARGETS)): 'c' * 64}
+        identity = {'candidateRevision': revision, 'packageDigests': dict(sorted(targets.items()))}
+        plan_id = m.hashlib.sha256(m.json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        with patch.object(m, '_release_history_api', side_effect=api), \
+             patch.object(m, '_release_history_runs', return_value=[prior]), \
+             patch.object(m, '_release_history_source', return_value=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()), \
+             patch.object(m, '_release_attempt_package_revision', return_value=revision), \
+             patch.object(m, '_remember_release_exclusion'), \
+             patch.dict(m._RELEASE_HISTORY_EXCLUSIONS, {}, clear=True):
+            if kind == 'transaction':
+                return m.release_transaction_plan_history('owner/repo', plan_id, revision, targets, 99, 1, 'token')
+            return m.release_operation_history('owner/repo', 'op', revision, next(iter(targets)), 99, 1, 'token')
+
+    def test_both_history_owners_accept_exact_proven_nonentry(self):
+        for kind in ['transaction', 'operation']:
+            for jobs in [self.omitted, self.skipped]:
+                with self.subTest(kind=kind, jobs=jobs):
+                    self.assertIsNone(self.check_history(kind, [jobs]))
+
+    def test_both_history_owners_reject_missing_duplicate_extra_partial_and_incomplete(self):
+        for kind in ['transaction', 'operation']:
+            for jobs in [self.omitted[1:], self.omitted + [self.omitted[0]],
+                         self.omitted + [{'name': 'schema-write', 'conclusion': 'success'}], self.skipped[:2]]:
+                with self.subTest(kind=kind, jobs=jobs):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [jobs])
+            with self.subTest(kind=kind, incomplete=True):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    self.check_history(kind, [self.omitted], total_extra=1)
+            with self.subTest(kind=kind, untrusted=True):
+                with self.assertRaises(RuntimeError):
+                    self.check_history(kind, [self.omitted], untrusted=True)
+
+    def test_both_history_owners_require_complete_positive_attempt_inventory(self):
+        for kind in ['transaction', 'operation']:
+            for count in [0, -1, None, True, '1']:
+                with self.subTest(kind=kind, count=count):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [self.omitted], run_attempt=count, malformed_attempt=True)
+            for kwargs in [{'missing_count': True}, {'total_extra': -1}]:
+                with self.subTest(kind=kind, **kwargs):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [self.omitted], **kwargs)
+
+    def test_latest_skipped_attempt_does_not_erase_entered_prior_transaction(self):
+        entered = [self.omitted[0], {'name': 'release', 'status': 'completed', 'conclusion': 'success',
+                   'steps': [{'name': 'Prepare complete immutable release transaction', 'conclusion': 'success'}]}]
+        for kind in ['transaction', 'operation']:
+            with self.subTest(kind=kind):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    self.check_history(kind, [entered, self.omitted])
+
+
 if __name__ == "__main__":
     unittest.main()
