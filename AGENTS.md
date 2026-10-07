@@ -389,6 +389,11 @@ Distributed behavior must converge on one durable truth.
   behavior.
 - Never fix races by adding sleeps, arbitrary delays, global serialization, duplicate locks, or
   hidden retry loops unless the canonical concurrency owner requires that exact mechanism.
+- Concurrency/mutex/lease/group names and queue ownership are part of the execution contract.
+  Do not reuse one concurrency group across logically different scheduler/worker/mutation lanes
+  without proving the platform's pending/running cancellation semantics cannot drop, starve,
+  reorder, or supersede authorized work. A serialization primitive must not become an accidental
+  cancellation authority.
 - Never retry an ambiguous write until durable remote identity proves whether the original write
   occurred. Read reconciliation precedes mutation replay.
 - A retry must reuse the same logical identity when it represents the same operation; generating
