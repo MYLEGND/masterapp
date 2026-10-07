@@ -46,7 +46,7 @@ internal sealed class LegendMasterAppReadAuthority(
         })
         .Where(endpoint => !string.IsNullOrWhiteSpace(endpoint.route) && endpoint.methods.Length > 0)
         .GroupBy(endpoint => endpoint.route!, StringComparer.OrdinalIgnoreCase)
-        .Select(group => (object)new
+        .Select(group => new
         {
             route = group.Key,
             methods = group.SelectMany(item => item.methods)
@@ -57,8 +57,9 @@ internal sealed class LegendMasterAppReadAuthority(
                 .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
             access = "runtime_route_metadata_only"
         })
-        .OrderBy(item => ((dynamic)item).route, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(item => item.route, StringComparer.OrdinalIgnoreCase)
         .Take(500)
+        .Select(item => (object)item)
         .ToArray();
 
     internal object Catalog() => new
