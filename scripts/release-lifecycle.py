@@ -2268,6 +2268,118 @@ def _admission_nonmutating_terminal(api, run):
     return True
 
 
+
+def _historical_fenced_prepublication_nonentry(api, run, record):
+    """Discharge only a proven no-write historical prepublication failure.
+
+    These historical workflow/script object identities were independently checked:
+    every app configuration or database mutation required a durable child intent
+    readback before the provider write. Publication required a separate durable
+    operation intent. Unknown workflow generations and missing evidence remain
+    leased; this predicate does not treat a failed job as no mutation by itself.
+    """
+    if (
+        run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'
+        or run.get('run_attempt') != 1
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('head_branch') != APPROVED
+        or run.get('event') != 'workflow_dispatch'
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha', ''))
+    ):
+        return False
+
+    # Content-addressed evidence, not a blanket exception for failed releases.
+    # A change to even one mutation owner must be reviewed before extending
+    # this historical source-generation proof.
+    historical = {
+        '.github/workflows/' + DIRECT: {'bd84c42297a50b29dfa20c2ed926b8233074720e'},
+        'scripts/release-prepublication.py': {'29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'},
+        'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
+        'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
+        'scripts/release-migration.py': {
+            '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
+            '3dc53852fc30df96e9e79779bae89b0cbeb65248',
+        },
+        'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
+        'scripts/validation-resume.py': {
+            '34e30ff044dada73593f3662f71fc3f442f869b2',
+            'db82785acd1dcf8c2f84a43ec22d8c5116959199',
+        },
+    }
+    revision = run['head_sha']
+    for path, approved_blobs in historical.items():
+        observed = git('rev-parse', revision + ':' + path, check=False)
+        if observed.returncode != 0 or observed.stdout.strip() not in approved_blobs:
+            return False
+
+    keys = _validate_admission_record_scope(record)
+    if not keys or record.get('producingAttempt') != 1:
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    if not isinstance(artifacts, list) or any(
+        not isinstance(row, dict) or row.get('expired') is not False
+        or not isinstance(row.get('name'), str) for row in artifacts
+    ):
+        return False
+    names = [item['name'] for item in artifacts]
+    if len(names) != len(set(names)):
+        return False
+    expected = {
+        'legend-release-admission-' + record['admissionId'],
+        f"legend-release-step-state-{record['applicationRevision']}-{run['id']}-1",
+    }
+    expected.update(
+        f"diagnostics-rollback-{key}-{revision}" for key in keys
+    )
+    actual = set(names)
+    optional = actual - expected
+    if not expected.issubset(actual) or len(optional) > 1 or any(
+        not re.fullmatch(r'legend-release-transaction-plan-[0-9a-f]{64}', name)
+        for name in optional
+    ):
+        return False
+
+    source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
+    if source.returncode:
+        return False
+    mutation = _historical_release_mutation_steps(source.stdout)
+    prepare = 'Prepare complete immutable release transaction'
+    prepublication = 'Synchronize canonical pre-publication resource lanes'
+    finalizer = 'Reconcile complete immutable release transaction'
+    if mutation is None or not {prepare, prepublication, finalizer}.issubset(mutation):
+        return False
+    jobs = api.pages(f"actions/runs/{run['id']}/attempts/1/jobs", 'jobs')
+    release_jobs = [job for job in jobs if job.get('name') == 'release']
+    if len(release_jobs) != 1:
+        return False
+    release = release_jobs[0]
+    if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
+        return False
+    steps = release.get('steps')
+    if not isinstance(steps, list):
+        return False
+    outcomes = {}
+    for step in steps:
+        outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
+    required = {
+        prepare: 'success',
+        prepublication: 'failure',
+        finalizer: 'success',  # Pinned workflow invokes only --finalize-only.
+    }
+    required.update({
+        name: 'skipped' for name in mutation - set(required)
+    })
+    required.update({
+        'Reconcile terminal release resource disposition': 'skipped',
+        'Preserve terminal release resource disposition': 'skipped',
+        'Retain exact approved release receipt': 'skipped',
+    })
+    return all(outcomes.get(name) == [conclusion] for name, conclusion in required.items())
+
+
+
 def _admission_disposition(api, run, record):
     if run.get('status') != 'completed':
         return None
@@ -2560,6 +2672,7 @@ def admission_conflicts(api, candidate, *, current_run):
         for record in records:
             if (_admission_settled(api, run, record)
                 or _admission_nonmutating_terminal(api, run)
+                or (not own_run and _historical_fenced_prepublication_nonentry(api, run, record))
                 or _admission_superseded_by_terminal_success(api, run, record, runs)):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
