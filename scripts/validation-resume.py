@@ -3706,8 +3706,74 @@ def _step5_execution_contract(text):
     return contract
 
 
+def _step5_child_contract(text, child):
+    contract = _step5_execution_contract(text)
+    return {key: contract[key] for key in ('environment', 'defaults', child)}
+
+
+def _step5_child_unchanged(prior_sha, workflow_path, child):
+    return _step5_child_contract(git_show_file(prior_sha, workflow_path), child) == _step5_child_contract(Path(workflow_path).read_text(), child)
+
+
+def _step5_merge_fingerprint(source):
+    import ast
+    module = ast.parse(source)
+    names = {'merge_step5_class_results', 'read_step5_results', 'cmd_step5_merge'}
+    nodes = [ast.dump(node, include_attributes=False) for node in module.body
+             if isinstance(node, ast.FunctionDef) and node.name in names]
+    if len(nodes) != len(names):
+        return None
+    return hashlib.sha256('\n'.join(nodes).encode()).hexdigest()
+
+
+def _step5_materialization_identity(workflow, source):
+    """Bind every validate step that can overwrite candidate artifacts and its parser."""
+    import ast
+    names = {'merge_step5_class_results', 'read_step5_results', 'cmd_step5_merge'}
+    nodes = {node.name: ast.dump(node, include_attributes=False)
+             for node in ast.parse(source).body
+             if isinstance(node, ast.FunctionDef) and node.name in names}
+    contract = {'validate': _job_blocks(workflow).get('validate'), 'helpers': nodes}
+    return hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+
+
+def _step5_materialization_compatible(prior_sha, workflow_path):
+    prior = _step5_materialization_identity(
+        git_show_file(prior_sha, workflow_path), git_show_file(prior_sha, 'scripts/validation-resume.py'))
+    current = _step5_materialization_identity(
+        Path(workflow_path).read_text(), Path('scripts/validation-resume.py').read_text())
+    # Candidate artifacts may have been overwritten with effective repaired TRX.
+    # Admit unchanged authority or only the exact reviewed directional upgrade;
+    # never infer that an artifact is raw from its name or its parent conclusion.
+    return prior == current or (prior, current) == (
+        '95fca8be2c095ce5c7720dc6276c09384521930cb6e93d985f1366ec3f8ffcad', '6b3bbec67ebdfa63dc9d05b18ecdfc3e32855fd9946682ea6adb6b708b5a91de')
+
+
+def _step5_candidate_producer_compatible(prior_sha, workflow_path):
+    return (_step5_child_unchanged(prior_sha, workflow_path, 'candidate')
+            and _step5_materialization_compatible(prior_sha, workflow_path))
+
+
+def _step5_baseline_producer_compatible(prior_sha, workflow_path):
+    if not _step5_materialization_compatible(prior_sha, workflow_path):
+        return False
+    prior = _step5_child_contract(git_show_file(prior_sha, workflow_path), 'baseline')
+    current = _step5_child_contract(Path(workflow_path).read_text(), 'baseline')
+    current_helper = _step5_merge_fingerprint(Path('scripts/validation-resume.py').read_text())
+    if prior == current:
+        return current_helper == _step5_merge_fingerprint(git_show_file(prior_sha, 'scripts/validation-resume.py'))
+    # Directional admission of the reviewed full-suite producer into this exact
+    # bounded replacement consumer. Identities remain distinct; unknown edits
+    # (including environment, checkout, SDK, restore, build or test) fail closed.
+    digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+    return current_helper == 'de5a902349eb7e3dbf8e2efd010489cba156f08d9424c626d13cb250224f5ed6' and (digest(prior), digest(current)) == (
+        '93bb34927ed933497128baeffc1e3bd61f7d692deb621e406a1986a1b9c7dc93', 'ae069422498edc792983b05eea46e9714d4a73bdd2c69ff15370eb195f028a01')
+
+
 def _step5_jobs_unchanged(prior_sha: str, workflow_path: str) -> bool:
-    return _step5_execution_contract(git_show_file(prior_sha, workflow_path)) == _step5_execution_contract(Path(workflow_path).read_text())
+    return (_step5_execution_contract(git_show_file(prior_sha, workflow_path)) == _step5_execution_contract(Path(workflow_path).read_text())
+            and _step5_candidate_producer_compatible(prior_sha, workflow_path)
+            and _step5_baseline_producer_compatible(prior_sha, workflow_path))
 
 
 class ReleaseOperationHistoryUnproven(RuntimeError):
@@ -4701,6 +4767,62 @@ def read_step5_results(path):
     return result
 
 
+def merge_step5_class_results(prior_path, repair_path, classes, output_path):
+    """Replace only complete affected class evidence; retain untouched rows."""
+    import copy
+    import xml.etree.ElementTree as ET
+    classes = sorted(set(classes))
+    if not classes:
+        raise ValueError('Bounded repair requires affected classes')
+    prior = read_step5_results(prior_path)
+    repair = read_step5_results(repair_path)
+    affected = lambda name: any(name.startswith(value + '.') for value in classes)
+    if any(not affected(name) for name in repair):
+        raise ValueError('Repair contains tests outside affected classes')
+    for value in classes:
+        if not any(name.startswith(value + '.') for name in repair):
+            raise ValueError('Repair omitted affected class: ' + value)
+    if any(affected(name) and name not in repair for name in prior):
+        raise ValueError('Repair omitted prior tests from affected class')
+    tree = ET.parse(prior_path)
+    root = tree.getroot()
+    results_node = next((node for node in root.iter() if node.tag.endswith('Results')), None)
+    if results_node is None:
+        raise ValueError('Prior TRX has no Results node')
+    for node in list(results_node):
+        if node.tag.endswith('UnitTestResult') and affected(node.get('testName', '')):
+            results_node.remove(node)
+    repair_root = ET.parse(repair_path).getroot()
+    for node in repair_root.iter():
+        if node.tag.endswith('UnitTestResult'):
+            results_node.append(copy.deepcopy(node))
+    rows = [node for node in root.iter() if node.tag.endswith('UnitTestResult')]
+    counters = next(node for node in root.iter() if node.tag.endswith('Counters'))
+    counters.set('total', str(len(rows)))
+    counters.set('executed', str(sum(node.get('outcome') != 'NotExecuted' for node in rows)))
+    for outcome in ('Passed', 'Failed', 'NotExecuted'):
+        counters.set(outcome[0].lower() + outcome[1:], str(sum(node.get('outcome') == outcome for node in rows)))
+    summary = next(node for node in root.iter() if node.tag.endswith('ResultSummary'))
+    summary.set('outcome', 'Failed' if any(node.get('outcome') != 'Passed' for node in rows) else 'Passed')
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tree.write(target, encoding='utf-8', xml_declaration=True)
+    read_step5_results(target)
+
+
+def cmd_step5_merge(args):
+    merge_step5_class_results(args.prior, args.repair, args.classes.split(';'), args.output)
+    Path(args.output + '.provenance.json').write_text(json.dumps({
+        'materializationAuthoritySha256': _step5_merge_fingerprint(Path(__file__).read_text()),
+        'sourceRunId': args.source_run, 'sourceArtifact': args.source_artifact,
+        'sourceRevision': args.source_revision, 'approvedRevision': args.approved_revision,
+        'replacedClasses': args.classes.split(';'),
+        'priorSha256': hashlib.sha256(Path(args.prior).read_bytes()).hexdigest(),
+        'repairSha256': hashlib.sha256(Path(args.repair).read_bytes()).hexdigest(),
+        'effectiveSha256': hashlib.sha256(Path(args.output).read_bytes()).hexdigest(),
+    }, sort_keys=True) + '\n')
+
+
 @functools.lru_cache(maxsize=128)
 def _step5_artifact_results(repository, run_id, artifact, kind, token):
     """Authenticate the retained child by its artifact bytes, not parent status.
@@ -4752,7 +4874,7 @@ def _step5_prior_candidate_evidence(
                 if not _trusted_pr_run(repository, run, workflow_path, token):
                     continue
             impact = step5_dependency_change(head_sha, current_sha)
-            if impact is None or not _step5_jobs_unchanged(head_sha, workflow_path):
+            if impact is None or not _step5_candidate_producer_compatible(head_sha, workflow_path):
                 continue
             artifact = f"step5-candidate-{head_sha}"
             if artifact not in _run_artifact_names(repository, run_id, token):
@@ -5069,7 +5191,7 @@ def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
         affected = expanded
 
 
-def _step5_discovered_repair_classes(classes, test_names, changed_paths):
+def _step5_discovered_repair_classes(classes, test_names, changed_paths, source_revision=None):
     """Use complete prior discovery to distinguish tests from co-located helpers.
 
     Prior xUnit discovery is authoritative for unchanged source files, so helper
@@ -5093,6 +5215,13 @@ def _step5_discovered_repair_classes(classes, test_names, changed_paths):
             # Project/build graph edits can alter discovery globally.
             return None
         source_path = Path(path)
+        if source_revision is not None:
+            try:
+                source = git_show_file(source_revision, path)
+            except Exception:
+                return None
+            changed_declared.update(_step5_source_classes(source))
+            continue
         if not source_path.is_file():
             # Added/deleted/renamed C# source cannot be narrowed from prior
             # discovery alone.
@@ -5352,13 +5481,15 @@ def compute_step5_decision(
     # Reject incompatible candidate job definitions before any expensive
     # historical baseline scan. The baseline is an independent child and will
     # be produced by the baseline-evidence job when full proof is required.
-    if not _step5_jobs_unchanged(prior_head_sha, workflow_path):
+    if not _step5_candidate_producer_compatible(prior_head_sha, workflow_path):
         decision["reason"] = "candidate_or_baseline_job_changed"
         return decision
 
     baseline_evidence = compute_step5_baseline_evidence(repository, base_sha)
     # Candidate proof remains valid even when the independent baseline needs
     # fresh execution. The workflow produces that missing child in this run.
+    if baseline_evidence.get("repairClasses"):
+        decision["baselineRepair"] = baseline_evidence
     if not baseline_evidence.get("reusable"):
         baseline_evidence = {
             "evidenceRunId": current_run_id,
@@ -5449,37 +5580,45 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
     workflow_name = "step5-isolated-conversion-mapping-validation.yml"
     workflow_path = WORKFLOW_PATHS[workflow_name]
 
-    input_equivalence = {}
+    bounded = None
 
     def accept(run, artifact_name, evidence_base_sha):
+        nonlocal bounded
         run_id = int(run.get("id") or 0)
         run_head = run.get("head_sha") or ""
         if not run_id or not re.fullmatch(r"[0-9a-f]{40}", evidence_base_sha):
             return False
         if not _trusted_pr_run(repository, run, workflow_path, token):
             return False
-        if not _step5_jobs_unchanged(run_head, workflow_path):
-            return False
-        if evidence_base_sha not in input_equivalence:
-            input_equivalence[evidence_base_sha] = _step5_baseline_inputs_equivalent(evidence_base_sha, base_sha)
-        if not input_equivalence[evidence_base_sha]:
-            return False
         kind = "candidate" if artifact_name.startswith("step5-candidate-") else "baseline"
-        if kind == "candidate" and evidence_base_sha != run_head:
+        if kind == "candidate":
+            if evidence_base_sha != run_head or not _step5_candidate_producer_compatible(run_head, workflow_path):
+                return False
+        elif not _step5_baseline_producer_compatible(run_head, workflow_path):
             return False
-        if not _step5_artifact_complete(repository, run_id, artifact_name, kind, token):
+        classes = step5_dependency_change(evidence_base_sha, base_sha)
+        if classes is None:
             return False
-        result.update({
-            "reusable": True,
+        rows = _step5_artifact_results(repository, run_id, artifact_name, kind, token)
+        if classes:
+            classes = _step5_discovered_repair_classes(classes, tuple(rows), git_changed(evidence_base_sha, base_sha), source_revision=base_sha)
+        if classes is None:
+            return False
+        evidence = {
+            "reusable": not bool(classes),
             "evidenceRunId": run_id,
             "evidenceArtifact": artifact_name,
             "evidenceBaseSha": evidence_base_sha,
-            "reason": (
-                "exact_approved_baseline_evidence"
-                if evidence_base_sha == base_sha
-                else "content_identical_step5_inputs"
-            ),
-        })
+            "repairClasses": classes,
+            "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+            "reason": "bounded_approved_baseline_repair" if classes else (
+                "exact_approved_baseline_evidence" if evidence_base_sha == base_sha else "content_identical_step5_inputs"),
+        }
+        if classes:
+            if bounded is None:
+                bounded = evidence
+            return False
+        result.update(evidence)
         return True
 
     # Fast path: an artifact already keyed to the exact approved base.
@@ -5537,6 +5676,8 @@ def compute_step5_baseline_evidence(repository: str, base_sha: str):
                 continue
 
     result["reason"] = "no_content_identical_baseline_artifact"
+    if bounded:
+        result.update(bounded)
     return result
 
 
@@ -5695,6 +5836,11 @@ def build_parser():
     step5_baseline.add_argument("--repository", required=True)
     step5_baseline.add_argument("--output", required=True)
     step5_baseline.set_defaults(func=cmd_step5_baseline)
+
+    merge = sub.add_parser('step5-merge')
+    for flag in ('prior', 'repair', 'classes', 'output', 'source-run', 'source-artifact', 'source-revision', 'approved-revision'):
+        merge.add_argument('--' + flag, required=True)
+    merge.set_defaults(func=cmd_step5_merge)
 
     job_unchanged = sub.add_parser("job-unchanged")
     job_unchanged.add_argument("--workflow-path", required=True)
