@@ -1331,6 +1331,19 @@ class ResourceAdmission(unittest.TestCase):
         ):
             self.assertEqual(('client',), m._validate_admission_record_scope(record))
 
+    def test_historical_admission_scope_accepts_schema_write_as_stronger_schema_ownership(self):
+        paths = ['ClientApp/Program.cs', 'Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs']
+        record = {
+            'selectedTargets': list(m.VALIDATION_AUTHORITY.release_targets_for_paths(paths)),
+            'resources': self.resources(paths),
+        }
+        self.assertIn('write/schema/masterapp', record['resources'])
+        self.assertNotIn('read/schema/masterapp', record['resources'])
+        self.assertEqual(
+            m.VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']),
+            m._validate_admission_record_scope(record),
+        )
+
     def test_historical_admission_scope_rejects_missing_selected_target_write(self):
         record = {
             'selectedTargets': [canonical_name('client')],
