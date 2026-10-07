@@ -1093,8 +1093,7 @@
 
 .legend-founder-ai-send:disabled,
 .legend-founder-ai-new-conversation:disabled,
-.legend-founder-ai-mode:disabled,
-.legend-founder-ai-clear-history:disabled {
+.legend-founder-ai-mode:disabled {
     opacity: .46;
     cursor: default;
     transform: none;
