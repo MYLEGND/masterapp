@@ -91,7 +91,7 @@ internal sealed partial class LegendFounderToolAuthority
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
             if (IsRepositoryControlPlaneMutation(name)) return false;
-            if (name == "legend_remember_conversation_facts")
+            if (name is "legend_remember_conversation_facts" or "legend_remember_founder_rule")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
                 return !externalTeacher && !providerPolicy.ForbidsExternalAnswering && !providerPolicy.ForbidsOpenAiPayg;
@@ -146,7 +146,8 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
         !IsRepositoryControlPlaneMutation(name) &&
-        (name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name));
+        (name == "legend_remember_founder_rule" ||
+         (name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name)));
 
     // Cloudflare consumes the same canonical read projection exposed by the
     // Founder GPT/site-tool path. This is intentionally a deny-classification,
@@ -224,7 +225,8 @@ internal sealed partial class LegendFounderToolAuthority
         IsReadOnlyFounderTool(name);
 
     private static bool RequiresExplicitFounderCommand(string name) =>
-        !IsReadOnlyFounderTool(name) && name != "legend_remember_conversation_facts";
+        !IsReadOnlyFounderTool(name) &&
+        name is not ("legend_remember_conversation_facts" or "legend_remember_founder_rule");
 
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
@@ -468,6 +470,30 @@ internal sealed partial class LegendFounderToolAuthority
                 : MutationFailure("model_repository_write_forbidden",
                     "Repository and engineering control-plane writes are unavailable to LEGEND AI.");
 
+        if (call.Name == "legend_remember_founder_rule")
+        {
+            if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+            try
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
+                    !IsStrictSchemaInstance(schema, arguments.RootElement))
+                    return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+                return SerializeUnbounded(new
+                {
+                    ok = true,
+                    persisted = false,
+                    requiresConversationAuthority = true,
+                    reason = "founder_rule_requires_conversation_authority"
+                });
+            }
+            catch (JsonException)
+            {
+                return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+            }
+        }
+
         if (serverDerivedScope is not null)
         {
             // Enforce the same disclosure boundary even if a signed callback
@@ -617,6 +643,15 @@ internal sealed partial class LegendFounderToolAuthority
                 // This never invokes global teaching or promotion permissions.
                 return SerializeUnbounded(new { ok = true, requiresConversationScope = true, persisted = false });
             }
+
+            case "legend_remember_founder_rule":
+                return SerializeUnbounded(new
+                {
+                    ok = true,
+                    requiresConversationAuthority = true,
+                    persisted = false,
+                    reason = "founder_rule_requires_conversation_authority"
+                });
 
             case "legend_request_teacher_escalation":
             {
@@ -2691,6 +2726,29 @@ internal sealed partial class LegendFounderToolAuthority
                         }
                     },
                     required = new[] { "facts" }, additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_remember_founder_rule",
+                description = "Persist one durable Founder operating rule or preference across conversations only when the Founder explicitly asks to remember it. rule_text must be copied exactly from the current user message. Use a stable key so a later explicit correction supersedes the prior rule in the same scope. Never store secrets, credentials, contact information, customer data or transient conversation facts.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        key = new { type = "string", pattern = "^[a-z0-9][a-z0-9._-]{0,79}$" },
+                        scope = new
+                        {
+                            type = "string",
+                            @enum = new[] { "global", "engineering", "design", "analytics", "communication", "workflow" }
+                        },
+                        rule_text = new { type = "string", minLength = 1, maxLength = 1000 }
+                    },
+                    required = new[] { "key", "scope", "rule_text" },
+                    additionalProperties = false
                 },
                 strict = true
             },
