@@ -639,8 +639,14 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened canonical lifecycle absent-path identity'
 
+    app_scope_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_app_only_admission_keys'
+    )
     publication_proof_source = _function_source(
         source['lifecycle'], lifecycle_tree, '_historical_application_publications_completed'
+    )
+    forward_supersession_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_forward_supersedes_completed_app_lease'
     )
     live_settlement_source = _function_source(
         source['lifecycle'], lifecycle_tree, '_admission_covered_by_live_provenance'
@@ -648,32 +654,71 @@ def candidate_control_plane_integrity(api, pr, names):
     admission_conflict_source = _function_source(
         source['lifecycle'], lifecycle_tree, 'admission_conflicts'
     )
-    if not all(token in publication_proof_source for token in (
+
+    legacy_publication_proof = all(token in publication_proof_source for token in (
         "run.get('status') != 'completed'",
         "actions/runs/{run['id']}/jobs?filter=latest",
         "'Publish canonical selected targets in parallel'",
         "f'Publish canonical target ({key})'",
         "== ['success']",
-    )):
+    ))
+    durable_publication_proof = all(token in publication_proof_source for token in (
+        "actions/runs/{run['id']}/artifacts",
+        "legend-release-operation-success-",
+        "VALIDATION_AUTHORITY._download_run_artifact",
+        "success.get('phase') != 'success'",
+        "success.get('producingRun') != run['id']",
+        "operation_id != expected_id",
+        "return set(observed) == set(keys)",
+    ))
+    if not (legacy_publication_proof or durable_publication_proof):
         return 'Candidate weakened positive historical publication proof'
-    if not all(token in live_settlement_source for token in (
+
+    legacy_live_settlement = all(token in live_settlement_source for token in (
         '_validate_admission_record_scope(record)',
         "'read/schema/masterapp'",
         "'write/app/'",
         "row.get('app')",
         "row.get('revision')",
         'ancestor(revision, observed[key])',
-    )):
+    ))
+    hardened_live_settlement = all(token in live_settlement_source for token in (
+        '_app_only_admission_keys(record)',
+        "row.get('app')",
+        "row.get('revision')",
+        'ancestor(revision, observed[key])',
+    ))
+    if not (legacy_live_settlement or hardened_live_settlement):
         return 'Candidate weakened canonical live-provenance stale-lease settlement'
-    if not all(token in admission_conflict_source for token in (
+
+    base_conflict_contract = all(token in admission_conflict_source for token in (
         'live_snapshot_loaded = False',
         '_historical_application_publications_completed(api, run, record)',
         'live_revisions()',
         '_admission_covered_by_live_provenance(record, live_snapshot)',
         "run.get('status') == 'completed'",
         'not own_run',
-    )):
+    ))
+    if not base_conflict_contract:
         return 'Candidate removed fail-closed live-provenance lease discharge'
+
+    if durable_publication_proof or hardened_live_settlement:
+        if not all(token in app_scope_source for token in (
+            "'read/schema/masterapp'",
+            "'write/app/'",
+            'resource not in allowed',
+        )):
+            return 'Candidate weakened app-only stale-lease resource boundary'
+        if not all(token in forward_supersession_source for token in (
+            '_app_only_admission_keys(record)',
+            '_app_only_admission_keys(candidate)',
+            "old_revision == new_revision",
+            "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
+            'ancestor(old_revision, new_revision)',
+        )):
+            return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
+        if '_forward_supersedes_completed_app_lease(record, candidate)' not in admission_conflict_source:
+            return 'Candidate removed strict descendant stale-lease roll-forward'
 
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
