@@ -114,7 +114,8 @@ public sealed class LegendFounderCloudToolExposureTests
         Assert.Contains("legend_calculate", names);
         Assert.DoesNotContain("legend_metric_detail", names);
         Assert.DoesNotContain("legend_prepare_software_repair", names);
-        Assert.Equal(15, names.Length);
+        Assert.Contains("legend_remember_founder_rule", names);
+        Assert.Equal(16, names.Length);
         Assert.All(output.EnumerateArray(), capability =>
         {
             Assert.False(capability.GetProperty("canModifyRepository").GetBoolean());
@@ -183,7 +184,8 @@ public sealed class LegendFounderCloudToolExposureTests
             LegendConnectExternalProviderPolicy.CloudflareFoundation).Select(tool => JsonSerializer.SerializeToElement(tool).GetProperty("name").GetString()).ToArray();
         Assert.DoesNotContain("legend_prepare_software_repair", names);
         Assert.DoesNotContain("legend_inspect_repository", names);
-        Assert.Equal(14, names.Length);
+        Assert.Contains("legend_remember_founder_rule", names);
+        Assert.Equal(15, names.Length);
         var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_capabilities", "{}"));
         var capabilities = JsonSerializer.SerializeToElement(response.Value).GetProperty("output").EnumerateArray()
             .Select(tool => tool.GetProperty("name").GetString()).ToArray();
@@ -285,7 +287,9 @@ public sealed class LegendFounderCloudToolExposureTests
             new FounderAiToolCall("site", "legend_prepare_software_repair", "{}"),
             "founder_work", CancellationToken.None);
         Assert.DoesNotContain("model_repository_write_forbidden", denied);
-        Assert.False(JsonDocument.Parse(denied).RootElement.GetProperty("ok").GetBoolean());
+        using var deniedDocument = JsonDocument.Parse(denied);
+        Assert.False(deniedDocument.RootElement.GetProperty("succeeded").GetBoolean());
+        Assert.True(deniedDocument.RootElement.TryGetProperty("error", out _));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
