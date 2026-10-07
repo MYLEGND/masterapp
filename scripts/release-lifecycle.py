@@ -2317,7 +2317,14 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             return False
 
     keys = _validate_admission_record_scope(record)
-    if not keys or record.get('producingAttempt') != 1:
+    if (
+        not keys or record.get('producingAttempt') != 1
+        # The historical routing settings owner can write outside a partition
+        # child intent. This proof therefore covers only non-routing app/schema
+        # scope; routing/Founder auxiliary leases require their own disposition.
+        or any(resource.startswith('write/cloudflare/')
+               for resource in record['resources'])
+    ):
         return False
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     if not isinstance(artifacts, list) or any(
