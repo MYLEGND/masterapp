@@ -704,7 +704,7 @@ def candidate_control_plane_integrity(api, pr, names):
             or all(token in forward_supersession_source for token in forward_supersession_target_scoped)
         )
     ):
-        return 'Candidate weakened strict descendant stale-lease supersession'
+        return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
     if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
