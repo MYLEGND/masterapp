@@ -1861,7 +1861,13 @@ def release_execution_state(api, run):
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
     release_jobs = [job for job in jobs if job.get('name') == 'release']
     steps = release_jobs[0].get('steps', []) if release_jobs else []
-    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical')]
+    publications = [
+        step for step in steps
+        if (
+            step.get('name', '').startswith('Publish canonical')
+            or step.get('name') == 'Submit canonical selected targets in parallel'
+        )
+    ]
     if run.get('status') == 'completed':
         artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
         names = {item.get('name', '') for item in artifacts if not item.get('expired')}
