@@ -637,7 +637,13 @@ class ReleaseQueueSerialization(unittest.TestCase):
         governance = self.pr(442, "b" * 40)
         api.pages_map["pulls/442/files"] = [
             {"filename": ".github/CODEOWNERS"},
+            {"filename": ".github/agents/legend-intelligence-engineer.agent.md"},
             {"filename": ".github/agents/masterapp-chief-architect.agent.md"},
+            {"filename": ".github/agents/masterapp-cross-platform-engineer.agent.md"},
+            {"filename": ".github/agents/masterapp-release-reviewer.agent.md"},
+            {"filename": ".github/agents/masterapp-runtime-engineer.agent.md"},
+            {"filename": ".github/agents/masterapp-verification-engineer.agent.md"},
+            {"filename": ".github/copilot-instructions.md"},
             {"filename": "AGENTS.md"},
         ]
 
