@@ -792,7 +792,8 @@ class ReleaseQueueSerialization(unittest.TestCase):
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
-    def test_legacy_nonpublishing_owner_is_released_and_product_is_promoted(self, _, __):
+    @patch.object(m.time, "sleep")
+    def test_legacy_nonpublishing_owner_is_released_and_product_is_promoted(self, _sleep, _, __):
         api = Api()
         governance = self.pr(442, "b" * 40)
         product = self.pr(450, "c" * 40)
@@ -2537,7 +2538,8 @@ class CandidateValidation(unittest.TestCase):
             "head": {"sha": "b" * 40},
         }, files
 
-    def test_broad_product_change_requires_architecture_step5_and_security(self):
+    @patch.object(m.time, "sleep")
+    def test_broad_product_change_requires_architecture_step5_and_security(self, _sleep):
         pr, files = self.pr(["AgentPortal/Program.cs"])
         api = Api()
         api.pages_map["actions/runs?head_sha=" + "b" * 40] = []
@@ -2615,7 +2617,8 @@ class CandidateValidation(unittest.TestCase):
         self.assertIn("architecture", pending)
         sleeper.assert_not_called()
 
-    def test_security_authority_change_requires_security_validator(self):
+    @patch.object(m.time, "sleep")
+    def test_security_authority_change_requires_security_validator(self, _sleep):
         pr, files = self.pr([".github/workflows/approved-release-security-validation.yml"])
         api = Api()
         api.pages_map["pulls/7/files"] = [{"filename": path} for path in files]

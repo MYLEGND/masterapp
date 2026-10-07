@@ -2771,6 +2771,96 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
                         {'name': 'discover-live', 'conclusion': 'skipped'},
                         {'name': 'release', 'conclusion': 'skipped'}]
 
+    def observer_jobs(self):
+        # Sanitized Actions shape from admission-only failure 37671062294.
+        return [{'conclusion': 'failure',
+          'name': 'admission',
+          'status': 'completed',
+          'steps': [{'conclusion': 'success', 'name': 'Set up job', 'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Run actions/checkout@v4', 'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Verify selected authority belongs to protected event history',
+                     'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Install canonical admission evidence transport',
+                     'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Bind admission evidence runtime', 'status': 'completed'},
+                    {'conclusion': 'failure', 'name': 'Admit canonical release resource ownership', 'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Post Run actions/checkout@v4', 'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Complete job', 'status': 'completed'}]},
+         {'conclusion': 'skipped', 'name': 'discover-live', 'status': 'completed', 'steps': []},
+         {'conclusion': 'skipped', 'name': 'preserve-rollback', 'status': 'completed', 'steps': []},
+         {'conclusion': 'success',
+          'name': 'release-state-receipt',
+          'status': 'completed',
+          'steps': [{'conclusion': 'success', 'name': 'Set up job', 'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Capture exact release step-state receipt', 'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Preserve exact release step-state receipt artifact',
+                     'status': 'completed'},
+                    {'conclusion': 'skipped',
+                     'name': 'Bind successful release to canonical validated package',
+                     'status': 'completed'},
+                    {'conclusion': 'skipped', 'name': 'Preserve validated package release binding', 'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Complete job', 'status': 'completed'}]},
+         {'conclusion': 'skipped', 'name': 'release', 'status': 'completed', 'steps': []},
+         {'conclusion': 'skipped',
+          'name': 'target-release-receipts (${{ matrix.app }})',
+          'status': 'completed',
+          'steps': []},
+         {'conclusion': 'success',
+          'name': 'wake-release-lifecycle-after-terminal-release',
+          'status': 'completed',
+          'steps': [{'conclusion': 'success', 'name': 'Set up job', 'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Checkout protected lifecycle wake authority',
+                     'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Wake protected lifecycle after terminal direct release',
+                     'status': 'completed'},
+                    {'conclusion': 'success',
+                     'name': 'Post Checkout protected lifecycle wake authority',
+                     'status': 'completed'},
+                    {'conclusion': 'success', 'name': 'Complete job', 'status': 'completed'}]}]
+
+    def test_actual_nonentry_with_authenticated_terminal_observers(self):
+        jobs = self.observer_jobs()
+        self.assertFalse(m.release_attempt_never_entered(jobs))
+        self.assertTrue(m.release_attempt_never_entered(jobs, self.source))
+        for kind in ('transaction', 'operation'):
+            self.assertIsNone(self.check_history(kind, [jobs]))
+
+    def test_observer_nonentry_rejects_unknown_partial_active_and_mutating_evidence(self):
+        import copy
+        jobs = self.observer_jobs()
+        variants = [jobs[:-1], jobs + [jobs[-1]], jobs + [{'name': 'schema-write'}]]
+        for job_name, field, value in (
+            ('release', 'conclusion', 'failure'),
+            ('release-state-receipt', 'status', 'in_progress'),
+            ('target-release-receipts (${{ matrix.app }})', 'conclusion', 'success'),
+            ('release-state-receipt', 'steps', [{'name': 'Deploy Azure', 'status': 'completed', 'conclusion': 'success'}]),
+        ):
+            changed = copy.deepcopy(jobs)
+            next(row for row in changed if row['name'] == job_name)[field] = value
+            variants.append(changed)
+        for changed in variants:
+            self.assertFalse(m.release_attempt_never_entered(changed, self.source))
+        for before, after in (
+            ('run: python3 scripts/wake-release-lifecycle.py', 'run: python3 scripts/deploy-approved-app.py'),
+            ('actions: read', 'actions: write'),
+            ('      actions: write', '      actions: write\n      id-token: write'),
+            ('      contents: read\n      actions: write', '      contents: write\n      actions: write'),
+            ('          GH_TOKEN: ${{ github.token }}', '          GH_TOKEN: ${{ github.token }}\n          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}'),
+            ('Capture exact release step-state receipt', 'Capture and mutate release'),
+        ):
+            self.assertIn(before, self.source)
+            self.assertFalse(m.release_attempt_never_entered(jobs, self.source.replace(before, after)))
+        entered = copy.deepcopy(jobs)
+        next(row for row in entered if row['name'] == 'release')['conclusion'] = 'success'
+        for kind in ('transaction', 'operation'):
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                self.check_history(kind, [entered, jobs])
+
     def test_exact_omitted_and_complete_skipped_shapes(self):
         for jobs in [self.omitted, self.skipped, self.skipped + [self.omitted[1]]]:
             with self.subTest(jobs=jobs):
