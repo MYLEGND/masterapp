@@ -480,12 +480,59 @@ internal sealed partial class LegendFounderToolAuthority
                 if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
                     !IsStrictSchemaInstance(schema, arguments.RootElement))
                     return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+
+                // Local/Teacher execution is completed by the conversation authority,
+                // which has the literal current user message in hand. Cloud callbacks
+                // verify that same text through canonical Founder messaging history.
+                if (serverDerivedScope is null)
+                    return SerializeUnbounded(new
+                    {
+                        ok = true,
+                        persisted = false,
+                        requiresConversationAuthority = true,
+                        reason = "founder_rule_requires_conversation_authority"
+                    });
+                if (_authorizationScopes is null ||
+                    !Guid.TryParse(serverDerivedScope.ConversationId, out var conversationId))
+                    return """{"ok":false,"error":"founder_rule_history_unavailable"}""";
+
+                FounderGuard.EnsureFounderOrThrow(founder);
+                await using var serviceScope = _authorizationScopes.CreateAsyncScope();
+                var actor = new MessagingActor(serverDerivedScope.UserId, MessagingParticipantTypes.Agent);
+                var messaging = serviceScope.ServiceProvider.GetRequiredService<IMessagingService>();
+                var history = await messaging.GetFounderAiConversationPageAsync(
+                    actor, conversationId,
+                    new MessagingConversationMessagePageQuery(Take: 1, IncludeGroupImage: false),
+                    cancellationToken);
+                var latest = history.Succeeded ? history.Conversation?.Messages.LastOrDefault() : null;
+                if (latest is null || latest.AuthorKind != MessagingAuthorKinds.Human ||
+                    latest.SenderUserId != actor.UserId || latest.SenderType != actor.ParticipantType)
+                    return """{"ok":false,"error":"founder_rule_literal_source_unavailable"}""";
+
+                var root = arguments.RootElement;
+                var access = serviceScope.ServiceProvider.GetRequiredService<IControlledResourceAccessService>();
+                var saved = await access.UpsertFounderAssistantRuleAsync(
+                    actor,
+                    root.GetProperty("key").GetString()!,
+                    root.GetProperty("scope").GetString()!,
+                    root.GetProperty("rule_text").GetString()!,
+                    latest.Body,
+                    cancellationToken);
                 return SerializeUnbounded(new
                 {
-                    ok = true,
-                    persisted = false,
-                    requiresConversationAuthority = true,
-                    reason = "founder_rule_requires_conversation_authority"
+                    ok = saved.Succeeded,
+                    persisted = saved.Succeeded,
+                    reason = saved.ReasonCode,
+                    rule = saved.Rule is null ? null : new
+                    {
+                        saved.Rule.Key,
+                        saved.Rule.Scope,
+                        saved.Rule.RuleText,
+                        saved.Rule.Provenance,
+                        saved.Rule.UpdatedUtc
+                    },
+                    canonical = true,
+                    modelWeightsTrained = false
                 });
             }
             catch (JsonException)
