@@ -397,6 +397,8 @@ public sealed class FounderSoftwareRepairBatchTests
             TotalRequests++;
             var path = request.RequestUri!.AbsolutePath;
             if (request.RequestUri.Host == "fixture.vault.azure.net") return Json(new { value = key });
+            if (path == "/repos/MYLEGND/masterapp" && request.Method == HttpMethod.Get)
+                return Json(new { id = 1209859492, full_name = "MYLEGND/masterapp" });
             if (path == "/app/installations/2/access_tokens") return Json(new
             {
                 token = "synthetic-installation",
