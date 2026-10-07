@@ -341,7 +341,7 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         result = m.candidate_control_plane_integrity(
             Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
         )
-        self.assertIn("strict descendant full-coverage stale-lease supersession", result)
+        self.assertIn("strict descendant target-scoped stale-lease supersession", result)
 
     def test_guard_rejects_ephemeral_target_outcome_transaction_gate(self):
         class Drift(Api):
