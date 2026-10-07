@@ -2205,6 +2205,24 @@ def _historical_application_publications_completed(api, run, record):
     revision = record.get('applicationRevision')
     if keys is None or not SHA.fullmatch(revision or ''):
         return False
+    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+    release_jobs = [job for job in jobs if job.get('name') == 'release']
+    if len(release_jobs) != 1:
+        return False
+    steps = release_jobs[0].get('steps')
+    if not isinstance(steps, list):
+        return False
+    outcomes = {}
+    for step in steps:
+        outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
+    if outcomes.get('Publish canonical selected targets in parallel', []) != ['success']:
+        return False
+    if not all(
+        outcomes.get(f'Publish canonical target ({key})', []) == ['success']
+        for key in keys
+    ):
+        return False
+
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     observed = {}
     for artifact in artifacts:
