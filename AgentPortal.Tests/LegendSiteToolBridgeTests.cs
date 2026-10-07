@@ -108,12 +108,11 @@ public sealed class LegendSiteToolBridgeTests
         Assert.Contains("environment.ApplicationName", SiteToolSection(source), StringComparison.Ordinal);
         Assert.Contains("\"legend_engineering_bootstrap\"", authority, StringComparison.Ordinal);
         Assert.Contains("\"legend_prepare_software_repair\"", authority, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"legend_release_approved_repair\";", authority[
-            authority.IndexOf("IsFounderSiteWorkflowMutationTool", StringComparison.Ordinal)..
-            authority.IndexOf("private static bool IsSiteReadableTool", StringComparison.Ordinal)], StringComparison.Ordinal);
-        Assert.DoesNotContain("\"legend_engineering_approve_release\";", authority[
-            authority.IndexOf("IsFounderSiteWorkflowMutationTool", StringComparison.Ordinal)..
-            authority.IndexOf("private static bool IsSiteReadableTool", StringComparison.Ordinal)], StringComparison.Ordinal);
+        var workflowDeclaration = authority[
+            authority.IndexOf("private static bool IsFounderSiteWorkflowMutationTool", StringComparison.Ordinal)..
+            authority.IndexOf("private static bool IsSiteReadableTool", StringComparison.Ordinal)];
+        Assert.DoesNotContain("\"legend_release_approved_repair\";", workflowDeclaration, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"legend_engineering_approve_release\";", workflowDeclaration, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -27,6 +27,52 @@ namespace AgentPortal.Tests;
 [Collection("Profile website Founder environment")]
 public class WebsiteAnalyticsInitialQualityModeTests
 {
+    [Theory]
+    [InlineData("legend", "https://legend.example.test/")]
+    [InlineData("protect", "https://example.com/")]
+    public async Task Index_ProjectsConfiguredFounderSiteLinks_WithoutChangingProductRouteAuthority(string siteKey, string expected)
+    {
+        var previous = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderOid = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderOid);
+        try
+        {
+            using var db = ControllerTestHelpers.BuildDb();
+            var profile = SeedTrackingProfile(db);
+            profile.AgentUserId = founderOid;
+            profile.AgentUpn = "founder@example.com";
+            await db.SaveChangesAsync();
+            var controller = BuildController(db, profile);
+            controller.Request.QueryString = new QueryString("?siteKey=" + siteKey);
+
+            var view = Assert.IsType<ViewResult>(await controller.Index());
+
+            Assert.Equal(expected, view.ViewData["PersonalLink"]);
+            Assert.Equal("https://example.com", view.ViewData["LandingRoutesBaseUrl"]);
+            using var links = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["FounderSiteLinksJson"]));
+            Assert.Equal("https://legend.example.test/", links.RootElement.GetProperty("legend").GetString());
+            Assert.Equal("https://example.com/", links.RootElement.GetProperty("protect").GetString());
+            using var options = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["AgentOptionsJson"]));
+            Assert.Equal(expected, options.RootElement[0].GetProperty("primaryUrl").GetString());
+        }
+        finally { Environment.SetEnvironmentVariable("FOUNDER_OID", previous); }
+    }
+
+    [Fact]
+    public async Task Index_PreservesAgentPersonalLink_WithoutFounderSiteProjection()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedTrackingProfile(db);
+        await db.SaveChangesAsync();
+        var controller = BuildController(db, profile);
+        controller.Request.QueryString = new QueryString("?siteKey=legend");
+
+        var view = Assert.IsType<ViewResult>(await controller.Index());
+
+        Assert.Equal("https://example.com/a/agent-1", view.ViewData["PersonalLink"]);
+        Assert.Null(view.ViewData["FounderSiteLinksJson"]);
+    }
+
     [Fact]
     public async Task Index_DefaultsToRealHumanTraffic_WhenOnlyInternalRowsExist()
     {
@@ -237,6 +283,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Founder:Upn"] = "founder@example.com",
+                ["Commerce:LegendPublicBaseUrl"] = "https://legend.example.test/",
                 ["Analytics:EnvironmentFilter"] = "production",
                 ["Analytics:ExcludeLocalHosts"] = "false"
             })
@@ -249,6 +296,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
             .ReturnsAsync(profile);
         tracking.Setup(x => x.GetPersonalUrlsAsync(profile, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentUrlInfo("https://example.com/a/agent-1"));
+        tracking.Setup(x => x.GetAllProfilesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<AgentTrackingProfile> { profile });
 
         var landingRoutes = new Mock<ILandingRouteDiscoveryService>();
         landingRoutes.Setup(x => x.GetBaseUrl()).Returns("https://example.com");

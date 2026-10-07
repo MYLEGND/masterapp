@@ -30,6 +30,43 @@ public sealed class FounderSoftwareRepairBatchTests
     private const string PreviewBranch = "hotfix/staging-batch";
 
     [Fact]
+    public async Task ProtectionVerification_UsesExactActiveRulesetWhenClassicEndpointIsForbidden()
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.ClassicProtectionForbidden = true;
+        var result = JsonSerializer.SerializeToElement(
+            await fixture.Service.TestRepairPreparationAsync(default));
+
+        Assert.True(result.GetProperty("wouldCreateIsolatedRepairBranch").GetBoolean(), result.ToString());
+        Assert.True(result.GetProperty("wouldOpenPullRequest").GetBoolean(), result.ToString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("error").ValueKind);
+        Assert.Contains(fixture.Handler.Reads, path => path == "/repos/MYLEGND/masterapp/rulesets");
+        Assert.Contains(fixture.Handler.Reads, path => path == "/repos/MYLEGND/masterapp/rulesets/77");
+    }
+
+    [Theory]
+    [InlineData("wrong-ref")]
+    [InlineData("inactive")]
+    [InlineData("missing-check")]
+    [InlineData("bypass")]
+    public async Task ProtectionVerification_RulesetFallbackFailsClosedWhenProtectionIsNotCanonical(string mode)
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.ClassicProtectionForbidden = true;
+        if (mode == "wrong-ref") fixture.Handler.RulesetRef = "refs/heads/not-approved";
+        if (mode == "inactive") fixture.Handler.RulesetEnforcement = "disabled";
+        if (mode == "missing-check") fixture.Handler.RulesetRequiredCheck = "some-other-check";
+        if (mode == "bypass") fixture.Handler.RulesetHasBypassActor = true;
+
+        var result = JsonSerializer.SerializeToElement(
+            await fixture.Service.TestRepairPreparationAsync(default));
+
+        Assert.False(result.GetProperty("wouldCreateIsolatedRepairBranch").GetBoolean(), result.ToString());
+        Assert.False(result.GetProperty("wouldOpenPullRequest").GetBoolean(), result.ToString());
+        Assert.Equal("authority_requirements_not_verified", result.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Publish_CreatesSeparateExactHeadRefAndReadyPr_ThenSynchronizesSameTreeOnly()
     {
         using var fixture = new Fixture();
@@ -349,13 +386,24 @@ public sealed class FounderSoftwareRepairBatchTests
         public bool InvalidPublicationReceipt { get; set; }
         public string PublicationState { get; set; } = "open";
         public bool PublicationMerged { get; set; }
+        public bool ClassicProtectionForbidden { get; set; }
+        public string RulesetRef { get; set; } = "refs/heads/legend/approved-changes";
+        public string RulesetEnforcement { get; set; } = "active";
+        public string RulesetRequiredCheck { get; set; } = "architecture-validation";
+        public bool RulesetHasBypassActor { get; set; }
         public int TotalRequests { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             TotalRequests++;
             var path = request.RequestUri!.AbsolutePath;
             if (request.RequestUri.Host == "fixture.vault.azure.net") return Json(new { value = key });
-            if (path == "/app/installations/2/access_tokens") return Json(new { token = "synthetic-installation" });
+            if (path == "/repos/MYLEGND/masterapp" && request.Method == HttpMethod.Get)
+                return Json(new { id = 1209859492, full_name = "MYLEGND/masterapp" });
+            if (path == "/app/installations/2/access_tokens") return Json(new
+            {
+                token = "synthetic-installation",
+                permissions = new { contents = "write", pull_requests = "write", checks = "read" }
+            });
             if (request.RequestUri.Host == "one.example.test" && path == "/api/runtime-provenance")
             {
                 var response = Json(new { schemaVersion = 1, appIdentifier = "AppOne", sourceRevision = HeadSha });
@@ -403,7 +451,45 @@ public sealed class FounderSoftwareRepairBatchTests
             if (path == Repo + "pulls/456") return Json(PullRequest(456, "hotfix/publish-" + HeadSha, false));
             if (path == Repo + "actions/workflows/all-intentional-direct-release-20260918.yml/runs") return Json(new { workflow_runs = Array.Empty<object>() });
             if (path == Repo + "branches/legend%2Fapproved-changes/protection" || path == Repo + "branches/legend/approved-changes/protection")
-                return Json(new { required_status_checks = new { strict = true, contexts = new[] { "architecture-validation" } }, enforce_admins = new { enabled = true }, required_pull_request_reviews = new { } });
+                return ClassicProtectionForbidden
+                    ? Json(new { message = "Resource not accessible by integration" }, HttpStatusCode.Forbidden)
+                    : Json(new { required_status_checks = new { strict = true, contexts = new[] { "architecture-validation" } }, enforce_admins = new { enabled = true }, required_pull_request_reviews = new { } });
+            if (path == Repo + "rulesets")
+                return Json(new[] { new { id = 77, target = "branch", enforcement = RulesetEnforcement } });
+            if (path == Repo + "rulesets/77")
+                return Json(new
+                {
+                    id = 77,
+                    target = "branch",
+                    enforcement = RulesetEnforcement,
+                    conditions = new
+                    {
+                        ref_name = new
+                        {
+                            include = new[] { RulesetRef },
+                            exclude = Array.Empty<string>()
+                        }
+                    },
+                    bypass_actors = RulesetHasBypassActor ? new object[] { new { actor_id = 1 } } : Array.Empty<object>(),
+                    current_user_can_bypass = "never",
+                    rules = new object[]
+                    {
+                        new { type = "deletion" },
+                        new { type = "non_fast_forward" },
+                        new { type = "pull_request", parameters = new { allowed_merge_methods = new[] { "merge" } } },
+                        new
+                        {
+                            type = "required_status_checks",
+                            parameters = new
+                            {
+                                strict_required_status_checks_policy = true,
+                                required_status_checks = new[] { new { context = RulesetRequiredCheck } }
+                            }
+                        }
+                    }
+                });
+            if (path == Repo + "commits/" + BaseSha + "/check-runs")
+                return Json(new { check_runs = new[] { new { name = "architecture-validation", conclusion = "success" } } });
             return Json(new { }, HttpStatusCode.NotFound);
         }
         private object PullRequest(int number, string branch, bool draft) => new

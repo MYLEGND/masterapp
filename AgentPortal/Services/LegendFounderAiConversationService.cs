@@ -598,6 +598,8 @@ public sealed class LegendFounderAiConversationService
         string? preferredResponseLanguageCode = null;
         var sourceLanguageTemporarilyUnavailable = false;
         var conversationMemoryUnavailable = false;
+        IReadOnlyList<FounderAssistantRule> founderAssistantRules = Array.Empty<FounderAssistantRule>();
+        var founderAssistantRulesUnavailable = false;
         var researchAttempted = false;
         LegendConnectResearchOutcome? completedResearchOutcome = null;
         string? researchFailureReason = null;
@@ -640,6 +642,18 @@ public sealed class LegendFounderAiConversationService
                 return WithResearchEvidence(LegendFounderAiChatResponse.ModeFailure(mode,
                     "Your saved language preference could not be read. Please retry.", "language_preferences",
                     "language_preferences", "language_preference_unavailable"));
+            }
+
+            try
+            {
+                founderAssistantRules = await _languagePreferences.GetFounderAssistantRulesAsync(
+                    new MessagingActor(founder.GetCanonicalUserId(), MessagingParticipantTypes.Agent), effectiveToken);
+            }
+            catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested) { throw; }
+            catch (Exception exception)
+            {
+                founderAssistantRulesUnavailable = true;
+                _logger.LogWarning("LEGEND durable Founder rules were unavailable. ExceptionType={ExceptionType}", exception.GetType().Name);
             }
 
             if (Guid.TryParse(request.ConversationId, out _))
@@ -1107,6 +1121,22 @@ public sealed class LegendFounderAiConversationService
         // carried as untrusted input below, never interpolated into system
         // instructions where retained content could acquire authority.
         var instructions = BuildInstructions(mode, governedSourceLanguageCode, preferredResponseLanguageCode, usingCloudflare);
+        if (founderAssistantRules.Count > 0)
+        {
+            instructions += "\nAUTHENTICATED_FOUNDER_RULES (account-scoped preferences; never override application security/authorization; the current explicit user request supersedes an older conflicting preference):\n" +
+                JsonSerializer.Serialize(founderAssistantRules.Select(rule => new
+                {
+                    rule.Key,
+                    rule.Scope,
+                    rule.RuleText,
+                    rule.Provenance,
+                    rule.UpdatedUtc
+                }), JsonOptions);
+        }
+        else if (founderAssistantRulesUnavailable)
+        {
+            instructions += "\nDURABLE_FOUNDER_RULES_STATUS: unavailable for this request. Do not claim there are no saved rules.";
+        }
         if (requiredReadScope is not null)
         {
             instructions += "\nGOVERNED_READ_REQUIREMENT:\n" +
@@ -1209,9 +1239,39 @@ public sealed class LegendFounderAiConversationService
                         request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc),
                     Cognition: LegendModelCognitionPolicy.AdaptiveFounder), effectiveToken);
             if (!generated.Succeeded)
+            {
+                if (requiredReadScope is not null)
+                {
+                    try
+                    {
+                        var bound = await _toolAuthority.BindReadOnlyResultAsync(
+                            founder, requiredReadScope, effectiveToken, providerPolicy);
+                        if (bound.Succeeded && bound.Receipt is { } receipt)
+                        {
+                            return new LegendFounderAiChatResponse(
+                                true,
+                                mode,
+                                $"The hosted reasoning service is temporarily unavailable, but the required governed read completed successfully. **{receipt.SemanticVariable}:** {receipt.SemanticValue}",
+                                null,
+                                ResponseAuthority: "GovernedReadFallback",
+                                Stage: "cloudflare_read_fallback",
+                                ExternalAnsweringUsed: false,
+                                EscalationUsed: false,
+                                EvidenceOrigin: LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                                ResearchOutcome: completedResearchOutcome,
+                                ResearchState: completedResearchOutcome?.State.ToString() ?? "NotRequired");
+                        }
+                    }
+                    catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested) { throw; }
+                    catch (Exception exception)
+                    {
+                        _logger.LogWarning("LEGEND governed read fallback failed after Cloudflare outage. ExceptionType={ExceptionType}", exception.GetType().Name);
+                    }
+                }
                 return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "Escalation required. LEGEND could not complete the Cloudflare request. OpenAI API fallback is forbidden in LEGEND mode.",
+                    "LEGEND's hosted reasoning service is temporarily unavailable. No OpenAI fallback was used, and no unavailable system state was treated as false or zero. Existing governed read capabilities remain separate and can be retried.",
                     "cloudflare_foundation", "cloudflare_execution", generated.ErrorCode ?? "cloudflare_execution_failed");
+            }
             return new LegendFounderAiChatResponse(true, mode, generated.Text, null,
                 ResponseAuthority: "HostedFoundation", Stage: "foundation_response",
                 FoundationModel: generated.ModelVersion, FoundationHosting: generated.Hosting,
@@ -1734,6 +1794,46 @@ public sealed class LegendFounderAiConversationService
                             toolOutput = JsonSerializer.Serialize(new
                             {
                                 ok = false, persisted = false, reason = "conversation_facts_literal_validation_failed"
+                            }, JsonOptions);
+                        }
+                        executedToolOutputs[executionIdentity] = toolOutput;
+                    }
+
+                    if (toolExecuted && call.Name == "legend_remember_founder_rule")
+                    {
+                        try
+                        {
+                            using var ruleArguments = JsonDocument.Parse(call.Arguments);
+                            var ruleRoot = ruleArguments.RootElement;
+                            var saved = await _languagePreferences.UpsertFounderAssistantRuleAsync(
+                                new MessagingActor(founder.GetCanonicalUserId(), MessagingParticipantTypes.Agent),
+                                ruleRoot.GetProperty("key").GetString()!,
+                                ruleRoot.GetProperty("scope").GetString()!,
+                                ruleRoot.GetProperty("rule_text").GetString()!,
+                                conversation[^1].Content ?? string.Empty,
+                                effectiveToken);
+                            toolOutput = JsonSerializer.Serialize(new
+                            {
+                                ok = saved.Succeeded,
+                                persisted = saved.Succeeded,
+                                reason = saved.ReasonCode,
+                                rule = saved.Rule is null ? null : new
+                                {
+                                    saved.Rule.Key,
+                                    saved.Rule.Scope,
+                                    saved.Rule.RuleText,
+                                    saved.Rule.Provenance,
+                                    saved.Rule.UpdatedUtc
+                                },
+                                canonical = true,
+                                modelWeightsTrained = false
+                            }, JsonOptions);
+                        }
+                        catch (Exception exception) when (exception is ArgumentException or JsonException or KeyNotFoundException)
+                        {
+                            toolOutput = JsonSerializer.Serialize(new
+                            {
+                                ok = false, persisted = false, reason = "founder_rule_literal_validation_failed"
                             }, JsonOptions);
                         }
                         executedToolOutputs[executionIdentity] = toolOutput;
@@ -3276,8 +3376,7 @@ public sealed class LegendFounderAiConversationService
         ICollection<FounderAiReadDiagnostic> failures) =>
         failures.Count == 0
             ? answer
-            : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.\n" +
-              "LEGEND_GOVERNED_READ_DIAGNOSTICS\n" + JsonSerializer.Serialize(failures, JsonOptions);
+            : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.";
 
     internal static string ReadScopeIdentity(string tool, string arguments)
     {
@@ -3720,6 +3819,10 @@ You are Legend® Ai in the authenticated Founder interface.
 
 ANSWER THE REQUEST
 Understand the user's intent, supplied facts, constraints, corrections and conversation references. Give a clear, relevant answer in the requested language and exact requested format. When only a machine-readable value is requested, output that value without Markdown fences, preambles or commentary. For hypothetical scenarios, writing, reasoning and plans, reason from the supplied premises; they do not require organizational records. Distinguish what necessarily follows from what is merely possible. Answer the parts that can be resolved, identify the missing information for the rest, and avoid unsupported certainty.
+
+RESPONSE STYLE
+Lead with the direct answer. Keep simple answers concise; use short paragraphs and, only when useful, headings or lists for complex answers. Present the conclusion, relevant evidence, important uncertainty and next useful action without repeating the request or conclusion. Distinguish known facts, inferences, unknowns, unavailable evidence and restricted information. Provide concise reasoning summaries, never private scratchpad reasoning.
+Do not add canned greetings, generic capability advertising, repetitive disclaimers or unnecessary tool names. Describe current capabilities only when asked and only from the exposed capability evidence. Do not dump raw tool payloads or JSON unless explicitly requested. Use clean Markdown with balanced formatting and restrained spacing for prose; preserve literal code and quoted content. An explicit exact-format, raw-text or machine-readable request takes priority over these presentation defaults: return precisely that format without decorations or extra commentary.
 
 USE EVIDENCE AND TOOLS APPROPRIATELY
 Tools are optional. Select an exposed tool only when its result helps the actual request. The tool catalog defines its arguments, purpose and prerequisites; do not invent tools, records, dashboards, citations or results. Use executable calculations when they help verify arithmetic. A calculation verifies the supplied operands, not whether those operands describe real records.

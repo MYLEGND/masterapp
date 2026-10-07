@@ -90,7 +90,8 @@ internal sealed partial class LegendFounderToolAuthority
         return Tools.Where(tool =>
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
-            if (name == "legend_remember_conversation_facts")
+            if (IsRepositoryControlPlaneMutation(name)) return false;
+            if (name is "legend_remember_conversation_facts" or "legend_remember_founder_rule")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
                 return !externalTeacher && !providerPolicy.ForbidsExternalAnswering && !providerPolicy.ForbidsOpenAiPayg;
@@ -135,24 +136,18 @@ internal sealed partial class LegendFounderToolAuthority
         // Reuse the executable registry's original schemas. Read-only does not
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
-        // Read callbacks can be live while every cloud mutation remains
-        // independently fail-closed. Future write enablement reuses this same
-        // registry and still requires the existing exact-action approval gates.
-        var mutationsEnabled =
-            CloudToolFeatureEnabled("LegendConnect:Foundation:Cloudflare:MutationsEnabled") &&
-            CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        // Repository/control-plane writes are never model capabilities, even
+        // when historical cloud mutation flags or approvals remain enabled.
         var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
-            .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
-                .GetProperty("name").GetString() == CloudRepairTool))
             .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
-                .GetProperty("name").GetString()!, mutationsEnabled, repositoryEnabled)).ToArray();
+                .GetProperty("name").GetString()!, false, repositoryEnabled)).ToArray();
     }
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
-        name == CloudRepairTool ? mutationsEnabled
-        : name == "legend_inspect_repository" ? repositoryEnabled
-        : IsCloudReadableTool(name);
+        !IsRepositoryControlPlaneMutation(name) &&
+        (name == "legend_remember_founder_rule" ||
+         (name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name)));
 
     // Cloudflare consumes the same canonical read projection exposed by the
     // Founder GPT/site-tool path. This is intentionally a deny-classification,
@@ -217,8 +212,21 @@ internal sealed partial class LegendFounderToolAuthority
     internal bool IsReadOnly(string name) =>
         IsReadOnlyFounderTool(name);
 
+    // One classification for model catalog, capability projection and dispatch.
+    // The authenticated Founder Work site path retains its existing guarded
+    // workflow tools; model confirmation and cloud approval never grant access.
+    private static bool IsRepositoryControlPlaneMutation(string name) =>
+        name is
+            "legend_prepare_software_repair" or
+            "legend_release_approved_repair" or
+            "legend_engineering_bootstrap" or
+            "legend_engineering_renew_turn" or
+            "legend_engineering_complete_turn" or
+            "legend_engineering_approve_release";
+
     private static bool RequiresExplicitFounderCommand(string name) =>
-        !IsReadOnlyFounderTool(name) && name != "legend_remember_conversation_facts";
+        !IsReadOnlyFounderTool(name) &&
+        name is not ("legend_remember_conversation_facts" or "legend_remember_founder_rule");
 
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
@@ -454,6 +462,85 @@ internal sealed partial class LegendFounderToolAuthority
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (IsRepositoryControlPlaneMutation(call.Name) &&
+            (serverDerivedScope is not null || mode != "founder_work" ||
+             !IsFounderSiteWorkflowMutationTool(call.Name)))
+            return serverDerivedScope is not null
+                ? CloudActionFailure("cloud_action_tool_not_exposed")
+                : MutationFailure("model_repository_write_forbidden",
+                    "Repository and engineering control-plane writes are unavailable to LEGEND AI.");
+
+        if (call.Name == "legend_remember_founder_rule")
+        {
+            if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+            try
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                if (!TryResolveFounderFunctionParameters(call.Name, out var schema) ||
+                    !IsStrictSchemaInstance(schema, arguments.RootElement))
+                    return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+
+                // Local/Teacher execution is completed by the conversation authority,
+                // which has the literal current user message in hand. Cloud callbacks
+                // verify that same text through canonical Founder messaging history.
+                if (serverDerivedScope is null)
+                    return SerializeUnbounded(new
+                    {
+                        ok = true,
+                        persisted = false,
+                        requiresConversationAuthority = true,
+                        reason = "founder_rule_requires_conversation_authority"
+                    });
+                if (_authorizationScopes is null ||
+                    !Guid.TryParse(serverDerivedScope.ConversationId, out var conversationId))
+                    return """{"ok":false,"error":"founder_rule_history_unavailable"}""";
+
+                FounderGuard.EnsureFounderOrThrow(founder);
+                await using var serviceScope = _authorizationScopes.CreateAsyncScope();
+                var actor = new MessagingActor(serverDerivedScope.UserId, MessagingParticipantTypes.Agent);
+                var messaging = serviceScope.ServiceProvider.GetRequiredService<IMessagingService>();
+                var history = await messaging.GetFounderAiConversationPageAsync(
+                    actor, conversationId,
+                    new MessagingConversationMessagePageQuery(Take: 1, IncludeGroupImage: false),
+                    cancellationToken);
+                var latest = history.Succeeded ? history.Conversation?.Messages.LastOrDefault() : null;
+                if (latest is null || latest.AuthorKind != MessagingAuthorKinds.Human ||
+                    latest.SenderUserId != actor.UserId || latest.SenderType != actor.ParticipantType)
+                    return """{"ok":false,"error":"founder_rule_literal_source_unavailable"}""";
+
+                var root = arguments.RootElement;
+                var access = serviceScope.ServiceProvider.GetRequiredService<IControlledResourceAccessService>();
+                var saved = await access.UpsertFounderAssistantRuleAsync(
+                    actor,
+                    root.GetProperty("key").GetString()!,
+                    root.GetProperty("scope").GetString()!,
+                    root.GetProperty("rule_text").GetString()!,
+                    latest.Body,
+                    cancellationToken);
+                return SerializeUnbounded(new
+                {
+                    ok = saved.Succeeded,
+                    persisted = saved.Succeeded,
+                    reason = saved.ReasonCode,
+                    rule = saved.Rule is null ? null : new
+                    {
+                        saved.Rule.Key,
+                        saved.Rule.Scope,
+                        saved.Rule.RuleText,
+                        saved.Rule.Provenance,
+                        saved.Rule.UpdatedUtc
+                    },
+                    canonical = true,
+                    modelWeightsTrained = false
+                });
+            }
+            catch (JsonException)
+            {
+                return """{"ok":false,"error":"founder_rule_arguments_invalid"}""";
+            }
+        }
+
         if (serverDerivedScope is not null)
         {
             // Enforce the same disclosure boundary even if a signed callback
@@ -603,6 +690,15 @@ internal sealed partial class LegendFounderToolAuthority
                 // This never invokes global teaching or promotion permissions.
                 return SerializeUnbounded(new { ok = true, requiresConversationScope = true, persisted = false });
             }
+
+            case "legend_remember_founder_rule":
+                return SerializeUnbounded(new
+                {
+                    ok = true,
+                    requiresConversationAuthority = true,
+                    persisted = false,
+                    reason = "founder_rule_requires_conversation_authority"
+                });
 
             case "legend_request_teacher_escalation":
             {
@@ -2534,7 +2630,7 @@ internal sealed partial class LegendFounderToolAuthority
             var name = root.TryGetProperty("name", out var nameElement)
                 ? nameElement.GetString()
                 : null;
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(name) || IsRepositoryControlPlaneMutation(name))
                 continue;
             if (cloudExposureOnly && !IsCloudExposedTool(name, mutationsEnabled, repositoryEnabled))
                 continue;
@@ -2557,6 +2653,8 @@ internal sealed partial class LegendFounderToolAuthority
                     ? "founder_exact_proposal_review"
                     : name == "legend_remember_conversation_facts"
                     ? "authenticated_conversation_state"
+                    : name == "legend_remember_founder_rule"
+                    ? "founder_explicit_account_preference_write"
                     : conditionallyRestrictedResearch
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
                     : readOnly ? "founder_governed_read" : "founder_governed_mutation",
@@ -2677,6 +2775,29 @@ internal sealed partial class LegendFounderToolAuthority
                         }
                     },
                     required = new[] { "facts" }, additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_remember_founder_rule",
+                description = "Persist one durable Founder operating rule or preference across conversations only when the Founder explicitly asks to remember it. rule_text must be copied exactly from the current user message. Use a stable key so a later explicit correction supersedes the prior rule in the same scope. Never store secrets, credentials, contact information, customer data or transient conversation facts.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        key = new { type = "string", minLength = 1, maxLength = 80 },
+                        scope = new
+                        {
+                            type = "string",
+                            @enum = new[] { "global", "engineering", "design", "analytics", "communication", "workflow" }
+                        },
+                        rule_text = new { type = "string", minLength = 1, maxLength = 1000 }
+                    },
+                    required = new[] { "key", "scope", "rule_text" },
+                    additionalProperties = false
                 },
                 strict = true
             },

@@ -687,37 +687,215 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
 
     private async Task<BranchProtectionVerification> ReadBranchProtectionAsync(HttpClient client, Options options, CancellationToken cancellationToken)
     {
-        using var response = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/branches/{Uri.EscapeDataString(options.BaseBranch)}/protection", null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            return new BranchProtectionVerification(false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+        using var response = await SendGitHubAsync(client, HttpMethod.Get,
+            $"repos/{options.RepositoryIdentity}/branches/{Uri.EscapeDataString(options.BaseBranch)}/protection",
+            null, cancellationToken);
 
-        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-        var root = document.RootElement;
-        var strict = root.TryGetProperty("required_status_checks", out var requiredStatus) &&
-                     requiredStatus.ValueKind == JsonValueKind.Object &&
-                     requiredStatus.TryGetProperty("strict", out var strictElement) && strictElement.GetBoolean();
-        var contexts = new HashSet<string>(StringComparer.Ordinal);
-        if (requiredStatus.ValueKind == JsonValueKind.Object && requiredStatus.TryGetProperty("contexts", out var contextsElement) && contextsElement.ValueKind == JsonValueKind.Array)
+        if (response.IsSuccessStatusCode)
         {
-            foreach (var context in contextsElement.EnumerateArray())
+            using var document = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            var strict = root.TryGetProperty("required_status_checks", out var requiredStatus) &&
+                         requiredStatus.ValueKind == JsonValueKind.Object &&
+                         requiredStatus.TryGetProperty("strict", out var strictElement) &&
+                         strictElement.GetBoolean();
+            var contexts = new HashSet<string>(StringComparer.Ordinal);
+            if (requiredStatus.ValueKind == JsonValueKind.Object &&
+                requiredStatus.TryGetProperty("contexts", out var contextsElement) &&
+                contextsElement.ValueKind == JsonValueKind.Array)
             {
-                var value = context.GetString();
-                if (!string.IsNullOrWhiteSpace(value))
-                    contexts.Add(value);
+                foreach (var context in contextsElement.EnumerateArray())
+                {
+                    var value = context.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        contexts.Add(value);
+                }
             }
+
+            var reviews = root.TryGetProperty("required_pull_request_reviews", out var reviewElement) &&
+                          reviewElement.ValueKind == JsonValueKind.Object;
+            var enforceAdmins = root.TryGetProperty("enforce_admins", out var adminsElement) &&
+                                adminsElement.ValueKind == JsonValueKind.Object &&
+                                adminsElement.TryGetProperty("enabled", out var enabledElement) &&
+                                enabledElement.GetBoolean();
+            var checksCovered = options.RequiredChecks.All(contexts.Contains);
+            return new BranchProtectionVerification(
+                strict && reviews && enforceAdmins && checksCovered,
+                strict && reviews && enforceAdmins && checksCovered ? "verified" : "incomplete",
+                strict,
+                reviews,
+                enforceAdmins,
+                contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
         }
 
-        var reviews = root.TryGetProperty("required_pull_request_reviews", out var reviewElement) && reviewElement.ValueKind == JsonValueKind.Object;
-        var enforceAdmins = root.TryGetProperty("enforce_admins", out var adminsElement) &&
-                            adminsElement.ValueKind == JsonValueKind.Object &&
-                            adminsElement.TryGetProperty("enabled", out var enabledElement) && enabledElement.GetBoolean();
-        var checksCovered = options.RequiredChecks.All(contexts.Contains);
-        return new BranchProtectionVerification(strict && reviews && enforceAdmins && checksCovered,
-            strict && reviews && enforceAdmins && checksCovered ? "verified" : "incomplete",
-            strict,
-            reviews,
-            enforceAdmins,
-            contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
+        // GitHub Apps without repository Administration permission cannot read the
+        // legacy branch-protection endpoint. The protected branch may instead be
+        // governed by repository rulesets, which are the canonical protection
+        // surface used by the release lifecycle. Fall back only for the expected
+        // access/not-found cases and continue to fail closed for other errors.
+        if (response.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.NotFound))
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        return await ReadRulesetProtectionAsync(client, options, cancellationToken);
+    }
+
+    private static async Task<BranchProtectionVerification> ReadRulesetProtectionAsync(
+        HttpClient client,
+        Options options,
+        CancellationToken cancellationToken)
+    {
+        using var inventoryResponse = await SendGitHubAsync(
+            client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/rulesets", null, cancellationToken);
+        if (!inventoryResponse.IsSuccessStatusCode)
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        using var inventory = await JsonDocument.ParseAsync(
+            await inventoryResponse.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        if (inventory.RootElement.ValueKind != JsonValueKind.Array)
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        var expectedRef = $"refs/heads/{options.BaseBranch}";
+        foreach (var row in inventory.RootElement.EnumerateArray())
+        {
+            if (!string.Equals(ReadString(row, "target"), "branch", StringComparison.Ordinal) ||
+                !string.Equals(ReadString(row, "enforcement"), "active", StringComparison.Ordinal) ||
+                !row.TryGetProperty("id", out var idElement) ||
+                !idElement.TryGetInt64(out var rulesetId) ||
+                rulesetId <= 0)
+                continue;
+
+            using var detailResponse = await SendGitHubAsync(
+                client, HttpMethod.Get,
+                $"repos/{options.RepositoryIdentity}/rulesets/{rulesetId}",
+                null, cancellationToken);
+            if (!detailResponse.IsSuccessStatusCode)
+                continue;
+
+            using var detail = await JsonDocument.ParseAsync(
+                await detailResponse.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            var root = detail.RootElement;
+
+            if (!RulesetAppliesExactlyToRef(root, expectedRef))
+                continue;
+
+            var noBypass = (!root.TryGetProperty("bypass_actors", out var bypassActors) ||
+                            bypassActors.ValueKind != JsonValueKind.Array ||
+                            bypassActors.GetArrayLength() == 0) &&
+                           (!root.TryGetProperty("current_user_can_bypass", out var bypassMode) ||
+                            bypassMode.ValueKind == JsonValueKind.Null ||
+                            (bypassMode.ValueKind == JsonValueKind.String &&
+                             string.Equals(bypassMode.GetString(), "never", StringComparison.Ordinal)));
+
+            var deletion = false;
+            var nonFastForward = false;
+            var pullRequest = false;
+            var strict = false;
+            var contexts = new HashSet<string>(StringComparer.Ordinal);
+
+            if (root.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var rule in rules.EnumerateArray())
+                {
+                    var type = ReadString(rule, "type");
+                    switch (type)
+                    {
+                        case "deletion":
+                            deletion = true;
+                            break;
+                        case "non_fast_forward":
+                            nonFastForward = true;
+                            break;
+                        case "pull_request":
+                            pullRequest = RulesetRequiresCanonicalMerge(rule);
+                            break;
+                        case "required_status_checks":
+                            if (rule.TryGetProperty("parameters", out var checkParameters) &&
+                                checkParameters.ValueKind == JsonValueKind.Object)
+                            {
+                                strict = checkParameters.TryGetProperty(
+                                             "strict_required_status_checks_policy",
+                                             out var strictElement) &&
+                                         strictElement.ValueKind == JsonValueKind.True;
+                                if (checkParameters.TryGetProperty(
+                                        "required_status_checks",
+                                        out var requiredChecks) &&
+                                    requiredChecks.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var check in requiredChecks.EnumerateArray())
+                                    {
+                                        var context = ReadString(check, "context");
+                                        if (!string.IsNullOrWhiteSpace(context))
+                                            contexts.Add(context);
+                                    }
+                                }
+                            }
+                            break;
+                    }
+                }
+            }
+
+            var checksCovered = options.RequiredChecks.All(contexts.Contains);
+            var satisfied = deletion && nonFastForward && pullRequest && strict && noBypass && checksCovered;
+            return new BranchProtectionVerification(
+                satisfied,
+                satisfied ? "verified" : "incomplete",
+                strict,
+                pullRequest,
+                noBypass,
+                contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
+        }
+
+        return new BranchProtectionVerification(
+            false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+    }
+
+    private static bool RulesetAppliesExactlyToRef(JsonElement ruleset, string expectedRef)
+    {
+        if (!ruleset.TryGetProperty("conditions", out var conditions) ||
+            conditions.ValueKind != JsonValueKind.Object ||
+            !conditions.TryGetProperty("ref_name", out var refName) ||
+            refName.ValueKind != JsonValueKind.Object ||
+            !refName.TryGetProperty("include", out var includes) ||
+            includes.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var included = includes.EnumerateArray().Any(item =>
+            item.ValueKind == JsonValueKind.String &&
+            string.Equals(item.GetString(), expectedRef, StringComparison.Ordinal));
+        if (!included)
+            return false;
+
+        if (!refName.TryGetProperty("exclude", out var excludes) ||
+            excludes.ValueKind != JsonValueKind.Array)
+            return true;
+
+        return !excludes.EnumerateArray().Any(item =>
+            item.ValueKind == JsonValueKind.String &&
+            string.Equals(item.GetString(), expectedRef, StringComparison.Ordinal));
+    }
+
+    private static bool RulesetRequiresCanonicalMerge(JsonElement rule)
+    {
+        if (!rule.TryGetProperty("parameters", out var parameters) ||
+            parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("allowed_merge_methods", out var methods) ||
+            methods.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var values = methods.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        return values.Length == 1 &&
+               string.Equals(values[0], "merge", StringComparison.Ordinal);
     }
 
     private async Task<HttpClient> CreateGitHubClientAsync(Options options, CancellationToken cancellationToken)
