@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
@@ -6,6 +8,22 @@ using Microsoft.Extensions.Configuration;
 using Shared.Auth;
 
 namespace Infrastructure.Messaging;
+
+public sealed record FounderAssistantRule(
+    Guid Id,
+    string Key,
+    string Scope,
+    string RuleText,
+    string Provenance,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc,
+    DateTime? SupersededUtc = null,
+    Guid? SupersededById = null);
+
+public sealed record FounderAssistantRuleWriteResult(
+    bool Succeeded,
+    string ReasonCode,
+    FounderAssistantRule? Rule = null);
 
 public interface IControlledResourceAccessService
 {
@@ -37,6 +55,19 @@ public interface IControlledResourceAccessService
         MessagingActor actor,
         CancellationToken cancellationToken = default) =>
         GetPreferredLanguageAsync(actor, cancellationToken);
+
+
+    Task<IReadOnlyList<FounderAssistantRule>> GetFounderAssistantRulesAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<FounderAssistantRuleWriteResult> UpsertFounderAssistantRuleAsync(
+        MessagingActor actor,
+        string key,
+        string scope,
+        string ruleText,
+        string currentUserMessage,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -140,19 +171,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         CancellationToken cancellationToken = default)
     {
         actor = Normalize(actor);
-        var profileId = actor.ParticipantType switch
-        {
-            MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking()
-                .Where(profile => profile.IsActive && profile.AgentUserId.ToLower() == actor.UserId)
-                .Select(profile => (Guid?)profile.Id)
-                .SingleOrDefaultAsync(cancellationToken),
-            MessagingParticipantTypes.Client => await _db.ClientProfiles.AsNoTracking()
-                .Where(profile => profile.ClientUserId.ToLower() == actor.UserId ||
-                    (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == actor.UserId))
-                .Select(profile => (Guid?)profile.Id)
-                .SingleOrDefaultAsync(cancellationToken),
-            _ => null
-        };
+        var profileId = await ResolveProfileIdAsync(actor, cancellationToken);
 
         if (!profileId.HasValue)
             return null;
@@ -173,7 +192,110 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         CancellationToken cancellationToken = default)
     {
         actor = Normalize(actor);
-        var profileId = actor.ParticipantType switch
+        var profileId = await ResolveProfileIdAsync(actor, cancellationToken);
+
+        if (!profileId.HasValue)
+            return null;
+
+        var language = await _db.MobileProfileSettings.AsNoTracking()
+            .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
+            .Select(setting => setting.PreferredCommunicationLanguage)
+            .SingleOrDefaultAsync(cancellationToken);
+        return await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(language, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<FounderAssistantRule>> GetFounderAssistantRulesAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        if (!await IsCanonicalFounderManagerAsync(actor, cancellationToken))
+            return Array.Empty<FounderAssistantRule>();
+        var profileId = await ResolveProfileIdAsync(actor, cancellationToken);
+        if (!profileId.HasValue)
+            return Array.Empty<FounderAssistantRule>();
+        var json = await _db.MobileProfileSettings.AsNoTracking()
+            .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
+            .Select(setting => setting.FounderAssistantRulesJson)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(json))
+            return Array.Empty<FounderAssistantRule>();
+        var rules = JsonSerializer.Deserialize<List<FounderAssistantRule>>(json)
+            ?? throw new InvalidOperationException("Founder assistant rules JSON is invalid.");
+        return rules.Where(rule => rule.SupersededUtc is null)
+            .OrderBy(rule => rule.Scope, StringComparer.Ordinal)
+            .ThenBy(rule => rule.Key, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    public async Task<FounderAssistantRuleWriteResult> UpsertFounderAssistantRuleAsync(
+        MessagingActor actor,
+        string key,
+        string scope,
+        string ruleText,
+        string currentUserMessage,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        if (!await IsCanonicalFounderManagerAsync(actor, cancellationToken))
+            return new(false, "founder_rule_founder_required");
+        key = (key ?? string.Empty).Trim().ToLowerInvariant();
+        scope = (scope ?? string.Empty).Trim().ToLowerInvariant();
+        ruleText = (ruleText ?? string.Empty).Trim();
+        if (!Regex.IsMatch(key, "^[a-z0-9][a-z0-9._-]{0,79}$", RegexOptions.CultureInvariant) ||
+            scope is not ("global" or "engineering" or "design" or "analytics" or "communication" or "workflow") ||
+            ruleText.Length is < 1 or > 1000 ||
+            string.IsNullOrWhiteSpace(currentUserMessage) ||
+            !currentUserMessage.Contains(ruleText, StringComparison.Ordinal))
+            return new(false, "founder_rule_literal_validation_failed");
+        if (ContainsSensitiveFounderRule(ruleText))
+            return new(false, "founder_rule_private_or_secret_content_rejected");
+
+        var profileId = await ResolveProfileIdAsync(actor, cancellationToken);
+        if (!profileId.HasValue)
+            return new(false, "founder_rule_profile_unavailable");
+        var settings = await _db.MobileProfileSettings
+            .SingleOrDefaultAsync(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType, cancellationToken);
+        if (settings is null)
+        {
+            settings = new Domain.Entities.MobileProfileSettings
+            {
+                ProfileId = profileId.Value,
+                ParticipantType = actor.ParticipantType,
+                FounderAssistantRulesJson = "[]"
+            };
+            _db.MobileProfileSettings.Add(settings);
+        }
+        var rules = string.IsNullOrWhiteSpace(settings.FounderAssistantRulesJson)
+            ? new List<FounderAssistantRule>()
+            : JsonSerializer.Deserialize<List<FounderAssistantRule>>(settings.FounderAssistantRulesJson)
+                ?? throw new InvalidOperationException("Founder assistant rules JSON is invalid.");
+        var existing = rules.LastOrDefault(rule => rule.SupersededUtc is null && rule.Key == key && rule.Scope == scope);
+        if (existing is not null && string.Equals(existing.RuleText, ruleText, StringComparison.Ordinal))
+            return new(true, "founder_rule_already_current", existing);
+
+        var now = DateTime.UtcNow;
+        var next = new FounderAssistantRule(Guid.NewGuid(), key, scope, ruleText,
+            "FounderExplicitInstruction", now, now);
+        if (existing is not null)
+        {
+            var index = rules.IndexOf(existing);
+            rules[index] = existing with { SupersededUtc = now, SupersededById = next.Id, UpdatedUtc = now };
+        }
+        rules.Add(next);
+        if (rules.Count > 80)
+            rules = rules.OrderByDescending(rule => rule.UpdatedUtc).Take(80).OrderBy(rule => rule.CreatedUtc).ToList();
+        var serialized = JsonSerializer.Serialize(rules);
+        if (serialized.Length > 16_000)
+            return new(false, "founder_rule_capacity_exceeded");
+        settings.FounderAssistantRulesJson = serialized;
+        settings.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+        return new(true, "founder_rule_saved", next);
+    }
+
+    private async Task<Guid?> ResolveProfileIdAsync(MessagingActor actor, CancellationToken cancellationToken) =>
+        actor.ParticipantType switch
         {
             MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking()
                 .Where(profile => profile.IsActive && profile.AgentUserId.ToLower() == actor.UserId)
@@ -187,15 +309,11 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             _ => null
         };
 
-        if (!profileId.HasValue)
-            return null;
-
-        var language = await _db.MobileProfileSettings.AsNoTracking()
-            .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
-            .Select(setting => setting.PreferredCommunicationLanguage)
-            .SingleOrDefaultAsync(cancellationToken);
-        return await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(language, cancellationToken);
-    }
+    private static bool ContainsSensitiveFounderRule(string value) =>
+        Regex.IsMatch(value,
+            @"(?:password|passwd|pwd|secret|token|api[_ -]?key|connection[_ -]?string)\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_]{8,}|\b\d{3}-\d{2}-\d{4}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:\+?1[-. (]*)?(?:\d{3}[-. )]*)\d{3}[-. ]*\d{4}\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
 
     private async Task<bool> IsVerificationGrantedAsync(
         MessagingActor actor,
