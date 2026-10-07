@@ -16,6 +16,13 @@ multiple instruction copies.
 - Production truth is established by canonical release evidence and exact live provenance.
 - Follow `Docs/releases/branch-lifecycle.md` and `DEPLOYMENT.md` for current release
   mechanics; never reconstruct release behavior from memory.
+- **Governance is self-protected:** never edit AI instructions, CODEOWNERS, rulesets, branch
+  protections, required checks, permissions, tool exposure, risk classification, or approval
+  boundaries to grant yourself or another automation more authority. Such changes require an
+  explicit Founder-requested governance task and remain separate from ordinary feature/repair work.
+- **Novel cases do not create novel authority:** if a situation is not covered, preserve evidence,
+  identify the canonical owner, avoid duplicate paths/protected-plane mutation, and fail closed on
+  consequential uncertainty while continuing read-only diagnosis.
 - **One canonical source of truth is absolute:** never add overrides, patches, stacked files,
   duplicate writers, shadow paths, fallback authorities, or parallel implementations for the
   same decision/fact. Repair the canonical owner, prove the replacement, and remove the
