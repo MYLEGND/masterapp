@@ -796,11 +796,13 @@ def candidate_control_plane_integrity(api, pr, names):
         'text.count(END) != 1',
         'text.split(START, 1)',
         'tail.split(END, 1)',
+        'generated.count(OUTCOME_START) != 1',
+        'generated.count(OUTCOME_END) != 1',
+        'generated.split(OUTCOME_START, 1)',
+        'tail.split(OUTCOME_END, 1)',
     )):
         return 'Candidate workflow renderer can rewrite outside canonical generated target blocks'
     if any(token in source['workflow_renderer'] for token in (
-        'OUTCOME_START',
-        'OUTCOME_END',
         'TARGET_OUTCOME_',
         '--verify-outcomes',
     )):
