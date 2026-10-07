@@ -1,92 +1,72 @@
-# MASTERAPP Repository Instructions for AI Coding Agents
+# MASTERAPP instructions for AI coding agents
 
-These instructions govern all AI work in `MYLEGND/masterapp`. They define operating discipline, not a substitute for inspecting the current repository.
+`AGENTS.md` is the canonical repository-level AI engineering operating contract.
+Read it **before** acting. If this file, a custom agent file, an old document, a
+conversation, or a historical summary conflicts with `AGENTS.md` plus current
+executable repository truth, stop and resolve the conflict rather than choosing the
+more convenient instruction.
 
-## Authority and evidence
+This file is intentionally thin so mutable architecture facts do not drift across
+multiple instruction copies.
 
-- The repository source, executable configuration, migrations, tests, workflows, durable contracts, and observed runtime evidence are authoritative.
-- Do not rely on an old architecture summary, a previous conversation, a comment, a test name, or a presumed project layout without verifying it against the current branch.
-- Label material conclusions `CONFIRMED`, `INFERENCE`, or `UNVERIFIED`.
-- Never claim a path was inspected, a command ran, a test passed, a deployment completed, or production behavior was proven unless direct evidence supports that exact claim.
-- Separate code defects, test defects, configuration/deployment failures, production-data failures, product decisions, and unverified hypotheses.
+## Mandatory current-system truths
 
-## Branch and change safety
+- `legend/approved-changes` is the sole protected Git release authority.
+- There is no second mutable `production` release branch or branch-promotion lifecycle.
+- Production truth is established by canonical release evidence and exact live provenance.
+- Follow `Docs/releases/branch-lifecycle.md` and `DEPLOYMENT.md` for current release
+  mechanics; never reconstruct release behavior from memory.
+- Ordinary application/product work must not modify the protected release-control plane.
+  AI may inspect, diagnose, recommend, and prepare a proposed release-control change, but
+  protected release-control mutation requires explicit Founder approval of that specific
+  control-plane change.
+- Never add a second deployment workflow, manual Azure publication path, alternate
+  finalizer/recovery authority, shadow validation system, or bypass status.
+- A validation or publication failure is not permission to adapt the release system to
+  the candidate. Resolve the actual failure class through the existing canonical path.
 
-- `legend/approved-changes` is the default and quick-release source. `production` is the rigorous CI/security release path. Follow `Docs/releases/branch-lifecycle.md`; never force-update either release branch or bypass production gates. Temporary branches must survive failures and unique work must be preserved before deletion.
-- Before acting, inspect the current branch, base SHA, remote state, commit history, working tree, active PRs, and applicable repository instructions.
-- Use a dedicated, descriptively named branch created from the explicitly approved base SHA.
-- Preserve unrelated, uncommitted, unpushed, generated, and agent-owned work. Stop if scope overlaps active work or ownership is unclear.
-- Keep each repair branch bounded to one coherent authority. Do not let multiple agents edit the same branch or overlapping logic simultaneously.
-- Do not push, open/retarget/merge a PR, deploy, run migrations, mutate production data, change secrets, publish mobile builds, or change store/cloud configuration without the required explicit authorization.
-- Never weaken or bypass a gate to make a build or test pass.
+## Required operating method
 
-## Required investigation before implementation
+1. Verify the exact current protected base and active work.
+2. Read `AGENTS.md` and all domain-specific executable/canonical contracts that own the
+   requested behavior.
+3. Restate the user outcome, protected constraints, and proof standard.
+4. Trace the end-to-end authority and impact set before editing.
+5. Search for duplicate, shadow, fallback, override, stale, hardcoded, or platform-specific
+   competing logic.
+6. Consider multiple solutions and choose the one that best satisfies the user while
+   reducing authority count and future drift.
+7. Implement on one bounded isolated branch; never edit the protected branch directly.
+8. Preserve security, authorization, privacy, owner isolation, event/action identity,
+   measurement lineage, data compatibility, cancellation/idempotency, and cross-platform
+   contract meaning.
+9. Run focused deterministic proof first, then only the affected authorized validation
+   lanes. Test forbidden behavior as well as success.
+10. Hand off exact SHA/evidence honestly. Do not self-promote a local or mocked result into
+    production proof.
 
-1. Restate the requested outcome, constraints, exclusions, and proof standard.
-2. Read all applicable instruction files.
-3. Inventory the real solution/project topology and canonical build, test, workflow, deployment, database, web, iOS, and Android paths from the current tree.
-4. Trace the complete authenticated runtime path for the behavior in scope.
-5. Search every caller, interface, implementation, dependency registration, configuration key, persistence path, serializer, event contract, test double, workflow, and platform consumer relevant to the decision.
-6. Identify the single existing authority making the first incorrect decision.
-7. Search for duplicate, competing, shadow, fallback, override, stale, hardcoded, or platform-specific logic.
-8. Define the smallest coherent repair, regression risks, rollback boundary, and exact acceptance criteria before editing.
+## Creativity
 
-## Architectural invariants
+Do not interpret governance as a request for conservative or mediocre implementation.
+Within the verified authority boundary, actively improve product quality, design,
+performance, usability, architecture, maintainability, and developer/operator experience.
+Protected invariants define what must remain true; they do not dictate a single creative
+solution.
 
-- Fix decisions at their authoritative source; do not mask defects in controllers, prompts, clients, tests, logging, or UI.
-- Prefer consolidation or deletion of competing logic over another override.
-- Do not create a new service, workflow, persistence path, inference path, provider path, validation authority, or abstraction until the existing authority has been inspected and proven unable to own the requirement.
-- Preserve authentication, authorization, Founder/actor isolation, evidence provenance, contradiction handling, production eligibility, response authority, provider attribution, cancellation, idempotency, privacy, and cross-platform contract meaning.
-- The server is authoritative for inference, evidence, authorization, provider policy, native-only enforcement, and response authority. Web, iOS, and Android must not reimplement those decisions.
-- No prompt-specific, greeting-specific, answer-specific, fact-specific, President-specific, language-specific, user-specific, or test-fixture-specific production behavior.
-- Do not solve timeout failures by making operations unbounded.
-- Cancellation must not leave background mutation running. Retries must be bounded and idempotent.
-- Telemetry must be actionable and correlated without exposing secrets, tokens, or raw sensitive content.
+## Custom agents
 
-## LEGEND intelligence invariants
+Custom agents live in `.github/agents/`. Their specialist instructions refine role and
+scope but do not override `AGENTS.md`.
 
-- Native-only execution must create and invoke zero OpenAI or other external conversational/provider clients. It must be server-enforced, explicitly attributed as native, and fail closed when governed evidence is insufficient.
-- Provider output must never masquerade as native LEGEND reasoning, evidence, or articulation.
-- Provider/research output may enter the existing governed candidate, evaluation, provenance, contradiction, eligibility, and promotion process only through its authoritative path. It is not automatically canonical proof.
-- Reasoning, discourse, research, learning, and realization must use existing governed authorities and preserve proof-relevant lineage. Do not add a parallel evidence-to-answer system.
+Use independent roles where applicable:
 
-## Testing and proof
+1. Chief Architect maps authority, impact, alternatives, risks, and acceptance criteria.
+2. Specialist implements the bounded canonical change.
+3. Verification independently proves or rejects the candidate.
+4. Release Reviewer independently challenges architecture, evidence, security, and
+   production readiness.
+5. Founder approval is requested only where the governing authority requires it, and must
+   be bound to the exact consequential action/revision.
 
-- Use the current repository and workflow definitions to discover canonical commands; do not assume old commands are still valid.
-- Start with focused deterministic tests, then run only the broader stages required and authorized for the change.
-- Record exact commands, environment category, configuration state without secrets, duration, counts, exit codes, skips, and artifacts.
-- A missing environment variable, credential, database, provider, endpoint, fixture, device, or service is `NOT_CONFIGURED` or `BLOCKED`, never a pass.
-- A silent return, caught-and-suppressed exception, conditional non-execution, stale artifact, or mocked substitute cannot satisfy a required gate.
-- Unit, mocked/in-process, SQL-backed, provider-backed, authenticated live-production, and cross-platform/device evidence are distinct. Never substitute one layer for another.
-- Match source SHA, built artifact SHA, workflow SHA, deployed SHA, and observed runtime SHA before making production claims.
-- Tests must include forbidden behavior and adversarial cases, not only success paths.
-
-## Custom-agent workflow
-
-Repository custom agents are defined in `.github/agents/`.
-
-Use them in this order:
-
-1. `MASTERAPP Chief Architect` maps the system, failure ledger, repair groups, dependencies, branch/file boundaries, and acceptance criteria.
-2. The relevant specialist implements only the assigned bounded repair group on its own branch.
-3. `MASTERAPP Verification Engineer` independently validates the exact candidate SHA and challenges false-green evidence.
-4. `MASTERAPP Release Reviewer` independently reviews the complete diff, evidence, security, governance, compatibility, rollback, and production readiness.
-5. Only after those gates may Founder authorization be requested for the exact commit SHA.
-
-Verification and Release Review must remain independent of the original implementation. A new commit invalidates prior exact-SHA approval and requires the affected gates to run again.
-
-## Required handoff
-
-Every change handoff must include:
-
-- base and candidate SHA;
-- scope and changed files;
-- confirmed root cause and authoritative owner;
-- diff summary and removed competing logic;
-- exact tests executed and results;
-- tests skipped, blocked, mocked, not configured, or not run;
-- security, data, concurrency, cancellation, privacy, compatibility, migration, deployment, and rollback risks;
-- live proof still required;
-- explicit recommendation or stop condition.
-
-Do not describe work as complete, fixed, flawless, all-green, or production-ready beyond what the recorded evidence proves.
+Any new commit invalidates exact-SHA review/approval evidence to the extent defined by the
+canonical validation and release authorities.
