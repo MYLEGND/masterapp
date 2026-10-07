@@ -550,6 +550,8 @@ jobs:
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && steps.evidenceruntime.outcome == 'success' }}
         shell: bash
         env:
+          # BEGIN GENERATED CANONICAL TARGET OUTCOMES
+          # END GENERATED CANONICAL TARGET OUTCOMES
           GH_TOKEN: ${{ github.token }}
           PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
