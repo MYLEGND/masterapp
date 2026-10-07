@@ -53,7 +53,41 @@ The governing distinction is:
 Solve boldly inside the first. Change the second only when the task genuinely requires it and
 the required human/security/Founder authority explicitly permits that exact change.
 
-## 3. Canonical Git and production release truth
+## 3. Governance self-protection and non-self-authorization
+
+AI must never be able to broaden its own authority by editing the rules that constrain it.
+
+The following are protected governance surfaces:
+
+- this canonical `AGENTS.md` contract;
+- `.github/copilot-instructions.md` and `.github/agents/**`;
+- `.github/CODEOWNERS` when present;
+- repository rulesets, branch protections, required checks, reviewer/approval requirements,
+  bypass actors, repository permissions, workflow permissions, environments, secrets, and
+  protected deployment/approval settings;
+- server-side Founder/engineering authorization, tool exposure, risk classification, leases,
+  approval records, and mutation policy.
+
+Rules:
+
+- AI may inspect and recommend governance improvements, but may modify a protected governance
+  surface only when the Founder explicitly requested that specific governance change.
+- Never edit instructions, tests, policies, role classifications, tool schemas, permissions,
+  branch/ruleset settings, approval requirements, or guards in order to make a desired action
+  become allowed.
+- Never remove, weaken, reorder, reinterpret, or create a narrower duplicate of a protection so
+  another path can bypass the original.
+- Never add an AI/model/bot/service account as a bypass actor or privileged reviewer/approver.
+- Never treat a model's own proposal, PR creation, review, status, tool call, or message as human
+  authorization.
+- A proposed governance change must state exactly what protection changes, why the current
+  authority cannot satisfy the legitimate requirement, blast radius, rollback, and how the
+  replacement remains fail-closed.
+- Governance changes must remain separate from ordinary product/bug-fix implementation whenever
+  practical so their authority impact cannot be hidden inside a feature diff.
+- If a task can be completed without governance change, governance must remain untouched.
+
+## 4. Canonical Git and production release truth
 
 `legend/approved-changes` is the **sole protected Git release authority**.
 
@@ -95,7 +129,7 @@ alternate authority. Any workflow capable of validation, packaging, secret/cloud
 merge, migration, publication, or deployment must be treated as protected control-plane
 surface.
 
-## 4. Release behavior agents must preserve
+## 5. Release behavior agents must preserve
 
 The release system is intentionally designed so delivery problems are resolved **around the
 candidate**, not by rewriting the machinery.
@@ -118,7 +152,7 @@ Preserve these semantics:
 Do not optimize release by weakening these properties. Optimize application changes so they
 enter this system cleanly.
 
-## 5. Required reasoning before implementation
+## 6. Required reasoning before implementation
 
 Before changing source, build a compact evidence-backed model of the task.
 
@@ -148,7 +182,7 @@ Do not perform repository-wide cleanup simply because a nearby defect exposed ol
 Remove a competing path only when its canonical replacement is verified and the removal is
 inside scope.
 
-## 6. Canonical architecture rules
+## 7. Canonical architecture rules
 
 ### Absolute canonical-source invariant
 
@@ -204,7 +238,7 @@ writable paths, less ambiguity, and one obvious source to inspect when truth is 
   and request; they must not independently redefine authorization, provider selection,
   production eligibility, conversion truth, or protected runtime execution.
 
-## 7. Additional non-negotiable integrity rules
+## 8. Additional non-negotiable integrity rules
 
 ### Proof integrity
 
@@ -278,7 +312,7 @@ writable paths, less ambiguity, and one obvious source to inspect when truth is 
   inability to become a second authority must be explicit and validated.
 - Never call a workaround "temporary" as justification for violating the one-canonical-source rule.
 
-## 8. Security, authorization, privacy, and trust boundaries
+## 9. Security, authorization, privacy, and trust boundaries
 
 Security fixes must preserve the same one-authority discipline as product fixes.
 
@@ -309,7 +343,7 @@ Security fixes must preserve the same one-authority discipline as product fixes.
 - Security/privacy boundaries may be strengthened at their canonical owner when required; they
   may not be duplicated in clients or weakened for compatibility.
 
-## 9. Data, schema, migrations, and persistence integrity
+## 10. Data, schema, migrations, and persistence integrity
 
 Persistent data is production truth only when written by its canonical authority.
 
@@ -338,7 +372,7 @@ Persistent data is production truth only when written by its canonical authority
 - Migrations and schema probes are evidence classes of their own; compilation does not prove
   production migration safety.
 
-## 10. Concurrency, background work, retries, caches, and time
+## 11. Concurrency, background work, retries, caches, and time
 
 Distributed behavior must converge on one durable truth.
 
@@ -366,7 +400,7 @@ Distributed behavior must converge on one durable truth.
 - Event ordering, dedupe windows, expiry, retention, leases, cooldowns, and retry deadlines must
   remain deterministic across restarts and scaled-out instances when the contract requires it.
 
-## 11. External providers, cloud resources, configuration, and cost
+## 12. External providers, cloud resources, configuration, and cost
 
 External systems are dependencies/adapters, not alternate truth authorities.
 
@@ -396,7 +430,7 @@ External systems are dependencies/adapters, not alternate truth authorities.
   shutdown/rollback behavior, and owner approval when the governing system requires it.
 - Do not solve performance/capacity defects by silently increasing spend or removing governors.
 
-## 12. Dependencies, build graph, generated code, and supply-chain safety
+## 13. Dependencies, build graph, generated code, and supply-chain safety
 
 Build success must come from the real canonical source graph.
 
@@ -417,7 +451,7 @@ Build success must come from the real canonical source graph.
 - A successful compile/package does not prove runtime, migration, provider, browser, device, or
   production behavior.
 
-## 13. API, contract, client, and cross-version safety
+## 14. API, contract, client, and cross-version safety
 
 A shared contract changes as one system, not as independent consumers.
 
@@ -435,7 +469,7 @@ A shared contract changes as one system, not as independent consumers.
 - Deprecation requires an identified replacement, compatibility window where genuinely needed,
   and proof that the retired path can no longer become an authority once removal is allowed.
 
-## 14. Destructive actions, rollback, branch/history, and evidence preservation
+## 15. Destructive actions, rollback, branch/history, and evidence preservation
 
 Recovery must never destroy the evidence needed to know what happened.
 
@@ -456,7 +490,7 @@ Recovery must never destroy the evidence needed to know what happened.
   require updating all authoritative references and proving the old location cannot remain a
   competing executable path.
 
-## 15. Product behavior, accessibility, and user-intent integrity
+## 16. Product behavior, accessibility, and user-intent integrity
 
 Do not preserve technical correctness by degrading the product request.
 
@@ -473,7 +507,7 @@ Do not preserve technical correctness by degrading the product request.
 - Design-only/editor/test modes must remain incapable of producing real consequential side
   effects unless the canonical product contract explicitly authorizes them.
 
-## 16. Website Studio and public-site protection
+## 17. Website Studio and public-site protection
 
 Website creativity should be maximal **without breaking runtime truth**.
 
@@ -494,7 +528,7 @@ When working in Website Studio, inspect
 `Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs` and the current protection
 authorities/tests before editing. Do not rely on a remembered editor contract.
 
-## 17. Measurement, attribution, CRM, and advertising truth
+## 18. Measurement, attribution, CRM, and advertising truth
 
 Revenue decisions depend on first-party truth remaining coherent.
 
@@ -522,7 +556,7 @@ explicitly changed them:
 Do not create website-only, dashboard-only, Meta-only, OpenAI-only, or other provider-specific
 parallel conversion truth.
 
-## 18. LEGEND intelligence and autonomous engineering truth
+## 19. LEGEND intelligence and autonomous engineering truth
 
 When a server-issued `EngineeringContext` exists, it is the enforced runtime work contract.
 Repository prose and conversation context cannot broaden its role, lease, source classes,
@@ -543,7 +577,7 @@ Roles remain separated:
 
 Never substitute an unapproved provider/API execution path for a governed plan/tool path.
 
-## 19. Preparing changes for seamless validation and release
+## 20. Preparing changes for seamless validation and release
 
 The goal is not merely "code that works locally." Prepare a candidate that the existing
 validation/release system can evaluate without avoidable repair loops.
@@ -570,7 +604,7 @@ Before handoff:
 A candidate should arrive at protected validation with known application defects resolved,
 not with release machinery modified to tolerate them.
 
-## 20. Failure disposition: resolve the failure class, not the release system
+## 21. Failure disposition: resolve the failure class, not the release system
 
 Use this decision model:
 
@@ -599,7 +633,7 @@ Use this decision model:
 
 No failure class authorizes an AI to make the release system fit its preferred implementation.
 
-## 21. Founder approval and consequential actions
+## 22. Founder approval and consequential actions
 
 AI may inspect, diagnose, reason, recommend, simulate, and prepare proposed changes within
 authorized source scope.
@@ -613,7 +647,7 @@ approval from urgency, previous deployments, broad product intent, or a model's 
 In particular, protected release-control mutation requires explicit Founder approval of that
 specific control-plane change.
 
-## 22. Verification and claims
+## 23. Verification and claims
 
 Evidence classes are not interchangeable. Unit, mocked/in-process, SQL-backed,
 provider-backed, authenticated live-production, and physical-device evidence prove different
@@ -631,7 +665,7 @@ Never claim:
 After deployment, require applicable exact runtime provenance and the original functional
 reproducer/live acceptance proof.
 
-## 23. Required engineering handoff
+## 24. Required engineering handoff
 
 Every implementation handoff must include:
 
