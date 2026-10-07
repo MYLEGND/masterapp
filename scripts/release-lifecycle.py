@@ -291,6 +291,29 @@ def release_queue_lease(api):
     return {'approved': approved, 'ownerPr': int(match.group(1)), 'status': status}
 
 
+def _release_publication_scope(api, pr, files=None):
+    """Resolve whether this exact PR can require application publication.
+
+    The release lease serializes only mutation-capable application publication.
+    Governance, documentation, test, and other non-publishing PRs never own that
+    lease and therefore cannot starve a validated product release.
+    """
+    rows = files if files is not None else api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in rows if row.get('filename')]
+    targets = tuple(VALIDATION_AUTHORITY.release_targets_for_paths(names))
+    control_only = bool(names) and all(
+        VALIDATION_AUTHORITY.release_control_only_path(name)
+        for name in names
+    )
+    return {
+        'files': rows,
+        'names': names,
+        'targets': targets,
+        'controlOnly': control_only,
+        'publicationRequired': bool(targets and not control_only),
+    }
+
+
 def _request_release_queue(api, pr):
     head = pr.get('head', {}).get('sha')
     if not SHA.fullmatch(head or ''):
@@ -304,7 +327,15 @@ def _request_release_queue(api, pr):
 
 
 def claim_release_queue(api, pr):
-    """Acquire one validation-to-production lease; every later PR stays queued."""
+    """Acquire the one application-publication lease after validation is green."""
+    scope = _release_publication_scope(api, pr)
+    if not scope['publicationRequired']:
+        return {
+            'state': 'RELEASE_QUEUE_NOT_REQUIRED',
+            'pr': pr['number'],
+            'targets': list(scope['targets']),
+        }
+
     _request_release_queue(api, pr)
     lease = release_queue_lease(api)
     owner = lease['ownerPr']
@@ -357,7 +388,8 @@ def _requested_release_queue(api):
         match = RELEASE_QUEUE_REQUEST.fullmatch((status or {}).get('description') or '')
         if ((status or {}).get('state') == 'success'
             and match is not None
-            and int(match.group(1)) == pr['number']):
+            and int(match.group(1)) == pr['number']
+            and _release_publication_scope(api, pr)['publicationRequired']):
             queued.append(pr)
     return sorted(queued, key=lambda row: row['number'])
 
@@ -421,22 +453,6 @@ def promote_next_release_queue(api):
         'rerun': wake['rerun'],
         'missingValidationRuns': wake['missing'],
     }
-
-
-def _release_queue_guard(api, pr):
-    lease = release_queue_lease(api)
-    if lease['ownerPr'] != pr['number']:
-        return {
-            'state': 'RELEASE_QUEUED',
-            'retained': (
-                f"Queued behind active release PR #{lease['ownerPr']}"
-                if lease['ownerPr'] is not None
-                else 'Candidate has not acquired the validation-to-production release lease'
-            ),
-            'pr': pr['number'],
-            'ownerPr': lease['ownerPr'],
-        }
-    return None
 
 
 def _carry_release_queue(api, revision, pr_number):
@@ -684,27 +700,15 @@ def candidate_control_plane_integrity(api, pr, names):
         "return set(observed) == set(keys)",
     )):
         return 'Candidate weakened durable historical publication proof'
-    forward_supersession_common = (
+    if not all(token in forward_supersession_source for token in (
         '_app_only_admission_keys(record)',
         '_app_only_admission_keys(candidate)',
         "old_revision == new_revision",
-        'ancestor(old_revision, new_revision)',
-    )
-    forward_supersession_full_coverage = (
-        "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
-    )
-    forward_supersession_target_scoped = (
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
-    )
-    if (
-        not all(token in forward_supersession_source for token in forward_supersession_common)
-        or not (
-            all(token in forward_supersession_source for token in forward_supersession_full_coverage)
-            or all(token in forward_supersession_source for token in forward_supersession_target_scoped)
-        )
-    ):
-        return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
+        'ancestor(old_revision, new_revision)',
+    )):
+        return 'Candidate weakened strict descendant target-scoped stale-lease supersession'
     if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
@@ -1035,9 +1039,6 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
 
 
 def merge_validated(api, pr):
-    queued = _release_queue_guard(api, pr)
-    if queued:
-        return queued
     base_state = approved_head_state(api, pr)
     if not base_state["current"]:
         publish_trusted_validation_status(
@@ -1051,8 +1052,11 @@ def merge_validated(api, pr):
             **base_state,
         }
 
-    files = api.pages(f"pulls/{pr['number']}/files")
-    names = [row.get('filename') for row in files if row.get('filename')]
+    scope = _release_publication_scope(api, pr)
+    files = scope['files']
+    names = scope['names']
+    targets = scope['targets']
+    publication_required = scope['publicationRequired']
     head = pr['head']['sha']
 
     integrity = candidate_control_plane_integrity(api, pr, names)
@@ -1066,15 +1070,50 @@ def merge_validated(api, pr):
         return {'state': 'VALIDATING', 'retained': pending}
 
     publish_trusted_validation_status(api, head, 'success', '')
-    targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
-    control_only = bool(names) and all(
-        VALIDATION_AUTHORITY.release_control_only_path(name)
-        for name in names
-    )
+
+    queue = None
+    if publication_required:
+        # Validation is complete before the scarce publication lease is touched.
+        # A waiting/human-bound governance PR can therefore never reserve the
+        # application deployment lane.
+        queue = claim_release_queue(api, pr)
+        if queue['state'] != 'RELEASE_QUEUE_OWNER':
+            return queue
+
+        # Queue acquisition can race another approved merge. Recheck freshness
+        # after claiming; release the lease instead of stranding later releases.
+        base_state = approved_head_state(api, pr)
+        if not base_state["current"]:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'candidate-stale-before-merge'
+            )
+            publish_trusted_validation_status(
+                api, head, "pending",
+                "Candidate must contain the current approved head before validation can authorize merge",
+            )
+            return {
+                "state": "BASE_SYNC_REQUIRED",
+                "retained": "Candidate became stale before merge; publication lease released",
+                "pr": pr["number"],
+                **base_state,
+            }
+    else:
+        # Discharge any lease left by an older lifecycle generation that admitted
+        # a non-publishing PR too early.
+        lease = release_queue_lease(api)
+        if lease['ownerPr'] == pr['number']:
+            _release_release_queue(
+                api, lease['approved'], pr['number'], 'no-production-publication-required'
+            )
+
     try:
         result = api.api(f"pulls/{pr['number']}/merge",
             {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
     except RuntimeError as exc:
+        if publication_required and queue is not None:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'merge-not-completed'
+            )
         if any(f"HTTP {code}" in str(exc) for code in (405, 409, 422)):
             return {
                 'retained': 'Validated PR is not currently mergeable; source branch retained',
@@ -1082,23 +1121,30 @@ def merge_validated(api, pr):
             }
         raise
     if not result.get('merged'):
+        if publication_required and queue is not None:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'merge-not-completed'
+            )
         return {
             'retained': 'Merge did not complete; source branch retained',
             'pr': pr['number'],
         }
 
-    _carry_release_queue(api, result['sha'], pr['number'])
+    if publication_required:
+        _carry_release_queue(api, result['sha'], pr['number'])
 
     # Validation success is the publication handoff. Application-affecting merges
     # immediately enter the sole direct-release workflow with scope derived from
     # the validated PR. No second authorization command or hand-maintained target
     # table exists between merge and deployment.
-    release_result = None
-    if targets and not control_only:
+    if publication_required:
         # Integration and dispatch are separate phases of the same serialized
         # lifecycle invocation. The refresh/reconcile phase dispatches once;
         # do not dispatch here then rediscover an eventually-visible run below.
-        release_result = {'releaseRecovery': 'queued for the refreshed reconciliation phase', 'targets': list(targets)}
+        release_result = {
+            'releaseRecovery': 'queued for the refreshed reconciliation phase',
+            'targets': list(targets),
+        }
     else:
         # The merge commit does not exist in this runner's local checkout yet.
         # Historical recovery is intentionally deferred to the workflow's
@@ -1116,7 +1162,7 @@ def merge_validated(api, pr):
         'mergedPr': pr['number'],
         'sha': result['sha'],
         'releaseDispatched': bool(release_result and 'directRelease' in release_result),
-        'automaticRelease': bool(targets and not control_only),
+        'automaticRelease': publication_required,
         'targets': list(targets),
         'release': release_result,
     }
@@ -1154,12 +1200,9 @@ def integrate(api, number):
 
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
-    queue = claim_release_queue(api, pr)
-    if queue['state'] != 'RELEASE_QUEUE_OWNER':
-        return queue
     synced = sync_candidate_to_current_approved(api, pr)
     if synced is not None:
-        return {**synced, 'queueOwnerPr': pr['number']}
+        return synced
     return merge_validated(api, pr)
 
 
@@ -1179,6 +1222,13 @@ def pending_updates(api):
     if owner is not None:
         current = api.api(f"pulls/{owner}")
         if current.get('state') == 'open':
+            if not _release_publication_scope(api, current)['publicationRequired']:
+                _release_release_queue(api, lease['approved'], owner, 'no-production-publication-required')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Non-publishing queue owner released without blocking application deployment',
+                }
             if not ready(current, api.repo, APPROVED):
                 _release_release_queue(api, lease['approved'], owner, 'owner-no-longer-ready')
                 promoted = promote_next_release_queue(api)
@@ -1656,13 +1706,17 @@ def automatic_release_admission(api, pr, approved, runs):
                      and not row.get('display_title', '').startswith('LEGEND release pr='))]
     if attempted:
         exact = [row for row in attempted if row.get('display_title') == identity]
-        # One failed exact run may hand off to one proof-only recovery when its
-        # durable provider disposition proves every selected target is already
-        # terminal at the immutable application revision. The recovery run will
-        # discover EXACT_LIVE and therefore has no target publication authority.
-        if len(attempted) == 1 and len(exact) == 1 and _release_exact_live_terminal(api, exact[0]):
-            return None
-        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded exact-live recovery exhausted or not proven'}
+        # One prior exact run may be retried only when it durably proves that
+        # publication never entered, or when terminal provider proof shows the
+        # immutable application revision is already live. The first case retries
+        # admission after a cleared dependency; the second is proof-only recovery.
+        # A second attempted run exhausts the bounded recovery budget.
+        if len(attempted) == 1 and len(exact) == 1:
+            if _never_admitted(api, exact[0]):
+                return None
+            if _release_exact_live_terminal(api, exact[0]):
+                return None
+        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded non-entry/exact-live recovery exhausted or not proven'}
     return None
 
 
@@ -1818,6 +1872,15 @@ def reconcile(api, trigger=None):
     runs = direct_release_runs(api)
 
     if owner is not None:
+        owner_pr = api.api(f"pulls/{owner}")
+        if not _release_publication_scope(api, owner_pr)['publicationRequired']:
+            _release_release_queue(api, approved, owner, 'no-production-publication-required')
+            promoted = promote_next_release_queue(api)
+            if promoted:
+                return promoted
+            owner = None
+
+    if owner is not None:
         successful = [
             row for row in runs
             if release_run_source_pr(row) == owner and successful_release(api, row)
@@ -1831,23 +1894,10 @@ def reconcile(api, trigger=None):
                 'release': 'terminal live provenance released validation-to-production lease',
             }
 
-        owner_pr = api.api(f"pulls/{owner}")
         if owner_pr.get('merged_at'):
-            files = api.pages(f"pulls/{owner}/files")
-            names = [row.get('filename') for row in files if row.get('filename')]
-            targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
-            control_only = bool(names) and all(
-                VALIDATION_AUTHORITY.release_control_only_path(name)
-                for name in names
-            )
-            if not targets or control_only:
-                _release_release_queue(api, approved, owner, 'no-production-publication-required')
-                promoted = promote_next_release_queue(api)
-                if promoted:
-                    return promoted
-                # A control-only repair can complete while an earlier application
-                # release remains unresolved. Do not stop at the correction lease:
-                # continue into the canonical pending-release recovery path below.
+            # A publication-capable owner keeps the lease until terminal live
+            # provenance. Non-publishing owners were discharged above.
+            pass
 
     automatic = dispatch_pending_automatic_release(api, approved)
     if automatic:
@@ -2310,7 +2360,14 @@ def _historical_application_publications_completed(api, run, record):
 
 
 def _forward_supersedes_completed_app_lease(record, candidate):
-    """Allow only strict descendant, full-resource roll-forward of app-only leases."""
+    """Roll forward only the overlapping app slice of a completed app-only lease.
+
+    Application writes are independently journaled per target. A newer strict
+    descendant therefore replaces the stale lease only for app targets it is
+    actually about to publish; unrelated app targets retain their own historical
+    disposition requirements. Schema writes and auxiliary resources are excluded
+    by _app_only_admission_keys and remain fail-closed.
+    """
     old_keys = _app_only_admission_keys(record)
     new_keys = _app_only_admission_keys(candidate)
     old_revision = record.get('applicationRevision')
@@ -2321,9 +2378,13 @@ def _forward_supersedes_completed_app_lease(record, candidate):
         or not SHA.fullmatch(old_revision or '')
         or not SHA.fullmatch(new_revision or '')
         or old_revision == new_revision
-        or not set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))
     ):
         return False
+
+    overlap = set(old_keys).intersection(new_keys)
+    if not overlap:
+        return False
+
     try:
         return ancestor(old_revision, new_revision)
     except Exception:
