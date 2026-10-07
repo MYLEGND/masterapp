@@ -501,6 +501,12 @@ def run_migration_lane():
         "--application-revision", revision,
         "--directory", "/tmp/migration-probe",
     ], timeout=180)
+    _invoke_migration_bundle()
+    return {"status": "reconciled", "changedMigrations": changed}
+
+
+
+def _invoke_migration_bundle():
     # The owning migration runner emits only fixed redacted terminal labels.
     # Preserve the exact safe label rather than masking it behind a generic
     # prepublication RuntimeError. No retry, write, or provider detail is added.
@@ -524,8 +530,6 @@ def run_migration_lane():
             raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:'
                                + reason[:-len(suffix)]) from None
         raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE') from None
-    return {"status": "reconciled", "changedMigrations": changed}
-
 
 
 def _approved_observation_labels():
