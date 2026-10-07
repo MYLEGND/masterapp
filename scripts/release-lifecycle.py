@@ -2281,7 +2281,8 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     if (
         run.get('status') != 'completed'
         or run.get('conclusion') != 'failure'
-        or run.get('run_attempt') != 1
+        or type(run.get('run_attempt')) is not int
+        or not 1 <= run['run_attempt'] <= 2
         or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
         or run.get('head_branch') != APPROVED
         or run.get('event') != 'workflow_dispatch'
@@ -2301,6 +2302,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         'scripts/release-migration.py': {
             '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
             '3dc53852fc30df96e9e79779bae89b0cbeb65248',
+            '4d04187b13f1212c709237d4632c509e5c9696b9',
         },
         'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
         'scripts/validation-resume.py': {
@@ -2328,8 +2330,11 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         return False
     expected = {
         'legend-release-admission-' + record['admissionId'],
-        f"legend-release-step-state-{record['applicationRevision']}-{run['id']}-1",
     }
+    expected.update(
+        f"legend-release-step-state-{record['applicationRevision']}-{run['id']}-{attempt}"
+        for attempt in range(1, run['run_attempt'] + 1)
+    )
     expected.update(
         f"diagnostics-rollback-{key}-{revision}" for key in keys
     )
@@ -2350,33 +2355,39 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     finalizer = 'Reconcile complete immutable release transaction'
     if mutation is None or not {prepare, prepublication, finalizer}.issubset(mutation):
         return False
-    jobs = api.pages(f"actions/runs/{run['id']}/attempts/1/jobs", 'jobs')
-    release_jobs = [job for job in jobs if job.get('name') == 'release']
-    if len(release_jobs) != 1:
-        return False
-    release = release_jobs[0]
-    if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
-        return False
-    steps = release.get('steps')
-    if not isinstance(steps, list):
-        return False
-    outcomes = {}
-    for step in steps:
-        outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
-    required = {
-        prepare: 'success',
-        prepublication: 'failure',
-        finalizer: 'success',  # Pinned workflow invokes only --finalize-only.
-    }
-    required.update({
-        name: 'skipped' for name in mutation - set(required)
-    })
-    required.update({
-        'Reconcile terminal release resource disposition': 'skipped',
-        'Preserve terminal release resource disposition': 'skipped',
-        'Retain exact approved release receipt': 'skipped',
-    })
-    return all(outcomes.get(name) == [conclusion] for name, conclusion in required.items())
+    for attempt in range(1, run['run_attempt'] + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        release_jobs = [job for job in jobs if job.get('name') == 'release']
+        if len(release_jobs) != 1:
+            return False
+        release = release_jobs[0]
+        if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
+            return False
+        steps = release.get('steps')
+        if not isinstance(steps, list):
+            return False
+        outcomes = {}
+        for step in steps:
+            outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
+        # An earlier failed transaction-plan GET is a non-entry. A later
+        # successful local plan may fail during prepublication only when all
+        # mutation intents are positively absent in the full artifact inventory.
+        preparation = outcomes.get(prepare)
+        if preparation == ['success']:
+            required = {prepare: 'success', prepublication: 'failure', finalizer: 'success'}
+        elif preparation == ['failure']:
+            required = {prepare: 'failure', prepublication: 'skipped', finalizer: 'skipped'}
+        else:
+            return False
+        required.update({name: 'skipped' for name in mutation - set(required)})
+        required.update({
+            'Reconcile terminal release resource disposition': 'skipped',
+            'Preserve terminal release resource disposition': 'skipped',
+            'Retain exact approved release receipt': 'skipped',
+        })
+        if not all(outcomes.get(name) == [conclusion] for name, conclusion in required.items()):
+            return False
+    return True
 
 
 
