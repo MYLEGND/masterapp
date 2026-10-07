@@ -704,10 +704,11 @@ def candidate_control_plane_integrity(api, pr, names):
         '_app_only_admission_keys(record)',
         '_app_only_admission_keys(candidate)',
         "old_revision == new_revision",
-        "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
+        'overlap = set(old_keys).intersection(new_keys)',
+        'if not overlap',
         'ancestor(old_revision, new_revision)',
     )):
-        return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
+        return 'Candidate weakened strict descendant target-scoped stale-lease supersession'
     if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
@@ -2355,7 +2356,14 @@ def _historical_application_publications_completed(api, run, record):
 
 
 def _forward_supersedes_completed_app_lease(record, candidate):
-    """Allow only strict descendant, full-resource roll-forward of app-only leases."""
+    """Roll forward only the overlapping app slice of a completed app-only lease.
+
+    Application writes are independently journaled per target. A newer strict
+    descendant therefore replaces the stale lease only for app targets it is
+    actually about to publish; unrelated app targets retain their own historical
+    disposition requirements. Schema writes and auxiliary resources are excluded
+    by _app_only_admission_keys and remain fail-closed.
+    """
     old_keys = _app_only_admission_keys(record)
     new_keys = _app_only_admission_keys(candidate)
     old_revision = record.get('applicationRevision')
@@ -2366,9 +2374,13 @@ def _forward_supersedes_completed_app_lease(record, candidate):
         or not SHA.fullmatch(old_revision or '')
         or not SHA.fullmatch(new_revision or '')
         or old_revision == new_revision
-        or not set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))
     ):
         return False
+
+    overlap = set(old_keys).intersection(new_keys)
+    if not overlap:
+        return False
+
     try:
         return ancestor(old_revision, new_revision)
     except Exception:
