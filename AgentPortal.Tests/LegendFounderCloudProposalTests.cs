@@ -34,7 +34,7 @@ public sealed class LegendFounderCloudProposalTests
         await using var fixture = await Fixture.CreateAsync();
         var first = await fixture.ExecuteAsync(fixture.Source, Arguments(Patch));
         using var output = JsonDocument.Parse(first);
-        Assert.False(output.RootElement.GetProperty("ok").GetBoolean());
+        Assert.False(output.RootElement.GetProperty("succeeded").GetBoolean());
         Assert.Equal("cloud_action_tool_not_exposed", output.RootElement.GetProperty("error").GetString());
         Assert.Equal(first, await fixture.ExecuteAsync(fixture.Source, Arguments(Patch)));
         Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
