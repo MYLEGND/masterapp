@@ -702,7 +702,8 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened durable historical publication proof'
     if not all(token in forward_supersession_source for token in (
         '_app_only_admission_keys(record)',
-        '_app_only_admission_keys(candidate)',
+        '_validate_admission_record_scope(candidate)',
+        'except Exception',
         "old_revision == new_revision",
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
@@ -2387,21 +2388,24 @@ def _historical_application_publications_completed(api, run, record):
 
 
 def _forward_supersedes_completed_app_lease(record, candidate):
-    """Roll forward only the overlapping app slice of a completed app-only lease.
+    """Roll forward only the old app-only lease's overlapping app slice.
 
     Application writes are independently journaled per target. A newer strict
-    descendant therefore replaces the stale lease only for app targets it is
-    actually about to publish; unrelated app targets retain their own historical
-    disposition requirements. Schema writes and auxiliary resources are excluded
-    by _app_only_admission_keys and remain fail-closed.
+    descendant therefore replaces a completed stale app-only lease for app
+    targets it is actually about to publish. The successor may also own schema or
+    auxiliary resources; those resources are independently governed by their own
+    leases and are never discharged here. Any schema or auxiliary resource on the
+    historical lease itself remains fail-closed.
     """
     old_keys = _app_only_admission_keys(record)
-    new_keys = _app_only_admission_keys(candidate)
+    try:
+        new_keys = _validate_admission_record_scope(candidate)
+    except Exception:
+        return False
     old_revision = record.get('applicationRevision')
     new_revision = candidate.get('applicationRevision')
     if (
         old_keys is None
-        or new_keys is None
         or not SHA.fullmatch(old_revision or '')
         or not SHA.fullmatch(new_revision or '')
         or old_revision == new_revision
