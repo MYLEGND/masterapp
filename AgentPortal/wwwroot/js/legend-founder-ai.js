@@ -289,7 +289,10 @@
 
     window.visualViewport?.addEventListener(
         'resize',
-        syncViewportHeight
+        () => {
+            syncViewportHeight();
+            resizeInput();
+        }
     );
 
     function createId() {
@@ -1161,13 +1164,31 @@
             return;
         }
 
+        const viewportHeight =
+            window.visualViewport?.height ||
+            window.innerHeight;
+        const maximumHeight = isMobile()
+            ? Math.max(
+                120,
+                Math.min(
+                    320,
+                    Math.round(viewportHeight * 0.38)
+                )
+            )
+            : 180;
+
         input.style.height = 'auto';
 
+        const requiredHeight = input.scrollHeight;
         input.style.height =
             `${Math.min(
-                input.scrollHeight,
-                isMobile() ? 138 : 152
+                requiredHeight,
+                maximumHeight
             )}px`;
+        input.style.overflowY =
+            requiredHeight > maximumHeight
+                ? 'auto'
+                : 'hidden';
     }
 
     input?.addEventListener(
@@ -1185,7 +1206,10 @@
         'focus',
         () => {
             window.setTimeout(
-                syncViewportHeight,
+                () => {
+                    syncViewportHeight();
+                    resizeInput();
+                },
                 40
             );
         }
@@ -1196,7 +1220,8 @@
         event => {
             if (
                 event.key === 'Enter' &&
-                !event.shiftKey
+                !event.shiftKey &&
+                !isMobile()
             ) {
                 event.preventDefault();
 
