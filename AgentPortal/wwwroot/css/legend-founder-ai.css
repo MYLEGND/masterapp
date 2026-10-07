@@ -258,24 +258,22 @@
     min-height: var(--legend-ai-compact-control);
     margin-top: 8px;
     padding: 7px 9px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 38%, var(--legend-ai-line));
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
     border-radius: 11px;
-    background: color-mix(in srgb, var(--legend-ai-gold-500) 10%, var(--legend-ai-paper));
-    color: var(--legend-ai-text);
+    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
+    color: #14213a;
     font-size: .66rem;
-    font-weight: 850;
+    font-weight: 900;
     text-align: left;
     cursor: pointer;
 }
 
 .legend-founder-ai-sidebar-retry:hover,
 .legend-founder-ai-sidebar-retry:focus-visible {
-    border-color: var(--legend-ai-gold-700);
+    border-color: var(--legend-ai-blue-bright);
+    background: linear-gradient(135deg, var(--legend-ai-blue), var(--legend-ai-blue-bright));
+    color: #ffffff;
     outline: none;
-}
-
-.legend-founder-ai-modebar-home {
-    display: none;
 }
 
 /* ==========================================================
@@ -406,10 +404,10 @@
     gap: 8px;
     margin: 0 0 6px;
     padding: 9px 10px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 42%, transparent);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--legend-ai-gold-500) 7%, var(--legend-ai-navy-950));
-    color: var(--legend-ai-text);
+    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
+    color: #14213a;
     text-align: left;
     cursor: pointer;
     transition: border-color .14s ease, background .14s ease, transform .14s ease;
@@ -439,21 +437,23 @@
 }
 
 .legend-founder-ai-history-title {
-    color: var(--legend-ai-text);
+    color: inherit;
     font-size: .73rem;
-    font-weight: 850;
+    font-weight: 900;
 }
 
 .legend-founder-ai-history-preview {
     margin-top: 4px;
-    color: var(--legend-ai-muted);
+    color: inherit;
+    opacity: .74;
     font-size: .62rem;
     line-height: 1.15;
 }
 
 .legend-founder-ai-history-time {
     padding-top: 2px;
-    color: var(--legend-ai-muted);
+    color: inherit;
+    opacity: .68;
     font-size: .57rem;
     white-space: nowrap;
 }
@@ -531,28 +531,6 @@
 .legend-founder-ai-sidebar-spacer {
     min-height: 8px;
     flex: 1 1 auto;
-}
-
-.legend-founder-ai-clear-history {
-    min-height: var(--legend-ai-compact-control);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 9px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-navy-900) 12%, transparent);
-    border-radius: 11px;
-    background: var(--legend-ai-ivory);
-    color: var(--legend-ai-text);
-    font-size: .64rem;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.legend-founder-ai-clear-history:hover,
-.legend-founder-ai-clear-history:focus-visible {
-    border-color: color-mix(in srgb, var(--legend-ai-gold-500) 52%, transparent);
-    background: color-mix(in srgb, var(--legend-ai-gold-500) 12%, var(--legend-ai-paper));
-    outline: none;
 }
 
 /* ==========================================================
