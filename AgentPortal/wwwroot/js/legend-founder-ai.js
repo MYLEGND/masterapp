@@ -20,6 +20,7 @@
     const send = document.getElementById('legendFounderAiSend');
     const sendIcon = document.getElementById('legendFounderAiSendIcon');
     const composerMenu = document.getElementById('legendFounderAiComposerMenu');
+    const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
     const voiceFocus = document.getElementById('legendFounderAiVoiceFocus');
     const newConversation = document.getElementById('legendFounderAiNew');
     const retryRequest = document.getElementById('legendFounderAiRetry');
@@ -39,6 +40,7 @@
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
     const modebar = document.getElementById('legendFounderAiModebar');
     const mobileControls = document.getElementById('legendFounderAiMobileControls');
+    const mobileSheet = modalElement.querySelector('[data-legend-mobile-sheet]');
     const statusDetail = status?.querySelector('.legend-founder-ai-thinking-detail');
     const settingsPanel = document.getElementById('legendFounderAiSettingsPanel');
     const settingsBody = document.getElementById('legendFounderAiSettingsBody');
@@ -165,10 +167,41 @@
         );
     }
 
+    function syncMobileSheetPresentation(
+        open = modalElement.classList.contains('show')
+    ) {
+        if (!mobileSheet) {
+            return;
+        }
+
+        const shouldOpen = isMobile() && open;
+        mobileSheet.classList.toggle('open', shouldOpen);
+
+        if (shouldOpen) {
+            window.LegendModal?.registerMobileSheet?.(mobileSheet);
+            return;
+        }
+
+        mobileSheet.dataset.legendSheetSnap = 'full';
+        mobileSheet.style.removeProperty('--legend-mobile-sheet-drag-y');
+        mobileSheet.removeAttribute('data-legend-sheet-dragging');
+    }
+
+    function expandMobileSheetForComposer() {
+        if (!isMobile() || !mobileSheet) {
+            return;
+        }
+
+        mobileSheet.dataset.legendSheetSnap = 'full';
+        mobileSheet.style.removeProperty('--legend-mobile-sheet-drag-y');
+        mobileSheet.removeAttribute('data-legend-sheet-dragging');
+    }
+
     function setSidebarOpen(open) {
         if (!isMobile()) {
             modalElement.classList.remove('is-sidebar-open');
             sidebar?.removeAttribute('aria-hidden');
+            mobileMenu?.setAttribute('aria-expanded', 'false');
             return;
         }
 
@@ -176,6 +209,10 @@
         sidebar?.setAttribute(
             'aria-hidden',
             open ? 'false' : 'true'
+        );
+        mobileMenu?.setAttribute(
+            'aria-expanded',
+            open ? 'true' : 'false'
         );
     }
 
@@ -196,6 +233,7 @@
 
     modalElement.addEventListener('shown.bs.modal', () => {
         syncViewportHeight();
+        syncMobileSheetPresentation(true);
         void refreshHistory().finally(scheduleHistoryRefresh);
 
         if (isMobile()) {
@@ -206,6 +244,7 @@
 
     modalElement.addEventListener('hidden.bs.modal', () => {
         stopHistoryRefresh();
+        syncMobileSheetPresentation(false);
         setSidebarOpen(false);
         closeSettingsPanel();
         input?.blur();
@@ -220,6 +259,7 @@
 
     window.addEventListener('resize', () => {
         syncViewportHeight();
+        syncMobileSheetPresentation();
         setSidebarOpen(false);
         syncControlPlacement();
     });
@@ -1315,6 +1355,7 @@
     input?.addEventListener(
         'focus',
         () => {
+            expandMobileSheetForComposer();
             window.setTimeout(
                 () => {
                     syncViewportHeight();
@@ -1353,6 +1394,11 @@
         const conversation = activeConversation();
         if (!busy && conversation.pendingOperation) void executeConversationRequest(conversation, conversation.pendingOperation);
     });
+
+    mobileMenu?.addEventListener(
+        'click',
+        () => setSidebarOpen(true)
+    );
 
     composerMenu?.addEventListener(
         'click',
