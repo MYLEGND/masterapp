@@ -4334,6 +4334,61 @@ def _release_history_runs(repository, token):
         page += 1
 
 
+def _release_nonentry_observers(jobs, source):
+    """Authenticate observers with no capability to publish within this attempt."""
+    names = {'release-state-receipt', 'target-release-receipts (${{ matrix.app }})',
+             'wake-release-lifecycle-after-terminal-release'}
+    present = [job for job in jobs if job.get('name') in names]
+    if not present:
+        return jobs
+    if (not isinstance(source, str) or {job['name'] for job in present} != names
+        or len(present) != len(names)):
+        return None
+    blocks = _job_blocks(source)
+    if (set(blocks) != {'admission', 'discover-live', 'preserve-rollback', 'release',
+                        'release-state-receipt', 'target-release-receipts',
+                        'wake-release-lifecycle-after-terminal-release'}
+        or any(job.get('status') != 'completed' for job in jobs)):
+        return None
+    contract = {name: blocks.get(name) for name in (
+        'release-state-receipt', 'target-release-receipts',
+        'wake-release-lifecycle-after-terminal-release')}
+    contract.update(environment=_workflow_top_level_field(source, 'env'),
+                    defaults=_workflow_top_level_field(source, 'defaults'))
+    # Exact a07afe8 observer capability contract: inline state capture/upload,
+    # plus a scheduler wake with contents:read/actions:write only. The wake is
+    # not read-only, but has no Azure authentication, secrets or OIDC permission
+    # to publish here. Its protected checkout can dispatch another workflow;
+    # that separate run remains in complete release history and admission.
+    # Unknown permissions, commands or ambient env fail closed. A job name
+    # alone never grants this non-publication classification.
+    if hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest() != 'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7':
+        return None
+    for job in present:
+        if job.get('status') != 'completed' or job.get('conclusion') not in {'success', 'failure', 'cancelled', 'skipped'}:
+            return None
+        steps = job.get('steps')
+        if not isinstance(steps, list):
+            return None
+        if job['name'].startswith('target-release-receipts'):
+            if job['conclusion'] != 'skipped' or steps:
+                return None
+            continue
+        permitted = set(named_step_blocks(blocks[job['name']])) | {'Set up job', 'Complete job'}
+        if job['name'] == 'wake-release-lifecycle-after-terminal-release':
+            permitted.add('Post Checkout protected lifecycle wake authority')
+        step_names = []
+        for step in steps:
+            if (not isinstance(step, dict) or step.get('name') not in permitted
+                or step.get('status') != 'completed'
+                or step.get('conclusion') not in {'success', 'failure', 'cancelled', 'skipped'}):
+                return None
+            step_names.append(step['name'])
+        if len(step_names) != len(set(step_names)):
+            return None
+    return [job for job in jobs if job['name'] not in names]
+
+
 def release_attempt_never_entered(jobs, source=None):
     """Recognize a complete trusted attempt whose downstream jobs never entered.
 
@@ -4343,6 +4398,9 @@ def release_attempt_never_entered(jobs, source=None):
     partial, duplicate, unknown, or entered job shapes remain unproven.
     """
     if not isinstance(jobs, list) or not jobs or any(not isinstance(job, dict) for job in jobs):
+        return False
+    jobs = _release_nonentry_observers(jobs, source)
+    if jobs is None:
         return False
     names = [job.get('name') for job in jobs]
     allowed = {'admission', 'discover-live', 'release', 'preserve-rollback'}
