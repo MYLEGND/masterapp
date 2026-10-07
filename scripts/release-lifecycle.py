@@ -679,9 +679,7 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
     if not all(token in live_settlement_source for token in (
-        '_validate_admission_record_scope(record)',
-        "'read/schema/masterapp'",
-        "'write/app/'",
+        '_app_only_admission_keys(record)',
         "row.get('app')",
         "row.get('revision')",
         'ancestor(revision, observed[key])',
