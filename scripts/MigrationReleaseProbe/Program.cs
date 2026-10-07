@@ -42,8 +42,19 @@ try
             ("20260330011403_ActionSurfaceSeparation", "20260331000000_CommitmentsMvp"),
     };
     var unknown = applied.Except(known, StringComparer.Ordinal).ToArray();
-    if (unknown.Any(id => !auditedLegacy.ContainsKey(id)))
-        throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION");
+    var unregistered = unknown.Where(id => !auditedLegacy.ContainsKey(id)).ToArray();
+    if (unregistered.Length > 0)
+    {
+        // Migration IDs are schema metadata, never data rows or provider text.
+        // Report at most sixteen syntactically valid IDs, with a bounded count,
+        // so an operator can reconcile exact history rather than guessing.
+        var safeIds = unregistered.Take(16).Select(id =>
+            System.Text.RegularExpressions.Regex.IsMatch(id,
+                @"^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$")
+                ? id : "NONCANONICAL").ToArray();
+        throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION",
+            safeIds, Math.Min(unregistered.Length, 9999));
+    }
     if (applied.Length != applied.Distinct(StringComparer.Ordinal).Count())
         throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
     foreach (var (id, anchors) in auditedLegacy)
@@ -95,8 +106,13 @@ catch (SqlException ex) when (ex.Number is 18456 or 4060)
 }
 catch (ProbeObservationFailure ex)
 {
-    // Fixed, non-secret classification from an explicit migration-history check.
+    // Fixed classification and tightly filtered schema metadata only.
+    // Never print SQL, database names, connection strings or provider output.
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:" + ex.Classification);
+    if (ex.Classification == "UNKNOWN_APPLIED_MIGRATION" &&
+        ex.SafeMigrationIds is { Length: > 0 })
+        Console.Error.WriteLine("LEGEND_SCHEMA_HISTORY:" + ex.UnknownCount +
+            ":" + string.Join(",", ex.SafeMigrationIds));
     Environment.ExitCode = 1;
 }
 catch (InvalidOperationException)
@@ -115,5 +131,14 @@ catch
 sealed class ProbeObservationFailure : Exception
 {
     public string Classification { get; }
-    public ProbeObservationFailure(string classification) => Classification = classification;
+    public string[]? SafeMigrationIds { get; }
+    public int UnknownCount { get; }
+
+    public ProbeObservationFailure(string classification, string[]? safeMigrationIds = null,
+        int unknownCount = 0)
+    {
+        Classification = classification;
+        SafeMigrationIds = safeMigrationIds;
+        UnknownCount = unknownCount;
+    }
 }
