@@ -519,11 +519,7 @@ def run_migration_lane():
         }
         # Reuse the canonical schema-observation classification authority,
         # never trust free-form error text or URLs from subprocess output.
-        spec = importlib.util.spec_from_file_location(
-            'release_migration_diagnostics', ROOT / 'scripts/release-migration.py')
-        migration = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(migration)
-        authorized.update(migration.OBSERVATION_ERRORS)
+        authorized.update(_approved_observation_labels())
         if reason.endswith(suffix) and reason[:-len(suffix)] in authorized:
             raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:'
                                + reason[:-len(suffix)]) from None
