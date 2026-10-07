@@ -1257,6 +1257,36 @@ def pending_updates(api):
     if refreshed.returncode:
         raise RuntimeError(refreshed.stderr)
 
+    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    retained_candidates = []
+
+    def reconsider(pr):
+        # The list can be stale by the time validation completes. Do not sync or
+        # mutate unrelated candidates; only the same still-ready immutable head
+        # may enter the existing exact-head merge and queue authority.
+        current = api.api(f"pulls/{pr['number']}")
+        if (not ready(current, api.repo, APPROVED)
+            or current['head']['sha'] != pr['head']['sha']):
+            return None
+        if not approved_head_state(api, current)['current']:
+            return None
+        result = merge_validated(api, current)
+        if result.get('state') == 'MERGED':
+            return result
+        retained_candidates.append({'pr': pr['number'],
+            'reason': result.get('retained', result.get('state', 'Validation pending'))})
+        return None
+
+    # Publication leases serialize application deployment, not validated repairs
+    # of the release authority itself. Scan these before an active/merged owner
+    # can return, continuing past any unvalidated candidate.
+    for pr in reversed(pulls):
+        if (ready(pr, api.repo, APPROVED)
+            and not _release_publication_scope(api, pr)['publicationRequired']):
+            result = reconsider(pr)
+            if result is not None:
+                return result
+
     lease = release_queue_lease(api)
     owner = lease['ownerPr']
     if owner is not None:
@@ -1303,15 +1333,13 @@ def pending_updates(api):
     # A retained/unvalidated PR must never starve another fully validated PR.
     # Preserve its reason and continue scanning; stop only after a mutation
     # actually succeeds.
-    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
     closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
-    retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            retained_candidates.append({
-                'pr': pr['number'],
-                'reason': 'Ready PR is waiting for canonical release-queue admission',
-            })
+            if _release_publication_scope(api, pr)['publicationRequired']:
+                result = reconsider(pr)
+                if result is not None:
+                    return result
             continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
             and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo

@@ -702,6 +702,75 @@ class ReleaseQueueSerialization(unittest.TestCase):
         self.assertEqual("VALIDATING", result["state"])
         merge_validated.assert_called_once_with(api, owner)
 
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    def test_validation_completion_merges_control_repair_past_application_lease(self, _, __):
+        for merged_owner in (False, True):
+            with self.subTest(merged_owner=merged_owner):
+                api = Api()
+                owner, repair, waiting = self.pr(505, "5" * 40), self.pr(514, "b" * 40), self.pr(513, "d" * 40)
+                if merged_owner:
+                    owner.update(state='closed', merged_at='2026-10-07T00:00:00Z')
+                for pr in (owner, repair, waiting):
+                    api.api_map[f"pulls/{pr['number']}"] = pr
+                    api.pages_map[f"pulls/{pr['number']}/files"] = [{'filename':
+                        'AgentPortal/Program.cs' if pr is owner else 'scripts/release-lifecycle.py'}]
+                api.pages_map['pulls?state=open&base=legend%2Fapproved-changes'] = [repair, waiting]
+                api.context_status(api.ref(m.APPROVED), m.RELEASE_QUEUE_CONTEXT, 'pending', 'owner-pr=505 validation-to-production')
+                merged = []
+                api.api_map['pulls/514/merge'] = lambda data, method: (merged.append((data, method)) or {'merged': True, 'sha': 'c' * 40})
+                with patch.object(m, 'candidate_validation', return_value='pending exact-head checks'):
+                    self.assertEqual('VALIDATING', m.integrate(api, 514)['state'])
+                with patch.object(m, 'candidate_validation', side_effect=lambda api, pr:
+                                  'unrelated checks pending' if pr['number'] == 513 else None):
+                    result = m.pending_updates(api)
+                self.assertEqual('MERGED', result['state'])
+                self.assertEqual(514, result['mergedPr'])
+                self.assertEqual([({'merge_method': 'merge', 'sha': 'b' * 40}, 'PUT')], merged)
+                self.assertEqual(505, m.release_queue_lease(api)['ownerPr'])
+                self.assertEqual([], api.dispatched)
+                # The owning workflow refreshes approved checkout before recovery.
+                api.refs[m.APPROVED] = 'c' * 40
+                api.context_status('c' * 40, m.RELEASE_QUEUE_CONTEXT, 'pending', 'owner-pr=505 validation-to-production')
+                with patch.object(m, 'dispatch_pending_automatic_release', return_value={'state': 'RELEASE_DISPATCHED', 'sourcePr': 505}) as recover:
+                    self.assertEqual(505, m.reconcile(api)['sourcePr'])
+                    recover.assert_called_once_with(api, 'c' * 40)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    def test_ready_application_reconsidered_after_validation_without_earlier_claim(self, _, __):
+        api = Api()
+        pr = self.pr(514, 'b' * 40)
+        api.api_map['pulls/514'] = pr
+        api.pages_map['pulls/514/files'] = [{'filename': 'AgentPortal/Program.cs'}]
+        api.pages_map['pulls?state=open&base=legend%2Fapproved-changes'] = [pr]
+        api.api_map['pulls/514/merge'] = {'merged': True, 'sha': 'c' * 40}
+        with patch.object(m, 'candidate_validation', return_value='pending'):
+            self.assertEqual('VALIDATING', m.integrate(api, 514)['state'])
+        self.assertIsNone(m.release_queue_lease(api)['ownerPr'])
+        with patch.object(m, 'candidate_validation', return_value=None):
+            self.assertEqual('MERGED', m.pending_updates(api)['state'])
+        self.assertEqual(514, m.release_queue_lease(api)['ownerPr'])
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    def test_pending_control_repair_rejects_pending_integrity_and_changed_head(self, _, __):
+        for condition in ('pending', 'integrity', 'changed', 'stale'):
+            with self.subTest(condition=condition):
+                api = Api()
+                pr = self.pr(514, 'b' * 40)
+                api.api_map['pulls/514'] = self.pr(514, 'd' * 40) if condition == 'changed' else pr
+                api.pages_map['pulls/514/files'] = [{'filename': 'scripts/release-lifecycle.py'}]
+                api.pages_map['pulls?state=open&base=legend%2Fapproved-changes'] = [pr]
+                api.api_map['pulls/514/merge'] = lambda *_: self.fail('Unproven candidate merged')
+                with patch.object(m, 'candidate_validation', return_value='pending' if condition == 'pending' else None), \
+                     patch.object(m, 'candidate_control_plane_integrity', return_value='source failed' if condition == 'integrity' else None), \
+                     patch.object(m, 'approved_head_state', return_value={'current': condition != 'stale'}), \
+                     patch.object(m, 'sync_candidate_to_current_approved', side_effect=AssertionError('Unrelated head must not be mutated')):
+                    result = m.pending_updates(api)
+                self.assertNotEqual('MERGED', result.get('state'))
+                self.assertIsNone(m.release_queue_lease(api)['ownerPr'])
+
     def test_released_queue_promotes_next_requested_pr(self):
         api = Api()
         owner = self.pr(442, "b" * 40)
