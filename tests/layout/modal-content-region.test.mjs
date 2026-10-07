@@ -406,6 +406,29 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.doesNotMatch(aiJs,/Provider: Cloudflare Workers AI|Billing: Cloudflare Workers AI|OpenAI API used: No/);
 });
 
+test('mobile conversational composers own the available viewport and grow with the draft',()=>{
+  const aiCss=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
+  const aiJs=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const messagingJs=readFileSync(new URL('../../SHARED/wwwroot/js/messaging.js',import.meta.url),'utf8');
+
+  assert.match(aiCss,/\.legend-founder-ai-workspace,[\s\S]*?flex: 1 1 auto;[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
+  assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
+  assert.match(aiCss,/\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 94px;[\s\S]*?border-radius: 22px;/);
+  assert.match(aiCss,/\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 64px;[\s\S]*?max-height: min\(320px, 38dvh\);/);
+  assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.38\)/);
+  assert.match(aiJs,/event\.key === 'Enter'[\s\S]{0,120}!event\.shiftKey[\s\S]{0,120}!isMobile\(\)/);
+
+  assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(button, \.btn, a\.btn\)/);
+  assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\), select, textarea\)/);
+  assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-command-center-grid \{[\s\S]*?minmax\(120px, 0\.24fr\)/);
+  assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-send-form \{[\s\S]*?border-radius: 22px;/);
+  assert.match(shared,/\.messaging-send-form textarea \{[\s\S]*?min-height: 64px;[\s\S]*?max-height: min\(320px, 38dvh\);/);
+  assert.match(messagingJs,/function resizeMessageComposer\(\)[\s\S]*?Math\.round\(viewportHeight \* 0\.38\)/);
+  assert.match(messagingJs,/elements\.messageBody\.addEventListener\('input',[\s\S]*?resizeMessageComposer\(\)/);
+  assert.match(messagingJs,/event\.key === 'Enter'[\s\S]{0,180}!event\.shiftKey[\s\S]{0,180}!window\.matchMedia\('\(max-width: 600px\)'\)\.matches/);
+});
+
 test('legacy inline authenticated pages cannot re-own modal material or light controls',()=>{
   const onboarding=readFileSync(new URL('../../AgentPortal/Views/Onboarding/Index.cshtml',import.meta.url),'utf8');
   const agency=readFileSync(new URL('../../AgentPortal/Views/AgencyCommand/Index.cshtml',import.meta.url),'utf8');
