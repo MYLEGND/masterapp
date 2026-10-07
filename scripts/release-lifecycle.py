@@ -654,15 +654,13 @@ def candidate_control_plane_integrity(api, pr, names):
     admission_conflict_source = _function_source(
         source['lifecycle'], lifecycle_tree, 'admission_conflicts'
     )
-
-    legacy_publication_proof = all(token in publication_proof_source for token in (
-        "run.get('status') != 'completed'",
-        "actions/runs/{run['id']}/jobs?filter=latest",
-        "'Publish canonical selected targets in parallel'",
-        "f'Publish canonical target ({key})'",
-        "== ['success']",
-    ))
-    durable_publication_proof = all(token in publication_proof_source for token in (
+    if not all(token in app_scope_source for token in (
+        "'read/schema/masterapp'",
+        "'write/app/'",
+        'resource not in allowed',
+    )):
+        return 'Candidate weakened app-only stale-lease resource boundary'
+    if not all(token in publication_proof_source for token in (
         "actions/runs/{run['id']}/artifacts",
         "legend-release-operation-success-",
         "VALIDATION_AUTHORITY._download_run_artifact",
@@ -670,55 +668,33 @@ def candidate_control_plane_integrity(api, pr, names):
         "success.get('producingRun') != run['id']",
         "operation_id != expected_id",
         "return set(observed) == set(keys)",
-    ))
-    if not (legacy_publication_proof or durable_publication_proof):
-        return 'Candidate weakened positive historical publication proof'
-
-    legacy_live_settlement = all(token in live_settlement_source for token in (
-        '_validate_admission_record_scope(record)',
-        "'read/schema/masterapp'",
-        "'write/app/'",
-        "row.get('app')",
-        "row.get('revision')",
-        'ancestor(revision, observed[key])',
-    ))
-    hardened_live_settlement = all(token in live_settlement_source for token in (
+    )):
+        return 'Candidate weakened durable historical publication proof'
+    if not all(token in forward_supersession_source for token in (
+        '_app_only_admission_keys(record)',
+        '_app_only_admission_keys(candidate)',
+        "old_revision == new_revision",
+        "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
+        'ancestor(old_revision, new_revision)',
+    )):
+        return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
+    if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
         "row.get('revision')",
         'ancestor(revision, observed[key])',
-    ))
-    if not (legacy_live_settlement or hardened_live_settlement):
+    )):
         return 'Candidate weakened canonical live-provenance stale-lease settlement'
-
-    base_conflict_contract = all(token in admission_conflict_source for token in (
+    if not all(token in admission_conflict_source for token in (
         'live_snapshot_loaded = False',
+        '_forward_supersedes_completed_app_lease(record, candidate)',
         '_historical_application_publications_completed(api, run, record)',
         'live_revisions()',
         '_admission_covered_by_live_provenance(record, live_snapshot)',
         "run.get('status') == 'completed'",
         'not own_run',
-    ))
-    if not base_conflict_contract:
+    )):
         return 'Candidate removed fail-closed live-provenance lease discharge'
-
-    if durable_publication_proof or hardened_live_settlement:
-        if not all(token in app_scope_source for token in (
-            "'read/schema/masterapp'",
-            "'write/app/'",
-            'resource not in allowed',
-        )):
-            return 'Candidate weakened app-only stale-lease resource boundary'
-        if not all(token in forward_supersession_source for token in (
-            '_app_only_admission_keys(record)',
-            '_app_only_admission_keys(candidate)',
-            "old_revision == new_revision",
-            "set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))",
-            'ancestor(old_revision, new_revision)',
-        )):
-            return 'Candidate weakened strict descendant full-coverage stale-lease supersession'
-        if '_forward_supersedes_completed_app_lease(record, candidate)' not in admission_conflict_source:
-            return 'Candidate removed strict descendant stale-lease roll-forward'
 
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
@@ -2200,31 +2176,104 @@ def _admission_superseded_by_terminal_success(api, run, record, runs):
                 return True
     return False
 
-def _historical_application_publications_completed(api, run, record):
-    """Require positive per-target publication completion before live settlement."""
-    if run.get('status') != 'completed':
-        return False
+def _app_only_admission_keys(record):
+    """Return canonical app keys only when a lease owns no auxiliary writes."""
     try:
         keys = _validate_admission_record_scope(record)
     except Exception:
-        return False
-    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    release_jobs = [job for job in jobs if job.get('name') == 'release']
-    if len(release_jobs) != 1:
-        return False
-    steps = release_jobs[0].get('steps')
-    if not isinstance(steps, list):
-        return False
-    outcomes = {}
-    for step in steps:
-        outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
-    parallel = outcomes.get('Publish canonical selected targets in parallel', [])
-    if parallel != ['success']:
-        return False
-    return all(
-        outcomes.get(f'Publish canonical target ({key})', []) == ['success']
+        return None
+    allowed = {'read/schema/masterapp'}
+    allowed.update(
+        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
         for key in keys
     )
+    resources = record.get('resources')
+    if (
+        not isinstance(resources, list)
+        or not resources
+        or any(resource not in allowed for resource in resources)
+    ):
+        return None
+    return tuple(keys)
+
+
+def _historical_application_publications_completed(api, run, record):
+    """Require durable per-target operation-success receipts, never step conclusion."""
+    if run.get('status') != 'completed':
+        return False
+    keys = _app_only_admission_keys(record)
+    revision = record.get('applicationRevision')
+    if keys is None or not SHA.fullmatch(revision or ''):
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    observed = {}
+    for artifact in artifacts:
+        name = artifact.get('name', '')
+        match = re.fullmatch(r'legend-release-operation-success-([a-f0-9]{64})', name)
+        if match is None:
+            continue
+        if artifact.get('expired'):
+            return False
+        with tempfile.TemporaryDirectory(prefix='legend-operation-success-') as directory:
+            try:
+                VALIDATION_AUTHORITY._download_run_artifact(
+                    api.repo, run['id'], name, Path(directory)
+                )
+                path = Path(directory) / 'operation.json'
+                if path.stat().st_size > 32768:
+                    return False
+                success = json.loads(path.read_text())
+            except Exception:
+                return False
+        target = success.get('target')
+        digest = success.get('packageDigest')
+        operation_id = success.get('operationId')
+        expected_id = hashlib.sha256(json.dumps(
+            {
+                'target': target,
+                'applicationRevision': success.get('applicationRevision'),
+                'packageDigest': digest,
+            },
+            sort_keys=True,
+            separators=(',', ':'),
+        ).encode()).hexdigest()
+        if (
+            success.get('schemaVersion') != 1
+            or success.get('phase') != 'success'
+            or success.get('producingRun') != run['id']
+            or type(success.get('producingAttempt')) is not int
+            or not 1 <= success['producingAttempt'] <= run.get('run_attempt', 1)
+            or success.get('applicationRevision') != revision
+            or target not in keys
+            or not re.fullmatch(r'[a-f0-9]{64}', digest or '')
+            or operation_id != match.group(1)
+            or operation_id != expected_id
+            or target in observed
+        ):
+            return False
+        observed[target] = operation_id
+    return set(observed) == set(keys)
+
+
+def _forward_supersedes_completed_app_lease(record, candidate):
+    """Allow only strict descendant, full-resource roll-forward of app-only leases."""
+    old_keys = _app_only_admission_keys(record)
+    new_keys = _app_only_admission_keys(candidate)
+    old_revision = record.get('applicationRevision')
+    new_revision = candidate.get('applicationRevision')
+    if (
+        old_keys is None
+        or new_keys is None
+        or not SHA.fullmatch(old_revision or '')
+        or not SHA.fullmatch(new_revision or '')
+        or old_revision == new_revision
+        or not set(record.get('resources', ())).issubset(set(candidate.get('resources', ())))
+    ):
+        return False
+    try:
+        return ancestor(old_revision, new_revision)
+    except Exception:
+        return False
 
 
 def _admission_covered_by_live_provenance(record, rows):
@@ -2235,21 +2284,9 @@ def _admission_covered_by_live_provenance(record, rows):
     authority as release planning. Any auxiliary/runtime-control resource remains
     dependent on its own durable disposition proof.
     """
-    try:
-        keys = _validate_admission_record_scope(record)
-    except Exception:
-        return False
+    keys = _app_only_admission_keys(record)
     revision = record.get('applicationRevision')
-    if not SHA.fullmatch(revision or ''):
-        return False
-
-    allowed = {'read/schema/masterapp'}
-    allowed.update(
-        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
-        for key in keys
-    )
-    resources = record.get('resources')
-    if not isinstance(resources, list) or any(resource not in allowed for resource in resources):
+    if keys is None or not SHA.fullmatch(revision or ''):
         return False
 
     expected = set(keys)
@@ -2313,6 +2350,12 @@ def admission_conflicts(api, candidate, *, current_run):
                 or _admission_superseded_by_terminal_success(api, run, record, runs)):
                 continue
             if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
+                continue
+            if (
+                not own_run
+                and run.get('status') == 'completed'
+                and _forward_supersedes_completed_app_lease(record, candidate)
+            ):
                 continue
             if (
                 not own_run
