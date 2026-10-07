@@ -719,6 +719,7 @@ public sealed class LegendFounderAiContractTests
         Assert.True(executableNames.Except(discoveredNames).ToHashSet(System.StringComparer.Ordinal)
             .SetEquals(repositoryControlTools));
         Assert.Contains("legend_capabilities", discoveredNames);
+        Assert.Contains("legend_remember_founder_rule", discoveredNames);
         Assert.Contains("legend_operational_diagnostics", discoveredNames);
         Assert.Contains("legend_submit_machine_learning_candidate", discoveredNames);
         Assert.Contains("legend_software_remediation_status", discoveredNames);
@@ -730,10 +731,15 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("legend_verify_repair_deployment", discoveredNames);
         Assert.All(discovered, item =>
         {
-            var mutation = item.GetProperty("access").GetString() ==
-                "founder_governed_mutation";
-            Assert.Equal(mutation,
+            var access = item.GetProperty("access").GetString();
+            var consequentialMutation = access == "founder_governed_mutation";
+            Assert.Equal(consequentialMutation,
                 item.GetProperty("requiresExplicitFounderCommand").GetBoolean());
+            if (item.GetProperty("name").GetString() == "legend_remember_founder_rule")
+            {
+                Assert.Equal("founder_explicit_account_preference_write", access);
+                Assert.False(item.GetProperty("requiresExplicitFounderCommand").GetBoolean());
+            }
             Assert.False(item.GetProperty("canOverrideAuthorities").GetBoolean());
             Assert.False(item.GetProperty("canModifyRepository").GetBoolean());
             Assert.False(item.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
