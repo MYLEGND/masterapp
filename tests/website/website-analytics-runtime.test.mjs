@@ -4,8 +4,17 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../AgentPortal/wwwroot/js/website-analytics.js', import.meta.url), 'utf8');
-async function fixture({ device = true } = {}) {
-  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="founder-profile" data-initial-scope-label="Founder Personal"></div>
+async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false } = {}) {
+  const founderLinks = { legend: 'https://legend.example.test/', protect: 'https://protect.example.test/' };
+  const agentLink = 'https://protect.example.test/a/agent-one';
+  const agents = founder ? [{ id: 'founder-profile', primaryUrl: founderLinks[siteKey] }, { id: 'agent-profile', primaryUrl: agentLink }] : [];
+  const routes = [{ displayName: 'Life', basePath: '/quote/life', controlPath: '/quote/life', defaultPageVariant: 'landing', availableVariants: [{ variant: 'landing', isControl: true }] }];
+  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="${selectedAgent ? 'agent-profile' : 'founder-profile'}" data-initial-scope-label="Founder Personal"
+    data-initial-site-key="${siteKey}" data-agent-options='${JSON.stringify(agents)}' data-founder-site-links='${JSON.stringify(founder ? founderLinks : {})}'
+    data-personal-link="${founder ? founderLinks[siteKey] : agentLink}" data-landing-routes-base-url="https://protect.example.test/" data-landing-routes='${JSON.stringify(routes)}'></div>
+    <span id="growth-base-link"></span><a id="growth-open-base"></a><button id="growth-copy-base"></button>
+    <button class="wa-site-switch-btn" data-site-key="legend"></button><button class="wa-site-switch-btn" data-site-key="protect"></button>
+    <div id="product-links-list"></div><span id="landing-routes-base-url"></span>
     <div id="kpi-pageviews"></div><div id="kpi-session"></div>
     <button id="channel-performance-refresh"></button><div id="channel-performance-grid"></div><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div>
     ${device ? '<button id="mod-device-intelligence"></button><div id="deviceIntelligenceModal"></div><div id="deviceIntelligenceContent"></div><div id="deviceSessions"></div>' : ''}`,
@@ -16,6 +25,8 @@ async function fixture({ device = true } = {}) {
   window.console.error = (...args) => errors.push(args.map(String).join(' '));
   window.console.warn = () => {};
   window.bootstrap = { Modal: { getOrCreateInstance: () => ({ show() {}, hide() {} }) } };
+  const copied = [];
+  window.navigator.clipboard = { writeText: value => { copied.push(value); return Promise.resolve(); } };
   window.fetch = async url => {
     calls.push(String(url));
     const path = new URL(url, window.location.href).pathname;
@@ -28,7 +39,39 @@ async function fixture({ device = true } = {}) {
   window.eval(source);
   window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   await new Promise(resolve => setTimeout(resolve, 30));
-  return { dom, window, calls, errors };
+  return { dom, window, calls, errors, copied };
+}
+
+for (const initialSite of ['legend', 'protect']) {
+  test(`Founder website links follow initial ${initialSite} and both site switches while product routes stay Protect`, async () => {
+    const f = await fixture({ founder: true, siteKey: initialSite });
+    try {
+      for (const siteKey of [initialSite, initialSite === 'legend' ? 'protect' : 'legend', initialSite]) {
+        f.window.document.querySelector(`[data-site-key="${siteKey}"]`).click();
+        const expected = `https://${siteKey}.example.test/`;
+        assert.equal(f.window.document.getElementById('growth-base-link').textContent, expected);
+        assert.equal(f.window.document.getElementById('growth-open-base').href, expected);
+        f.window.document.getElementById('growth-copy-base').click();
+        assert.equal(f.copied.at(-1), expected);
+        assert.equal(f.window.document.getElementById('landing-routes-base-url').textContent, 'https://protect.example.test/');
+        const product = f.window.document.querySelector('.product-link-copy');
+        assert.equal(product.dataset.linkUrl, 'https://protect.example.test/quote/life');
+      }
+    } finally { f.dom.window.close(); }
+  });
+}
+
+for (const selectedAgent of [false, true]) {
+  test(`agent personal and product links retain their prefix with Founder viewing agent ${selectedAgent}`, async () => {
+    const f = await fixture({ founder: selectedAgent, selectedAgent });
+    try {
+      for (const siteKey of ['legend', 'protect', 'legend']) {
+        f.window.document.querySelector(`[data-site-key="${siteKey}"]`).click();
+        assert.equal(f.window.document.getElementById('growth-open-base').href, 'https://protect.example.test/a/agent-one');
+        assert.equal(f.window.document.querySelector('.product-link-copy').dataset.linkUrl, 'https://protect.example.test/a/agent-one/quote/life');
+      }
+    } finally { f.dom.window.close(); }
+  });
 }
 
 for (const device of [true, false]) {

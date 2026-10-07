@@ -39,6 +39,10 @@
     }
   })();
   const landingRoutesBaseUrl = shell?.dataset.landingRoutesBaseUrl || '';
+  const founderSiteLinks = (() => {
+    try { return JSON.parse(shell?.dataset.founderSiteLinks || '{}'); }
+    catch { return {}; }
+  })();
   const state = {
     preset: initialPreset,
     from: initialFrom,
@@ -541,6 +545,7 @@
       state.scope.siteKey = siteKey;
       syncScopeQueryParam(state.scope.agentProfileId);
       apply();
+      updateGrowthBaseLink();
       loadSummary();
       refreshOpenModal();
       void loadMetaConnectionStatus();
@@ -4788,6 +4793,10 @@ function escapeHtml(value) {
   }
 
   function resolveLandingRouteBaseLink() {
+    // These are Protect product routes, independent of the Founder website switch.
+    if (isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId)) {
+      return landingRoutesBaseUrl;
+    }
     return currentBaseLink() || landingRoutesBaseUrl || '';
   }
 
@@ -5040,6 +5049,9 @@ function escapeHtml(value) {
 
   function currentBaseLink() {
     const agentId = state.scope.agentProfileId;
+    if (isFounder && (!agentId || agentId === callerProfileId)) {
+      return founderSiteLinks[state.scope.siteKey] || '';
+    }
     if (agentId && agentOptions && agentOptions.length) {
       const match = agentOptions.find(a => String(a?.id || '') === String(agentId));
       if (match?.primaryUrl) return match.primaryUrl;

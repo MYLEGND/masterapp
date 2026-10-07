@@ -135,9 +135,16 @@ namespace AgentPortal.Controllers;
         ViewData["CanDeleteAnalyticsLeads"] = canDeleteAnalyticsLeads;
         if (canViewFounderTeamUi)
         {
-            // Ensure founder personal link is root
-            var rootBase = _landingRouteDiscovery.GetBaseUrl();
-            ViewData["PersonalLink"] = rootBase.EndsWith("/") ? rootBase : rootBase + "/";
+            // Public website links follow the selected Founder site. Product landing
+            // routes retain their separate Protect authority above.
+            var siteLinks = new Dictionary<string, string>
+            {
+                ["legend"] = (_config["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/",
+                ["protect"] = _landingRouteDiscovery.GetBaseUrl().TrimEnd('/') + "/"
+            };
+            var rootBase = siteLinks[scope.SiteKey == "protect" ? "protect" : "legend"];
+            ViewData["FounderSiteLinksJson"] = System.Text.Json.JsonSerializer.Serialize(siteLinks);
+            ViewData["PersonalLink"] = rootBase;
             ViewData["PersonalLinkAlt"] = null;
 
             var agents = await _tracking.GetAllProfilesAsync();
@@ -147,7 +154,7 @@ namespace AgentPortal.Controllers;
                 var urls = await _tracking.GetPersonalUrlsAsync(agent);
                 // Founder should surface root as primary
                 var primaryOverride = string.Equals(agent.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase)
-                    ? (rootBase.EndsWith("/") ? rootBase : rootBase + "/")
+                    ? rootBase
                     : urls.PrimaryUrl;
                 agentOptions.Add(new { id = agent.Id, name = agent.DisplayName ?? agent.AgentUpn ?? agent.Slug, slug = agent.Slug, primaryUrl = primaryOverride, altUrl = urls.AlternateSlugUrl });
             }
