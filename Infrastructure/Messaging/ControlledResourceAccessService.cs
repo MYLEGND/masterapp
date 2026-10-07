@@ -59,7 +59,8 @@ public interface IControlledResourceAccessService
 
     Task<IReadOnlyList<FounderAssistantRule>> GetFounderAssistantRulesAsync(
         MessagingActor actor,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<FounderAssistantRule>>(Array.Empty<FounderAssistantRule>());
 
     Task<FounderAssistantRuleWriteResult> UpsertFounderAssistantRuleAsync(
         MessagingActor actor,
@@ -67,7 +68,8 @@ public interface IControlledResourceAccessService
         string scope,
         string ruleText,
         string currentUserMessage,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new FounderAssistantRuleWriteResult(false, "founder_rule_authority_unavailable"));
 }
 
 /// <summary>
