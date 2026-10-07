@@ -121,11 +121,26 @@ class GitHub:
 
     def pages(self, path, key=None):
         rows = []
+        expected_count = None
+        seen_jobs = set()
         for page in range(1, 101):
             result = self.api(path + ('&' if '?' in path else '?') + f'per_page=100&page={page}')
             values = result[key] if key else result
+            if key == 'jobs':
+                count = result.get('total_count')
+                if (not isinstance(values, list) or type(count) is not int or count < 0
+                        or (expected_count is not None and count != expected_count)):
+                    raise RuntimeError('Incomplete or changing job inventory')
+                expected_count = count
+                for job in values:
+                    identity = job.get('id') if isinstance(job, dict) else None
+                    if type(identity) is not int or identity < 1 or identity in seen_jobs:
+                        raise RuntimeError('Missing or duplicate job inventory identity')
+                    seen_jobs.add(identity)
             rows.extend(values)
             if len(values) < 100:
+                if key == 'jobs' and len(rows) != expected_count:
+                    raise RuntimeError('Incomplete job inventory')
                 return rows
         raise RuntimeError('Pagination limit reached; refusing incomplete branch evidence')
 
@@ -1242,6 +1257,36 @@ def pending_updates(api):
     if refreshed.returncode:
         raise RuntimeError(refreshed.stderr)
 
+    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    retained_candidates = []
+
+    def reconsider(pr):
+        # The list can be stale by the time validation completes. Do not sync or
+        # mutate unrelated candidates; only the same still-ready immutable head
+        # may enter the existing exact-head merge and queue authority.
+        current = api.api(f"pulls/{pr['number']}")
+        if (not ready(current, api.repo, APPROVED)
+            or current['head']['sha'] != pr['head']['sha']):
+            return None
+        if not approved_head_state(api, current)['current']:
+            return None
+        result = merge_validated(api, current)
+        if result.get('state') == 'MERGED':
+            return result
+        retained_candidates.append({'pr': pr['number'],
+            'reason': result.get('retained', result.get('state', 'Validation pending'))})
+        return None
+
+    # Publication leases serialize application deployment, not validated repairs
+    # of the release authority itself. Scan these before an active/merged owner
+    # can return, continuing past any unvalidated candidate.
+    for pr in reversed(pulls):
+        if (ready(pr, api.repo, APPROVED)
+            and not _release_publication_scope(api, pr)['publicationRequired']):
+            result = reconsider(pr)
+            if result is not None:
+                return result
+
     lease = release_queue_lease(api)
     owner = lease['ownerPr']
     if owner is not None:
@@ -1288,15 +1333,13 @@ def pending_updates(api):
     # A retained/unvalidated PR must never starve another fully validated PR.
     # Preserve its reason and continue scanning; stop only after a mutation
     # actually succeeds.
-    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
     closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
-    retained_candidates = []
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            retained_candidates.append({
-                'pr': pr['number'],
-                'reason': 'Ready PR is waiting for canonical release-queue admission',
-            })
+            if _release_publication_scope(api, pr)['publicationRequired']:
+                result = reconsider(pr)
+                if result is not None:
+                    return result
             continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
             and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo
@@ -2061,32 +2104,21 @@ def _admission_records(api, run):
 
 
 def _never_admitted(api, run):
-    # A skipped latest retry cannot erase an earlier entered publication. Every
-    # recorded attempt must independently prove downstream jobs never executed.
-    # GitHub may omit jobs whose needs/if chain is impossible after admission
-    # returns admitted=false. That early-gate shape is non-entry only when the
-    # sole remaining wrapper is the skipped rollback-preservation job.
-    for attempt in range(1, run.get('run_attempt', 1) + 1):
-        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
-        admission = [job for job in jobs if job.get('name') == 'admission']
-        if len(admission) != 1:
-            return False
-        downstream = [job for job in jobs if job.get('name') in {'discover-live', 'release'}]
-        if len(downstream) == 2:
-            if all(job.get('conclusion') == 'skipped' for job in downstream):
-                continue
-            return False
-        if downstream:
-            return False
-        wrappers = [job for job in jobs if job.get('name') != 'admission']
-        if (
-            len(wrappers) == 1
-            and wrappers[0].get('name') == 'preserve-rollback'
-            and wrappers[0].get('conclusion') == 'skipped'
-        ):
-            continue
+    # A skipped latest retry cannot erase an earlier entered publication.
+    attempts = run.get('run_attempt', 1)
+    if type(attempts) is not int or attempts < 1:
         return False
+    for attempt in range(1, attempts + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        if VALIDATION_AUTHORITY.release_attempt_never_entered(jobs):
+            continue
+        if not SHA.fullmatch(run.get('head_sha', '')):
+            return False
+        source = api.text(run['head_sha'], '.github/workflows/' + DIRECT)
+        if not VALIDATION_AUTHORITY.release_attempt_never_entered(jobs, source):
+            return False
     return True
+
 
 
 def _historical_release_mutation_steps(source):

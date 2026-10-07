@@ -68,6 +68,11 @@ jobs:
       baseline_evidence_run_id: ${{ steps.plan.outputs.baseline_evidence_run_id }}
       baseline_evidence_artifact: ${{ steps.plan.outputs.baseline_evidence_artifact }}
       baseline_run_required: ${{ steps.plan.outputs.baseline_run_required }}
+      baseline_repair_classes: ${{ steps.plan.outputs.baseline_repair_classes }}
+      baseline_repair_filter: ${{ steps.plan.outputs.baseline_repair_filter }}
+      baseline_source_run: ${{ steps.plan.outputs.baseline_source_run }}
+      baseline_source_artifact: ${{ steps.plan.outputs.baseline_source_artifact }}
+      baseline_source_revision: ${{ steps.plan.outputs.baseline_source_revision }}
       resume_cache: ${{ steps.plan.outputs.resume_cache }}
       parent_success_reuse: ${{ steps.plan.outputs.parent_success_reuse }}
       repair_filter: ${{ steps.plan.outputs.repair_filter }}
@@ -183,8 +188,14 @@ jobs:
           resume_cache=bool(decision.get("resumeCache"))
           parent_success=bool(decision.get("parentSuccessReuse"))
           full=mode=="full"
+          repair=decision.get('baselineRepair') or {}
           with open(sys.argv[2],"a") as output:
               output.write(f"mode={mode}\n")
+              output.write("baseline_repair_classes="+str(';'.join(repair.get('repairClasses') or []))+"\n")
+              output.write("baseline_repair_filter="+str(repair.get('repairFilter') or '')+"\n")
+              output.write("baseline_source_run="+str(repair.get('evidenceRunId') or '')+"\n")
+              output.write("baseline_source_artifact="+str(repair.get('evidenceArtifact') or '')+"\n")
+              output.write("baseline_source_revision="+str(repair.get('evidenceBaseSha') or '')+"\n")
               output.write(f"prior_run_id={decision.get('priorRunId') or ''}\n")
               output.write(f"prior_head_sha={decision.get('priorHeadSha') or ''}\n")
               output.write(f"baseline_evidence_run_id={baseline_run}\n")
@@ -266,6 +277,11 @@ jobs:
       reusable: ${{ steps.lookup.outputs.reusable }}
       run_id: ${{ steps.lookup.outputs.run_id }}
       artifact: ${{ steps.lookup.outputs.artifact }}
+      repair_classes: ${{ steps.lookup.outputs.repair_classes }}
+      repair_filter: ${{ steps.lookup.outputs.repair_filter }}
+      source_run: ${{ steps.lookup.outputs.source_run }}
+      source_artifact: ${{ steps.lookup.outputs.source_artifact }}
+      source_revision: ${{ steps.lookup.outputs.source_revision }}
     steps:
       - name: Checkout exact isolated head for baseline identity
         uses: actions/checkout@v4
@@ -309,7 +325,13 @@ jobs:
           python3 - "$evidence" "$GITHUB_OUTPUT" <<'PYBASE'
           import json,sys
           data=json.load(open(sys.argv[1]))
+          repair=data
           with open(sys.argv[2],'a') as output:
+              output.write("repair_classes="+str(';'.join(repair.get('repairClasses') or []))+"\n")
+              output.write("repair_filter="+str(repair.get('repairFilter') or '')+"\n")
+              output.write("source_run="+str(repair.get('evidenceRunId') or '')+"\n")
+              output.write("source_artifact="+str(repair.get('evidenceArtifact') or '')+"\n")
+              output.write("source_revision="+str(repair.get('evidenceBaseSha') or '')+"\n")
               output.write('reusable='+str(bool(data.get('reusable'))).lower()+'\n')
               output.write(f"run_id={data.get('evidenceRunId') or ''}\n")
               output.write(f"artifact={data.get('evidenceArtifact') or ''}\n")
@@ -432,17 +454,49 @@ jobs:
   baseline:
     needs: [plan, baseline-evidence]
     if: >-
+      always() && !cancelled() &&
+      needs.plan.result == 'success' &&
+      ((needs.plan.outputs.mode == 'full' && needs.baseline-evidence.result == 'success') ||
+       ((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+        needs.baseline-evidence.result == 'skipped')) &&
       needs.plan.outputs.comparison_run == 'true' &&
       ((needs.plan.outputs.mode == 'full' && needs.baseline-evidence.outputs.reusable != 'true') ||
        ((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
         needs.plan.outputs.baseline_run_required == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      BASELINE_REPAIR_CLASSES: ${{ needs.plan.outputs.baseline_repair_classes || needs.baseline-evidence.outputs.repair_classes }}
+      BASELINE_REPAIR_FILTER: ${{ needs.plan.outputs.baseline_repair_filter || needs.baseline-evidence.outputs.repair_filter }}
+      BASELINE_SOURCE_RUN: ${{ needs.plan.outputs.baseline_source_run || needs.baseline-evidence.outputs.source_run }}
+      BASELINE_SOURCE_ARTIFACT: ${{ needs.plan.outputs.baseline_source_artifact || needs.baseline-evidence.outputs.source_artifact }}
+      BASELINE_SOURCE_REVISION: ${{ needs.plan.outputs.baseline_source_revision || needs.baseline-evidence.outputs.source_revision }}
     steps:
+      - name: Checkout exact candidate merge authority
+        if: env.BASELINE_REPAIR_CLASSES != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Preserve candidate merge authority outside baseline workspace
+        if: env.BASELINE_REPAIR_CLASSES != ''
+        shell: bash
+        run: cp scripts/validation-resume.py "$RUNNER_TEMP/step5-merge-authority.py"
+
       - name: Checkout exact approved baseline
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Load authenticated prior approved baseline child
+        if: env.BASELINE_REPAIR_CLASSES != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASELINE_SOURCE_ARTIFACT }}
+          run-id: ${{ env.BASELINE_SOURCE_RUN }}
+          github-token: ${{ github.token }}
+          path: /tmp/step5-prior-approved
 
       - name: Capture approved baseline tree identity
         id: tree
@@ -463,15 +517,30 @@ jobs:
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false -p:MasterAppArtifactsRoot="$baseline_artifacts"
           set +e
           rm -rf /tmp/step5-baseline
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
-          exit 0
+          filter=()
+          if [ -n "$BASELINE_REPAIR_CLASSES" ]; then
+            filter=(--filter "$BASELINE_REPAIR_FILTER")
+          fi
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build -p:MasterAppArtifactsRoot="$baseline_artifacts" "${filter[@]}" --logger "trx;LogFileName=baseline.trx" --results-directory /tmp/step5-baseline
+          set -e
+          test -f /tmp/step5-baseline/baseline.trx
+          if [ -n "$BASELINE_REPAIR_CLASSES" ]; then
+            prior=/tmp/step5-prior-approved/baseline.trx
+            if [ ! -f "$prior" ]; then prior=/tmp/step5-prior-approved/candidate.trx; fi
+            mv /tmp/step5-baseline/baseline.trx /tmp/step5-baseline/repair.trx
+            python3 "$RUNNER_TEMP/step5-merge-authority.py" step5-merge \
+              --prior "$prior" --repair /tmp/step5-baseline/repair.trx \
+              --classes "$BASELINE_REPAIR_CLASSES" --output /tmp/step5-baseline/baseline.trx \
+              --source-run "$BASELINE_SOURCE_RUN" --source-artifact "$BASELINE_SOURCE_ARTIFACT" \
+              --source-revision "$BASELINE_SOURCE_REVISION" --approved-revision "${{ github.event.pull_request.base.sha }}"
+          fi
 
       - name: Preserve completed baseline results
         if: always() && steps.full.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: step5-baseline-${{ github.event.pull_request.base.sha }}
-          path: /tmp/step5-baseline/baseline.trx
+          path: /tmp/step5-baseline/baseline.trx*
           if-no-files-found: error
           retention-days: 7
 
@@ -480,26 +549,38 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: step5-tree-baseline-${{ steps.tree.outputs.sha }}
-          path: /tmp/step5-baseline/baseline.trx
+          path: /tmp/step5-baseline/baseline.trx*
           if-no-files-found: error
           retention-days: 30
 
   validate:
     name: step5-validation
     needs: [plan, candidate, baseline, baseline-evidence]
-    if: >-
-      always() &&
-      needs.plan.result == 'success' &&
-      (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
-        (needs.plan.outputs.baseline_run_required != 'true' || needs.baseline.result == 'success')) ||
-       (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
-       (needs.plan.outputs.mode == 'full' &&
-        needs.plan.outputs.comparison_run == 'true' &&
-        needs.candidate.result == 'success' &&
-        (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true')))
+    if: always() && !cancelled() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Require planned Step 5 dependencies before comparison
+        env:
+          DEPENDENCIES_READY: >-
+            ${{ (needs.candidate.result == 'success' || needs.candidate.result == 'skipped') &&
+             (needs.baseline.result == 'success' || needs.baseline.result == 'skipped') &&
+             (needs.baseline-evidence.result == 'success' || needs.baseline-evidence.result == 'skipped') &&
+             (((needs.plan.outputs.mode == 'repair' || needs.plan.outputs.mode == 'reuse') &&
+              (needs.plan.outputs.baseline_run_required != 'true' || needs.baseline.result == 'success')) ||
+             (needs.plan.outputs.mode == 'full' && needs.plan.outputs.comparison_run == 'false') ||
+             (needs.plan.outputs.mode == 'full' &&
+              needs.plan.outputs.comparison_run == 'true' &&
+              needs.candidate.result == 'success' &&
+              (needs.baseline.result == 'success' || needs.baseline-evidence.outputs.reusable == 'true'))) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$DEPENDENCIES_READY" != "true" ]; then
+            echo "::error::Planned Step 5 dependencies did not complete; comparison cannot be skipped."
+            exit 1
+          fi
+
       - name: Restore PR-local Step 5 evidence cache for bounded repair
         if: needs.plan.outputs.resume_cache == 'true'
         uses: actions/cache/restore@v4
@@ -668,11 +749,9 @@ jobs:
             exit 0
           fi
           python3 - <<'PY'
-          import copy
           import os
           from pathlib import Path
           import shutil
-          import xml.etree.ElementTree as ET
 
           import importlib.util
           spec = importlib.util.spec_from_file_location("validation_resume", "scripts/validation-resume.py")
@@ -727,52 +806,10 @@ jobs:
                       effective / "candidate.trx",
                   )
               else:
-                  candidate_tree = ET.parse("/tmp/step5-prior-candidate/candidate.trx")
-                  candidate_root = candidate_tree.getroot()
-                  repair_tree = ET.parse("/tmp/step5-repair/repair.trx")
-                  repair_nodes = {
-                      node.attrib.get("testName", ""): node
-                      for node in repair_tree.getroot().iter()
-                      if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
-                  }
-                  candidate_nodes = {
-                      node.attrib.get("testName", ""): node
-                      for node in candidate_root.iter()
-                      if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
-                  }
-                  affected = lambda name: any(
-                      name.startswith(class_name + ".") for class_name in classes
-                  )
-                  prior_affected = {name for name in candidate_nodes if affected(name)}
-                  missing = sorted(name for name in prior_affected if name not in repair_nodes)
-                  if missing:
-                      raise SystemExit(
-                          "Repair proof omitted prior tests from the affected class: "
-                          + ", ".join(missing)
-                      )
-                  for name in prior_affected:
-                      candidate_nodes[name].set(
-                          "outcome",
-                          repair_nodes[name].attrib.get("outcome", ""),
-                      )
-                  results_node = next(
-                      (node for node in candidate_root.iter() if node.tag.endswith("Results")),
-                      None,
-                  )
-                  if results_node is None:
-                      raise SystemExit("Prior candidate TRX has no Results node.")
-                  for name, node in repair_nodes.items():
-                      if affected(name) and name not in candidate_nodes:
-                          results_node.append(copy.deepcopy(node))
-                  all_results = [node for node in candidate_root.iter() if node.tag.endswith("UnitTestResult")]
-                  counters = next(node for node in candidate_root.iter() if node.tag.endswith("Counters"))
-                  counters.set("total", str(len(all_results)))
-                  for outcome in ("Passed", "Failed", "NotExecuted"):
-                      counters.set(outcome[0].lower() + outcome[1:], str(sum(node.get("outcome") == outcome for node in all_results)))
-                  candidate_tree.write(
+                  authority.merge_step5_class_results(
+                      "/tmp/step5-prior-candidate/candidate.trx",
+                      "/tmp/step5-repair/repair.trx", classes,
                       effective / "candidate.trx",
-                      encoding="utf-8",
-                      xml_declaration=True,
                   )
               with open(os.environ["GITHUB_OUTPUT"], "a") as output:
                   output.write("effective_evidence=true\n")
@@ -828,12 +865,10 @@ jobs:
           echo "Bounded same-run recheck exit code: $recheck_rc"
 
           python3 - <<'PY'
-          import copy
           import importlib.util
           import os
           from pathlib import Path
           import shutil
-          import xml.etree.ElementTree as ET
 
           spec = importlib.util.spec_from_file_location("validation_resume", "scripts/validation-resume.py")
           authority = importlib.util.module_from_spec(spec)
@@ -843,58 +878,13 @@ jobs:
           if not classes:
               raise SystemExit("Same-run Step 5 recheck had no bounded class authority.")
 
-          repair_rows = results("/tmp/step5-self-recheck/repair.trx")
-          for class_name in classes:
-              prefix = class_name + "."
-              if not any(name.startswith(prefix) for name in repair_rows):
-                  raise SystemExit(f"Same-run recheck omitted affected class: {class_name}")
-
-          candidate_tree = ET.parse("/tmp/step5-candidate/candidate.trx")
-          candidate_root = candidate_tree.getroot()
-          repair_tree = ET.parse("/tmp/step5-self-recheck/repair.trx")
-          repair_nodes = {
-              node.attrib.get("testName", ""): node
-              for node in repair_tree.getroot().iter()
-              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
-          }
-          candidate_nodes = {
-              node.attrib.get("testName", ""): node
-              for node in candidate_root.iter()
-              if node.tag.endswith("UnitTestResult") and node.attrib.get("testName")
-          }
-          affected = lambda name: any(name.startswith(class_name + ".") for class_name in classes)
-          prior_affected = {name for name in candidate_nodes if affected(name)}
-          missing = sorted(name for name in prior_affected if name not in repair_nodes)
-          if missing:
-              raise SystemExit(
-                  "Same-run recheck omitted prior tests from the affected class: "
-                  + ", ".join(missing)
-              )
-          for name in prior_affected:
-              candidate_nodes[name].set("outcome", repair_nodes[name].attrib.get("outcome", ""))
-
-          results_node = next(
-              (node for node in candidate_root.iter() if node.tag.endswith("Results")),
-              None,
-          )
-          if results_node is None:
-              raise SystemExit("Candidate TRX has no Results node.")
-          for name, node in repair_nodes.items():
-              if affected(name) and name not in candidate_nodes:
-                  results_node.append(copy.deepcopy(node))
-
-          all_results = [node for node in candidate_root.iter() if node.tag.endswith("UnitTestResult")]
-          counters = next(node for node in candidate_root.iter() if node.tag.endswith("Counters"))
-          counters.set("total", str(len(all_results)))
-          for outcome in ("Passed", "Failed", "NotExecuted"):
-              counters.set(
-                  outcome[0].lower() + outcome[1:],
-                  str(sum(node.get("outcome") == outcome for node in all_results)),
-              )
-
           effective = Path("/tmp/step5-effective")
           effective.mkdir(parents=True, exist_ok=True)
-          candidate_tree.write(effective / "candidate.trx", encoding="utf-8", xml_declaration=True)
+          authority.merge_step5_class_results(
+              "/tmp/step5-candidate/candidate.trx",
+              "/tmp/step5-self-recheck/repair.trx", classes,
+              effective / "candidate.trx",
+          )
           shutil.copy2("/tmp/step5-baseline/baseline.trx", effective / "baseline.trx")
 
           candidate_failed = {

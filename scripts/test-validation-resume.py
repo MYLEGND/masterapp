@@ -12,6 +12,104 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+class Step5JobSchedulingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import re
+        cls.re = re
+        workflow = (ROOT / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        cls.blocks = m._job_blocks(workflow)
+
+    def expression(self, job):
+        block = self.blocks[job]
+        return self.re.search(r"    if: (.*?)\n    runs-on:", block, self.re.S).group(1).removeprefix('>-').strip()
+
+    def evaluate(self, expression, fields, cancelled=False, job=False):
+        # GitHub injects success() for job conditions without a status function.
+        # Preserve that behavior so removing always() reproduces the live defect.
+        if job and not self.re.search(r'\b(always|cancelled|success|failure)\(', expression):
+            if any(value != 'success' for key, value in fields.items() if key.endswith('.result')):
+                return False
+        expression = self.re.sub(r'needs\.[\w.-]+', lambda match: repr(fields.get(match.group(), '')), expression)
+        expression = expression.replace('always()', 'True').replace('cancelled()', repr(cancelled))
+        expression = expression.replace('&&', ' and ').replace('||', ' or ')
+        expression = self.re.sub(r'!(?!=)', ' not ', expression)
+        return bool(eval(' '.join(expression.split()), {'__builtins__': {}}, {}))
+
+    def fields(self, mode='repair', **overrides):
+        fields = {
+            'needs.plan.result': 'success',
+            'needs.plan.outputs.mode': mode,
+            'needs.plan.outputs.comparison_run': 'true',
+            'needs.plan.outputs.baseline_run_required': 'true',
+            'needs.baseline-evidence.result': 'success' if mode == 'full' else 'skipped',
+            'needs.baseline-evidence.outputs.reusable': 'false',
+            'needs.baseline.result': 'success',
+            'needs.candidate.result': 'success',
+        }
+        fields.update(overrides)
+        return fields
+
+    def test_baseline_runs_only_when_planned_and_dependencies_are_valid(self):
+        for mode in ('full', 'repair', 'reuse'):
+            fields = self.fields(mode)
+            with self.subTest(mode=mode):
+                self.assertTrue(self.evaluate(self.expression('baseline'), fields, job=True))
+                self.assertFalse(self.evaluate(self.expression('baseline'), fields, cancelled=True, job=True))
+                for result in ('failure', 'cancelled'):
+                    for dependency in ('plan', 'baseline-evidence'):
+                        invalid = dict(fields, **{f'needs.{dependency}.result': result})
+                        self.assertFalse(self.evaluate(self.expression('baseline'), invalid, job=True))
+                fields['needs.plan.outputs.comparison_run'] = 'false'
+                self.assertFalse(self.evaluate(self.expression('baseline'), fields, job=True))
+            fields = self.fields(mode)
+            fields['needs.baseline-evidence.outputs.reusable'] = 'true'
+            fields['needs.plan.outputs.baseline_run_required'] = 'false'
+            self.assertFalse(self.evaluate(self.expression('baseline'), fields, job=True))
+
+    def test_missing_required_baseline_fails_existing_terminal_check_instead_of_skipping(self):
+        import os
+        import subprocess
+        block = self.blocks['validate']
+        ready = self.re.search(r'DEPENDENCIES_READY: >-\s*\$\{\{(.*?)\}\}', block, self.re.S).group(1)
+        script = self.re.search(r'        run: \|\n(.*?)(?=\n      - name:)', block, self.re.S).group(1)
+        script = '\n'.join(line[10:] for line in script.splitlines())
+        for mode in ('full', 'repair', 'reuse'):
+            for baseline in ('success', 'skipped', 'failure', 'cancelled'):
+                with self.subTest(mode=mode, baseline=baseline):
+                    fields = self.fields(mode, **{'needs.baseline.result': baseline})
+                    self.assertTrue(self.evaluate(self.expression('validate'), fields, job=True))
+                    allowed = self.evaluate(ready, fields)
+                    result = subprocess.run(['bash', '-c', script], env=dict(os.environ, DEPENDENCIES_READY=str(allowed).lower()), capture_output=True)
+                    self.assertEqual(0 if baseline == 'success' else 1, result.returncode)
+            fields = self.fields(mode, **{'needs.plan.result': 'failure'})
+            self.assertFalse(self.evaluate(self.expression('validate'), fields, job=True))
+            self.assertFalse(self.evaluate(self.expression('validate'), self.fields(mode), cancelled=True, job=True))
+
+    def test_failed_dependency_cannot_be_masked_by_reusable_evidence(self):
+        ready = self.re.search(r'DEPENDENCIES_READY: >-\s*\$\{\{(.*?)\}\}', self.blocks['validate'], self.re.S).group(1)
+        for mode in ('full', 'repair', 'reuse'):
+            for dependency in ('candidate', 'baseline', 'baseline-evidence'):
+                for result in ('failure', 'cancelled'):
+                    fields = self.fields(mode, **{
+                        f'needs.{dependency}.result': result,
+                        'needs.plan.outputs.baseline_run_required': 'false',
+                        'needs.baseline-evidence.outputs.reusable': 'true',
+                    })
+                    self.assertFalse(self.evaluate(ready, fields))
+
+    def test_preserved_baseline_does_not_require_rerun(self):
+        ready = self.re.search(r'DEPENDENCIES_READY: >-\s*\$\{\{(.*?)\}\}', self.blocks['validate'], self.re.S).group(1)
+        for mode in ('full', 'repair', 'reuse'):
+            fields = self.fields(mode, **{
+                'needs.baseline.result': 'skipped',
+                'needs.plan.outputs.baseline_run_required': 'false',
+                'needs.baseline-evidence.outputs.reusable': 'true',
+            })
+            self.assertFalse(self.evaluate(self.expression('baseline'), fields, job=True))
+            self.assertTrue(self.evaluate(ready, fields))
+
+
 class ApprovedHeadPreflightTests(unittest.TestCase):
     def test_current_candidate_requires_exact_current_approved_ancestry(self):
         approved = "a" * 40
@@ -161,7 +259,7 @@ class Step5DecisionFastFailTests(unittest.TestCase):
         }
         with patch.dict(m.os.environ, {"GITHUB_TOKEN": "fixture-token"}), \
              patch.object(m, "_step5_prior_candidate_evidence", return_value=candidate), \
-             patch.object(m, "_step5_jobs_unchanged", return_value=False), \
+             patch.object(m, "_step5_candidate_producer_compatible", return_value=False), \
              patch.object(m, "compute_step5_baseline_evidence") as baseline:
             result = m.compute_step5_decision(
                 "owner/repo",
@@ -429,7 +527,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
         with patch.object(m, "api_get", return_value={"workflow_runs": [run]}), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "step5_dependency_change", return_value=[]), \
-             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_step5_candidate_producer_compatible", return_value=True), \
              patch.object(m, "_run_artifact_names", side_effect=m.EvidenceLookupUnavailable()):
             with self.assertRaises(m.EvidenceLookupUnavailable):
                 m._step5_prior_candidate_evidence("owner/repo", 9, "repair", "fixture", "b" * 40)
@@ -2019,9 +2117,9 @@ jobs:
         with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}, clear=False), \
              patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_run_artifact_names", return_value={artifact}), \
-             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_step5_baseline_producer_compatible", return_value=True), \
              patch.object(m, "_trusted_pr_run", return_value=True), \
-             patch.object(m, "_step5_artifact_complete", return_value=True), \
+             patch.object(m, "_step5_artifact_results", return_value={"Tests.Example.Case": "Passed"}), \
              patch.object(m, "step5_dependency_change", return_value=[]):
             result = m.compute_step5_baseline_evidence("MYLEGND/masterapp", current_base)
 
@@ -2134,7 +2232,7 @@ jobs:
         with patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}, clear=False), \
              patch.object(m, "_step5_prior_candidate_evidence", return_value=candidate), \
              patch.object(m, "compute_step5_baseline_evidence", return_value=baseline), \
-             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_step5_candidate_producer_compatible", return_value=True), \
              patch.object(m, "git_changed", return_value=changed), \
              patch.object(m, "_download_run_artifact", side_effect=download), \
              patch.object(m, "step5_dependency_change", return_value=[failing_class]):
@@ -2460,6 +2558,117 @@ class Step5ChildEvidenceTests(unittest.TestCase):
         rows = ''.join(f'<UnitTestResult testName="{name}" outcome="{outcome}" />' for name, outcome in outcomes.items())
         return f'<TestRun><Results>{rows}</Results><ResultSummary outcome="{summary}"><Counters total="{len(outcomes)}" /></ResultSummary></TestRun>'
 
+    def test_directional_baseline_upgrade_preserves_distinct_identities_and_rejects_drift(self):
+        import subprocess
+        workflow = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+        old = subprocess.check_output(['git', 'show', '8ea059cbe36be1c921e1f53f87095375e66f7520:' + workflow], text=True)
+        current = Path(workflow).read_text()
+        self.assertNotEqual(m._step5_child_contract(old, 'baseline'), m._step5_child_contract(current, 'baseline'))
+        self.assertEqual(m._step5_child_contract(old, 'candidate'), m._step5_child_contract(current, 'candidate'))
+        old_helper = subprocess.check_output(['git', 'show', '8ea059cbe36be1c921e1f53f87095375e66f7520:scripts/validation-resume.py'], text=True)
+        with patch.object(m, 'git_show_file', side_effect=lambda sha, path: old if path == workflow else old_helper):
+            self.assertTrue(m._step5_baseline_producer_compatible('producer', workflow))
+            original = Path.read_text
+            for before, after in [('10.0.401', '10.0.999'), ('dotnet restore', 'echo changed; dotnet restore'), ('ref: ${{ github.event.pull_request.base.sha }}', 'ref: main')]:
+                altered = current.replace(before, after)
+                with patch.object(Path, 'read_text', lambda path, *args, **kwargs: altered if str(path) == workflow else original(path, *args, **kwargs)):
+                    self.assertFalse(m._step5_baseline_producer_compatible('producer', workflow))
+
+    def test_candidate_materialization_binds_current_and_historical_validate_and_parser(self):
+        import subprocess
+        workflow = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+        helper = 'scripts/validation-resume.py'
+        revision = '8ea059cbe36be1c921e1f53f87095375e66f7520'
+        old = {path: subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+               for path in (workflow, helper)}
+        current = {path: Path(path).read_text() for path in (workflow, helper)}
+        def prove(producer):
+            with patch.object(m, 'git_show_file', side_effect=lambda sha, path: producer[path]):
+                candidate = m._step5_candidate_producer_compatible('producer', workflow)
+                self.assertEqual(candidate, m._step5_baseline_producer_compatible('producer', workflow))
+                return candidate
+        self.assertTrue(prove(old))
+        self.assertTrue(prove(current))
+        for producer in (old, current):
+            for path, before, after in (
+                (workflow, '  validate:', '  validate:\n    env:\n      UNKNOWN: changed'),
+                (helper, 'def read_step5_results(', 'def read_step5_results_changed('),
+            ):
+                altered = dict(producer)
+                self.assertIn(before, altered[path])
+                altered[path] = altered[path].replace(before, after, 1)
+                self.assertFalse(prove(altered))
+        original = Path.read_text
+        for path, before, after in (
+            (helper, 'def cmd_step5_merge(args):', 'def cmd_step5_merge(args):\n    Path(args.output).write_text(\"forged\")'),
+            (workflow, '  validate:', '  validate:\n    env:\n      UNKNOWN: changed'),
+            (helper, 'def read_step5_results(', 'def read_step5_results_changed('),
+        ):
+            with patch.object(Path, 'read_text', lambda file, *a, **kw:
+                              current[path].replace(before, after, 1) if str(file) == path else original(file, *a, **kw)):
+                self.assertFalse(prove(old))
+                self.assertFalse(prove(current))
+
+    def test_whole_step5_reuse_requires_both_materialization_authorities(self):
+        workflow = '.github/workflows/step5-isolated-conversion-mapping-validation.yml'
+        current = Path(workflow).read_text()
+        for candidate, baseline in ((False, True), (True, False), (True, True)):
+            with patch.object(m, 'git_show_file', return_value=current), \
+                 patch.object(m, '_step5_candidate_producer_compatible', return_value=candidate), \
+                 patch.object(m, '_step5_baseline_producer_compatible', return_value=baseline):
+                self.assertEqual(candidate and baseline, m._step5_jobs_unchanged('producer', workflow))
+
+    def test_effective_summary_tracks_repaired_outcomes_in_both_directions(self):
+        import xml.etree.ElementTree as ET
+        with tempfile.TemporaryDirectory() as folder:
+            prior, repair, output = [Path(folder) / name for name in ('prior.trx', 'repair.trx', 'out.trx')]
+            for before, after in (('Failed', 'Passed'), ('Passed', 'Failed')):
+                prior.write_text(self.trx({'Tests.A.Case': before}, before))
+                repair.write_text(self.trx({'Tests.A.Case': after}, after))
+                m.merge_step5_class_results(prior, repair, ['Tests.A'], output)
+                self.assertEqual(after, ET.parse(output).find('ResultSummary').get('outcome'))
+                self.assertEqual({'Tests.A.Case': after}, m.read_step5_results(output))
+
+    def test_bounded_baseline_merges_only_affected_rows_and_rejects_incomplete_proof(self):
+        with tempfile.TemporaryDirectory() as folder:
+            prior, repair, output = [Path(folder) / name for name in ('prior.trx', 'repair.trx', 'out.trx')]
+            prior.write_text(self.trx({'Tests.A.Old': 'Failed', 'Tests.B.Keep': 'Passed'}))
+            repair.write_text(self.trx({'Tests.A.Old': 'Passed', 'Tests.A.New': 'Passed'}))
+            m.merge_step5_class_results(prior, repair, ['Tests.A'], output)
+            self.assertEqual({'Tests.A.Old': 'Passed', 'Tests.A.New': 'Passed', 'Tests.B.Keep': 'Passed'}, m.read_step5_results(output))
+            for rows in ({'Tests.A.New': 'Passed'}, {'Tests.B.Keep': 'Passed'}, {'Tests.A.Old': 'Unknown'}, {'Tests.A.Old': 'Passed', 'Tests.B.Keep': 'Failed'}):
+                repair.write_text(self.trx(rows))
+                with self.assertRaises(ValueError):
+                    m.merge_step5_class_results(prior, repair, ['Tests.A'], output)
+            repair.write_text(self.trx({'Tests.A.Old': 'NotExecuted'}))
+            m.merge_step5_class_results(prior, repair, ['Tests.A'], output)
+            self.assertEqual('NotExecuted', m.read_step5_results(output)['Tests.A.Old'])
+
+    def test_baseline_discovery_reads_approved_revision_not_candidate_checkout(self):
+        with patch.object(m, 'git_show_file', return_value='namespace Tests; public class NewTests {}') as read:
+            result = m._step5_discovered_repair_classes(['Tests.NewTests'], (), ['AgentPortal.Tests/New.cs'], source_revision='approved')
+        self.assertIsNone(result)
+        read.assert_called_once_with('approved', 'AgentPortal.Tests/New.cs')
+
+    def test_baseline_bounded_evidence_keeps_producer_and_requires_fresh_classes(self):
+        prior, current, head = 'a' * 40, 'b' * 40, 'c' * 40
+        artifact = 'step5-baseline-' + prior
+        run = {'id': 77, 'head_sha': head}
+        with patch.dict(m.os.environ, {'GITHUB_TOKEN': 'fixture'}), \
+             patch.object(m, '_artifact_rows', return_value=[]), \
+             patch.object(m, 'api_get', return_value={'workflow_runs': [run]}), \
+             patch.object(m, '_run_artifact_names', return_value={artifact}), \
+             patch.object(m, '_trusted_pr_run', return_value=True), \
+             patch.object(m, '_step5_baseline_producer_compatible', return_value=True), \
+             patch.object(m, 'step5_dependency_change', return_value=['Tests.A']), \
+             patch.object(m, 'git_changed', return_value=['.github/workflows/example.yml']), \
+             patch.object(m, '_step5_artifact_results', return_value={'Tests.A.Old': 'Passed', 'Tests.B.Keep': 'Passed'}):
+            result = m.compute_step5_baseline_evidence('owner/repo', current)
+        self.assertFalse(result['reusable'])
+        self.assertEqual(['Tests.A'], result['repairClasses'])
+        self.assertEqual(prior, result['evidenceBaseSha'])
+        self.assertEqual(77, result['evidenceRunId'])
+
     def test_receipt_preserves_producer_and_records_only_observed_runtime(self):
         import tempfile
         import json
@@ -2516,7 +2725,7 @@ class Step5ChildEvidenceTests(unittest.TestCase):
             (directory / "candidate.trx").write_text(self.trx({"AgentPortal.Tests.One.Case": "Passed"}))
         with patch.object(m, "api_get", side_effect=api), \
              patch.object(m, "step5_dependency_change", side_effect=lambda prior, current: [] if prior == "1" * 40 else None), \
-             patch.object(m, "_step5_jobs_unchanged", return_value=True), \
+             patch.object(m, "_step5_candidate_producer_compatible", return_value=True), \
              patch.object(m, "_run_artifact_names", side_effect=lambda repo, number, token: {"step5-candidate-" + str(number) * 40}), \
              patch.object(m, "_download_run_artifact", side_effect=download):
             result = m._step5_prior_candidate_evidence(repository, 99, "current", "token", "a" * 40)
@@ -2551,6 +2760,120 @@ class Step5ChildEvidenceTests(unittest.TestCase):
             self.assertIn("effective_evidence=true", outputs)
             self.assertIn("introduced=true", outputs)
             self.assertIn("introduced_classes=AgentPortal.Tests.Two", outputs)
+
+
+class ReleaseAttemptNonentryTests(unittest.TestCase):
+    def setUp(self):
+        self.source = (ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
+        self.omitted = [{'name': 'admission', 'conclusion': 'success'},
+                        {'name': 'preserve-rollback', 'conclusion': 'skipped'}]
+        self.skipped = [{'name': 'admission', 'conclusion': 'success'},
+                        {'name': 'discover-live', 'conclusion': 'skipped'},
+                        {'name': 'release', 'conclusion': 'skipped'}]
+
+    def test_exact_omitted_and_complete_skipped_shapes(self):
+        for jobs in [self.omitted, self.skipped, self.skipped + [self.omitted[1]]]:
+            with self.subTest(jobs=jobs):
+                self.assertTrue(m.release_attempt_never_entered(jobs, self.source))
+
+    def test_ambiguous_entered_duplicate_and_partial_shapes_fail_closed(self):
+        invalid = [None, [], self.omitted[1:], self.omitted + [self.omitted[0]],
+                   self.omitted[:1], self.skipped[:2], self.omitted + [{'name': 'schema-write', 'conclusion': 'skipped'}],
+                   [self.omitted[0], {'name': 'preserve-rollback', 'conclusion': 'success'}],
+                   self.skipped + [{'name': 'schema-write', 'conclusion': 'success'}],
+                   [self.skipped[0], self.skipped[1], {'name': 'release', 'conclusion': 'failure'}],
+                   [self.omitted[0], dict(self.omitted[1], steps=[{'name': 'write', 'conclusion': 'success'}])]]
+        for jobs in invalid:
+            with self.subTest(jobs=jobs):
+                self.assertFalse(m.release_attempt_never_entered(jobs, self.source))
+
+    def test_omitted_jobs_require_the_exact_historical_admission_gates(self):
+        self.assertFalse(m.release_attempt_never_entered(self.omitted))
+        for source in ['', self.source.replace("needs: admission", "needs: unknown"),
+                       self.source.replace("needs.admission.outputs.admitted == 'true'", "always()"),
+                       self.source + "\n  schema-write:\n    runs-on: ubuntu-latest\n"]:
+            self.assertFalse(m.release_attempt_never_entered(self.omitted, source))
+        self.assertTrue(m.release_attempt_never_entered(self.skipped))
+
+    def history(self, attempts, *, total_extra=0, untrusted=False, run_attempt=1, malformed_attempt=False, missing_count=False):
+        prior = {'id': 8, 'head_branch': m.TRUSTED_PR_BASE, 'event': 'workflow_dispatch',
+                 'head_repository': {'full_name': 'owner/repo'}, 'head_sha': 'b' * 40,
+                 'path': '.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW,
+                 'run_attempt': len(attempts), 'status': 'completed'}
+        if malformed_attempt:
+            prior['run_attempt'] = run_attempt
+        if untrusted:
+            prior['head_repository']['full_name'] = 'other/repo'
+        def api(repository, path, token):
+            if path.startswith('actions/artifacts?'):
+                return {'artifacts': [], 'total_count': 0}
+            if '/attempts/' in path:
+                number = int(path.split('/attempts/')[1].split('/')[0])
+                result = {'jobs': attempts[number-1], 'total_count': len(attempts[number-1]) + total_extra}
+                if missing_count:
+                    result.pop('total_count')
+                return result
+            if path == 'actions/runs/8/artifacts?per_page=100':
+                return {'artifacts': [], 'total_count': 0}
+            raise AssertionError(path)
+        return prior, api
+
+    def check_history(self, kind, attempts, **kwargs):
+        prior, api = self.history(attempts, **kwargs)
+        revision = 'a' * 40
+        targets = {'portal': 'c' * 64}
+        # Use the real target authority, avoiding a fabricated application key.
+        targets = {next(iter(m.RELEASE_TARGETS)): 'c' * 64}
+        identity = {'candidateRevision': revision, 'packageDigests': dict(sorted(targets.items()))}
+        plan_id = m.hashlib.sha256(m.json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        with patch.object(m, '_release_history_api', side_effect=api), \
+             patch.object(m, '_release_history_runs', return_value=[prior]), \
+             patch.object(m, '_release_history_source', return_value=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()), \
+             patch.object(m, '_release_attempt_package_revision', return_value=revision), \
+             patch.object(m, '_remember_release_exclusion'), \
+             patch.dict(m._RELEASE_HISTORY_EXCLUSIONS, {}, clear=True):
+            if kind == 'transaction':
+                return m.release_transaction_plan_history('owner/repo', plan_id, revision, targets, 99, 1, 'token')
+            return m.release_operation_history('owner/repo', 'op', revision, next(iter(targets)), 99, 1, 'token')
+
+    def test_both_history_owners_accept_exact_proven_nonentry(self):
+        for kind in ['transaction', 'operation']:
+            for jobs in [self.omitted, self.skipped]:
+                with self.subTest(kind=kind, jobs=jobs):
+                    self.assertIsNone(self.check_history(kind, [jobs]))
+
+    def test_both_history_owners_reject_missing_duplicate_extra_partial_and_incomplete(self):
+        for kind in ['transaction', 'operation']:
+            for jobs in [self.omitted[1:], self.omitted + [self.omitted[0]],
+                         self.omitted + [{'name': 'schema-write', 'conclusion': 'success'}], self.skipped[:2]]:
+                with self.subTest(kind=kind, jobs=jobs):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [jobs])
+            with self.subTest(kind=kind, incomplete=True):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    self.check_history(kind, [self.omitted], total_extra=1)
+            with self.subTest(kind=kind, untrusted=True):
+                with self.assertRaises(RuntimeError):
+                    self.check_history(kind, [self.omitted], untrusted=True)
+
+    def test_both_history_owners_require_complete_positive_attempt_inventory(self):
+        for kind in ['transaction', 'operation']:
+            for count in [0, -1, None, True, '1']:
+                with self.subTest(kind=kind, count=count):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [self.omitted], run_attempt=count, malformed_attempt=True)
+            for kwargs in [{'missing_count': True}, {'total_extra': -1}]:
+                with self.subTest(kind=kind, **kwargs):
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.check_history(kind, [self.omitted], **kwargs)
+
+    def test_latest_skipped_attempt_does_not_erase_entered_prior_transaction(self):
+        entered = [self.omitted[0], {'name': 'release', 'status': 'completed', 'conclusion': 'success',
+                   'steps': [{'name': 'Prepare complete immutable release transaction', 'conclusion': 'success'}]}]
+        for kind in ['transaction', 'operation']:
+            with self.subTest(kind=kind):
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    self.check_history(kind, [entered, self.omitted])
 
 
 if __name__ == "__main__":
