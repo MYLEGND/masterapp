@@ -46,9 +46,9 @@ class ProbeObservationTests(TestCase):
                     sleep.assert_not_called()
 
     def test_exact_readonly_unknown_id_metadata_is_redacted_and_rejected(self):
-        payload = ('LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\\n'
+        payload = ('LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\n'
                    'LEGEND_SCHEMA_HISTORY:2:20260213015339_FinanceToolStates_ByClientProfile,'
-                   '20260927053000_AddAdvertisingActionAuthorizations\\n')
+                   '20260927053000_AddAdvertisingActionAuthorizations\n')
         failure = subprocess.CompletedProcess([], 1, '', payload)
         with mock.patch.object(m.subprocess, 'run', return_value=failure) as run, \
              mock.patch('builtins.print') as notice:
@@ -61,7 +61,7 @@ class ProbeObservationTests(TestCase):
 
     def test_unknown_provider_message_never_reaches_schema_log(self):
         failure = subprocess.CompletedProcess([], 1, '',
-            'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\\n'
+            'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\n'
             'LEGEND_SCHEMA_HISTORY:1:Server=private;Password=private')
         with mock.patch.object(m.subprocess, 'run', return_value=failure) as run, \
              mock.patch('builtins.print') as notice:
