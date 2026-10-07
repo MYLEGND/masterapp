@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
 
 
 def release_authority():
@@ -41,9 +42,27 @@ def connection_string():
 
 def observe(probe, connection):
     env = os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection}
-    result = subprocess.run(['dotnet', str(probe)], env=env, capture_output=True, text=True, timeout=60, check=False)
-    if result.returncode:
-        raise RuntimeError('Read-only schema proof unavailable or schema drift detected')
+    # Retry only an explicitly classified transient SQL read failure.
+    # All unknown, credential, invalid-schema and timeout failures remain fail-closed.
+    for attempt in range(3):
+        try:
+            result = subprocess.run(['dotnet', str(probe)], env=env, capture_output=True, text=True,
+                                    timeout=60, check=False)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError('Schema probe process deadline exceeded') from None
+        if result.returncode == 0:
+            break
+        marker = result.stderr.strip()
+        if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ' and attempt < 2:
+            time.sleep(2 * (attempt + 1))
+            continue
+        if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ':
+            raise RuntimeError('Transient SQL schema read exhausted bounded retries')
+        if marker == 'LEGEND_SCHEMA_PROBE:SQL_AUTH':
+            raise RuntimeError('Schema probe database authentication rejected')
+        if marker == 'LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT':
+            raise RuntimeError('Schema probe detected migration schema drift')
+        raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
     try:
         value = json.loads(result.stdout)
         valid = (value['schemaVersion'] == 1 and type(value['ready']) is bool and
