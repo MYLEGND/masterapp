@@ -670,8 +670,8 @@ html[data-legend-modal-region] body .modal .modal-body {
         transform: none !important;
     }
 
-    html[data-legend-modal-region] body.legend-app .modal > .modal-dialog > .modal-content[data-legend-modal-panel],
-    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] {
+    html[data-legend-modal-region] body.legend-app .modal > .modal-dialog > .modal-content[data-legend-modal-panel]:not([data-legend-mobile-sheet]),
+    html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel]:not([data-legend-mobile-sheet]) {
         position: relative !important;
         z-index: 1 !important;
         display: flex !important;
@@ -1142,14 +1142,15 @@ html[data-legend-modal-region] body .modal .modal-body {
      * this same palette, radius and compact control density.
      */
     html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
+        position: fixed;
         top: auto;
         right: 0;
-        bottom: 0px;
+        bottom: var(--legend-mobile-sheet-bottom, 0px);
         left: 0;
         width: 100%;
         max-width: none;
-        height: 100dvh;
-        max-height: 100dvh;
+        height: var(--legend-mobile-sheet-height, 100dvh);
+        max-height: var(--legend-mobile-sheet-height, 100dvh);
         margin: 0;
         border: 1px solid var(--legend-mobile-gold);
         border-radius: var(--legend-mobile-radius) var(--legend-mobile-radius) 0 0;
