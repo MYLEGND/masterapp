@@ -1,10 +1,14 @@
+@model Shared.PortalShell.PortalShellIdentity
+
 <div class="modal fade legend-founder-ai-modal" data-legend-modal-surface
      id="legendFounderAiModal"
      tabindex="-1"
      aria-labelledby="legendFounderAiTitle"
      aria-hidden="true"
      data-chat-url="@Url.Action("Chat", "LegendFounderAi")"
-     data-history-url="@Url.Action("Conversations", "LegendFounderAi")">
+     data-history-url="@Url.Action("Conversations", "LegendFounderAi")"
+     data-user-avatar-url="@Model.AvatarUrl"
+     data-user-initials="@Model.Initials">
 
     <div class="modal-dialog modal-dialog-centered" data-legend-modal-panel>
         <div class="modal-content legend-founder-ai-shell" data-legend-modal-panel>
@@ -29,15 +33,6 @@
 
                 <div class="legend-founder-ai-header-actions">
                     <button type="button"
-                            id="legendFounderAiMobileMenu"
-                            class="legend-founder-ai-mobile-menu"
-                            aria-expanded="false"
-                            aria-controls="legendFounderAiSidebar"
-                            aria-label="Open conversations and Legend® Ai controls">
-                        <span aria-hidden="true">☰</span>
-                    </button>
-
-                    <button type="button"
                             class="legend-founder-ai-close"
                             data-bs-dismiss="modal"
                             aria-label="Close Legend® Ai">
@@ -53,15 +48,6 @@
                        aria-label="Legend® Ai conversations">
 
                     <div class="legend-founder-ai-sidebar-top">
-                        <button type="button"
-                                id="legendFounderAiSidebarCollapse"
-                                class="legend-founder-ai-sidebar-collapse"
-                                aria-expanded="true"
-                                aria-label="Collapse conversation sidebar"
-                                title="Collapse sidebar">
-                            <span aria-hidden="true">‹</span>
-                        </button>
-
                         <button type="button"
                                 id="legendFounderAiNew"
                                 class="legend-founder-ai-new-conversation">
