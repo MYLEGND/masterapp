@@ -345,9 +345,15 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("Governed intelligence conversation", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("legendFounderAiSubtitle", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("legend-founder-ai-governance-mark", modal, StringComparison.Ordinal);
-        Assert.True(
-            modal.IndexOf("legendFounderAiMobileMenu", StringComparison.Ordinal) <
-            modal.IndexOf("legend-founder-ai-close", StringComparison.Ordinal));
+        Assert.DoesNotContain("legendFounderAiMobileMenu", modal, StringComparison.Ordinal);
+        Assert.DoesNotContain("legendFounderAiSidebarCollapse", modal, StringComparison.Ordinal);
+        Assert.Contains("@model Shared.PortalShell.PortalShellIdentity", modal, StringComparison.Ordinal);
+        Assert.Contains("data-user-avatar-url=\"@Model.AvatarUrl\"", modal, StringComparison.Ordinal);
+        Assert.Contains("data-user-initials=\"@Model.Initials\"", modal, StringComparison.Ordinal);
+        Assert.Contains("userAvatarSource", script, StringComparison.Ordinal);
+        Assert.Contains("legend-founder-ai-user-avatar", script, StringComparison.Ordinal);
+        Assert.Contains("event.target === modalElement", script, StringComparison.Ordinal);
+        Assert.Contains("modal.hide()", script, StringComparison.Ordinal);
 
         Assert.DoesNotContain("legend-founder-ai-mobile-actions", css, StringComparison.Ordinal);
         Assert.DoesNotContain("is-reading", css, StringComparison.Ordinal);
@@ -363,6 +369,7 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("--legend-ai-response", css, StringComparison.Ordinal);
         Assert.DoesNotContain("--legend-ai-on-response", css, StringComparison.Ordinal);
         Assert.Contains("background: linear-gradient(135deg, var(--legend-ai-blue), var(--legend-ai-blue-bright))", css, StringComparison.Ordinal);
+        Assert.Contains("background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700))", css, StringComparison.Ordinal);
         Assert.Contains("background: linear-gradient(145deg, var(--legend-ai-navy-925), var(--legend-ai-navy-950))", css, StringComparison.Ordinal);
         Assert.DoesNotContain("background: linear-gradient(145deg,#f8fbff,#eef4fb)", css, StringComparison.Ordinal);
         Assert.DoesNotContain("--legend-ai-canvas-ink: #10213a", css, StringComparison.Ordinal);
@@ -372,6 +379,11 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("id=\"legendFounderAiComposerMenu\"", modal, StringComparison.Ordinal);
         Assert.Contains("id=\"legendFounderAiVoiceFocus\"", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("border-left: 3px solid var(--legend-ai-gold-600)", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("is-sidebar-collapsed", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend-founder-ai-sidebar-collapse", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend-founder-ai-clear-history", css, StringComparison.Ordinal);
+        Assert.Contains("--legend-ai-visual-bottom", script, StringComparison.Ordinal);
+        Assert.Contains("margin: 0 0 var(--legend-ai-visual-bottom, 0px)", css, StringComparison.Ordinal);
         Assert.Contains("\"aiResponseRoyal\"", tokens, StringComparison.Ordinal);
 
         Assert.DoesNotContain("LegendFounderAiMobileWebStyle", mobile, StringComparison.Ordinal);

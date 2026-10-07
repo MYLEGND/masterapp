@@ -1274,7 +1274,7 @@
     <script src="~/js/app-date-format.js" asp-append-version="true"></script>
 @if (isFounder && !isOnboardingPublic)
 {
-    @await Html.PartialAsync("~/Views/Shared/_LegendFounderAiModal.cshtml")
+    @await Html.PartialAsync("~/Views/Shared/_LegendFounderAiModal.cshtml", portalShellIdentity)
     <script src="~/js/legend-founder-ai.js"
             asp-append-version="true"></script>
 }
