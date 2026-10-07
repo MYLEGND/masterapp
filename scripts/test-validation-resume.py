@@ -12,6 +12,44 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+
+class ArtifactEvidenceReadRetryTests(unittest.TestCase):
+    def get(self, values):
+        import os
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(m.subprocess, 'run', side_effect=values) as run, \
+             patch.object(m.time, 'sleep') as sleep:
+            try:
+                m._download_run_artifact('MYLEGND/masterapp', 42, 'proof', Path(directory))
+                return run.call_count, sleep.call_count, None
+            except m.EvidenceLookupUnavailable as exc:
+                return run.call_count, sleep.call_count, str(exc)
+
+    def test_exact_transient_http_503_retries_without_exposing_signed_url(self):
+        transient = SimpleNamespace(returncode=1, stderr='HTTP 503: account egress temporarily exceeded https://secret.example/?sig=private')
+        success = SimpleNamespace(returncode=0, stderr='')
+        count, sleeps, error = self.get([transient, transient, success])
+        self.assertEqual((3, 2, None), (count, sleeps, error))
+
+    def test_bounded_transient_http_503_exhaustion_is_not_silent_success(self):
+        transient = SimpleNamespace(returncode=1, stderr='HTTP 503: https://secret.example/?sig=private')
+        count, sleeps, error = self.get([transient, transient, transient])
+        self.assertEqual((3, 2, 'Transient artifact evidence read exhausted bounded retries'),
+                         (count, sleeps, error))
+        self.assertNotIn('private', error)
+
+    def test_unauthorized_and_missing_artifacts_never_retry(self):
+        for msg in ('HTTP 401: invalid credentials', 'HTTP 404: artifact missing',
+                    'provider returned bad proof', 'HTTP 403 forbidden'):
+            with self.subTest(msg=msg):
+                result = SimpleNamespace(returncode=1, stderr=msg)
+                self.assertEqual((1, 0, 'Artifact evidence read unavailable'), self.get([result]))
+
+    def test_process_timeout_does_not_restart_unknown_artifact_operation(self):
+        count, sleeps, error = self.get([m.subprocess.TimeoutExpired('gh', 120)])
+        self.assertEqual((1, 0, 'Artifact evidence read unavailable'), (count, sleeps, error))
+
+
 class Step5JobSchedulingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

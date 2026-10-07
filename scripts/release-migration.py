@@ -9,6 +9,24 @@ import subprocess
 import time
 
 
+# Fixed, redacted classifications from the read-only .NET probe.
+# These markers cannot authorize a migration or an automatic retry.
+PROBE_TERMINAL_REASONS = {
+    'SQL_AUTH': 'Schema probe database authentication rejected',
+    'SCHEMA_DRIFT': 'Schema probe detected migration schema drift',  # historical probe
+    'INPUT_UNAVAILABLE': 'Schema probe input unavailable',
+    'MIGRATIONS_MISSING': 'Validated probe reports no known migrations',
+    'UNKNOWN_APPLIED_MIGRATION': 'Database contains applied migration history absent from validated bundle',
+    'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
+    'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
+}
+OBSERVATION_ERRORS = set(PROBE_TERMINAL_REASONS.values()) | {
+    'Schema probe process deadline exceeded',
+    'Transient SQL schema read exhausted bounded retries',
+    'Read-only schema proof unavailable; nontransient or unclassified failure',
+}
+
+
 def release_authority():
     spec = importlib.util.spec_from_file_location('release_execution_authority', Path(__file__).with_name('validation-resume.py'))
     module = importlib.util.module_from_spec(spec)
@@ -58,10 +76,9 @@ def observe(probe, connection):
             continue
         if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ':
             raise RuntimeError('Transient SQL schema read exhausted bounded retries')
-        if marker == 'LEGEND_SCHEMA_PROBE:SQL_AUTH':
-            raise RuntimeError('Schema probe database authentication rejected')
-        if marker == 'LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT':
-            raise RuntimeError('Schema probe detected migration schema drift')
+        classification = marker.removeprefix('LEGEND_SCHEMA_PROBE:')
+        if marker.startswith('LEGEND_SCHEMA_PROBE:') and classification in PROBE_TERMINAL_REASONS:
+            raise RuntimeError(PROBE_TERMINAL_REASONS[classification])
         raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
     try:
         value = json.loads(result.stdout)
@@ -84,12 +101,7 @@ def migration_stage(stage, action, *args, **kwargs):
         return action(*args, **kwargs)
     except Exception as exc:
         # Fixed classifications only; never forward provider-controlled text.
-        safe = {'Schema probe process deadline exceeded',
-                'Transient SQL schema read exhausted bounded retries',
-                'Schema probe database authentication rejected',
-                'Schema probe detected migration schema drift',
-                'Read-only schema proof unavailable; nontransient or unclassified failure'}
-        if stage == 'schema-observation' and type(exc) is RuntimeError and str(exc) in safe:
+        if stage == 'schema-observation' and type(exc) is RuntimeError and str(exc) in OBSERVATION_ERRORS:
             raise RuntimeError(str(exc)) from None
         raise RuntimeError('Migration stage unresolved: ' + stage) from None
 
@@ -143,10 +155,6 @@ if __name__ == '__main__':
         stages = {'schema-observation', 'child-history', 'mutation-admission',
                   'bundle-execution', 'schema-verification', 'success-receipt'}
         messages = {'Migration stage unresolved: ' + stage for stage in stages}
-        messages.update({'Schema probe process deadline exceeded',
-                         'Transient SQL schema read exhausted bounded retries',
-                         'Schema probe database authentication rejected',
-                         'Schema probe detected migration schema drift',
-                         'Read-only schema proof unavailable; nontransient or unclassified failure'})
+        messages.update(OBSERVATION_ERRORS)
         detail = str(exc) if type(exc) is RuntimeError and str(exc) in messages else 'Migration stage unresolved: preparation'
         raise SystemExit(detail + '; preserve prior evidence and reconcile without replay.') from None
