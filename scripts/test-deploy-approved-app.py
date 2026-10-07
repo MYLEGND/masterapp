@@ -957,5 +957,37 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
         self.assertNotIn('secret DB provider detail', errors.getvalue())
 
 
+
+    def test_only_bound_unknown_history_ids_cross_prepublication_log(self):
+        owner = self.owner
+        valid = ('LEGEND_SCHEMA_HISTORY:1:20260927053000_AddAdvertisingActionAuthorizations')
+        fixed = ('Database contains applied migration history absent from validated bundle'
+                 '; preserve prior evidence and reconcile without replay.')
+        output = self.io.StringIO()
+        result = subprocess.CompletedProcess([], 1, valid + '\n', fixed)
+        with patch.object(owner.subprocess, 'run', return_value=result) as job, \
+             patch('sys.stdout', output):
+            with self.assertRaisesRegex(RuntimeError, 'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied'):
+                owner._invoke_migration_bundle()
+        self.assertEqual(valid + '\n', output.getvalue())
+        job.assert_called_once()
+
+    def test_prepublication_never_relays_unvalidated_db_provider_values(self):
+        owner = self.owner
+        fixed = ('Database contains applied migration history absent from validated bundle'
+                 '; preserve prior evidence and reconcile without replay.')
+        for raw in ('LEGEND_SCHEMA_HISTORY:1:Password=private',
+                    'LEGEND_SCHEMA_HISTORY:2:20260927053000_OK;Server=private',
+                    'random secret text'):
+            with self.subTest(raw=raw):
+                output = self.io.StringIO()
+                with patch.object(owner.subprocess, 'run',
+                        return_value=subprocess.CompletedProcess([], 1, raw, fixed)), \
+                     patch('sys.stdout', output):
+                    with self.assertRaises(RuntimeError):
+                        owner._invoke_migration_bundle()
+                self.assertEqual('', output.getvalue())
+
+
 if __name__ == '__main__':
     unittest.main()
