@@ -1,13 +1,9 @@
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations;
 
-[DbContext(typeof(MasterAppDbContext))]
-[Migration("20261007134500_AddFounderAssistantRules")]
 public partial class AddFounderAssistantRules : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
