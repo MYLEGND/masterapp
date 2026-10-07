@@ -1141,10 +1141,10 @@
             window.innerHeight;
         const maximumHeight = isMobile()
             ? Math.max(
-                80,
+                72,
                 Math.min(
-                    132,
-                    Math.round(viewportHeight * 0.22)
+                    112,
+                    Math.round(viewportHeight * 0.20)
                 )
             )
             : 180;
