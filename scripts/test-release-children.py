@@ -69,7 +69,7 @@ class ReleaseChildTests(unittest.TestCase):
     def test_ambiguous_migration_reconciles_ready_without_resubmission(self):
         def interrupted(*args):
             raise TimeoutError()
-        with self.assertRaises(TimeoutError):
+        with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
                                 journal_factory=self.journal, execute=interrupted)
         self.assertEqual(migration.reconcile(self.bundle, self.path, 'opaque',
@@ -77,15 +77,22 @@ class ReleaseChildTests(unittest.TestCase):
             execute=lambda *args: self.fail('Repeated migration')), 'preserved')
 
     def test_ambiguous_migration_still_pending_never_blindly_replays(self):
-        with self.assertRaises(TimeoutError):
+        with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
                 journal_factory=self.journal, execute=lambda *args: (_ for _ in ()).throw(TimeoutError()))
-        with self.assertRaisesRegex(RuntimeError, 'no mutation replay'):
+        with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
                 journal_factory=self.journal, execute=lambda *args: self.fail('Repeated migration'))
 
+    def test_migration_stage_errors_never_disclose_provider_details(self):
+        for stage in ('schema-observation', 'child-history', 'mutation-admission', 'bundle-execution', 'schema-verification', 'success-receipt'):
+            with self.assertRaises(RuntimeError) as caught:
+                migration.migration_stage(stage, lambda: (_ for _ in ()).throw(RuntimeError('private-provider-payload')))
+            self.assertEqual('Migration stage unresolved: ' + stage, str(caught.exception))
+            self.assertTrue(caught.exception.__suppress_context__)
+
     def test_schema_observation_failure_never_authorizes_migration(self):
-        with self.assertRaises(TimeoutError):
+        with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque',
                 observer=lambda *args: (_ for _ in ()).throw(TimeoutError()), journal_factory=self.journal,
                 execute=lambda *args: self.fail('Write despite unavailable proof'))
@@ -260,6 +267,81 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.records[name] = dict(schemaVersion=1, child=self.child, dependencyIdentity=operation,
             materialIdentity=operation, partitionIdentity=operation, executionAuthority='e' * 40, phase='intent', producingRun=7,
             producingAttempt=attempt)
+
+    def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
+        source = Path(__file__).with_name('..').resolve() / '.github/workflows' / self.authority.DIRECT_RELEASE_WORKFLOW
+        source = source.read_text()
+        jobs = [dict(name='admission', status='completed', conclusion='failure', steps=[]),
+                *[dict(name=name, status='completed', conclusion='skipped', steps=[])
+                  for name in ('discover-live', 'preserve-rollback', 'release', 'target-release-receipts (${{ matrix.app }})')],
+                *[dict(name=name, status='completed', conclusion='success', steps=[])
+                  for name in ('release-state-receipt', 'wake-release-lifecycle-after-terminal-release')]]
+        original = self.api
+        def api(repo, path, token):
+            if '/jobs?' in path:
+                return dict(jobs=jobs, total_count=len(jobs))
+            return original(repo, path, token)
+        self.api = api
+        with patch.object(self.authority, '_release_history_source', return_value=source):
+            self.assertTrue(self.check())
+            jobs[:] = [jobs[0], jobs[2]]  # Actual omitted-downstream generation.
+            self.assertTrue(self.check())
+            jobs.append(dict(name='unexpected-write', conclusion='success'))
+            with self.assertRaisesRegex(RuntimeError, 'owner unproven'):
+                self.check()
+        self.api = original
+        self.run['run_attempt'] = 2
+        self.step['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+            self.check(current_run=7, attempt=2)
+
+    def test_actual_legacy_schema_neutral_step_requires_bounded_positive_log(self):
+        import subprocess
+        source = subprocess.check_output(['git', 'show', 'f26b3f0bdd68879c01b78cf3a101cc39988c65e5:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(self.run, head_sha='f26b3f0bdd68879c01b78cf3a101cc39988c65e5')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps', status='completed', conclusion='success',
+                    started_at='2026-10-04T05:40:58Z', completed_at='2026-10-04T05:40:58Z')
+        job = dict(id=111371429877, status='completed')
+        checkout = '2026-10-04T05:36:00.0000000Z [command]/usr/bin/git log -1 --format=%H\n2026-10-04T05:36:00.0100000Z ' + run['head_sha'] + '\n'
+        marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
+        log = checkout + '2026-10-04T05:40:58.6667345Z ' + marker + '\n'
+        for evidence, expected in ((log, True),
+                                   (log.replace('Z ' + marker, 'Z echo "' + marker + '"'), False),
+                                   (log.replace('05:40:58.6667345', '05:40:59.0000000'), False),
+                                   (log.replace(run['head_sha'], 'a' * 40), False),
+                                   (log + log, False)):
+            with patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()), \
+                 patch.object(self.authority, '_release_job_log', return_value=evidence):
+                self.assertEqual(expected, self.authority._legacy_migration_noop('owner/repo', run, job, step, source, 'fixture'))
+        with patch.object(self.authority, '_release_job_log', return_value=log), patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop('owner/repo', run, job, step,
+                source.replace('python3 scripts/release-migration.py', 'python3 scripts/unknown.py'), 'fixture'))
+
+    def test_child_nonentry_requires_complete_exact_attempt_inventory(self):
+        original = self.api
+        for count in (None, True, 0, 2):
+            def api(repo, path, token):
+                result = original(repo, path, token)
+                if '/jobs?' in path:
+                    result['total_count'] = count
+                return result
+            self.api = api
+            with self.assertRaisesRegex(RuntimeError, 'history incomplete'):
+                self.check()
+        self.api = original
+
+    def test_authenticated_legacy_migration_step_requires_original_intent(self):
+        import subprocess
+        source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        self.step['name'] = 'Apply additive diagnostics migrations before restarting apps'
+        with patch.object(self.authority, '_release_history_source', return_value=source):
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                self.check()
+            self.step['conclusion'] = 'skipped'
+            self.assertTrue(self.check())
+        with patch.object(self.authority, '_release_history_source', return_value=source.replace('python3 scripts/release-migration.py', 'python3 scripts/unknown-migration.py')):
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
 
     def test_deleted_artifact_after_started_child_cannot_authorize_replay(self):
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):

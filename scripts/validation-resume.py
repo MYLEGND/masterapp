@@ -209,6 +209,59 @@ def _validate_child_generation(repository, run, artifact, record, child, token, 
     return identity
 
 
+_RELEASE_CHILD_NOOP_PROOFS = set()
+
+
+def _legacy_migration_noop(repository, run, job, step, source, token):
+    """Prove the exact retired migration step exited before any schema operation."""
+    import datetime
+    legacy = 'Apply additive diagnostics migrations before restarting apps'
+    block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
+    if (hashlib.sha256(block.encode()).hexdigest() != '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
+        or job.get('status') != 'completed' or type(job.get('id')) is not int
+        or step.get('name') != legacy or step.get('status') != 'completed'
+        or step.get('conclusion') != 'success'):
+        return False
+    release = _job_blocks(source).get('release', '')
+    context = {'environment': _workflow_top_level_field(source, 'env'),
+               'defaults': _workflow_top_level_field(source, 'defaults'),
+               'runtime': release.split('    steps:', 1)[0]}
+    if hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest() != '0b2c73c15828a62dc7440c79fe6ae3ac072af6a2442f1f5d52f31eeebd79629a':
+        return False
+    try:
+        start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+    key = (repository, job['id'], run['head_sha'], step['started_at'], step['completed_at'])
+    if key in _RELEASE_CHILD_NOOP_PROOFS:
+        return True
+    raw = _release_job_log(repository, job['id'], token)
+    text = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in raw.splitlines())
+    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
+    if heads != {run['head_sha']}:
+        return False
+    marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
+    hits = 0
+    for line in raw.splitlines():
+        stamp, separator, message = line.partition(' ')
+        if not separator or message != marker:
+            continue
+        try:
+            observed = datetime.datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+        except ValueError:
+            return False
+        if observed.tzinfo is None or not start <= observed < end + datetime.timedelta(seconds=1):
+            return False
+        hits += 1
+    if hits != 1:
+        return False
+    _RELEASE_CHILD_NOOP_PROOFS.add(key)
+    return True
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None):
     """Authorize first mutation only from complete positive execution evidence.
@@ -250,8 +303,17 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     continue
                 jobs_payload = api_get(repository, f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", token)
                 jobs = jobs_payload.get("jobs")
-                if not isinstance(jobs, list) or jobs_payload.get("total_count", 0) > len(jobs):
+                count = jobs_payload.get("total_count")
+                if (not isinstance(jobs, list) or type(count) is not int or count != len(jobs)
+                    or any(not isinstance(job, dict) for job in jobs)):
                     raise RuntimeError("Release child execution history incomplete")
+                if release_attempt_never_entered(jobs):
+                    continue
+                if any(job.get('name') == 'admission' for job in jobs):
+                    source = _release_history_source(repository, run['head_sha'],
+                        '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+                    if release_attempt_never_entered(jobs, source):
+                        continue
                 owners = [job for job in jobs if job.get("name") == "release"]
                 if len(owners) != 1:
                     raise RuntimeError("Release child owner unproven")
@@ -259,10 +321,23 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 if job.get("status") == "queued" or job.get("conclusion") == "skipped":
                     continue
                 steps = [step for step in job.get("steps", []) if step.get("name") == gate["step"]]
+                if not steps and child == 'migrations':
+                    source = _release_history_source(repository, run['head_sha'],
+                        '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+                    legacy = 'Apply additive diagnostics migrations before restarting apps'
+                    block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
+                    # Exact retired serial migration owner. Recognition only maps
+                    # its execution evidence; entered work still requires the
+                    # original authenticated intent and partition disposition.
+                    if hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc':
+                        steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
                     raise RuntimeError("Release child execution detail unavailable")
                 if steps[0].get("status") == "queued" or steps[0].get("conclusion") == "skipped":
                     continue
+                if child == 'migrations' and steps[0].get('name') != gate['step']:
+                    if _legacy_migration_noop(repository, run, job, steps[0], source, token):
+                        continue
                 if inventory is None:
                     artifact_payload = api_get(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
                     inventory = artifact_payload.get("artifacts")

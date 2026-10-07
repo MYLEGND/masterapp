@@ -59,38 +59,46 @@ def observe(probe, connection):
         raise RuntimeError('Invalid read-only schema proof') from None
 
 
+def migration_stage(stage, action, *args, **kwargs):
+    """Expose only fixed owning-stage labels, never exception/provider payloads."""
+    try:
+        return action(*args, **kwargs)
+    except Exception:
+        raise RuntimeError('Migration stage unresolved: ' + stage) from None
+
+
 def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=None, execute=None):
-    before = observer(probe, connection)
+    before = migration_stage('schema-observation', observer, probe, connection)
     material = hashlib.sha256(json.dumps(dict(schemaIdentity=before['schemaIdentity'],
         bundleDigest=hashlib.sha256(bundle.read_bytes()).hexdigest()), sort_keys=True).encode()).hexdigest()
     if journal_factory is None:
         partition = hashlib.sha256(json.dumps(dict(resourceGroup=os.environ['RELEASE_RESOURCE_GROUP'],
             authority=os.environ['DATABASE_AUTHORITY']), sort_keys=True).encode()).hexdigest()
-        journal = journal_type()('migrations', material, partition_identity=partition)
+        journal = migration_stage('child-history', journal_type(), 'migrations', material, partition_identity=partition)
     else:
-        journal = journal_factory('migrations', material)
+        journal = migration_stage('child-history', journal_factory, 'migrations', material)
     observation = {'schemaIdentity': before['schemaIdentity']}
     if before['ready']:
-        journal.record_success(observation)
+        migration_stage('success-receipt', journal.record_success, observation)
         return 'preserved'
     # A retained success plus missing history is drift. A retained intent with
     # pending work is ambiguous. Neither authorizes rerunning an EF side effect.
-    journal.before_mutation(observation)
+    migration_stage('mutation-admission', journal.before_mutation, observation)
     if execute is None:
         env = os.environ | {'DOTNET_ENVIRONMENT': 'Development',
                             'ASPNETCORE_ENVIRONMENT': 'Development',
                             'SQLCONNSTR_MasterAppDb': connection}
-        result = subprocess.run([str(bundle), '--connection', connection], env=env,
+        result = migration_stage('bundle-execution', subprocess.run, [str(bundle), '--connection', connection], env=env,
                                 capture_output=True, text=True, timeout=600, check=False)
         # Provider output and argv may include connection strings. Do not print.
         if result.returncode:
-            raise RuntimeError('Migration write outcome requires read-only reconciliation')
+            raise RuntimeError('Migration stage unresolved: bundle-execution')
     else:
-        execute(bundle, connection)
-    after = observer(probe, connection)
+        migration_stage('bundle-execution', execute, bundle, connection)
+    after = migration_stage('schema-verification', observer, probe, connection)
     if not after['ready'] or after['schemaIdentity'] != before['schemaIdentity']:
-        raise RuntimeError('Migration completion not proven')
-    journal.record_success(observation)
+        raise RuntimeError('Migration stage unresolved: schema-verification')
+    migration_stage('success-receipt', journal.record_success, observation)
     return 'applied'
 
 
@@ -103,6 +111,10 @@ if __name__ == '__main__':
             raise RuntimeError('Validated migration bundle or read-only probe unavailable')
         result = reconcile(bundle, probe, connection_string())
         print('Schema ready; validated migration child ' + result + '.')
-    except Exception:
-        # Keep credential-bearing subprocess failures and provider payloads opaque.
-        raise SystemExit('Migration child unresolved; preserve prior evidence and reconcile without replay.') from None
+    except Exception as exc:
+        # Only locally constructed fixed labels may cross this boundary.
+        stages = {'schema-observation', 'child-history', 'mutation-admission',
+                  'bundle-execution', 'schema-verification', 'success-receipt'}
+        messages = {'Migration stage unresolved: ' + stage for stage in stages}
+        detail = str(exc) if type(exc) is RuntimeError and str(exc) in messages else 'Migration stage unresolved: preparation'
+        raise SystemExit(detail + '; preserve prior evidence and reconcile without replay.') from None
