@@ -84,4 +84,40 @@ public sealed class CanonicalProductionTruthTests
             return ValueTask.FromResult(result);
         }
     }
+    [Fact]
+    public void AllTrafficCannotPromoteInternalQaIntoBusinessEconomics()
+    {
+        static AnalyticsEvent Outcome(string environment, bool isInternal, string host, string client, int value) => new()
+        {
+            EventId = Guid.NewGuid(),
+            ClientEventId = Guid.NewGuid(),
+            EventType = "PolicyPaid",
+            TrackingVersion = "crm-production-state-v1",
+            EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow,
+            Environment = environment,
+            IsInternal = isInternal,
+            Host = host,
+            MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                productionRecordId = Guid.NewGuid().ToString("N"),
+                clientUserId = client,
+                valueCents = value,
+                currency = "USD"
+            })
+        };
+
+        var production = Outcome("production", false, "protect.mylegnd.com", "real-client", 50000);
+        var internalQa = Outcome("production", true, "protect.mylegnd.com", "qa-client", 90000);
+        var testEnvironment = Outcome("test", false, "test.example.com", "test-client", 70000);
+        var localhost = Outcome("production", false, "localhost", "local-client", 80000);
+
+        var confirmed = CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(
+            new[] { production, internalQa, testEnvironment, localhost });
+
+        Assert.Equal(production.EventId, Assert.Single(confirmed).EventId);
+        Assert.Equal(1, CanonicalMarketingOutcomeProjection.CustomerCount(confirmed));
+        Assert.Equal(500m, CanonicalMarketingOutcomeProjection.Totals(confirmed).Revenue);
+    }
+
 }
