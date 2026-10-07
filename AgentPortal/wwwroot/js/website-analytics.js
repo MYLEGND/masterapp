@@ -39,6 +39,10 @@
     }
   })();
   const landingRoutesBaseUrl = shell?.dataset.landingRoutesBaseUrl || '';
+  const founderSiteLinks = (() => {
+    try { return JSON.parse(shell?.dataset.founderSiteLinks || '{}'); }
+    catch { return {}; }
+  })();
   const state = {
     preset: initialPreset,
     from: initialFrom,
@@ -541,6 +545,7 @@
       state.scope.siteKey = siteKey;
       syncScopeQueryParam(state.scope.agentProfileId);
       apply();
+      updateGrowthBaseLink();
       loadSummary();
       refreshOpenModal();
       void loadMetaConnectionStatus();
@@ -4788,6 +4793,10 @@ function escapeHtml(value) {
   }
 
   function resolveLandingRouteBaseLink() {
+    // These are Protect product routes, independent of the Founder website switch.
+    if (isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId)) {
+      return landingRoutesBaseUrl;
+    }
     return currentBaseLink() || landingRoutesBaseUrl || '';
   }
 
@@ -5040,6 +5049,9 @@ function escapeHtml(value) {
 
   function currentBaseLink() {
     const agentId = state.scope.agentProfileId;
+    if (isFounder && (!agentId || agentId === callerProfileId)) {
+      return founderSiteLinks[state.scope.siteKey] || '';
+    }
     if (agentId && agentOptions && agentOptions.length) {
       const match = agentOptions.find(a => String(a?.id || '') === String(agentId));
       if (match?.primaryUrl) return match.primaryUrl;
@@ -6109,30 +6121,41 @@ function escapeHtml(value) {
   }
 
   let marketingPerformanceRequest = 0;
+  let marketingPerformanceInFlight = null;
 
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
+    const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };
+    const key = JSON.stringify(params);
+    if (marketingPerformanceInFlight?.key === key) return marketingPerformanceInFlight.promise;
     const request = ++marketingPerformanceRequest;
+    const active = { key, promise: null };
+    marketingPerformanceInFlight = active;
     grid.textContent = 'Loading current channel performance…';
     setText('channel-performance-note', '');
     renderGrowthEconomics(null);
-    try {
-      const data = await fetchJson(
-        'marketingManagerPerformance',
-        endpoints.marketingManagerPerformance,
-        marketingManagerRequestBody(),
-        45000);
-      if (!data || request !== marketingPerformanceRequest) return false;
-      renderMarketingPerformance(data);
-      renderGrowthEconomics(data.economics);
-      return true;
-    } catch (error) {
-      if (request !== marketingPerformanceRequest) return false;
-      grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
-      renderGrowthEconomics(null);
-      return false;
-    }
+    active.promise = (async () => {
+      try {
+        const data = await fetchJson(
+          'marketingManagerPerformance',
+          endpoints.marketingManagerPerformance,
+          params,
+          45000);
+        if (!data || request !== marketingPerformanceRequest) return false;
+        renderMarketingPerformance(data);
+        renderGrowthEconomics(data.economics);
+        return true;
+      } catch (error) {
+        if (request !== marketingPerformanceRequest) return false;
+        grid.innerHTML = `<div class="wa-channel-loading text-warning">${escapeHtml(error.message || 'Unified channel performance is unavailable.')}</div>`;
+        renderGrowthEconomics(null);
+        return false;
+      } finally {
+        if (marketingPerformanceInFlight === active) marketingPerformanceInFlight = null;
+      }
+    })();
+    return active.promise;
   }
 
   function renderGrowthEconomics(data) {
@@ -6758,6 +6781,13 @@ function escapeHtml(value) {
     return { ...scope, ...marketingManagerRangePayload(), ...extra };
   }
 
+  function marketingManagerSiteParams() {
+    if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
+      return { siteKey: state.scope.siteKey };
+    }
+    return {};
+  }
+
   function marketingManagerMoney(value) {
     if (value == null) return "Unavailable";
     const n = Number(value);
@@ -6897,9 +6927,10 @@ function escapeHtml(value) {
     if (button) button.disabled = true;
     marketingManagerSetStatus('Reading the current scoped business evidence and building a governed plan…');
     try {
+      const siteQuery = new URLSearchParams(marketingManagerSiteParams()).toString();
       const plan = await fetchPostJson(
         'marketingManagerPlan',
-        endpoints.marketingManagerPlan,
+        siteQuery ? `${endpoints.marketingManagerPlan}?${siteQuery}` : endpoints.marketingManagerPlan,
         marketingManagerRequestBody({ goal }),
         20000);
       renderMarketingManagerPlan(plan);

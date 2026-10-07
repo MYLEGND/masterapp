@@ -133,6 +133,86 @@ public sealed class CanonicalHumanEligibilityTests
     }
 
     [Fact]
+    public async Task RevenueOperatorRealHumanRangeCannotBeContaminatedByAllTrafficAttributionOrScopedCalibrationReads()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "revenue-operator-agent",
+            AgentUpn = "revenue-operator-agent@example.test",
+            Slug = "revenue-operator-agent",
+            Status = "active"
+        };
+
+        var human = Evidence();
+        human.AgentTrackingProfileId = profile.Id;
+        human.SessionId = "human-session";
+        human.VisitorId = "human-visitor";
+        human.EventType = "LeadReadySignal";
+
+        var internalTraffic = Evidence();
+        internalTraffic.AgentTrackingProfileId = profile.Id;
+        internalTraffic.SessionId = "internal-session";
+        internalTraffic.VisitorId = "internal-visitor";
+        internalTraffic.EventType = "LeadReadySignal";
+        internalTraffic.IsInternal = true;
+
+        var automation = Evidence();
+        automation.AgentTrackingProfileId = profile.Id;
+        automation.SessionId = "automation-session";
+        automation.VisitorId = "automation-visitor";
+        automation.EventType = "LeadReadySignal";
+        automation.WebDriver = true;
+
+        db.AddRange(profile, human, internalTraffic, automation);
+        await db.SaveChangesAsync();
+
+        var realHumanRange = new TimeRangeRequest
+        {
+            FromUtc = DateTime.UtcNow.AddHours(-1),
+            ToUtc = DateTime.UtcNow.AddHours(1),
+            QualityMode = TrafficQualityMode.RealHumanTraffic,
+            Label = "revenue-operator-real-human",
+            Preset = "custom"
+        };
+        var allTrafficRange = new TimeRangeRequest
+        {
+            FromUtc = realHumanRange.FromUtc,
+            ToUtc = realHumanRange.ToUtc,
+            QualityMode = TrafficQualityMode.AllTraffic,
+            Label = "revenue-operator-all-traffic",
+            Preset = "custom"
+        };
+
+        var service = new AnalyticsQueryService(
+            db,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        var scope = ScopeContext.ForAgent(profile.Id);
+
+        // Growth Operator and unified performance deliberately use TrafficType.All
+        // to retain every attribution channel. QualityMode must still exclude
+        // internal/automation traffic before the attribution filter is applied.
+        var attributed = await service.LoadAttributedEventsAsync(
+            realHumanRange,
+            scope,
+            TrafficType.All);
+        Assert.Equal(human.EventId, Assert.Single(attributed).EventId);
+
+        // Outcome calibration uses ScopedEvents directly. It must obey the same
+        // human-quality boundary rather than widening back to every scoped row.
+        var calibrationRows = await service.ScopedEvents(realHumanRange, scope)
+            .ToListAsync();
+        Assert.Equal(human.EventId, Assert.Single(calibrationRows).EventId);
+
+        var allTraffic = await service.LoadAttributedEventsAsync(
+            allTrafficRange,
+            scope,
+            TrafficType.All);
+        Assert.Equal(3, allTraffic.Count);
+    }
+
+    [Fact]
     public void SessionClassificationTranslatesToSqlWithoutClientEvaluation()
     {
         using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
