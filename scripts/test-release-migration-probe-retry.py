@@ -27,7 +27,16 @@ class ProbeObservationTests(TestCase):
             self.assertEqual(run.call_count, 3)
 
     def test_auth_and_drift_never_retry(self):
-        for marker in ('LEGEND_SCHEMA_PROBE:SQL_AUTH', 'LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT', 'LEGEND_SCHEMA_PROBE:UNCLASSIFIED'):
+        for marker in (
+            'LEGEND_SCHEMA_PROBE:SQL_AUTH',
+            'LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT',
+            'LEGEND_SCHEMA_PROBE:INPUT_UNAVAILABLE',
+            'LEGEND_SCHEMA_PROBE:MIGRATIONS_MISSING',
+            'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION',
+            'LEGEND_SCHEMA_PROBE:HISTORY_SEQUENCE_DRIFT',
+            'LEGEND_SCHEMA_PROBE:RUNTIME_INVALID_OPERATION',
+            'LEGEND_SCHEMA_PROBE:UNCLASSIFIED',
+        ):
             with self.subTest(marker=marker):
                 bad = subprocess.CompletedProcess([], 1, '', marker)
                 with mock.patch.object(m.subprocess, 'run', return_value=bad) as run, mock.patch.object(m.time, 'sleep') as sleep:
@@ -41,6 +50,22 @@ class ProbeObservationTests(TestCase):
             with self.assertRaisesRegex(RuntimeError, 'deadline exceeded'):
                 m.observe('probe', 'conn')
             self.assertEqual(run.call_count, 1)
+
+
+    def test_permanent_history_failure_preserves_exact_safe_classification(self):
+        observed = {
+            'MIGRATIONS_MISSING': 'Validated probe reports no known migrations',
+            'UNKNOWN_APPLIED_MIGRATION': 'Database contains applied migration history absent from validated bundle',
+            'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
+            'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
+        }
+        for marker, reason in observed.items():
+            with self.subTest(marker=marker):
+                result = subprocess.CompletedProcess([], 1, '', 'LEGEND_SCHEMA_PROBE:' + marker)
+                with mock.patch.object(m.subprocess, 'run', return_value=result):
+                    with self.assertRaisesRegex(RuntimeError, reason):
+                        m.observe('probe', 'conn')
+
 
 if __name__ == '__main__':
     main()
