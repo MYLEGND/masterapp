@@ -20,6 +20,8 @@
     const input = document.getElementById('legendFounderAiInput');
     const send = document.getElementById('legendFounderAiSend');
     const sendIcon = document.getElementById('legendFounderAiSendIcon');
+    const composerMenu = document.getElementById('legendFounderAiComposerMenu');
+    const voiceFocus = document.getElementById('legendFounderAiVoiceFocus');
     const newConversation = document.getElementById('legendFounderAiNew');
     const retryRequest = document.getElementById('legendFounderAiRetry');
     const history = document.getElementById('legendFounderAiHistory');
@@ -981,6 +983,14 @@
         // Provider/model provenance remains on the governed response contract for
         // diagnostics and audit, but ordinary chat presentation shows only the answer.
         message.appendChild(bubble);
+
+        if (role === 'user') {
+            const userMark = document.createElement('span');
+            userMark.className = 'legend-founder-ai-user-mark';
+            userMark.setAttribute('aria-hidden', 'true');
+            message.appendChild(userMark);
+        }
+
         transcript.appendChild(message);
 
         if (scroll) {
@@ -1169,10 +1179,10 @@
             window.innerHeight;
         const maximumHeight = isMobile()
             ? Math.max(
-                120,
+                80,
                 Math.min(
-                    320,
-                    Math.round(viewportHeight * 0.38)
+                    132,
+                    Math.round(viewportHeight * 0.22)
                 )
             )
             : 180;
@@ -1256,6 +1266,51 @@
                 !modalElement.classList
                     .contains('is-sidebar-open')
             );
+        }
+    );
+
+    composerMenu?.addEventListener(
+        'click',
+        () => {
+            if (isMobile()) {
+                setSidebarOpen(true);
+                return;
+            }
+
+            if (uiState.sidebarCollapsed) {
+                toggleDesktopSidebar();
+            }
+        }
+    );
+
+    voiceFocus?.addEventListener(
+        'click',
+        () => {
+            input?.focus({ preventScroll: true });
+        }
+    );
+
+    transcript?.addEventListener(
+        'click',
+        event => {
+            const suggestion =
+                event.target.closest?.('[data-legend-ai-suggestion]');
+
+            if (!suggestion || busy) {
+                return;
+            }
+
+            const prompt =
+                suggestion.dataset.legendAiSuggestion?.trim();
+
+            if (!prompt || !input) {
+                return;
+            }
+
+            input.value = prompt;
+            resizeInput();
+            if (send) send.disabled = false;
+            form?.requestSubmit();
         }
     );
 
