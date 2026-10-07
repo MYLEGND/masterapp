@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / '.github/workflows/all-intentional-direct-release-20260918.yml'
 START = '      # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS\n'
 END = '      # END GENERATED CANONICAL TARGET PUBLICATIONS\n'
+OUTCOME_START = '          # BEGIN GENERATED CANONICAL TARGET OUTCOMES\n'
+OUTCOME_END = '          # END GENERATED CANONICAL TARGET OUTCOMES\n'
 
 def authority():
     spec = importlib.util.spec_from_file_location('release_inventory', ROOT / 'scripts/validation-resume.py')
@@ -74,7 +76,12 @@ def render(text, targets):
         raise ValueError('Expected exactly one canonical target publication block')
     before, tail = text.split(START, 1)
     _, after = tail.split(END, 1)
-    return before + START + target_steps(targets) + END + after
+    generated = before + START + target_steps(targets) + END + after
+    if generated.count(OUTCOME_START) != 1 or generated.count(OUTCOME_END) != 1:
+        raise ValueError('Expected exactly one bounded target diagnostics block')
+    before, tail = generated.split(OUTCOME_START, 1)
+    _, after = tail.split(OUTCOME_END, 1)
+    return before + OUTCOME_START + OUTCOME_END + after
 
 
 def main():
