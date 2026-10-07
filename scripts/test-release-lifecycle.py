@@ -270,20 +270,35 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn("retired alternate production deployment path", result)
 
 
-    def test_guard_rejects_removing_positive_live_lease_discharge_proof(self):
+    def test_guard_rejects_removing_durable_publication_receipt_proof(self):
         class Drift(Api):
             def text(self, revision, path):
                 value = super().text(revision, path)
                 if path == "scripts/release-lifecycle.py":
                     return value.replace(
-                        '                and _historical_application_publications_completed(api, run, record)\n',
-                        '                and True\n',
+                        "        'legend-release-operation-success-',\n",
+                        "        'legend-release-operation-intent-',\n",
                     )
                 return value
         result = m.candidate_control_plane_integrity(
             Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
         )
-        self.assertIn("live-provenance lease discharge", result)
+        self.assertIn("durable historical publication proof", result)
+
+    def test_guard_rejects_removing_strict_forward_supersession_contract(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        '        return ancestor(old_revision, new_revision)\n',
+                        '        return True\n',
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("strict descendant full-coverage stale-lease supersession", result)
 
     def test_guard_rejects_lifecycle_identity_that_stops_hashing_absence(self):
         class Drift(Api):
@@ -1200,59 +1215,71 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_settled', return_value=True):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
 
-    def publication_jobs(self, *keys):
-        return [{
-            'name': 'release',
-            'status': 'completed',
-            'conclusion': 'failure',
-            'steps': [
-                {'name': 'Publish canonical selected targets in parallel', 'conclusion': 'success'},
-                *[
-                    {'name': f'Publish canonical target ({key})', 'conclusion': 'success'}
-                    for key in keys
-                ],
-            ],
-        }]
+    def operation_success_receipts(self, revision, *keys):
+        artifacts = []
+        records = {}
+        for index, key in enumerate(keys, 1):
+            digest = f"{index:064x}"
+            operation_id = hashlib.sha256(json.dumps(
+                {'target': key, 'applicationRevision': revision, 'packageDigest': digest},
+                sort_keys=True, separators=(',', ':'),
+            ).encode()).hexdigest()
+            name = 'legend-release-operation-success-' + operation_id
+            artifacts.append({'name': name, 'expired': False})
+            records[name] = {
+                'schemaVersion': 1,
+                'phase': 'success',
+                'operationId': operation_id,
+                'target': key,
+                'applicationRevision': revision,
+                'packageDigest': digest,
+                'producingRun': 98,
+                'producingAttempt': 1,
+            }
+        self.api.pages_map['actions/runs/98/artifacts'] = artifacts
 
-    def test_completed_failed_app_release_is_discharged_when_live_provenance_covers_it(self):
+        def download(_repo, run_id, name, directory):
+            self.assertEqual(98, run_id)
+            (directory / 'operation.json').write_text(json.dumps(records[name]))
+        return patch.object(
+            m.VALIDATION_AUTHORITY,
+            '_download_run_artifact',
+            side_effect=download,
+        )
+
+    def test_completed_failed_app_release_is_discharged_when_durable_success_and_live_provenance_cover_it(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior.update(
             applicationRevision='c' * 40,
             selectedTargets=[canonical_name('client')],
             resources=self.candidate['resources'],
         )
-        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
         live = [{'app': 'client', 'revision': 'd' * 40}]
-        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+        with self.operation_success_receipts('c' * 40, 'client'), \
+             patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, '_forward_supersedes_completed_app_lease', return_value=False), \
              patch.object(m, 'live_revisions', return_value=live) as observed, \
              patch.object(m, 'ancestor', return_value=True) as lineage:
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
         observed.assert_called_once_with()
         lineage.assert_called_with('c' * 40, 'd' * 40)
 
-    def test_live_provenance_cannot_discharge_without_positive_publication_proof(self):
+    def test_live_provenance_cannot_discharge_without_durable_operation_success(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior.update(
             applicationRevision='c' * 40,
             selectedTargets=[canonical_name('client')],
             resources=self.candidate['resources'],
         )
-        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = [{
-            'name': 'release',
-            'status': 'completed',
-            'conclusion': 'failure',
-            'steps': [
-                {'name': 'Publish canonical selected targets in parallel', 'conclusion': 'success'},
-                {'name': 'Publish canonical target (client)', 'conclusion': 'failure'},
-            ],
-        }]
+        self.api.pages_map['actions/runs/98/artifacts'] = []
         with patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, '_forward_supersedes_completed_app_lease', return_value=False), \
              patch.object(m, 'live_revisions', side_effect=AssertionError('live proof must not run')) as observed:
             blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
         self.assertEqual(98, blocked[0]['runId'])
@@ -1265,15 +1292,17 @@ class ResourceAdmission(unittest.TestCase):
             selectedTargets=[canonical_name('client')],
             resources=self.candidate['resources'],
         )
-        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
         common = (
             patch.object(m, '_admission_records', return_value=[self.prior]),
             patch.object(m, '_admission_settled', return_value=False),
             patch.object(m, '_admission_nonmutating_terminal', return_value=False),
             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False),
+            patch.object(m, '_forward_supersedes_completed_app_lease', return_value=False),
         )
         for ctx in common:
             ctx.start()
+        receipt = self.operation_success_receipts('c' * 40, 'client')
+        receipt.start()
         try:
             with patch.object(m, 'live_revisions', side_effect=RuntimeError('unreachable')):
                 self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
@@ -1281,6 +1310,7 @@ class ResourceAdmission(unittest.TestCase):
                  patch.object(m, 'ancestor', return_value=False):
                 self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
         finally:
+            receipt.stop()
             for ctx in reversed(common):
                 ctx.stop()
 
@@ -1291,15 +1321,74 @@ class ResourceAdmission(unittest.TestCase):
             selectedTargets=[canonical_name('client')],
             resources=self.candidate['resources'] + ['write/cloudflare/router'],
         )
-        self.api.pages_map['actions/runs/98/jobs?filter=latest'] = self.publication_jobs('client')
         with patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
-             patch.object(m, 'live_revisions', return_value=[{'app': 'client', 'revision': 'd' * 40}]), \
-             patch.object(m, 'ancestor', return_value=True):
+             patch.object(m, '_forward_supersedes_completed_app_lease', return_value=False), \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('auxiliary lease cannot use app provenance')) as observed:
             blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
         self.assertEqual(98, blocked[0]['runId'])
+        observed.assert_not_called()
+
+    def test_newer_full_coverage_descendant_supersedes_completed_stale_app_lease(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.candidate['applicationRevision'] = 'd' * 40
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('roll-forward needs no live shortcut')) as observed:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+        observed.assert_not_called()
+
+    def test_forward_supersession_rejects_divergence_partial_coverage_and_auxiliary_writes(self):
+        self.run.update(status='completed', conclusion='failure')
+        base_prior = dict(
+            self.prior,
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.candidate['applicationRevision'] = 'd' * 40
+        with patch.object(m, '_admission_records', return_value=[base_prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=False), \
+             patch.object(m, 'live_revisions', side_effect=RuntimeError('no live settlement')):
+            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+        two_target_paths = ['ClientApp/Program.cs', 'Protect-Website/Program.cs']
+        old_resources = self.resources(two_target_paths)
+        partial = dict(
+            base_prior,
+            selectedTargets=[canonical_name('client'), canonical_name('protect')],
+            resources=old_resources,
+        )
+        with patch.object(m, '_admission_records', return_value=[partial]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, 'live_revisions', side_effect=RuntimeError('no live settlement')):
+            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+        auxiliary = dict(base_prior, resources=base_prior['resources'] + ['write/cloudflare/router'])
+        with patch.object(m, '_admission_records', return_value=[auxiliary]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, 'live_revisions', side_effect=RuntimeError('no live settlement')):
+            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
 
     def test_later_successful_same_validated_pr_discharges_stale_historical_lease(self):
         source = 'a' * 40
