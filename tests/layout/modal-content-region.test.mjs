@@ -419,6 +419,8 @@ test('mobile conversational composers own the available viewport and grow with t
   assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.38\)/);
   assert.match(aiJs,/event\.key === 'Enter'[\s\S]{0,120}!event\.shiftKey[\s\S]{0,120}!isMobile\(\)/);
 
+  assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(button, \.btn, a\.btn\)/);
+  assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\), select, textarea\)/);
   assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-command-center-grid \{[\s\S]*?minmax\(120px, 0\.24fr\)/);
   assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-send-form \{[\s\S]*?border-radius: 22px;/);
   assert.match(shared,/\.messaging-send-form textarea \{[\s\S]*?min-height: 64px;[\s\S]*?max-height: min\(320px, 38dvh\);/);
