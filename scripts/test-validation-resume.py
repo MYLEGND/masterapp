@@ -2876,5 +2876,53 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
                     self.check_history(kind, [entered, self.omitted])
 
 
+class HistoricalParallelVerifierTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+        cls.checkout = '0f8eb4026a36b191a837f06a66e0c16ba78e584e'
+        cls.old = subprocess.check_output(['git', 'show', cls.checkout + ':scripts/deploy-approved-app.py'], text=True)
+        cls.workflow = subprocess.check_output(['git', 'show', cls.checkout + ':.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW], text=True)
+        cls.current = (ROOT / 'scripts/deploy-approved-app.py').read_text()
+
+    def prove(self, deployment=None, workflow=None):
+        workflow = self.workflow if workflow is None else workflow
+        deployment = self.old if deployment is None else deployment
+        steps = [{'name': name, 'status': 'completed', 'conclusion': 'success'}
+                 for name in m.named_step_blocks(m._job_blocks(workflow)['release'])]
+        job = {'status': 'completed', 'conclusion': 'success', 'steps': steps}
+        state = {'schemaVersion': 2, 'runId': 71, 'runAttempt': 1,
+                 'steps': steps, 'releaseJobConclusion': 'success', 'applicationReleaseSha': 'b' * 40}
+        artifacts = [{'name': 'legend-release-step-state-' + self.checkout + '-71-1'},
+                     {'name': 'translation-direct-release-' + self.checkout}]
+        with patch.object(m, '_release_history_api', return_value={'artifacts': artifacts, 'total_count': 2}), \
+             patch.object(m, '_release_history_json', return_value=state), \
+             patch.object(m, '_release_history_source', side_effect=lambda repo, sha, path, token:
+                          workflow if path.endswith('.yml') else deployment), \
+             patch.dict(m._RELEASE_HISTORY_VERIFIED_PACKAGES, {}, clear=True):
+            return m._release_attempt_package_revision('owner/repo', {'id': 71, 'head_sha': self.checkout, 'run_attempt': 1}, 1, job, 'token', 'portal')
+
+    def test_reviewed_historical_parallel_reporting_preserves_package_proof(self):
+        self.assertEqual('b' * 40, self.prove())
+        self.assertEqual('b' * 40, self.prove(self.current))
+
+    def test_unknown_parallel_or_immutable_target_verifier_edits_fail_closed(self):
+        for source in (self.old, self.current):
+            for before, after in (
+                ('outcome = publish_prepared_target(key, revision, package_root, plan)',
+                 "outcome = 'preserved'"),
+                ("if digest != row['packageDigest']:", 'if False:'),
+                ('max_workers=max(1, len(keys))', 'max_workers=100'),
+            ):
+                with self.subTest(before=before, historical=source == self.old):
+                    self.assertIn(before, source)
+                    with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                        self.prove(source.replace(before, after))
+
+    def test_historical_package_revision_still_requires_verified_workflow_step(self):
+        with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+            self.prove(workflow=self.workflow.replace('scripts/release-package.py verify', 'scripts/release-package.py inspect'))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4086,6 +4086,32 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
     return expected in segment and 'Submitting the verified immutable ZIP once.' not in segment
 
 
+def _historical_parallel_verifier_compatible(functions, current_functions):
+    """Recognize reviewed publication generations without restoring old success semantics."""
+    import ast
+    for name in ('publish_prepared_target', 'publish_prepared_targets_parallel'):
+        if name not in functions or name not in current_functions:
+            return False
+        historical = ast.dump(functions[name])
+        current = ast.dump(current_functions[name])
+        if historical == current:
+            continue
+        # 417f278 changed only the parallel result-reporting contract from a
+        # first-pass success flag to explicit nonterminal live/receipt evidence.
+        # Both reviewed generations call the identical immutable target verifier.
+        # This proves package identity only; old success flags never prove live
+        # deployment, settle an intent, or authorize replay.
+        if name != 'publish_prepared_targets_parallel' or (
+            hashlib.sha256(historical.encode()).hexdigest(),
+            hashlib.sha256(current.encode()).hexdigest(),
+        ) != (
+            'cb3f333f35a82e47bb8e6e2bf178399022451de69550923348d77252a1c35392',
+            '9c63956c377037597ee1c5480d8066090fce4ded791f7138dc3c05932129b22a',
+        ):
+            return False
+    return True
+
+
 def _release_attempt_package_revision(repository, run, attempt, release_job, token, target):
     """Bind legacy publication to the package's verified embedded revision.
 
@@ -4264,10 +4290,8 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
     current_functions = {node.name: node for node in current.body if isinstance(node, ast.FunctionDef)}
     current_verify = current_functions['verify_package']
-    if parallel_mode:
-        for name in ('publish_prepared_targets_parallel', 'publish_prepared_target'):
-            if name not in functions or name not in current_functions or ast.dump(functions[name]) != ast.dump(current_functions[name]):
-                raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
+    if parallel_mode and not _historical_parallel_verifier_compatible(functions, current_functions):
+        raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
     expected = [ast.parse("revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')").body[0]]
     if revision_variable == 'RELEASE_SHA':
         expected.extend(ast.parse(text).body[0] for text in ("revision = os.environ['RELEASE_SHA']", "revision = os.environ.get('RELEASE_SHA')"))
