@@ -1,0 +1,35 @@
+# Founder approval lock for the LEGEND release-control plane.
+#
+# This file does not change validation, publication, finalization, recovery,
+# deployment, or runtime behavior. It only designates the Founder account as
+# code owner for release-control surfaces. Enforcement must be paired with the
+# repository ruleset option "Require review from Code Owners".
+#
+# The CODEOWNERS file itself is Founder-owned so the lock cannot be weakened
+# through an ordinary change.
+.github/CODEOWNERS @MYLEGND
+
+# All GitHub Actions workflows are governance-sensitive because a new or
+# modified workflow could otherwise introduce an alternate validation or
+# deployment authority.
+.github/workflows/** @MYLEGND
+
+# Repository operating and deployment contracts.
+AGENTS.md @MYLEGND
+DEPLOYMENT.md @MYLEGND
+
+# Canonical release/deployment/validation authorities and their regression
+# tests. These patterns also cover future files in the same authority families.
+scripts/release-* @MYLEGND
+scripts/deploy-* @MYLEGND
+scripts/validation-* @MYLEGND
+scripts/approved-release-baseline.py @MYLEGND
+scripts/wake-release-lifecycle.py @MYLEGND
+scripts/test-release-* @MYLEGND
+scripts/test-validation-resume.py @MYLEGND
+
+# Retired alternate deployment paths remain Founder-owned if anyone attempts
+# to recreate them.
+deploy-portal.sh @MYLEGND
+AgentPortal/deploy-* @MYLEGND
+.claude/settings.local.json @MYLEGND
