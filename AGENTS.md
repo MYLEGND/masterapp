@@ -242,6 +242,14 @@ writable paths, less ambiguity, and one obvious source to inspect when truth is 
 
 ### Proof integrity
 
+- Establish the requested acceptance criteria and protected invariants before implementation.
+  A failure does not authorize redefining the goal, narrowing the claim, deleting the failing
+  scenario, or changing the expected result after the fact merely so the candidate can pass.
+- If new evidence proves an acceptance criterion itself is wrong or mutually inconsistent with a
+  higher authority, surface that conflict explicitly and obtain the appropriate decision; do not
+  silently move the goalposts.
+- An implementer/model must not be the sole approver of its own consequential work. Independent
+  verification/review must remain independent where the canonical process requires it.
 - Never make a failing candidate look green by deleting, skipping, renaming, weakening, narrowing,
   mocking, short-circuiting, or changing the expected result of a valid test/check.
 - Never change timeout/retry/error handling merely to hide a real failure or convert unknown into
@@ -665,7 +673,34 @@ Never claim:
 After deployment, require applicable exact runtime provenance and the original functional
 reproducer/live acceptance proof.
 
-## 24. Required engineering handoff
+## 24. Unenumerated-case default: fail safe without losing creativity
+
+No instruction file can enumerate every future defect, provider behavior, platform change, or
+novel architecture problem. For any material case not explicitly covered above, apply this
+default decision rule:
+
+1. Preserve the user's intended outcome and explore creative solutions inside the verified
+   authority boundary.
+2. Identify the single canonical owner of the fact/decision before adding state or behavior.
+3. Do not create a duplicate writer/path/authority, do not weaken a protection, and do not mutate
+   release/governance/security truth merely because the case is novel.
+4. Preserve successful work, durable evidence, identities, unrelated state, and reversible
+   options.
+5. When authority, ownership, irreversible data impact, security/privacy, or write outcome is
+   uncertain, fail closed on the consequential action while continuing read-only diagnosis.
+6. Distinguish "unknown" from "failed" and both from "safe to retry"; never invent certainty.
+7. Prefer the smallest canonical repair that reduces future ambiguity rather than a special case
+   for the incident.
+8. If two legitimate requirements cannot both be satisfied under current authority, surface the
+   conflict and the best safe options instead of silently sacrificing one.
+9. A novel problem does **not** create novel authority. New authority requires explicit design,
+   proof, governance, and approval appropriate to its consequences.
+10. After resolution, the system should contain fewer ambiguous paths—not more.
+
+This default is intentionally adaptive: it protects the system without prescribing a single
+implementation strategy.
+
+## 25. Required engineering handoff
 
 Every implementation handoff must include:
 
