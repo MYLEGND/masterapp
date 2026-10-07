@@ -2360,16 +2360,23 @@ def _historical_application_publications_completed(api, run, record):
 
 
 def _forward_supersedes_completed_app_lease(record, candidate):
-    """Roll forward only the overlapping app slice of a completed app-only lease.
+    """Roll forward the overlapping app slice of a completed app-only lease.
 
     Application writes are independently journaled per target. A newer strict
-    descendant therefore replaces the stale lease only for app targets it is
-    actually about to publish; unrelated app targets retain their own historical
-    disposition requirements. Schema writes and auxiliary resources are excluded
-    by _app_only_admission_keys and remain fail-closed.
+    descendant therefore replaces the stale lease for app targets it is actually
+    about to publish. The historical lease itself must remain app-only: no schema
+    write or auxiliary write can be discharged here.
+
+    A completed workflow cannot retain a read-only schema lease after its runner
+    has exited. The newer candidate may therefore also own schema or auxiliary
+    resources; those resources are validated independently and are never inherited
+    from, or used to settle, the historical app lease.
     """
     old_keys = _app_only_admission_keys(record)
-    new_keys = _app_only_admission_keys(candidate)
+    try:
+        new_keys = _validate_admission_record_scope(candidate)
+    except Exception:
+        new_keys = None
     old_revision = record.get('applicationRevision')
     new_revision = candidate.get('applicationRevision')
     if (
