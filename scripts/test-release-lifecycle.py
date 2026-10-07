@@ -343,6 +343,24 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         )
         self.assertIn("strict descendant full-coverage stale-lease supersession", result)
 
+    def test_guard_rejects_ephemeral_target_outcome_transaction_gate(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == ".github/workflows/all-intentional-direct-release-20260918.yml":
+                    return value.replace(
+                        '          python3 scripts/deploy-approved-app.py \\\n',
+                        '          python3 scripts/release-workflow.py --verify-outcomes --selected-targets "$SELECTED_TARGETS"\n'
+                        '          python3 scripts/deploy-approved-app.py \\\n',
+                        1,
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}},
+            [".github/workflows/all-intentional-direct-release-20260918.yml"],
+        )
+        self.assertIn("target outcome", result)
+
     def test_guard_rejects_lifecycle_identity_that_stops_hashing_absence(self):
         class Drift(Api):
             def text(self, revision, path):
@@ -1153,27 +1171,37 @@ class GeneratedPublicationStages(unittest.TestCase):
                    'extra': {'releaseName': 'isolated-extra-app'}}
         rendered = self.generator.render(text, targets)
         self.assertIn('name: Publish canonical target (extra)', rendered)
-        self.assertIn('TARGET_OUTCOME_EXTRA: ${{ steps.publish_extra.outcome }}', rendered)
+        self.assertNotIn('TARGET_OUTCOME_EXTRA', rendered)
         self.assertIn("contains(fromJSON(env.SELECTED_TARGETS), 'isolated-extra-app')", rendered)
 
-    def test_selected_failure_cannot_be_hidden_by_continue_on_error(self):
-        import subprocess
-        path = Path(__file__).with_name('release-workflow.py')
-        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'failure'}, clear=False):
-            result = subprocess.run(['python3', str(path), '--verify-outcomes',
-                                     '--selected-targets', json.dumps([canonical_name('client')])],
-                                    capture_output=True, text=True)
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn('did not succeed: client', result.stderr)
+    def test_ephemeral_target_outcomes_cannot_gate_transaction_finalization(self):
+        workflow = self.generator.WORKFLOW.read_text()
+        transaction = workflow.split(
+            '      - name: Reconcile complete immutable release transaction\n', 1
+        )[1].split('      - name: Run independent auxiliary release fanout\n', 1)[0]
+        self.assertEqual(
+            1,
+            transaction.count('--finalize-only --transaction-plan /tmp/release-transaction.json'),
+        )
+        self.assertNotIn('TARGET_OUTCOME_', transaction)
+        self.assertNotIn('steps.publish_', transaction)
+        self.assertNotIn('--verify-outcomes', transaction)
 
-    def test_unselected_failure_does_not_invalidate_selected_success(self):
-        import subprocess
-        path = Path(__file__).with_name('release-workflow.py')
-        with patch.dict(os.environ, {'TARGET_OUTCOME_CLIENT': 'success', 'TARGET_OUTCOME_PORTAL': 'failure'}, clear=False):
-            result = subprocess.run(['python3', str(path), '--verify-outcomes',
-                                     '--selected-targets', json.dumps([canonical_name('client')])],
-                                    capture_output=True, text=True)
-        self.assertEqual(0, result.returncode, result.stderr)
+    def test_workflow_generator_has_no_second_target_outcome_authority(self):
+        source = Path(__file__).with_name('release-workflow.py').read_text()
+        workflow = self.generator.WORKFLOW.read_text()
+        self.assertIn('OUTCOME_START', source)
+        self.assertIn('OUTCOME_END', source)
+        self.assertNotIn('TARGET_OUTCOME_', source)
+        self.assertNotIn('--verify-outcomes', source)
+        diagnostics = workflow.split(
+            '          # BEGIN GENERATED CANONICAL TARGET OUTCOMES\n', 1
+        )[1].split(
+            '          # END GENERATED CANONICAL TARGET OUTCOMES\n', 1
+        )[0]
+        self.assertEqual('', diagnostics)
+        self.assertNotIn('TARGET_OUTCOME_', workflow)
+        self.assertNotIn('--verify-outcomes', workflow)
 
 
 class ResourceAdmission(unittest.TestCase):

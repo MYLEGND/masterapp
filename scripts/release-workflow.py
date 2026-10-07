@@ -9,8 +9,6 @@ behavior belong to the canonical validation and deployment authorities.
 """
 import argparse
 import importlib.util
-import json
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +17,6 @@ START = '      # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS\n'
 END = '      # END GENERATED CANONICAL TARGET PUBLICATIONS\n'
 OUTCOME_START = '          # BEGIN GENERATED CANONICAL TARGET OUTCOMES\n'
 OUTCOME_END = '          # END GENERATED CANONICAL TARGET OUTCOMES\n'
-
 
 def authority():
     spec = importlib.util.spec_from_file_location('release_inventory', ROOT / 'scripts/validation-resume.py')
@@ -81,25 +78,16 @@ def render(text, targets):
     _, after = tail.split(END, 1)
     generated = before + START + target_steps(targets) + END + after
     if generated.count(OUTCOME_START) != 1 or generated.count(OUTCOME_END) != 1:
-        raise ValueError('Expected exactly one canonical target outcome block')
+        raise ValueError('Expected exactly one bounded target diagnostics block')
     before, tail = generated.split(OUTCOME_START, 1)
     _, after = tail.split(OUTCOME_END, 1)
-    outcomes = ''.join(f'          TARGET_OUTCOME_{key.upper()}: ${{{{ steps.publish_{key}.outcome }}}}\n' for key in targets)
-    return before + OUTCOME_START + outcomes + OUTCOME_END + after
+    return before + OUTCOME_START + OUTCOME_END + after
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
-    parser.add_argument('--verify-outcomes', action='store_true')
-    parser.add_argument('--selected-targets')
     args = parser.parse_args()
-    if args.verify_outcomes:
-        keys = authority().selected_release_target_keys(json.loads(args.selected_targets))
-        failed = [key for key in keys if os.environ.get('TARGET_OUTCOME_' + key.upper()) != 'success']
-        if failed:
-            raise SystemExit('Selected target publication did not succeed: ' + ', '.join(failed))
-        return
     text = WORKFLOW.read_text()
     generated = render(text, authority().RELEASE_TARGETS)
     if args.check:
