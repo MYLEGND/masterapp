@@ -1473,7 +1473,7 @@ class ResourceAdmission(unittest.TestCase):
         self.assertEqual(98, blocked[0]['runId'])
         observed.assert_not_called()
 
-    def test_newer_full_coverage_descendant_supersedes_completed_stale_app_lease(self):
+    def test_newer_overlapping_target_descendant_supersedes_completed_stale_app_lease(self):
         self.run.update(status='completed', conclusion='failure')
         self.prior.update(
             applicationRevision='c' * 40,
@@ -1491,7 +1491,43 @@ class ResourceAdmission(unittest.TestCase):
         lineage.assert_called_with('c' * 40, 'd' * 40)
         observed.assert_not_called()
 
-    def test_forward_supersession_rejects_divergence_partial_coverage_and_auxiliary_writes(self):
+    def test_descendant_target_slice_rolls_forward_without_claiming_unrelated_stale_apps(self):
+        self.run.update(status='completed', conclusion='failure')
+        all_paths = [
+            'AgentPortal/Program.cs',
+            'ClientApp/Program.cs',
+            'Protect-Website/Program.cs',
+            'ParfaitApp/Program.cs',
+            'Legend-Website/package.json',
+        ]
+        old = dict(
+            self.prior,
+            applicationRevision='c' * 40,
+            selectedTargets=[
+                canonical_name('portal'),
+                canonical_name('client'),
+                canonical_name('protect'),
+                canonical_name('parfait'),
+                canonical_name('website'),
+            ],
+            resources=self.resources(all_paths),
+        )
+        portal_candidate = {
+            'applicationRevision': 'd' * 40,
+            'selectedTargets': [canonical_name('portal')],
+            'resources': self.resources(['AgentPortal/Program.cs']),
+        }
+        with patch.object(m, '_admission_records', return_value=[old]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('target roll-forward needs no global live shortcut')) as observed:
+            self.assertEqual([], m.admission_conflicts(self.api, portal_candidate, current_run=99))
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+        observed.assert_not_called()
+
+    def test_forward_supersession_rejects_divergence_and_auxiliary_writes(self):
         self.run.update(status='completed', conclusion='failure')
         base_prior = dict(
             self.prior,
@@ -1505,21 +1541,6 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
              patch.object(m, 'ancestor', return_value=False), \
-             patch.object(m, 'live_revisions', side_effect=RuntimeError('no live settlement')):
-            self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
-
-        two_target_paths = ['ClientApp/Program.cs', 'Protect-Website/Program.cs']
-        old_resources = self.resources(two_target_paths)
-        partial = dict(
-            base_prior,
-            selectedTargets=[canonical_name('client'), canonical_name('protect')],
-            resources=old_resources,
-        )
-        with patch.object(m, '_admission_records', return_value=[partial]), \
-             patch.object(m, '_admission_settled', return_value=False), \
-             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
-             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
-             patch.object(m, 'ancestor', return_value=True), \
              patch.object(m, 'live_revisions', side_effect=RuntimeError('no live settlement')):
             self.assertTrue(m.admission_conflicts(self.api, self.candidate, current_run=99))
 
