@@ -4151,8 +4151,10 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
         application = checkout
     lines, spans = _named_step_spans(release)
     steps = {row['name']: row for row in release_job.get('steps', [])}
+    target_evidence_names = set(_historical_publication_names(target))
+    target_evidence_names.add(f'Confirm first-pass durable publication receipt ({target})')
     publication = next(((name, start, end) for name, start, end in spans
-                        if name in _historical_publication_names(target)), None)
+                        if name in target_evidence_names), None)
     if publication is None:
         raise ReleaseOperationHistoryUnproven('Historical publication source is unknown')
     target_body = ''.join(lines[publication[1]:publication[2]])
@@ -4160,9 +4162,12 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     publication_start = publication[1]
     parallel_mode = False
     if 'python3 scripts/deploy-approved-app.py' not in publish_body:
-        parallel_name = 'Publish canonical selected targets in parallel'
+        parallel_names = {
+            'Publish canonical selected targets in parallel',
+            'Submit canonical selected targets in parallel',
+        }
         parallel = next(((name, start, end) for name, start, end in spans
-                         if name == parallel_name), None)
+                         if name in parallel_names), None)
         release_name = RELEASE_TARGETS[target]['releaseName']
         if (
             parallel is None or parallel[1] >= publication[1] or
@@ -4343,9 +4348,23 @@ def release_operation_history(repository, operation_id, application_revision, ta
                 continue
             names = _historical_publication_names(target)
             publication = [step for step in job.get('steps', []) if step.get('name') in names]
+            shared_fanout = [
+                step for step in job.get('steps', [])
+                if step.get('name') in {
+                    'Publish canonical selected targets in parallel',
+                    'Submit canonical selected targets in parallel',
+                }
+            ]
+            if len(shared_fanout) == 1 and (
+                shared_fanout[0].get('conclusion') == 'skipped'
+                or shared_fanout[0].get('status') == 'queued'
+            ):
+                # The shared mutation owner never entered, so none of its selected
+                # app targets can have written even if target receipt observers exist.
+                continue
             if len(publication) == 1 and (publication[0].get('conclusion') == 'skipped' or publication[0].get('status') == 'queued'):
-                # Positive target execution proof works even when old receipt
-                # artifacts expired: this publication did not start.
+                # Positive target execution proof works for retired target-owned
+                # publication formats even when old receipt artifacts expired.
                 continue
             if job.get('name') != 'release':
                 raise ReleaseOperationHistoryUnproven('Target publication entered without retained intent')
@@ -4389,7 +4408,17 @@ def _failed_transaction_preparation_without_writes(source, owner):
     current = named_step_blocks(_job_blocks(
         Path('.github/workflows/' + DIRECT_RELEASE_WORKFLOW).read_text()).get('release', ''))
     later = list(blocks)[list(blocks).index(prepare) + 1:]
-    if not all(f'Publish canonical target ({key})' in later for key in RELEASE_TARGETS):
+    legacy_targets = {f'Publish canonical target ({key})' for key in RELEASE_TARGETS}
+    receipt_targets = {
+        f'Confirm first-pass durable publication receipt ({key})'
+        for key in RELEASE_TARGETS
+    }
+    legacy_shape = legacy_targets.issubset(set(later))
+    current_shape = (
+        'Submit canonical selected targets in parallel' in later
+        and receipt_targets.issubset(set(later))
+    )
+    if not (legacy_shape or current_shape):
         return False
     for name in later:
         if name in observers and blocks[name] == current.get(name):
