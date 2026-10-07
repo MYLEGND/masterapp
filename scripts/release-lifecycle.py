@@ -2063,13 +2063,29 @@ def _admission_records(api, run):
 def _never_admitted(api, run):
     # A skipped latest retry cannot erase an earlier entered publication. Every
     # recorded attempt must independently prove downstream jobs never executed.
+    # GitHub may omit jobs whose needs/if chain is impossible after admission
+    # returns admitted=false. That early-gate shape is non-entry only when the
+    # sole remaining wrapper is the skipped rollback-preservation job.
     for attempt in range(1, run.get('run_attempt', 1) + 1):
         jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
         admission = [job for job in jobs if job.get('name') == 'admission']
-        downstream = [job for job in jobs if job.get('name') in {'discover-live', 'release'}]
-        if not (admission and len(downstream) == 2
-                and all(job.get('conclusion') == 'skipped' for job in downstream)):
+        if len(admission) != 1:
             return False
+        downstream = [job for job in jobs if job.get('name') in {'discover-live', 'release'}]
+        if len(downstream) == 2:
+            if all(job.get('conclusion') == 'skipped' for job in downstream):
+                continue
+            return False
+        if downstream:
+            return False
+        wrappers = [job for job in jobs if job.get('name') != 'admission']
+        if (
+            len(wrappers) == 1
+            and wrappers[0].get('name') == 'preserve-rollback'
+            and wrappers[0].get('conclusion') == 'skipped'
+        ):
+            continue
+        return False
     return True
 
 
