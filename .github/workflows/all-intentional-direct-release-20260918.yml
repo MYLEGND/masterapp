@@ -746,18 +746,13 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          # BEGIN GENERATED CANONICAL TARGET OUTCOMES
-          TARGET_OUTCOME_PORTAL: ${{ steps.publish_portal.outcome }}
-          TARGET_OUTCOME_CLIENT: ${{ steps.publish_client.outcome }}
-          TARGET_OUTCOME_PROTECT: ${{ steps.publish_protect.outcome }}
-          TARGET_OUTCOME_PARFAIT: ${{ steps.publish_parfait.outcome }}
-          TARGET_OUTCOME_WEBSITE: ${{ steps.publish_website.outcome }}
-          # END GENERATED CANONICAL TARGET OUTCOMES
           GH_TOKEN: ${{ github.token }}
           PACKAGE_PRODUCER_RUN: ${{ steps.reusevalidated.outputs.run_id }}
         run: |
           set -euo pipefail
-          python3 scripts/release-workflow.py --verify-outcomes --selected-targets "$SELECTED_TARGETS"
+          # Durable operation intents plus the immutable transaction plan are the
+          # sole post-upload truth. First-pass worker outcomes are diagnostics only;
+          # finalization is read-only for every entered intent and never replays it.
           python3 scripts/deploy-approved-app.py \
             --targets-json "$SELECTED_TARGETS" \
             --package-root /tmp/diagnostics-packages \
