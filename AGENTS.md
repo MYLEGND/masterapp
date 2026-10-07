@@ -150,6 +150,41 @@ inside scope.
 
 ## 6. Canonical architecture rules
 
+### Absolute canonical-source invariant
+
+This rule is higher priority than implementation convenience, speed, local compatibility, or
+an agent's preferred design:
+
+- Every behavior has **one canonical decision owner** and every durable fact has **one
+  canonical writable source of truth**.
+- Never solve a defect by adding an override, monkey patch, stacked stylesheet/script,
+  duplicate file, parallel service, shadow workflow, second registry, copied policy,
+  alternate event path, competing cache/state store, fallback authority, compatibility
+  fork, hidden special case, or a second implementation that can independently decide or
+  mutate the same truth.
+- Never leave the old incorrect path active and place a new path in front of or behind it.
+  Repair the canonical owner itself, then remove the superseded competing logic once the
+  replacement is proven.
+- Never create a new file merely to override a canonical file when the canonical owner can
+  be corrected directly.
+- Never use CSS/JS/controller/prompt/test/configuration patches to mask an incorrect decision
+  owned elsewhere. Follow the data/authority chain to the first incorrect decision and fix
+  that owner.
+- A compatibility adapter is acceptable only when a real deployed contract requires it and
+  it is a **one-way, non-authoritative adapter** into the canonical owner: it may translate
+  shape, but it may not own policy, durable state, business truth, retries, authorization,
+  or an independent write path. Its necessity and removal boundary must be explicit.
+- If two sources can disagree about the same fact, the architecture is not finished. Resolve
+  the ownership conflict rather than adding synchronization between competing truths.
+- If a proposed solution requires "temporary" duplication, a second writer, a shadow path,
+  or an override to make the new behavior win, reject that design and find the canonical
+  repair instead.
+- Tests must prove both that the canonical path works **and that the superseded/alternate
+  path cannot still execute**.
+
+The desired end state after every repair is simpler than before: fewer authorities, fewer
+writable paths, less ambiguity, and one obvious source to inspect when truth is questioned.
+
 - Fix the **first incorrect decision at its authoritative owner**, not the final symptom.
 - Prefer one authority with clear adapters over several nearly-equivalent implementations.
 - Delete or consolidate obsolete competing logic instead of stacking another override.
