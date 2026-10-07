@@ -4905,7 +4905,7 @@ def _download_run_artifact(repository: str, run_id: int, name: str, directory: P
         # Do not retry authentication, absent/expired artifacts, or unclassified
         # errors. A 503 from the Actions download service is a safe GET retry.
         messages = result.stderr or ""
-        transient = bool(re.search(r"\\bHTTP (?:408|429|500|502|503|504)\\b", messages))
+        transient = bool(re.search(r"\bHTTP (?:408|429|500|502|503|504)\b", messages))
         if transient and attempt < 2:
             time.sleep(2 ** attempt)
             continue
