@@ -284,7 +284,7 @@ test('all discovered authenticated mobile modals use one full-screen shared auth
   const mobile=css.slice(css.indexOf('@media (max-width: 900px)'));
   assert.match(mobile,/\[data-legend-modal-surface\] \{[\s\S]*position: fixed !important;[\s\S]*inset: 0 !important;[\s\S]*width: 100vw !important;[\s\S]*height: 100dvh !important;[\s\S]*max-height: 100dvh !important;/);
   assert.match(mobile,/\.modal > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: 100% !important;[\s\S]*max-height: none !important;/);
-  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\],[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\]:not\(\[data-legend-mobile-sheet\]\),[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
   assert.match(mobile,/\.modal \.modal-body \{[\s\S]*overflow-y: auto;/);
   assert.match(mobile,/\.legend-modal-close-control \{[\s\S]*width: 38px !important;[\s\S]*border-radius: 999px !important;/);
   assert.match(mobile,/\.legend-modal-close-control::before,[\s\S]*\.legend-modal-close-control::after/);
@@ -808,7 +808,7 @@ test('feature styles no longer own modal dimming or full-screen backdrop blur',(
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
-  assert.match(css,/\[data-legend-mobile-sheet\][\s\S]*bottom: 0px;[\s\S]*height: 100dvh;/);
+  assert.match(css,/\[data-legend-mobile-sheet\]\[data-legend-mobile-sheet\][\s\S]*position: fixed;[\s\S]*bottom: var\(--legend-mobile-sheet-bottom, 0px\);[\s\S]*height: var\(--legend-mobile-sheet-height, 100dvh\);/);
   assert.match(css,/data-legend-sheet-snap="half"[\s\S]*46%/);
   assert.match(script,/function registerMobileSheet\(/);
   assert.match(script,/addEventListener\("pointerdown"/);
