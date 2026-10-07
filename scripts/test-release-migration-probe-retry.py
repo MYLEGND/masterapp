@@ -67,5 +67,49 @@ class ProbeObservationTests(TestCase):
                         m.observe('probe', 'conn')
 
 
+
+
+class MigrationAssemblyHistoryContractTests(TestCase):
+    def test_frozen_historical_sources_remain_unchanged_and_canonical(self):
+        root = Path(__file__).resolve().parents[1]
+        # Frozen hand-authored migration sources must not be modified merely
+        # to suppress legitimate historic __EFMigrationsHistory evidence.
+        identifiers = (
+            '20260321020000_AddAgentAssistants',
+            '20260329093000_ExecutionMvp',
+            '20260330094500_RepairAgentProfilesSqlite',
+        )
+        manual = (root / 'scripts/db-legacy-manual-migrations.txt').read_text()
+        for identifier in identifiers:
+            self.assertIn(identifier + '.cs', manual)
+            source = (root / 'Infrastructure/Migrations' / (identifier + '.cs')).read_text()
+            self.assertIn('[Migration("' + identifier + '")]', source)
+            self.assertNotIn('[DbContext(typeof(MasterAppDbContext))]', source)
+
+    def test_only_production_audited_legacy_stamps_have_readonly_compatibility(self):
+        root = Path(__file__).resolve().parents[1]
+        probe = (root / 'scripts/MigrationReleaseProbe/Program.cs').read_text()
+        audit = (root / 'Infrastructure/MigrationAudit/production-migrations-current.txt').read_text()
+        allowed = (
+            '20260213015339_FinanceToolStates_ByClientProfile',
+            '20260321020000_AddAgentAssistants',
+            '20260329093000_ExecutionMvp',
+            '20260330094500_RepairAgentProfilesSqlite',
+        )
+        for identifier in allowed:
+            self.assertIn(identifier, audit.splitlines())
+            self.assertIn('["' + identifier + '"]', probe)
+        self.assertIn('unknown.Any(id => !auditedLegacy.ContainsKey(id))', probe)
+        self.assertIn('!beforeKnown || !afterKnown || !beforeApplied || !afterApplied', probe)
+        self.assertIn('appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length)', probe)
+        self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION")', probe)
+        self.assertIn('throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT")', probe)
+        # No new executable migration is fabricated for a historical-only row.
+        self.assertFalse((root / 'Infrastructure/Migrations' /
+                          (allowed[0] + '.cs')).exists())
+        # The unregistered advertising migration has no historical production
+        # evidence and MUST NOT silently join the trusted set.
+        self.assertNotIn('["20260927053000_AddAdvertisingActionAuthorizations"]', probe)
+
 if __name__ == '__main__':
     main()
