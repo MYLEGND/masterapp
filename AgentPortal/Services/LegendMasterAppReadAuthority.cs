@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Routing;
 using System.Security.Claims;
 using AgentPortal.Security;
 using AgentPortal.Services.Tracking;
@@ -24,10 +25,41 @@ internal interface ILegendMasterAppReadProjection
         CancellationToken cancellationToken);
 }
 
-internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppReadProjection> projections)
+internal sealed class LegendMasterAppReadAuthority(
+    IEnumerable<ILegendMasterAppReadProjection> projections,
+    IEnumerable<EndpointDataSource> endpointDataSources)
 {
     private readonly IReadOnlyDictionary<string, ILegendMasterAppReadProjection> _projections =
         projections.ToDictionary(value => value.Key, StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyList<object> _runtimeRoutes = endpointDataSources
+        .SelectMany(source => source.Endpoints)
+        .OfType<RouteEndpoint>()
+        .Select(endpoint => new
+        {
+            route = endpoint.RoutePattern.RawText,
+            methods = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods
+                ?.Where(method => method is "GET" or "HEAD")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(method => method, StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? Array.Empty<string>(),
+            displayName = endpoint.DisplayName
+        })
+        .Where(endpoint => !string.IsNullOrWhiteSpace(endpoint.route) && endpoint.methods.Length > 0)
+        .GroupBy(endpoint => endpoint.route!, StringComparer.OrdinalIgnoreCase)
+        .Select(group => (object)new
+        {
+            route = group.Key,
+            methods = group.SelectMany(item => item.methods)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(method => method, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            displayName = group.Select(item => item.displayName)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+            access = "runtime_route_metadata_only"
+        })
+        .OrderBy(item => ((dynamic)item).route, StringComparer.OrdinalIgnoreCase)
+        .Take(500)
+        .ToArray();
 
     internal object Catalog() => new
     {
@@ -40,7 +72,8 @@ internal sealed class LegendMasterAppReadAuthority(IEnumerable<ILegendMasterAppR
             tool = LegendSiteToolDisclosureAuthority.CurrentPageToolName,
             sharedBridge = "/api/legend-site-tools",
             inventory = LegendSiteToolDisclosureAuthority.SystemInventory(),
-            coverage = "all_registered_masterapp_web_surfaces"
+            runtimeRoutes = _runtimeRoutes,
+            coverage = "registered_masterapp_surfaces_plus_live_agent_portal_route_metadata"
         },
         projections = _projections.Values
             .OrderBy(value => value.Application, StringComparer.Ordinal)
