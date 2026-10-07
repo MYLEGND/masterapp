@@ -1706,13 +1706,17 @@ def automatic_release_admission(api, pr, approved, runs):
                      and not row.get('display_title', '').startswith('LEGEND release pr='))]
     if attempted:
         exact = [row for row in attempted if row.get('display_title') == identity]
-        # One failed exact run may hand off to one proof-only recovery when its
-        # durable provider disposition proves every selected target is already
-        # terminal at the immutable application revision. The recovery run will
-        # discover EXACT_LIVE and therefore has no target publication authority.
-        if len(attempted) == 1 and len(exact) == 1 and _release_exact_live_terminal(api, exact[0]):
-            return None
-        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded exact-live recovery exhausted or not proven'}
+        # One prior exact run may be retried only when it durably proves that
+        # publication never entered, or when terminal provider proof shows the
+        # immutable application revision is already live. The first case retries
+        # admission after a cleared dependency; the second is proof-only recovery.
+        # A second attempted run exhausts the bounded recovery budget.
+        if len(attempted) == 1 and len(exact) == 1:
+            if _never_admitted(api, exact[0]):
+                return None
+            if _release_exact_live_terminal(api, exact[0]):
+                return None
+        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded non-entry/exact-live recovery exhausted or not proven'}
     return None
 
 
