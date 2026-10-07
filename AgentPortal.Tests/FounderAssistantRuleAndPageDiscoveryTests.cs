@@ -60,10 +60,10 @@ public sealed class FounderAssistantRuleAndPageDiscoveryTests
                 .Where(row => row.ProfileId == profile.Id)
                 .Select(row => row.FounderAssistantRulesJson)
                 .SingleAsync();
-            using var doc = JsonDocument.Parse(json);
-            Assert.Equal(2, doc.RootElement.GetArrayLength());
-            Assert.Equal(1, doc.RootElement.EnumerateArray().Count(row =>
-                row.GetProperty("supersededUtc").ValueKind != JsonValueKind.Null));
+            var stored = JsonSerializer.Deserialize<FounderAssistantRule[]>(json);
+            Assert.NotNull(stored);
+            Assert.Equal(2, stored!.Length);
+            Assert.Equal(1, stored.Count(rule => rule.SupersededUtc is not null));
         }
         finally
         {
