@@ -507,18 +507,26 @@ def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only
 
 
 def publish_prepared_targets_parallel(target_names, revision, package_root, plan, results_root):
-    """Publish independent prepared targets concurrently, then report each child.
+    """Publish independent prepared targets concurrently and record non-terminal evidence.
 
     The all-target preflight transaction is still the write barrier. Each worker
     owns a different canonical app, immutable package digest, Azure deployment
-    stream, and durable operation journal. A sibling failure never authorizes a
-    replay of a successful target; final transaction reconciliation remains the
-    sole commit decision after all workers settle.
+    stream, and durable operation journal. First-pass results are deliberately
+    not deployment-success receipts: exact-live observation can precede durable
+    receipt transport. Only final transaction reconciliation plus canonical live
+    verification may establish deployed-success truth.
     """
     keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
     if set(keys) != {row['app'] for row in plan['targets']}:
         raise ValueError('Parallel publication target scope changed')
     results_root.mkdir(parents=True, exist_ok=True)
+    live_outcomes = {
+        'deployed',
+        'preserved',
+        'deployed-receipt-pending',
+        'preserved-receipt-pending',
+    }
+    durable_outcomes = {'deployed', 'preserved'}
 
     def record(key, payload):
         path = results_root / (key + '.json')
@@ -529,14 +537,28 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
     def worker(key):
         try:
             outcome = publish_prepared_target(key, revision, package_root, plan)
-            payload = {'schemaVersion': 1, 'target': key, 'success': True, 'outcome': outcome}
+            if outcome not in live_outcomes:
+                raise RuntimeError('Unrecognized canonical first-pass publication outcome')
+            durable = outcome in durable_outcomes
+            payload = {
+                'schemaVersion': 2,
+                'phase': 'publication',
+                'target': key,
+                'candidateRevision': revision,
+                'liveProven': True,
+                'durableReceiptProven': durable,
+                'outcome': outcome,
+            }
             record(key, payload)
             return payload
         except Exception as exc:
             payload = {
-                'schemaVersion': 1,
+                'schemaVersion': 2,
+                'phase': 'publication',
                 'target': key,
-                'success': False,
+                'candidateRevision': revision,
+                'liveProven': False,
+                'durableReceiptProven': False,
                 'errorType': type(exc).__name__,
             }
             record(key, payload)
@@ -549,11 +571,10 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
             key = futures[future]
             results[key] = future.result()
 
-    failed = [key for key in keys if not results.get(key, {}).get('success')]
+    failed = [key for key in keys if not results.get(key, {}).get('liveProven')]
     if failed:
-        raise RuntimeError('Canonical target publication failed: ' + ', '.join(failed))
+        raise RuntimeError('Canonical target publication failed before exact-live observation: ' + ', '.join(failed))
     return results
-
 
 def finalize_prepared_transaction(plan, package_root, revision, *, sleep=time.sleep):
     """Finalize durable receipts with one canonical bounded read-only retry policy."""

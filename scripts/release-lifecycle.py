@@ -794,6 +794,17 @@ def candidate_control_plane_integrity(api, pr, names):
         'as_completed',
     )):
         return 'Candidate removed canonical parallel target publication'
+    if not all(token in publish_source for token in (
+        "'schemaVersion': 2",
+        "'phase': 'publication'",
+        "'liveProven': True",
+        "'durableReceiptProven': durable",
+        "'liveProven': False",
+        "'durableReceiptProven': False",
+    )):
+        return 'Candidate can relabel first-pass publication evidence as deployment success'
+    if "'success': True" in publish_source or "'success': False" in publish_source:
+        return 'Candidate restored ambiguous first-pass deployment success booleans'
     if not all(token in finalizer_source for token in (
         "pending = {row['app']: row for row in plan['targets']}",
         'for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):',
@@ -915,6 +926,17 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate restored first-pass target outcome authority ahead of canonical finalization'
     if 'TARGET_OUTCOME_' in direct_workflow or '--verify-outcomes' in direct_workflow:
         return 'Candidate restored ephemeral target outcome transaction gate'
+    if '      - name: Publish canonical target (' in direct_workflow:
+        return 'Candidate restored false per-target deployment success surface'
+    if not all(token in direct_workflow for token in (
+        'Submit canonical selected targets in parallel',
+        'Confirm first-pass durable publication receipt (',
+        "result.get('durableReceiptProven') is not True",
+        'Preserve target-specific live-proven deployment receipt',
+        "'liveProven':True",
+        "'authority':'post-live-verification'",
+    )):
+        return 'Candidate lost separation between first-pass publication and live-proven deployment truth'
     if any(token in direct_workflow for token in (
         'transactionrecovery',
         'TRANSACTION_RECOVERY',
@@ -1839,7 +1861,13 @@ def release_execution_state(api, run):
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
     release_jobs = [job for job in jobs if job.get('name') == 'release']
     steps = release_jobs[0].get('steps', []) if release_jobs else []
-    publications = [step for step in steps if step.get('name', '').startswith('Publish canonical')]
+    publications = [
+        step for step in steps
+        if (
+            step.get('name', '').startswith('Publish canonical')
+            or step.get('name') == 'Submit canonical selected targets in parallel'
+        )
+    ]
     if run.get('status') == 'completed':
         artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
         names = {item.get('name', '') for item in artifacts if not item.get('expired')}
@@ -2092,10 +2120,15 @@ def _historical_release_mutation_steps(source):
             'founder-cloudflare', 'routing-cloudflare',
         }
     )
-    mutation.update(
+    legacy_target_steps = {
         f'Publish canonical target ({key})'
         for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
-    )
+    }
+    present_legacy_target_steps = legacy_target_steps.intersection(blocks)
+    if present_legacy_target_steps:
+        if present_legacy_target_steps != legacy_target_steps:
+            return None
+        mutation.update(legacy_target_steps)
     parallel = {
         name for name, block in blocks.items()
         if '--publish-prepared-parallel' in block

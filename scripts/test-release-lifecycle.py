@@ -1189,6 +1189,22 @@ class DurableCandidateQueue(unittest.TestCase):
         self.assertEqual([], self.api.dispatched)
 
 
+class ReleaseExecutionStateTests(unittest.TestCase):
+    def test_renamed_parallel_mutation_fanout_reports_deploying(self):
+        api = Api()
+        run = {'id': 99, 'status': 'in_progress', 'conclusion': None}
+        api.pages_map['actions/runs/99/jobs?filter=latest'] = [{
+            'name': 'release',
+            'steps': [{
+                'name': 'Submit canonical selected targets in parallel',
+                'status': 'in_progress',
+                'conclusion': None,
+            }],
+        }]
+        self.assertEqual('DEPLOYING', m.release_execution_state(api, run))
+
+
+
 class GeneratedPublicationStages(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('workflow_generation', Path(__file__).with_name('release-workflow.py'))
@@ -1201,11 +1217,13 @@ class GeneratedPublicationStages(unittest.TestCase):
 
     def test_parallel_publication_is_one_mutation_fanout_with_target_specific_result_gates(self):
         text = self.generator.WORKFLOW.read_text()
-        self.assertEqual(1, text.count('name: Publish canonical selected targets in parallel'))
+        self.assertEqual(1, text.count('name: Submit canonical selected targets in parallel'))
         self.assertEqual(1, text.count('--publish-prepared-parallel'))
-        parallel = text.index('name: Publish canonical selected targets in parallel')
+        self.assertNotIn('name: Publish canonical target (', text)
+        self.assertIn("result.get('durableReceiptProven') is not True", text)
+        parallel = text.index('name: Submit canonical selected targets in parallel')
         for key in m.VALIDATION_AUTHORITY.RELEASE_TARGETS:
-            child = text.index(f'name: Publish canonical target ({key})')
+            child = text.index(f'name: Confirm first-pass durable publication receipt ({key})')
             self.assertGreater(child, parallel)
             self.assertIn(f'/tmp/release-target-results/{key}.json', text)
 
@@ -1213,7 +1231,7 @@ class GeneratedPublicationStages(unittest.TestCase):
         source = self.generator.WORKFLOW.read_text()
         mutation = m._historical_release_mutation_steps(source)
         self.assertIsNotNone(mutation)
-        self.assertIn('Publish canonical selected targets in parallel', mutation)
+        self.assertIn('Submit canonical selected targets in parallel', mutation)
 
     def test_historical_serial_prepublication_generation_remains_recognizable(self):
         source = self.generator.WORKFLOW.read_text()
@@ -1267,7 +1285,7 @@ class GeneratedPublicationStages(unittest.TestCase):
         targets = {**m.VALIDATION_AUTHORITY.RELEASE_TARGETS,
                    'extra': {'releaseName': 'isolated-extra-app'}}
         rendered = self.generator.render(text, targets)
-        self.assertIn('name: Publish canonical target (extra)', rendered)
+        self.assertIn('name: Confirm first-pass durable publication receipt (extra)', rendered)
         self.assertNotIn('TARGET_OUTCOME_EXTRA', rendered)
         self.assertIn("contains(fromJSON(env.SELECTED_TARGETS), 'isolated-extra-app')", rendered)
 
@@ -1856,7 +1874,7 @@ class ResourceAdmission(unittest.TestCase):
         self.assertFalse(m._admission_nonmutating_terminal(self.api, self.run))
         self.api.pages_map['actions/runs/98/artifacts'] = []
         unsafe_steps = list(safe_steps)
-        unsafe_steps = [dict(step, conclusion='success') if step['name'] == 'Publish canonical target (client)'
+        unsafe_steps = [dict(step, conclusion='success') if step['name'] == 'Submit canonical selected targets in parallel'
                         else step for step in safe_steps]
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
             {'name': 'release', 'status': 'completed', 'conclusion': 'failure', 'steps': unsafe_steps},

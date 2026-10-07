@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate durable target step identities from the sole canonical release inventory.
 
-GitHub records target-specific outcome steps independently while the canonical
+GitHub records target-specific first-pass receipt evidence while the canonical
 deployment worker may publish prepared, disjoint app targets concurrently. Durable
 operation journals distinguish untouched targets from entered writes, so retries
 preserve successful siblings. This file owns formatting only; targets and deployment
@@ -31,7 +31,7 @@ def target_steps(targets):
         "env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && "
         "(steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped')"
     )
-    blocks = [f'''      - name: Publish canonical selected targets in parallel
+    blocks = [f'''      - name: Submit canonical selected targets in parallel
         id: publish_targets
         if: ${{{{ {condition} }}}}
         continue-on-error: true
@@ -49,22 +49,32 @@ def target_steps(targets):
             --target-results-dir /tmp/release-target-results
 ''']
     for key in targets:
-        blocks.append(f'''      - name: Publish canonical target ({key})
-        id: publish_{key}
+        blocks.append(f'''      - name: Confirm first-pass durable publication receipt ({key})
+        id: publication_receipt_{key}
         if: ${{{{ {condition} && contains(fromJSON(env.SELECTED_TARGETS), '{targets[key]["releaseName"]}') }}}}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/{key}.json {key} <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {{key}}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {{key}}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {{key}}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 ''')
