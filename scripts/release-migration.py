@@ -82,7 +82,15 @@ def migration_stage(stage, action, *args, **kwargs):
     """Expose only fixed owning-stage labels, never exception/provider payloads."""
     try:
         return action(*args, **kwargs)
-    except Exception:
+    except Exception as exc:
+        # Fixed classifications only; never forward provider-controlled text.
+        safe = {'Schema probe process deadline exceeded',
+                'Transient SQL schema read exhausted bounded retries',
+                'Schema probe database authentication rejected',
+                'Schema probe detected migration schema drift',
+                'Read-only schema proof unavailable; nontransient or unclassified failure'}
+        if stage == 'schema-observation' and type(exc) is RuntimeError and str(exc) in safe:
+            raise RuntimeError(str(exc)) from None
         raise RuntimeError('Migration stage unresolved: ' + stage) from None
 
 
@@ -135,5 +143,10 @@ if __name__ == '__main__':
         stages = {'schema-observation', 'child-history', 'mutation-admission',
                   'bundle-execution', 'schema-verification', 'success-receipt'}
         messages = {'Migration stage unresolved: ' + stage for stage in stages}
+        messages.update({'Schema probe process deadline exceeded',
+                         'Transient SQL schema read exhausted bounded retries',
+                         'Schema probe database authentication rejected',
+                         'Schema probe detected migration schema drift',
+                         'Read-only schema proof unavailable; nontransient or unclassified failure'})
         detail = str(exc) if type(exc) is RuntimeError and str(exc) in messages else 'Migration stage unresolved: preparation'
         raise SystemExit(detail + '; preserve prior evidence and reconcile without replay.') from None
