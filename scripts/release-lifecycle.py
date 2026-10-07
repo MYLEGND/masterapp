@@ -10,6 +10,7 @@ import ast
 import base64
 import importlib.util
 import hashlib
+import http.client
 import tempfile
 import json
 import os
@@ -92,18 +93,31 @@ class GitHub:
 
     def api(self, path, data=None, method=None):
         payload = json.dumps(data).encode() if data is not None else None
+        verb = method or ('POST' if payload is not None else 'GET')
         request = urllib.request.Request(self.root + '/' + path, data=payload,
-            method=method or ('POST' if payload is not None else 'GET'), headers={
+            method=verb, headers={
                 'Authorization': 'Bearer ' + self.token,
                 'Accept': 'application/vnd.github+json',
                 'Content-Type': 'application/json', 'User-Agent': 'legend-release-lifecycle'})
-        try:
-            with urllib.request.urlopen(request, timeout=45) as response:
-                body = response.read()
-                return json.loads(body) if body else None
-        except urllib.error.HTTPError as error:
-            # Do not log tokens, response bodies or environment dumps.
-            raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
+        attempts = 3 if verb == 'GET' else 1
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    body = response.read()
+                    return json.loads(body) if body else None
+            except urllib.error.HTTPError as error:
+                retryable = verb == 'GET' and error.code in {408, 429, 500, 502, 503, 504}
+                if retryable and attempt + 1 < attempts:
+                    time.sleep(2 ** attempt)
+                    continue
+                # Do not log tokens, response bodies or environment dumps.
+                raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
+            except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected):
+                if verb == 'GET' and attempt + 1 < attempts:
+                    time.sleep(2 ** attempt)
+                    continue
+                # Read transport failures are safe to report but never replay writes.
+                raise RuntimeError(f'GitHub {request.method} {path}: transport unavailable') from None
 
     def pages(self, path, key=None):
         rows = []
