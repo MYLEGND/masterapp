@@ -4875,23 +4875,44 @@ def _run_artifact_names(repository: str, run_id: int, token: str):
 
 
 def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path):
+    """Retry only transient GitHub artifact GET failures, never a release mutation.
+
+    CLI stderr may contain signed download URLs. Consume it privately; expose
+    only fixed outcomes. Extraction still undergoes the existing caller's
+    immutable evidence identity/hash validation before it can grant authority.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
         env["GH_TOKEN"] = env["GITHUB_TOKEN"]
-    try:
-        subprocess.run(
-            [
-                "gh", "run", "download", str(run_id),
-                "--repo", repository,
-                "--name", name,
-                "--dir", str(directory),
-            ],
-            check=True,
-            env=env,
+    command = [
+        "gh", "run", "download", str(run_id),
+        "--repo", repository,
+        "--name", name,
+        "--dir", str(directory),
+    ]
+    for attempt in range(3):
+        try:
+            result = subprocess.run(
+                command, check=False, env=env, capture_output=True,
+                text=True, timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise EvidenceLookupUnavailable("Artifact evidence read unavailable") from None
+        if result.returncode == 0:
+            return
+        # HTTP failures are classified without reproducing provider text or URLs.
+        # Do not retry authentication, absent/expired artifacts, or unclassified
+        # errors. A 503 from the Actions download service is a safe GET retry.
+        messages = result.stderr or ""
+        transient = bool(re.search(r"\\bHTTP (?:408|429|500|502|503|504)\\b", messages))
+        if transient and attempt < 2:
+            time.sleep(2 ** attempt)
+            continue
+        raise EvidenceLookupUnavailable(
+            "Transient artifact evidence read exhausted bounded retries"
+            if transient else "Artifact evidence read unavailable"
         )
-    except (subprocess.CalledProcessError, OSError) as exc:
-        raise EvidenceLookupUnavailable("Artifact evidence read unavailable") from exc
 
 
 def read_step5_results(path):
