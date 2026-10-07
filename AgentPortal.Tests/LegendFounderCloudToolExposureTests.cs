@@ -29,7 +29,7 @@ public sealed class LegendFounderCloudToolExposureTests
     private const string FounderId = "587d1166-e29b-41d4-a716-446655440099";
 
     [Fact]
-    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesOnlyAuditedReads()
+    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesAuditedReadsPlusBoundedFounderMemory()
     {
         await using var fixture = await Fixture.CreateAsync(enableMutations: true, enableRepository: true);
         var authority = fixture.Authority();
@@ -44,14 +44,17 @@ public sealed class LegendFounderCloudToolExposureTests
         {
             "legend_calculate", "legend_capabilities", "legend_client_lead_portfolio", "legend_configuration_presence",
             "legend_engineering_status", "legend_inspect_repair_validation", "legend_inspect_repository",
-            "legend_prepare_repair_packet", "legend_provider_capacity",
-            "legend_read_masterapp", "legend_software_remediation_status", "legend_system_health",
+            "legend_prepare_repair_packet", "legend_provider_capacity", "legend_read_masterapp",
+            "legend_remember_founder_rule", "legend_software_remediation_status", "legend_system_health",
             "legend_system_inventory", "legend_system_overview", "legend_verify_repair_deployment"
         }, exposed.Select(value => value.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
         foreach (var schema in exposed)
         {
             var name = schema.GetProperty("name").GetString()!;
-            Assert.True(authority.IsReadOnly(name));
+            if (name == "legend_remember_founder_rule")
+                Assert.False(authority.IsReadOnly(name));
+            else
+                Assert.True(authority.IsReadOnly(name));
             Assert.Equal(original[name].GetRawText(), schema.GetRawText());
         }
         Assert.Empty(authority.GetAvailableCloudTools(fixture.Scope.ConversationId, LegendConnectExternalProviderPolicy.NativeOnly));
