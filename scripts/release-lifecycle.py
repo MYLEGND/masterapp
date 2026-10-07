@@ -703,6 +703,9 @@ def candidate_control_plane_integrity(api, pr, names):
     if not all(token in forward_supersession_source for token in (
         '_app_only_admission_keys(record)',
         '_app_only_admission_keys(candidate)',
+        'if new_keys is None',
+        '_validate_admission_record_scope(candidate)',
+        'except Exception',
         "old_revision == new_revision",
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
@@ -1988,14 +1991,19 @@ def _validate_admission_record_scope(record):
             value) for value in resources)):
         raise RuntimeError('Release admission resource ownership is malformed')
 
+    owned = set(resources)
     required = {
         'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
         for key in keys
     }
-    if any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys):
-        required.add('read/schema/masterapp')
-    if not required.issubset(set(resources)):
+    if not required.issubset(owned):
         raise RuntimeError('Release admission record is missing canonical target ownership')
+    if (
+        any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys)
+        and 'read/schema/masterapp' not in owned
+        and 'write/schema/masterapp' not in owned
+    ):
+        raise RuntimeError('Release admission record is missing canonical schema ownership')
     return tuple(keys)
 
 
@@ -2393,16 +2401,25 @@ def _historical_application_publications_completed(api, run, record):
 
 
 def _forward_supersedes_completed_app_lease(record, candidate):
-    """Roll forward only the overlapping app slice of a completed app-only lease.
+    """Roll forward the overlapping app slice of a completed app-only lease.
 
     Application writes are independently journaled per target. A newer strict
-    descendant therefore replaces the stale lease only for app targets it is
-    actually about to publish; unrelated app targets retain their own historical
-    disposition requirements. Schema writes and auxiliary resources are excluded
-    by _app_only_admission_keys and remain fail-closed.
+    descendant therefore replaces the stale lease for app targets it is actually
+    about to publish. The historical lease itself must remain app-only: no schema
+    write or auxiliary write can be discharged here.
+
+    Preserve the original app-only candidate boundary when it applies. A newer
+    candidate that additionally owns schema or auxiliary resources may fall back
+    to the canonical admission-scope validator; those newer resources are never
+    inherited from, or used to settle, the historical app-only lease.
     """
     old_keys = _app_only_admission_keys(record)
     new_keys = _app_only_admission_keys(candidate)
+    if new_keys is None:
+        try:
+            new_keys = _validate_admission_record_scope(candidate)
+        except Exception:
+            new_keys = None
     old_revision = record.get('applicationRevision')
     new_revision = candidate.get('applicationRevision')
     if (

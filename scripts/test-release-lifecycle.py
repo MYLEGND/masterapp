@@ -1349,6 +1349,19 @@ class ResourceAdmission(unittest.TestCase):
         ):
             self.assertEqual(('client',), m._validate_admission_record_scope(record))
 
+    def test_historical_admission_scope_accepts_schema_write_as_stronger_schema_ownership(self):
+        paths = ['ClientApp/Program.cs', 'Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs']
+        record = {
+            'selectedTargets': list(m.VALIDATION_AUTHORITY.release_targets_for_paths(paths)),
+            'resources': self.resources(paths),
+        }
+        self.assertIn('write/schema/masterapp', record['resources'])
+        self.assertNotIn('read/schema/masterapp', record['resources'])
+        self.assertEqual(
+            m.VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']),
+            m._validate_admission_record_scope(record),
+        )
+
     def test_historical_admission_scope_rejects_missing_selected_target_write(self):
         record = {
             'selectedTargets': [canonical_name('client')],
@@ -1525,6 +1538,31 @@ class ResourceAdmission(unittest.TestCase):
             resources=self.candidate['resources'],
         )
         self.candidate['applicationRevision'] = 'd' * 40
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('roll-forward needs no live shortcut')) as observed:
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+        lineage.assert_called_with('c' * 40, 'd' * 40)
+        observed.assert_not_called()
+
+    def test_descendant_schema_writer_rolls_forward_completed_app_lease_without_stale_read_lock(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.resources(['ClientApp/Program.cs']),
+        )
+        paths = ['ClientApp/Program.cs', 'Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs']
+        self.candidate.update(
+            applicationRevision='d' * 40,
+            selectedTargets=list(m.VALIDATION_AUTHORITY.release_targets_for_paths(paths)),
+            resources=self.resources(paths),
+        )
+        self.assertIn('read/schema/masterapp', self.prior['resources'])
+        self.assertIn('write/schema/masterapp', self.candidate['resources'])
         with patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
