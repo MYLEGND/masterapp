@@ -11,9 +11,21 @@
      data-user-initials="@Model.Initials">
 
     <div class="modal-dialog modal-dialog-centered" data-legend-modal-panel>
-        <div class="modal-content legend-founder-ai-shell" data-legend-modal-panel>
+        <div class="modal-content legend-founder-ai-shell"
+             data-legend-modal-panel
+             data-legend-mobile-sheet
+             data-legend-sheet-snap="full">
 
             <header class="legend-founder-ai-header">
+                <button type="button"
+                        id="legendFounderAiMobileMenu"
+                        class="legend-founder-ai-mobile-menu"
+                        aria-controls="legendFounderAiSidebar"
+                        aria-expanded="false"
+                        aria-label="Open Legend® Ai conversations and controls">
+                    <span aria-hidden="true"></span>
+                </button>
+
                 <div class="legend-founder-ai-identity">
                     <div class="legend-founder-ai-logo-frame">
                         <img src="~/images/legend-ai/legendai.png"
@@ -35,6 +47,7 @@
                     <button type="button"
                             class="legend-founder-ai-close"
                             data-bs-dismiss="modal"
+                            data-legend-sheet-close
                             aria-label="Close Legend® Ai">
                         <span aria-hidden="true">×</span>
                     </button>
@@ -199,6 +212,7 @@
                 <section class="legend-founder-ai-main">
                     <main class="legend-founder-ai-transcript"
                           id="legendFounderAiTranscript"
+                          data-legend-sheet-scroll
                           aria-live="polite"
                           aria-label="Legend® Ai conversation">
                         <div class="legend-founder-ai-welcome"

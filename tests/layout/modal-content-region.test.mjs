@@ -284,7 +284,7 @@ test('all discovered authenticated mobile modals use one full-screen shared auth
   const mobile=css.slice(css.indexOf('@media (max-width: 900px)'));
   assert.match(mobile,/\[data-legend-modal-surface\] \{[\s\S]*position: fixed !important;[\s\S]*inset: 0 !important;[\s\S]*width: 100vw !important;[\s\S]*height: 100dvh !important;[\s\S]*max-height: 100dvh !important;/);
   assert.match(mobile,/\.modal > \.modal-dialog\[data-legend-modal-panel\] \{[\s\S]*height: 100% !important;[\s\S]*max-height: none !important;/);
-  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\],[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
+  assert.match(mobile,/\.modal > \.modal-dialog > \.modal-content\[data-legend-modal-panel\]:not\(\[data-legend-mobile-sheet\]\),[\s\S]*height: 100% !important;[\s\S]*overflow: hidden !important;/);
   assert.match(mobile,/\.modal \.modal-body \{[\s\S]*overflow-y: auto;/);
   assert.match(mobile,/\.legend-modal-close-control \{[\s\S]*width: 38px !important;[\s\S]*border-radius: 999px !important;/);
   assert.match(mobile,/\.legend-modal-close-control::before,[\s\S]*\.legend-modal-close-control::after/);
@@ -428,15 +428,22 @@ test('Legend AI uses canonical profile identity, backdrop dismissal, and one dra
   assert.match(view,/data-user-avatar-url="@Model\.AvatarUrl"/);
   assert.match(view,/data-user-initials="@Model\.Initials"/);
   assert.match(layout,/_LegendFounderAiModal\.cshtml", portalShellIdentity/);
-  assert.doesNotMatch(view,/legendFounderAiMobileMenu|legendFounderAiSidebarCollapse/);
-  assert.doesNotMatch(script,/legendFounderAiMobileMenu|legendFounderAiSidebarCollapse|sidebarCollapsed|UI_STORAGE_KEY/);
-  assert.doesNotMatch(css,/is-sidebar-collapsed|legend-founder-ai-mobile-menu|legend-founder-ai-sidebar-collapse|legend-founder-ai-clear-history|legend-founder-ai-modebar-home/);
+  assert.match(view,/id="legendFounderAiMobileMenu"/);
+  assert.doesNotMatch(view,/legendFounderAiSidebarCollapse/);
+  assert.match(view,/data-legend-mobile-sheet/);
+  assert.match(view,/data-legend-sheet-scroll/);
+  assert.match(view,/data-legend-sheet-close/);
+  assert.match(script,/const mobileMenu = document\.getElementById\('legendFounderAiMobileMenu'\)/);
+  assert.doesNotMatch(script,/legendFounderAiSidebarCollapse|sidebarCollapsed|UI_STORAGE_KEY/);
+  assert.match(css,/\.legend-founder-ai-mobile-menu \{/);
+  assert.doesNotMatch(css,/is-sidebar-collapsed|legend-founder-ai-sidebar-collapse|legend-founder-ai-clear-history|legend-founder-ai-modebar-home/);
   assert.match(script,/event\.target === modalElement[\s\S]{0,120}modal\.hide\(\)/);
   assert.match(script,/const userAvatarSource = \(modalElement\.dataset\.userAvatarUrl/);
   assert.match(script,/avatar\.className = 'legend-founder-ai-user-avatar'/);
   assert.match(script,/fallback\.className = 'legend-founder-ai-user-initials'/);
   assert.match(css,/\.legend-founder-ai-user-avatar \{[\s\S]*object-fit: cover/);
   assert.doesNotMatch(css,/\.legend-founder-ai-user-mark \{[^}]*radial-gradient/);
+  assert.match(script,/mobileMenu\?\.addEventListener[\s\S]*setSidebarOpen\(true\)/);
   assert.match(script,/composerMenu\?\.addEventListener[\s\S]*setSidebarOpen\(true\)/);
 });
 
@@ -470,9 +477,18 @@ test('mobile conversational composers own the visual viewport and stay compact a
   assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
   assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 48px;[\s\S]*?border-radius: 26px;/);
   assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 34px;[\s\S]*?max-height: min\(112px, 20dvh\);/);
-  assert.match(aiCss,/\.legend-founder-ai-composer \{[\s\S]*?margin: 0 0 var\(--legend-ai-visual-bottom, 0px\)/);
+  assert.match(aiCss,/\.legend-founder-ai-shell\[data-legend-mobile-sheet\] \{[\s\S]*?--legend-mobile-sheet-height: var\(--legend-ai-viewport-height, 100dvh\);[\s\S]*?--legend-mobile-sheet-bottom: var\(--legend-ai-visual-bottom, 0px\);/);
+  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-composer \{[\s\S]*?margin: 0;/);
+  assert.doesNotMatch(aiCss,/margin: 0 0 var\(--legend-ai-visual-bottom, 0px\)/);
+  assert.match(aiCss,/\.legend-founder-ai-composer-tool \{[\s\S]*?display: none;/);
+  assert.match(aiCss,/data-legend-sheet-snap="half"[\s\S]*?calc\(54% - 66px\)/);
   assert.match(aiJs,/window\.innerHeight - height - top/);
   assert.match(aiJs,/--legend-ai-visual-bottom/);
+  assert.match(aiJs,/window\.LegendModal\?\.registerMobileSheet\?\.\(mobileSheet\)/);
+  assert.match(aiJs,/mobileSheet\.classList\.toggle\('open', shouldOpen\)/);
+  assert.match(aiJs,/mobileSheet\.dataset\.legendSheetSnap = 'full'/);
+  assert.match(shared,/\.modal-content\[data-legend-modal-panel\]:not\(\[data-legend-mobile-sheet\]\)/);
+  assert.match(shared,/\[data-legend-mobile-sheet\]\[data-legend-mobile-sheet\] \{[\s\S]*?position: fixed;[\s\S]*?bottom: var\(--legend-mobile-sheet-bottom, 0px\);[\s\S]*?height: var\(--legend-mobile-sheet-height, 100dvh\);/);
   assert.match(aiJs,/Math\.round\(viewportHeight \* 0\.20\)/);
   assert.match(aiJs,/Math\.min\([\s\S]{0,80}112,/);
   assert.match(aiJs,/event\.key === 'Enter'[\s\S]{0,120}!event\.shiftKey[\s\S]{0,120}!isMobile\(\)/);
@@ -792,7 +808,7 @@ test('feature styles no longer own modal dimming or full-screen backdrop blur',(
 test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
-  assert.match(css,/\[data-legend-mobile-sheet\][\s\S]*bottom: 0px;[\s\S]*height: 100dvh;/);
+  assert.match(css,/\[data-legend-mobile-sheet\]\[data-legend-mobile-sheet\][\s\S]*position: fixed;[\s\S]*bottom: var\(--legend-mobile-sheet-bottom, 0px\);[\s\S]*height: var\(--legend-mobile-sheet-height, 100dvh\);/);
   assert.match(css,/data-legend-sheet-snap="half"[\s\S]*46%/);
   assert.match(script,/function registerMobileSheet\(/);
   assert.match(script,/addEventListener\("pointerdown"/);

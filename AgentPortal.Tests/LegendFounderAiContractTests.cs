@@ -345,8 +345,11 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("Governed intelligence conversation", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("legendFounderAiSubtitle", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("legend-founder-ai-governance-mark", modal, StringComparison.Ordinal);
-        Assert.DoesNotContain("legendFounderAiMobileMenu", modal, StringComparison.Ordinal);
+        Assert.Contains("legendFounderAiMobileMenu", modal, StringComparison.Ordinal);
         Assert.DoesNotContain("legendFounderAiSidebarCollapse", modal, StringComparison.Ordinal);
+        Assert.Contains("data-legend-mobile-sheet", modal, StringComparison.Ordinal);
+        Assert.Contains("data-legend-sheet-scroll", modal, StringComparison.Ordinal);
+        Assert.Contains("data-legend-sheet-close", modal, StringComparison.Ordinal);
         Assert.Contains("@model Shared.PortalShell.PortalShellIdentity", modal, StringComparison.Ordinal);
         Assert.Contains("data-user-avatar-url=\"@Model.AvatarUrl\"", modal, StringComparison.Ordinal);
         Assert.Contains("data-user-initials=\"@Model.Initials\"", modal, StringComparison.Ordinal);
@@ -383,7 +386,12 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("legend-founder-ai-sidebar-collapse", css, StringComparison.Ordinal);
         Assert.DoesNotContain("legend-founder-ai-clear-history", css, StringComparison.Ordinal);
         Assert.Contains("--legend-ai-visual-bottom", script, StringComparison.Ordinal);
-        Assert.Contains("margin: 0 0 var(--legend-ai-visual-bottom, 0px)", css, StringComparison.Ordinal);
+        Assert.Contains("window.LegendModal?.registerMobileSheet?.(mobileSheet)", script, StringComparison.Ordinal);
+        Assert.Contains("mobileSheet.classList.toggle('open', shouldOpen)", script, StringComparison.Ordinal);
+        Assert.Contains("legend-founder-ai-mobile-menu", css, StringComparison.Ordinal);
+        Assert.Contains("--legend-mobile-sheet-height: var(--legend-ai-viewport-height, 100dvh)", css, StringComparison.Ordinal);
+        Assert.Contains("--legend-mobile-sheet-bottom: var(--legend-ai-visual-bottom, 0px)", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("margin: 0 0 var(--legend-ai-visual-bottom, 0px)", css, StringComparison.Ordinal);
         Assert.Contains("\"aiResponseRoyal\"", tokens, StringComparison.Ordinal);
 
         Assert.DoesNotContain("LegendFounderAiMobileWebStyle", mobile, StringComparison.Ordinal);
