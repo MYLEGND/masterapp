@@ -1,3 +1,4 @@
+using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -9,6 +10,7 @@ namespace Infrastructure.Migrations
     /// SQLite repair: ensure AgentProfiles exists before later ALTERs.
     /// Safe no-op on SQL Server.
     /// </summary>
+    [DbContext(typeof(MasterAppDbContext))]
     [Migration("20260330094500_RepairAgentProfilesSqlite")]
     public partial class RepairAgentProfilesSqlite : Migration
     {

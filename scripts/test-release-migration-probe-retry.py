@@ -67,5 +67,37 @@ class ProbeObservationTests(TestCase):
                         m.observe('probe', 'conn')
 
 
+
+class MigrationAssemblyHistoryContractTests(TestCase):
+    def test_four_existing_migrations_have_exact_ef_discovery_identity(self):
+        root = Path(__file__).resolve().parents[1]
+        for filename, identity in (
+            ('20260321020000_AddAgentAssistants.cs', '20260321020000_AddAgentAssistants'),
+            ('20260329093000_ExecutionMvp.cs', '20260329093000_ExecutionMvp'),
+            ('20260330094500_RepairAgentProfilesSqlite.cs', '20260330094500_RepairAgentProfilesSqlite'),
+            ('20260927053000_AddAdvertisingActionAuthorizations.cs',
+             '20260927053000_AddAdvertisingActionAuthorizations'),
+        ):
+            with self.subTest(filename=filename):
+                source = (root / 'Infrastructure' / 'Migrations' / filename).read_text()
+                self.assertIn('[DbContext(typeof(MasterAppDbContext))]', source)
+                self.assertIn('[Migration("' + identity + '")]', source)
+
+    def test_only_immutably_audited_production_history_may_be_legacy_applied(self):
+        root = Path(__file__).resolve().parents[1]
+        probe = (root / 'scripts/MigrationReleaseProbe/Program.cs').read_text()
+        audit = (root / 'Infrastructure/MigrationAudit/production-migrations-current.txt').read_text()
+        legacy = '20260213015339_FinanceToolStates_ByClientProfile'
+        self.assertIn(legacy, audit.splitlines())
+        self.assertIn('const string auditedLegacy = "' + legacy + '";', probe)
+        self.assertIn('unknown.Length == 1', probe)
+        self.assertIn('!legacyApplied', probe)
+        self.assertIn('appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length)', probe)
+        self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION")', probe)
+        self.assertIn('throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT")', probe)
+        # No fabricated executable migration or raw production IDs are introduced.
+        self.assertFalse((root / 'Infrastructure/Migrations' / (legacy + '.cs')).exists())
+
+
 if __name__ == '__main__':
     main()

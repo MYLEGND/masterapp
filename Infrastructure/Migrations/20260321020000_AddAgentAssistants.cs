@@ -1,4 +1,5 @@
 using System;
+using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
     [Migration("20260321020000_AddAgentAssistants")]
     public partial class AddAgentAssistants : Migration
     {

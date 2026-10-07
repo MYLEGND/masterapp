@@ -20,16 +20,39 @@ try
         .Order(StringComparer.Ordinal).ToArray();
     if (known.Length == 0)
         throw new ProbeObservationFailure("MIGRATIONS_MISSING");
-    if (applied.Except(known, StringComparer.Ordinal).Any())
+
+    // The immutable historical production audit records one EF history stamp
+    // for which no original migration source was ever committed:
+    // Infrastructure/MigrationAudit/production-migrations-current.txt.
+    // Preserve that exact already-applied marker without fabricating Up/Down SQL,
+    // modifying __EFMigrationsHistory, or accepting any other unknown identifier.
+    // The adjacent original EF migrations must both be registered and applied.
+    const string auditedLegacy = "20260213015339_FinanceToolStates_ByClientProfile";
+    const string preceding = "20260213015112_InitialBaseline";
+    const string following = "20260217173126_20260217_ModelSync";
+    var unknown = applied.Except(known, StringComparer.Ordinal).ToArray();
+    var legacyApplied = unknown.Length == 1 &&
+        string.Equals(unknown[0], auditedLegacy, StringComparison.Ordinal);
+    if (unknown.Length != 0 && !legacyApplied)
         throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION");
-    if (!applied.SequenceEqual(known.Take(applied.Length), StringComparer.Ordinal))
+    if (applied.Length != applied.Distinct(StringComparer.Ordinal).Count() ||
+        (legacyApplied && (!known.Contains(preceding, StringComparer.Ordinal) ||
+                           !known.Contains(following, StringComparer.Ordinal) ||
+                           !applied.Contains(preceding, StringComparer.Ordinal) ||
+                           !applied.Contains(following, StringComparer.Ordinal))))
         throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
-    var pending = known.Except(applied, StringComparer.Ordinal).Count();
+    var appliedRegistered = applied.Where(id =>
+        !string.Equals(id, auditedLegacy, StringComparison.Ordinal)).ToArray();
+    if (!appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length), StringComparer.Ordinal))
+        throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+    var pending = known.Except(appliedRegistered, StringComparer.Ordinal).Count();
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
         ready = pending == 0,
-        knownCount = known.Length,
+        // Counts include only an attested historical stamp when actually applied.
+        // schemaIdentity still binds the exact registered EF assembly migrations.
+        knownCount = known.Length + (legacyApplied ? 1 : 0),
         appliedCount = applied.Length,
         pendingCount = pending,
         schemaIdentity = Convert.ToHexStringLower(SHA256.HashData(

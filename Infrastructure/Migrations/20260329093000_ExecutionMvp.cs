@@ -1,4 +1,5 @@
 using System;
+using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
     [Migration("20260329093000_ExecutionMvp")]
     public partial class ExecutionMvp : Migration
     {
