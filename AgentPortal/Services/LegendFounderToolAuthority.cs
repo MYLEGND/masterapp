@@ -167,18 +167,6 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_request_teacher_escalation" or
             "legend_request_repair_release");
 
-    // One classification for model catalog, capability projection and dispatch.
-    // The authenticated Founder Work site path retains its existing guarded
-    // workflow tools; model confirmation and cloud approval never grant access.
-    private static bool IsRepositoryControlPlaneMutation(string name) =>
-        name is
-            "legend_prepare_software_repair" or
-            "legend_release_approved_repair" or
-            "legend_engineering_bootstrap" or
-            "legend_engineering_renew_turn" or
-            "legend_engineering_complete_turn" or
-            "legend_engineering_approve_release";
-
     private static bool IsFounderSiteWorkflowMutationTool(string name) =>
         name is
             "legend_engineering_bootstrap" or
@@ -223,6 +211,18 @@ internal sealed partial class LegendFounderToolAuthority
 
     internal bool IsReadOnly(string name) =>
         IsReadOnlyFounderTool(name);
+
+    // One classification for model catalog, capability projection and dispatch.
+    // The authenticated Founder Work site path retains its existing guarded
+    // workflow tools; model confirmation and cloud approval never grant access.
+    private static bool IsRepositoryControlPlaneMutation(string name) =>
+        name is
+            "legend_prepare_software_repair" or
+            "legend_release_approved_repair" or
+            "legend_engineering_bootstrap" or
+            "legend_engineering_renew_turn" or
+            "legend_engineering_complete_turn" or
+            "legend_engineering_approve_release";
 
     private static bool RequiresExplicitFounderCommand(string name) =>
         !IsReadOnlyFounderTool(name) &&
@@ -2788,7 +2788,7 @@ internal sealed partial class LegendFounderToolAuthority
                     type = "object",
                     properties = new
                     {
-                        key = new { type = "string", pattern = "^[a-z0-9][a-z0-9._-]{0,79}$" },
+                        key = new { type = "string", minLength = 1, maxLength = 80 },
                         scope = new
                         {
                             type = "string",
