@@ -8,7 +8,6 @@
         return;
     }
 
-    const UI_STORAGE_KEY = 'legendFounderAi.ui.v2';
     const DESIGN_TOKEN_URL = '/design/legend-design.tokens.json';
     const HISTORY_URL = modalElement.dataset.historyUrl;
     const HISTORY_REFRESH_MS = 20000;
@@ -37,9 +36,7 @@
     );
     const externalAnsweringBlocked = document.getElementById('legendFounderAiExternalAnsweringBlocked');
     const sidebar = document.getElementById('legendFounderAiSidebar');
-    const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
-    const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
     const modebar = document.getElementById('legendFounderAiModebar');
     const mobileControls = document.getElementById('legendFounderAiMobileControls');
     const statusDetail = status?.querySelector('.legend-founder-ai-thinking-detail');
@@ -58,6 +55,8 @@
     const logoSource =
         modalElement.querySelector('.legend-founder-ai-logo')?.getAttribute('src') ||
         '/images/legend-ai/legendai.png';
+    const userAvatarSource = (modalElement.dataset.userAvatarUrl || '').trim();
+    const userInitials = (modalElement.dataset.userInitials || 'U').trim().slice(0, 2).toUpperCase();
 
     let busy = false;
     let activeRequest = null;
@@ -67,12 +66,10 @@
     let historySkip = 0;
     let historyHasMore = false;
     let accountGeneration = 0;
-    let uiState = loadUiState();
 
     ensureActiveConversation();
     applySharedDesignTokens();
     syncControlPlacement();
-    applyDesktopSidebarState();
     syncViewportHeight();
     setBusy(false);
 
@@ -80,41 +77,22 @@
         return window.matchMedia(MOBILE_QUERY).matches;
     }
 
-    function loadUiState() {
-        try {
-            const raw = window.localStorage.getItem(UI_STORAGE_KEY);
-            const parsed = raw ? JSON.parse(raw) : null;
-
-            return {
-                sidebarCollapsed:
-                    parsed?.sidebarCollapsed === true
-            };
-        } catch {
-            return {
-                sidebarCollapsed: false
-            };
-        }
-    }
-
-    function saveUiState() {
-        try {
-            window.localStorage.setItem(
-                UI_STORAGE_KEY,
-                JSON.stringify(uiState)
-            );
-        } catch {
-            // UI preference persistence is optional.
-        }
-    }
-
     function syncViewportHeight() {
-        const height =
-            window.visualViewport?.height ||
-            window.innerHeight;
+        const viewport = window.visualViewport;
+        const height = viewport?.height || window.innerHeight;
+        const top = viewport?.offsetTop || 0;
+        const bottomInset = Math.max(
+            0,
+            window.innerHeight - height - top
+        );
 
         modalElement.style.setProperty(
             '--legend-ai-viewport-height',
             `${Math.round(height)}px`
+        );
+        modalElement.style.setProperty(
+            '--legend-ai-visual-bottom',
+            `${Math.round(bottomInset)}px`
         );
     }
 
@@ -187,61 +165,14 @@
         );
     }
 
-    function applyDesktopSidebarState() {
-        if (isMobile()) {
-            modalElement.classList.remove('is-sidebar-collapsed');
-            sidebarCollapse?.setAttribute('aria-expanded', 'true');
-            return;
-        }
-
-        modalElement.classList.toggle(
-            'is-sidebar-collapsed',
-            uiState.sidebarCollapsed
-        );
-
-        sidebarCollapse?.setAttribute(
-            'aria-expanded',
-            uiState.sidebarCollapsed ? 'false' : 'true'
-        );
-
-        if (sidebarCollapse) {
-            sidebarCollapse.title =
-                uiState.sidebarCollapsed
-                    ? 'Expand sidebar'
-                    : 'Collapse sidebar';
-
-            sidebarCollapse.setAttribute(
-                'aria-label',
-                uiState.sidebarCollapsed
-                    ? 'Expand conversation sidebar'
-                    : 'Collapse conversation sidebar'
-            );
-        }
-    }
-
-    function toggleDesktopSidebar() {
-        if (isMobile()) {
-            return;
-        }
-
-        uiState.sidebarCollapsed = !uiState.sidebarCollapsed;
-        saveUiState();
-        applyDesktopSidebarState();
-    }
-
     function setSidebarOpen(open) {
         if (!isMobile()) {
             modalElement.classList.remove('is-sidebar-open');
-            mobileMenu?.setAttribute('aria-expanded', 'false');
             sidebar?.removeAttribute('aria-hidden');
             return;
         }
 
         modalElement.classList.toggle('is-sidebar-open', open);
-        mobileMenu?.setAttribute(
-            'aria-expanded',
-            open ? 'true' : 'false'
-        );
         sidebar?.setAttribute(
             'aria-hidden',
             open ? 'false' : 'true'
@@ -252,10 +183,15 @@
         syncViewportHeight();
         setSidebarOpen(false);
         syncControlPlacement();
-        applyDesktopSidebarState();
         modal.show();
         renderAll({ forceBottom: true });
         focusComposer();
+    });
+
+    modalElement.addEventListener('pointerdown', event => {
+        if (event.target === modalElement) {
+            modal.hide();
+        }
     });
 
     modalElement.addEventListener('shown.bs.modal', () => {
@@ -286,7 +222,6 @@
         syncViewportHeight();
         setSidebarOpen(false);
         syncControlPlacement();
-        applyDesktopSidebarState();
     });
 
     window.visualViewport?.addEventListener(
@@ -684,6 +619,12 @@
         if (externalAnsweringBlocked) {
             externalAnsweringBlocked.checked = conversation.externalAnsweringBlocked === true;
             externalAnsweringBlocked.disabled = busy || conversation.mode !== 'legend' || conversation.nativeOnly === true;
+            externalAnsweringBlocked.closest(
+                '.legend-founder-ai-native-only'
+            )?.classList.toggle(
+                'is-active',
+                conversation.externalAnsweringBlocked === true
+            );
         }
 
         if (input) {
@@ -988,6 +929,29 @@
             const userMark = document.createElement('span');
             userMark.className = 'legend-founder-ai-user-mark';
             userMark.setAttribute('aria-hidden', 'true');
+
+            const fallback = document.createElement('span');
+            fallback.className = 'legend-founder-ai-user-initials';
+            fallback.textContent = userInitials;
+            userMark.appendChild(fallback);
+
+            if (userAvatarSource) {
+                const avatar = document.createElement('img');
+                avatar.className = 'legend-founder-ai-user-avatar';
+                avatar.hidden = true;
+                avatar.src = userAvatarSource;
+                avatar.alt = '';
+                avatar.addEventListener('load', () => {
+                    avatar.hidden = false;
+                    fallback.hidden = true;
+                }, { once: true });
+                avatar.addEventListener('error', () => {
+                    avatar.hidden = true;
+                    fallback.hidden = false;
+                }, { once: true });
+                userMark.prepend(avatar);
+            }
+
             message.appendChild(userMark);
         }
 
@@ -1179,10 +1143,10 @@
             window.innerHeight;
         const maximumHeight = isMobile()
             ? Math.max(
-                80,
+                72,
                 Math.min(
-                    132,
-                    Math.round(viewportHeight * 0.22)
+                    112,
+                    Math.round(viewportHeight * 0.20)
                 )
             )
             : 180;
@@ -1244,11 +1208,6 @@
         }
     );
 
-    sidebarCollapse?.addEventListener(
-        'click',
-        toggleDesktopSidebar
-    );
-
     newConversation?.addEventListener(
         'click',
         startNewConversation
@@ -1259,16 +1218,6 @@
         if (!busy && conversation.pendingOperation) void executeConversationRequest(conversation, conversation.pendingOperation);
     });
 
-    mobileMenu?.addEventListener(
-        'click',
-        () => {
-            setSidebarOpen(
-                !modalElement.classList
-                    .contains('is-sidebar-open')
-            );
-        }
-    );
-
     composerMenu?.addEventListener(
         'click',
         () => {
@@ -1277,9 +1226,8 @@
                 return;
             }
 
-            if (uiState.sidebarCollapsed) {
-                toggleDesktopSidebar();
-            }
+            sidebar?.scrollTo({ top: 0, behavior: 'smooth' });
+            newConversation?.focus({ preventScroll: true });
         }
     );
 
