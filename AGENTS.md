@@ -80,6 +80,15 @@ Rules:
 - Never add an AI/model/bot/service account as a bypass actor or privileged reviewer/approver.
 - Never treat a model's own proposal, PR creation, review, status, tool call, or message as human
   authorization.
+- **Approval identity must be separate from mutation identity.** A model, connector, bot, or
+  automation operating with the Founder's GitHub/account credential is still an automation for
+  governance purposes and cannot use that shared credential as proof of Founder approval. Protected
+  governance/release-control proposals must either be authored by a distinct non-Founder automation
+  identity and approved by the Founder, or remain read-only/proposed until an independently
+  attributable Founder-controlled approval path exists.
+- If GitHub or another control system cannot distinguish the proposer from the required approver,
+  fail closed rather than treating credential possession, repository ownership, or account admin
+  status as approval.
 - A proposed governance change must state exactly what protection changes, why the current
   authority cannot satisfy the legitimate requirement, blast radius, rollback, and how the
   replacement remains fail-closed.
