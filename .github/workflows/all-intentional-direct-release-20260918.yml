@@ -629,7 +629,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       # BEGIN GENERATED CANONICAL TARGET PUBLICATIONS
-      - name: Publish canonical selected targets in parallel
+      - name: Submit canonical selected targets in parallel
         id: publish_targets
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') }}
         continue-on-error: true
@@ -646,98 +646,148 @@ jobs:
             --publish-prepared-parallel \
             --target-results-dir /tmp/release-target-results
 
-      - name: Publish canonical target (portal)
-        id: publish_portal
+      - name: Confirm first-pass durable publication receipt (portal)
+        id: publication_receipt_portal
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') }}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/portal.json portal <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {key}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 
-      - name: Publish canonical target (client)
-        id: publish_client
+      - name: Confirm first-pass durable publication receipt (client)
+        id: publication_receipt_client
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') }}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/client.json client <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {key}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 
-      - name: Publish canonical target (protect)
-        id: publish_protect
+      - name: Confirm first-pass durable publication receipt (protect)
+        id: publication_receipt_protect
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') }}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/protect.json protect <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {key}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 
-      - name: Publish canonical target (parfait)
-        id: publish_parfait
+      - name: Confirm first-pass durable publication receipt (parfait)
+        id: publication_receipt_parfait
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') }}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/parfait.json parfait <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {key}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
 
-      - name: Publish canonical target (website)
-        id: publish_website
+      - name: Confirm first-pass durable publication receipt (website)
+        id: publication_receipt_website
         if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.azuredeploy.outcome == 'success' && (steps.prepublication.outcome == 'success' || steps.prepublication.outcome == 'skipped') && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') }}
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/website.json website <<'PYTARGET'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
-          if result.get('schemaVersion') != 1 or result.get('target') != key or result.get('success') is not True:
-              raise SystemExit(f'Canonical target publication did not succeed: {key}')
+          if (
+              result.get('schemaVersion') != 2
+              or result.get('phase') != 'publication'
+              or result.get('target') != key
+              or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('liveProven') is not True
+              or result.get('durableReceiptProven') is not True
+          ):
+              raise SystemExit(
+                  f'First-pass target publication is not durably proven: {key}; '
+                  'final transaction reconciliation and live proof remain authoritative'
+              )
           print(json.dumps(result,sort_keys=True))
           PYTARGET
       # END GENERATED CANONICAL TARGET PUBLICATIONS
@@ -1109,7 +1159,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
     steps:
-      - name: Bind successful transaction receipt to canonical target
+      - name: Bind live-proven transaction receipt to canonical target
         shell: bash
         env:
           APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
@@ -1124,14 +1174,16 @@ jobs:
           if release_name not in names:
               raise SystemExit('Target receipt is not part of the canonical selected release set')
           payload={
-              'schemaVersion':1,
+              'schemaVersion':2,
               'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA'],
               'target':release_name,
               'transaction':'committed-or-preserved',
+              'liveProven':True,
+              'authority':'post-live-verification',
           }
           pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
           PYTARGETRECEIPT
-      - name: Preserve target-specific successful release receipt
+      - name: Preserve target-specific live-proven deployment receipt
         uses: actions/upload-artifact@v4
         with:
           name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
