@@ -710,6 +710,14 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate removed fail-closed live-provenance lease discharge'
 
+    if not all(token in source['lifecycle'] for token in (
+        "attempts = 3 if verb == 'GET' else 1",
+        "except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected)",
+        "if verb == 'GET' and attempt + 1 < attempts:",
+        "raise RuntimeError(f'GitHub {request.method} {path}: transport unavailable')",
+    )):
+        return 'Candidate weakened bounded lifecycle GitHub read retry'
+
     execution_guard_source = _function_source(
         source['validation'], validation_tree, 'assert_protected_release_execution'
     )
