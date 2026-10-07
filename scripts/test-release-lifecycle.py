@@ -36,6 +36,48 @@ def successful_jobs(target_step="Publish selected head as one transaction"):
     ]
 
 
+class GitHubTransportRetry(unittest.TestCase):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b'{"ok":true}'
+
+    def client(self):
+        with patch.dict(os.environ, {
+            "GITHUB_REPOSITORY": "MYLEGND/masterapp",
+            "GH_TOKEN": "fixture-token",
+        }, clear=False):
+            return m.GitHub()
+
+    def test_remote_disconnect_retries_read_only_get_in_place(self):
+        api = self.client()
+        with patch.object(
+            m.urllib.request,
+            "urlopen",
+            side_effect=[m.http.client.RemoteDisconnected("transient"), self.Response()],
+        ) as request, patch.object(m.time, "sleep") as sleep:
+            self.assertEqual({"ok": True}, api.api("actions/runs/1/jobs?filter=latest"))
+        self.assertEqual(2, request.call_count)
+        sleep.assert_called_once_with(1)
+
+    def test_remote_disconnect_never_replays_write(self):
+        api = self.client()
+        with patch.object(
+            m.urllib.request,
+            "urlopen",
+            side_effect=m.http.client.RemoteDisconnected("ambiguous write"),
+        ) as request, patch.object(m.time, "sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "transport unavailable"):
+                api.api("statuses/" + "a" * 40, {"state": "success"}, method="POST")
+        self.assertEqual(1, request.call_count)
+        sleep.assert_not_called()
+
+
 class Api:
     repo = "MYLEGND/masterapp"
 
