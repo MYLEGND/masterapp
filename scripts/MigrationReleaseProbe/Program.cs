@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,10 +33,25 @@ try
             Encoding.UTF8.GetBytes(string.Join("\n", known))))
     }));
 }
+catch (SqlException ex) when (ex.Number is 40197 or 40501 or 40613 or 49918 or 49919 or 49920)
+{
+    // Only exact transient SQL availability/throttling numbers permit a bounded read retry.
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ");
+    Environment.ExitCode = 1;
+}
+catch (SqlException ex) when (ex.Number is 18456 or 4060)
+{
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_AUTH");
+    Environment.ExitCode = 1;
+}
+catch (InvalidOperationException)
+{
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT");
+    Environment.ExitCode = 1;
+}
 catch
 {
-    // SQL/provider exceptions can embed connection details. Fail closed without
-    // forwarding exception text or provider diagnostics into public CI logs.
-    Console.Error.WriteLine("Read-only migration proof unavailable or schema drift detected.");
+    // Never emit SQL/provider exception messages or connection details.
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:UNCLASSIFIED");
     Environment.ExitCode = 1;
 }
