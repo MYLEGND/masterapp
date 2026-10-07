@@ -501,8 +501,43 @@ def run_migration_lane():
         "--application-revision", revision,
         "--directory", "/tmp/migration-probe",
     ], timeout=180)
-    run([sys.executable, "scripts/release-migration.py"], timeout=900)
+    # The owning migration runner emits only fixed redacted terminal labels.
+    # Preserve the exact safe label rather than masking it behind a generic
+    # prepublication RuntimeError. No retry, write, or provider detail is added.
+    observation = subprocess.run(
+        [sys.executable, "scripts/release-migration.py"],
+        cwd=ROOT, capture_output=True, text=True, timeout=900, check=False,
+    )
+    if observation.returncode:
+        reason = observation.stderr.strip()
+        suffix = '; preserve prior evidence and reconcile without replay.'
+        authorized = {
+            'Migration stage unresolved: ' + stage
+            for stage in ('schema-observation', 'child-history', 'mutation-admission',
+                          'bundle-execution', 'schema-verification', 'success-receipt',
+                          'preparation')
+        }
+        # Reuse the canonical schema-observation classification authority,
+        # never trust free-form error text or URLs from subprocess output.
+        spec = importlib.util.spec_from_file_location(
+            'release_migration_diagnostics', ROOT / 'scripts/release-migration.py')
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        authorized.update(migration.OBSERVATION_ERRORS)
+        if reason.endswith(suffix) and reason[:-len(suffix)] in authorized:
+            raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:'
+                               + reason[:-len(suffix)]) from None
+        raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE') from None
     return {"status": "reconciled", "changedMigrations": changed}
+
+
+
+def _approved_observation_labels():
+    spec = importlib.util.spec_from_file_location(
+        'release_migration_safe_labels', ROOT / 'scripts/release-migration.py')
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    return migration.OBSERVATION_ERRORS
 
 
 def main():
@@ -512,8 +547,43 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         config_future = pool.submit(configure_all_targets)
         migration_future = pool.submit(run_migration_lane)
-        configuration = config_future.result()
-        migration = migration_future.result()
+        # Observe both independent outcomes. Previously config_future.result()
+        # could mask a concurrent migration failure and vice versa.
+        outcomes = {}
+        faults = {}
+        for lane, future in (('CONFIGURATION', config_future), ('MIGRATION', migration_future)):
+            try:
+                outcomes[lane] = future.result()
+            except Exception as exc:
+                faults[lane] = exc
+    if faults:
+        for lane in ('CONFIGURATION', 'MIGRATION'):
+            if lane not in faults:
+                print('LEGEND_PREPUBLICATION:' + lane + ':READY', flush=True)
+                continue
+            exc = faults[lane]
+            # Only an exact message created by the local migration owner may
+            # be exposed; configuration/provider exceptions remain opaque.
+            reason = str(exc)
+            if lane == 'MIGRATION' and type(exc) is RuntimeError and (
+                reason.startswith('LEGEND_PREPUBLICATION_MIGRATION:')
+            ) and len(reason) <= 200 and (
+                reason == 'LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE'
+                or reason.removeprefix('LEGEND_PREPUBLICATION_MIGRATION:') in
+                   {'Migration stage unresolved: ' + s for s in
+                    ('schema-observation', 'child-history', 'mutation-admission',
+                     'bundle-execution', 'schema-verification', 'success-receipt',
+                     'preparation')}
+                or reason.removeprefix('LEGEND_PREPUBLICATION_MIGRATION:') in
+                   _approved_observation_labels()
+            ):
+                print(reason, file=sys.stderr, flush=True)
+            else:
+                print('LEGEND_PREPUBLICATION:' + lane + ':FAILED',
+                      file=sys.stderr, flush=True)
+        raise RuntimeError('Pre-publication lanes require exact reconciliation') from None
+    configuration = outcomes['CONFIGURATION']
+    migration = outcomes['MIGRATION']
     result = {
         "schemaVersion": 1,
         "configuration": configuration,
