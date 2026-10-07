@@ -1505,6 +1505,14 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 self.assertFalse(self.proven())
                 artifacts.pop()
 
+    def test_cloudflare_routing_or_founder_scope_never_uses_app_nonentry_proof(self):
+        original = list(self.record['resources'])
+        for resource in ('write/cloudflare/router', 'write/cloudflare/founder'):
+            with self.subTest(resource=resource):
+                self.record['resources'] = original + [resource]
+                self.assertFalse(self.proven())
+        self.record['resources'] = original
+
     def test_incomplete_artifacts_or_untrusted_history_blocks_discharge(self):
         artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
         missing = artifacts.pop()
