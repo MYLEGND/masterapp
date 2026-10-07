@@ -6125,6 +6125,10 @@ function escapeHtml(value) {
   async function loadMarketingPerformance() {
     const grid = document.getElementById('channel-performance-grid');
     if (!grid) return false;
+    const params = marketingManagerRequestBody();
+    if (!isBusinessAnalytics && isFounder && (!state.scope.agentProfileId || state.scope.agentProfileId === callerProfileId) && state.scope.siteKey) {
+      params.siteKey = state.scope.siteKey;
+    }
     const request = ++marketingPerformanceRequest;
     grid.textContent = 'Loading current channel performance…';
     setText('channel-performance-note', '');
@@ -6133,7 +6137,7 @@ function escapeHtml(value) {
       const data = await fetchJson(
         'marketingManagerPerformance',
         endpoints.marketingManagerPerformance,
-        marketingManagerRequestBody(),
+        params,
         45000);
       if (!data || request !== marketingPerformanceRequest) return false;
       renderMarketingPerformance(data);

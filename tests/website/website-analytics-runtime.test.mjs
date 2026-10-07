@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../AgentPortal/wwwroot/js/website-analytics.js', import.meta.url), 'utf8');
-async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false } = {}) {
+async function fixture({ device = true, founder = false, siteKey = 'legend', selectedAgent = false, business = false, global = false } = {}) {
   const founderLinks = { legend: 'https://legend.example.test/', protect: 'https://protect.example.test/' };
   const agentLink = 'https://protect.example.test/a/agent-one';
   const agents = founder ? [{ id: 'founder-profile', primaryUrl: founderLinks[siteKey] }, { id: 'agent-profile', primaryUrl: agentLink }] : [];
   const routes = [{ displayName: 'Life', basePath: '/quote/life', controlPath: '/quote/life', defaultPageVariant: 'landing', availableVariants: [{ variant: 'landing', isControl: true }] }];
-  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="${selectedAgent ? 'agent-profile' : 'founder-profile'}" data-initial-scope-label="Founder Personal"
+  const dom = new JSDOM(`<!doctype html><div class="fa-shell" data-analytics-base="${business ? '/business/11111111-1111-1111-1111-111111111111/analytics' : '/WebsiteAnalytics'}" data-caller-profile-id="founder-profile" data-initial-scope-profile-id="${global ? '' : selectedAgent ? 'agent-profile' : 'founder-profile'}" data-initial-scope-label="Founder Personal"
     data-initial-site-key="${siteKey}" data-agent-options='${JSON.stringify(agents)}' data-founder-site-links='${JSON.stringify(founder ? founderLinks : {})}'
     data-personal-link="${founder ? founderLinks[siteKey] : agentLink}" data-landing-routes-base-url="https://protect.example.test/" data-landing-routes='${JSON.stringify(routes)}'></div>
     <span id="growth-base-link"></span><a id="growth-open-base"></a><button id="growth-copy-base"></button>
@@ -70,6 +70,46 @@ for (const selectedAgent of [false, true]) {
         assert.equal(f.window.document.getElementById('growth-open-base').href, 'https://protect.example.test/a/agent-one');
         assert.equal(f.window.document.querySelector('.product-link-copy').dataset.linkUrl, 'https://protect.example.test/a/agent-one/quote/life');
       }
+    } finally { f.dom.window.close(); }
+  });
+}
+
+for (const initialSite of ['legend', 'protect']) {
+  test(`channel outcomes requests retain Founder site ${initialSite} through both switches`, async () => {
+    const f = await fixture({ founder: true, siteKey: initialSite });
+    try {
+      for (const siteKey of [initialSite, initialSite === 'legend' ? 'protect' : 'legend', initialSite]) {
+        f.window.document.querySelector(`[data-site-key="${siteKey}"]`).click();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        const request = new URL(f.calls.filter(url => url.includes('/marketing-manager/performance')).at(-1), f.window.location.href);
+        assert.equal(request.searchParams.get('siteKey'), siteKey);
+        assert.equal(request.searchParams.get('agentProfileId'), 'founder-profile');
+        assert.equal(request.searchParams.get('qualityMode'), '0');
+      }
+    } finally { f.dom.window.close(); }
+  });
+}
+
+test('channel outcomes retain selected Founder site when the request omits the profile id', async () => {
+  const f = await fixture({ founder: true, global: true });
+  try {
+    for (const siteKey of ['legend', 'protect', 'legend']) {
+      f.window.document.querySelector(`[data-site-key="${siteKey}"]`).click();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      const request = new URL(f.calls.filter(url => url.includes('/marketing-manager/performance')).at(-1), f.window.location.href);
+      assert.equal(request.searchParams.get('siteKey'), siteKey);
+      assert.equal(request.searchParams.has('agentProfileId'), false);
+    }
+  } finally { f.dom.window.close(); }
+});
+
+for (const scope of [{}, { founder: true, selectedAgent: true }, { business: true }]) {
+  test(`channel outcomes do not transmit Founder site into other scope ${JSON.stringify(scope)}`, async () => {
+    const f = await fixture(scope);
+    try {
+      const request = new URL(f.calls.filter(url => url.includes('/marketing-manager/performance')).at(-1), f.window.location.href);
+      assert.equal(request.searchParams.has('siteKey'), false);
+      assert.equal(request.searchParams.get('agentProfileId'), scope.business ? null : scope.selectedAgent ? 'agent-profile' : 'founder-profile');
     } finally { f.dom.window.close(); }
   });
 }
