@@ -598,6 +598,8 @@ public sealed class LegendFounderAiConversationService
         string? preferredResponseLanguageCode = null;
         var sourceLanguageTemporarilyUnavailable = false;
         var conversationMemoryUnavailable = false;
+        IReadOnlyList<FounderAssistantRule> founderAssistantRules = Array.Empty<FounderAssistantRule>();
+        var founderAssistantRulesUnavailable = false;
         var researchAttempted = false;
         LegendConnectResearchOutcome? completedResearchOutcome = null;
         string? researchFailureReason = null;
@@ -640,6 +642,18 @@ public sealed class LegendFounderAiConversationService
                 return WithResearchEvidence(LegendFounderAiChatResponse.ModeFailure(mode,
                     "Your saved language preference could not be read. Please retry.", "language_preferences",
                     "language_preferences", "language_preference_unavailable"));
+            }
+
+            try
+            {
+                founderAssistantRules = await _languagePreferences.GetFounderAssistantRulesAsync(
+                    new MessagingActor(founder.GetCanonicalUserId(), MessagingParticipantTypes.Agent), effectiveToken);
+            }
+            catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested) { throw; }
+            catch (Exception exception)
+            {
+                founderAssistantRulesUnavailable = true;
+                _logger.LogWarning("LEGEND durable Founder rules were unavailable. ExceptionType={ExceptionType}", exception.GetType().Name);
             }
 
             if (Guid.TryParse(request.ConversationId, out _))
@@ -1107,6 +1121,22 @@ public sealed class LegendFounderAiConversationService
         // carried as untrusted input below, never interpolated into system
         // instructions where retained content could acquire authority.
         var instructions = BuildInstructions(mode, governedSourceLanguageCode, preferredResponseLanguageCode, usingCloudflare);
+        if (founderAssistantRules.Count > 0)
+        {
+            instructions += "\nAUTHENTICATED_FOUNDER_RULES (account-scoped preferences; never override application security/authorization; the current explicit user request supersedes an older conflicting preference):\n" +
+                JsonSerializer.Serialize(founderAssistantRules.Select(rule => new
+                {
+                    rule.Key,
+                    rule.Scope,
+                    rule.RuleText,
+                    rule.Provenance,
+                    rule.UpdatedUtc
+                }), JsonOptions);
+        }
+        else if (founderAssistantRulesUnavailable)
+        {
+            instructions += "\nDURABLE_FOUNDER_RULES_STATUS: unavailable for this request. Do not claim there are no saved rules.";
+        }
         if (requiredReadScope is not null)
         {
             instructions += "\nGOVERNED_READ_REQUIREMENT:\n" +
@@ -1209,9 +1239,39 @@ public sealed class LegendFounderAiConversationService
                         request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc),
                     Cognition: LegendModelCognitionPolicy.AdaptiveFounder), effectiveToken);
             if (!generated.Succeeded)
+            {
+                if (requiredReadScope is not null)
+                {
+                    try
+                    {
+                        var bound = await _toolAuthority.BindReadOnlyResultAsync(
+                            founder, requiredReadScope, effectiveToken, providerPolicy);
+                        if (bound.Succeeded && bound.Receipt is { } receipt)
+                        {
+                            return new LegendFounderAiChatResponse(
+                                true,
+                                mode,
+                                $"The hosted reasoning service is temporarily unavailable, but the required governed read completed successfully. **{receipt.SemanticVariable}:** {receipt.SemanticValue}",
+                                null,
+                                ResponseAuthority: "GovernedReadFallback",
+                                Stage: "cloudflare_read_fallback",
+                                ExternalAnsweringUsed: false,
+                                EscalationUsed: false,
+                                EvidenceOrigin: LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                                ResearchOutcome: completedResearchOutcome,
+                                ResearchState: completedResearchOutcome?.State.ToString() ?? "NotRequired");
+                        }
+                    }
+                    catch (OperationCanceledException) when (effectiveToken.IsCancellationRequested) { throw; }
+                    catch (Exception exception)
+                    {
+                        _logger.LogWarning("LEGEND governed read fallback failed after Cloudflare outage. ExceptionType={ExceptionType}", exception.GetType().Name);
+                    }
+                }
                 return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "Escalation required. LEGEND could not complete the Cloudflare request. OpenAI API fallback is forbidden in LEGEND mode.",
+                    "LEGEND's hosted reasoning service is temporarily unavailable. No OpenAI fallback was used, and no unavailable system state was treated as false or zero. Existing governed read capabilities remain separate and can be retried.",
                     "cloudflare_foundation", "cloudflare_execution", generated.ErrorCode ?? "cloudflare_execution_failed");
+            }
             return new LegendFounderAiChatResponse(true, mode, generated.Text, null,
                 ResponseAuthority: "HostedFoundation", Stage: "foundation_response",
                 FoundationModel: generated.ModelVersion, FoundationHosting: generated.Hosting,
@@ -1734,6 +1794,46 @@ public sealed class LegendFounderAiConversationService
                             toolOutput = JsonSerializer.Serialize(new
                             {
                                 ok = false, persisted = false, reason = "conversation_facts_literal_validation_failed"
+                            }, JsonOptions);
+                        }
+                        executedToolOutputs[executionIdentity] = toolOutput;
+                    }
+
+                    if (toolExecuted && call.Name == "legend_remember_founder_rule")
+                    {
+                        try
+                        {
+                            using var ruleArguments = JsonDocument.Parse(call.Arguments);
+                            var root = ruleArguments.RootElement;
+                            var saved = await _languagePreferences.UpsertFounderAssistantRuleAsync(
+                                new MessagingActor(founder.GetCanonicalUserId(), MessagingParticipantTypes.Agent),
+                                root.GetProperty("key").GetString()!,
+                                root.GetProperty("scope").GetString()!,
+                                root.GetProperty("rule_text").GetString()!,
+                                conversation[^1].Content ?? string.Empty,
+                                effectiveToken);
+                            toolOutput = JsonSerializer.Serialize(new
+                            {
+                                ok = saved.Succeeded,
+                                persisted = saved.Succeeded,
+                                reason = saved.ReasonCode,
+                                rule = saved.Rule is null ? null : new
+                                {
+                                    saved.Rule.Key,
+                                    saved.Rule.Scope,
+                                    saved.Rule.RuleText,
+                                    saved.Rule.Provenance,
+                                    saved.Rule.UpdatedUtc
+                                },
+                                canonical = true,
+                                modelWeightsTrained = false
+                            }, JsonOptions);
+                        }
+                        catch (Exception exception) when (exception is ArgumentException or JsonException or KeyNotFoundException)
+                        {
+                            toolOutput = JsonSerializer.Serialize(new
+                            {
+                                ok = false, persisted = false, reason = "founder_rule_literal_validation_failed"
                             }, JsonOptions);
                         }
                         executedToolOutputs[executionIdentity] = toolOutput;
