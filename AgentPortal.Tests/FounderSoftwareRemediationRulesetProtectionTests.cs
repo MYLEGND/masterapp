@@ -198,7 +198,7 @@ public sealed class FounderSoftwareRemediationRulesetProtectionTests
                             exclude = Array.Empty<string>()
                         }
                     },
-                    bypass_actors = HasBypassActor ? new[] { new { actor_id = 1 } } : Array.Empty<object>(),
+                    bypass_actors = HasBypassActor ? new object[] { new { actor_id = 1 } } : Array.Empty<object>(),
                     current_user_can_bypass = "never",
                     rules = new object[]
                     {
