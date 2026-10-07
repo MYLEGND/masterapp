@@ -609,6 +609,8 @@ class ReleaseQueueSerialization(unittest.TestCase):
         api = Api()
         first = self.pr(442, "b" * 40)
         later = self.pr(450, "c" * 40)
+        api.pages_map["pulls/442/files"] = [{"filename": "AgentPortal/Program.cs"}]
+        api.pages_map["pulls/450/files"] = [{"filename": "AgentPortal/Program.cs"}]
 
         claimed = m.claim_release_queue(api, first)
         queued = m.claim_release_queue(api, later)
@@ -621,6 +623,7 @@ class ReleaseQueueSerialization(unittest.TestCase):
     def test_owner_head_change_keeps_same_queue_ownership(self):
         api = Api()
         first = self.pr(442, "b" * 40)
+        api.pages_map["pulls/442/files"] = [{"filename": "AgentPortal/Program.cs"}]
         m.claim_release_queue(api, first)
         updated = self.pr(442, "c" * 40)
 
@@ -629,16 +632,23 @@ class ReleaseQueueSerialization(unittest.TestCase):
         self.assertEqual("RELEASE_QUEUE_OWNER", claimed["state"])
         self.assertEqual(442, m.release_queue_lease(api)["ownerPr"])
 
-    def test_non_owner_cannot_merge_even_with_green_validation(self):
+    def test_nonpublishing_candidate_never_claims_application_queue(self):
         api = Api()
-        owner = self.pr(442, "b" * 40)
-        later = self.pr(450, "c" * 40)
-        m.claim_release_queue(api, owner)
+        governance = self.pr(442, "b" * 40)
+        api.pages_map["pulls/442/files"] = [
+            {"filename": ".github/CODEOWNERS"},
+            {"filename": ".github/agents/masterapp-chief-architect.agent.md"},
+            {"filename": "AGENTS.md"},
+        ]
 
-        result = m._release_queue_guard(api, later)
+        result = m.claim_release_queue(api, governance)
 
-        self.assertEqual("RELEASE_QUEUED", result["state"])
-        self.assertEqual(442, result["ownerPr"])
+        self.assertEqual("RELEASE_QUEUE_NOT_REQUIRED", result["state"])
+        self.assertIsNone(m.release_queue_lease(api)["ownerPr"])
+        self.assertFalse(any(
+            status[1] == m.RELEASE_QUEUE_REQUEST_CONTEXT
+            for status in api.statuses
+        ))
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
@@ -649,6 +659,8 @@ class ReleaseQueueSerialization(unittest.TestCase):
         later = self.pr(450, "c" * 40)
         api.api_map["pulls/442"] = owner
         api.api_map["pulls/450"] = later
+        api.pages_map["pulls/442/files"] = [{"filename": "AgentPortal/Program.cs"}]
+        api.pages_map["pulls/450/files"] = [{"filename": "AgentPortal/Program.cs"}]
         api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [later, owner]
         api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
         m.claim_release_queue(api, owner)
@@ -668,7 +680,8 @@ class ReleaseQueueSerialization(unittest.TestCase):
         owner = self.pr(442, "b" * 40)
         later = self.pr(450, "c" * 40)
         api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [later]
-        api.pages_map["pulls/450/files"] = []
+        api.pages_map["pulls/442/files"] = [{"filename": "AgentPortal/Program.cs"}]
+        api.pages_map["pulls/450/files"] = [{"filename": "AgentPortal/Program.cs"}]
         api.api_map["pulls/450"] = later
         m.claim_release_queue(api, owner)
         m._request_release_queue(api, later)
@@ -681,10 +694,41 @@ class ReleaseQueueSerialization(unittest.TestCase):
         self.assertEqual(450, m.release_queue_lease(api)["ownerPr"])
 
 
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    def test_legacy_nonpublishing_owner_is_released_and_product_is_promoted(self, _, __):
+        api = Api()
+        governance = self.pr(442, "b" * 40)
+        product = self.pr(450, "c" * 40)
+        api.api_map["pulls/442"] = governance
+        api.api_map["pulls/450"] = product
+        api.pages_map["pulls/442/files"] = [
+            {"filename": ".github/CODEOWNERS"},
+            {"filename": "AGENTS.md"},
+        ]
+        api.pages_map["pulls/450/files"] = [{"filename": "AgentPortal/Program.cs"}]
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [governance, product]
+        api.pages_map["pulls?state=closed&base=legend%2Fapproved-changes"] = []
+
+        # Reproduce a lease written by the older lifecycle generation.
+        api.context_status(
+            api.ref(m.APPROVED),
+            m.RELEASE_QUEUE_CONTEXT,
+            "pending",
+            "owner-pr=442 validation-to-production",
+        )
+        m._request_release_queue(api, product)
+
+        result = m.pending_updates(api)
+
+        self.assertEqual("RELEASE_QUEUE_PROMOTED", result["state"])
+        self.assertEqual(450, result["pr"])
+        self.assertEqual(450, m.release_queue_lease(api)["ownerPr"])
+
+
 class AutomaticMergeRelease(unittest.TestCase):
-    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _, __):
+    def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _):
         api = Api()
         target = canonical_name("portal")
         pr = {"number": 77, "head": {"sha": "b" * 40}}
@@ -730,9 +774,8 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual("FAILED_NEEDS_REPAIR", blocked["state"])
         self.assertIn("bounded exact-live recovery exhausted", blocked["retained"])
 
-    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _, __):
+    def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _):
         api = Api()
         pr = {"number": 78, "head": {"sha": "e" * 40}}
         api.api_map["pulls/78/merge"] = {
@@ -753,9 +796,31 @@ class AutomaticMergeRelease(unittest.TestCase):
         )
 
 
-    @patch.object(m, "_release_queue_guard", return_value=None)
     @patch.object(m, "candidate_validation", return_value=None)
-    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _, __):
+    def test_product_merge_failure_releases_publication_lease(self, _):
+        api = Api()
+        pr = {"number": 79, "head": {"sha": "d" * 40}}
+        api.pages_map["pulls/79/files"] = [{"filename": "AgentPortal/Program.cs"}]
+
+        def blocked_merge(_data, _method):
+            raise RuntimeError("GitHub PUT pulls/79/merge: HTTP 405")
+
+        api.api_map["pulls/79/merge"] = blocked_merge
+
+        result = m.merge_validated(api, pr)
+
+        self.assertIn("retained", result)
+        self.assertIsNone(m.release_queue_lease(api)["ownerPr"])
+        self.assertTrue(any(
+            status[1] == m.RELEASE_QUEUE_CONTEXT
+            and status[2] == "success"
+            and "merge-not-completed" in status[3]
+            for status in api.statuses
+        ))
+
+
+    @patch.object(m, "candidate_validation", return_value=None)
+    def test_nonmergeable_validated_pr_is_retained_not_fatal(self, _):
         api = Api()
         pr = {"number": 323, "head": {"sha": "b" * 40}}
 
