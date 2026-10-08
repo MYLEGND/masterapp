@@ -517,6 +517,121 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
     return matches == 1
 
 
+def _historical_migration_prewrite_proven(repository, run, job, step, token):
+    """Positive, content-attested proof that a *previous* migration never wrote.
+
+    This does not authorize current SQL. The caller's canonical child journal
+    still must inspect ALL other attempts and publish a durable new intent
+    before executing the bundle. A failed job or missing artifact alone is
+    NEVER proof of absence.
+    """
+    if (run.get("status") != "completed"
+        or run.get("conclusion") not in {"failure", "cancelled"}
+        or job.get("status") != "completed" or job.get("conclusion") != "failure"
+        or step.get("name") != "Synchronize canonical pre-publication resource lanes"
+        or step.get("status") != "completed" or step.get("conclusion") != "failure"
+        or type(run.get("id")) is not int or run["id"] < 1
+        or type(run.get("run_attempt")) is not int or not 1 <= run["run_attempt"] <= 2
+        or not re.fullmatch(
+            r"LEGEND release pr=[0-9]+ candidate=[a-f0-9]{40} authority="
+            + re.escape(run.get("head_sha", "")),
+            run.get("display_title", ""))):
+        return False
+
+    # Only audited, immutable writer generations where these terminal messages
+    # are raised BEFORE journal intent publication / migration bundle execution.
+    # Unknown future code or changed release jobs remain blocked.
+    owners = {
+        ".github/workflows/" + DIRECT_RELEASE_WORKFLOW: {
+            "bd84c42297a50b29dfa20c2ed926b8233074720e",
+        },
+        "scripts/release-prepublication.py": {
+            "2f60d22e05e2917a9c48db0db1ba58632ab57d02",
+            "29c23b084d059d5f1663c98631be7557ec86fa67",
+            "75b2ca1eaee45852e6f896df5caa5366a709af05",
+        },
+        "scripts/release-migration.py": {
+            "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
+        },
+    }
+    try:
+        _trusted_child_producer(repository, run)
+        for path, expected in owners.items():
+            source = _release_history_source(repository, run["head_sha"], path, token)
+            raw = source.encode("utf-8")
+            observed = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()
+            if observed not in expected:
+                return False
+
+        # Authenticate exact release topology and forbid all publication or
+        # auxiliary owner entry, not merely a failed migration step label.
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            return False
+        def exactly(name, result):
+            matches = [item for item in steps if item.get("name") == name]
+            return len(matches) == 1 and matches[0].get("conclusion") == result
+        if not (exactly("Submit canonical selected targets in parallel", "skipped")
+                and exactly("Run independent auxiliary release fanout", "skipped")):
+            return False
+
+        artifacts = api_get(repository,
+            f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        rows = artifacts.get("artifacts")
+        if (not isinstance(rows, list)
+            or type(artifacts.get("total_count")) is not int
+            or len(rows) != artifacts["total_count"]
+            or any(not isinstance(item, dict) or item.get("expired") is not False
+                   or not isinstance(item.get("name"), str) for item in rows)):
+            return False
+        names = [item["name"] for item in rows]
+        if (len(names) != len(set(names))
+            or any(name.startswith(("legend-release-child-intent-",
+                                    "legend-release-operation-intent-",
+                                    "legend-release-operation-success-"))
+                   for name in names)):
+            return False
+        # The terminal GitHub step receipt proves the full failed attempt was
+        # observed. An expired/missing or mismatched receipt is not no-write.
+        suffix = f"-{run['id']}-{run['run_attempt']}"
+        if len([name for name in names
+                if name.startswith("legend-release-step-state-")
+                and name.endswith(suffix)]) != 1:
+            return False
+
+        import datetime
+        begin = datetime.datetime.fromisoformat(
+            step["started_at"].replace("Z", "+00:00"))
+        end = datetime.datetime.fromisoformat(
+            step["completed_at"].replace("Z", "+00:00"))
+        if begin.tzinfo is None or end.tzinfo is None or end < begin:
+            return False
+        # Both markers originate from the exact immutable migration owner:
+        # unknown applied history is an observation-only failure; a failed
+        # mutation-admission happens before ChildJournal publishes an intent
+        # and before the migration bundle is executed.
+        allowed = {
+            "LEGEND_PREPUBLICATION_MIGRATION:"
+            "Database contains applied migration history absent from validated bundle",
+            "LEGEND_PREPUBLICATION_MIGRATION:"
+            "Migration stage unresolved: mutation-admission",
+        }
+        matches = []
+        for line in _release_job_log(repository, job["id"], token).splitlines():
+            stamp, sep, message = line.partition(" ")
+            if sep and message in allowed:
+                when = datetime.datetime.fromisoformat(
+                    stamp.replace("Z", "+00:00"))
+                if (when.tzinfo is None or when < begin
+                    or when > end + datetime.timedelta(seconds=2)):
+                    return False
+                matches.append(message)
+        return len(matches) == 1
+    except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+            OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None):
     """Authorize first mutation only from complete positive execution evidence.
@@ -607,6 +722,10 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 if child == 'migrations' and steps[0].get('name') != gate['step']:
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
                         continue
+                if (child == 'migrations'
+                    and _historical_migration_prewrite_proven(
+                        repository, run, job, steps[0], token)):
+                    continue
                 if inventory is None:
                     artifact_payload = api_get(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
                     inventory = artifact_payload.get("artifacts")
