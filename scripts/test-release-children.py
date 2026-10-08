@@ -938,6 +938,13 @@ class ChildHistorySafetyTests(unittest.TestCase):
             'Reconcile complete immutable release transaction': 'success',
             'Submit canonical selected targets in parallel': 'skipped',
             'Run independent auxiliary release fanout': 'skipped',
+            'Audit centralized Cloudflare routing authority': 'skipped',
+            'Deploy and activate LEGEND Founder Cloudflare baseline': 'skipped',
+            'Reconcile public custom-hostname Cloudflare policy': 'skipped',
+            'Deploy shared Cloudflare business website router': 'skipped',
+            'Verify every deployed target and collect all failures': 'skipped',
+            **{f'Confirm first-pass durable publication receipt ({app})': 'skipped'
+               for app in ('portal', 'client', 'protect', 'parfait', 'website')},
             'Retain exact approved release receipt': 'skipped',
             'Reconcile terminal release resource disposition': 'skipped',
             'Preserve terminal release resource disposition': 'skipped',
@@ -997,6 +1004,84 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 row['conclusion'] = 'success'
                 self.assertFalse(proven())
                 row['conclusion'] = 'skipped'
+
+    def test_pr505_second_audited_reused_rollback_fails_closed_on_new_history(self):
+        # Original October 7 run 37683353078 had ONLY admission and step-state
+        # artifacts. It failed schema observation before first migration write
+        # and explicitly skipped every publication route. Reusing historical
+        # rollback ZIPs is valid evidence, not a reason to replay SQL.
+        import subprocess
+        head = '8b4a85f3be500fcd873afa70b72393264225f738'
+        run_id = 37683353078
+        paths = (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-migration.py', 'scripts/release-prepublication.py',
+            'scripts/release-operation-evidence.py',
+        )
+        sources = {path: subprocess.check_output(
+            ['git', 'show', head + ':' + path], text=True) for path in paths}
+        run = dict(self.run, id=run_id, head_sha=head,
+                   status='completed', conclusion='failure', run_attempt=1,
+                   head_repository={'full_name': 'owner/repo'})
+        required = {
+            'Prepare complete immutable release transaction': 'success',
+            'Synchronize canonical pre-publication resource lanes': 'failure',
+            'Reconcile complete immutable release transaction': 'success',
+            **{name: 'skipped' for name in (
+                'Submit canonical selected targets in parallel',
+                'Run independent auxiliary release fanout',
+                'Audit centralized Cloudflare routing authority',
+                'Deploy and activate LEGEND Founder Cloudflare baseline',
+                'Reconcile public custom-hostname Cloudflare policy',
+                'Deploy shared Cloudflare business website router',
+                'Verify every deployed target and collect all failures',
+                'Retain exact approved release receipt',
+                'Reconcile terminal release resource disposition',
+                'Preserve terminal release resource disposition',
+                *(f'Confirm first-pass durable publication receipt ({app})'
+                  for app in ('portal', 'client', 'protect', 'parfait', 'website')),
+            )},
+        }
+        steps = [dict(name=name, status='completed', conclusion=state)
+                 for name, state in required.items()]
+        job = dict(id=113008092937, name='release', status='completed',
+                   conclusion='failure', steps=steps)
+        step = next(z for z in steps if
+                    z['name'] == 'Synchronize canonical pre-publication resource lanes')
+        receipts = [
+            dict(name='legend-release-admission-'
+                 'd97115575e6d7ab5f50d603aedb43062d059a224247c7cc956aa707dab804b3e',
+                 expired=False, workflow_run=dict(id=run_id)),
+            dict(name='legend-release-step-state-'
+                 '9e1fe088ff640893706f7c469a69417cfa24ee8e-37683353078-1',
+                 expired=False, workflow_run=dict(id=run_id)),
+        ]
+        marker = ('2026-10-07T20:47:26.2321891Z Migration stage unresolved: '
+                  'schema-observation; preserve prior evidence and reconcile without replay.\n')
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, sha, path, token: sources[path]), \
+             patch.object(self.authority, '_release_job_log', return_value=marker), \
+             patch.object(self.authority, 'api_get',
+                          return_value={'artifacts': receipts,
+                                        'total_count': len(receipts)}):
+            proven = lambda: self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 1, 'token')
+            self.assertTrue(proven())
+            for name in ('legend-release-child-intent-' + 'f' * 64,
+                         'legend-release-operation-success-' + 'f' * 64,
+                         'diagnostics-rollback-portal-' + head):
+                receipts.append(dict(name=name, expired=False,
+                                     workflow_run=dict(id=run_id)))
+                self.assertFalse(proven())
+                receipts.pop()
+            for name in ('Audit centralized Cloudflare routing authority',
+                         'Verify every deployed target and collect all failures'):
+                row = next(z for z in steps if z['name'] == name)
+                row['conclusion'] = 'success'
+                self.assertFalse(proven())
+                row['conclusion'] = 'skipped'
+            receipts[0]['expired'] = True
+            self.assertFalse(proven())
 
     def test_original_prewrite_owners_reconcile_only_with_pinned_source_and_receipts(self):
         import subprocess
