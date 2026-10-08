@@ -79,7 +79,11 @@ try
     var appliedRegistered = applied.Where(id => !auditedLegacy.ContainsKey(id)).ToArray();
     if (!appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length), StringComparer.Ordinal))
         throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
-    var pending = known.Except(appliedRegistered, StringComparer.Ordinal).Count();
+    // Public migration identifiers (never application rows) are a bounded,
+    // ordered schema fence for reconciling completed older EF bundle generations.
+    // A read-only probe cannot authorize a new SQL write on its own.
+    var pendingIds = known.Except(appliedRegistered, StringComparer.Ordinal).ToArray();
+    var pending = pendingIds.Length;
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
@@ -89,6 +93,8 @@ try
         knownCount = known.Length + unknown.Length,
         appliedCount = applied.Length,
         pendingCount = pending,
+        lastAppliedMigrationId = appliedRegistered.LastOrDefault(),
+        firstPendingMigrationId = pendingIds.FirstOrDefault(),
         schemaIdentity = Convert.ToHexStringLower(SHA256.HashData(
             Encoding.UTF8.GetBytes(string.Join("\n", known))))
     }));
