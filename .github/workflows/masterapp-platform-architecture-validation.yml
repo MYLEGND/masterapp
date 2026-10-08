@@ -144,7 +144,33 @@ jobs:
       - name: Run branch lifecycle safety contracts
         id: gate_lifecycle
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Execute the canonical, strictly read-only historical EF no-write
+          # attestor with ACTUAL immutable Actions history BEFORE release.
+          # Prevents another expensive deployment from discovering a false
+          # historical no-write denial that tests with mocks could not catch.
+          python3 - <<'PYLEGACY'
+          import importlib.util, os
+          spec = importlib.util.spec_from_file_location('authority', 'scripts/validation-resume.py')
+          authority = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          repo, token = os.environ['GITHUB_REPOSITORY'], os.environ['GH_TOKEN']
+          run_id = 37129696534
+          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
+          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
+          if len(found) != 1:
+              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_JOB_UNPROVEN')
+          job = found[0]
+          matching = [step for step in job.get('steps', [])
+                      if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+          if len(matching) != 1 or not authority._attested_legacy_ef_factory_nonentry(
+                  repo, run, job, matching[0], 1, token):
+              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_PROOF_REJECTED')
+          print('LEGEND_EF_NONENTRY:AUTHENTICATED_READ_ONLY')
+          PYLEGACY
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
           python3 scripts/test-release-lifecycle.py
           python3 scripts/test-validation-resume.py
