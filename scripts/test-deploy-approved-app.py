@@ -893,6 +893,101 @@ class SettingsIdempotenceTests(unittest.TestCase):
         self.assertEqual(expected, writes)
 
 
+class MigrationMetadataAdmissionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            'prepublication_metadata_admission_test', ROOT / 'release-prepublication.py')
+        cls.owner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.owner)
+
+    def test_registered_metadata_and_context_changes_require_probe(self):
+        owner = self.owner
+        paths = (
+            'Infrastructure/Data/LegacyMetaAttributionMigrationMetadata.cs\n'
+            'Infrastructure/Data/MasterAppDbContext.cs\n'
+        )
+        with patch.object(owner, 'run', return_value=paths) as git:
+            self.assertTrue(owner.migration_metadata_changed('a' * 40, 'b' * 40))
+        git.assert_called_once_with([
+            'git', 'diff', '--name-only', 'a' * 40, 'b' * 40,
+            '--', 'Infrastructure/Data', 'Infrastructure/Migrations',
+        ], capture=True)
+
+    def test_designer_only_migration_metadata_change_enters_existing_probe(self):
+        owner = self.owner
+        with patch.object(owner, 'run', return_value=(
+            'Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.Designer.cs\n')):
+            self.assertTrue(owner.migration_metadata_changed('a' * 40, 'b' * 40))
+
+    def test_unrelated_migration_source_metadata_is_not_misclassified(self):
+        owner = self.owner
+        with patch.object(owner, 'run', return_value=(
+            'Infrastructure/Migrations/README.md\n'
+            'Infrastructure/Migrations/AnyOldHelper.cs\n')):
+            self.assertFalse(owner.migration_metadata_changed('a' * 40, 'b' * 40))
+
+    def test_unrelated_data_changes_do_not_trigger_schema_probe(self):
+        owner = self.owner
+        with patch.object(owner, 'run', return_value=(
+            'Infrastructure/Data/SomeRepository.cs\n'
+            'Infrastructure/Data/Info.txt\n')):
+            self.assertFalse(owner.migration_metadata_changed('a' * 40, 'b' * 40))
+
+    def test_metadata_only_release_reconciles_schema_without_replay(self):
+        owner = self.owner
+        environment = {
+            'PRESERVE_LIVE_TARGETS': 'false',
+            'SELECTED_DATABASE_DEPENDENT': 'true',
+            'EXPECTED_DB_BASE_SHA': 'a' * 40,
+            'APPLICATION_RELEASE_SHA': 'b' * 40,
+            'DATABASE_AUTHORITY': 'masterapp-portal',
+            'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
+        }
+        def read(command, **kwargs):
+            if 'resolve' in command:
+                return json.dumps({'runId': 123, 'artifact': 'validated-probe'})
+            if command[:3] == ['git', 'rev-parse', 'HEAD']:
+                return 'c' * 40
+            return ''
+
+        with (
+            patch.dict(os.environ, environment),
+            patch.object(owner, 'git_ok', return_value=True),
+            patch.object(owner, 'changed_migrations', return_value=[]),
+            patch.object(owner, 'migration_metadata_changed', return_value=True),
+            patch.object(owner, 'release_proven') as release_proof,
+            patch.object(owner, 'run', side_effect=read) as command,
+            patch.object(owner, '_invoke_migration_bundle') as migrate,
+        ):
+            result = owner.run_migration_lane()
+        self.assertEqual({'status': 'reconciled', 'changedMigrations': []}, result)
+        release_proof.assert_called_once()
+        migrate.assert_called_once()
+        self.assertTrue(any('verify' in call.args[0] for call in command.call_args_list))
+
+    def test_non_schema_changes_keep_migration_lane_skipped(self):
+        owner = self.owner
+        environment = {
+            'PRESERVE_LIVE_TARGETS': 'false',
+            'SELECTED_DATABASE_DEPENDENT': 'true',
+            'EXPECTED_DB_BASE_SHA': 'a' * 40,
+            'APPLICATION_RELEASE_SHA': 'b' * 40,
+        }
+        with (
+            patch.dict(os.environ, environment),
+            patch.object(owner, 'git_ok', return_value=True),
+            patch.object(owner, 'changed_migrations', return_value=[]),
+            patch.object(owner, 'migration_metadata_changed', return_value=False),
+            patch.object(owner, '_invoke_migration_bundle') as migrate,
+            patch.object(owner, 'release_proven') as release_proof,
+        ):
+            result = owner.run_migration_lane()
+        self.assertEqual({'status': 'not-applicable', 'changedMigrations': []}, result)
+        migrate.assert_not_called()
+        release_proof.assert_not_called()
+
+
 class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
