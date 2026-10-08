@@ -286,6 +286,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
             'scripts/release-migration.py',
             'scripts/release-prepublication.py',
+            'scripts/release-operation-evidence.py',
         ):
             historic[path] = subprocess.check_output(
                 ['git', 'show', head + ':' + path], text=True)
@@ -354,6 +355,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
             'scripts/release-prepublication.py',
             'scripts/release-migration.py',
+            'scripts/release-operation-evidence.py',
         )
         sources = {
             path: subprocess.check_output(
