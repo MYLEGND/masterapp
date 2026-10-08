@@ -432,20 +432,29 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
         return False
     _trusted_child_producer(repository, run)
 
-    approved = {
-        '.github/workflows/' + DIRECT_RELEASE_WORKFLOW:
-            '433ce0dcecbfc9ad8129cb108e44e773f96766bc',
-        'scripts/release-prepublication.py':
-            '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
-    }
-    for path, expected in approved.items():
+    # Bind both members of the exact audited historical wrapper pair.
+    # 37527468541 predates five-rollback preservation but already exits the
+    # migration lane before invoking any EF bundle on this fixed result.
+    blobs = {}
+    for path in ('.github/workflows/' + DIRECT_RELEASE_WORKFLOW,
+                 'scripts/release-prepublication.py'):
         source = _release_history_source(repository, run['head_sha'], path, token)
         payload = source.encode('utf-8')
-        digest = hashlib.sha1(
+        blobs[path] = hashlib.sha1(
             ('blob ' + str(len(payload)) + '\0').encode('ascii') + payload
         ).hexdigest()
-        if digest != expected:
-            return False
+    pairing = (blobs['.github/workflows/' + DIRECT_RELEASE_WORKFLOW],
+               blobs['scripts/release-prepublication.py'])
+    audited_pairs = {
+        ('433ce0dcecbfc9ad8129cb108e44e773f96766bc',
+         '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'),
+        ('90f16d86254eb0b7433d9500d63bd0b3aaaae4ee',
+         '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'),
+        ('4a69290e3462d6fae20dcd75d48b8639c5066c22',
+         '4357329104400dc36a59a739d8a823b548838baf'),
+    }
+    if pairing not in audited_pairs:
+        return False
 
     run_id = run['id']
     receipt = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
@@ -469,7 +478,10 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
         f"diagnostics-rollback-{app}-{run['head_sha']}"
         for app in ('portal', 'client', 'protect', 'parfait', 'website')
     }
-    if not rollback.issubset(names):
+    oldest_noop = pairing == (
+        '4a69290e3462d6fae20dcd75d48b8639c5066c22',
+        '4357329104400dc36a59a739d8a823b548838baf')
+    if not oldest_noop and not rollback.issubset(names):
         return False
     if sum(bool(re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n))
            for n in names) != 1:
