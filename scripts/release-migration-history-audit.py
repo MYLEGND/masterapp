@@ -25,7 +25,7 @@ BLOCKED_CODES = NOOP_CODES | {
     'HISTORICAL_PREWRITE_UNPROVEN', 'JOB_INVENTORY_INCOMPLETE',
     'RELEASE_JOB_MISSING', 'MIGRATION_STEP_MISSING',
     'EVIDENCE_READ_UNAVAILABLE', 'UNTRUSTED_PRODUCER',
-    'EF_MIGRATION_EXECUTION_ENTERED', 'EF_PENDING_MODEL_CHANGE',
+    'EF_PENDING_MODEL_CHANGE',
 }
 # Display names and classifications are authored here, never copied from raw
 # GitHub/SQL/provider exception messages, logs, or artifact bodies.
@@ -33,6 +33,7 @@ STATUS_CODES = BLOCKED_CODES | {
     'LEGACY_NOOP_PROVEN', 'LEGACY_PREWRITE_PROVEN',
     'MODERN_PREWRITE_PROVEN', 'MODERN_NOOP_PROVEN',
     'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE',
+    'EF_MIGRATION_EXECUTION_ENTERED',
     'NO_MIGRATION_STEP_ENTERED', 'PREPUBLICATION_NOT_ENTERED',
 }
 
@@ -238,7 +239,8 @@ def main():
     records = report['records']
     blockers = [r for r in records if r['code'] in BLOCKED_CODES]
     possible = [r for r in records
-                if r['code'] == 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE']
+                if r['code'] in {'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE',
+                                 'EF_MIGRATION_EXECUTION_ENTERED'}]
     report['blockingCount'] = len(blockers)
     report['requiresPhysicalSqlFence'] = len(possible)
     output = os.environ.get('LEGEND_MIGRATION_AUDIT_OUTPUT', '').strip()
@@ -252,14 +254,14 @@ def main():
         print('LEGEND_MIGRATION_AUDIT:BLOCKED:run=' + str(row['run']) +
               ':attempt=' + str(row['attempt']) + ':code=' + row['code'] +
               ':sourceBlob=' + (row.get('sourceBlob') or 'unknown'), flush=True)
-    # Evidence inventory is OBSERVATION only: a historical EF SQL attempt
-    # expectedly remains listed until the canonical protected release checks
-    # the fresh physical schema and journal. These findings are NOT a code
-    # compilation failure, and must not force another PR for each historical
-    # run. The production first-write gate remains fail-closed regardless.
-    print('LEGEND_MIGRATION_AUDIT:OBSERVATION_ONLY:unresolved=' +
-          str(len(blockers)) + ':SQL_WRITE_NOT_AUTHORIZED', flush=True)
-    return 0
+    # Unproven source, missing attempt evidence or untrusted producer is a
+    # hard CI failure. A positively observed EF execution is NOT a no-write:
+    # preserve it as NEEDS_PHYSICAL_SQL, and require a fresh production SQL
+    # applied-prefix/catalog probe plus child journal at the actual first-write
+    # admission. Green CI alone never authorizes the new migration.
+    print('LEGEND_MIGRATION_AUDIT:SQL_RECONCILIATION_REQUIRED=' +
+          str(len(possible)) + ':SQL_WRITE_NOT_AUTHORIZED', flush=True)
+    return 1 if blockers else 0
 
 
 if __name__ == '__main__':
