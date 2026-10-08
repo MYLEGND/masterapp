@@ -265,6 +265,94 @@ class ReleaseChildTests(unittest.TestCase):
         self.assertEqual(len(self.published), 3)
 
 
+class EarlyMigrationReadinessTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.bundle = Path(self.temp.name) / 'masterapp-migrations'
+        self.bundle.write_bytes(b'exact validated EF bundle')
+        self.probe = Path(self.temp.name) / 'MigrationReleaseProbe.dll'
+        self.probe.write_bytes(b'validated observer')
+        self.env = patch.dict(os.environ, {
+            'RELEASE_RESOURCE_GROUP': 'masterapp-rg',
+            'DATABASE_AUTHORITY': 'masterapp-portal',
+        })
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def schema(self, ready):
+        return dict(schemaIdentity='c' * 64, ready=ready,
+                    pendingCount=0 if ready else 1,
+                    firstPendingMigrationId=None if ready else '20261007134500_AddFounderAssistantRules',
+                    lastAppliedMigrationId='20261003091500_CanonicalizeBusinessFinanceToolState')
+
+    def test_fresh_zero_pending_reuses_without_bundle_or_historical_scans(self):
+        with patch.object(migration, 'observe', return_value=self.schema(True)), \
+             patch.object(migration, 'journal_type',
+                          side_effect=AssertionError('journal must not run')):
+            self.assertEqual(migration.preflight(None, self.probe, 'masked'), 'ready')
+
+    def test_pending_sql_authenticates_first_write_without_publishing_intent(self):
+        calls = []
+        class Authority:
+            def release_child_first_write_proven(*args, **kwargs):
+                calls.append((args, kwargs))
+                return True
+        class Journal:
+            intent = success = None
+            authority = Authority()
+            repository = 'owner/repo'
+            child = 'migrations'
+            identity = material_identity = partition_identity = 'a' * 64
+            run = 100
+            attempt = 1
+            token = 'token'
+            revision = 'b' * 40
+        with patch.object(migration, 'observe', return_value=self.schema(False)), \
+             patch.object(migration, 'journal_type', return_value=lambda *a, **k: Journal()):
+            self.assertEqual(migration.preflight(self.bundle, self.probe, 'masked'), 'pending')
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            calls[0][1]['first_pending_migration_id'],
+            '20261007134500_AddFounderAssistantRules')
+        self.assertEqual(calls[0][1]['current_application_revision'], 'b' * 40)
+
+    def test_ambiguous_or_missing_bundle_fails_closed_before_write(self):
+        class Journal:
+            intent = {'unresolved': True}
+            success = None
+        with patch.object(migration, 'observe', return_value=self.schema(False)), \
+             patch.object(migration, 'journal_type', return_value=lambda *a, **k: Journal()):
+            with self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.preflight(None, self.probe, 'masked')
+            with self.assertRaisesRegex(RuntimeError, 'child-history'):
+                migration.preflight(self.bundle, self.probe, 'masked')
+
+    def test_source_equivalence_cannot_hide_live_pending_sql(self):
+        import os
+        prepublication = load('release-prepublication')
+        env = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
+                   EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
+                   DATABASE_AUTHORITY='masterapp-portal')
+        with patch.dict(os.environ, env), \
+             patch.object(prepublication, 'git_ok', return_value=True), \
+             patch.object(prepublication, 'changed_migrations', return_value=[]), \
+             patch.object(prepublication, 'release_proven'), \
+             patch.object(prepublication, 'run', return_value='{"runId":1,"artifact":"probe"}'), \
+             patch.object(prepublication, '_invoke_migration_bundle') as execute:
+            os.environ['MIGRATION_READINESS_PENDING'] = 'true'
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'reconciled')
+            execute.assert_called_once()
+            execute.reset_mock()
+            os.environ['MIGRATION_READINESS_PENDING'] = 'false'
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'not-applicable')
+            execute.assert_not_called()
+            del os.environ['MIGRATION_READINESS_PENDING']
+            with self.assertRaisesRegex(RuntimeError, 'readiness gate'):
+                prepublication.run_migration_lane()
+
+
 class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
     def setUp(self):
         self.authority = load('validation-resume')
