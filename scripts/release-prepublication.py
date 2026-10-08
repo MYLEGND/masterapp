@@ -488,7 +488,14 @@ def run_migration_lane():
         raise RuntimeError("Live database baseline and application revision diverged")
 
     changed = changed_migrations(base, revision)
-    if not changed and not migration_metadata_changed(base, revision):
+    metadata_changed = migration_metadata_changed(base, revision)
+    # Reuse the fresh, successful upstream LIVE SQL readiness result.
+    # Source-equivalence only saves build work: it never means SQL has zero
+    # pending migrations. A missing readiness receipt is NOT a cache hit.
+    readiness = os.environ.get("MIGRATION_READINESS_PENDING")
+    if readiness not in {"true", "false"}:
+        raise RuntimeError("Canonical live migration readiness gate was not completed")
+    if not changed and not metadata_changed and readiness == "false":
         return {"status": "not-applicable", "changedMigrations": []}
 
     release_proven(base, require(os.environ.get("DATABASE_AUTHORITY", ""), "database authority"))
