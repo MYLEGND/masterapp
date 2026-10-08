@@ -487,17 +487,17 @@ def run_migration_lane():
     else:
         raise RuntimeError("Live database baseline and application revision diverged")
 
-    changed = changed_migrations(base, revision)
-    metadata_changed = migration_metadata_changed(base, revision)
-    # Reuse the fresh, successful upstream LIVE SQL readiness result.
-    # Source-equivalence only saves build work: it never means SQL has zero
-    # pending migrations. A missing readiness receipt is NOT a cache hit.
+    # The first release job already observed the live EF catalog and physical
+    # SQL schema. Reuse THAT fresh current-run result, never a source diff or
+    # stale artifact, to decide whether database execution is necessary.
     readiness = os.environ.get("MIGRATION_READINESS_PENDING")
     if readiness not in {"true", "false"}:
         raise RuntimeError("Canonical live migration readiness gate was not completed")
-    if not changed and not metadata_changed and readiness == "false":
+    if readiness == "false":
         return {"status": "not-applicable", "changedMigrations": []}
-
+    changed = changed_migrations(base, revision)
+    # A migration remains pending even if source files match the live baseline.
+    # Material/partition journaling is still checked by the canonical runner.
     release_proven(base, require(os.environ.get("DATABASE_AUTHORITY", ""), "database authority"))
     run([
         sys.executable, "scripts/release-package.py", "verify",
