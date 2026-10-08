@@ -2399,6 +2399,10 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
             'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
             '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            # PR #525 execution authority fe115eb9: EF metadata-only
+            # probe registration added. The historical write owners remain
+            # journaled, and all mutation receipts must still be absent.
+            '29c23b084d059d5f1663c98631be7557ec86fa67',
         },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
