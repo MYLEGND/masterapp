@@ -1246,6 +1246,45 @@ def integrate(api, number):
     return merge_validated(api, pr)
 
 
+def _cancelled_before_admission_nonentry(api, run):
+    """Recognize only a cancellation before the admission job began.
+
+    Authenticated exact-generation job topology and nonpublication observers
+    are independently checked by the existing read-only nonentry authority.
+    A started admission, missing evidence, or any additional intent remains
+    blocked; cancellation alone is never a no-write proof.
+    """
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') != 'cancelled'
+        or type(run.get('run_attempt')) is not int
+        or run['run_attempt'] != 1
+        or type(run.get('id')) is not int or run['id'] < 1
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_branch') != APPROVED
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha', ''))):
+        return False
+
+    jobs = api.pages(f"actions/runs/{run['id']}/attempts/1/jobs", 'jobs')
+    admission = [job for job in jobs if job.get('name') == 'admission']
+    if (len(admission) != 1
+        or admission[0].get('status') != 'completed'
+        or admission[0].get('conclusion') != 'cancelled'
+        or admission[0].get('steps') != []):
+        return False
+    source = api.text(run['head_sha'], '.github/workflows/' + DIRECT)
+    if not VALIDATION_AUTHORITY.release_attempt_never_entered(jobs, source):
+        return False
+
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    expected = f"legend-release-step-state-{run['head_sha']}-{run['id']}-1"
+    return (len(artifacts) == 1
+        and artifacts[0].get('name') == expected
+        and artifacts[0].get('expired') is False
+        and (artifacts[0].get('workflow_run') or {}).get('id') == run['id'])
+
+
 def _merged_owner_terminal_nonentry_proven(api, owner):
     """Discharge a merged release queue owner only after exact no-write proof.
 
@@ -1262,7 +1301,7 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
     # A failed nonpublishing candidate can have been recovered under a newer
     # protected authority. Verify EACH immutable attempt, never assume two
     # GitHub release attempts are interchangeable or treat failure as success.
-    if (not 1 <= len(matching) <= 2
+    if (not 1 <= len(matching) <= 16
         or any(type(run.get('id')) is not int or run['id'] < 1 for run in matching)
         or len({run['id'] for run in matching}) != len(matching)):
         return False
@@ -1272,12 +1311,16 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
     for run in matching:
         authority_sha = run.get('head_sha')
         if (run.get('status') != 'completed'
-            or run.get('conclusion') != 'failure'
+            or run.get('conclusion') not in {'failure', 'cancelled'}
             or not isinstance(authority_sha, str)
             or not SHA.fullmatch(authority_sha)
             or (authority_sha != original_merge
                 and not ancestor(original_merge, authority_sha))):
             return False
+        if run['conclusion'] == 'cancelled':
+            if not _cancelled_before_admission_nonentry(api, run):
+                return False
+            continue
         records = _admission_records(api, run)
         if len(records) != 1:
             return False
