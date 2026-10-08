@@ -517,7 +517,7 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
     return matches == 1
 
 
-def _historical_migration_prewrite_proven(repository, run, job, step, token):
+def _historical_migration_prewrite_proven(repository, run, job, step, attempt, token):
     """Positive, content-attested proof that a *previous* migration never wrote.
 
     This does not authorize current SQL. The caller's canonical child journal
@@ -531,7 +531,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, token):
         or step.get("name") != "Synchronize canonical pre-publication resource lanes"
         or step.get("status") != "completed" or step.get("conclusion") != "failure"
         or type(run.get("id")) is not int or run["id"] < 1
-        or type(run.get("run_attempt")) is not int or not 1 <= run["run_attempt"] <= 2
+        or type(run.get("run_attempt")) is not int or not 1 <= run["run_attempt"] <= 20
+        or type(attempt) is not int or not 1 <= attempt <= run["run_attempt"]
+        or (job.get("run_attempt") is not None and job["run_attempt"] != attempt)
         or not re.fullmatch(
             r"LEGEND release pr=[0-9]+ candidate=[a-f0-9]{40} authority="
             + re.escape(run.get("head_sha", "")),
@@ -582,18 +584,21 @@ def _historical_migration_prewrite_proven(repository, run, job, step, token):
             or type(artifacts.get("total_count")) is not int
             or len(rows) != artifacts["total_count"]
             or any(not isinstance(item, dict) or item.get("expired") is not False
-                   or not isinstance(item.get("name"), str) for item in rows)):
+                   or not isinstance(item.get("name"), str)
+                   or item.get("workflow_run", {}).get("id") != run["id"]
+                   for item in rows)):
             return False
         names = [item["name"] for item in rows]
         if (len(names) != len(set(names))
             or any(name.startswith(("legend-release-child-intent-",
+                                    "legend-release-child-success-",
                                     "legend-release-operation-intent-",
                                     "legend-release-operation-success-"))
                    for name in names)):
             return False
         # The terminal GitHub step receipt proves the full failed attempt was
         # observed. An expired/missing or mismatched receipt is not no-write.
-        suffix = f"-{run['id']}-{run['run_attempt']}"
+        suffix = f"-{run['id']}-{attempt}"
         if len([name for name in names
                 if name.startswith("legend-release-step-state-")
                 and name.endswith(suffix)]) != 1:
@@ -724,7 +729,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         continue
                 if (child == 'migrations'
                     and _historical_migration_prewrite_proven(
-                        repository, run, job, steps[0], token)):
+                        repository, run, job, steps[0], attempt, token)):
                     continue
                 if inventory is None:
                     artifact_payload = api_get(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
