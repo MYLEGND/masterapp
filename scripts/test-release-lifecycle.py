@@ -1908,10 +1908,11 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
         original[1]['expired'] = True
         self.assertFalse(self.proven())
         original[1]['expired'] = False
-        old = self.steps[0]['conclusion']
-        self.steps[0]['conclusion'] = 'success'
+        publication = next(step for step in self.steps
+                           if step['name'] == 'Submit canonical selected targets in parallel')
+        publication['conclusion'] = 'success'
         self.assertFalse(self.proven())
-        self.steps[0]['conclusion'] = old
+        publication['conclusion'] = 'skipped'
         original.pop()
         self.assertFalse(self.proven())
 
