@@ -27,6 +27,7 @@ namespace AgentPortal.Services;
 public interface IFounderSoftwareRemediationService
 {
     Task<object> GetStatusAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<FounderReleaseFailureEvidence>> ReadRecentFailedReleaseEvidenceAsync(CancellationToken cancellationToken);
     Task<object> ConnectAsync(string founderUserId, CancellationToken cancellationToken);
     Task<object> VerifyAuthorityAsync(CancellationToken cancellationToken);
     Task<object> TestRepairPreparationAsync(CancellationToken cancellationToken);
