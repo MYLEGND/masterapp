@@ -833,7 +833,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.api = original
         self.run['run_attempt'] = 2
         self.step['conclusion'] = 'failure'
-        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+        with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
             self.check(current_run=7, attempt=2)
 
     def test_actual_legacy_schema_neutral_step_requires_bounded_positive_log(self):
@@ -896,7 +896,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
     def test_failed_started_child_and_current_run_prior_attempt_fail_closed(self):
         self.step.update(conclusion='failure')
         self.run['run_attempt'] = 2
-        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+        with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
             self.check(current_run=7, attempt=2)
 
     def test_distinct_authenticated_original_physical_generation_allows_new_work(self):
