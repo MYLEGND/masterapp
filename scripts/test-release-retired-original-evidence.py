@@ -45,7 +45,7 @@ for run_id, kind in fixtures.items():
         current_application_revision=subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], text=True).strip())
     if not positive:
-        raise SystemExit('RETIRED_EVIDENCE:ORIGINAL_PROOF_REJECTED')
+        raise SystemExit('RETIRED_EVIDENCE:ORIGINAL_PROOF_REJECTED:run=' + str(run_id))
     # An entered EF attempt must NOT become the other no-write classifier.
     if kind == 'live-prefix' and a._legacy_migration_noop(
             repo, run, job, steps[0], source, token):
@@ -61,5 +61,5 @@ for run_id in (36278311858, 36275526793):
     if (response.get('total_count') != len(jobs) or len(owners) != 1
         or not a._attested_retired_unscheduled_release(
             repo, run, owners[0], jobs, 1, token)):
-        raise SystemExit('RETIRED_EVIDENCE:UNSCHEDULED_PROOF_REJECTED')
+        raise SystemExit('RETIRED_EVIDENCE:UNSCHEDULED_PROOF_REJECTED:run=' + str(run_id))
     print('RETIRED_EVIDENCE:ORIGINAL_UNSCHEDULED:run=' + str(run_id))
