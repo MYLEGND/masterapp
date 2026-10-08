@@ -446,6 +446,25 @@ def changed_migrations(base, revision):
     )
 
 
+def migration_metadata_changed(base, revision):
+    """EF discovery metadata changes require the same read-only history proof.
+
+    An existing migration's compiled registration may change without touching
+    Infrastructure/Migrations. Do not mistake that for a schema-free release.
+    """
+    raw = run(
+        ["git", "diff", "--name-only", base, revision, "--", "Infrastructure/Data"],
+        capture=True,
+    )
+    return any(
+        re.fullmatch(
+            r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\.cs",
+            path.strip(),
+        )
+        for path in raw.splitlines()
+    )
+
+
 def release_proven(base, authority):
     path = ROOT / "scripts" / "release-lifecycle.py"
     spec = importlib.util.spec_from_file_location("release_lifecycle", path)
@@ -472,7 +491,7 @@ def run_migration_lane():
         raise RuntimeError("Live database baseline and application revision diverged")
 
     changed = changed_migrations(base, revision)
-    if not changed:
+    if not changed and not migration_metadata_changed(base, revision):
         return {"status": "not-applicable", "changedMigrations": []}
 
     release_proven(base, require(os.environ.get("DATABASE_AUTHORITY", ""), "database authority"))
