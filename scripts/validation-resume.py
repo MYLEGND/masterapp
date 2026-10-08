@@ -348,7 +348,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
         == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc')
     if (not (original_block or trusted_source)
         or job.get('status') != 'completed'
-        or job.get('conclusion') not in {'success', 'failure'}
+        or job.get('conclusion') not in {'success', 'failure', 'cancelled'}
         or type(job.get('id')) is not int
         or step.get('name') != legacy or step.get('status') != 'completed'
         or step.get('conclusion') != 'success'):
@@ -360,6 +360,42 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     if (not trusted_source and
         hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest() != '0b2c73c15828a62dc7440c79fe6ae3ac072af6a2442f1f5d52f31eeebd79629a'):
         return False
+    # A parent CANCELLED during later publication can still have a completely
+    # finished migration no-op step. The original immutable workflow exits
+    # BEFORE PYMIGRATE on the exact output marker authenticated below.
+    # Require the cancelled run's entire original artifact inventory so a
+    # retained migration intent never becomes permission to replay SQL.
+    if job.get('conclusion') == 'cancelled':
+        if (run.get('status') != 'completed' or run.get('conclusion') != 'cancelled'
+            or run.get('run_attempt') != 1):
+            return False
+        try:
+            _trusted_child_producer(repository, run)
+            inventory = api_get(
+                repository, f"actions/runs/{run['id']}/artifacts?per_page=100",
+                token)
+            rows = inventory.get('artifacts')
+            if (type(inventory.get('total_count')) is not int
+                or not isinstance(rows, list) or len(rows) != inventory['total_count']
+                or len(rows) > 100
+                or any(not isinstance(x, dict)
+                       or x.get('expired') is not False
+                       or (x.get('workflow_run') or {}).get('id') != run['id']
+                       or not isinstance(x.get('name'), str) for x in rows)):
+                return False
+            names = [x['name'] for x in rows]
+            if (len(names) != len(set(names))
+                or sum(bool(re.fullmatch(
+                    rf'legend-release-step-state-[a-f0-9]{{40}}-{run["id"]}-1',
+                    name)) for name in names) != 1
+                or any(name.startswith((
+                    'legend-release-child-intent-',
+                    'legend-release-child-success-'))
+                       for name in names)):
+                return False
+        except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+                OSError, UnicodeError, subprocess.SubprocessError):
+            return False
     try:
         start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
         end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
