@@ -3188,12 +3188,12 @@ def diagnose_completed_workflow(api, run_id):
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary and results:
         with open(summary, 'a') as target:
-            target.write(f'\\n### LEGEND {default_stage}: authenticated failed steps\\n')
-            target.write('Reason codes report the owning stage. Exact root cause is unknown unless explicitly classified. No automatic write is authorized.\\n')
+            target.write(f'\n### LEGEND {default_stage}: authenticated failed steps\n')
+            target.write('Reason codes report the owning stage. Exact root cause is unknown unless explicitly classified. No automatic write is authorized.\n')
             for row in results:
                 target.write(f"- {row['stage']} / {row['reasonCode']}; "
                              f"run {run_id}, attempt {attempt}, job {row['jobId']}, "
-                             f"step {row['stepNumber'] or 'unavailable'}\\n")
+                             f"step {row['stepNumber'] or 'unavailable'}\n")
     return result
 
 
