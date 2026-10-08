@@ -892,12 +892,47 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertTrue(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
             self.assertFalse(self.authority._legacy_migration_noop(
-                'owner/repo', dict(run, id=123), job, step, source, 'fixture'))
+                'owner/repo', dict(run, head_sha='0' * 40), job, step, source, 'fixture'))
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source + '\n# modified source\n', 'fixture'))
         with patch.object(self.authority, '_release_job_log',
                           return_value=log.replace('No candidate migration source changed',
                                                    'Executed a migration bundle')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_failed_20261003_downstream_parent_does_not_turn_prior_migration_noop_into_write(self):
+        import subprocess
+        original_head = '49d7e5d783523ce0d8df27e4fbd0932f7ce7c92d'
+        source = subprocess.check_output(
+            ['git', 'show', original_head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37145511654, head_sha=original_head, run_attempt=2)
+        job = dict(id=111268755665, status='completed', conclusion='failure')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T18:50:37Z',
+                    completed_at='2026-10-03T18:50:38Z')
+        log = ('2026-10-03T18:48:54.5477912Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T18:48:54.5507636Z ' + original_head + '\n'
+               '2026-10-03T18:50:37.0795751Z No candidate migration source changed '
+               'from the database baseline; migration receipt gate is not applicable.\n')
+        self.assertTrue(self.authority._audited_legacy_migration_noop_source(source))
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source + '\n# altered\n', 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', dict(run, head_sha='0' * 40), job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, dict(step, conclusion='failure'), source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, dict(job, conclusion='cancelled'), step, source, 'fixture'))
+        with patch.object(self.authority, '_release_job_log', return_value=log.replace(
+                'No candidate migration source changed', 'Migration bundle executed')), \
              patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
