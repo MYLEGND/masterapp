@@ -966,6 +966,33 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
 
+    def test_original_proven_baseline_noop_wording_requires_its_own_source(self):
+        import subprocess
+        head = 'a31831c6221cb8103ae87aec5be4c8f186805d68'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37086116111, head_sha=head)
+        job = dict(id=111096853756, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T01:28:26Z',
+                    completed_at='2026-10-03T01:28:27Z')
+        log = ('2026-10-03T01:27:58.4010000Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T01:27:58.4043106Z ' + head + '\n'
+               '2026-10-03T01:28:27.2625786Z No candidate migration source '
+               'changed from the proven database baseline.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+        with patch.object(self.authority, '_release_job_log', return_value=log.replace(
+                'from the proven database baseline.',
+                'from the database baseline; migration receipt gate is not applicable.')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess
         source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
