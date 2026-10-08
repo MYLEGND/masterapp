@@ -19,6 +19,7 @@ PROBE_TERMINAL_REASONS = {
     'MIGRATIONS_MISSING': 'Validated probe reports no known migrations',
     'UNKNOWN_APPLIED_MIGRATION': 'Database contains applied migration history absent from validated bundle',
     'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
+    'PHYSICAL_SCHEMA_DRIFT': 'Production physical schema disagrees with validated EF history',
     'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
 }
 OBSERVATION_ERRORS = set(PROBE_TERMINAL_REASONS.values()) | {
