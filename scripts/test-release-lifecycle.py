@@ -1876,6 +1876,61 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
         ]
         self.assertTrue(self.proven())  # Reused immutable plan is valid history.
 
+    def test_actual_pr505_retained_rollback_producer_releases_only_no_write_lease(self):
+        # Verified October 7 run 37674186895 had EXACTLY three unexpired
+        # artifacts: its signed admission, step-state, and transaction plan.
+        # All five rollback packages were reused from earlier producers,
+        # never re-uploaded by this failed release. Missing local rollback
+        # artifacts are not evidence of database writes.
+        self.record['admissionId'] = (
+            '91c45ba15956763c106522358243a9edfe2d89405237f0ec5f7f12e16529b47a'
+        )
+        original = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+        original[:] = [
+            {'name': 'legend-release-admission-' + self.record['admissionId'],
+             'expired': False},
+            {'name': f"legend-release-step-state-{self.record['applicationRevision']}-"
+                     f"{self.run['id']}-1", 'expired': False},
+            {'name': 'legend-release-transaction-plan-'
+                     '97af370c4ba860c6ecb06846ff9363ea513ec10a70d76a2349e7046013866a9f',
+             'expired': False},
+        ]
+        self.assertTrue(self.proven())
+        # Missing positive source/step/receipt, even with the same
+        # historical run ID, must never release the old resource lease.
+        for prefix in ('legend-release-child-intent-',
+                       'legend-release-operation-intent-',
+                       'legend-release-child-success-'):
+            with self.subTest(prefix=prefix):
+                original.append({'name': prefix + 'f' * 64, 'expired': False})
+                self.assertFalse(self.proven())
+                original.pop()
+        original[1]['expired'] = True
+        self.assertFalse(self.proven())
+        original[1]['expired'] = False
+        publication = next(step for step in self.steps
+                           if step['name'] == 'Submit canonical selected targets in parallel')
+        publication['conclusion'] = 'success'
+        self.assertFalse(self.proven())
+        publication['conclusion'] = 'skipped'
+        # The transaction plan is optional (it is read-only). Removing the
+        # required terminal step-state, not the optional plan, must fail closed.
+        original.pop(1)
+        self.assertFalse(self.proven())
+
+    def test_partial_or_foreign_local_rollback_inventory_cannot_prove_nonentry(self):
+        artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+        artifacts[:] = [row for row in artifacts
+                        if not row['name'].startswith('diagnostics-rollback-')]
+        self.assertTrue(self.proven())
+        artifacts.append({'name': 'diagnostics-rollback-portal-' + self.HEAD,
+                          'expired': False})
+        self.assertFalse(self.proven())
+        artifacts.pop()
+        artifacts.append({'name': 'diagnostics-rollback-portal-' + 'f' * 40,
+                          'expired': False})
+        self.assertFalse(self.proven())
+
     def test_any_durable_intent_blocks_discharge(self):
         artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
         for prefix in ('legend-release-child-intent-', 'legend-release-operation-intent-'):

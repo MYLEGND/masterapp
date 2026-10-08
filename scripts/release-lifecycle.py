@@ -2516,15 +2516,25 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         f"legend-release-step-state-{record['applicationRevision']}-{run['id']}-{attempt}"
         for attempt in range(1, run['run_attempt'] + 1)
     )
-    expected.update(
+    # Rollback packages are immutable inputs downloaded from previously
+    # validated producer runs. They are NOT mutation-intent receipts, and a
+    # successful "reuse retained live package" needs no re-upload in THIS
+    # release. Require an all-or-none inventory when local rollback artifacts
+    # do exist; partial inventory remains unproven. The release job, exact
+    # mutation-step outcomes, and full artifact inventory below still own
+    # the no-write proof. Do not introduce another admission ledger.
+    rollback = {
         f"diagnostics-rollback-{key}-{revision}" for key in keys
-    )
+    }
     actual = set(names)
-    optional = actual - expected
-    if not expected.issubset(actual) or len(optional) > 1 or any(
-        not re.fullmatch(r'legend-release-transaction-plan-[0-9a-f]{64}', name)
-        for name in optional
-    ):
+    retained_here = actual & rollback
+    optional = actual - expected - rollback
+    if (not expected.issubset(actual)
+        or retained_here not in (set(), rollback)
+        or len(optional) > 1
+        or any(not re.fullmatch(
+            r'legend-release-transaction-plan-[0-9a-f]{64}', name)
+            for name in optional)):
         return False
 
     source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
