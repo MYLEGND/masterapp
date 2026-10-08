@@ -277,6 +277,86 @@ class ChildHistorySafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
             self.check()
 
+    def test_exact_failed_prepublication_migration_is_prewrite_only_with_positive_proof(self):
+        import subprocess
+        head = 'fe115eb9f3f7ebd753307ec193f7cf4121ee9470'
+        run_id = 37722599537
+        historic = {}
+        for path in (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-migration.py',
+            'scripts/release-prepublication.py',
+        ):
+            historic[path] = subprocess.check_output(
+                ['git', 'show', head + ':' + path], text=True)
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=1,
+                   head_repository={'full_name': 'owner/repo'})
+        job = dict(id=113135272248, name='release', status='completed',
+                   conclusion='failure')
+        step = dict(name=self.authority.DIRECT_RELEASE_CHILDREN['migrations']['step'],
+                    status='completed', conclusion='failure')
+        application_revision = 'f4d546ccd50dd35ff20eafecb4d51e6fbdd0e54b'
+        names = [
+            'legend-release-admission-' + 'a' * 64,
+            f'legend-release-step-state-{application_revision}-{run_id}-1',
+            'legend-release-transaction-plan-' + 'b' * 64,
+            *(f'diagnostics-rollback-{key}-{head}'
+              for key in ('portal', 'client', 'protect', 'parfait', 'website')),
+        ]
+        artifacts = [
+            dict(name=name, expired=False, workflow_run=dict(id=run_id))
+            for name in names
+        ]
+        marker = 'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission'
+        evidence = '2026-10-08T03:38:48.4471578Z ' + marker + '\\n'
+        def read(repo, path, token):
+            self.assertEqual(repo, 'owner/repo')
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=artifacts, total_count=len(artifacts))
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, sha, path, token: historic[path]), \\
+             patch.object(self.authority, 'api_get', side_effect=read), \\
+             patch.object(self.authority, '_release_job_log', return_value=evidence) as log:
+            self.assertTrue(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            log.assert_called_once_with('owner/repo', job['id'], 'token')
+            # A changed migration owner, even with the same human-friendly
+            # failure message, cannot discharge a historical first-write lease.
+            original = historic['scripts/release-migration.py']
+            historic['scripts/release-migration.py'] = original + '\\n# altered'
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            historic['scripts/release-migration.py'] = original
+            artifacts.append(dict(name='legend-release-child-intent-' + 'f' * 64,
+                                  expired=False, workflow_run=dict(id=run_id)))
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            artifacts.pop()
+            artifacts[0]['workflow_run']['id'] = run_id + 1
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            artifacts[0]['workflow_run']['id'] = run_id
+            artifacts.pop()
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            artifacts.append(dict(name=names[-1], expired=False,
+                                  workflow_run=dict(id=run_id)))
+            step['conclusion'] = 'success'
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+
+    def test_migration_history_can_only_skip_after_attested_failure(self):
+        self.step['conclusion'] = 'failure'
+        with patch.object(self.authority, '_attested_migration_prewrite_failure',
+                          return_value=True) as proof:
+            self.assertTrue(self.check())
+            proof.assert_called_once()
+        with patch.object(self.authority, '_attested_migration_prewrite_failure',
+                          return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                self.check()
+
     def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
         source = Path(__file__).with_name('..').resolve() / '.github/workflows' / self.authority.DIRECT_RELEASE_WORKFLOW
         source = source.read_text()
