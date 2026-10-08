@@ -5,11 +5,23 @@ on:
     branches: [legend/approved-changes]
     paths: ['.github/workflows/deployment-diagnostics.yml']
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Read-only observation scope
+        required: true
+        default: deployment
+        type: choice
+        options: [deployment, migration_inventory]
+      application_revision:
+        description: Exact validated application SHA for migration inventory
+        required: false
+        type: string
 permissions:
   contents: read
   id-token: write
 jobs:
   inspect:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'deployment'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: Production
@@ -402,3 +414,114 @@ jobs:
           with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
               for result in pool.map(observe,urls): print(json.dumps(result))
           PYHTTP
+
+
+  migration-inventory:
+    # Observation only. No release admission, journal mutation, SQL writes,
+    # application publication, or rebuild of a validated package.
+    if: github.event_name == 'workflow_dispatch' && inputs.scope == 'migration_inventory' && github.ref == 'refs/heads/legend/approved-changes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: Production
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      APPLICATION_REVISION: ${{ inputs.application_revision }}
+      TOOL_REVISION: ${{ github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_RESOURCE_GROUP: masterapp-rg
+      DATABASE_AUTHORITY: masterapp-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve exact validated read-only migration probe
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$APPLICATION_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$APPLICATION_REVISION" "$TOOL_REVISION"
+          python3 scripts/migration-probe-package.py resolve             --tool-revision "$TOOL_REVISION" --application-revision "$APPLICATION_REVISION"             --directory "$RUNNER_TEMP/migration-inventory-probe" --output "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.probe.outputs.artifact }}
+          run-id: ${{ steps.probe.outputs.runId }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-inventory-probe
+      - name: Verify immutable observation package
+        run: |
+          python3 scripts/migration-probe-package.py verify             --tool-revision "$TOOL_REVISION" --application-revision "$APPLICATION_REVISION"             --directory "$RUNNER_TEMP/migration-inventory-probe"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Observe complete live EF history without SQL mutation
+        shell: bash
+        run: |
+          python3 - <<'PYINVENTORY'
+          import hashlib, importlib.util, json, os, pathlib, re, subprocess
+          spec = importlib.util.spec_from_file_location('migration', 'scripts/release-migration.py')
+          owner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(owner)
+          probe = pathlib.Path(os.environ['RUNNER_TEMP']) / 'migration-inventory-probe/MigrationReleaseProbe.dll'
+          try:
+              connection = owner.connection_string()
+              result = subprocess.run(['dotnet', str(probe), '--inventory'],
+                  env=os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection},
+                  capture_output=True, text=True, timeout=60, check=False)
+              if result.returncode or result.stderr.strip() or len(result.stdout.encode()) > 4194304:
+                  raise ValueError('Observation unavailable')
+              value = json.loads(result.stdout)
+              expected = {'schemaVersion', 'purpose', 'authorizesMutation', 'observedUtc',
+                  'migrationHistory', 'appliedMigrationIds', 'recognizedMigrationIds',
+                  'pendingMigrationIds', 'unrecognizedAppliedMigrationIds', 'schemaIdentity'}
+              if set(value) != expected or value['schemaVersion'] != 1 or value['authorizesMutation'] is not False or value['purpose'] != 'read-only-migration-inventory':
+                  raise ValueError('Observation identity invalid')
+              for key in ('appliedMigrationIds', 'recognizedMigrationIds', 'pendingMigrationIds', 'unrecognizedAppliedMigrationIds'):
+                  rows = value[key]
+                  if not isinstance(rows, list) or len(rows) > 10000 or any(not isinstance(x, str) or not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]{1,128}', x) for x in rows) or rows != sorted(set(rows)):
+                      raise ValueError('Inventory invalid')
+              applied, known = value['appliedMigrationIds'], value['recognizedMigrationIds']
+              if not known or value['pendingMigrationIds'] != sorted(set(known) - set(applied)) or value['unrecognizedAppliedMigrationIds'] != sorted(set(applied) - set(known)):
+                  raise ValueError('Inventory comparison invalid')
+              if value['schemaIdentity'] != hashlib.sha256(chr(10).join(known).encode()).hexdigest():
+                  raise ValueError('Schema identity invalid')
+              history = value['migrationHistory']
+              if not isinstance(history, list) or len(history) != len(applied):
+                  raise ValueError('History inventory invalid')
+              if any(not isinstance(x, dict) or set(x) != {'migrationId', 'productVersion'} or not isinstance(x['productVersion'], str) or not re.fullmatch(r'[A-Za-z0-9.+_-]{1,128}', x['productVersion']) for x in history):
+                  raise ValueError('History metadata invalid')
+              if sorted(x['migrationId'] for x in history) != applied:
+                  raise ValueError('History identity invalid')
+              import datetime
+              when = datetime.datetime.fromisoformat(value['observedUtc'].replace('Z', '+00:00'))
+              if when.tzinfo is None or not 0 <= (datetime.datetime.now(datetime.timezone.utc) - when).total_seconds() <= 120:
+                  raise ValueError('Observation freshness invalid')
+              value.update(toolRevision=os.environ['TOOL_REVISION'], applicationRevision=os.environ['APPLICATION_REVISION'],
+                  producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']))
+              out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'migration-inventory.json'
+              out.write_text(json.dumps(value, indent=2) + chr(10))
+              print(json.dumps({'appliedCount': len(applied), 'recognizedCount': len(known),
+                  'pendingMigrationIds': value['pendingMigrationIds'],
+                  'unrecognizedAppliedMigrationIds': value['unrecognizedAppliedMigrationIds'],
+                  'lastAppliedMigrationId': applied[-1] if applied else None,
+                  'authorizesMutation': False}, sort_keys=True))
+          except Exception:
+              raise SystemExit('Complete read-only migration inventory unavailable; no mutation authorized.') from None
+          PYINVENTORY
+      - name: Retain complete read-only migration inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-migration-inventory-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/migration-inventory.json
+          retention-days: 30
+          if-no-files-found: error
