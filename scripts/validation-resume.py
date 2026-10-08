@@ -404,7 +404,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     except (KeyError, TypeError, ValueError, AttributeError):
         return False
     key = (repository, job['id'], run['head_sha'], step['started_at'], step['completed_at'])
-    if key in _RELEASE_CHILD_NOOP_PROOFS:
+    if job.get('conclusion') != 'cancelled' and key in _RELEASE_CHILD_NOOP_PROOFS:
         return True
     raw = _release_job_log(repository, job['id'], token)
     text = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in raw.splitlines())
