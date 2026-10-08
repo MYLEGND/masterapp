@@ -35,13 +35,16 @@ internal sealed class LegendEngineeringHostedService(
             var releasePlanner = scope.ServiceProvider.GetRequiredService<LegendEngineeringReleaseCohortPlanner>();
             var founderNotifications = scope.ServiceProvider.GetRequiredService<LegendEngineeringFounderNotificationService>();
 
-            await orchestrator.ProcessIncidentsAsync(
-                Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
+            // Runtime incident ingestion is observational. Its failure must not
+            // prevent the independent deterministic CI/release reconciliation.
+            // A release reconciliation failure still stops downstream agent starts.
+            await RunIndependentIncidentAndReleasePassAsync(
+                token => orchestrator.ProcessIncidentsAsync(
+                    Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
+                    token),
+                token => releasePlanner.ReconcileAndReleaseAsync(token),
+                logger,
                 cancellationToken);
-
-            // CI/release reconciliation is deterministic and remains active even
-            // when ChatGPT plan execution is unavailable or Founder-paused.
-            await releasePlanner.ReconcileAndReleaseAsync(cancellationToken);
 
             // The work-item authority, not the scheduler, owns restart recovery.
             // Any abandoned exact lease is restored before new work is considered.
@@ -140,6 +143,36 @@ internal sealed class LegendEngineeringHostedService(
                 "LEGEND engineering scheduler pass failed closed ({ExceptionType}).",
                 exception.GetType().Name);
         }
+    }
+
+    internal static async Task RunIndependentIncidentAndReleasePassAsync(
+        Func<CancellationToken, Task<object>> ingestIncidents,
+        Func<CancellationToken, Task<object>> reconcileRelease,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            await ingestIncidents(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // Read-only intake is independent of canonical release reconciliation.
+            // Log a bounded type only; incident/provider payloads stay private.
+            logger.LogWarning(
+                "LEGEND engineering incident intake failed ({ExceptionType}); release reconciliation continues.",
+                exception.GetType().Name);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        // Never mask a failure here: the outer pass guard must block subsequent
+        // agent starts if release state cannot be safely reconciled.
+        await reconcileRelease(cancellationToken);
     }
 
     private static bool IsAgentActionable(EngineeringWorkItemSnapshot item)
