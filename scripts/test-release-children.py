@@ -993,6 +993,31 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
 
+    def test_completed_legacy_ef_bundle_is_not_misclassified_as_a_noop(self):
+        # A different October 3 protected release actually entered the EF
+        # executable. Its source was also the audited d440 generation; matching
+        # the source alone is NOT a safe migration nonentry proof.
+        import subprocess
+        head = '2619da6b80455a33726a098b166367d739077cd1'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37131076769, head_sha=head)
+        job = dict(id=111226406889, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T14:53:07Z',
+                    completed_at='2026-10-03T14:53:17Z')
+        log = ('2026-10-03T14:52:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T14:52:01Z ' + head + '\n'
+               '2026-10-03T14:53:16.7575041Z Schema ready. Executed '
+               'the exact validated migration bundle from the proven live '
+               'database baseline.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess
         source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
