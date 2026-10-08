@@ -911,8 +911,21 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             self.assertTrue(owner.migration_metadata_changed('a' * 40, 'b' * 40))
         git.assert_called_once_with([
             'git', 'diff', '--name-only', 'a' * 40, 'b' * 40,
-            '--', 'Infrastructure/Data',
+            '--', 'Infrastructure/Data', 'Infrastructure/Migrations',
         ], capture=True)
+
+    def test_designer_only_migration_metadata_change_enters_existing_probe(self):
+        owner = self.owner
+        with patch.object(owner, 'run', return_value=(
+            'Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.Designer.cs\n')):
+            self.assertTrue(owner.migration_metadata_changed('a' * 40, 'b' * 40))
+
+    def test_unrelated_migration_source_metadata_is_not_misclassified(self):
+        owner = self.owner
+        with patch.object(owner, 'run', return_value=(
+            'Infrastructure/Migrations/README.md\n'
+            'Infrastructure/Migrations/AnyOldHelper.cs\n')):
+            self.assertFalse(owner.migration_metadata_changed('a' * 40, 'b' * 40))
 
     def test_unrelated_data_changes_do_not_trigger_schema_probe(self):
         owner = self.owner
