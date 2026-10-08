@@ -73,7 +73,9 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var decision = LegendEngineeringPolicies.Classify(first);
         Assert.Equal(EngineeringRiskClass.TierC, decision.RiskClass);
         Assert.False(decision.CodeRepairEligible);
-        Assert.Equal(EngineeringRole.Sentinel, decision.AssignedRole);
+        Assert.Equal(EngineeringRole.HeadGpt, decision.AssignedRole);
+        // Tier C remains a security-review boundary; this is never an
+        // automatically repairable release-control source.
     }
 
     [Fact]
