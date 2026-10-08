@@ -397,6 +397,53 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 'owner/repo', run, job, step, 'token'))
             sources['scripts/release-migration.py'] = current
 
+    def test_original_prewrite_owners_reconcile_only_with_pinned_source_and_receipts(self):
+        import subprocess
+        cases = (
+            ('a0bec5ab2e66a394b6ac64c937333cbe01c49809', 37674186895,
+             'Migration child unresolved; preserve prior evidence and reconcile without replay.'),
+            ('8b4a85f3be500fcd873afa70b72393264225f738', 37683353078,
+             'Migration stage unresolved: schema-observation; preserve prior evidence and reconcile without replay.'),
+            ('261fd32ba559d6f2bab0324b538068ee7d7541d7', 37690711809,
+             'Schema probe detected migration schema drift; preserve prior evidence and reconcile without replay.'),
+            ('f2b18bf3b1a236fa172616dae0b49abecfcf5730', 37695940420,
+             'Database contains applied migration history absent from validated bundle; preserve prior evidence and reconcile without replay.'),
+        )
+        for head, run_id, message in cases:
+            with self.subTest(run_id=run_id):
+                paths = ('.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                         'scripts/release-prepublication.py', 'scripts/release-migration.py',
+                         'scripts/release-operation-evidence.py')
+                sources = {
+                    p: subprocess.check_output(['git', 'show', head + ':' + p], text=True)
+                    for p in paths
+                }
+                run = dict(self.run, id=run_id, head_sha=head,
+                           status='completed', conclusion='failure', run_attempt=1)
+                job = dict(id=run_id, status='completed', conclusion='failure')
+                step = dict(self.step, conclusion='failure')
+                names = [
+                    'legend-release-admission-' + 'a' * 64,
+                    f'legend-release-step-state-{"d" * 40}-{run_id}-1',
+                    *(f'diagnostics-rollback-{key}-{head}'
+                      for key in ('portal', 'client', 'protect', 'parfait', 'website')),
+                ]
+                artifacts = [dict(name=n, expired=False, workflow_run=dict(id=run_id))
+                             for n in names]
+                def inventory(repo, path, token):
+                    self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+                    return dict(artifacts=artifacts, total_count=len(artifacts))
+                log = '2026-10-07T21:52:09.2500317Z ' + message + '\n'
+                with patch.object(self.authority, '_release_history_source',
+                                  side_effect=lambda repo, sha, path, token: sources[path]), \
+                     patch.object(self.authority, 'api_get', side_effect=inventory), \
+                     patch.object(self.authority, '_release_job_log', return_value=log):
+                    self.assertTrue(self.authority._attested_migration_prewrite_failure(
+                        'owner/repo', run, job, step, 'token'))
+                    artifacts[1]['expired'] = True
+                    self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                        'owner/repo', run, job, step, 'token'))
+
     def test_migration_history_can_only_skip_after_attested_failure(self):
         self.step['conclusion'] = 'failure'
         with patch.object(self.authority, '_attested_migration_prewrite_failure',
