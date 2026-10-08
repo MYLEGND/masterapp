@@ -559,7 +559,7 @@ def _historical_migration_prewrite_proven(repository, run, job, step, token):
         for path, expected in owners.items():
             source = _release_history_source(repository, run["head_sha"], path, token)
             raw = source.encode("utf-8")
-            observed = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\\0" + raw).hexdigest()
+            observed = hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()
             if observed not in expected:
                 return False
 
