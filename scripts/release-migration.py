@@ -28,6 +28,46 @@ OBSERVATION_ERRORS = set(PROBE_TERMINAL_REASONS.values()) | {
 }
 
 
+
+# Stable operator codes for the *owning* first-write journal. Descriptions are
+# locally authored, never sourced from SQL, GitHub logs, tokens or provider text.
+MIGRATION_ADMISSION_DENIAL_CODES = {
+    'Retained release child requires read-only reconciliation; no mutation replay authorized': 'RETAINED_INTENT_OR_SUCCESS',
+    'Release child execution history unavailable': 'RELEASE_HISTORY_UNAVAILABLE',
+    'Release child attempt history unavailable': 'RELEASE_ATTEMPT_INVENTORY_UNAVAILABLE',
+    'Release child execution history incomplete': 'RELEASE_ATTEMPT_JOBS_INCOMPLETE',
+    'Release child owner unproven': 'RELEASE_OWNER_NOT_PROVEN',
+    'Release child execution detail unavailable': 'MIGRATION_STEP_NOT_PROVEN',
+    'Release child original generation inventory incomplete': 'PRIOR_INTENT_INVENTORY_INCOMPLETE',
+    'Release child original intent expired; no replay authorized': 'PRIOR_INTENT_EXPIRED',
+    'Release child historical partition unproven; no replay authorized': 'PRIOR_PARTITION_UNPROVEN',
+    'Release child prior partition operation unresolved; no replay authorized': 'PRIOR_PARTITION_UNRESOLVED',
+    'Release child failed prepublication but the no-write proof was not authenticated': 'HISTORICAL_PREWRITE_PROOF_REJECTED',
+    'Release child may have written; missing intent cannot authorize replay': 'PRIOR_EXECUTION_WITHOUT_INTENT',
+    'Release child physical operation already entered; reconcile without replay': 'PHYSICAL_OPERATION_ALREADY_ENTERED',
+    'Release child history truncated; no mutation authorized': 'RELEASE_HISTORY_TRUNCATED',
+}
+
+
+def safe_migration_admission_detail(exc):
+    """Classify exact owned denial, never echo an exception's arbitrary text."""
+    if type(exc) is RuntimeError:
+        for message, code in MIGRATION_ADMISSION_DENIAL_CODES.items():
+            match = re.fullmatch(
+                re.escape(message) +
+                r'(?: \[run=([1-9][0-9]{0,12})(?:;attempt=([1-9][0-9]{0,2}))?\])?',
+                str(exc),
+            )
+            if match:
+                result = 'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:' + code
+                if match.group(1):
+                    result += ':run=' + match.group(1)
+                if match.group(2):
+                    result += ':attempt=' + match.group(2)
+                return result
+    # Do not reclassify a provider/transport exception as successful admission.
+    return 'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:UNCLASSIFIED_DENIAL'
+
 def release_authority():
     spec = importlib.util.spec_from_file_location('release_execution_authority', Path(__file__).with_name('validation-resume.py'))
     module = importlib.util.module_from_spec(spec)
@@ -120,6 +160,8 @@ def migration_stage(stage, action, *args, **kwargs):
         # Fixed classifications only; never forward provider-controlled text.
         if stage == 'schema-observation' and type(exc) is RuntimeError and str(exc) in OBSERVATION_ERRORS:
             raise RuntimeError(str(exc)) from None
+        if stage == 'mutation-admission':
+            print(safe_migration_admission_detail(exc), flush=True)
         raise RuntimeError('Migration stage unresolved: ' + stage) from None
 
 

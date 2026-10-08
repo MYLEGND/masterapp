@@ -543,6 +543,20 @@ def _invoke_migration_bundle():
         # never trust free-form error text or URLs from subprocess output.
         authorized.update(_approved_observation_labels())
         if reason.endswith(suffix) and reason[:-len(suffix)] in authorized:
+            if reason[:-len(suffix)] == 'Migration stage unresolved: mutation-admission':
+                # The migration runner emits exactly one locally constructed,
+                # fixed-code diagnostic. Reject any additional or provider text.
+                lines = observation.stdout.strip().splitlines()
+                if len(lines) == 1:
+                    codes = _approved_admission_codes()
+                    pattern = (
+                        r'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:(?:'
+                        + '|'.join(sorted(re.escape(code) for code in codes))
+                        + r')(?::run=[1-9][0-9]{0,12}(?::attempt=[1-9][0-9]{0,2})?)?'
+                    )
+                    if re.fullmatch(pattern, lines[0]):
+                        print(lines[0], flush=True)
+                        print('::error title=LEGEND migration admission::' + lines[0], flush=True)
             if reason[:-len(suffix)] == (
                 'Database contains applied migration history absent from validated bundle'
             ):
@@ -567,6 +581,14 @@ def _approved_observation_labels():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     return migration.OBSERVATION_ERRORS
+
+
+def _approved_admission_codes():
+    spec = importlib.util.spec_from_file_location(
+        'release_migration_admission_codes', ROOT / 'scripts/release-migration.py')
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    return set(migration.MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
 
 
 def main():
