@@ -290,8 +290,15 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
         'scripts/release-migration.py': {
             '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
             'd108377faf267915d86c856523a7992a4a6d500f',
+            '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
+            '3dc53852fc30df96e9e79779bae89b0cbeb65248',
+            '4d04187b13f1212c709237d4632c509e5c9696b9',
+        },
+        'scripts/release-operation-evidence.py': {
+            'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9',
         },
         'scripts/release-prepublication.py': {
+            '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
             'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
             '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
             '29c23b084d059d5f1663c98631be7557ec86fa67',
@@ -313,6 +320,14 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     prepublication_blob = approved_source_blobs['scripts/release-prepublication.py']
     migration_blob = approved_source_blobs['scripts/release-migration.py']
     if (prepublication_blob, migration_blob) not in {
+        ('29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+         '42efc3425a97f9ba8b35ba2a6dde6e41272032b1'),
+        ('29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+         '3dc53852fc30df96e9e79779bae89b0cbeb65248'),
+        ('29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+         '4d04187b13f1212c709237d4632c509e5c9696b9'),
+        ('29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+         'd108377faf267915d86c856523a7992a4a6d500f'),
         ('bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
          'd108377faf267915d86c856523a7992a4a6d500f'),
         ('2f60d22e05e2917a9c48db0db1ba58632ab57d02',
@@ -324,9 +339,14 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     }:
         return False
     migration = sources['scripts/release-migration.py']
-    before_write = "migration_stage('mutation-admission', journal.before_mutation, observation)"
-    execution = "migration_stage('bundle-execution',"
-    if before_write not in migration or execution not in migration or migration.index(before_write) >= migration.index(execution):
+    if migration_blob == '42efc3425a97f9ba8b35ba2a6dde6e41272032b1':
+        before_write = 'journal.before_mutation(observation)'
+        execution = 'subprocess.run([str(bundle)'
+    else:
+        before_write = "migration_stage('mutation-admission', journal.before_mutation, observation)"
+        execution = "migration_stage('bundle-execution',"
+    if (before_write not in migration or execution not in migration
+        or migration.index(before_write) >= migration.index(execution)):
         return False
 
     # Artifacts are authoritative only if the inventory is COMPLETE, bound
@@ -362,14 +382,34 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     # The exact, single runtime log marker must match the bound executable
     # generation. A failed step without this positive evidence remains blocked.
     raw = _release_job_log(repository, job['id'], token)
-    markers = {
-        'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied migration history absent from validated bundle',
-        'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission',
-    }
+    # Old wrappers predate the fixed LEGEND prefix. Their exact sanitized
+    # labels remain safe only with the paired immutable writer generations,
+    # never as a general keyword heuristic.
+    if prepublication_blob == '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b':
+        marker = {
+            '42efc3425a97f9ba8b35ba2a6dde6e41272032b1':
+                'Migration child unresolved; preserve prior evidence and reconcile without replay.',
+            '3dc53852fc30df96e9e79779bae89b0cbeb65248':
+                'Migration stage unresolved: schema-observation; preserve prior evidence and reconcile without replay.',
+            '4d04187b13f1212c709237d4632c509e5c9696b9':
+                'Schema probe detected migration schema drift; preserve prior evidence and reconcile without replay.',
+            'd108377faf267915d86c856523a7992a4a6d500f':
+                'Database contains applied migration history absent from validated bundle; preserve prior evidence and reconcile without replay.',
+        }[migration_blob]
+    else:
+        marker = {
+            'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied migration history absent from validated bundle'
+            if migration_blob in {
+                'd108377faf267915d86c856523a7992a4a6d500f',
+                '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            } else ''
+        }
+        if migration_blob == '819fa223f62e6b97fbbdd28092f765b1f57e6f90':
+            marker.add('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
     emitted = [line.partition('Z ')[2] for line in raw.splitlines()
-               if re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z '
-                               r'LEGEND_PREPUBLICATION_MIGRATION:.*', line)]
-    return len(emitted) == 1 and emitted[0] in markers
+               if re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z .+', line)]
+    return sum(line in marker if isinstance(marker, set) else line == marker
+               for line in emitted) == 1
 
 
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
