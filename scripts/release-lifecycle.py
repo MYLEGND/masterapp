@@ -2403,6 +2403,8 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             # probe registration added. The historical write owners remain
             # journaled, and all mutation receipts must still be absent.
             '29c23b084d059d5f1663c98631be7557ec86fa67',
+            '75b2ca1eaee45852e6f896df5caa5366a709af05',
+            '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
         },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
@@ -2412,18 +2414,58 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '4d04187b13f1212c709237d4632c509e5c9696b9',
             'd108377faf267915d86c856523a7992a4a6d500f',
             '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            '4c4bff74892a9924efb45f3968e06a61dffbcab5',
         },
         'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
         'scripts/validation-resume.py': {
             '34e30ff044dada73593f3662f71fc3f442f869b2',
             'db82785acd1dcf8c2f84a43ec22d8c5116959199',
             '3b78151ca2f2b463d0d553a9967dc0254e577156',
+            '5ba28b3b96031c769e7d683adebfc5613632b219',
+            '60090e0650a7d1c1213f799697a3fe9bafa319c0',
+            'fa42ed4b237f153cb00dc1d77bd0fc990db35aa4',
+            '72da45e6af8996c112cd51df4b5c078815347283',
+            'db01b82df5704ced5f02d35aea36764592b4e08d',
+            'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2',
         },
     }
     revision = run['head_sha']
+    observed_blobs = {}
     for path, approved_blobs in historical.items():
         observed = git('rev-parse', revision + ':' + path, check=False)
         if observed.returncode != 0 or observed.stdout.strip() not in approved_blobs:
+            return False
+        observed_blobs[path] = observed.stdout.strip()
+
+    # The six newer historical generations were audited as complete source
+    # triples, not a cross-product of independently acceptable writer blobs.
+    # Changes to any of these coupled owners must fail closed until reviewed.
+    newer = {
+        ('75b2ca1eaee45852e6f896df5caa5366a709af05',
+         '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+         resume)
+        for resume in (
+            '5ba28b3b96031c769e7d683adebfc5613632b219',
+            '60090e0650a7d1c1213f799697a3fe9bafa319c0',
+            'fa42ed4b237f153cb00dc1d77bd0fc990db35aa4',
+            '72da45e6af8996c112cd51df4b5c078815347283',
+        )
+    } | {
+        ('87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+         '4c4bff74892a9924efb45f3968e06a61dffbcab5',
+         resume)
+        for resume in (
+            'db01b82df5704ced5f02d35aea36764592b4e08d',
+            'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2',
+        )
+    }
+    generation = tuple(observed_blobs[path] for path in (
+        'scripts/release-prepublication.py', 'scripts/release-migration.py',
+        'scripts/validation-resume.py'))
+    if (generation[0] in {item[0] for item in newer}
+        or generation[1] == '4c4bff74892a9924efb45f3968e06a61dffbcab5'
+        or generation[2] in {item[2] for item in newer}):
+        if generation not in newer:
             return False
 
     keys = _validate_admission_record_scope(record)
@@ -2504,6 +2546,16 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         })
         if not all(outcomes.get(name) == [conclusion] for name, conclusion in required.items()):
             return False
+        if generation in newer:
+            # Reuse the sole canonical first-SQL-write witness instead of
+            # trusting a failed job or missing artifact. It authenticates the
+            # exact migration-denial marker inside this failed step's timestamps
+            # and the immutable source which raises it before bundle execution.
+            matches = [step for step in steps if step.get('name') == prepublication]
+            if len(matches) != 1 or not VALIDATION_AUTHORITY._historical_migration_prewrite_proven(
+                api.repo, run, release, matches[0], attempt, os.environ.get('GH_TOKEN', '')
+            ):
+                return False
     return True
 
 
