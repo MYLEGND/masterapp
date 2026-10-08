@@ -25,6 +25,7 @@ BLOCKED_CODES = NOOP_CODES | {
     'HISTORICAL_PREWRITE_UNPROVEN', 'JOB_INVENTORY_INCOMPLETE',
     'RELEASE_JOB_MISSING', 'MIGRATION_STEP_MISSING',
     'EVIDENCE_READ_UNAVAILABLE', 'UNTRUSTED_PRODUCER',
+    'EF_MIGRATION_EXECUTION_ENTERED', 'EF_PENDING_MODEL_CHANGE',
 }
 # Display names and classifications are authored here, never copied from raw
 # GitHub/SQL/provider exception messages, logs, or artifact bodies.
@@ -54,6 +55,32 @@ def original_output_lines(raw):
     # independently check checkout identity, marker, exact step and timestamps.
     return [line.partition('Z ')[2] for line in raw.splitlines()
             if re.match(r'^\d{4}-\d\d-\d\dT\d\d:\d\d:', line)]
+
+
+def legacy_failure_reason(auth, repo, job, token, row):
+    """Differentiate actual EF entry from pre-write uncertainty.
+
+    A timestamped runtime 'Applying migration' line is evidence of attempted
+    database migration, not success or permission to replay. Never disclose
+    provider exceptions, SQL, connection details, or arbitrary original logs.
+    """
+    outputs = original_output_lines(auth._release_job_log(repo, job['id'], token))
+    ids = []
+    for message in outputs:
+        match = re.fullmatch(
+            r"Applying migration '([0-9]{8,14}_[A-Za-z0-9_]{1,128})'\.",
+            message)
+        if match and match.group(1) not in ids:
+            ids.append(match.group(1))
+    if ids:
+        row['attemptedMigrationIds'] = ids
+        return 'EF_MIGRATION_EXECUTION_ENTERED'
+    if any('Microsoft.EntityFrameworkCore.Migrations.PendingModelChangesWarning'
+           in message and ('System.InvalidOperationException:' in message
+                           or 'An error was generated for warning' in message)
+           for message in outputs):
+        return 'EF_PENDING_MODEL_CHANGE'
+    return 'HISTORICAL_PREWRITE_UNPROVEN'
 
 
 def classify_attempt(auth, repo, token, run, attempt):
@@ -127,7 +154,7 @@ def classify_attempt(auth, repo, token, run, attempt):
                 else:
                     row['code'] = 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE'
                 return row
-            row['code'] = 'HISTORICAL_PREWRITE_UNPROVEN'
+            row['code'] = legacy_failure_reason(auth, repo, job, token, row)
             return row
         if step.get('conclusion') == 'failure':
             if (auth._attested_migration_prewrite_failure(
