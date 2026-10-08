@@ -1730,6 +1730,49 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 self.api, self.run, self.record
             )
 
+    def test_six_audited_20261008_prepublication_failures_release_ownership(self):
+        # Actual immutable writer triples from six completed, failed attempts.
+        # All six have authenticated terminal step-state, five rollback
+        # receipts, and no application, config or migration write intents.
+        older_prepublication = '75b2ca1eaee45852e6f896df5caa5366a709af05'
+        older_migration = '819fa223f62e6b97fbbdd28092f765b1f57e6f90'
+        newer_prepublication = '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c'
+        newer_migration = '4c4bff74892a9924efb45f3968e06a61dffbcab5'
+        generations = (
+            (37733970018, older_prepublication, older_migration, '5ba28b3b96031c769e7d683adebfc5613632b219'),
+            (37738269352, older_prepublication, older_migration, '60090e0650a7d1c1213f799697a3fe9bafa319c0'),
+            (37765986494, older_prepublication, older_migration, 'fa42ed4b237f153cb00dc1d77bd0fc990db35aa4'),
+            (37788055039, older_prepublication, older_migration, '72da45e6af8996c112cd51df4b5c078815347283'),
+            (37792974027, newer_prepublication, newer_migration, 'db01b82df5704ced5f02d35aea36764592b4e08d'),
+            (37798278892, newer_prepublication, newer_migration, 'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2'),
+        )
+        for run, prepublication, migration, journal in generations:
+            with self.subTest(run=run), patch.dict(self.BLOBS, {
+                'scripts/release-prepublication.py': prepublication,
+                'scripts/release-migration.py': migration,
+                'scripts/validation-resume.py': journal,
+            }):
+                self.assertTrue(self.proven())
+                artifact = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+                artifact.append({'name': 'legend-release-child-intent-' + '1' * 64,
+                                 'expired': False})
+                self.assertFalse(self.proven())
+                artifact.pop()
+
+    def test_audited_new_source_triples_must_not_mix_otherwise_approved_blobs(self):
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '75b2ca1eaee45852e6f896df5caa5366a709af05',
+            'scripts/release-migration.py': '4c4bff74892a9924efb45f3968e06a61dffbcab5',
+            'scripts/validation-resume.py': '5ba28b3b96031c769e7d683adebfc5613632b219',
+        }):
+            self.assertFalse(self.proven())
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+            'scripts/release-migration.py': '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'scripts/validation-resume.py': 'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2',
+        }):
+            self.assertFalse(self.proven())
+
     def test_exact_diagnostic_only_prepublication_generation_is_recognized(self):
         with patch.dict(self.BLOBS, {
             'scripts/release-prepublication.py': 'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
