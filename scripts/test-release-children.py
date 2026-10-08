@@ -309,14 +309,14 @@ class ChildHistorySafetyTests(unittest.TestCase):
             for name in names
         ]
         marker = 'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission'
-        evidence = '2026-10-08T03:38:48.4471578Z ' + marker + '\\n'
+        evidence = '2026-10-08T03:38:48.4471578Z ' + marker + '\n'
         def read(repo, path, token):
             self.assertEqual(repo, 'owner/repo')
             self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
             return dict(artifacts=artifacts, total_count=len(artifacts))
         with patch.object(self.authority, '_release_history_source',
-                          side_effect=lambda repo, sha, path, token: historic[path]), \\
-             patch.object(self.authority, 'api_get', side_effect=read), \\
+                          side_effect=lambda repo, sha, path, token: historic[path]), \
+             patch.object(self.authority, 'api_get', side_effect=read), \
              patch.object(self.authority, '_release_job_log', return_value=evidence) as log:
             self.assertTrue(self.authority._attested_migration_prewrite_failure(
                 'owner/repo', run, job, step, 'token'))
@@ -324,7 +324,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             # A changed migration owner, even with the same human-friendly
             # failure message, cannot discharge a historical first-write lease.
             original = historic['scripts/release-migration.py']
-            historic['scripts/release-migration.py'] = original + '\\n# altered'
+            historic['scripts/release-migration.py'] = original + '\n# altered'
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
                 'owner/repo', run, job, step, 'token'))
             historic['scripts/release-migration.py'] = original
