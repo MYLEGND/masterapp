@@ -135,6 +135,66 @@ try
     // A read-only probe cannot authorize a new SQL write on its own.
     var pendingIds = known.Except(appliedRegistered, StringComparer.Ordinal).ToArray();
     var pending = pendingIds.Length;
+    // Physical SQL Server proof for the ONLY new Founder rules migration.
+    // No application rows, UPDATEs, EF Migrate(), or schema DDL are executed.
+    // The EF history alone cannot prove whether a column was partially added.
+    // Require the table and its catalog metadata to agree with the known
+    // pending/applied state before ANY migration bundle can be authorized.
+    const string founderMigration = "20261007134500_AddFounderAssistantRules";
+    if (known.Contains(founderMigration, StringComparer.Ordinal))
+    {
+        await db.Database.OpenConnectionAsync(timeout.Token);
+        await using var schemaCommand = db.Database.GetDbConnection().CreateCommand();
+        schemaCommand.CommandTimeout = 30;
+        schemaCommand.CommandText = """
+            SELECT COUNT(*) FROM sys.tables t
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            WHERE s.name = N'dbo' AND t.name = N'MobileProfileSettings'
+            """;
+        var tableCount = Convert.ToInt32(await schemaCommand.ExecuteScalarAsync(timeout.Token));
+        if (tableCount != 1)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+
+        schemaCommand.CommandText = """
+            SELECT c.max_length, c.is_nullable, ty.name, dc.definition,
+                (SELECT COUNT_BIG(*) FROM sys.index_columns ic
+                 WHERE ic.object_id = t.object_id AND ic.column_id = c.column_id),
+                (SELECT COUNT_BIG(*) FROM sys.foreign_key_columns fk
+                 WHERE (fk.parent_object_id = t.object_id AND fk.parent_column_id = c.column_id)
+                    OR (fk.referenced_object_id = t.object_id AND fk.referenced_column_id = c.column_id))
+            FROM sys.tables t
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            JOIN sys.columns c ON c.object_id = t.object_id
+            JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+            LEFT JOIN sys.default_constraints dc
+                ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+            WHERE s.name = N'dbo' AND t.name = N'MobileProfileSettings'
+              AND c.name = N'FounderAssistantRulesJson'
+            """;
+        var found = false;
+        var valid = false;
+        await using (var columns = await schemaCommand.ExecuteReaderAsync(timeout.Token))
+        {
+            while (await columns.ReadAsync(timeout.Token))
+            {
+                if (found) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                found = true;
+                var definition = columns.IsDBNull(3) ? "" : columns.GetString(3);
+                var normalized = new string(definition.Where(c =>
+                    !char.IsWhiteSpace(c) && c != '(' && c != ')').ToArray());
+                valid = Convert.ToInt32(columns.GetValue(0)) == -1
+                    && !columns.GetBoolean(1)
+                    && columns.GetString(2) == "nvarchar"
+                    && (normalized == "'[]'" || normalized == "N'[]'")
+                    && Convert.ToInt64(columns.GetValue(4)) == 0
+                    && Convert.ToInt64(columns.GetValue(5)) == 0;
+            }
+        }
+        var rulePending = pendingIds.Contains(founderMigration, StringComparer.Ordinal);
+        if (rulePending ? found : !found || !valid)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,

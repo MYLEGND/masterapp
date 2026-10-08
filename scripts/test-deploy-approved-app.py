@@ -943,6 +943,9 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'APPLICATION_RELEASE_SHA': 'b' * 40,
             'DATABASE_AUTHORITY': 'masterapp-portal',
             'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
+            # Fresh production SQL readiness, not changed source metadata,
+            # authorizes the actual pending migration to be reconciled.
+            'MIGRATION_READINESS_PENDING': 'true',
         }
         def read(command, **kwargs):
             if 'resolve' in command:
@@ -973,6 +976,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'SELECTED_DATABASE_DEPENDENT': 'true',
             'EXPECTED_DB_BASE_SHA': 'a' * 40,
             'APPLICATION_RELEASE_SHA': 'b' * 40,
+            'MIGRATION_READINESS_PENDING': 'false',
         }
         with (
             patch.dict(os.environ, environment),

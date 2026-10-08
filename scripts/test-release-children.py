@@ -265,6 +265,94 @@ class ReleaseChildTests(unittest.TestCase):
         self.assertEqual(len(self.published), 3)
 
 
+class EarlyMigrationReadinessTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.bundle = Path(self.temp.name) / 'masterapp-migrations'
+        self.bundle.write_bytes(b'exact validated EF bundle')
+        self.probe = Path(self.temp.name) / 'MigrationReleaseProbe.dll'
+        self.probe.write_bytes(b'validated observer')
+        self.env = patch.dict(os.environ, {
+            'RELEASE_RESOURCE_GROUP': 'masterapp-rg',
+            'DATABASE_AUTHORITY': 'masterapp-portal',
+        })
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def schema(self, ready):
+        return dict(schemaIdentity='c' * 64, ready=ready,
+                    pendingCount=0 if ready else 1,
+                    firstPendingMigrationId=None if ready else '20261007134500_AddFounderAssistantRules',
+                    lastAppliedMigrationId='20261003091500_CanonicalizeBusinessFinanceToolState')
+
+    def test_fresh_zero_pending_reuses_without_bundle_or_historical_scans(self):
+        with patch.object(migration, 'observe', return_value=self.schema(True)), \
+             patch.object(migration, 'journal_type',
+                          side_effect=AssertionError('journal must not run')):
+            self.assertEqual(migration.preflight(None, self.probe, 'masked'), 'ready')
+
+    def test_pending_sql_authenticates_first_write_without_publishing_intent(self):
+        calls = []
+        class Authority:
+            def release_child_first_write_proven(*args, **kwargs):
+                calls.append((args, kwargs))
+                return True
+        class Journal:
+            intent = success = None
+            authority = Authority()
+            repository = 'owner/repo'
+            child = 'migrations'
+            identity = material_identity = partition_identity = 'a' * 64
+            run = 100
+            attempt = 1
+            token = 'token'
+            revision = 'b' * 40
+        with patch.object(migration, 'observe', return_value=self.schema(False)), \
+             patch.object(migration, 'journal_type', return_value=lambda *a, **k: Journal()):
+            self.assertEqual(migration.preflight(self.bundle, self.probe, 'masked'), 'pending')
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            calls[0][1]['first_pending_migration_id'],
+            '20261007134500_AddFounderAssistantRules')
+        self.assertEqual(calls[0][1]['current_application_revision'], 'b' * 40)
+
+    def test_ambiguous_or_missing_bundle_fails_closed_before_write(self):
+        class Journal:
+            intent = {'unresolved': True}
+            success = None
+        with patch.object(migration, 'observe', return_value=self.schema(False)), \
+             patch.object(migration, 'journal_type', return_value=lambda *a, **k: Journal()):
+            with self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.preflight(None, self.probe, 'masked')
+            with self.assertRaisesRegex(RuntimeError, 'child-history'):
+                migration.preflight(self.bundle, self.probe, 'masked')
+
+    def test_source_equivalence_cannot_hide_live_pending_sql(self):
+        import os
+        prepublication = load('release-prepublication')
+        env = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
+                   EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
+                   DATABASE_AUTHORITY='masterapp-portal')
+        with patch.dict(os.environ, env), \
+             patch.object(prepublication, 'git_ok', return_value=True), \
+             patch.object(prepublication, 'changed_migrations', return_value=[]), \
+             patch.object(prepublication, 'release_proven'), \
+             patch.object(prepublication, 'run', return_value='{"runId":1,"artifact":"probe"}'), \
+             patch.object(prepublication, '_invoke_migration_bundle') as execute:
+            os.environ['MIGRATION_READINESS_PENDING'] = 'true'
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'reconciled')
+            execute.assert_called_once()
+            execute.reset_mock()
+            os.environ['MIGRATION_READINESS_PENDING'] = 'false'
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'not-applicable')
+            execute.assert_not_called()
+            del os.environ['MIGRATION_READINESS_PENDING']
+            with self.assertRaisesRegex(RuntimeError, 'readiness gate'):
+                prepublication.run_migration_lane()
+
+
 class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
     def setUp(self):
         self.authority = load('validation-resume')
@@ -302,8 +390,14 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
         )]
         self.message = ('2026-10-08T11:00:15.7025934Z '
             'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
+        # This test authenticates a historical producer, not the mutable
+        # current migration owner. Pin the pre-change verified commit so
+        # future SQL guard additions cannot turn old evidence into new code.
+        import subprocess
+        historical_source = '88936a82f9a94b93dedb18fcfe73f18a89410c91'
         self.sources = {
-            path: (Path(__file__).resolve().parents[1] / path).read_text()
+            path: subprocess.check_output(
+                ['git', 'show', historical_source + ':' + path], text=True)
             for path in (
                 '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
                 'scripts/release-prepublication.py',
@@ -629,6 +723,76 @@ class ChildHistorySafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
                 self.check()
 
+    def test_legacy_october3_factory_nonentry_is_exactly_attested(self):
+        import subprocess
+        head = 'ea53cdbcf7e650cceb9e193965b630dd1da19c16'
+        run_id, job_id = 37129696534, 111222377709
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=1)
+        job = dict(id=job_id, name='release', status='completed',
+                   conclusion='failure', run_attempt=1)
+        step = dict(
+            name='Apply additive diagnostics migrations before restarting apps',
+            status='completed', conclusion='failure',
+            started_at='2026-10-03T14:30:34Z',
+            completed_at='2026-10-03T14:30:41Z')
+        artifact = dict(
+            name='legend-release-step-state-'
+                 'b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a-37129696534-1',
+            expired=False, workflow_run=dict(id=run_id))
+        log = (
+            '2026-10-03T14:29:37.6020833Z [command]/usr/bin/git log -1 --format=%H\n'
+            '2026-10-03T14:29:37.6049925Z ' + head + '\n'
+            "2026-10-03T14:30:41.8853265Z Unable to create a 'DbContext' of type "
+            "'Infrastructure.Data.MasterAppDbContext'. The exception "
+            "'Missing MasterAppDb connection string for EF design-time factory. "
+            "Provide one via --connection, SQLCONNSTR_MasterAppDb, "
+            "ConnectionStrings__MasterAppDb, MasterAppDb, or AgentPortal "
+            "appsettings.' was thrown while attempting to create an instance.\n"
+        )
+        def evidence(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=[artifact], total_count=1)
+        def check():
+            return self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', run, job, step, 1, 'fixture')
+        with patch.object(self.authority, '_trusted_child_producer'), \
+             patch.object(self.authority, '_release_history_source', return_value=source), \
+             patch.object(self.authority, 'api_get', side_effect=evidence), \
+             patch.object(self.authority, '_release_job_log', return_value=log):
+            self.assertTrue(check())
+            self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', dict(run, id=run_id + 1), job, step, 1, 'fixture'))
+            self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', run, dict(job, id=job_id + 1), step, 1, 'fixture'))
+            with patch.object(self.authority, '_release_history_source',
+                              return_value=source + '\n# modified'):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log.replace('Missing MasterAppDb',
+                                                       'Connected MasterAppDb')):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + log):
+                self.assertFalse(check())
+            with patch.object(self.authority, 'api_get',
+                              return_value=dict(artifacts=[
+                                  dict(artifact, name='legend-release-child-intent-' + 'a' * 64)
+                              ], total_count=1)):
+                self.assertFalse(check())
+            with patch.object(self.authority, 'api_get',
+                              return_value=dict(artifacts=[dict(artifact, expired=True)],
+                                                total_count=1)):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log +
+                              '2026-10-03T14:30:42Z Schema ready. Executed the exact '
+                              'validated migration bundle from the proven live database baseline.\n'):
+                self.assertFalse(check())
+
     def test_exact_failed_prepublication_migration_is_prewrite_only_with_positive_proof(self):
         import subprocess
         head = 'fe115eb9f3f7ebd753307ec193f7cf4121ee9470'
@@ -810,8 +974,13 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 self.check()
 
     def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
-        source = Path(__file__).with_name('..').resolve() / '.github/workflows' / self.authority.DIRECT_RELEASE_WORKFLOW
-        source = source.read_text()
+        # The fixture models the ORIGINAL no-entry job topology; pin its
+        # immutable workflow instead of reading the evolved migration-first DAG.
+        import subprocess
+        source = subprocess.check_output([
+            'git', 'show',
+            '88936a82f9a94b93dedb18fcfe73f18a89410c91:.github/workflows/'
+            + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
         jobs = [dict(name='admission', status='completed', conclusion='failure', steps=[]),
                 *[dict(name=name, status='completed', conclusion='skipped', steps=[])
                   for name in ('discover-live', 'preserve-rollback', 'release', 'target-release-receipts (${{ matrix.app }})')],

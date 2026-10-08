@@ -552,6 +552,73 @@ def _attested_migration_prewrite_failure(repository, run, job, step, attempt, to
 
 
 
+def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, token):
+    """Attest one historical design-time failure; never assume failed EF means no SQL."""
+    import datetime
+    head = 'ea53cdbcf7e650cceb9e193965b630dd1da19c16'
+    run_id, job_id = 37129696534, 111222377709
+    if (run.get('id') != run_id or run.get('head_sha') != head
+        or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or run.get('run_attempt') != 1 or attempt != 1
+        or job.get('id') != job_id or job.get('status') != 'completed'
+        or job.get('conclusion') != 'failure'
+        or (job.get('run_attempt') is not None and job['run_attempt'] != 1)
+        or step.get('name') != 'Apply additive diagnostics migrations before restarting apps'
+        or step.get('status') != 'completed' or step.get('conclusion') != 'failure'):
+        return False
+    try:
+        _trusted_child_producer(repository, run)
+        source = _release_history_source(repository, head,
+            '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+        raw = source.encode('utf-8')
+        blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+        # The complete October 3 runner is pinned, not merely the error text.
+        if blob != 'b85c50eadf83daad32b787f2d37f7a32babe67a4':
+            return False
+        receipt = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+        rows = receipt.get('artifacts')
+        if (type(receipt.get('total_count')) is not int or receipt['total_count'] != 1
+            or not isinstance(rows, list) or len(rows) != 1
+            or rows[0].get('name') !=
+               'legend-release-step-state-b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a-37129696534-1'
+            or rows[0].get('expired') is not False
+            or (rows[0].get('workflow_run') or {}).get('id') != run_id):
+            return False
+        started = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+        ended = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+        if started.tzinfo is None or ended.tzinfo is None or ended < started:
+            return False
+        log = _release_job_log(repository, job_id, token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', l)
+                          for l in log.splitlines())
+        checked_out = re.findall(
+            r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$',
+            clean)
+        if checked_out != [head]:
+            return False
+        prefix = ("Unable to create a 'DbContext' of type "
+                  "'Infrastructure.Data.MasterAppDbContext'. "
+                  "The exception 'Missing MasterAppDb connection string "
+                  "for EF design-time factory.")
+        count = 0
+        for line in log.splitlines():
+            stamp, sep, msg = line.partition('Z ')
+            if sep and msg.startswith(prefix):
+                observed = datetime.datetime.fromisoformat(stamp + '+00:00')
+                if (observed.tzinfo is None or observed < started
+                    or observed > ended + datetime.timedelta(seconds=2)
+                    or 'was thrown while attempting to create an instance.' not in msg):
+                    return False
+                count += 1
+        # DbContext construction fails before EF can issue migration SQL.
+        return count == 1 and (
+            'Schema ready. Executed the exact validated migration bundle '
+            'from the proven live database baseline.' not in log)
+    except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+            OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def _attested_migration_noop_success(repository, run, job, step, attempt, token):
     """Prove a historical successful prepublication step skipped the SQL lane.
 
@@ -593,6 +660,10 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
          '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'),
         ('4a69290e3462d6fae20dcd75d48b8639c5066c22',
          '4357329104400dc36a59a739d8a823b548838baf'),
+        # Current released prepublication returns not-applicable ONLY after
+        # upstream fresh physical SQL readiness proves zero EF pending.
+        ('8696295389f2b7f6acb2a0b18955580039dd397f',
+         '03f3c3508394016b4f2e9f041290355f1616b0e6'),
     }
     if pairing not in audited_pairs:
         return False
@@ -687,6 +758,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
     owners = {
         ".github/workflows/" + DIRECT_RELEASE_WORKFLOW: {
             "bd84c42297a50b29dfa20c2ed926b8233074720e",
+            # Read-only first gate runs before release; SQL journal remains
+            # the canonical write owner and prepublication must precede publish.
+            "8696295389f2b7f6acb2a0b18955580039dd397f",
         },
         "scripts/release-prepublication.py": {
             "2f60d22e05e2917a9c48db0db1ba58632ab57d02",
@@ -694,6 +768,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "75b2ca1eaee45852e6f896df5caa5366a709af05",
             # Reviewed finite-code prepublication diagnostic generation.
             "87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c",
+            # Same no-intent prewrite marker; source-diff shortcut now also
+            # requires fresh upstream SQL readiness from this release run.
+            "03f3c3508394016b4f2e9f041290355f1616b0e6",
         },
         "scripts/release-migration.py": {
             "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
@@ -702,6 +779,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             # Content-reviewed first-pending/last-applied read-only fence;
             # still authorizes NO write before ChildJournal intent readback.
             "f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5",
+            # Read-only --preflight invokes first-write history without
+            # publishing intent or running a bundle; write path unchanged.
+            "6837d13002784fa4894b09e95d7f6bc5d9f5decf",
         },
     }
     try:
@@ -890,6 +970,9 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         repository, run, job, steps[0], attempt, token)):
                     continue
                 if child == 'migrations' and steps[0].get('name') != gate['step']:
+                    if _attested_legacy_ef_factory_nonentry(
+                            repository, run, job, steps[0], attempt, token):
+                        continue
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
                         continue
                     if _legacy_completed_bundle_is_separate_from_pending_sql(
