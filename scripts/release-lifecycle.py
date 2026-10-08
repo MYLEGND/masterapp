@@ -986,7 +986,29 @@ def candidate_control_plane_integrity(api, pr, names):
             or 'needs: approved-head-preflight' not in workflow
         ):
             return f'Candidate {label} validator lost canonical approved-head preflight'
-    if architecture.count('needs: approved-head-preflight') < 3:
+    # The migration-first DAG keeps approved-head checking as the true first
+    # authority, then requires validated migration probe before expensive
+    # architecture/package work. Accept either original or proven new shape;
+    # never waive the approved-head prerequisite on any entry path.
+    blocks = VALIDATION_AUTHORITY._job_blocks(architecture)
+    needs_probe = {
+        'validate': 'needs: [approved-head-preflight, validated-migration-probe]',
+        'validated-release-package-plan':
+            'needs: [approved-head-preflight, validated-migration-probe]',
+    }
+    probe = blocks.get('validated-migration-probe', '')
+    migration_first = (
+        all(expected in blocks.get(job, '') for job, expected in needs_probe.items())
+        and 'needs: approved-head-preflight' in probe
+        and 'name: validated-migration-probe' in probe
+        and all(
+            "needs.validated-migration-probe.result == 'success'"
+            in blocks.get(job, '')
+            for job in needs_probe
+        )
+    )
+    if not (architecture.count('needs: approved-head-preflight') >= 3
+            or migration_first):
         return 'Candidate architecture validator allows package/probe work before approved-head preflight'
 
     security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
