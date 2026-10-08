@@ -228,15 +228,63 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
     return 'applied'
 
 
+def preflight(bundle, probe, connection):
+    """Early, strictly READ-ONLY release gate. No intent or SQL write occurs here.
+
+    The existing canonical first-write journal is queried using the same
+    material/partition identities as actual bundle execution. Only the
+    immutable validated binary can supply its material digest.
+    """
+    before = migration_stage('schema-observation', observe, probe, connection)
+    if before['ready']:
+        print('LEGEND_MIGRATION_READINESS:READY:pending=0', flush=True)
+        return 'ready'
+
+    if bundle is None or not bundle.is_file():
+        raise RuntimeError('Migration stage unresolved: preparation')
+    material = hashlib.sha256(json.dumps(dict(
+        schemaIdentity=before['schemaIdentity'],
+        bundleDigest=hashlib.sha256(bundle.read_bytes()).hexdigest(),
+    ), sort_keys=True).encode()).hexdigest()
+    partition = hashlib.sha256(json.dumps(dict(
+        resourceGroup=os.environ['RELEASE_RESOURCE_GROUP'],
+        authority=os.environ['DATABASE_AUTHORITY'],
+    ), sort_keys=True).encode()).hexdigest()
+    journal = migration_stage('child-history', journal_type(), 'migrations',
+                              material, partition_identity=partition)
+    if journal.intent is not None or journal.success is not None:
+        raise RuntimeError('Migration stage unresolved: child-history')
+    fence = {}
+    if 'firstPendingMigrationId' in before and 'lastAppliedMigrationId' in before:
+        fence = dict(first_pending_migration_id=before['firstPendingMigrationId'],
+                     last_applied_migration_id=before['lastAppliedMigrationId'])
+    migration_stage('mutation-admission',
+        journal.authority.release_child_first_write_proven,
+        journal.repository, journal.child, journal.identity, journal.material_identity,
+        journal.run, journal.attempt, journal.token,
+        partition_identity=journal.partition_identity,
+        current_application_revision=journal.revision, **fence)
+    print('LEGEND_MIGRATION_READINESS:READY:pending=' + str(before['pendingCount']), flush=True)
+    return 'pending'
+
+
+
 if __name__ == '__main__':
     try:
         release_authority().assert_protected_release_execution()
+        import sys
+        is_preflight = sys.argv[1:] == ['--preflight']
+        if sys.argv[1:] and not is_preflight:
+            raise RuntimeError('Migration stage unresolved: preparation')
         bundle = Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
         probe = Path(os.environ.get('MIGRATION_PROBE_DLL', '/tmp/migration-probe/MigrationReleaseProbe.dll'))
-        if not bundle.is_file() or not probe.is_file():
+        if not probe.is_file() or (not is_preflight and not bundle.is_file()):
             raise RuntimeError('Validated migration bundle or read-only probe unavailable')
-        result = reconcile(bundle, probe, connection_string())
-        print('Schema ready; validated migration child ' + result + '.')
+        if is_preflight:
+            result = preflight(bundle if bundle.is_file() else None, probe, connection_string())
+        else:
+            result = reconcile(bundle, probe, connection_string())
+            print('Schema ready; validated migration child ' + result + '.')
     except Exception as exc:
         # Only locally constructed fixed labels may cross this boundary.
         stages = {'schema-observation', 'child-history', 'mutation-admission',
