@@ -120,6 +120,14 @@ public sealed partial class FounderSoftwareRemediationService
             ReadString(run, "path")?.Split('@')[0] !=
                 ".github/workflows/all-intentional-direct-release-20260918.yml")
             return null;
+        var created = ReadString(run, "created_at");
+        if (!DateTimeOffset.TryParse(created, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var createdUtc))
+            return null;
+        var age = DateTimeOffset.UtcNow - createdUtc;
+        if (age < TimeSpan.FromMinutes(-5) || age > TimeSpan.FromDays(30))
+            return null;
+
         var title = ReadString(run, "display_title");
         if (title is null)
             return null;
