@@ -1130,6 +1130,11 @@ def _attested_retired_legacy_failure(repository, run, job, step, source, attempt
             if not sep or not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:[0-9.]+',
                                            stamp):
                 continue
+            # GitHub prints the workflow source in ANSI-colored command echos.
+            # They are NOT authenticated execution output and cannot prove or
+            # disprove a migration; only the producer's actual output may do so.
+            if '\x1b[' in value:
+                continue
             when = datetime.datetime.fromisoformat(stamp + '+00:00')
             if start <= when <= end + datetime.timedelta(seconds=2):
                 observed.append(value)
@@ -1319,7 +1324,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     # validates the current run's checkout and no-write marker.
                     if (hashlib.sha256(block.encode()).hexdigest()
                             == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-                            or _audited_legacy_migration_noop_source(source)):
+                            or _audited_legacy_migration_noop_source(source)
+                            or (hashlib.sha1(
+                                    b'blob ' + str(len(source.encode('utf-8'))).encode()
+                                    + b'\\0' + source.encode('utf-8')).hexdigest()
+                                in (_RETIRED_PRE_BUNDLE.keys() | _RETIRED_ENTERED_BUNDLE.keys())
+                                and "python3 - <<'PYMIGRATE'" in block)):
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
                     raise rejection("Release child execution detail unavailable", run_id, attempt)
