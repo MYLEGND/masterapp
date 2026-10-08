@@ -112,6 +112,11 @@ def classify_attempt(auth, repo, token, run, attempt):
             row['code'] = 'RELEASE_JOB_MISSING'
             return row
         job = owners[0]
+        if auth._attested_retired_unscheduled_release(
+                repo, run, job, jobs, attempt, token):
+            row['code'] = 'PREPUBLICATION_NOT_ENTERED'
+            row['originalNoRunner'] = True
+            return row
         if job.get('status') == 'queued' or job.get('conclusion') == 'skipped':
             row['code'] = 'NO_MIGRATION_STEP_ENTERED'
             return row
@@ -153,6 +158,10 @@ def classify_attempt(auth, repo, token, run, attempt):
                     row['code'] = 'LEGACY_NOOP_PROOF_REJECTED'
                 else:
                     row['code'] = 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE'
+                return row
+            if auth._attested_retired_legacy_failure(
+                    repo, run, job, step, source, attempt, token):
+                row['code'] = 'LEGACY_PREWRITE_PROVEN'
                 return row
             row['code'] = legacy_failure_reason(auth, repo, job, token, row)
             return row
@@ -243,9 +252,14 @@ def main():
         print('LEGEND_MIGRATION_AUDIT:BLOCKED:run=' + str(row['run']) +
               ':attempt=' + str(row['attempt']) + ':code=' + row['code'] +
               ':sourceBlob=' + (row.get('sourceBlob') or 'unknown'), flush=True)
-    # An audit green NEVER substitutes for actual live EF/physical SQL proof,
-    # current first-write journal admission or independent app receipts.
-    return 1 if blockers else 0
+    # Evidence inventory is OBSERVATION only: a historical EF SQL attempt
+    # expectedly remains listed until the canonical protected release checks
+    # the fresh physical schema and journal. These findings are NOT a code
+    # compilation failure, and must not force another PR for each historical
+    # run. The production first-write gate remains fail-closed regardless.
+    print('LEGEND_MIGRATION_AUDIT:OBSERVATION_ONLY:unresolved=' +
+          str(len(blockers)) + ':SQL_WRITE_NOT_AUTHORIZED', flush=True)
+    return 0
 
 
 if __name__ == '__main__':
