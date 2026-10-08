@@ -1756,6 +1756,64 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 self.assertFalse(self.proven())
                 self.BLOBS[path] = actual
 
+    def test_pr525_exact_failed_prepublication_receipts_do_not_hold_schema_lease(self):
+        # Run 37722599537, immutable execution fe115eb9, failed BEFORE
+        # publication at mutation-admission; application package was reused.
+        # No provider write is authorized by this assertion; only the existing
+        # content-attested nonentry proof may free its completed old lease.
+        run_id = 37722599537
+        authority = 'fe115eb9f3f7ebd753307ec193f7cf4121ee9470'
+        package = 'f4d546ccd50dd35ff20eafecb4d51e6fbdd0e54b'
+        original_head = self.HEAD
+        self.run.update(id=run_id, head_sha=authority)
+        self.record['applicationRevision'] = package
+        self.record['resources'] = sorted([
+            'read/schema/masterapp', 'read/app/masterapp-portal',
+            *('write/app/' + canonical_name(key)
+              for key in ('portal', 'client', 'protect', 'parfait', 'website')),
+        ])
+        names = [
+            'legend-release-admission-' + self.record['admissionId'],
+            f'legend-release-step-state-{package}-{run_id}-1',
+            'legend-release-transaction-plan-' + '8' * 64,
+            *(f'diagnostics-rollback-{key}-{authority}'
+              for key in ('portal', 'client', 'protect', 'parfait', 'website')),
+        ]
+        self.api.pages_map[f'actions/runs/{run_id}/artifacts'] = [
+            {'name': name, 'expired': False} for name in names
+        ]
+        self.api.pages_map[f'actions/runs/{run_id}/attempts/1/jobs'] = [{
+            'name': 'release', 'status': 'completed',
+            'conclusion': 'failure', 'steps': self.steps,
+        }]
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '29c23b084d059d5f1663c98631be7557ec86fa67',
+            'scripts/release-migration.py': '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        }):
+            self.assertTrue(self.proven())
+            # Never treat an unrecognized future or altered mutation owner
+            # as a non-entry, regardless of an apparently matching step name.
+            with patch.dict(self.BLOBS, {
+                'scripts/release-prepublication.py': 'f' * 40,
+            }):
+                self.assertFalse(self.proven())
+            artifacts = self.api.pages_map[f'actions/runs/{run_id}/artifacts']
+            for prefix in ('legend-release-child-intent-', 'legend-release-operation-intent-'):
+                with self.subTest(prefix=prefix):
+                    artifacts.append({'name': prefix + 'f' * 64, 'expired': False})
+                    self.assertFalse(self.proven())
+                    artifacts.pop()
+            # Even one successful publication step invalidates no-write proof.
+            publication = next(item for item in self.steps
+                               if item['name'] == 'Submit canonical selected targets in parallel')
+            publication['conclusion'] = 'success'
+            self.assertFalse(self.proven())
+            publication['conclusion'] = 'skipped'
+            artifacts.pop()
+            self.assertFalse(self.proven())
+        self.HEAD = original_head
+
     def test_exact_historical_no_write_failure_disposes_old_lease(self):
         self.assertTrue(self.proven())
         self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
