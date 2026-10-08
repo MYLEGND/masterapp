@@ -915,6 +915,89 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 'owner/repo', run, job, step, 1, 'token'))
             sources['scripts/release-migration.py'] = current
 
+    def test_pr505_reused_rollback_historical_first_write_proof(self):
+        # Original release run 37674186895: admission, terminal step-state,
+        # and immutable transaction plan ONLY. Five rollback ZIPs were fetched
+        # from earlier producers; this failed run never re-uploaded them.
+        import subprocess
+        head = 'a0bec5ab2e66a394b6ac64c937333cbe01c49809'
+        run_id = 37674186895
+        paths = (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-migration.py', 'scripts/release-prepublication.py',
+            'scripts/release-operation-evidence.py',
+        )
+        sources = {path: subprocess.check_output(
+            ['git', 'show', head + ':' + path], text=True) for path in paths}
+        run = dict(self.run, id=run_id, head_sha=head,
+                   status='completed', conclusion='failure', run_attempt=1,
+                   head_repository={'full_name': 'owner/repo'})
+        required = {
+            'Prepare complete immutable release transaction': 'success',
+            'Synchronize canonical pre-publication resource lanes': 'failure',
+            'Reconcile complete immutable release transaction': 'success',
+            'Submit canonical selected targets in parallel': 'skipped',
+            'Run independent auxiliary release fanout': 'skipped',
+            'Retain exact approved release receipt': 'skipped',
+            'Reconcile terminal release resource disposition': 'skipped',
+            'Preserve terminal release resource disposition': 'skipped',
+        }
+        steps = [dict(name=name, status='completed', conclusion=state)
+                 for name, state in required.items()]
+        job = dict(id=112975694169, name='release', status='completed',
+                   conclusion='failure', steps=steps)
+        step = steps[1]
+        names = [
+            'legend-release-admission-'
+            '91c45ba15956763c106522358243a9edfe2d89405237f0ec5f7f12e16529b47a',
+            'legend-release-step-state-'
+            '9e1fe088ff640893706f7c469a69417cfa24ee8e-37674186895-1',
+            'legend-release-transaction-plan-'
+            '97af370c4ba860c6ecb06846ff9363ea513ec10a70d76a2349e7046013866a9f',
+        ]
+        receipts = [dict(name=name, expired=False, workflow_run=dict(id=run_id))
+                    for name in names]
+        log = ('2026-10-07T19:36:05.7622207Z Migration child unresolved; '
+               'preserve prior evidence and reconcile without replay.\n')
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, sha, path, token: sources[path]), \
+             patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, 'api_get',
+                          side_effect=lambda repo, path, token: {
+                              'artifacts': receipts, 'total_count': len(receipts)
+                          }):
+            proven = lambda: self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 1, 'token')
+            self.assertTrue(proven())
+            # No identical-write replay if there is any incomplete history.
+            for name in ('legend-release-child-intent-' + 'f' * 64,
+                         'legend-release-operation-intent-' + 'f' * 64,
+                         'diagnostics-rollback-portal-' + head):
+                with self.subTest(name=name):
+                    receipts.append(dict(name=name, expired=False,
+                                         workflow_run=dict(id=run_id)))
+                    self.assertFalse(proven())
+                    receipts.pop()
+            receipts[1]['expired'] = True
+            self.assertFalse(proven())
+            receipts[1]['expired'] = False
+            sources['scripts/release-migration.py'] += '\n# untrusted writer'
+            self.assertFalse(proven())
+            sources['scripts/release-migration.py'] = subprocess.check_output(
+                ['git', 'show', head + ':scripts/release-migration.py'], text=True)
+            for name in ('Prepare complete immutable release transaction',
+                         'Reconcile complete immutable release transaction'):
+                row = next(x for x in steps if x['name'] == name)
+                row['conclusion'] = 'skipped'
+                self.assertFalse(proven())
+                row['conclusion'] = 'success'
+            for name in ('Submit canonical selected targets in parallel',
+                         'Run independent auxiliary release fanout'):
+                row = next(x for x in steps if x['name'] == name)
+                row['conclusion'] = 'success'
+                self.assertFalse(proven())
+                row['conclusion'] = 'skipped'
+
     def test_original_prewrite_owners_reconcile_only_with_pinned_source_and_receipts(self):
         import subprocess
         cases = (

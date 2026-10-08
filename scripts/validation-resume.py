@@ -510,9 +510,46 @@ def _attested_migration_prewrite_failure(repository, run, job, step, attempt, to
         f"diagnostics-rollback-{key}-{run['head_sha']}"
         for key in ('portal', 'client', 'protect', 'parfait', 'website')
     }
-    if not expected_rollback.issubset(names):
-        return False
-    other = set(names) - expected_rollback
+    retained_here = set(names) & expected_rollback
+    if retained_here != expected_rollback:
+        # Original October 7 prepublication authority reused five immutable
+        # rollback ZIPs from prior validated producers. No ZIPs were written
+        # into its own run. This narrowly attests the exact audited FIRST-write
+        # generation only when the same release job positively proves that
+        # transaction preparation completed, migration prepublication failed,
+        # read-only finalization completed, and publication/auxiliary never
+        # entered. Unknown/partial rollback evidence is never authorization.
+        original_reused_rollback = (
+            not retained_here and run.get('id') == 37674186895
+            and run.get('head_sha') == 'a0bec5ab2e66a394b6ac64c937333cbe01c49809'
+            and approved_source_blobs['scripts/release-prepublication.py']
+                == '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'
+            and migration_blob == '42efc3425a97f9ba8b35ba2a6dde6e41272032b1'
+            and approved_source_blobs['.github/workflows/' + DIRECT_RELEASE_WORKFLOW]
+                == 'bd84c42297a50b29dfa20c2ed926b8233074720e'
+        )
+        if not original_reused_rollback:
+            return False
+        steps = job.get('steps')
+        if not isinstance(steps, list):
+            return False
+        def exactly(name, conclusion):
+            return sum(
+                item.get('name') == name and item.get('status') == 'completed'
+                and item.get('conclusion') == conclusion for item in steps
+            ) == 1
+        if not all((
+            exactly('Prepare complete immutable release transaction', 'success'),
+            exactly('Synchronize canonical pre-publication resource lanes', 'failure'),
+            exactly('Reconcile complete immutable release transaction', 'success'),
+            exactly('Submit canonical selected targets in parallel', 'skipped'),
+            exactly('Run independent auxiliary release fanout', 'skipped'),
+            exactly('Retain exact approved release receipt', 'skipped'),
+            exactly('Reconcile terminal release resource disposition', 'skipped'),
+            exactly('Preserve terminal release resource disposition', 'skipped'),
+        )):
+            return False
+    other = set(names) - retained_here
     admission = [n for n in other if re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n)]
     state = [n for n in other if re.fullmatch(
         rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-[1-9][0-9]*', n)]
