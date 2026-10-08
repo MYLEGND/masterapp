@@ -1756,6 +1756,37 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 self.assertFalse(self.proven())
                 self.BLOBS[path] = actual
 
+    def test_cancelled_parent_with_completed_failed_release_is_proven_without_write(self):
+        # GitHub run 37720449533: parent cancelled, release job completed
+        # failure after read-only prepublication, all publication skipped,
+        # and no child/operation intent in complete artifact inventory.
+        self.run['conclusion'] = 'cancelled'
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '29c23b084d059d5f1663c98631be7557ec86fa67',
+            'scripts/release-migration.py': '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        }):
+            self.assertTrue(self.proven())
+            self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
+                a for a in self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+                if not a['name'].startswith('legend-release-transaction-plan-')
+            ]
+            self.assertTrue(self.proven())
+            self.steps.append({
+                'name': 'Submit canonical selected targets in parallel',
+                'conclusion': 'success',
+            })
+            self.assertFalse(self.proven())
+
+    def test_cancelled_parent_with_started_or_unknown_release_cannot_discharge(self):
+        self.run['conclusion'] = 'cancelled'
+        self.api.pages_map[f"actions/runs/{self.run['id']}/attempts/1/jobs"][0]['conclusion'] = 'cancelled'
+        self.assertFalse(self.proven())
+        self.api.pages_map[f"actions/runs/{self.run['id']}/attempts/1/jobs"][0]['conclusion'] = 'failure'
+        self.steps[:] = [step for step in self.steps if
+                        step['name'] != 'Synchronize canonical pre-publication resource lanes']
+        self.assertFalse(self.proven())
+
     def test_exact_historical_no_write_failure_disposes_old_lease(self):
         self.assertTrue(self.proven())
         self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
