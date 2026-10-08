@@ -593,6 +593,12 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
     import datetime
     head = 'ea53cdbcf7e650cceb9e193965b630dd1da19c16'
     run_id, job_id = 37129696534, 111222377709
+    def deny(reason):
+        # Evidence diagnostics only. This cannot authorize a database write,
+        # bypass the shared journal, or expose a credential-bearing exception.
+        if run.get('id') == run_id and os.environ.get('GITHUB_ACTIONS') == 'true':
+            print('LEGEND_MIGRATION_LEGACY_EF_PROOF:' + reason, flush=True)
+        return False
     if (run.get('id') != run_id or run.get('head_sha') != head
         or run.get('status') != 'completed' or run.get('conclusion') != 'failure'
         or run.get('run_attempt') != 1 or attempt != 1
@@ -601,7 +607,7 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
         or (job.get('run_attempt') is not None and job['run_attempt'] != 1)
         or step.get('name') != 'Apply additive diagnostics migrations before restarting apps'
         or step.get('status') != 'completed' or step.get('conclusion') != 'failure'):
-        return False
+        return deny('IDENTITY_OR_STEP_MISMATCH')
     try:
         _trusted_child_producer(repository, run)
         source = _release_history_source(repository, head,
@@ -610,7 +616,7 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
         blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
         # The complete October 3 runner is pinned, not merely the error text.
         if blob != 'b85c50eadf83daad32b787f2d37f7a32babe67a4':
-            return False
+            return deny('IMMUTABLE_SOURCE_MISMATCH')
         receipt = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
         rows = receipt.get('artifacts')
         if (type(receipt.get('total_count')) is not int or receipt['total_count'] != 1
@@ -619,11 +625,11 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
                'legend-release-step-state-b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a-37129696534-1'
             or rows[0].get('expired') is not False
             or (rows[0].get('workflow_run') or {}).get('id') != run_id):
-            return False
+            return deny('TERMINAL_RECEIPT_INCOMPLETE')
         started = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
         ended = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
         if started.tzinfo is None or ended.tzinfo is None or ended < started:
-            return False
+            return deny('STEP_TIMESTAMPS_UNPROVEN')
         log = _release_job_log(repository, job_id, token)
         clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', l)
                           for l in log.splitlines())
@@ -631,7 +637,7 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
             r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$',
             clean)
         if checked_out != [head]:
-            return False
+            return deny('ORIGINAL_CHECKOUT_UNPROVEN')
         prefix = ("Unable to create a 'DbContext' of type "
                   "'Infrastructure.Data.MasterAppDbContext'. "
                   "The exception 'Missing MasterAppDb connection string "
@@ -644,15 +650,34 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
                 if (observed.tzinfo is None or observed < started
                     or observed > ended + datetime.timedelta(seconds=2)
                     or 'was thrown while attempting to create an instance.' not in msg):
-                    return False
+                    return deny('FACTORY_ERROR_TIMESTAMP_OR_MESSAGE_MISMATCH')
                 count += 1
         # DbContext construction fails before EF can issue migration SQL.
-        return count == 1 and (
-            'Schema ready. Executed the exact validated migration bundle '
-            'from the proven live database baseline.' not in log)
+        if count != 1:
+            return deny('FACTORY_ERROR_NOT_UNIQUE')
+        # Actions logs echo the source of each `run:` step. The October 3
+        # job includes an unexecuted ANSI-colored Python print(...) statement
+        # containing this phrase. Treat ONLY an actual, whole timestamped
+        # output line as success, never source code or command arguments.
+        # Any genuine success marker anywhere in this authenticated job still
+        # invalidates historical non-entry; SQL replays remain fail-closed.
+        success_marker = ('Schema ready. Executed the exact validated migration bundle '
+                          'from the proven live database baseline.')
+        for line in log.splitlines():
+            stamp, separator, message = line.partition('Z ')
+            if separator and message == success_marker:
+                try:
+                    observed = datetime.datetime.fromisoformat(stamp + '+00:00')
+                except ValueError:
+                    return deny('MALFORMED_SUCCESS_OUTPUT_TIMESTAMP')
+                if observed.tzinfo is None:
+                    return deny('MALFORMED_SUCCESS_OUTPUT_TIMESTAMP')
+                return deny('SUCCESS_MARKER_CONTRADICTS_FAILURE')
+        return True
     except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
-            OSError, UnicodeError, subprocess.SubprocessError):
-        return False
+            OSError, UnicodeError, subprocess.SubprocessError) as exc:
+        # Only a bounded exception CLASS; never output provider details.
+        return deny('EVIDENCE_READ_OR_PARSE_' + type(exc).__name__)
 
 
 def _attested_migration_noop_success(repository, run, job, step, attempt, token):

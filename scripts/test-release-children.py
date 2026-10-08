@@ -764,6 +764,17 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, 'api_get', side_effect=evidence), \
              patch.object(self.authority, '_release_job_log', return_value=log):
             self.assertTrue(check())
+            # This exact October 3 log contains the Python script SOURCE
+            # (colored by Actions), not a successful execution output.
+            echoed_source = (
+                "2026-10-03T14:30:34.0813785Z \x1b[36;1m"
+                "print('Schema ready. Executed the exact validated migration "
+                "bundle from the proven live database baseline.')"
+                "\x1b[0m\n"
+            )
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + echoed_source):
+                self.assertTrue(check())
             self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
                 'owner/repo', dict(run, id=run_id + 1), job, step, 1, 'fixture'))
             self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
