@@ -189,6 +189,24 @@ jobs:
                   repo, run, job, matches[0], source, token):
               raise SystemExit('LEGEND_BASELINE_NONENTRY:ORIGINAL_PROOF_REJECTED')
           print('LEGEND_BASELINE_NONENTRY:AUTHENTICATED_READ_ONLY')
+          # Read-only ORIGINAL cancelled parent; its successful migration
+          # no-change step is unrelated to later cancelled app publication.
+          run_id = 37091277402
+          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
+          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
+          if len(found) != 1:
+              raise SystemExit('LEGEND_CANCELLED_NOOP:JOB_UNPROVEN')
+          job = found[0]
+          matches = [step for step in job.get('steps', [])
+                     if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+          original = authority._release_history_source(
+              repo, run['head_sha'],
+              '.github/workflows/' + authority.DIRECT_RELEASE_WORKFLOW, token)
+          if len(matches) != 1 or not authority._legacy_migration_noop(
+                  repo, run, job, matches[0], original, token):
+              raise SystemExit('LEGEND_CANCELLED_NOOP:PROOF_REJECTED')
+          print('LEGEND_CANCELLED_NOOP:AUTHENTICATED_READ_ONLY')
           PYLEGACY
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
           python3 scripts/test-release-lifecycle.py
