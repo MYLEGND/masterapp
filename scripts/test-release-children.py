@@ -302,8 +302,14 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
         )]
         self.message = ('2026-10-08T11:00:15.7025934Z '
             'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
+        # This test authenticates a historical producer, not the mutable
+        # current migration owner. Pin the pre-change verified commit so
+        # future SQL guard additions cannot turn old evidence into new code.
+        import subprocess
+        historical_source = '88936a82f9a94b93dedb18fcfe73f18a89410c91'
         self.sources = {
-            path: (Path(__file__).resolve().parents[1] / path).read_text()
+            path: subprocess.check_output(
+                ['git', 'show', historical_source + ':' + path], text=True)
             for path in (
                 '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
                 'scripts/release-prepublication.py',
