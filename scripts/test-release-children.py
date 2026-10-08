@@ -938,6 +938,13 @@ class ChildHistorySafetyTests(unittest.TestCase):
             'Reconcile complete immutable release transaction': 'success',
             'Submit canonical selected targets in parallel': 'skipped',
             'Run independent auxiliary release fanout': 'skipped',
+            'Audit centralized Cloudflare routing authority': 'skipped',
+            'Deploy and activate LEGEND Founder Cloudflare baseline': 'skipped',
+            'Reconcile public custom-hostname Cloudflare policy': 'skipped',
+            'Deploy shared Cloudflare business website router': 'skipped',
+            'Verify every deployed target and collect all failures': 'skipped',
+            **{f'Confirm first-pass durable publication receipt ({app})': 'skipped'
+               for app in ('portal', 'client', 'protect', 'parfait', 'website')},
             'Retain exact approved release receipt': 'skipped',
             'Reconcile terminal release resource disposition': 'skipped',
             'Preserve terminal release resource disposition': 'skipped',
