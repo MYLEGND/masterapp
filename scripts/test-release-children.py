@@ -326,10 +326,9 @@ class ChildHistorySafetyTests(unittest.TestCase):
             artifacts[0]['expired'] = True
             self.assertFalse(check())
             artifacts[0]['expired'] = False
-            artifacts.pop()
+            original_step_receipt = artifacts.pop(1)
             self.assertFalse(check())
-            artifacts.append(dict(name=names[-1], expired=False,
-                                  workflow_run=dict(id=run_id)))
+            artifacts.insert(1, original_step_receipt)
             with patch.object(self.authority, '_release_job_log',
                               return_value='2026-10-07T13:57:42.6797561Z {"migrationStatus":"reconciled"}'):
                 self.assertFalse(check())
