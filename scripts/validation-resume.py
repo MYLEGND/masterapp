@@ -648,6 +648,19 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
     """
     gate = DIRECT_RELEASE_CHILDREN[child]
     partition_identity = partition_identity or material_identity
+
+    def rejection(message, run_id=None, attempt=None):
+        """Keep original denial semantics; attach only bounded GitHub run identity.
+
+        This is not write authorization. No provider exception or artifact body
+        is allowed into the diagnostic, and non-migration callers are unchanged.
+        """
+        if child != 'migrations' or type(run_id) is not int or not 0 < run_id < 10**13:
+            return RuntimeError(message)
+        suffix = f' [run={run_id}'
+        if type(attempt) is int and 0 < attempt <= 100:
+            suffix += f';attempt={attempt}'
+        return RuntimeError(message + suffix + ']')
     if (not re.fullmatch(r"[a-f0-9]{64}", partition_identity)
             or not re.fullmatch(r"[a-f0-9]{64}", dependency_identity)
             or not re.fullmatch(r"[a-f0-9]{64}", material_identity)
@@ -663,7 +676,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
         payload = api_get(repository, f"actions/runs?branch={branch}&event=workflow_dispatch&per_page=100&page={page}", token)
         runs = payload.get("workflow_runs")
         if not isinstance(runs, list):
-            raise RuntimeError("Release child execution history unavailable")
+            raise rejection("Release child execution history unavailable")
         seen += len(runs)
         for run in runs:
             if (run.get("head_branch") != TRUSTED_PR_BASE
@@ -674,7 +687,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             run_id = run["id"]
             attempts = run.get("run_attempt", 1)
             if type(attempts) is not int or attempts < 1:
-                raise RuntimeError("Release child attempt history unavailable")
+                raise rejection("Release child attempt history unavailable", run_id)
             if run_id == current_run and current_attempt == 1:
                 continue
             inventory = None
@@ -686,7 +699,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 count = jobs_payload.get("total_count")
                 if (not isinstance(jobs, list) or type(count) is not int or count != len(jobs)
                     or any(not isinstance(job, dict) for job in jobs)):
-                    raise RuntimeError("Release child execution history incomplete")
+                    raise rejection("Release child execution history incomplete", run_id, attempt)
                 if release_attempt_never_entered(jobs):
                     continue
                 if any(job.get('name') == 'admission' for job in jobs):
@@ -696,7 +709,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         continue
                 owners = [job for job in jobs if job.get("name") == "release"]
                 if len(owners) != 1:
-                    raise RuntimeError("Release child owner unproven")
+                    raise rejection("Release child owner unproven", run_id, attempt)
                 job = owners[0]
                 if job.get("status") == "queued" or job.get("conclusion") == "skipped":
                     continue
@@ -712,7 +725,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     if hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc':
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
-                    raise RuntimeError("Release child execution detail unavailable")
+                    raise rejection("Release child execution detail unavailable", run_id, attempt)
                 if steps[0].get("status") == "queued" or steps[0].get("conclusion") == "skipped":
                     continue
                 if (child == 'migrations' and steps[0].get('name') == gate['step']
@@ -735,14 +748,14 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     artifact_payload = api_get(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
                     inventory = artifact_payload.get("artifacts")
                     if not isinstance(inventory, list) or artifact_payload.get("total_count", 0) > len(inventory):
-                        raise RuntimeError("Release child original generation inventory incomplete")
+                        raise rejection("Release child original generation inventory incomplete", run_id, attempt)
                 generations = []
                 for artifact in inventory:
                     if not re.fullmatch(r"legend-release-child-intent-[a-f0-9]{64}", artifact.get("name", "")):
                         continue
                     # Any expired intent can conceal this child's original write.
                     if artifact.get("expired"):
-                        raise RuntimeError("Release child original intent expired; no replay authorized")
+                        raise rejection("Release child original intent expired; no replay authorized", run_id, attempt)
                     record = _release_history_json(repository, run_id, artifact, "operation.json")
                     if record.get("child") != child:
                         continue
@@ -751,21 +764,26 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         generations.append(generation)
                         partition = record.get("partitionIdentity")
                         if not isinstance(partition, str) or not re.fullmatch(r"[a-f0-9]{64}", partition):
-                            raise RuntimeError("Release child historical partition unproven; no replay authorized")
+                            raise rejection("Release child historical partition unproven; no replay authorized", run_id, attempt)
                         if partition == partition_identity and generation != dependency_identity:
                             completed = release_child_history(repository, child, generation, token, "success")
                             if (completed is None or completed.get("partitionIdentity") != partition
                                     or completed.get("materialIdentity") != record.get("materialIdentity")):
-                                raise RuntimeError("Release child prior partition operation unresolved; no replay authorized")
+                                raise rejection("Release child prior partition operation unresolved; no replay authorized", run_id, attempt)
                 if not generations:
-                    raise RuntimeError("Release child may have written; missing intent cannot authorize replay")
+                    raise rejection(
+                        "Release child failed prepublication but the no-write proof was not authenticated"
+                        if child == 'migrations' and steps[0].get('name') == gate['step']
+                           and steps[0].get('conclusion') == 'failure'
+                        else "Release child may have written; missing intent cannot authorize replay",
+                        run_id, attempt)
                 if dependency_identity in generations:
-                    raise RuntimeError("Release child physical operation already entered; reconcile without replay")
+                    raise rejection("Release child physical operation already entered; reconcile without replay", run_id, attempt)
         if len(runs) < 100:
             if payload.get("total_count", seen) > seen:
-                raise RuntimeError("Release child history truncated; no mutation authorized")
+                raise rejection("Release child history truncated; no mutation authorized")
             return True
-    raise RuntimeError("Release child history truncated; no mutation authorized")
+    raise rejection("Release child history truncated; no mutation authorized")
 
 # Single canonical web release inventory. Validation, release baseline discovery,
 # deployment reconciliation, live-resume probing, package naming and final
