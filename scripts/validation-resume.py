@@ -512,24 +512,16 @@ def _attested_migration_prewrite_failure(repository, run, job, step, attempt, to
     }
     retained_here = set(names) & expected_rollback
     if retained_here != expected_rollback:
-        # Original October 7 prepublication authority reused five immutable
-        # rollback ZIPs from prior validated producers. No ZIPs were written
-        # into its own run. This narrowly attests the exact audited FIRST-write
-        # generation only when the same release job positively proves that
-        # transaction preparation completed, migration prepublication failed,
-        # read-only finalization completed, and publication/auxiliary never
-        # entered. Unknown/partial rollback evidence is never authorization.
-        original_reused_rollback = (
-            not retained_here and run.get('id') == 37674186895
-            and run.get('head_sha') == 'a0bec5ab2e66a394b6ac64c937333cbe01c49809'
-            and approved_source_blobs['scripts/release-prepublication.py']
-                == '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'
-            and migration_blob == '42efc3425a97f9ba8b35ba2a6dde6e41272032b1'
-            and approved_source_blobs['.github/workflows/' + DIRECT_RELEASE_WORKFLOW]
-                == 'bd84c42297a50b29dfa20c2ed926b8233074720e'
-        )
-        if not original_reused_rollback:
-            return False
+        # Multiple content-attested historical generations reused retained
+        # rollback packages rather than uploading ZIPs to their own run.
+        # The SAME canonical first-write witness already verifies the original
+        # immutable workflow+writer pair, entire Actions artifact inventory,
+        # first-write journal ordering and exact pre-SQL failure marker.
+        # Never infer nonentry just from absence: the release job must
+        # positively prove preparation+read-only finalizer success, failure
+        # at prepublication, and explicit nonentry of all write-capable stages.
+        if retained_here:
+            return False  # partial locally uploaded rollback inventory
         steps = job.get('steps')
         if not isinstance(steps, list):
             return False
@@ -544,6 +536,13 @@ def _attested_migration_prewrite_failure(repository, run, job, step, attempt, to
             exactly('Reconcile complete immutable release transaction', 'success'),
             exactly('Submit canonical selected targets in parallel', 'skipped'),
             exactly('Run independent auxiliary release fanout', 'skipped'),
+            exactly('Audit centralized Cloudflare routing authority', 'skipped'),
+            exactly('Deploy and activate LEGEND Founder Cloudflare baseline', 'skipped'),
+            exactly('Reconcile public custom-hostname Cloudflare policy', 'skipped'),
+            exactly('Deploy shared Cloudflare business website router', 'skipped'),
+            exactly('Verify every deployed target and collect all failures', 'skipped'),
+            *(exactly(f'Confirm first-pass durable publication receipt ({app})',
+                      'skipped') for app in ('portal', 'client', 'protect', 'parfait', 'website')),
             exactly('Retain exact approved release receipt', 'skipped'),
             exactly('Reconcile terminal release resource disposition', 'skipped'),
             exactly('Preserve terminal release resource disposition', 'skipped'),
