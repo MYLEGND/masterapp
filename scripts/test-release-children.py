@@ -340,6 +340,63 @@ class ChildHistorySafetyTests(unittest.TestCase):
                               return_value=log + log):
                 self.assertFalse(check())
 
+    def test_old_wrapper_noop_does_not_require_future_rollback_format(self):
+        import subprocess
+        cases = (
+            ('be520caaf351e88d409ca77b1810f5ffc98515e0', 37556061199,
+             112590269307, '2026-10-07T01:45:55.6778670Z', True),
+            ('e59606b8d15c872631f3cb1a79b95573c2457ee2', 37527468541,
+             112490642070, '2026-10-06T20:45:06.3502002Z', False),
+        )
+        for head, run_id, job_id, stamp, rollback_present in cases:
+            with self.subTest(run_id=run_id):
+                paths = (
+                    '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                    'scripts/release-prepublication.py',
+                )
+                sources = {
+                    p: subprocess.check_output(['git', 'show', head + ':' + p], text=True)
+                    for p in paths
+                }
+                run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                           conclusion='failure' if not rollback_present else 'success',
+                           run_attempt=2 if rollback_present else 1)
+                job = dict(id=job_id, status='completed',
+                           conclusion='failure' if not rollback_present else 'success')
+                step = dict(self.step, status='completed', conclusion='success',
+                            started_at=stamp[:19] + 'Z',
+                            completed_at=stamp[:19] + 'Z')
+                attempt = 2 if rollback_present else 1
+                names = [
+                    'legend-release-admission-' + 'a' * 64,
+                    f'legend-release-step-state-{"d"*40}-{run_id}-{attempt}',
+                ]
+                if rollback_present:
+                    names.extend(f'diagnostics-rollback-{app}-{head}'
+                                 for app in ('portal', 'client', 'protect', 'parfait', 'website'))
+                artifacts = [
+                    dict(name=n, expired=False, workflow_run=dict(id=run_id))
+                    for n in names
+                ]
+                log = (stamp + ' {"changedTargets": [], "configuredTargets": '
+                       '["masterapp-portal"], "migrationStatus": "not-applicable"}\n')
+                def inventory(repo, path, token):
+                    self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+                    return dict(artifacts=artifacts, total_count=len(artifacts))
+                with patch.object(self.authority, '_release_history_source',
+                                  side_effect=lambda repo, sha, p, token: sources[p]), \
+                     patch.object(self.authority, 'api_get', side_effect=inventory), \
+                     patch.object(self.authority, '_release_job_log', return_value=log):
+                    verify = lambda: self.authority._attested_migration_noop_success(
+                        'owner/repo', run, job, step, attempt, 'token')
+                    self.assertTrue(verify())
+                    sources[paths[0]] += '\n# unrelated workflow change'
+                    self.assertFalse(verify())
+                    sources[paths[0]] = subprocess.check_output(
+                        ['git', 'show', head + ':' + paths[0]], text=True)
+                    artifacts[0]['expired'] = True
+                    self.assertFalse(verify())
+
     def test_second_attempt_prewrite_history_uses_original_attempt_receipt(self):
         import subprocess
         head = '261fd32ba559d6f2bab0324b538068ee7d7541d7'
