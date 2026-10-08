@@ -1565,6 +1565,16 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 self.api, self.run, self.record
             )
 
+    def test_exact_diagnostic_only_prepublication_generation_is_recognized(self):
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': 'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+            'scripts/release-migration.py': 'd108377faf267915d86c856523a7992a4a6d500f',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        }):
+            self.assertTrue(self.proven())
+            self.BLOBS['scripts/release-prepublication.py'] = 'f' * 40
+            self.assertFalse(self.proven())
+
     def test_exact_historical_no_write_failure_disposes_old_lease(self):
         self.assertTrue(self.proven())
         self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"] = [
