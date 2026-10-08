@@ -629,6 +629,76 @@ class ChildHistorySafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
                 self.check()
 
+    def test_legacy_october3_factory_nonentry_is_exactly_attested(self):
+        import subprocess
+        head = 'ea53cdbcf7e650cceb9e193965b630dd1da19c16'
+        run_id, job_id = 37129696534, 111222377709
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=1)
+        job = dict(id=job_id, name='release', status='completed',
+                   conclusion='failure', run_attempt=1)
+        step = dict(
+            name='Apply additive diagnostics migrations before restarting apps',
+            status='completed', conclusion='failure',
+            started_at='2026-10-03T14:30:34Z',
+            completed_at='2026-10-03T14:30:41Z')
+        artifact = dict(
+            name='legend-release-step-state-'
+                 'b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a-37129696534-1',
+            expired=False, workflow_run=dict(id=run_id))
+        log = (
+            '2026-10-03T14:29:37.6020833Z [command]/usr/bin/git log -1 --format=%H\n'
+            '2026-10-03T14:29:37.6049925Z ' + head + '\n'
+            "2026-10-03T14:30:41.8853265Z Unable to create a 'DbContext' of type "
+            "'Infrastructure.Data.MasterAppDbContext'. The exception "
+            "'Missing MasterAppDb connection string for EF design-time factory. "
+            "Provide one via --connection, SQLCONNSTR_MasterAppDb, "
+            "ConnectionStrings__MasterAppDb, MasterAppDb, or AgentPortal "
+            "appsettings.' was thrown while attempting to create an instance.\n"
+        )
+        def evidence(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=[artifact], total_count=1)
+        def check():
+            return self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', run, job, step, 1, 'fixture')
+        with patch.object(self.authority, '_trusted_child_producer'), \
+             patch.object(self.authority, '_release_history_source', return_value=source), \
+             patch.object(self.authority, 'api_get', side_effect=evidence), \
+             patch.object(self.authority, '_release_job_log', return_value=log):
+            self.assertTrue(check())
+            self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', dict(run, id=run_id + 1), job, step, 1, 'fixture'))
+            self.assertFalse(self.authority._attested_legacy_ef_factory_nonentry(
+                'owner/repo', run, dict(job, id=job_id + 1), step, 1, 'fixture'))
+            with patch.object(self.authority, '_release_history_source',
+                              return_value=source + '\n# modified'):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log.replace('Missing MasterAppDb',
+                                                       'Connected MasterAppDb')):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + log):
+                self.assertFalse(check())
+            with patch.object(self.authority, 'api_get',
+                              return_value=dict(artifacts=[
+                                  dict(artifact, name='legend-release-child-intent-' + 'a' * 64)
+                              ], total_count=1)):
+                self.assertFalse(check())
+            with patch.object(self.authority, 'api_get',
+                              return_value=dict(artifacts=[dict(artifact, expired=True)],
+                                                total_count=1)):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log +
+                              '2026-10-03T14:30:42Z Schema ready. Executed the exact '
+                              'validated migration bundle from the proven live database baseline.\n'):
+                self.assertFalse(check())
+
     def test_exact_failed_prepublication_migration_is_prewrite_only_with_positive_proof(self):
         import subprocess
         head = 'fe115eb9f3f7ebd753307ec193f7cf4121ee9470'
