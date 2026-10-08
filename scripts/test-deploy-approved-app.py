@@ -951,7 +951,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
         self.assertEqual({'status': 'reconciled', 'changedMigrations': []}, result)
         release_proof.assert_called_once()
         migrate.assert_called_once()
-        self.assertTrue(any('verify' in args[0] for args in command.call_args_list))
+        self.assertTrue(any('verify' in call.args[0] for call in command.call_args_list))
 
     def test_non_schema_changes_keep_migration_lane_skipped(self):
         owner = self.owner
