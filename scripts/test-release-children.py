@@ -1018,6 +1018,67 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
 
+    def test_prior_completed_ef_bundle_only_clears_new_pending_schema_prefix(self):
+        import subprocess
+        head = '2619da6b80455a33726a098b166367d739077cd1'
+        old_app = 'b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a'
+        current = '571d02a520b6c9af4fef68af60d2b85124a7e996'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37131076769, head_sha=head, status='completed',
+                   conclusion='success', run_attempt=1)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T14:53:07Z',
+                    completed_at='2026-10-03T14:53:17Z')
+        job = dict(id=111226406889, name='release', status='completed', conclusion='success',
+                   steps=[step, *[
+                       dict(name=name, conclusion='success') for name in
+                       ('Verify restored immutable validation package',
+                        'Retain exact approved release receipt',
+                        'Verify every deployed target and collect all failures')]])
+        log = ('2026-10-03T14:52:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T14:52:01Z ' + head + '\n'
+               '2026-10-03T14:53:16.7575041Z Schema ready. Executed '
+               'the exact validated migration bundle from the proven live '
+               'database baseline.\n')
+        receipts = [dict(name='legend-approved-release-' + old_app + '-masterapp-portal',
+                         expired=False)]
+        def api(repo, path, token):
+            self.assertEqual(path, 'actions/runs/37131076769/artifacts?per_page=100')
+            return dict(artifacts=receipts, total_count=len(receipts))
+        def prove(**kwargs):
+            return self.authority._legacy_completed_bundle_is_separate_from_pending_sql(
+                'owner/repo', run, job, step, source, 1, 'fixture', **kwargs)
+        valid = dict(first_pending_migration_id='20261007134500_AddFounderAssistantRules',
+                     last_applied_migration_id='20261003091500_CanonicalizeBusinessFinanceToolState',
+                     current_application_revision=current)
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=old_app), \
+             patch.object(self.authority, 'api_get', side_effect=api):
+            self.assertTrue(prove(**valid))
+            self.assertFalse(prove(**dict(valid, first_pending_migration_id=
+                              '20261001070000_AddLegendEngineeringControlPlane')))
+            self.assertFalse(prove(**dict(valid, last_applied_migration_id=
+                              '20260927090000_AddOpenAiProductFeedProjections')))
+            self.assertFalse(prove(**dict(valid, current_application_revision=old_app)))
+            self.assertFalse(prove(**dict(valid, first_pending_migration_id=None)))
+            job['conclusion'] = 'failure'
+            self.assertFalse(prove(**valid))
+            job['conclusion'] = 'success'
+            run['run_attempt'] = 2
+            self.assertFalse(prove(**valid))
+            run['run_attempt'] = 1
+            receipts.clear()
+            self.assertFalse(prove(**valid))
+        with patch.object(self.authority, '_release_job_log',
+                          return_value=log.replace('Schema ready. Executed',
+                                                   'Migration failed. Executed')), \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=old_app), \
+             patch.object(self.authority, 'api_get', side_effect=api):
+            self.assertFalse(prove(**valid))
+
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess
         source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
