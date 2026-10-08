@@ -1905,6 +1905,28 @@ class ResourceAdmission(unittest.TestCase):
             m._validate_admission_record_scope(record),
         )
 
+    def test_ef_metadata_only_change_reserves_schema_write_before_bundle(self):
+        for path in (
+            'Infrastructure/Data/LegacyMetaAttributionMigrationMetadata.cs',
+            'Infrastructure/Data/MasterAppDbContext.cs',
+            'Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.Designer.cs',
+        ):
+            with self.subTest(path=path):
+                authority = m.VALIDATION_AUTHORITY
+                self.assertTrue(authority.release_ef_metadata_path(path))
+                resources = self.resources([path])
+                self.assertIn('write/schema/masterapp', resources)
+                self.assertNotIn('read/schema/masterapp', resources)
+                self.assertTrue(any(value.startswith('write/app/') for value in resources))
+
+    def test_unrelated_data_source_does_not_reserve_schema_write(self):
+        path = 'Infrastructure/Data/RegularRepository.cs'
+        authority = m.VALIDATION_AUTHORITY
+        self.assertFalse(authority.release_ef_metadata_path(path))
+        resources = self.resources([path])
+        self.assertNotIn('write/schema/masterapp', resources)
+        self.assertIn('read/schema/masterapp', resources)
+
     def test_historical_admission_scope_rejects_missing_selected_target_write(self):
         record = {
             'selectedTargets': [canonical_name('client')],
