@@ -1751,8 +1751,14 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
                 'scripts/release-prepublication.py': prepublication,
                 'scripts/release-migration.py': migration,
                 'scripts/validation-resume.py': journal,
-            }):
+            }), patch.object(m.VALIDATION_AUTHORITY,
+                             '_historical_migration_prewrite_proven',
+                             return_value=True) as first_write:
                 self.assertTrue(self.proven())
+                first_write.assert_called_once()
+                first_write.return_value = False
+                self.assertFalse(self.proven())
+                first_write.return_value = True
                 artifact = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
                 artifact.append({'name': 'legend-release-child-intent-' + '1' * 64,
                                  'expired': False})
