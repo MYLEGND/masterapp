@@ -365,7 +365,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 step = dict(self.step, status='completed', conclusion='success',
                             started_at=stamp[:19] + 'Z',
                             completed_at=stamp[:19] + 'Z')
-                 names = [
+                names = [
                     'legend-release-admission-' + 'a' * 64,
                     f'legend-release-step-state-{"d"*40}-{run_id}-{attempt}',
                 ]
