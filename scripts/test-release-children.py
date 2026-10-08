@@ -842,7 +842,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
         run = dict(self.run, head_sha='f26b3f0bdd68879c01b78cf3a101cc39988c65e5')
         step = dict(name='Apply additive diagnostics migrations before restarting apps', status='completed', conclusion='success',
                     started_at='2026-10-04T05:40:58Z', completed_at='2026-10-04T05:40:58Z')
-        job = dict(id=111371429877, status='completed')
+        job = dict(id=111371429877, status='completed', conclusion='success')
         checkout = '2026-10-04T05:36:00.0000000Z [command]/usr/bin/git log -1 --format=%H\n2026-10-04T05:36:00.0100000Z ' + run['head_sha'] + '\n'
         marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
         log = checkout + '2026-10-04T05:40:58.6667345Z ' + marker + '\n'
