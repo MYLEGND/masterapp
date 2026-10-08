@@ -1327,7 +1327,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                             or _audited_legacy_migration_noop_source(source)
                             or (hashlib.sha1(
                                     b'blob ' + str(len(source.encode('utf-8'))).encode()
-                                    + b'\\0' + source.encode('utf-8')).hexdigest()
+                                    + b'\0' + source.encode('utf-8')).hexdigest()
                                 in (_RETIRED_PRE_BUNDLE.keys() | _RETIRED_ENTERED_BUNDLE.keys())
                                 and "python3 - <<'PYMIGRATE'" in block)):
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
