@@ -398,18 +398,13 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
         }[migration_blob]
     else:
         marker = {
-            'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied migration history absent from validated bundle'
-            if migration_blob in {
-                'd108377faf267915d86c856523a7992a4a6d500f',
-                '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
-            } else ''
+            'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied migration history absent from validated bundle',
+            'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission',
         }
-        if migration_blob == '819fa223f62e6b97fbbdd28092f765b1f57e6f90':
-            marker.add('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
     emitted = [line.partition('Z ')[2] for line in raw.splitlines()
                if re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z .+', line)]
-    return sum(line in marker if isinstance(marker, set) else line == marker
-               for line in emitted) == 1
+    accepted = {marker} if isinstance(marker, str) else marker
+    return sum(line in accepted for line in emitted) == 1
 
 
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
