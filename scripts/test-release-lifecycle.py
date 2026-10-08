@@ -1612,8 +1612,13 @@ class CancelledBeforeAdmissionNonentryProof(unittest.TestCase):
         }]
         self.api.pages_map[f"actions/runs/{self.run_id}/attempts/1/jobs"] = self.jobs
         self.api.pages_map[f"actions/runs/{self.run_id}/artifacts"] = self.artifacts
-        self.source = (Path(__file__).resolve().parents[1] /
-                       '.github/workflows' / m.DIRECT).read_text()
+        # This Oct 3 no-entry attempt used the old admission-only topology.
+        # Do not reinterpret that immutable run using the migration-first DAG.
+        import subprocess
+        self.source = subprocess.check_output([
+            'git', 'show',
+            '88936a82f9a94b93dedb18fcfe73f18a89410c91:.github/workflows/'
+            + m.DIRECT], text=True)
 
     def proven(self):
         with patch.object(self.api, 'text', return_value=self.source):
@@ -2434,7 +2439,13 @@ class ResourceAdmission(unittest.TestCase):
             {'name': 'admission', 'conclusion': 'success'},
             {'name': 'preserve-rollback', 'conclusion': 'skipped'},
         ]
-        self.assertTrue(m._never_admitted(self.api, self.run))
+        import subprocess
+        historical = subprocess.check_output([
+            'git', 'show',
+            '88936a82f9a94b93dedb18fcfe73f18a89410c91:.github/workflows/'
+            + m.DIRECT], text=True)
+        with patch.object(self.api, 'text', return_value=historical):
+            self.assertTrue(m._never_admitted(self.api, self.run))
 
     def test_omitted_attempt_requires_historical_source_and_positive_attempt_inventory(self):
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
