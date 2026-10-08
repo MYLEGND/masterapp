@@ -958,10 +958,10 @@ class ChildHistorySafetyTests(unittest.TestCase):
         receipts = [dict(name=name, expired=False, workflow_run=dict(id=run_id))
                     for name in names]
         log = ('2026-10-07T19:36:05.7622207Z Migration child unresolved; '
-               'preserve prior evidence and reconcile without replay.\\n')
+               'preserve prior evidence and reconcile without replay.\n')
         with patch.object(self.authority, '_release_history_source',
-                          side_effect=lambda repo, sha, path, token: sources[path]), \\
-             patch.object(self.authority, '_release_job_log', return_value=log), \\
+                          side_effect=lambda repo, sha, path, token: sources[path]), \
+             patch.object(self.authority, '_release_job_log', return_value=log), \
              patch.object(self.authority, 'api_get',
                           side_effect=lambda repo, path, token: {
                               'artifacts': receipts, 'total_count': len(receipts)
@@ -981,7 +981,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             receipts[1]['expired'] = True
             self.assertFalse(proven())
             receipts[1]['expired'] = False
-            sources['scripts/release-migration.py'] += '\\n# untrusted writer'
+            sources['scripts/release-migration.py'] += '\n# untrusted writer'
             self.assertFalse(proven())
             sources['scripts/release-migration.py'] = subprocess.check_output(
                 ['git', 'show', head + ':scripts/release-migration.py'], text=True)
