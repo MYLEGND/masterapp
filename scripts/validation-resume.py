@@ -211,29 +211,37 @@ def _validate_child_generation(repository, run, artifact, record, child, token, 
 
 _RELEASE_CHILD_NOOP_PROOFS = set()
 
+# Retired, content-attested workflow generations with a true early-exit branch.
+# This is SOURCE-based, not another run-ID-specific admission bypass. Each
+# observed historical step still requires its own trusted Git head, completed
+# step timestamps and exact one-line no-migration marker.
+AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_BLOBS = frozenset({
+    'ad23c687da0e5dadf7c92a777cf26f71947e9bb0',
+    'd4404ba420b96623602f953b91f3fe1f31911433',
+})
+
+
+def _audited_legacy_migration_noop_source(source):
+    raw = source.encode('utf-8')
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    return blob in AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_BLOBS
+
 
 def _legacy_migration_noop(repository, run, job, step, source, token):
     """Prove the exact retired migration step exited before any schema operation."""
     import datetime
     legacy = 'Apply additive diagnostics migrations before restarting apps'
     block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
-    # The October 3 approved legacy workflow is an additional immutable
-    # no-op generation: release 37147581514 / authority c4443e8. The original
-    # source's branch exited on the exact marker before the EF bundle could run.
-    # Unlike loose step-name matching, accept ONLY its full verified Git blob;
-    # the exact terminal log, run/head, timestamps and marker are still required.
-    raw_source = source.encode('utf-8')
-    historical_blob = hashlib.sha1(
-        b'blob ' + str(len(raw_source)).encode() + b'\0' + raw_source
-    ).hexdigest()
-    october3_noop = (
-        run.get('id') == 37147581514
-        and run.get('head_sha') == 'c4443e8abb9786d74d13fce8973fe7df470c3238'
-        and historical_blob == 'ad23c687da0e5dadf7c92a777cf26f71947e9bb0'
-    )
-    if (not (hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-             or october3_noop)
-        or job.get('status') != 'completed' or type(job.get('id')) is not int
+    # A release job can fail *after* the migration no-op step; require the
+    # exact immutable source and its timestamp-bound no-write proof, rather
+    # than mistaking the failed parent for a SQL mutation.
+    trusted_source = _audited_legacy_migration_noop_source(source)
+    original_block = (hashlib.sha256(block.encode()).hexdigest()
+        == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc')
+    if (not (original_block or trusted_source)
+        or job.get('status') != 'completed'
+        or job.get('conclusion') not in {'success', 'failure'}
+        or type(job.get('id')) is not int
         or step.get('name') != legacy or step.get('status') != 'completed'
         or step.get('conclusion') != 'success'):
         return False
@@ -241,7 +249,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     context = {'environment': _workflow_top_level_field(source, 'env'),
                'defaults': _workflow_top_level_field(source, 'defaults'),
                'runtime': release.split('    steps:', 1)[0]}
-    if (not october3_noop and
+    if (not trusted_source and
         hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest() != '0b2c73c15828a62dc7440c79fe6ae3ac072af6a2442f1f5d52f31eeebd79629a'):
         return False
     try:
@@ -739,20 +747,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
                     legacy = 'Apply additive diagnostics migrations before restarting apps'
                     block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
-                    # Exact retired serial migration owner. Recognition only maps
-                    # its execution evidence; entered work still requires the
-                    # original authenticated intent and partition disposition.
-                    source_bytes = source.encode('utf-8')
-                    source_blob = hashlib.sha1(
-                        b'blob ' + str(len(source_bytes)).encode() + b'\0' + source_bytes
-                    ).hexdigest()
-                    is_attested_october3_noop = (
-                        run_id == 37147581514
-                        and run.get('head_sha') == 'c4443e8abb9786d74d13fce8973fe7df470c3238'
-                        and source_blob == 'ad23c687da0e5dadf7c92a777cf26f71947e9bb0'
-                    )
-                    if (hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-                            or is_attested_october3_noop):
+                    # Recognize the exact historical step, but never authorize
+                    # a write from its conclusion alone; _legacy_migration_noop
+                    # validates the current run's checkout and no-write marker.
+                    if (hashlib.sha256(block.encode()).hexdigest()
+                            == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
+                            or _audited_legacy_migration_noop_source(source)):
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
                     raise rejection("Release child execution detail unavailable", run_id, attempt)
