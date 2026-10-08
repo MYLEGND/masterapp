@@ -1161,14 +1161,34 @@ def _attested_retired_legacy_failure(repository, run, job, step, source, attempt
             if entered:
                 return False
             if guard == 'baseline':
+                # The original script runs a strict ancestry gate first under
+                # set -e. Positively re-run that SAME read-only check with the
+                # immutable pair recorded in the job's original environment;
+                # an absence of SQL log lines alone never proves no entry.
+                baselines = set(re.findall(
+                    r'(?m)^  EXPECTED_DB_BASE_SHA: ([a-f0-9]{40})$', clean))
+                candidates = set(re.findall(
+                    r'(?m)^  APPLICATION_RELEASE_SHA: ([a-f0-9]{40})$', clean))
+                gate_position = block.find('git merge-base --is-ancestor')
+                bundle_position = block.find("python3 - <<'PYMIGRATE'")
+                if (len(baselines) != 1 or len(candidates) != 1
+                    or not 0 <= gate_position < bundle_position):
+                    return False
+                ancestry = subprocess.run(
+                    ['git', 'merge-base', '--is-ancestor',
+                     next(iter(baselines)), next(iter(candidates))],
+                    capture_output=True, text=True, check=False)
+                if ancestry.returncode != 1:
+                    return False
                 return (not any(x.startswith('Database baseline release receipt verified:')
                                 for x in observed)
                         and not any(x.startswith('Infrastructure/Migrations/')
                                     for x in observed)
                         and not any(x == 'No candidate migration source changed from the proven database baseline.'
                                     for x in observed)
-                        and not any('Schema ready. Executed the exact validated migration'
-                                    in x for x in observed))
+                        and not any(x == ('Schema ready. Executed the exact validated migration '
+                                          'bundle from the proven live database baseline.')
+                                    for x in observed))
             return (any('PendingModelChangesWarning' in x for x in observed)
                     and any('System.InvalidOperationException:' in x
                             for x in observed)
