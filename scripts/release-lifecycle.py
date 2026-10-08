@@ -3184,8 +3184,9 @@ def diagnose_completed_workflow(api, run_id):
                 raise RuntimeError('Malformed failed-step identity')
             label_step = failure.get('name') if failure is not None else None
             display = label_step if label_step in names else 'UNVERIFIED_STEP'
-            stage = RELEASE_STEP_STAGES.get(display,
+            stage = (RELEASE_STEP_STAGES.get(display,
                 RELEASE_FAILURE_STAGES.get(owner, default_stage))
+                if name == 'LEGEND approved direct release' else default_stage)
             row = dict(runId=run_id, attempt=attempt, jobId=job_id,
                        job=owner, stepNumber=number, step=display, stage=stage,
                        outcome=outcome, reasonCode='EXACT_CAUSE_NOT_CLASSIFIED',
