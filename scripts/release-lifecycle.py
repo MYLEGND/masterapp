@@ -1246,6 +1246,37 @@ def integrate(api, number):
     return merge_validated(api, pr)
 
 
+def _merged_owner_terminal_nonentry_proven(api, owner):
+    """Discharge a merged release queue owner only after exact no-write proof.
+
+    This is NOT successful publication. A production owner with an entered
+    migration, app-settings, auxiliary or upload intent retains the lease.
+    """
+    if not owner.get('merged_at') or type(owner.get('number')) is not int:
+        return False
+    runs = direct_release_runs(api)
+    if any(run.get('status') != 'completed' for run in runs):
+        return False
+    matching = [run for run in runs
+                if release_run_source_pr(run) == owner['number']]
+    if len(matching) != 1:
+        return False
+    run = matching[0]
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'
+        or run.get('head_sha') != owner.get('merge_commit_sha')):
+        return False
+    records = _admission_records(api, run)
+    if len(records) != 1:
+        return False
+    record = records[0]
+    if (record.get('sourcePr') != owner['number']
+        or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
+        or record.get('executionAuthority') != owner['merge_commit_sha']):
+        return False
+    return _historical_fenced_prepublication_nonentry(api, run, record)
+
+
 def pending_updates(api):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
@@ -1311,10 +1342,18 @@ def pending_updates(api):
                 return {**synced, 'queueOwnerPr': owner}
             return merge_validated(api, current)
         if current.get('merged_at'):
+            if _merged_owner_terminal_nonentry_proven(api, current):
+                _release_release_queue(api, lease['approved'], owner,
+                                       'terminal-failed-no-mutation-proven')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Failed prior publication never entered a provider write; queue lease safely discharged',
+                }
             return {
                 'state': 'RELEASE_QUEUE_WAITING_FOR_PRODUCTION',
                 'pr': owner,
-                'retained': 'Merged queue owner retains lease until terminal production provenance',
+                'retained': 'Merged queue owner retains lease until terminal production provenance or exact no-mutation proof',
             }
         _release_release_queue(api, lease['approved'], owner, 'owner-closed-without-merge')
         promoted = promote_next_release_queue(api)
@@ -2296,7 +2335,10 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     # this historical source-generation proof.
     historical = {
         '.github/workflows/' + DIRECT: {'bd84c42297a50b29dfa20c2ed926b8233074720e'},
-        'scripts/release-prepublication.py': {'29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'},
+        'scripts/release-prepublication.py': {
+            '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+            'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+        },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
         'scripts/release-migration.py': {
