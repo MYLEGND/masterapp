@@ -1010,6 +1010,30 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
                 owner._invoke_migration_bundle()
         call.assert_called_once()
 
+    def test_mutation_admission_reason_is_reported_without_exposing_provider_text(self):
+        owner = self.owner
+        import io
+        marker = ('LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:'
+                  'HISTORICAL_PREWRITE_PROOF_REJECTED:run=37765986494:attempt=1')
+        failure = ('Migration stage unresolved: mutation-admission'
+                   '; preserve prior evidence and reconcile without replay.')
+        output = io.StringIO()
+        response = subprocess.CompletedProcess([], 1, marker + '\\n', failure)
+        with patch.object(owner.subprocess, 'run', return_value=response), \\
+             patch('sys.stdout', output):
+            with self.assertRaisesRegex(RuntimeError,
+                                        'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission'):
+                owner._invoke_migration_bundle()
+        self.assertIn(marker, output.getvalue())
+        self.assertIn('::error title=LEGEND migration admission::', output.getvalue())
+        output = io.StringIO()
+        response = subprocess.CompletedProcess([], 1, marker + '\\nPassword=secret', failure)
+        with patch.object(owner.subprocess, 'run', return_value=response), \\
+             patch('sys.stdout', output):
+            with self.assertRaises(RuntimeError):
+                owner._invoke_migration_bundle()
+        self.assertEqual('', output.getvalue())
+
     def test_unknown_provider_text_never_reaches_diagnostics(self):
         owner = self.owner
         result = subprocess.CompletedProcess([], 1, '',
