@@ -849,6 +849,29 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
             self.assertTrue(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
             proof.assert_called_once_with(self.api, self.run, self.record)
 
+    def test_proven_reused_immutable_package_does_not_have_to_equal_pr_head(self):
+        # The admission reader independently authenticates the exact source PR,
+        # canonical package-input equivalence and immutable package evidence.
+        reused = dict(self.record, applicationRevision='d' * 40)
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[reused]) as admission, \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          return_value=True) as no_write:
+            self.assertTrue(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+        admission.assert_called_once_with(self.api, self.run)
+        no_write.assert_called_once_with(self.api, self.run, reused)
+
+    def test_reused_package_cannot_change_authorized_pr_source(self):
+        reused = dict(self.record, applicationRevision='d' * 40,
+                      authorizedSourceRevision='e' * 40)
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[reused]), \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          side_effect=AssertionError('Untrusted source must not reach proof')):
+            self.assertFalse(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+
     def test_active_duplicate_or_excessive_history_keeps_ownership(self):
         for attempts in (
             [dict(self.run, status='in_progress', conclusion=None)],
@@ -1619,6 +1642,22 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
             self.assertTrue(self.proven())
             self.BLOBS['scripts/release-prepublication.py'] = 'f' * 40
             self.assertFalse(self.proven())
+
+    def test_audited_20261008_readonly_schema_reporting_generation(self):
+        # These immutable Git objects differ from previously attested versions
+        # only by bounded redacted schema-history observation, never provider writes.
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            'scripts/release-migration.py': '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        }):
+            self.assertTrue(self.proven())
+            for path in ('scripts/release-prepublication.py',
+                         'scripts/release-migration.py'):
+                actual = self.BLOBS[path]
+                self.BLOBS[path] = 'f' * 40
+                self.assertFalse(self.proven())
+                self.BLOBS[path] = actual
 
     def test_exact_historical_no_write_failure_disposes_old_lease(self):
         self.assertTrue(self.proven())
