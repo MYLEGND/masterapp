@@ -262,7 +262,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     return True
 
 
-def _attested_migration_prewrite_failure(repository, run, job, step, token):
+def _attested_migration_prewrite_failure(repository, run, job, step, attempt, token):
     """Prove ONE historical migration child never reached its first SQL write.
 
     Reuse the existing trusted release source, complete Actions history and
@@ -271,7 +271,9 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     """
     if (run.get('status') != 'completed'
         or run.get('conclusion') not in {'failure', 'cancelled'}
-        or run.get('run_attempt') != 1
+        or type(run.get('run_attempt')) is not int
+        or attempt < 1 or attempt > run['run_attempt']
+        or (job.get('run_attempt') is not None and job['run_attempt'] != attempt)
         or type(job.get('id')) is not int or job['id'] < 1
         or job.get('status') != 'completed' or job.get('conclusion') != 'failure'
         or step.get('name') != DIRECT_RELEASE_CHILDREN['migrations']['step']
@@ -372,9 +374,10 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     other = set(names) - expected_rollback
     admission = [n for n in other if re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n)]
     state = [n for n in other if re.fullmatch(
-        rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-1', n)]
+        rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-[1-9][0-9]*', n)]
     plan = [n for n in other if re.fullmatch(r'legend-release-transaction-plan-[a-f0-9]{64}', n)]
-    if (len(admission) != 1 or len(state) != 1 or len(plan) > 1
+    if (len(admission) != 1 or len(state) < 1 or len(plan) > 1
+        or sum(n.endswith(f'-{run_id}-{attempt}') for n in state) != 1
         or len(other) != len(admission) + len(state) + len(plan)):
         return False
 
@@ -587,7 +590,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     continue
                 if (child == 'migrations' and steps[0].get('name') == gate['step']
                     and steps[0].get('conclusion') == 'failure'
-                    and _attested_migration_prewrite_failure(repository, run, job, steps[0], token)):
+                    and _attested_migration_prewrite_failure(repository, run, job, steps[0], attempt, token)):
                     continue
                 if (child == 'migrations' and steps[0].get('name') == gate['step']
                     and steps[0].get('conclusion') == 'success'
