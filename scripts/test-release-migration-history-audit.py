@@ -35,6 +35,8 @@ class AuditTests(unittest.TestCase):
                 'No candidate migration source changed from the proven database baseline.'
                 if marker else 'No untrusted executable output'),
             _attested_legacy_ef_factory_nonentry=lambda *args: False,
+            _attested_retired_unscheduled_release=lambda *args: False,
+            _attested_retired_legacy_failure=lambda *args: False,
             LEGACY_NOOP_MARKER='No candidate migration source changed from the database baseline; migration receipt gate is not applicable.',
             LEGACY_OLDER_NOOP_MARKER='No candidate migration source changed from the proven database baseline.',
             DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml')
