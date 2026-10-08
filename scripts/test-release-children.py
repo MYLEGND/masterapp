@@ -842,7 +842,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
         run = dict(self.run, head_sha='f26b3f0bdd68879c01b78cf3a101cc39988c65e5')
         step = dict(name='Apply additive diagnostics migrations before restarting apps', status='completed', conclusion='success',
                     started_at='2026-10-04T05:40:58Z', completed_at='2026-10-04T05:40:58Z')
-        job = dict(id=111371429877, status='completed')
+        job = dict(id=111371429877, status='completed', conclusion='success')
         checkout = '2026-10-04T05:36:00.0000000Z [command]/usr/bin/git log -1 --format=%H\n2026-10-04T05:36:00.0100000Z ' + run['head_sha'] + '\n'
         marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
         log = checkout + '2026-10-04T05:40:58.6667345Z ' + marker + '\n'
@@ -892,7 +892,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertTrue(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
             self.assertFalse(self.authority._legacy_migration_noop(
-                'owner/repo', dict(run, id=123), job, step, source, 'fixture'))
+                'owner/repo', dict(run, head_sha='0' * 40), job, step, source, 'fixture'))
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source + '\n# modified source\n', 'fixture'))
         with patch.object(self.authority, '_release_job_log',
@@ -901,6 +901,183 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_failed_20261003_downstream_parent_does_not_turn_prior_migration_noop_into_write(self):
+        import subprocess
+        original_head = '49d7e5d783523ce0d8df27e4fbd0932f7ce7c92d'
+        source = subprocess.check_output(
+            ['git', 'show', original_head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37145511654, head_sha=original_head, run_attempt=2)
+        job = dict(id=111268755665, status='completed', conclusion='failure')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T18:50:37Z',
+                    completed_at='2026-10-03T18:50:38Z')
+        log = ('2026-10-03T18:48:54.5477912Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T18:48:54.5507636Z ' + original_head + '\n'
+               '2026-10-03T18:50:37.0795751Z No candidate migration source changed '
+               'from the database baseline; migration receipt gate is not applicable.\n')
+        self.assertTrue(self.authority._audited_legacy_migration_noop_source(source))
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source + '\n# altered\n', 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', dict(run, head_sha='0' * 40), job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, dict(step, conclusion='failure'), source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, dict(job, conclusion='cancelled'), step, source, 'fixture'))
+        with patch.object(self.authority, '_release_job_log', return_value=log.replace(
+                'No candidate migration source changed', 'Migration bundle executed')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_other_attested_old_generation_requires_own_noop_marker(self):
+        import subprocess
+        head = '37e73e47316d76876ead5912cf7dd69bf5474250'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37103061253, head_sha=head)
+        job = dict(id=111146713627, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T06:30:55Z',
+                    completed_at='2026-10-03T06:30:55Z')
+        log = ('2026-10-03T06:29:52.1996753Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T06:29:52.2033165Z ' + head + '\n'
+               '2026-10-03T06:30:55.1914100Z No candidate migration source changed '
+               'from the database baseline; migration receipt gate is not applicable.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source + '\n# changed\n', 'fixture'))
+        with patch.object(self.authority, '_release_job_log',
+                          return_value=log.replace('No candidate migration source changed',
+                                                   'Migration bundle executed')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_original_proven_baseline_noop_wording_requires_its_own_source(self):
+        import subprocess
+        head = 'a31831c6221cb8103ae87aec5be4c8f186805d68'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37086116111, head_sha=head)
+        job = dict(id=111096853756, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T01:28:26Z',
+                    completed_at='2026-10-03T01:28:27Z')
+        log = ('2026-10-03T01:27:58.4010000Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T01:27:58.4043106Z ' + head + '\n'
+               '2026-10-03T01:28:27.2625786Z No candidate migration source '
+               'changed from the proven database baseline.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+        with patch.object(self.authority, '_release_job_log', return_value=log.replace(
+                'from the proven database baseline.',
+                'from the database baseline; migration receipt gate is not applicable.')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_completed_legacy_ef_bundle_is_not_misclassified_as_a_noop(self):
+        # A different October 3 protected release actually entered the EF
+        # executable. Its source was also the audited d440 generation; matching
+        # the source alone is NOT a safe migration nonentry proof.
+        import subprocess
+        head = '2619da6b80455a33726a098b166367d739077cd1'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37131076769, head_sha=head)
+        job = dict(id=111226406889, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T14:53:07Z',
+                    completed_at='2026-10-03T14:53:17Z')
+        log = ('2026-10-03T14:52:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T14:52:01Z ' + head + '\n'
+               '2026-10-03T14:53:16.7575041Z Schema ready. Executed '
+               'the exact validated migration bundle from the proven live '
+               'database baseline.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
+    def test_prior_completed_ef_bundle_only_clears_new_pending_schema_prefix(self):
+        import subprocess
+        head = '2619da6b80455a33726a098b166367d739077cd1'
+        old_app = 'b24ef1ed02ca7a9fb6d0a8c5c423508860b5868a'
+        current = '571d02a520b6c9af4fef68af60d2b85124a7e996'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37131076769, head_sha=head, status='completed',
+                   conclusion='success', run_attempt=1)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T14:53:07Z',
+                    completed_at='2026-10-03T14:53:17Z')
+        job = dict(id=111226406889, name='release', status='completed', conclusion='success',
+                   steps=[step, *[
+                       dict(name=name, conclusion='success') for name in
+                       ('Verify restored immutable validation package',
+                        'Retain exact approved release receipt',
+                        'Verify every deployed target and collect all failures')]])
+        log = ('2026-10-03T14:52:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T14:52:01Z ' + head + '\n'
+               '2026-10-03T14:53:16.7575041Z Schema ready. Executed '
+               'the exact validated migration bundle from the proven live '
+               'database baseline.\n')
+        receipts = [dict(name='legend-approved-release-' + old_app + '-masterapp-portal',
+                         expired=False)]
+        def api(repo, path, token):
+            self.assertEqual(path, 'actions/runs/37131076769/artifacts?per_page=100')
+            return dict(artifacts=receipts, total_count=len(receipts))
+        def prove(**kwargs):
+            return self.authority._legacy_completed_bundle_is_separate_from_pending_sql(
+                'owner/repo', run, job, step, source, 1, 'fixture', **kwargs)
+        valid = dict(first_pending_migration_id='20261007134500_AddFounderAssistantRules',
+                     last_applied_migration_id='20261003091500_CanonicalizeBusinessFinanceToolState',
+                     current_application_revision=current)
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=old_app), \
+             patch.object(self.authority, 'api_get', side_effect=api):
+            self.assertTrue(prove(**valid))
+            self.assertFalse(prove(**dict(valid, first_pending_migration_id=
+                              '20261001070000_AddLegendEngineeringControlPlane')))
+            self.assertFalse(prove(**dict(valid, last_applied_migration_id=
+                              '20260927090000_AddOpenAiProductFeedProjections')))
+            self.assertFalse(prove(**dict(valid, current_application_revision=old_app)))
+            self.assertFalse(prove(**dict(valid, first_pending_migration_id=None)))
+            job['conclusion'] = 'failure'
+            self.assertFalse(prove(**valid))
+            job['conclusion'] = 'success'
+            run['run_attempt'] = 2
+            self.assertFalse(prove(**valid))
+            run['run_attempt'] = 1
+            receipts.clear()
+            self.assertFalse(prove(**valid))
+        with patch.object(self.authority, '_release_job_log',
+                          return_value=log.replace('Schema ready. Executed',
+                                                   'Migration failed. Executed')), \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=old_app), \
+             patch.object(self.authority, 'api_get', side_effect=api):
+            self.assertFalse(prove(**valid))
 
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess

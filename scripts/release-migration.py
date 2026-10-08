@@ -145,6 +145,26 @@ def observe(probe, connection):
                  value['ready'] == (value['pendingCount'] == 0) and
                  isinstance(value['schemaIdentity'], str) and len(value['schemaIdentity']) == 64 and
                  all(char in '0123456789abcdef' for char in value['schemaIdentity']))
+        # New read-only probe generations can carry bounded public EF migration
+        # identifiers to fence older completed operations. An absent fence is
+        # backward-compatible for nonhistorical paths but grants NO exception.
+        has_first = 'firstPendingMigrationId' in value
+        has_last = 'lastAppliedMigrationId' in value
+        if has_first != has_last:
+            valid = False
+        elif has_first:
+            migration_id = re.compile(r'^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$')
+            first, last = value['firstPendingMigrationId'], value['lastAppliedMigrationId']
+            if not (first is None or (isinstance(first, str) and migration_id.fullmatch(first))):
+                valid = False
+            if not (last is None or (isinstance(last, str) and migration_id.fullmatch(last))):
+                valid = False
+            if (value['pendingCount'] == 0) != (first is None):
+                valid = False
+            if value['appliedCount'] > 4 and last is None:
+                valid = False
+            if first is not None and last is not None and first <= last:
+                valid = False
         if not valid:
             raise ValueError()
         return value
@@ -181,7 +201,14 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
         return 'preserved'
     # A retained success plus missing history is drift. A retained intent with
     # pending work is ambiguous. Neither authorizes rerunning an EF side effect.
-    migration_stage('mutation-admission', journal.before_mutation, observation)
+    migration_fence = {}
+    if 'firstPendingMigrationId' in before and 'lastAppliedMigrationId' in before:
+        migration_fence = dict(
+            first_pending_migration_id=before['firstPendingMigrationId'],
+            last_applied_migration_id=before['lastAppliedMigrationId'],
+        )
+    migration_stage('mutation-admission', journal.before_mutation, observation,
+                    **migration_fence)
     if execute is None:
         env = os.environ | {'DOTNET_ENVIRONMENT': 'Development',
                             'ASPNETCORE_ENVIRONMENT': 'Development',

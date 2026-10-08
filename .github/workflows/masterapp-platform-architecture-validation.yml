@@ -302,8 +302,19 @@ jobs:
             fi
             echo "Preserved compile proof has no local material; rematerializing exact compiled graph."
           fi
-          if [ ! -f /tmp/masterapp/obj/AgentPortal.Tests/project.assets.json ]; then
-            dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+          # The compiled regression cache retains only the test project's
+          # material. A cache hit does not prove that every referenced project
+          # has a valid NuGet assets file. Restore the owning graph once when
+          # any referenced asset is absent, then keep the no-restore build.
+          needs_restore=false
+          for project in AgentPortal.Tests AgentPortal ClientApp Domain Infrastructure ParfaitApp ProtectWebsite Shared; do
+            if [ ! -f "/tmp/masterapp/obj/$project/project.assets.json" ]; then
+              needs_restore=true
+              break
+            fi
+          done
+          if [ "$needs_restore" = true ]; then
+            dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
           fi
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
           test -f /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/AgentPortal.Tests.dll

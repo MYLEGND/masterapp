@@ -211,29 +211,52 @@ def _validate_child_generation(repository, run, artifact, record, child, token, 
 
 _RELEASE_CHILD_NOOP_PROOFS = set()
 
+# Retired, content-attested workflow generations with a true early-exit branch.
+# This is SOURCE-based, not another run-ID-specific admission bypass. Each
+# observed historical step still requires its own trusted Git head, completed
+# step timestamps and exact one-line no-migration marker.
+LEGACY_NOOP_MARKER = (
+    'No candidate migration source changed from the database baseline; '
+    'migration receipt gate is not applicable.'
+)
+LEGACY_OLDER_NOOP_MARKER = (
+    'No candidate migration source changed from the proven database baseline.'
+)
+# Exact original Git blob fingerprints bind marker interpretation to audited
+# executable workflow sources; unknown historical generations fail closed.
+AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS = {
+    'ad23c687da0e5dadf7c92a777cf26f71947e9bb0': LEGACY_NOOP_MARKER,
+    'd4404ba420b96623602f953b91f3fe1f31911433': LEGACY_NOOP_MARKER,
+    'b85c50eadf83daad32b787f2d37f7a32babe67a4': LEGACY_NOOP_MARKER,
+    '207f8bc230e35e636e1342e020d2377feadeac2e': LEGACY_OLDER_NOOP_MARKER,
+}
+
+
+def _audited_legacy_migration_noop_marker(source):
+    raw = source.encode('utf-8')
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    return AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS.get(blob)
+
+
+def _audited_legacy_migration_noop_source(source):
+    return _audited_legacy_migration_noop_marker(source) is not None
+
 
 def _legacy_migration_noop(repository, run, job, step, source, token):
     """Prove the exact retired migration step exited before any schema operation."""
     import datetime
     legacy = 'Apply additive diagnostics migrations before restarting apps'
     block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
-    # The October 3 approved legacy workflow is an additional immutable
-    # no-op generation: release 37147581514 / authority c4443e8. The original
-    # source's branch exited on the exact marker before the EF bundle could run.
-    # Unlike loose step-name matching, accept ONLY its full verified Git blob;
-    # the exact terminal log, run/head, timestamps and marker are still required.
-    raw_source = source.encode('utf-8')
-    historical_blob = hashlib.sha1(
-        b'blob ' + str(len(raw_source)).encode() + b'\0' + raw_source
-    ).hexdigest()
-    october3_noop = (
-        run.get('id') == 37147581514
-        and run.get('head_sha') == 'c4443e8abb9786d74d13fce8973fe7df470c3238'
-        and historical_blob == 'ad23c687da0e5dadf7c92a777cf26f71947e9bb0'
-    )
-    if (not (hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-             or october3_noop)
-        or job.get('status') != 'completed' or type(job.get('id')) is not int
+    # A release job can fail *after* the migration no-op step; require the
+    # exact immutable source and its timestamp-bound no-write proof, rather
+    # than mistaking the failed parent for a SQL mutation.
+    trusted_source = _audited_legacy_migration_noop_source(source)
+    original_block = (hashlib.sha256(block.encode()).hexdigest()
+        == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc')
+    if (not (original_block or trusted_source)
+        or job.get('status') != 'completed'
+        or job.get('conclusion') not in {'success', 'failure'}
+        or type(job.get('id')) is not int
         or step.get('name') != legacy or step.get('status') != 'completed'
         or step.get('conclusion') != 'success'):
         return False
@@ -241,7 +264,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     context = {'environment': _workflow_top_level_field(source, 'env'),
                'defaults': _workflow_top_level_field(source, 'defaults'),
                'runtime': release.split('    steps:', 1)[0]}
-    if (not october3_noop and
+    if (not trusted_source and
         hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest() != '0b2c73c15828a62dc7440c79fe6ae3ac072af6a2442f1f5d52f31eeebd79629a'):
         return False
     try:
@@ -259,7 +282,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
     if heads != {run['head_sha']}:
         return False
-    marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
+    marker = _audited_legacy_migration_noop_marker(source) or LEGACY_NOOP_MARKER
     hits = 0
     for line in raw.splitlines():
         stamp, separator, message = line.partition(' ')
@@ -277,6 +300,108 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     _RELEASE_CHILD_NOOP_PROOFS.add(key)
     return True
 
+
+
+def _legacy_completed_bundle_is_separate_from_pending_sql(
+        repository, run, job, step, source, attempt, token, *,
+        first_pending_migration_id=None, last_applied_migration_id=None,
+        current_application_revision=None):
+    """Reconcile a COMPLETED historical EF bundle, never reclassify it as no-write.
+
+    Historical validated app bytes, not the release-control SHA, own the old
+    migration set. The current *live* read-only EF probe must prove an applied
+    prefix through that exact historical migration set, with pending work only
+    from new immutable source files. A prior failed/ambiguous release, missing
+    successful application receipt, changed migration, or unproven old package
+    cannot satisfy this read-only compatibility proof.
+    """
+    import datetime
+    valid_id = re.compile(r'^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$')
+    valid_sha = re.compile(r'^[a-f0-9]{40}$')
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
+        or run.get('run_attempt') != 1 or attempt != 1
+        or job.get('status') != 'completed' or job.get('conclusion') != 'success'
+        or step.get('name') != 'Apply additive diagnostics migrations before restarting apps'
+        or step.get('status') != 'completed' or step.get('conclusion') != 'success'
+        or not _audited_legacy_migration_noop_source(source)
+        or not all(isinstance(value, str) and valid_id.fullmatch(value) for value in
+                   (first_pending_migration_id, last_applied_migration_id))
+        or not valid_sha.fullmatch(current_application_revision or '')):
+        return False
+    def exactly(name):
+        return sum(x.get('name') == name and x.get('conclusion') == 'success'
+                   for x in job.get('steps', [])) == 1
+    if not (exactly('Verify restored immutable validation package')
+            and exactly('Retain exact approved release receipt')
+            and exactly('Verify every deployed target and collect all failures')):
+        return False
+    try:
+        start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+                          for line in log.splitlines())
+        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+        if heads != {run['head_sha']}:
+            return False
+        marker = 'Schema ready. Executed the exact validated migration bundle from the proven live database baseline.'
+        stamps = []
+        for line in log.splitlines():
+            date, sep, message = line.partition(' ')
+            if sep and message == marker:
+                stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
+        if len(stamps) != 1 or not start <= stamps[0] <= end + datetime.timedelta(seconds=2):
+            return False
+        prior = _release_attempt_package_revision(repository, run, attempt, job, token, 'portal')
+        if not isinstance(prior, str) or not valid_sha.fullmatch(prior) or prior == current_application_revision:
+            return False
+        approved_receipt = 'legend-approved-release-' + prior + '-masterapp-portal'
+        artifacts = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        records = artifacts.get('artifacts')
+        if (not isinstance(records, list)
+            or type(artifacts.get('total_count')) is not int
+            or len(records) != artifacts['total_count']
+            or len([row for row in records
+                    if row.get('name') == approved_receipt and row.get('expired') is False]) != 1):
+            return False
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', prior, current_application_revision],
+                          check=False, capture_output=True).returncode:
+            return False
+        def migration_files(revision):
+            result = subprocess.run(['git', 'ls-tree', '-r', '-z', revision, '--', 'Infrastructure/Migrations'],
+                                    check=True, capture_output=True)
+            files = {}
+            for entry in result.stdout.decode().split('\0'):
+                if not entry:
+                    continue
+                metadata, path = entry.split('\t', 1)
+                name = path.removeprefix('Infrastructure/Migrations/')
+                if re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name):
+                    files[name] = metadata.split()[2]
+            return files
+        before = migration_files(prior)
+        after = migration_files(current_application_revision)
+        if not before or any(after.get(name) != sha for name, sha in before.items()):
+            return False
+        prior_ids = sorted(name[:-3].removesuffix('.Designer')
+                           for name in before if not name.endswith('.Designer.cs'))
+        if not prior_ids:
+            return False
+        latest_prior = prior_ids[-1]
+        additions = sorted(set(after) - set(before))
+        pending_source = first_pending_migration_id + '.cs'
+        if (pending_source not in additions or not latest_prior < first_pending_migration_id
+            or last_applied_migration_id < latest_prior
+            or any(name.split('.', 1)[0] <= latest_prior for name in additions)
+            or any(not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name)
+                   for name in additions)):
+            return False
+        return True
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError, UnicodeError,
+            subprocess.SubprocessError):
+        return False
 
 def _attested_migration_prewrite_failure(repository, run, job, step, attempt, token):
     """Prove ONE historical migration child never reached its first SQL write.
@@ -574,6 +699,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
             # Same no-replay journal semantics; emits reason codes before failure.
             "4c4bff74892a9924efb45f3968e06a61dffbcab5",
+            # Content-reviewed first-pending/last-applied read-only fence;
+            # still authorizes NO write before ChildJournal intent readback.
+            "f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5",
         },
     }
     try:
@@ -658,7 +786,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
 
 
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
-                                     current_run, current_attempt, token, *, partition_identity=None):
+                                     current_run, current_attempt, token, *, partition_identity=None,
+                                     first_pending_migration_id=None, last_applied_migration_id=None,
+                                     current_application_revision=None):
     """Authorize first mutation only from complete positive execution evidence.
 
     Deleted/expired receipts never establish absence. A started historical child
@@ -739,20 +869,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                         '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
                     legacy = 'Apply additive diagnostics migrations before restarting apps'
                     block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
-                    # Exact retired serial migration owner. Recognition only maps
-                    # its execution evidence; entered work still requires the
-                    # original authenticated intent and partition disposition.
-                    source_bytes = source.encode('utf-8')
-                    source_blob = hashlib.sha1(
-                        b'blob ' + str(len(source_bytes)).encode() + b'\0' + source_bytes
-                    ).hexdigest()
-                    is_attested_october3_noop = (
-                        run_id == 37147581514
-                        and run.get('head_sha') == 'c4443e8abb9786d74d13fce8973fe7df470c3238'
-                        and source_blob == 'ad23c687da0e5dadf7c92a777cf26f71947e9bb0'
-                    )
-                    if (hashlib.sha256(block.encode()).hexdigest() == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-                            or is_attested_october3_noop):
+                    # Recognize the exact historical step, but never authorize
+                    # a write from its conclusion alone; _legacy_migration_noop
+                    # validates the current run's checkout and no-write marker.
+                    if (hashlib.sha256(block.encode()).hexdigest()
+                            == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
+                            or _audited_legacy_migration_noop_source(source)):
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
                     raise rejection("Release child execution detail unavailable", run_id, attempt)
@@ -769,6 +891,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     continue
                 if child == 'migrations' and steps[0].get('name') != gate['step']:
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
+                        continue
+                    if _legacy_completed_bundle_is_separate_from_pending_sql(
+                            repository, run, job, steps[0], source, attempt, token,
+                            first_pending_migration_id=first_pending_migration_id,
+                            last_applied_migration_id=last_applied_migration_id,
+                            current_application_revision=current_application_revision):
                         continue
                 if (child == 'migrations'
                     and _historical_migration_prewrite_proven(

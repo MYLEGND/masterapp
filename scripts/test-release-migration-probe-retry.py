@@ -78,6 +78,33 @@ class ProbeObservationTests(TestCase):
         self.assertIn('LEGEND_SCHEMA_HISTORY:', source)
         self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION"', source)
 
+    def test_live_ef_prefix_fence_is_readonly_and_fail_closed(self):
+        import json
+        base = dict(schemaVersion=1, ready=False, knownCount=219,
+                    appliedCount=218, pendingCount=1,
+                    schemaIdentity='a' * 64,
+                    lastAppliedMigrationId='20261003091500_CanonicalizeBusinessFinanceToolState',
+                    firstPendingMigrationId='20261007134500_AddFounderAssistantRules')
+        def observed(value):
+            done = subprocess.CompletedProcess([], 0, json.dumps(value), '')
+            with mock.patch.object(m.subprocess, 'run', return_value=done):
+                return m.observe('probe', 'opaque')
+        self.assertEqual(base, observed(base))
+        for corrupt in (
+            dict(base, firstPendingMigrationId='20260927090000_AddOpenAiProductFeedProjections'),
+            dict(base, firstPendingMigrationId='Server=private;Password=private'),
+            dict(base, firstPendingMigrationId=None),
+            dict(base, lastAppliedMigrationId=None),
+            {k: v for k, v in base.items() if k != 'lastAppliedMigrationId'},
+            dict(base, ready=True),
+        ):
+            with self.subTest(corrupt=corrupt):
+                with self.assertRaisesRegex(RuntimeError, 'Invalid read-only schema proof'):
+                    observed(corrupt)
+        source = (Path(__file__).with_name('MigrationReleaseProbe') / 'Program.cs').read_text()
+        self.assertIn('lastAppliedMigrationId = appliedRegistered.LastOrDefault()', source)
+        self.assertIn('firstPendingMigrationId = pendingIds.FirstOrDefault()', source)
+
     def test_timeout_is_not_blindly_retried(self):
         with mock.patch.object(m.subprocess, 'run', side_effect=subprocess.TimeoutExpired('dotnet', 60)) as run:
             with self.assertRaisesRegex(RuntimeError, 'deadline exceeded'):
