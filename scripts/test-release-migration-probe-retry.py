@@ -45,6 +45,39 @@ class ProbeObservationTests(TestCase):
                     self.assertEqual(run.call_count, 1)
                     sleep.assert_not_called()
 
+    def test_exact_readonly_unknown_id_metadata_is_redacted_and_rejected(self):
+        payload = ('LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\n'
+                   'LEGEND_SCHEMA_HISTORY:2:20260213015339_FinanceToolStates_ByClientProfile,'
+                   '20260927053000_AddAdvertisingActionAuthorizations\n')
+        failure = subprocess.CompletedProcess([], 1, '', payload)
+        with mock.patch.object(m.subprocess, 'run', return_value=failure) as run, \
+             mock.patch('builtins.print') as notice:
+            with self.assertRaisesRegex(RuntimeError, 'Database contains applied migration history absent'):
+                m.observe('probe', 'conn')
+        run.assert_called_once()
+        notice.assert_called_once_with(
+            'LEGEND_SCHEMA_HISTORY:2:20260213015339_FinanceToolStates_ByClientProfile,'
+            '20260927053000_AddAdvertisingActionAuthorizations', flush=True)
+
+    def test_unknown_provider_message_never_reaches_schema_log(self):
+        failure = subprocess.CompletedProcess([], 1, '',
+            'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION\n'
+            'LEGEND_SCHEMA_HISTORY:1:Server=private;Password=private')
+        with mock.patch.object(m.subprocess, 'run', return_value=failure) as run, \
+             mock.patch('builtins.print') as notice:
+            with self.assertRaisesRegex(RuntimeError, 'unclassified failure'):
+                m.observe('probe', 'conn')
+        run.assert_called_once()
+        notice.assert_not_called()
+
+    def test_unknown_applied_migration_inventory_is_readonly_and_bounded(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / 'scripts/MigrationReleaseProbe/Program.cs').read_text()
+        self.assertIn('unregistered.Take(16)', source)
+        self.assertIn('Math.Min(unregistered.Length, 9999)', source)
+        self.assertIn('LEGEND_SCHEMA_HISTORY:', source)
+        self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION"', source)
+
     def test_timeout_is_not_blindly_retried(self):
         with mock.patch.object(m.subprocess, 'run', side_effect=subprocess.TimeoutExpired('dotnet', 60)) as run:
             with self.assertRaisesRegex(RuntimeError, 'deadline exceeded'):

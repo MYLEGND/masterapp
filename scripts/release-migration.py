@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 
@@ -70,7 +71,23 @@ def observe(probe, connection):
             raise RuntimeError('Schema probe process deadline exceeded') from None
         if result.returncode == 0:
             break
-        marker = result.stderr.strip()
+        lines = result.stderr.strip().splitlines()
+        marker = lines[0] if lines else ''
+        # Exact, bounded migration identifiers only: never relay arbitrary
+        # provider text, SQL, connection details or unvalidated extra lines.
+        if len(lines) == 2 and marker == 'LEGEND_SCHEMA_PROBE:UNKNOWN_APPLIED_MIGRATION':
+            safe = re.fullmatch(
+                r'LEGEND_SCHEMA_HISTORY:[1-9][0-9]{0,3}:'
+                r'(?:[0-9]{8,14}_[A-Za-z0-9_]{1,128}|NONCANONICAL)'
+                r'(?:,(?:[0-9]{8,14}_[A-Za-z0-9_]{1,128}|NONCANONICAL)){0,15}',
+                lines[1],
+            )
+            if safe:
+                print(lines[1], flush=True)
+            else:
+                raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
+        elif len(lines) != 1:
+            raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
         if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ' and attempt < 2:
             time.sleep(2 * (attempt + 1))
             continue

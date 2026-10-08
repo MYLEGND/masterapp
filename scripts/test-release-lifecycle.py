@@ -838,6 +838,7 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
         }
         self.record = {
             'sourcePr': 522, 'authorizedSourceRevision': 'b' * 40,
+            'sourceMergeSha': 'c' * 40, 'applicationRevision': 'b' * 40,
             'executionAuthority': 'c' * 40,
         }
 
@@ -848,10 +849,12 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
             self.assertTrue(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
             proof.assert_called_once_with(self.api, self.run, self.record)
 
-    def test_active_or_multiple_or_ambiguous_history_keeps_ownership(self):
+    def test_active_duplicate_or_excessive_history_keeps_ownership(self):
         for attempts in (
             [dict(self.run, status='in_progress', conclusion=None)],
-            [self.run, dict(self.run, id=37703022718)],
+            [self.run, dict(self.run)],  # Duplicate run identity
+            [self.run, dict(self.run, id=37703022718),
+             dict(self.run, id=37703022719)],  # >2 requires new review
         ):
             with self.subTest(attempts=attempts), \
                  patch.object(m, 'direct_release_runs', return_value=attempts), \
@@ -865,6 +868,48 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
                  patch.object(m, '_historical_fenced_prepublication_nonentry',
                               side_effect=AssertionError('Invalid record cannot prove non-entry')):
                 self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+
+    def test_two_terminal_no_write_runs_under_descendant_authorities_yield(self):
+        followup = dict(
+            self.run, id=37706920756, head_sha='d' * 40,
+            display_title=m.release_dispatch_identity(522, 'b' * 40, 'd' * 40),
+        )
+        next_record = dict(self.record, executionAuthority='d' * 40)
+        with patch.object(m, 'direct_release_runs',
+                          return_value=[self.run, followup]), \
+             patch.object(m, '_admission_records',
+                          side_effect=[[self.record], [next_record]]) as read, \
+             patch.object(m, 'ancestor', return_value=True) as lineage, \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          side_effect=[True, True]) as proof:
+            self.assertTrue(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+        self.assertEqual(2, read.call_count)
+        self.assertEqual(2, proof.call_count)
+        lineage.assert_called_once_with('c' * 40, 'd' * 40)
+
+    def test_two_runs_do_not_yield_with_one_unproven_mutation(self):
+        second = dict(self.run, id=37706920756, head_sha='d' * 40)
+        next_record = dict(self.record, executionAuthority='d' * 40)
+        with patch.object(m, 'direct_release_runs',
+                          return_value=[self.run, second]), \
+             patch.object(m, '_admission_records',
+                          side_effect=[[self.record], [next_record]]), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          side_effect=[True, False]):
+            self.assertFalse(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+
+    def test_divergent_forward_release_authority_remains_blocking(self):
+        forward = dict(self.run, id=37706920756, head_sha='d' * 40)
+        with patch.object(m, 'direct_release_runs',
+                          return_value=[self.run, forward]), \
+             patch.object(m, '_admission_records',
+                          return_value=[self.record]), \
+             patch.object(m, 'ancestor', return_value=False):
+            self.assertFalse(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
 
     def test_entered_or_unknown_mutation_never_disposes_merged_queue(self):
         with patch.object(m, 'direct_release_runs', return_value=[self.run]), \

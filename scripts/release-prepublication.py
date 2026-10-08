@@ -527,6 +527,19 @@ def _invoke_migration_bundle():
         # never trust free-form error text or URLs from subprocess output.
         authorized.update(_approved_observation_labels())
         if reason.endswith(suffix) and reason[:-len(suffix)] in authorized:
+            if reason[:-len(suffix)] == (
+                'Database contains applied migration history absent from validated bundle'
+            ):
+                # The read-only probe is the sole identity producer. Forward
+                # only one fully validated, bounded schema-metadata line.
+                lines = observation.stdout.strip().splitlines()
+                if len(lines) == 1 and re.fullmatch(
+                    r'LEGEND_SCHEMA_HISTORY:[1-9][0-9]{0,3}:'
+                    r'(?:[0-9]{8,14}_[A-Za-z0-9_]{1,128}|NONCANONICAL)'
+                    r'(?:,(?:[0-9]{8,14}_[A-Za-z0-9_]{1,128}|NONCANONICAL)){0,15}',
+                    lines[0],
+                ):
+                    print(lines[0], flush=True)
             raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:'
                                + reason[:-len(suffix)]) from None
         raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE') from None
