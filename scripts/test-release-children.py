@@ -346,6 +346,57 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
                 'owner/repo', run, job, step, 'token'))
 
+    def test_older_observation_rejected_before_first_migration_write(self):
+        import subprocess
+        head = '924af2bdab12bbfc001ecc83769f03a8d7866b70'
+        run_id = 37703022717
+        historical_paths = (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-prepublication.py',
+            'scripts/release-migration.py',
+        )
+        sources = {
+            path: subprocess.check_output(
+                ['git', 'show', head + ':' + path], text=True)
+            for path in historical_paths
+        }
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=1)
+        job = dict(id=113072142308, status='completed', conclusion='failure')
+        step = dict(self.step, conclusion='failure')
+        artifacts = [
+            dict(name=name, expired=False, workflow_run=dict(id=run_id))
+            for name in [
+                'legend-release-admission-' + 'a' * 64,
+                f'legend-release-step-state-{"d" * 40}-{run_id}-1',
+                *(f'diagnostics-rollback-{key}-{head}'
+                  for key in ('portal', 'client', 'protect', 'parfait', 'website')),
+            ]
+        ]
+        def history(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=artifacts, total_count=len(artifacts))
+        message = ('LEGEND_PREPUBLICATION_MIGRATION:'
+                   'Database contains applied migration history absent from validated bundle')
+        evidence = '2026-10-07T23:45:35.8948393Z ' + message + '\n'
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, sha, path, token: sources[path]), \
+             patch.object(self.authority, 'api_get', side_effect=history), \
+             patch.object(self.authority, '_release_job_log', return_value=evidence):
+            self.assertTrue(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            current = sources['scripts/release-migration.py']
+            # No arbitrary combination of individually audited source
+            # generations may earn the same write exemption.
+            newer = subprocess.check_output(
+                ['git', 'show',
+                 'fe115eb9f3f7ebd753307ec193f7cf4121ee9470:scripts/release-migration.py'],
+                text=True)
+            sources['scripts/release-migration.py'] = newer
+            self.assertFalse(self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, 'token'))
+            sources['scripts/release-migration.py'] = current
+
     def test_migration_history_can_only_skip_after_attested_failure(self):
         self.step['conclusion'] = 'failure'
         with patch.object(self.authority, '_attested_migration_prewrite_failure',
