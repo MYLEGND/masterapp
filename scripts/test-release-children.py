@@ -767,10 +767,10 @@ class ChildHistorySafetyTests(unittest.TestCase):
             # This exact October 3 log contains the Python script SOURCE
             # (colored by Actions), not a successful execution output.
             echoed_source = (
-                "2026-10-03T14:30:34.0813785Z \\x1b[36;1m"
+                "2026-10-03T14:30:34.0813785Z \x1b[36;1m"
                 "print('Schema ready. Executed the exact validated migration "
                 "bundle from the proven live database baseline.')"
-                "\\x1b[0m\\n"
+                "\x1b[0m\n"
             )
             with patch.object(self.authority, '_release_job_log',
                               return_value=log + echoed_source):
