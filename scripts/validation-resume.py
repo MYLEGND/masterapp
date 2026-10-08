@@ -699,6 +699,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
             # Same no-replay journal semantics; emits reason codes before failure.
             "4c4bff74892a9924efb45f3968e06a61dffbcab5",
+            # Content-reviewed first-pending/last-applied read-only fence;
+            # still authorizes NO write before ChildJournal intent readback.
+            "f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5",
         },
     }
     try:
