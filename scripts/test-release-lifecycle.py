@@ -1913,7 +1913,9 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
         publication['conclusion'] = 'success'
         self.assertFalse(self.proven())
         publication['conclusion'] = 'skipped'
-        original.pop()
+        # The transaction plan is optional (it is read-only). Removing the
+        # required terminal step-state, not the optional plan, must fail closed.
+        original.pop(1)
         self.assertFalse(self.proven())
 
     def test_partial_or_foreign_local_rollback_inventory_cannot_prove_nonentry(self):
