@@ -279,16 +279,21 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
-    workflow = urllib.parse.quote(DIRECT_RELEASE_WORKFLOW, safe="")
+    # The workflow-specific inventory returns 403 to the trusted release token.
+    # Query the same canonical Actions authority through its repository run
+    # inventory and authenticate the exact workflow on every retained row.
+    branch = urllib.parse.quote(TRUSTED_PR_BASE, safe="")
     seen = 0
     for page in range(1, 11):
-        payload = api_get(repository, f"actions/workflows/{workflow}/runs?per_page=100&page={page}", token)
+        payload = api_get(repository, f"actions/runs?branch={branch}&event=workflow_dispatch&per_page=100&page={page}", token)
         runs = payload.get("workflow_runs")
         if not isinstance(runs, list):
             raise RuntimeError("Release child execution history unavailable")
         seen += len(runs)
         for run in runs:
-            if run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch":
+            if (run.get("head_branch") != TRUSTED_PR_BASE
+                or run.get("event") != "workflow_dispatch"
+                or run.get("path", "").split("@")[0] != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW):
                 continue
             _trusted_child_producer(repository, run)
             run_id = run["id"]
