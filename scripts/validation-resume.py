@@ -655,9 +655,24 @@ def _attested_legacy_ef_factory_nonentry(repository, run, job, step, attempt, to
         # DbContext construction fails before EF can issue migration SQL.
         if count != 1:
             return deny('FACTORY_ERROR_NOT_UNIQUE')
-        if ('Schema ready. Executed the exact validated migration bundle '
-                'from the proven live database baseline.') in log:
-            return deny('SUCCESS_MARKER_CONTRADICTS_FAILURE')
+        # Actions logs echo the source of each `run:` step. The October 3
+        # job includes an unexecuted ANSI-colored Python print(...) statement
+        # containing this phrase. Treat ONLY an actual, whole timestamped
+        # output line as success, never source code or command arguments.
+        # Any genuine success marker anywhere in this authenticated job still
+        # invalidates historical non-entry; SQL replays remain fail-closed.
+        success_marker = ('Schema ready. Executed the exact validated migration bundle '
+                          'from the proven live database baseline.')
+        for line in log.splitlines():
+            stamp, separator, message = line.partition('Z ')
+            if separator and message == success_marker:
+                try:
+                    observed = datetime.datetime.fromisoformat(stamp + '+00:00')
+                except ValueError:
+                    return deny('MALFORMED_SUCCESS_OUTPUT_TIMESTAMP')
+                if observed.tzinfo is None:
+                    return deny('MALFORMED_SUCCESS_OUTPUT_TIMESTAMP')
+                return deny('SUCCESS_MARKER_CONTRADICTS_FAILURE')
         return True
     except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
             OSError, UnicodeError, subprocess.SubprocessError) as exc:
