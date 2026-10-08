@@ -794,7 +794,7 @@ jobs:
 
       - name: Reconcile complete immutable release transaction
         id: transaction
-        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' }}
+        if: ${{ !cancelled() && steps.transactionprepare.outcome == 'success' && env.REUSE_TRANSACTION_PLAN == 'true' && steps.publish_targets.outcome != 'skipped' }}
         continue-on-error: true
         shell: bash
         env:
