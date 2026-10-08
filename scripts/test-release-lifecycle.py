@@ -876,8 +876,8 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
         for attempts in (
             [dict(self.run, status='in_progress', conclusion=None)],
             [self.run, dict(self.run)],  # Duplicate run identity
-            [self.run, dict(self.run, id=37703022718),
-             dict(self.run, id=37703022719)],  # >2 requires new review
+            [dict(self.run, id=37703022718 + index)
+             for index in range(17)],  # excessive inventory never auto-releases
         ):
             with self.subTest(attempts=attempts), \
                  patch.object(m, 'direct_release_runs', return_value=attempts), \
@@ -891,6 +891,30 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
                  patch.object(m, '_historical_fenced_prepublication_nonentry',
                               side_effect=AssertionError('Invalid record cannot prove non-entry')):
                 self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+
+    def test_failed_and_cancelled_nonentry_attempts_each_require_exact_proof(self):
+        cancelled = dict(
+            self.run, id=37718975034, conclusion='cancelled',
+            head_sha='d' * 40)
+        later_failure = dict(
+            self.run, id=37719140124, head_sha='d' * 40)
+        later_record = dict(self.record, executionAuthority='d' * 40)
+        for cancellation_proven in (True, False):
+            with self.subTest(cancellation_proven=cancellation_proven), \
+                 patch.object(m, 'direct_release_runs',
+                              return_value=[self.run, cancelled, later_failure]), \
+                 patch.object(m, '_admission_records',
+                              side_effect=[[self.record], [later_record]]) as records, \
+                 patch.object(m, '_historical_fenced_prepublication_nonentry',
+                              side_effect=[True, True]), \
+                 patch.object(m, '_cancelled_before_admission_nonentry',
+                              return_value=cancellation_proven) as no_entry, \
+                 patch.object(m, 'ancestor', return_value=True):
+                self.assertEqual(cancellation_proven,
+                                 m._merged_owner_terminal_nonentry_proven(
+                                     self.api, self.owner))
+            no_entry.assert_called_once_with(self.api, cancelled)
+            self.assertEqual(2 if cancellation_proven else 1, records.call_count)
 
     def test_two_terminal_no_write_runs_under_descendant_authorities_yield(self):
         followup = dict(
@@ -1553,6 +1577,71 @@ class GeneratedPublicationStages(unittest.TestCase):
         self.assertNotIn('TARGET_OUTCOME_', workflow)
         self.assertNotIn('--verify-outcomes', workflow)
 
+
+
+class CancelledBeforeAdmissionNonentryProof(unittest.TestCase):
+    def setUp(self):
+        self.api = Api()
+        self.run = {
+            'id': 37718975034, 'run_attempt': 1,
+            'status': 'completed', 'conclusion': 'cancelled',
+            'event': 'workflow_dispatch', 'head_branch': m.APPROVED,
+            'head_sha': 'a' * 40, 'path': '.github/workflows/' + m.DIRECT,
+            'head_repository': {'full_name': self.api.repo},
+        }
+        self.run_id = self.run['id']
+        self.jobs = [
+            {'name': 'admission', 'status': 'completed',
+             'conclusion': 'cancelled', 'steps': []},
+            {'name': 'discover-live', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'preserve-rollback', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'release', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'release-state-receipt', 'status': 'completed',
+             'conclusion': 'success', 'steps': []},
+            {'name': 'target-release-receipts (${{ matrix.app }})',
+             'status': 'completed', 'conclusion': 'skipped', 'steps': []},
+            {'name': 'wake-release-lifecycle-after-terminal-release',
+             'status': 'completed', 'conclusion': 'success', 'steps': []},
+        ]
+        self.artifacts = [{
+            'name': f"legend-release-step-state-{self.run['head_sha']}-{self.run_id}-1",
+            'expired': False, 'workflow_run': {'id': self.run_id},
+        }]
+        self.api.pages_map[f"actions/runs/{self.run_id}/attempts/1/jobs"] = self.jobs
+        self.api.pages_map[f"actions/runs/{self.run_id}/artifacts"] = self.artifacts
+        self.source = (Path(__file__).resolve().parents[1] /
+                       '.github/workflows' / m.DIRECT).read_text()
+
+    def proven(self):
+        with patch.object(self.api, 'text', return_value=self.source):
+            return m._cancelled_before_admission_nonentry(self.api, self.run)
+
+    def test_cancelled_unstarted_admission_with_exact_terminal_receipt(self):
+        self.assertTrue(self.proven())
+
+    def test_any_started_admission_step_is_not_no_write_proof(self):
+        self.jobs[0]['steps'] = [{'name': 'Admit release', 'conclusion': 'success'}]
+        self.assertFalse(self.proven())
+
+    def test_unknown_or_entered_publish_job_blocks_owner_discharge(self):
+        self.jobs[3]['conclusion'] = 'success'
+        self.assertFalse(self.proven())
+
+    def test_extra_intent_or_missing_receipt_blocks_owner_discharge(self):
+        self.artifacts.append({
+            'name': 'legend-release-operation-intent-' + 'b' * 64,
+            'expired': False, 'workflow_run': {'id': self.run_id}})
+        self.assertFalse(self.proven())
+        self.artifacts.pop()
+        self.artifacts[0]['expired'] = True
+        self.assertFalse(self.proven())
+
+    def test_unknown_observer_source_is_not_proven(self):
+        self.source = 'unverified release workflow source'
+        self.assertFalse(self.proven())
 
 
 class HistoricalPrepublicationLeaseProof(unittest.TestCase):
