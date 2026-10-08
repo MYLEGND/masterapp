@@ -246,6 +246,99 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     """Prove the exact retired migration step exited before any schema operation."""
     import datetime
     legacy = 'Apply additive diagnostics migrations before restarting apps'
+    if step.get('conclusion') == 'failure':
+        # Existing first-SQL-write proof, not another authority. This exact
+        # retired workflow checks a signed baseline BEFORE calling PYMIGRATE.
+        # A failure alone NEVER proves no SQL: authenticate its original
+        # immutable source, completed GitHub history and a real denial output.
+        import datetime
+        marker = ('Live database baseline lacks a successful canonical release '
+                  'receipt; no migration authorized.')
+        data = source.encode('utf-8')
+        blob = hashlib.sha1(
+            b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        if (blob != '207f8bc230e35e636e1342e020d2377feadeac2e'
+            or run.get('status') != 'completed'
+            or run.get('conclusion') != 'failure'
+            or run.get('run_attempt') != 1
+            or job.get('status') != 'completed'
+            or job.get('conclusion') != 'failure'
+            or (job.get('run_attempt') is not None and job['run_attempt'] != 1)
+            or type(job.get('id')) is not int or job['id'] < 1
+            or step.get('name') != legacy or step.get('status') != 'completed'):
+            return False
+        original_step = named_step_blocks(
+            _job_blocks(source).get('release', '')).get(legacy, '')
+        before = original_step.find('if not module.release_proven(')
+        denial = original_step.find(marker)
+        execution = original_step.find("python3 - <<'PYMIGRATE'")
+        if not (0 <= before < denial < execution):
+            return False
+        try:
+            _trusted_child_producer(repository, run)
+            run_id = run['id']
+            payload = api_get(
+                repository, f'actions/runs/{run_id}/artifacts?per_page=100',
+                token)
+            rows = payload.get('artifacts')
+            if (type(payload.get('total_count')) is not int
+                or payload['total_count'] != 1
+                or not isinstance(rows, list) or len(rows) != 1
+                or rows[0].get('expired') is not False
+                or (rows[0].get('workflow_run') or {}).get('id') != run_id
+                or not re.fullmatch(
+                    rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-1',
+                    rows[0].get('name', ''))):
+                return False
+            steps = job.get('steps')
+            if not isinstance(steps, list):
+                return False
+            for label in (
+                'Publish selected head as one transaction',
+                'Deploy and activate LEGEND Founder Cloudflare baseline',
+                'Reconcile public custom-hostname Cloudflare policy',
+                'Deploy shared Cloudflare business website router',
+                'Verify every deployed target and collect all failures',
+                'Retain exact approved release receipt',
+            ):
+                matches = [x for x in steps if x.get('name') == label]
+                if (len(matches) != 1
+                    or matches[0].get('conclusion') != 'skipped'):
+                    return False
+            start = datetime.datetime.fromisoformat(
+                step['started_at'].replace('Z', '+00:00'))
+            end = datetime.datetime.fromisoformat(
+                step['completed_at'].replace('Z', '+00:00'))
+            if start.tzinfo is None or end.tzinfo is None or end < start:
+                return False
+            log = _release_job_log(repository, job['id'], token)
+            clean = '\n'.join(
+                re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+                for line in log.splitlines())
+            checkouts = re.findall(
+                r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$',
+                clean)
+            if checkouts != [run['head_sha']]:
+                return False
+            observed = []
+            for line in log.splitlines():
+                stamp, sep, output = line.partition('Z ')
+                if sep and output == marker:
+                    observed.append(
+                        datetime.datetime.fromisoformat(stamp + '+00:00'))
+            if (len(observed) != 1 or observed[0].tzinfo is None
+                or not start <= observed[0] <= end + datetime.timedelta(seconds=2)):
+                return False
+            completed = ('Schema ready. Executed the exact validated migration '
+                         'bundle from the proven live database baseline.')
+            # The Actions echo of source code is NOT a successful SQL result.
+            if any(row.partition('Z ')[2] == completed
+                   for row in log.splitlines()):
+                return False
+            return True
+        except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+                OSError, UnicodeError, subprocess.SubprocessError):
+            return False
     block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
     # A release job can fail *after* the migration no-op step; require the
     # exact immutable source and its timestamp-bound no-write proof, rather

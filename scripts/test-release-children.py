@@ -723,6 +723,93 @@ class ChildHistorySafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
                 self.check()
 
+    def test_original_oct3_baseline_denial_never_entered_sql(self):
+        # Original run 37102199040 failed at release_proven() BEFORE PYMIGRATE.
+        # This is original positive no-write evidence, not an arbitrary
+        # missing-intent exception or an authorized new SQL write.
+        import subprocess
+        head, run_id, job_id = (
+            'aa17ac1e60e062c078000ab3ee5618ac8eb7d0dd',
+            37102199040, 111144321846,
+        )
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=1)
+        labels = (
+            'Publish selected head as one transaction',
+            'Deploy and activate LEGEND Founder Cloudflare baseline',
+            'Reconcile public custom-hostname Cloudflare policy',
+            'Deploy shared Cloudflare business website router',
+            'Verify every deployed target and collect all failures',
+            'Retain exact approved release receipt',
+        )
+        original_step = dict(
+            name='Apply additive diagnostics migrations before restarting apps',
+            status='completed', conclusion='failure',
+            started_at='2026-10-03T06:15:40Z',
+            completed_at='2026-10-03T06:15:41Z')
+        job = dict(id=job_id, name='release', status='completed',
+                   conclusion='failure', run_attempt=1,
+                   steps=[original_step] + [
+                       dict(name=label, status='completed', conclusion='skipped')
+                       for label in labels
+                   ])
+        artifact = dict(
+            name='legend-release-step-state-'
+                 'a9d173e5176469a3ba53991274cfa1d0e58b0f9f-37102199040-1',
+            expired=False, workflow_run=dict(id=run_id))
+        prefix = (
+            '2026-10-03T06:14:34.6695917Z [command]/usr/bin/git log -1 --format=%H\n'
+            '2026-10-03T06:14:34.6727979Z ' + head + '\n')
+        marker = (
+            '2026-10-03T06:15:41.8274004Z '
+            'Live database baseline lacks a successful canonical release '
+            'receipt; no migration authorized.\n')
+        source_echo = (
+            "2026-10-03T06:15:40.9797432Z \x1b[36;1m"
+            "print('Schema ready. Executed the exact validated migration bundle "
+            "from the proven live database baseline.')\x1b[0m\n")
+        def artifacts(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=[artifact], total_count=1)
+        log = prefix + marker + source_echo
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, 'api_get', side_effect=artifacts):
+            proof = lambda: self.authority._legacy_migration_noop(
+                'owner/repo', run, job, original_step, source, 'fixture')
+            self.assertTrue(proof())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=prefix + source_echo):
+                self.assertFalse(proof())  # echoed source is not an executed denial
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=prefix + marker + marker + source_echo):
+                self.assertFalse(proof())  # duplicate marker not authoritative
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + (
+                                  '2026-10-03T06:15:41.9Z Schema ready. Executed '
+                                  'the exact validated migration bundle from the '
+                                  'proven live database baseline.\n')):
+                self.assertFalse(proof())  # contradictory genuine success
+            with patch.object(self.authority, 'api_get',
+                              return_value=dict(artifacts=[
+                                  dict(artifact, name='legend-release-child-intent-' + 'f' * 64)
+                              ], total_count=1)):
+                self.assertFalse(proof())
+            artifact['expired'] = True
+            self.assertFalse(proof())
+            artifact['expired'] = False
+            original_step['conclusion'] = 'success'
+            self.assertFalse(proof())
+            original_step['conclusion'] = 'failure'
+            job['steps'][1]['conclusion'] = 'success'
+            self.assertFalse(proof())
+            job['steps'][1]['conclusion'] = 'skipped'
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, original_step,
+                source + '\n# unreviewed production writer', 'fixture'))
+
     def test_legacy_october3_factory_nonentry_is_exactly_attested(self):
         import subprocess
         head = 'ea53cdbcf7e650cceb9e193965b630dd1da19c16'
