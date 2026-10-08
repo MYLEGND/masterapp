@@ -229,6 +229,9 @@ AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS = {
     'd4404ba420b96623602f953b91f3fe1f31911433': LEGACY_NOOP_MARKER,
     'b85c50eadf83daad32b787f2d37f7a32babe67a4': LEGACY_NOOP_MARKER,
     '207f8bc230e35e636e1342e020d2377feadeac2e': LEGACY_OLDER_NOOP_MARKER,
+    # Oct 2 immutable generation: migration-step source matches the audited
+    # early-exit block above, and original run evidence proves the old marker.
+    '0bf49879417aa46c25c5f1a5772912b280efa9ae': LEGACY_OLDER_NOOP_MARKER,
 }
 
 
