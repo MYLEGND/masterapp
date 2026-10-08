@@ -8,6 +8,7 @@ uses a new physical SQL observation and a new journal readback.
 """
 import importlib.util
 import os
+import subprocess
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -41,7 +42,8 @@ for run_id, kind in fixtures.items():
         repo, run, job, steps[0], source, 1, token,
         first_pending_migration_id='20261007134500_AddFounderAssistantRules',
         last_applied_migration_id='20261003091500_CanonicalizeBusinessFinanceToolState',
-        current_application_revision=os.environ['GITHUB_SHA'])
+        current_application_revision=subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], text=True).strip())
     if not positive:
         raise SystemExit('RETIRED_EVIDENCE:ORIGINAL_PROOF_REJECTED')
     # An entered EF attempt must NOT become the other no-write classifier.
