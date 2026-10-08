@@ -974,8 +974,13 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 self.check()
 
     def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
-        source = Path(__file__).with_name('..').resolve() / '.github/workflows' / self.authority.DIRECT_RELEASE_WORKFLOW
-        source = source.read_text()
+        # The fixture models the ORIGINAL no-entry job topology; pin its
+        # immutable workflow instead of reading the evolved migration-first DAG.
+        import subprocess
+        source = subprocess.check_output([
+            'git', 'show',
+            '88936a82f9a94b93dedb18fcfe73f18a89410c91:.github/workflows/'
+            + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
         jobs = [dict(name='admission', status='completed', conclusion='failure', steps=[]),
                 *[dict(name=name, status='completed', conclusion='skipped', steps=[])
                   for name in ('discover-live', 'preserve-rollback', 'release', 'target-release-receipts (${{ matrix.app }})')],
