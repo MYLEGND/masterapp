@@ -89,13 +89,13 @@ internal sealed class LegendEngineeringHostedService(
                 recoveredEpisode.ValueKind == JsonValueKind.String
                     ? recoveredEpisode.GetString()
                     : null;
-            await founderNotifications.NotifyActionableAsync(
-                openWork,
-                blocker,
-                blockerEpisodeId,
-                recoveredEpisodeId,
-                cancellationToken);
-            await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
+            await RunNonAuthoritativeObservationAsync(
+                token => founderNotifications.NotifyActionableAsync(
+                    openWork, blocker, blockerEpisodeId, recoveredEpisodeId, token),
+                "founder_notifications", logger, cancellationToken);
+            await RunNonAuthoritativeObservationAsync(
+                token => founderNotifications.NotifyDailyDigestAsync(openWork, token),
+                "founder_digest", logger, cancellationToken);
 
             if (!autonomyEnabled || !runtimeReady)
             {
@@ -151,10 +151,26 @@ internal sealed class LegendEngineeringHostedService(
         ILogger logger,
         CancellationToken cancellationToken)
     {
+        await RunNonAuthoritativeObservationAsync(
+            async token => { await ingestIncidents(token); },
+            "incident_intake", logger, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        // Never mask a failure here: the outer pass guard must block subsequent
+        // agent starts if release state cannot be safely reconciled.
+        await reconcileRelease(cancellationToken);
+    }
+
+    internal static async Task RunNonAuthoritativeObservationAsync(
+        Func<CancellationToken, Task> observe,
+        string stage,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            await ingestIncidents(cancellationToken);
+            await observe(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -162,17 +178,12 @@ internal sealed class LegendEngineeringHostedService(
         }
         catch (Exception exception)
         {
-            // Read-only intake is independent of canonical release reconciliation.
-            // Log a bounded type only; incident/provider payloads stay private.
+            // Never forward diagnostic or provider exception messages.
+            // Notification and incident failures cannot block authoritative work.
             logger.LogWarning(
-                "LEGEND engineering incident intake failed ({ExceptionType}); release reconciliation continues.",
-                exception.GetType().Name);
+                "LEGEND engineering observation {Stage} failed ({ExceptionType}); continue independent work.",
+                stage, exception.GetType().Name);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        // Never mask a failure here: the outer pass guard must block subsequent
-        // agent starts if release state cannot be safely reconciled.
-        await reconcileRelease(cancellationToken);
     }
 
     private static bool IsAgentActionable(EngineeringWorkItemSnapshot item)
