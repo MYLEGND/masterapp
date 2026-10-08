@@ -231,6 +231,7 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
     def setUp(self):
         self.authority = load('validation-resume')
         self.run_id = 37765986494
+        self.attempt = 1
         self.run = dict(
             id=self.run_id, run_attempt=1, status='completed',
             conclusion='failure', head_sha='901a0d86567567cb54c7640127943db632fe6f28',
@@ -248,7 +249,7 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
             completed_at='2026-10-08T11:00:15Z',
         )
         self.job = dict(
-            id=113276473989, status='completed', conclusion='failure',
+            id=113276473989, run_attempt=self.attempt, status='completed', conclusion='failure',
             steps=[
                 self.step,
                 dict(name='Submit canonical selected targets in parallel',
@@ -259,7 +260,7 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
         )
         self.receipts = [dict(
             name=f'legend-release-step-state-{"b" * 40}-{self.run_id}-1',
-            expired=False,
+            expired=False, workflow_run={"id": self.run_id},
         )]
         self.message = ('2026-10-08T11:00:15.7025934Z '
             'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
@@ -280,7 +281,7 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
                            return_value={'artifacts': self.receipts,
                                          'total_count': len(self.receipts)})):
             return self.authority._historical_migration_prewrite_proven(
-                'owner/repo', self.run, self.job, self.step, 'fixture')
+                'owner/repo', self.run, self.job, self.step, self.attempt, 'fixture')
 
     def test_exact_failed_admission_with_authenticated_no_write_evidence(self):
         self.assertTrue(self.proven())
@@ -303,8 +304,10 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
         original = self.receipts.pop()
         self.assertFalse(self.proven())
         self.receipts.append(original)
-        for name in ('legend-release-child-intent-', 'legend-release-operation-intent-'):
-            self.receipts.append(dict(name=name + 'c' * 64, expired=False))
+        for name in ('legend-release-child-intent-', 'legend-release-child-success-',
+                     'legend-release-operation-intent-'):
+            self.receipts.append(dict(name=name + 'c' * 64, expired=False,
+                                      workflow_run={'id': self.run_id}))
             self.assertFalse(self.proven())
             self.receipts.pop()
         self.receipts[0]['expired'] = True
@@ -320,6 +323,24 @@ class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
         self.assertFalse(self.proven())
         self.run['head_repository'] = {'full_name': 'owner/repo'}
         self.run['run_attempt'] = 3
+        self.attempt = 4
+        self.assertFalse(self.proven())
+
+    def test_attempt_specific_history_must_use_original_attempt(self):
+        # A retried workflow may have an earlier failure with independent
+        # job evidence. Do not read the latest attempt's receipt as its proof.
+        self.run['run_attempt'] = 2
+        self.assertTrue(self.proven())
+        self.receipts[0]['name'] = (
+            f'legend-release-step-state-{"b" * 40}-{self.run_id}-2')
+        self.assertFalse(self.proven())
+        self.receipts[0]['name'] = (
+            f'legend-release-step-state-{"b" * 40}-{self.run_id}-1')
+        self.job['run_attempt'] = 2
+        self.assertFalse(self.proven())
+
+    def test_attempt_artifact_provenance_must_match_producer(self):
+        self.receipts[0]['workflow_run'] = {'id': 99}
         self.assertFalse(self.proven())
 
     def test_time_and_terminal_step_are_required(self):
