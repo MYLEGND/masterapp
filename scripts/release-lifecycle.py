@@ -2546,6 +2546,16 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         })
         if not all(outcomes.get(name) == [conclusion] for name, conclusion in required.items()):
             return False
+        if generation in newer:
+            # Reuse the sole canonical first-SQL-write witness instead of
+            # trusting a failed job or missing artifact. It authenticates the
+            # exact migration-denial marker inside this failed step's timestamps
+            # and the immutable source which raises it before bundle execution.
+            matches = [step for step in steps if step.get('name') == prepublication]
+            if len(matches) != 1 or not VALIDATION_AUTHORITY._historical_migration_prewrite_proven(
+                api.repo, run, release, matches[0], attempt, os.environ.get('GH_TOKEN', '')
+            ):
+                return False
     return True
 
 
