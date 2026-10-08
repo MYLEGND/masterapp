@@ -2463,7 +2463,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         'scripts/release-prepublication.py', 'scripts/release-migration.py',
         'scripts/validation-resume.py'))
     if (generation[0] in {item[0] for item in newer}
-        or generation[1] in {item[1] for item in newer}
+        or generation[1] == '4c4bff74892a9924efb45f3968e06a61dffbcab5'
         or generation[2] in {item[2] for item in newer}):
         if generation not in newer:
             return False
