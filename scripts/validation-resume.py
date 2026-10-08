@@ -279,16 +279,21 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
-    workflow = urllib.parse.quote(DIRECT_RELEASE_WORKFLOW, safe="")
+    # The workflow-specific inventory returns 403 to the trusted release token.
+    # Query the same canonical Actions authority through its repository run
+    # inventory and authenticate the exact workflow on every retained row.
+    branch = urllib.parse.quote(TRUSTED_PR_BASE, safe="")
     seen = 0
     for page in range(1, 11):
-        payload = api_get(repository, f"actions/workflows/{workflow}/runs?per_page=100&page={page}", token)
+        payload = api_get(repository, f"actions/runs?branch={branch}&event=workflow_dispatch&per_page=100&page={page}", token)
         runs = payload.get("workflow_runs")
         if not isinstance(runs, list):
             raise RuntimeError("Release child execution history unavailable")
         seen += len(runs)
         for run in runs:
-            if run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch":
+            if (run.get("head_branch") != TRUSTED_PR_BASE
+                or run.get("event") != "workflow_dispatch"
+                or run.get("path", "").split("@")[0] != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW):
                 continue
             _trusted_child_producer(repository, run)
             run_id = run["id"]
@@ -513,6 +518,14 @@ def release_runtime_profile(selected_names):
     }
 
 
+def release_ef_metadata_path(path):
+    """Canonical EF discovery metadata that can change the compiled migration catalog."""
+    return isinstance(path, str) and bool(
+        re.fullmatch(r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\.cs", path)
+        or re.fullmatch(r"Infrastructure/Migrations/[0-9]{14}_[A-Za-z0-9_]+\.Designer\.cs", path)
+    )
+
+
 def release_admission_resources(paths, selected_names, *, routing=False):
     """Read/write resource ownership used by every release admission.
 
@@ -528,7 +541,11 @@ def release_admission_resources(paths, selected_names, *, routing=False):
         resources.add('read/schema/masterapp')
     if profile['selectedHasSharedAuth'] or profile['selectedHasEditor'] or profile['selectedDatabaseDependent']:
         resources.add('read/app/' + profile['databaseAuthority'])
-    if any(path.startswith('Infrastructure/Migrations/') for path in paths):
+    if any(path.startswith('Infrastructure/Migrations/') or release_ef_metadata_path(path)
+           for path in paths):
+        # The matching prepublication guard can enter the migration child even
+        # for metadata-only EF changes. Reserve its exclusive schema authority
+        # BEFORE admitting any future provider write.
         resources.add('write/schema/masterapp')
     if founder_cloudflare_release_required(paths):
         resources.add('write/cloudflare/founder')

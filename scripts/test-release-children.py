@@ -244,7 +244,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.total = 1
 
     def api(self, repo, path, token):
-        if 'workflows/' in path:
+        if path.startswith('actions/runs?branch=legend%2Fapproved-changes&event=workflow_dispatch&per_page=100&page='):
             return dict(workflow_runs=[self.run], total_count=self.total)
         if '/jobs?' in path:
             return dict(jobs=[dict(name='release', status='completed', conclusion='failure', steps=[self.step])], total_count=1)
@@ -267,6 +267,15 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.records[name] = dict(schemaVersion=1, child=self.child, dependencyIdentity=operation,
             materialIdentity=operation, partitionIdentity=operation, executionAuthority='e' * 40, phase='intent', producingRun=7,
             producingAttempt=attempt)
+
+    def test_repository_history_filters_out_unrelated_workflows(self):
+        self.run['path'] = '.github/workflows/unrelated-workflow.yml'
+        self.assertTrue(self.check())  # No trusted release child can enter via another workflow.
+
+    def test_failed_started_direct_release_still_requires_original_child_intent(self):
+        self.step['conclusion'] = 'failure'
+        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+            self.check()
 
     def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
         source = Path(__file__).with_name('..').resolve() / '.github/workflows' / self.authority.DIRECT_RELEASE_WORKFLOW
