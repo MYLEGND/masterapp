@@ -457,17 +457,9 @@ def migration_metadata_changed(base, revision):
          "Infrastructure/Data", "Infrastructure/Migrations"],
         capture=True,
     )
-    return any(
-        re.fullmatch(
-            r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\.cs",
-            path.strip(),
-        )
-        or re.fullmatch(
-            r"Infrastructure/Migrations/[0-9]{14}_[A-Za-z0-9_]+\.Designer\.cs",
-            path.strip(),
-        )
-        for path in raw.splitlines()
-    )
+    scope = release_authority()
+    return any(scope.release_ef_metadata_path(path.strip())
+               for path in raw.splitlines())
 
 
 def release_proven(base, authority):
