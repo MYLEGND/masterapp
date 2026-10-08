@@ -3059,37 +3059,7 @@ RELEASE_STEP_STAGES = {
     'Retain exact approved release receipt': 'RELEASE_RECEIPT',
     'Admit canonical release resource ownership': 'RELEASE_ADMISSION',
 }
-SAFE_NAME = re.compile(r'^[A-Za-z0-9 _.,()/-]{1,150}    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run'])
-    parser.add_argument('--pr', type=int)
-    parser.add_argument('--run', type=int)
-    parser.add_argument('--apply', action='store_true')
-    parser.add_argument('--output', type=Path)
-    args = parser.parse_args()
-    api = GitHub()
-    if args.command == 'admit-worker':
-        result = admit_worker(api)
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write('admitted=' + str(result['admitted']).lower() + '\n')
-            output.write('state=' + result['state'] + '\n')
-            if result.get('admitted'):
-                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
-                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
-    elif args.command == 'diagnose-run':
-        result = diagnose_completed_workflow(api, args.run)
-    elif args.command == 'integrate':
-        result = integrate(api, args.pr)
-    elif args.command == 'pending-updates':
-        result = pending_updates(api)
-    elif args.command == 'reconcile':
-        result = reconcile(api, args.run)
-    else:
-        result = cleanup(api, args.apply)
-    if args.output:
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
-    print(json.dumps(result, indent=2))
-
-
+SAFE_NAME = re.compile(r'^[A-Za-z0-9 _.,()/-]{1,150}$')
 
 
 def _canonical_step_names(workflow_path):
