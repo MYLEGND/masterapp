@@ -272,6 +272,85 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.run['path'] = '.github/workflows/unrelated-workflow.yml'
         self.assertTrue(self.check())  # No trusted release child can enter via another workflow.
 
+    def test_attested_successful_prepublication_noop_is_not_a_sql_write(self):
+        import subprocess
+        head = '0f8eb4026a36b191a837f06a66e0c16ba78e584e'
+        run_id = 37630867225
+        paths = (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-prepublication.py',
+        )
+        sources = {path: subprocess.check_output(
+            ['git', 'show', head + ':' + path], text=True) for path in paths}
+        run = dict(self.run, id=run_id, head_sha=head,
+                   status='completed', conclusion='success', run_attempt=2)
+        job = dict(id=112827564296, name='release', status='completed',
+                   conclusion='failure')
+        step = dict(self.step, status='completed', conclusion='success',
+                    started_at='2026-10-07T13:57:25Z',
+                    completed_at='2026-10-07T13:57:42Z')
+        names = [
+            'legend-release-admission-' + 'a' * 64,
+            f'legend-release-step-state-{"d" * 40}-{run_id}-1',
+            f'legend-release-step-state-{"d" * 40}-{run_id}-2',
+            *(f'diagnostics-rollback-{name}-{head}'
+              for name in ('portal', 'client', 'protect', 'parfait', 'website')),
+        ]
+        artifacts = [dict(name=name, expired=False, workflow_run=dict(id=run_id))
+                     for name in names]
+        marker = ('{"changedTargets": [], "configuredTargets": ["masterapp-portal"], '
+                  '"migrationStatus": "not-applicable"}')
+        log = '2026-10-07T13:57:42.6797561Z ' + marker + '\n'
+        def read(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=artifacts, total_count=len(artifacts))
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, revision, path, token: sources[path]), \
+             patch.object(self.authority, 'api_get', side_effect=read), \
+             patch.object(self.authority, '_release_job_log', return_value=log) as original_log:
+            check = lambda: self.authority._attested_migration_noop_success(
+                'owner/repo', run, job, step, 1, 'token')
+            self.assertTrue(check())
+            original_log.assert_called_with('owner/repo', job['id'], 'token')
+            step['conclusion'] = 'failure'
+            self.assertFalse(check())
+            step['conclusion'] = 'success'
+            sources[paths[1]] += '\n# modified'
+            self.assertFalse(check())
+            sources[paths[1]] = subprocess.check_output(
+                ['git', 'show', head + ':' + paths[1]], text=True)
+            artifacts.append(dict(name='legend-release-child-intent-' + 'f' * 64,
+                                  expired=False, workflow_run=dict(id=run_id)))
+            self.assertFalse(check())
+            artifacts.pop()
+            artifacts[0]['expired'] = True
+            self.assertFalse(check())
+            artifacts[0]['expired'] = False
+            artifacts.pop()
+            self.assertFalse(check())
+            artifacts.append(dict(name=names[-1], expired=False,
+                                  workflow_run=dict(id=run_id)))
+            with patch.object(self.authority, '_release_job_log',
+                              return_value='2026-10-07T13:57:42.6797561Z {"migrationStatus":"reconciled"}'):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value='2026-10-07T13:57:12.6797561Z ' + marker):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + log):
+                self.assertFalse(check())
+
+    def test_historical_success_without_noop_proof_still_blocks_sql_replay(self):
+        self.run.update(status='completed', conclusion='success')
+        with patch.object(self.authority, '_attested_migration_noop_success',
+                          return_value=True) as proof:
+            self.assertTrue(self.check())
+            proof.assert_called_once()
+        with patch.object(self.authority, '_attested_migration_noop_success',
+                          return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                self.check()
+
     def test_failed_started_direct_release_still_requires_original_child_intent(self):
         self.step['conclusion'] = 'failure'
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
