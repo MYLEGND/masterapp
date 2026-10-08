@@ -937,6 +937,35 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._legacy_migration_noop(
                 'owner/repo', run, job, step, source, 'fixture'))
 
+    def test_other_attested_old_generation_requires_own_noop_marker(self):
+        import subprocess
+        head = '37e73e47316d76876ead5912cf7dd69bf5474250'
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(id=37103061253, head_sha=head)
+        job = dict(id=111146713627, status='completed', conclusion='success')
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T06:30:55Z',
+                    completed_at='2026-10-03T06:30:55Z')
+        log = ('2026-10-03T06:29:52.1996753Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T06:29:52.2033165Z ' + head + '\n'
+               '2026-10-03T06:30:55.1914100Z No candidate migration source changed '
+               'from the database baseline; migration receipt gate is not applicable.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertTrue(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source + '\n# changed\n', 'fixture'))
+        with patch.object(self.authority, '_release_job_log',
+                          return_value=log.replace('No candidate migration source changed',
+                                                   'Migration bundle executed')), \
+             patch.object(self.authority, '_RELEASE_CHILD_NOOP_PROOFS', set()):
+            self.assertFalse(self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture'))
+
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess
         source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
