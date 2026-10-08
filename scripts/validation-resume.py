@@ -474,15 +474,10 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
     # otherwise valid no-op result cannot discharge the earlier operation.
     if any(name.startswith('legend-release-child-intent-') for name in names):
         return False
-    rollback = {
-        f"diagnostics-rollback-{app}-{run['head_sha']}"
-        for app in ('portal', 'client', 'protect', 'parfait', 'website')
-    }
-    oldest_noop = pairing == (
-        '4a69290e3462d6fae20dcd75d48b8639c5066c22',
-        '4357329104400dc36a59a739d8a823b548838baf')
-    if not oldest_noop and not rollback.issubset(names):
-        return False
+    # Rollback artifacts belong to application publication, not SQL.
+    # A protected portal-only or early release can have none. The original
+    # completed migration step, immutable source and absence of a child
+    # write intent are the mandatory no-mutation proof.
     if sum(bool(re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n))
            for n in names) != 1:
         return False
