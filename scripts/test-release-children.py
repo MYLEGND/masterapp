@@ -227,6 +227,130 @@ class ReleaseChildTests(unittest.TestCase):
         self.assertEqual(len(self.published), 3)
 
 
+class HistoricalMigrationPrewriteProofTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = load('validation-resume')
+        self.run_id = 37765986494
+        self.attempt = 1
+        self.run = dict(
+            id=self.run_id, run_attempt=1, status='completed',
+            conclusion='failure', head_sha='901a0d86567567cb54c7640127943db632fe6f28',
+            head_branch=self.authority.TRUSTED_PR_BASE,
+            event='workflow_dispatch',
+            path='.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            head_repository={'full_name': 'owner/repo'},
+            display_title='LEGEND release pr=525 candidate=' + 'a' * 40
+                + ' authority=901a0d86567567cb54c7640127943db632fe6f28',
+        )
+        self.step = dict(
+            name='Synchronize canonical pre-publication resource lanes',
+            status='completed', conclusion='failure',
+            started_at='2026-10-08T11:00:10Z',
+            completed_at='2026-10-08T11:00:15Z',
+        )
+        self.job = dict(
+            id=113276473989, run_attempt=self.attempt, status='completed', conclusion='failure',
+            steps=[
+                self.step,
+                dict(name='Submit canonical selected targets in parallel',
+                     status='completed', conclusion='skipped'),
+                dict(name='Run independent auxiliary release fanout',
+                     status='completed', conclusion='skipped'),
+            ],
+        )
+        self.receipts = [dict(
+            name=f'legend-release-step-state-{"b" * 40}-{self.run_id}-1',
+            expired=False, workflow_run={"id": self.run_id},
+        )]
+        self.message = ('2026-10-08T11:00:15.7025934Z '
+            'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
+        self.sources = {
+            path: (Path(__file__).resolve().parents[1] / path).read_text()
+            for path in (
+                '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                'scripts/release-prepublication.py',
+                'scripts/release-migration.py',
+            )
+        }
+
+    def proven(self):
+        with (patch.object(self.authority, '_release_history_source',
+                           side_effect=lambda repo, sha, path, token: self.sources[path]),
+              patch.object(self.authority, '_release_job_log', return_value=self.message),
+              patch.object(self.authority, 'api_get',
+                           return_value={'artifacts': self.receipts,
+                                         'total_count': len(self.receipts)})):
+            return self.authority._historical_migration_prewrite_proven(
+                'owner/repo', self.run, self.job, self.step, self.attempt, 'fixture')
+
+    def test_exact_failed_admission_with_authenticated_no_write_evidence(self):
+        self.assertTrue(self.proven())
+        self.message = ('2026-10-08T11:00:15.7025934Z '
+            'LEGEND_PREPUBLICATION_MIGRATION:'
+            'Database contains applied migration history absent from validated bundle')
+        self.assertTrue(self.proven())
+
+    def test_unknown_writer_generation_cannot_claim_no_write(self):
+        self.sources['scripts/release-migration.py'] += '\\n# changed writer\\n'
+        self.assertFalse(self.proven())
+
+    def test_started_publish_or_auxiliary_cannot_claim_no_write(self):
+        for step in self.job['steps'][1:]:
+            step['conclusion'] = 'success'
+            self.assertFalse(self.proven())
+            step['conclusion'] = 'skipped'
+
+    def test_missing_or_ambiguous_artifact_never_authorizes_replay(self):
+        original = self.receipts.pop()
+        self.assertFalse(self.proven())
+        self.receipts.append(original)
+        for name in ('legend-release-child-intent-', 'legend-release-child-success-',
+                     'legend-release-operation-intent-'):
+            self.receipts.append(dict(name=name + 'c' * 64, expired=False,
+                                      workflow_run={'id': self.run_id}))
+            self.assertFalse(self.proven())
+            self.receipts.pop()
+        self.receipts[0]['expired'] = True
+        self.assertFalse(self.proven())
+
+    def test_untrusted_history_log_and_attempts_are_denied(self):
+        self.message = ('2026-10-08T11:00:15.7025934Z '
+                        'LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE')
+        self.assertFalse(self.proven())
+        self.message = ('2026-10-08T11:00:15.7025934Z '
+            'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission')
+        self.run['head_repository'] = {'full_name': 'attacker/repo'}
+        self.assertFalse(self.proven())
+        self.run['head_repository'] = {'full_name': 'owner/repo'}
+        self.run['run_attempt'] = 3
+        self.attempt = 4
+        self.assertFalse(self.proven())
+
+    def test_attempt_specific_history_must_use_original_attempt(self):
+        # A retried workflow may have an earlier failure with independent
+        # job evidence. Do not read the latest attempt's receipt as its proof.
+        self.run['run_attempt'] = 2
+        self.assertTrue(self.proven())
+        self.receipts[0]['name'] = (
+            f'legend-release-step-state-{"b" * 40}-{self.run_id}-2')
+        self.assertFalse(self.proven())
+        self.receipts[0]['name'] = (
+            f'legend-release-step-state-{"b" * 40}-{self.run_id}-1')
+        self.job['run_attempt'] = 2
+        self.assertFalse(self.proven())
+
+    def test_attempt_artifact_provenance_must_match_producer(self):
+        self.receipts[0]['workflow_run'] = {'id': 99}
+        self.assertFalse(self.proven())
+
+    def test_time_and_terminal_step_are_required(self):
+        self.step['started_at'] = '2026-10-08T11:01:00Z'
+        self.assertFalse(self.proven())
+        self.step['started_at'] = '2026-10-08T11:00:10Z'
+        self.step['conclusion'] = 'success'
+        self.assertFalse(self.proven())
+
+
 class ChildHistorySafetyTests(unittest.TestCase):
     def setUp(self):
         self.authority = load('validation-resume')
@@ -455,6 +579,17 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.step['conclusion'] = 'failure'
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
             self.check()
+
+    def test_only_authentic_prewrite_proof_can_skip_missing_migration_intent(self):
+        self.step['conclusion'] = 'failure'
+        with patch.object(self.authority, '_historical_migration_prewrite_proven',
+                          return_value=True) as proof:
+            self.assertTrue(self.check())
+            proof.assert_called_once()
+        with patch.object(self.authority, '_historical_migration_prewrite_proven',
+                          return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                self.check()
 
     def test_exact_failed_prepublication_migration_is_prewrite_only_with_positive_proof(self):
         import subprocess
