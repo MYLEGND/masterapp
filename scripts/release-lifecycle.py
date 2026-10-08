@@ -3027,6 +3027,271 @@ def cleanup(api, apply=False):
         rows.append(row)
     return {'approvedSha': approved, 'live': live, 'branches': rows}
 
+
+# One read-only, post-terminal view over the existing GitHub evidence channel.
+# This is observation only: NEVER use this report to authorize a release,
+# resurrect a failed operation, or mark an application as live.
+OBSERVED_WORKFLOWS = {
+    'MasterApp platform architecture validation':
+        ('masterapp-platform-architecture-validation.yml', 'ARCHITECTURE_VALIDATION', {'pull_request', 'push', 'workflow_dispatch'}),
+    'Step 5 isolated conversion mapping validation':
+        ('step5-isolated-conversion-mapping-validation.yml', 'STEP5_VALIDATION', {'pull_request', 'push'}),
+    'Step 6 isolated ChatGPT Ads execution validation':
+        ('step6-isolated-chatgpt-ads-execution-validation.yml', 'STEP6_VALIDATION', {'pull_request', 'push'}),
+    'Steps 7-8 governed advertising and Promote This validation':
+        ('steps7-8-governed-advertising-validation.yml', 'STEPS7_8_VALIDATION', {'pull_request', 'push'}),
+    'LEGEND approved release security validation':
+        ('approved-release-security-validation.yml', 'SECURITY_VALIDATION', {'pull_request', 'push'}),
+    'LEGEND approved direct release':
+        (DIRECT, 'DIRECT_RELEASE', {'workflow_dispatch'}),
+}
+TERMINAL_FAILURES = {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'}
+RELEASE_FAILURE_STAGES = {
+    'admission': 'RELEASE_ADMISSION',
+    'discover-live': 'LIVE_BASELINE_DISCOVERY',
+    'release': 'RELEASE_EXECUTION',
+    'release-state-receipt': 'RELEASE_EVIDENCE',
+}
+RELEASE_STEP_STAGES = {
+    'Synchronize canonical pre-publication resource lanes': 'PREPUBLICATION',
+    'Submit canonical selected targets in parallel': 'APPLICATION_PUBLICATION',
+    'Reconcile complete immutable release transaction': 'DEPLOYMENT_RECONCILIATION',
+    'Verify every deployed target and collect all failures': 'LIVE_PROVENANCE',
+    'Retain exact approved release receipt': 'RELEASE_RECEIPT',
+    'Admit canonical release resource ownership': 'RELEASE_ADMISSION',
+}
+SAFE_NAME = re.compile(r'^[A-Za-z0-9 _.,()/-]{1,150}    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run'])
+    parser.add_argument('--pr', type=int)
+    parser.add_argument('--run', type=int)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    api = GitHub()
+    if args.command == 'admit-worker':
+        result = admit_worker(api)
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('admitted=' + str(result['admitted']).lower() + '\n')
+            output.write('state=' + result['state'] + '\n')
+            if result.get('admitted'):
+                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
+                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
+    elif args.command == 'diagnose-run':
+        result = diagnose_completed_workflow(api, args.run)
+    elif args.command == 'integrate':
+        result = integrate(api, args.pr)
+    elif args.command == 'pending-updates':
+        result = pending_updates(api)
+    elif args.command == 'reconcile':
+        result = reconcile(api, args.run)
+    else:
+        result = cleanup(api, args.apply)
+    if args.output:
+        args.output.write_text(json.dumps(result, indent=2) + '\n')
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    main()
+)
+
+
+def _canonical_step_names(workflow_path):
+    """Allow display only for step labels from protected, checked-out workflow."""
+    path = Path(__file__).resolve().parents[1] / '.github' / 'workflows' / workflow_path
+    source = path.read_text()
+    return set(re.findall(r'(?m)^\\s+- name: ([A-Za-z0-9 _.,()/-]{1,150})\\s*    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
+    parser.add_argument('--pr', type=int)
+    parser.add_argument('--run', type=int)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    api = GitHub()
+    if args.command == 'admit-worker':
+        result = admit_worker(api)
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('admitted=' + str(result['admitted']).lower() + '\n')
+            output.write('state=' + result['state'] + '\n')
+            if result.get('admitted'):
+                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
+                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
+    elif args.command == 'integrate':
+        result = integrate(api, args.pr)
+    elif args.command == 'pending-updates':
+        result = pending_updates(api)
+    elif args.command == 'reconcile':
+        result = reconcile(api, args.run)
+    else:
+        result = cleanup(api, args.apply)
+    if args.output:
+        args.output.write_text(json.dumps(result, indent=2) + '\n')
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    main()
+, source))
+
+
+def _release_safe_log_reason(api, run_id, job_id, step):
+    if step != 'Synchronize canonical pre-publication resource lanes':
+        return None
+    # Consume the existing authenticated job-log reader solely for exact
+    # finite-code matches. Never pass through arbitrary GitHub/provider text.
+    try:
+        migration_path = Path(__file__).with_name('release-migration.py')
+        spec = importlib.util.spec_from_file_location('canonical_release_diagnostics', migration_path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        codes = set(migration.MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
+        safe = re.compile(
+            r'^20\\d{2}-\\d{2}-\\d{2}T[0-9:.]+Z '
+            r'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:('
+            + '|'.join(re.escape(item) for item in sorted(codes))
+            + r')(?::run=([1-9][0-9]{0,12})(?::attempt=([1-9][0-9]{0,2}))?)?    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
+    parser.add_argument('--pr', type=int)
+    parser.add_argument('--run', type=int)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    api = GitHub()
+    if args.command == 'admit-worker':
+        result = admit_worker(api)
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('admitted=' + str(result['admitted']).lower() + '\n')
+            output.write('state=' + result['state'] + '\n')
+            if result.get('admitted'):
+                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
+                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
+    elif args.command == 'integrate':
+        result = integrate(api, args.pr)
+    elif args.command == 'pending-updates':
+        result = pending_updates(api)
+    elif args.command == 'reconcile':
+        result = reconcile(api, args.run)
+    else:
+        result = cleanup(api, args.apply)
+    if args.output:
+        args.output.write_text(json.dumps(result, indent=2) + '\n')
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    main()
+
+        )
+        log = VALIDATION_AUTHORITY._release_job_log(api.repo, job_id, api.token)
+        matches = [found.groups() for line in log.splitlines()
+                   if (found := safe.fullmatch(line))]
+        if len(matches) == 1:
+            code, source_run, source_attempt = matches[0]
+            return dict(reasonCode=code,
+                        historicalRun=int(source_run) if source_run else None,
+                        historicalAttempt=int(source_attempt) if source_attempt else None)
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError,
+            subprocess.SubprocessError):
+        pass
+    return None
+
+
+def diagnose_completed_workflow(api, run_id):
+    """Fail-closed, complete-iteration error locator across existing pipelines.
+
+    No raw logs, provider responses, URLs, secrets, or unknown step names leave
+    this boundary. A precise underlying reason is asserted only when the
+    canonical owner emitted a trusted finite-code marker.
+    """
+    if type(run_id) is not int or not 0 < run_id < 10**13:
+        raise ValueError('Invalid GitHub run identity')
+    run = api.api(f'actions/runs/{run_id}')
+    if (not isinstance(run, dict) or run.get('id') != run_id
+        or run.get('status') != 'completed'):
+        raise RuntimeError('Terminal run identity or status unproven')
+    name = run.get('name')
+    if name not in OBSERVED_WORKFLOWS:
+        raise RuntimeError('Unrecognized workflow; no diagnostic classification')
+    workflow_path, default_stage, events = OBSERVED_WORKFLOWS[name]
+    path = (run.get('path') or '').split('@')[0]
+    if (path != '.github/workflows/' + workflow_path
+        or run.get('event') not in events
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha') or '')):
+        raise RuntimeError('Untrusted workflow producer; diagnostic evidence rejected')
+    attempt = run.get('run_attempt')
+    if type(attempt) is not int or not 0 < attempt <= 100:
+        raise RuntimeError('Invalid workflow attempt evidence')
+    jobs = api.pages(f'actions/runs/{run_id}/attempts/{attempt}/jobs', key='jobs')
+    if not jobs:
+        raise RuntimeError('Terminal run has no authenticated jobs')
+    names = _canonical_step_names(workflow_path)
+    results = []
+    incomplete = False
+    for job in jobs:
+        if job.get('status') != 'completed':
+            incomplete = True
+            continue
+        outcome = job.get('conclusion')
+        if outcome not in TERMINAL_FAILURES:
+            continue
+        job_id = job['id']  # validated by GitHub.pages
+        label = job.get('name', '')
+        owner = label if isinstance(label, str) and SAFE_NAME.fullmatch(label) else 'UNVERIFIED_JOB'
+        steps = job.get('steps')
+        if not isinstance(steps, list):
+            raise RuntimeError('Failed job step inventory unavailable')
+        failures = [step for step in steps if step.get('conclusion') in TERMINAL_FAILURES]
+        if not failures:
+            failures = [None]  # e.g. failed runner provisioning before a step entered
+        for failure in failures:
+            number = failure.get('number') if failure is not None else None
+            if number is not None and (type(number) is not int or number < 1 or number > 1000):
+                raise RuntimeError('Malformed failed-step identity')
+            label_step = failure.get('name') if failure is not None else None
+            display = label_step if label_step in names else 'UNVERIFIED_STEP'
+            stage = RELEASE_STEP_STAGES.get(display,
+                RELEASE_FAILURE_STAGES.get(owner, default_stage))
+            row = dict(runId=run_id, attempt=attempt, jobId=job_id,
+                       job=owner, stepNumber=number, step=display, stage=stage,
+                       outcome=outcome, reasonCode='EXACT_CAUSE_NOT_CLASSIFIED',
+                       remedy='INSPECT_ORIGINAL_STEP_EVIDENCE')
+            if name == 'LEGEND approved direct release':
+                detail = _release_safe_log_reason(api, run_id, job_id, display)
+                if detail is not None:
+                    row.update(detail)
+                    row['remedy'] = 'RECONCILE_EVIDENCE_NO_REPLAY'
+            results.append(row)
+    if incomplete:
+        raise RuntimeError('Terminal run job inventory not yet stable')
+    if run.get('conclusion') in TERMINAL_FAILURES and not results:
+        results.append(dict(runId=run_id, attempt=attempt, jobId=None,
+            job='UNVERIFIED_JOB', stepNumber=None, step='UNVERIFIED_STEP',
+            stage=default_stage, outcome=run.get('conclusion'),
+            reasonCode='NO_FAILED_STEP_ATTESTED',
+            remedy='INSPECT_ORIGINAL_STEP_EVIDENCE'))
+    result = dict(schemaVersion=1, observationOnly=True,
+                  workflow=name, runId=run_id, attempt=attempt,
+                  conclusion=run.get('conclusion'), failures=results)
+    for row in results:
+        # Every emitted word below is from fixed enums, verified numeric IDs,
+        # or a source-validated static step label.
+        detail = (f"{row['stage']}:{row['reasonCode']} "
+                  f"run={run_id} attempt={attempt} job={row['jobId'] or 'unavailable'} "
+                  f"step={row['stepNumber'] or 'unavailable'}")
+        print(f'::error title=LEGEND lifecycle failure diagnosis::{detail}', flush=True)
+    summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    if summary and results:
+        with open(summary, 'a') as target:
+            target.write(f'\\n### LEGEND {default_stage}: authenticated failed steps\\n')
+            target.write('Reason codes report the owning stage. Exact root cause is unknown unless explicitly classified. No automatic write is authorized.\\n')
+            for row in results:
+                target.write(f"- {row['stage']} / {row['reasonCode']}; "
+                             f"run {run_id}, attempt {attempt}, job {row['jobId']}, "
+                             f"step {row['stepNumber'] or 'unavailable'}\\n")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
