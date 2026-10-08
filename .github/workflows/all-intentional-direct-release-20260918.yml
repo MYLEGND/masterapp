@@ -157,8 +157,149 @@ jobs:
           args=()
           if [ "$AUTOMATIC_RELEASE" = true ]; then args+=(--automatic); fi
           python3 scripts/approved-release-baseline.py "${args[@]}" --output "$GITHUB_OUTPUT"
+
+  migration-readiness:
+    # First SQL gate after protected authority/live-target discovery. It runs
+    # before rollback packaging or app release; all SQL operations are read-only.
+    needs: [admission, discover-live]
+    if: needs.discover-live.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      pending: ${{ steps.observe.outputs.pending || steps.skip.outputs.pending }}
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}
+      APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
+      DATABASE_AUTHORITY: ${{ needs.discover-live.outputs.database_authority }}
+      MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
+      SELECTED_DATABASE_DEPENDENT: ${{ needs.discover-live.outputs.selected_database_dependent }}
+      PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+
+      - name: Reuse no-database release scope without SQL execution
+        id: skip
+        if: env.SELECTED_DATABASE_DEPENDENT != 'true' || env.PRESERVE_LIVE_TARGETS == 'true'
+        run: |
+          echo "pending=false" >> "$GITHUB_OUTPUT"
+          echo "LEGEND_MIGRATION_READINESS:NOT_APPLICABLE"
+
+      - name: Resolve reusable, exact validated migration probe
+        id: probe
+        if: env.SELECTED_DATABASE_DEPENDENT == 'true' && env.PRESERVE_LIVE_TARGETS != 'true'
+        run: |
+          set -euo pipefail
+          python3 scripts/migration-probe-package.py resolve \
+            --tool-revision "$RELEASE_SHA" \
+            --application-revision "$APPLICATION_RELEASE_SHA" \
+            --directory "$RUNNER_TEMP/migration-probe" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Reuse immutable migration probe without rebuilding
+        if: steps.probe.outputs.runId != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.probe.outputs.artifact }}
+          run-id: ${{ steps.probe.outputs.runId }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-probe
+
+      - name: Verify retained migration probe identity and digest
+        if: steps.probe.outputs.runId != ''
+        run: |
+          python3 scripts/migration-probe-package.py verify \
+            --tool-revision "$RELEASE_SHA" \
+            --application-revision "$APPLICATION_RELEASE_SHA" \
+            --directory "$RUNNER_TEMP/migration-probe"
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.probe.outputs.runId != ''
+        with:
+          dotnet-version: '10.x'
+
+      - uses: azure/login@v2
+        if: steps.probe.outputs.runId != ''
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Observe physical production schema FIRST without SQL mutation
+        id: observe
+        if: steps.probe.outputs.runId != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_OUTPUT" <<'PYEARLYSQL'
+          import importlib.util, pathlib, sys
+          spec = importlib.util.spec_from_file_location('migration_owner', 'scripts/release-migration.py')
+          owner = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(owner)
+          owner.release_authority().assert_protected_release_execution()
+          probe = pathlib.Path(sys.argv[1]).parent / 'migration-probe' / 'MigrationReleaseProbe.dll'
+          # Validated probe was downloaded under RUNNER_TEMP, not the output folder.
+          import os
+          probe = pathlib.Path(os.environ['RUNNER_TEMP']) / 'migration-probe/MigrationReleaseProbe.dll'
+          before = owner.observe(probe, owner.connection_string())
+          pending = before['pendingCount'] > 0
+          with open(sys.argv[1], 'a') as output:
+              output.write('pending=' + str(pending).lower() + '\n')
+          print('LEGEND_MIGRATION_READINESS:OBSERVED:' + ('PENDING' if pending else 'READY'))
+          PYEARLYSQL
+
+      - name: Resolve validated package only when live SQL has pending migrations
+        id: package
+        if: steps.observe.outputs.pending == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validation-resume.py validated-package \
+            --repository "${{ github.repository }}" \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --package-identity "${{ needs.discover-live.outputs.package_identity }}" \
+            --output "$RUNNER_TEMP/migration-package-evidence.json"
+          python3 - "$RUNNER_TEMP/migration-package-evidence.json" "$GITHUB_OUTPUT" <<'PYPACKAGE'
+          import json,sys
+          value=json.load(open(sys.argv[1]))
+          if not value.get('reusable') or not value.get('runId') or not value.get('artifact'):
+              raise SystemExit('Validated bundle unavailable; no SQL authorized')
+          with open(sys.argv[2],'a') as output:
+              output.write('runId='+str(value['runId'])+'\n')
+              output.write('artifact='+value['artifact']+'\n')
+          PYPACKAGE
+
+      - name: Reuse exact validated EF bundle (pending SQL only)
+        if: steps.package.outputs.runId != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          run-id: ${{ steps.package.outputs.runId }}
+          github-token: ${{ github.token }}
+          path: /tmp/diagnostics-packages
+
+      - name: Verify exact validated EF bundle (pending SQL only)
+        if: steps.package.outputs.runId != ''
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "$APPLICATION_RELEASE_SHA" \
+            --directory /tmp/diagnostics-packages
+
+      - name: Authenticate historical first-write admission BEFORE release preparation
+        if: steps.observe.outputs.pending == 'true'
+        env:
+          MIGRATION_PROBE_DLL: ${{ runner.temp }}/migration-probe/MigrationReleaseProbe.dll
+        run: |
+          set -euo pipefail
+          python3 scripts/release-migration.py --preflight
+
   preserve-rollback:
-    needs: discover-live
+    needs: [discover-live, migration-readiness]
     if: needs.discover-live.outputs.preserve_live_targets != 'true' && needs.discover-live.outputs.exact_live != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -286,8 +427,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   release:
-    needs: [discover-live, preserve-rollback]
-    if: ${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}
+    needs: [discover-live, migration-readiness, preserve-rollback]
+    if: ${{ always() && needs.discover-live.result == 'success' && needs.migration-readiness.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: Production
@@ -313,6 +454,7 @@ jobs:
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
       RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
       MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
+      MIGRATION_READINESS_PENDING: ${{ needs.migration-readiness.outputs.pending }}
       ROUTING_WORKER: ${{ needs.discover-live.outputs.routing_worker }}
       ROUTING_PASS_THROUGH_HOSTS: ${{ needs.discover-live.outputs.routing_pass_through_hosts }}
       DOMAIN_REFRESH_PROJECT: ${{ needs.discover-live.outputs.domain_refresh_project }}
