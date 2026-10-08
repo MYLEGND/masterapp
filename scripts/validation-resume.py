@@ -754,6 +754,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
     owners = {
         ".github/workflows/" + DIRECT_RELEASE_WORKFLOW: {
             "bd84c42297a50b29dfa20c2ed926b8233074720e",
+            # Read-only first gate runs before release; SQL journal remains
+            # the canonical write owner and prepublication must precede publish.
+            "05b9eccb17a24c8bf3660f552c249078536a87f1",
         },
         "scripts/release-prepublication.py": {
             "2f60d22e05e2917a9c48db0db1ba58632ab57d02",
@@ -761,6 +764,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "75b2ca1eaee45852e6f896df5caa5366a709af05",
             # Reviewed finite-code prepublication diagnostic generation.
             "87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c",
+            # Same no-intent prewrite marker; source-diff shortcut now also
+            # requires fresh upstream SQL readiness from this release run.
+            "037f345698194e0ffe5c28d9b384ff891151e1e5",
         },
         "scripts/release-migration.py": {
             "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
@@ -769,6 +775,9 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             # Content-reviewed first-pending/last-applied read-only fence;
             # still authorizes NO write before ChildJournal intent readback.
             "f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5",
+            # Read-only --preflight invokes first-write history without
+            # publishing intent or running a bundle; write path unchanged.
+            "6837d13002784fa4894b09e95d7f6bc5d9f5decf",
         },
     }
     try:
