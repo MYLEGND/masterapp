@@ -3027,7 +3027,6 @@ def cleanup(api, apply=False):
         rows.append(row)
     return {'approvedSha': approved, 'live': live, 'branches': rows}
 
-
 # One read-only, post-terminal view over the existing GitHub evidence channel.
 # This is observation only: NEVER use this report to authorize a release,
 # resurrect a failed operation, or mark an application as live.
@@ -3037,7 +3036,7 @@ OBSERVED_WORKFLOWS = {
     'Step 5 isolated conversion mapping validation':
         ('step5-isolated-conversion-mapping-validation.yml', 'STEP5_VALIDATION', {'pull_request', 'push'}),
     'Step 6 isolated ChatGPT Ads execution validation':
-        ('step6-isolated-chatgpt-ads-execution-validation.yml', 'STEP6_VALIDATION', {'pull_request', 'push'}),
+        ('step6-openai-ads-execution-validation.yml', 'STEP6_VALIDATION', {'pull_request', 'push'}),
     'Steps 7-8 governed advertising and Promote This validation':
         ('steps7-8-governed-advertising-validation.yml', 'STEPS7_8_VALIDATION', {'pull_request', 'push'}),
     'LEGEND approved release security validation':
@@ -3091,47 +3090,13 @@ SAFE_NAME = re.compile(r'^[A-Za-z0-9 _.,()/-]{1,150}    parser = argparse.Argume
     print(json.dumps(result, indent=2))
 
 
-if __name__ == '__main__':
-    main()
-)
 
 
 def _canonical_step_names(workflow_path):
     """Allow display only for step labels from protected, checked-out workflow."""
     path = Path(__file__).resolve().parents[1] / '.github' / 'workflows' / workflow_path
     source = path.read_text()
-    return set(re.findall(r'(?m)^\\s+- name: ([A-Za-z0-9 _.,()/-]{1,150})\\s*    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
-    parser.add_argument('--pr', type=int)
-    parser.add_argument('--run', type=int)
-    parser.add_argument('--apply', action='store_true')
-    parser.add_argument('--output', type=Path)
-    args = parser.parse_args()
-    api = GitHub()
-    if args.command == 'admit-worker':
-        result = admit_worker(api)
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write('admitted=' + str(result['admitted']).lower() + '\n')
-            output.write('state=' + result['state'] + '\n')
-            if result.get('admitted'):
-                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
-                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
-    elif args.command == 'integrate':
-        result = integrate(api, args.pr)
-    elif args.command == 'pending-updates':
-        result = pending_updates(api)
-    elif args.command == 'reconcile':
-        result = reconcile(api, args.run)
-    else:
-        result = cleanup(api, args.apply)
-    if args.output:
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
-    print(json.dumps(result, indent=2))
-
-
-if __name__ == '__main__':
-    main()
-, source))
+    return set(re.findall(r'(?m)^\s+- name: ([A-Za-z0-9 _.,()/-]{1,150})\s*$', source))
 
 
 def _release_safe_log_reason(api, run_id, job_id, step):
@@ -3146,41 +3111,10 @@ def _release_safe_log_reason(api, run_id, job_id, step):
         spec.loader.exec_module(migration)
         codes = set(migration.MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
         safe = re.compile(
-            r'^20\\d{2}-\\d{2}-\\d{2}T[0-9:.]+Z '
+            r'^20\d{2}-\d{2}-\d{2}T[0-9:.]+Z '
             r'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:('
             + '|'.join(re.escape(item) for item in sorted(codes))
-            + r')(?::run=([1-9][0-9]{0,12})(?::attempt=([1-9][0-9]{0,2}))?)?    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
-    parser.add_argument('--pr', type=int)
-    parser.add_argument('--run', type=int)
-    parser.add_argument('--apply', action='store_true')
-    parser.add_argument('--output', type=Path)
-    args = parser.parse_args()
-    api = GitHub()
-    if args.command == 'admit-worker':
-        result = admit_worker(api)
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write('admitted=' + str(result['admitted']).lower() + '\n')
-            output.write('state=' + result['state'] + '\n')
-            if result.get('admitted'):
-                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
-                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
-    elif args.command == 'integrate':
-        result = integrate(api, args.pr)
-    elif args.command == 'pending-updates':
-        result = pending_updates(api)
-    elif args.command == 'reconcile':
-        result = reconcile(api, args.run)
-    else:
-        result = cleanup(api, args.apply)
-    if args.output:
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
-    print(json.dumps(result, indent=2))
-
-
-if __name__ == '__main__':
-    main()
-
+            + r')(?::run=([1-9][0-9]{0,12})(?::attempt=([1-9][0-9]{0,2}))?)?$'
         )
         log = VALIDATION_AUTHORITY._release_job_log(api.repo, job_id, api.token)
         matches = [found.groups() for line in log.splitlines()
@@ -3294,7 +3228,7 @@ def diagnose_completed_workflow(api, run_id):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--apply', action='store_true')
@@ -3309,6 +3243,8 @@ def main():
             if result.get('admitted'):
                 output.write('admission_id=' + result['admission']['admissionId'] + '\n')
                 output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
+    elif args.command == 'diagnose-run':
+        result = diagnose_completed_workflow(api, args.run)
     elif args.command == 'integrate':
         result = integrate(api, args.pr)
     elif args.command == 'pending-updates':
