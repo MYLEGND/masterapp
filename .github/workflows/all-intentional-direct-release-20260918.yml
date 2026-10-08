@@ -174,6 +174,7 @@ jobs:
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
       RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
       DATABASE_AUTHORITY: ${{ needs.discover-live.outputs.database_authority }}
+      EXPECTED_DB_BASE_SHA: ${{ needs.discover-live.outputs.database_baseline }}
       MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
       SELECTED_DATABASE_DEPENDENT: ${{ needs.discover-live.outputs.selected_database_dependent }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
@@ -252,6 +253,27 @@ jobs:
               output.write('pending=' + str(pending).lower() + '\n')
           print('LEGEND_MIGRATION_READINESS:OBSERVED:' + ('PENDING' if pending else 'READY'))
           PYEARLYSQL
+
+      - name: Prove pending SQL belongs to the approved live baseline
+        if: steps.observe.outputs.pending == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYBASELINE'
+          import importlib.util, os, subprocess
+          path='scripts/release-prepublication.py'
+          spec=importlib.util.spec_from_file_location('prepublication',path)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          base=os.environ['EXPECTED_DB_BASE_SHA']
+          revision=os.environ['APPLICATION_RELEASE_SHA']
+          if not module.git_ok('merge-base','--is-ancestor',base,revision):
+              if (not module.git_ok('merge-base','--is-ancestor',revision,base)
+                  or not module.git_ok('diff','--quiet',revision,base,'--')):
+                  raise SystemExit('Live database baseline is not a proven candidate ancestor')
+          module.release_proven(base, os.environ['DATABASE_AUTHORITY'])
+          print('LEGEND_MIGRATION_READINESS:BASELINE_PROVEN')
+          PYBASELINE
 
       - name: Resolve validated package only when live SQL has pending migrations
         id: package
