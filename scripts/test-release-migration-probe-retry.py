@@ -171,5 +171,76 @@ class MigrationAssemblyHistoryContractTests(TestCase):
         # evidence and MUST NOT silently join the trusted set.
         self.assertNotIn('["20260927053000_AddAdvertisingActionAuthorizations"]', probe)
 
+
+class MigrationInventoryObservationTests(TestCase):
+    def evidence(self):
+        import datetime, hashlib
+        ids = [f'20260101{i:06d}_Migration' for i in range(219)]
+        known, applied = ids, ids[:-1]
+        return dict(schemaVersion=1, purpose='read-only-migration-inventory',
+            authorizesMutation=False, observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            migrationHistory=[dict(migrationId=x, productVersion='10.0.0') for x in applied],
+            appliedMigrationIds=applied, recognizedMigrationIds=known,
+            pendingMigrationIds=ids[-1:], unrecognizedAppliedMigrationIds=[],
+            schemaIdentity=hashlib.sha256(chr(10).join(known).encode()).hexdigest())
+
+    def execute_inventory(self, value, stderr='', exitcode=0):
+        import contextlib, io, json, os, tempfile, textwrap, types
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / '.github/workflows/deployment-diagnostics.yml').read_text()
+        source = textwrap.dedent(workflow.split("python3 - <<'PYINVENTORY'", 1)[1].split('          PYINVENTORY', 1)[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            owner = types.SimpleNamespace(connection_string=lambda: 'opaque-test-connection')
+            loader = types.SimpleNamespace(exec_module=lambda module: None)
+            spec = types.SimpleNamespace(loader=loader)
+            result = subprocess.CompletedProcess([], exitcode, json.dumps(value), stderr)
+            with mock.patch('importlib.util.spec_from_file_location', return_value=spec), mock.patch('importlib.util.module_from_spec', return_value=owner), mock.patch('subprocess.run', return_value=result) as run, mock.patch.dict(os.environ, dict(RUNNER_TEMP=tmp, TOOL_REVISION='a'*40, APPLICATION_REVISION='b'*40, GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='1')), contextlib.redirect_stdout(io.StringIO()) as out:
+                exec(compile(source, '<inventory-workflow>', 'exec'), {})
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0][-1], '--inventory')
+            saved=json.loads((Path(tmp) / 'migration-inventory.json').read_text())
+            self.assertNotIn('opaque-test-connection', json.dumps(saved) + out.getvalue())
+            return saved
+
+    def test_all_218_applied_ids_are_preserved_without_authorizing_mutation(self):
+        value = self.evidence()
+        saved = self.execute_inventory(value)
+        self.assertEqual(saved['appliedMigrationIds'], value['appliedMigrationIds'])
+        self.assertEqual(len(saved['migrationHistory']), 218)
+        self.assertFalse(saved['authorizesMutation'])
+        self.assertNotIn('ready', saved)
+
+    def test_unknown_history_is_reported_without_becoming_release_authority(self):
+        value = self.evidence()
+        unknown = '20270101000000_Unknown'
+        value['appliedMigrationIds'].append(unknown)
+        value['migrationHistory'].append(dict(migrationId=unknown, productVersion='10.0.0'))
+        value['unrecognizedAppliedMigrationIds'] = [unknown]
+        saved = self.execute_inventory(value)
+        self.assertEqual(saved['unrecognizedAppliedMigrationIds'], [unknown])
+        self.assertFalse(saved['authorizesMutation'])
+
+    def test_incomplete_conflicting_stale_or_sensitive_inventory_is_rejected(self):
+        import copy
+        baseline = self.evidence()
+        edits = [
+            dict(pendingMigrationIds=[]), dict(schemaIdentity='0'*64),
+            dict(appliedMigrationIds=baseline['appliedMigrationIds']*2),
+            dict(migrationHistory=baseline['migrationHistory'][:-1]),
+            dict(observedUtc='2000-01-01T00:00:00+00:00'),
+            dict(authorizesMutation=True), dict(secret='not-allowed'),
+            dict(unrecognizedAppliedMigrationIds=['Password=private']),
+            dict(migrationHistory=[dict(migrationId=x, productVersion='Password=private') for x in baseline['appliedMigrationIds']]),
+        ]
+        for edit in edits:
+            with self.subTest(edit=list(edit)):
+                value = copy.deepcopy(baseline)
+                value.update(edit)
+                with self.assertRaisesRegex(SystemExit, '^Complete read-only migration inventory unavailable; no mutation authorized.$'):
+                    self.execute_inventory(value)
+        for stderr, code in [('private provider failure', 0), ('', 1)]:
+            with self.assertRaisesRegex(SystemExit, '^Complete read-only migration inventory unavailable; no mutation authorized.$'):
+                self.execute_inventory(baseline, stderr=stderr, exitcode=code)
+
 if __name__ == '__main__':
     main()

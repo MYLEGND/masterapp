@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 // assembly owns both schema identities. No application rows or SQL are exposed.
 try
 {
+    if (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory"))
+        throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
     var connection = Environment.GetEnvironmentVariable("LEGEND_RELEASE_DB_CONNECTION");
     if (string.IsNullOrWhiteSpace(connection)) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
     var options = new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -20,6 +22,55 @@ try
         .Order(StringComparer.Ordinal).ToArray();
     if (known.Length == 0)
         throw new ProbeObservationFailure("MIGRATIONS_MISSING");
+
+    // Observation only: a complete, bounded inventory is not a release receipt
+    // and never runs EF migration commands or reads application row contents.
+    if (args.Length == 1)
+    {
+        var idPattern = new System.Text.RegularExpressions.Regex(
+            @"^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$");
+        if (known.Length > 10000 || applied.Length > 10000 ||
+            known.Concat(applied).Any(id => !idPattern.IsMatch(id)) ||
+            known.Distinct(StringComparer.Ordinal).Count() != known.Length ||
+            applied.Distinct(StringComparer.Ordinal).Count() != applied.Length)
+            throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+        await db.Database.OpenConnectionAsync(timeout.Token);
+        var history = new List<object>();
+        var observedIds = new List<string>();
+        await using (var command = db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = "SELECT MigrationId, ProductVersion FROM dbo.__EFMigrationsHistory ORDER BY MigrationId";
+            command.CommandTimeout = 30;
+            await using var reader = await command.ExecuteReaderAsync(timeout.Token);
+            while (await reader.ReadAsync(timeout.Token))
+            {
+                var id = reader.GetString(0);
+                var version = reader.GetString(1);
+                if (history.Count >= 10000 || !idPattern.IsMatch(id) ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(version, @"^[A-Za-z0-9.+_-]{1,128}$"))
+                    throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+                observedIds.Add(id);
+                history.Add(new { migrationId = id, productVersion = version });
+            }
+        }
+        if (!observedIds.Order(StringComparer.Ordinal).SequenceEqual(applied, StringComparer.Ordinal))
+            throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT");
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            purpose = "read-only-migration-inventory",
+            authorizesMutation = false,
+            observedUtc = DateTimeOffset.UtcNow,
+            migrationHistory = history,
+            appliedMigrationIds = applied,
+            recognizedMigrationIds = known,
+            pendingMigrationIds = known.Except(applied, StringComparer.Ordinal).ToArray(),
+            unrecognizedAppliedMigrationIds = applied.Except(known, StringComparer.Ordinal).ToArray(),
+            schemaIdentity = Convert.ToHexStringLower(SHA256.HashData(
+                Encoding.UTF8.GetBytes(string.Join("\n", known))))
+        }));
+        return;
+    }
 
     // A historical, immutable production audit records these applied EF history
     // stamps even though their legacy source cannot be registered in the current
