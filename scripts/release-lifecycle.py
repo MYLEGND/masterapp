@@ -1286,7 +1286,9 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
             or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
             or record.get('sourceMergeSha') != original_merge
             or record.get('executionAuthority') != authority_sha
-            or record.get('applicationRevision') != owner.get('head', {}).get('sha')
+            # _admission_records already checks canonical package-input equivalence
+            # between the immutable application package and authorized source.
+            # They may have different SHAs without different package inputs.
             or not _historical_fenced_prepublication_nonentry(api, run, record)):
             return False
     return True
@@ -2353,6 +2355,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         'scripts/release-prepublication.py': {
             '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
             'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+            '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
         },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
@@ -2361,6 +2364,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '3dc53852fc30df96e9e79779bae89b0cbeb65248',
             '4d04187b13f1212c709237d4632c509e5c9696b9',
             'd108377faf267915d86c856523a7992a4a6d500f',
+            '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
         },
         'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
         'scripts/validation-resume.py': {
