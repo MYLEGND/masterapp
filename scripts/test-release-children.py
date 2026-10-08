@@ -91,6 +91,44 @@ class ReleaseChildTests(unittest.TestCase):
             self.assertEqual('Migration stage unresolved: ' + stage, str(caught.exception))
             self.assertTrue(caught.exception.__suppress_context__)
 
+    def test_admission_diagnostic_names_prior_failed_run_without_leaking_provider(self):
+        from unittest.mock import patch as mock_patch
+        raw = ('Release child failed prepublication but the no-write proof was not authenticated '
+               '[run=37765986494;attempt=1]')
+        with mock_patch('builtins.print') as output:
+            with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+                migration.migration_stage('mutation-admission',
+                    lambda: (_ for _ in ()).throw(RuntimeError(raw)))
+        output.assert_called_once_with(
+            'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:'
+            'HISTORICAL_PREWRITE_PROOF_REJECTED:run=37765986494:attempt=1', flush=True)
+
+    def test_admission_ambiguity_and_provider_payload_are_fail_closed(self):
+        from unittest.mock import patch as mock_patch
+        for reason, code in (
+            ('Release child physical operation already entered; reconcile without replay',
+             'PHYSICAL_OPERATION_ALREADY_ENTERED'),
+            ('Release child prior partition operation unresolved; no replay authorized',
+             'PRIOR_PARTITION_UNRESOLVED'),
+            ('Retained release child requires read-only reconciliation; no mutation replay authorized',
+             'RETAINED_INTENT_OR_SUCCESS'),
+        ):
+            with self.subTest(code=code), mock_patch('builtins.print') as output:
+                with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+                    migration.migration_stage('mutation-admission',
+                        lambda: (_ for _ in ()).throw(RuntimeError(reason)))
+                output.assert_called_once_with(
+                    'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:' + code, flush=True)
+        with mock_patch('builtins.print') as output:
+            with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+                migration.migration_stage('mutation-admission',
+                    lambda: (_ for _ in ()).throw(RuntimeError(
+                        'Release child physical operation already entered; '
+                        'reconcile without replay [run=123;attempt=1] Password=secret')))
+        output.assert_called_once_with(
+            'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:UNCLASSIFIED_DENIAL',
+            flush=True)
+
     def test_schema_observation_failure_never_authorizes_migration(self):
         with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque',
@@ -577,7 +615,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
 
     def test_failed_started_direct_release_still_requires_original_child_intent(self):
         self.step['conclusion'] = 'failure'
-        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+        with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
             self.check()
 
     def test_only_authentic_prewrite_proof_can_skip_missing_migration_intent(self):
@@ -588,7 +626,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             proof.assert_called_once()
         with patch.object(self.authority, '_historical_migration_prewrite_proven',
                           return_value=False):
-            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+            with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
                 self.check()
 
     def test_exact_failed_prepublication_migration_is_prewrite_only_with_positive_proof(self):
@@ -768,7 +806,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
             proof.assert_called_once()
         with patch.object(self.authority, '_attested_migration_prewrite_failure',
                           return_value=False):
-            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+            with self.assertRaisesRegex(RuntimeError, 'no-write proof was not authenticated'):
                 self.check()
 
     def test_child_first_write_reuses_observed_admission_nonentry_without_hiding_prior_entry(self):
