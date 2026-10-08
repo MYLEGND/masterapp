@@ -42,7 +42,8 @@ internal sealed class LegendEngineeringOrchestrator(
     LegendEngineeringBudgetAuthority budget,
     IFounderSoftwareRemediationService remediation,
     ILegendEngineeringContractAuthority contractAuthority,
-    IConfiguration configuration) : ILegendEngineeringOrchestrator
+    IConfiguration configuration,
+    ILogger<LegendEngineeringOrchestrator>? logger = null) : ILegendEngineeringOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -117,6 +118,46 @@ internal sealed class LegendEngineeringOrchestrator(
     public async Task<object> ProcessIncidentsAsync(int maximum, CancellationToken cancellationToken)
     {
         maximum = Math.Clamp(maximum, 1, 500);
+        // The already-scheduled engineering pass ingests authenticated GitHub
+        // failures as observations. No release logs, SQL, deployment credentials,
+        // candidate-as-live SHA, or new release authority enters this store.
+        var releaseObservations = 0;
+        try
+        {
+            foreach (var failure in await remediation.ReadRecentFailedReleaseEvidenceAsync(cancellationToken))
+            {
+                var incident = BuildReleaseFailureObservation(failure, DateTime.UtcNow);
+                if (await db.RuntimeDiagnosticIncidents.AsNoTracking()
+                    .AnyAsync(row => row.DeduplicationKey == incident.DeduplicationKey, cancellationToken))
+                    continue;
+                db.RuntimeDiagnosticIncidents.Add(incident);
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    releaseObservations++;
+                }
+                catch (DbUpdateException)
+                {
+                    db.Entry(incident).State = EntityState.Detached;
+                    // The unique fingerprint may have been inserted by another
+                    // Portal process. An unknown persistence error is not success.
+                    if (!await db.RuntimeDiagnosticIncidents.AsNoTracking()
+                        .AnyAsync(row => row.DeduplicationKey == incident.DeduplicationKey, cancellationToken))
+                        throw;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // Observation transport must not starve existing runtime engineering.
+            logger?.LogWarning(
+                "Release evidence ingestion unavailable ({FailureType}).",
+                exception.GetType().Name);
+        }
         var now = DateTime.UtcNow;
         var incidents = await db.RuntimeDiagnosticIncidents.AsNoTracking()
             .Where(row => row.ExpiresUtc > now)
@@ -139,6 +180,7 @@ internal sealed class LegendEngineeringOrchestrator(
         {
             ok = true,
             observedIncidents = incidents.Length,
+            releaseObservationsAdded = releaseObservations,
             deterministicClassifications = deterministic,
             distinctWorkItems = touched.Count,
             workItems = touched.Values
@@ -153,6 +195,35 @@ internal sealed class LegendEngineeringOrchestrator(
                     item.AssignedRole,
                     item.ReleaseCohort
                 })
+        };
+    }
+
+    internal static RuntimeDiagnosticIncident BuildReleaseFailureObservation(
+        FounderReleaseFailureEvidence failure, DateTime observedUtc)
+    {
+        // The verified GitHub candidate identifies source lineage, NOT a live
+        // runtime revision. Keep ReleaseVerified=false, all source hints opaque,
+        // and Tier C until separately verified repair authority exists.
+        var fingerprint = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(
+                $"release-observation:{failure.RunId}:{failure.CandidateSha}:{failure.AuthoritySha}:{failure.FailureStage}"));
+        return new RuntimeDiagnosticIncident
+        {
+            Id = Guid.NewGuid(),
+            DeduplicationKey = Convert.ToHexStringLower(fingerprint),
+            AppIdentifier = "FounderRelease",
+            Platform = "Release",
+            Route = $"/founder/release/{failure.SourcePullRequest}",
+            ErrorName = "RELEASE_" + failure.FailureStage,
+            Category = "ReleaseObservation",
+            Summary = $"Verified GitHub release run {failure.RunId} failed at {failure.FailureStage}. Candidate not verified live.",
+            CorrelationId = failure.RunId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            GitCommitHash = failure.CandidateSha,
+            ReleaseVerified = false,
+            SourceFilePath = null,
+            FirstSeenUtc = observedUtc,
+            LastSeenUtc = observedUtc,
+            ExpiresUtc = observedUtc.AddDays(30)
         };
     }
 
