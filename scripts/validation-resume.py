@@ -662,7 +662,7 @@ def _attested_migration_noop_success(repository, run, job, step, attempt, token)
          '4357329104400dc36a59a739d8a823b548838baf'),
         # Current released prepublication returns not-applicable ONLY after
         # upstream fresh physical SQL readiness proves zero EF pending.
-        ('799000372a1446326acf72f5cb0be5593f80d939',
+        ('8696295389f2b7f6acb2a0b18955580039dd397f',
          '03f3c3508394016b4f2e9f041290355f1616b0e6'),
     }
     if pairing not in audited_pairs:
@@ -760,7 +760,7 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "bd84c42297a50b29dfa20c2ed926b8233074720e",
             # Read-only first gate runs before release; SQL journal remains
             # the canonical write owner and prepublication must precede publish.
-            "799000372a1446326acf72f5cb0be5593f80d939",
+            "8696295389f2b7f6acb2a0b18955580039dd397f",
         },
         "scripts/release-prepublication.py": {
             "2f60d22e05e2917a9c48db0db1ba58632ab57d02",
