@@ -186,4 +186,3 @@ jobs:
           path: ${{ runner.temp }}/legend-release-failure-diagnostics.json
           retention-days: 30
           if-no-files-found: warn
-
