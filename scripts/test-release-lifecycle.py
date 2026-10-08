@@ -1639,6 +1639,14 @@ class CancelledBeforeAdmissionNonentryProof(unittest.TestCase):
         self.artifacts[0]['expired'] = True
         self.assertFalse(self.proven())
 
+    def test_wrong_receipt_producer_cannot_discharge_queue(self):
+        self.artifacts[0]['workflow_run']['id'] = self.run_id + 1
+        self.assertFalse(self.proven())
+
+    def test_replayed_attempt_cannot_inherit_prior_absence_proof(self):
+        self.run['run_attempt'] = 2
+        self.assertFalse(self.proven())
+
     def test_unknown_observer_source_is_not_proven(self):
         self.source = 'unverified release workflow source'
         self.assertFalse(self.proven())
