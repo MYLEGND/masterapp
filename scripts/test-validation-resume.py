@@ -2802,7 +2802,13 @@ class Step5ChildEvidenceTests(unittest.TestCase):
 
 class ReleaseAttemptNonentryTests(unittest.TestCase):
     def setUp(self):
-        self.source = (ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
+        # These fixtures represent old admission-only runs. Their source must
+        # remain pinned, even when the current release uses migration-first DAG.
+        import subprocess
+        self.source = subprocess.check_output([
+            'git', 'show',
+            '88936a82f9a94b93dedb18fcfe73f18a89410c91:.github/workflows/'
+            + m.DIRECT_RELEASE_WORKFLOW], text=True)
         self.omitted = [{'name': 'admission', 'conclusion': 'success'},
                         {'name': 'preserve-rollback', 'conclusion': 'skipped'}]
         self.skipped = [{'name': 'admission', 'conclusion': 'success'},
@@ -2956,7 +2962,7 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
         plan_id = m.hashlib.sha256(m.json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         with patch.object(m, '_release_history_api', side_effect=api), \
              patch.object(m, '_release_history_runs', return_value=[prior]), \
-             patch.object(m, '_release_history_source', return_value=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()), \
+             patch.object(m, '_release_history_source', return_value=self.source), \
              patch.object(m, '_release_attempt_package_revision', return_value=revision), \
              patch.object(m, '_remember_release_exclusion'), \
              patch.dict(m._RELEASE_HISTORY_EXCLUSIONS, {}, clear=True):
