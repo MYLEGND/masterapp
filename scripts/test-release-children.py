@@ -272,6 +272,185 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.run['path'] = '.github/workflows/unrelated-workflow.yml'
         self.assertTrue(self.check())  # No trusted release child can enter via another workflow.
 
+    def test_attested_successful_prepublication_noop_is_not_a_sql_write(self):
+        import subprocess
+        head = '0f8eb4026a36b191a837f06a66e0c16ba78e584e'
+        run_id = 37630867225
+        paths = (
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+            'scripts/release-prepublication.py',
+        )
+        sources = {path: subprocess.check_output(
+            ['git', 'show', head + ':' + path], text=True) for path in paths}
+        run = dict(self.run, id=run_id, head_sha=head,
+                   status='completed', conclusion='success', run_attempt=2)
+        job = dict(id=112827564296, name='release', status='completed',
+                   conclusion='failure')
+        step = dict(self.step, status='completed', conclusion='success',
+                    started_at='2026-10-07T13:57:25Z',
+                    completed_at='2026-10-07T13:57:42Z')
+        names = [
+            'legend-release-admission-' + 'a' * 64,
+            f'legend-release-step-state-{"d" * 40}-{run_id}-1',
+            f'legend-release-step-state-{"d" * 40}-{run_id}-2',
+            *(f'diagnostics-rollback-{name}-{head}'
+              for name in ('portal', 'client', 'protect', 'parfait', 'website')),
+        ]
+        artifacts = [dict(name=name, expired=False, workflow_run=dict(id=run_id))
+                     for name in names]
+        marker = ('{"changedTargets": [], "configuredTargets": ["masterapp-portal"], '
+                  '"migrationStatus": "not-applicable"}')
+        log = '2026-10-07T13:57:42.6797561Z ' + marker + '\n'
+        def read(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=artifacts, total_count=len(artifacts))
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, revision, path, token: sources[path]), \
+             patch.object(self.authority, 'api_get', side_effect=read), \
+             patch.object(self.authority, '_release_job_log', return_value=log) as original_log:
+            check = lambda: self.authority._attested_migration_noop_success(
+                'owner/repo', run, job, step, 1, 'token')
+            self.assertTrue(check())
+            original_log.assert_called_with('owner/repo', job['id'], 'token')
+            step['conclusion'] = 'failure'
+            self.assertFalse(check())
+            step['conclusion'] = 'success'
+            sources[paths[1]] += '\n# modified'
+            self.assertFalse(check())
+            sources[paths[1]] = subprocess.check_output(
+                ['git', 'show', head + ':' + paths[1]], text=True)
+            artifacts.append(dict(name='legend-release-child-intent-' + 'f' * 64,
+                                  expired=False, workflow_run=dict(id=run_id)))
+            self.assertFalse(check())
+            artifacts.pop()
+            artifacts[0]['expired'] = True
+            self.assertFalse(check())
+            artifacts[0]['expired'] = False
+            original_step_receipt = artifacts.pop(1)
+            self.assertFalse(check())
+            artifacts.insert(1, original_step_receipt)
+            with patch.object(self.authority, '_release_job_log',
+                              return_value='2026-10-07T13:57:42.6797561Z {"migrationStatus":"reconciled"}'):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value='2026-10-07T13:57:12.6797561Z ' + marker):
+                self.assertFalse(check())
+            with patch.object(self.authority, '_release_job_log',
+                              return_value=log + log):
+                self.assertFalse(check())
+
+    def test_old_wrapper_noop_does_not_require_future_rollback_format(self):
+        import subprocess
+        cases = (
+            ('be520caaf351e88d409ca77b1810f5ffc98515e0', 37556061199,
+             112590269307, '2026-10-07T01:45:55.6778670Z', 'success', 2),
+            ('e59606b8d15c872631f3cb1a79b95573c2457ee2', 37527468541,
+             112490642070, '2026-10-06T20:45:06.3502002Z', 'failure', 1),
+        )
+        for head, run_id, job_id, stamp, outcome, attempt in cases:
+            with self.subTest(run_id=run_id):
+                paths = (
+                    '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                    'scripts/release-prepublication.py',
+                )
+                sources = {
+                    p: subprocess.check_output(['git', 'show', head + ':' + p], text=True)
+                    for p in paths
+                }
+                run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                           conclusion=outcome, run_attempt=attempt)
+                job = dict(id=job_id, status='completed',
+                           conclusion=outcome)
+                step = dict(self.step, status='completed', conclusion='success',
+                            started_at=stamp[:19] + 'Z',
+                            completed_at=stamp[:19] + 'Z')
+                names = [
+                    'legend-release-admission-' + 'a' * 64,
+                    f'legend-release-step-state-{"d"*40}-{run_id}-{attempt}',
+                ]
+                # Neither original protected release had five app rollbacks;
+                # they remain irrelevant to the proof that EF never executed.
+                artifacts = [
+                    dict(name=n, expired=False, workflow_run=dict(id=run_id))
+                    for n in names
+                ]
+                log = (stamp + ' {"changedTargets": [], "configuredTargets": '
+                       '["masterapp-portal"], "migrationStatus": "not-applicable"}\n')
+                def inventory(repo, path, token):
+                    self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+                    return dict(artifacts=artifacts, total_count=len(artifacts))
+                with patch.object(self.authority, '_release_history_source',
+                                  side_effect=lambda repo, sha, p, token: sources[p]), \
+                     patch.object(self.authority, 'api_get', side_effect=inventory), \
+                     patch.object(self.authority, '_release_job_log', return_value=log):
+                    verify = lambda: self.authority._attested_migration_noop_success(
+                        'owner/repo', run, job, step, attempt, 'token')
+                    self.assertTrue(verify())
+                    sources[paths[0]] += '\n# unrelated workflow change'
+                    self.assertFalse(verify())
+                    sources[paths[0]] = subprocess.check_output(
+                        ['git', 'show', head + ':' + paths[0]], text=True)
+                    artifacts[0]['expired'] = True
+                    self.assertFalse(verify())
+
+    def test_second_attempt_prewrite_history_uses_original_attempt_receipt(self):
+        import subprocess
+        head = '261fd32ba559d6f2bab0324b538068ee7d7541d7'
+        run_id = 37690711809
+        sources = {
+            path: subprocess.check_output(['git', 'show', head + ':' + path], text=True)
+            for path in (
+                '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
+                'scripts/release-migration.py',
+                'scripts/release-prepublication.py',
+                'scripts/release-operation-evidence.py',
+            )
+        }
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='failure', run_attempt=2)
+        job = dict(id=113033191016, status='completed', conclusion='failure',
+                   run_attempt=2)
+        step = dict(self.step, status='completed', conclusion='failure')
+        artifacts = [dict(name=name, expired=False, workflow_run=dict(id=run_id))
+                     for name in (
+                         'legend-release-admission-' + 'a' * 64,
+                         f'legend-release-step-state-{"d"*40}-{run_id}-1',
+                         f'legend-release-step-state-{"d"*40}-{run_id}-2',
+                         'legend-release-transaction-plan-' + 'b' * 64,
+                         *(f'diagnostics-rollback-{app}-{head}'
+                           for app in ('portal', 'client', 'protect', 'parfait', 'website')),
+                     )]
+        marker = ('2026-10-07T21:52:09.2500317Z '
+                  'Schema probe detected migration schema drift; '
+                  'preserve prior evidence and reconcile without replay.\n')
+        def inventory(repo, path, token):
+            self.assertEqual(path, f'actions/runs/{run_id}/artifacts?per_page=100')
+            return dict(artifacts=artifacts, total_count=len(artifacts))
+        with patch.object(self.authority, '_release_history_source',
+                          side_effect=lambda repo, rev, path, token: sources[path]), \
+             patch.object(self.authority, 'api_get', side_effect=inventory), \
+             patch.object(self.authority, '_release_job_log', return_value=marker):
+            proof = lambda attempt: self.authority._attested_migration_prewrite_failure(
+                'owner/repo', run, job, step, attempt, 'token')
+            self.assertTrue(proof(2))
+            self.assertFalse(proof(1))  # Never borrow another attempt's job.
+            artifacts[2]['expired'] = True
+            self.assertFalse(proof(2))
+            artifacts[2]['expired'] = False
+            artifacts.pop(2)
+            self.assertFalse(proof(2))  # Missing original attempt receipt.
+
+    def test_historical_success_without_noop_proof_still_blocks_sql_replay(self):
+        self.run.update(status='completed', conclusion='success')
+        with patch.object(self.authority, '_attested_migration_noop_success',
+                          return_value=True) as proof:
+            self.assertTrue(self.check())
+            proof.assert_called_once()
+        with patch.object(self.authority, '_attested_migration_noop_success',
+                          return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+                self.check()
+
     def test_failed_started_direct_release_still_requires_original_child_intent(self):
         self.step['conclusion'] = 'failure'
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
@@ -320,32 +499,32 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, 'api_get', side_effect=read), \
              patch.object(self.authority, '_release_job_log', return_value=evidence) as log:
             self.assertTrue(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             log.assert_called_once_with('owner/repo', job['id'], 'token')
             # A changed migration owner, even with the same human-friendly
             # failure message, cannot discharge a historical first-write lease.
             original = historic['scripts/release-migration.py']
             historic['scripts/release-migration.py'] = original + '\n# altered'
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             historic['scripts/release-migration.py'] = original
             artifacts.append(dict(name='legend-release-child-intent-' + 'f' * 64,
                                   expired=False, workflow_run=dict(id=run_id)))
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             artifacts.pop()
             artifacts[0]['workflow_run']['id'] = run_id + 1
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             artifacts[0]['workflow_run']['id'] = run_id
             artifacts.pop()
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             artifacts.append(dict(name=names[-1], expired=False,
                                   workflow_run=dict(id=run_id)))
             step['conclusion'] = 'success'
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
 
     def test_older_observation_rejected_before_first_migration_write(self):
         import subprocess
@@ -386,7 +565,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, 'api_get', side_effect=history), \
              patch.object(self.authority, '_release_job_log', return_value=evidence):
             self.assertTrue(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             current = sources['scripts/release-migration.py']
             # No arbitrary combination of individually audited source
             # generations may earn the same write exemption.
@@ -396,7 +575,7 @@ class ChildHistorySafetyTests(unittest.TestCase):
                 text=True)
             sources['scripts/release-migration.py'] = newer
             self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                'owner/repo', run, job, step, 'token'))
+                'owner/repo', run, job, step, 1, 'token'))
             sources['scripts/release-migration.py'] = current
 
     def test_original_prewrite_owners_reconcile_only_with_pinned_source_and_receipts(self):
@@ -441,10 +620,10 @@ class ChildHistorySafetyTests(unittest.TestCase):
                      patch.object(self.authority, 'api_get', side_effect=inventory), \
                      patch.object(self.authority, '_release_job_log', return_value=log):
                     self.assertTrue(self.authority._attested_migration_prewrite_failure(
-                        'owner/repo', run, job, step, 'token'))
+                        'owner/repo', run, job, step, 1, 'token'))
                     artifacts[1]['expired'] = True
                     self.assertFalse(self.authority._attested_migration_prewrite_failure(
-                        'owner/repo', run, job, step, 'token'))
+                        'owner/repo', run, job, step, 1, 'token'))
 
     def test_migration_history_can_only_skip_after_attested_failure(self):
         self.step['conclusion'] = 'failure'

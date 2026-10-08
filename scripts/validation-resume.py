@@ -262,7 +262,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     return True
 
 
-def _attested_migration_prewrite_failure(repository, run, job, step, token):
+def _attested_migration_prewrite_failure(repository, run, job, step, attempt, token):
     """Prove ONE historical migration child never reached its first SQL write.
 
     Reuse the existing trusted release source, complete Actions history and
@@ -271,7 +271,9 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     """
     if (run.get('status') != 'completed'
         or run.get('conclusion') not in {'failure', 'cancelled'}
-        or run.get('run_attempt') != 1
+        or type(run.get('run_attempt')) is not int
+        or attempt < 1 or attempt > run['run_attempt']
+        or (job.get('run_attempt') is not None and job['run_attempt'] != attempt)
         or type(job.get('id')) is not int or job['id'] < 1
         or job.get('status') != 'completed' or job.get('conclusion') != 'failure'
         or step.get('name') != DIRECT_RELEASE_CHILDREN['migrations']['step']
@@ -372,9 +374,10 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
     other = set(names) - expected_rollback
     admission = [n for n in other if re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n)]
     state = [n for n in other if re.fullmatch(
-        rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-1', n)]
+        rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-[1-9][0-9]*', n)]
     plan = [n for n in other if re.fullmatch(r'legend-release-transaction-plan-[a-f0-9]{64}', n)]
-    if (len(admission) != 1 or len(state) != 1 or len(plan) > 1
+    if (len(admission) != 1 or len(state) < 1 or len(plan) > 1
+        or sum(n.endswith(f'-{run_id}-{attempt}') for n in state) != 1
         or len(other) != len(admission) + len(state) + len(plan)):
         return False
 
@@ -405,6 +408,113 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
                if re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z .+', line)]
     accepted = {marker} if isinstance(marker, str) else marker
     return sum(line in accepted for line in emitted) == 1
+
+
+
+def _attested_migration_noop_success(repository, run, job, step, attempt, token):
+    """Prove a historical successful prepublication step skipped the SQL lane.
+
+    Only the audited immutable wrapper that returned before calling the EF
+    migration runner qualifies. The actual completed step must emit its one
+    bounded 'not-applicable' summary. A success conclusion alone is no proof.
+    """
+    import datetime
+
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') not in {'success', 'failure', 'cancelled'}
+        or type(run.get('run_attempt')) is not int or attempt < 1
+        or attempt > run['run_attempt']
+        or type(job.get('id')) is not int or job['id'] < 1
+        or job.get('status') != 'completed'
+        or job.get('conclusion') not in {'success', 'failure'}
+        or step.get('name') != DIRECT_RELEASE_CHILDREN['migrations']['step']
+        or step.get('status') != 'completed' or step.get('conclusion') != 'success'):
+        return False
+    _trusted_child_producer(repository, run)
+
+    # Bind both members of the exact audited historical wrapper pair.
+    # 37527468541 predates five-rollback preservation but already exits the
+    # migration lane before invoking any EF bundle on this fixed result.
+    blobs = {}
+    for path in ('.github/workflows/' + DIRECT_RELEASE_WORKFLOW,
+                 'scripts/release-prepublication.py'):
+        source = _release_history_source(repository, run['head_sha'], path, token)
+        payload = source.encode('utf-8')
+        blobs[path] = hashlib.sha1(
+            ('blob ' + str(len(payload)) + '\0').encode('ascii') + payload
+        ).hexdigest()
+    pairing = (blobs['.github/workflows/' + DIRECT_RELEASE_WORKFLOW],
+               blobs['scripts/release-prepublication.py'])
+    audited_pairs = {
+        ('433ce0dcecbfc9ad8129cb108e44e773f96766bc',
+         '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'),
+        ('90f16d86254eb0b7433d9500d63bd0b3aaaae4ee',
+         '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b'),
+        ('4a69290e3462d6fae20dcd75d48b8639c5066c22',
+         '4357329104400dc36a59a739d8a823b548838baf'),
+    }
+    if pairing not in audited_pairs:
+        return False
+
+    run_id = run['id']
+    receipt = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+    artifacts = receipt.get('artifacts')
+    if (not isinstance(artifacts, list)
+        or type(receipt.get('total_count')) is not int
+        or receipt['total_count'] != len(artifacts)
+        or len(artifacts) > 100
+        or any(not isinstance(a, dict) or a.get('expired') is not False
+               or (a.get('workflow_run') or {}).get('id') != run_id
+               or not isinstance(a.get('name'), str) for a in artifacts)):
+        return False
+    names = [a['name'] for a in artifacts]
+    if len(names) != len(set(names)):
+        return False
+    # A retained migration intent can conceal a real write, so even an
+    # otherwise valid no-op result cannot discharge the earlier operation.
+    if any(name.startswith('legend-release-child-intent-') for name in names):
+        return False
+    # Rollback artifacts belong to application publication, not SQL.
+    # A protected portal-only or early release can have none. The original
+    # completed migration step, immutable source and absence of a child
+    # write intent are the mandatory no-mutation proof.
+    if sum(bool(re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n))
+           for n in names) != 1:
+        return False
+    state = rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-{attempt}'
+    if sum(bool(re.fullmatch(state, n)) for n in names) != 1:
+        return False
+
+    try:
+        start = datetime.datetime.fromisoformat(
+            step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(
+            step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+    except (KeyError, ValueError, AttributeError, TypeError):
+        return False
+    raw = _release_job_log(repository, job['id'], token)
+    matches = 0
+    for line in raw.splitlines():
+        stamp, sep, value = line.partition('Z ')
+        if not sep or len(value) > 1024 or '"migrationStatus": "not-applicable"' not in value:
+            continue
+        try:
+            at = datetime.datetime.fromisoformat(stamp + '+00:00')
+            summary = json.loads(value)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return False
+        if (not start <= at <= end + datetime.timedelta(seconds=1)
+            or not isinstance(summary, dict)
+            or set(summary) != {'changedTargets', 'configuredTargets', 'migrationStatus'}
+            or summary['migrationStatus'] != 'not-applicable'
+            or summary['changedTargets'] != []
+            or not isinstance(summary['configuredTargets'], list)
+            or any(not isinstance(target, str) for target in summary['configuredTargets'])):
+            return False
+        matches += 1
+    return matches == 1
 
 
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
@@ -487,7 +597,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     continue
                 if (child == 'migrations' and steps[0].get('name') == gate['step']
                     and steps[0].get('conclusion') == 'failure'
-                    and _attested_migration_prewrite_failure(repository, run, job, steps[0], token)):
+                    and _attested_migration_prewrite_failure(repository, run, job, steps[0], attempt, token)):
+                    continue
+                if (child == 'migrations' and steps[0].get('name') == gate['step']
+                    and steps[0].get('conclusion') == 'success'
+                    and _attested_migration_noop_success(
+                        repository, run, job, steps[0], attempt, token)):
                     continue
                 if child == 'migrations' and steps[0].get('name') != gate['step']:
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
