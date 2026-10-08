@@ -344,11 +344,11 @@ class ChildHistorySafetyTests(unittest.TestCase):
         import subprocess
         cases = (
             ('be520caaf351e88d409ca77b1810f5ffc98515e0', 37556061199,
-             112590269307, '2026-10-07T01:45:55.6778670Z', True),
+             112590269307, '2026-10-07T01:45:55.6778670Z', 'success', 2),
             ('e59606b8d15c872631f3cb1a79b95573c2457ee2', 37527468541,
-             112490642070, '2026-10-06T20:45:06.3502002Z', False),
+             112490642070, '2026-10-06T20:45:06.3502002Z', 'failure', 1),
         )
-        for head, run_id, job_id, stamp, rollback_present in cases:
+        for head, run_id, job_id, stamp, outcome, attempt in cases:
             with self.subTest(run_id=run_id):
                 paths = (
                     '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW,
@@ -359,21 +359,18 @@ class ChildHistorySafetyTests(unittest.TestCase):
                     for p in paths
                 }
                 run = dict(self.run, id=run_id, head_sha=head, status='completed',
-                           conclusion='failure' if not rollback_present else 'success',
-                           run_attempt=2 if rollback_present else 1)
+                           conclusion=outcome, run_attempt=attempt)
                 job = dict(id=job_id, status='completed',
-                           conclusion='failure' if not rollback_present else 'success')
+                           conclusion=outcome)
                 step = dict(self.step, status='completed', conclusion='success',
                             started_at=stamp[:19] + 'Z',
                             completed_at=stamp[:19] + 'Z')
-                attempt = 2 if rollback_present else 1
-                names = [
+                 names = [
                     'legend-release-admission-' + 'a' * 64,
                     f'legend-release-step-state-{"d"*40}-{run_id}-{attempt}',
                 ]
-                if rollback_present:
-                    names.extend(f'diagnostics-rollback-{app}-{head}'
-                                 for app in ('portal', 'client', 'protect', 'parfait', 'website'))
+                # Neither original protected release had five app rollbacks;
+                # they remain irrelevant to the proof that EF never executed.
                 artifacts = [
                     dict(name=n, expired=False, workflow_run=dict(id=run_id))
                     for n in names
