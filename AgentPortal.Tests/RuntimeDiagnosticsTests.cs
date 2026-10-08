@@ -193,6 +193,39 @@ public sealed class RuntimeDiagnosticsTests
     }
 
     [Fact]
+    public async Task TrustedReleaseEvidence_UsesCanonicalStore_AndNeverReplaysTerminalObservation()
+    {
+        await using var fixture = await StoreFixture.CreateAsync();
+        const long runId = 37711890752;
+        const int pr = 523;
+        var candidate = new string('a', 40);
+        var authority = new string('b', 40);
+        Assert.True(await fixture.Store.RecordAuthenticatedReleaseFailureAsync(
+            runId, pr, candidate, authority, "PREPUBLICATION"));
+        Assert.False(await fixture.Store.RecordAuthenticatedReleaseFailureAsync(
+            runId, pr, candidate, authority, "PREPUBLICATION"));
+
+        await using var scope = fixture.Services.CreateAsyncScope();
+        var rows = await scope.ServiceProvider.GetRequiredService<MasterAppDbContext>()
+            .RuntimeDiagnosticIncidents.AsNoTracking().ToListAsync();
+        var recorded = Assert.Single(rows);
+        Assert.Equal(1, recorded.Occurrences);
+        Assert.Equal(0, recorded.ReviewVersion);
+        Assert.Equal("Observed", recorded.Disposition);
+        Assert.False(recorded.ReleaseVerified);
+        Assert.Null(recorded.SourceFilePath);
+        Assert.Equal(candidate, recorded.GitCommitHash);
+        Assert.Equal("RELEASE_PREPUBLICATION", recorded.ErrorName);
+        Assert.Equal("/founder/release/523", recorded.Route);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            fixture.Store.RecordAuthenticatedReleaseFailureAsync(
+                runId, pr, candidate, authority, "PRIVATE_PASSWORD"));
+        Assert.Single(await scope.ServiceProvider.GetRequiredService<MasterAppDbContext>()
+            .RuntimeDiagnosticIncidents.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
     public async Task Ingestion_RejectsOversize_AndNeverAcknowledgesFailedPersistence()
     {
         await using var fixture = await StoreFixture.CreateAsync();
