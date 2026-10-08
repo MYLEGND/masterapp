@@ -94,6 +94,7 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var valid = JsonSerializer.SerializeToElement(new
         {
             id = 37711890752L,
+            created_at = DateTimeOffset.UtcNow.ToString("O"),
             @event = "workflow_dispatch",
             status = "completed",
             conclusion = "failure",
@@ -125,6 +126,29 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
             .Replace($" authority={new string('c', 40)}", $" authority={authority}", StringComparison.Ordinal));
         Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
             forged.RootElement, "MYLEGND/masterapp", "legend/approved-changes"));
+        var expired = JsonSerializer.SerializeToElement(new
+        {
+            id = 37711890752L, created_at = "2001-01-01T00:00:00Z",
+            @event = "workflow_dispatch", status = "completed", conclusion = "failure",
+            head_branch = "legend/approved-changes", head_sha = authority,
+            head_repository = new { full_name = "MYLEGND/masterapp" },
+            path = ".github/workflows/all-intentional-direct-release-20260918.yml",
+            display_title = $"LEGEND release pr=523 candidate={candidate} authority={authority}"
+        });
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            expired, "MYLEGND/masterapp", "legend/approved-changes"));
+        // Age validation does not permit missing timestamps either.
+        using var absent = JsonDocument.Parse(JsonSerializer.SerializeToElement(new
+        {
+            id = 37711890752L, @event = "workflow_dispatch",
+            status = "completed", conclusion = "failure",
+            head_branch = "legend/approved-changes", head_sha = authority,
+            head_repository = new { full_name = "MYLEGND/masterapp" },
+            path = ".github/workflows/all-intentional-direct-release-20260918.yml",
+            display_title = $"LEGEND release pr=523 candidate={candidate} authority={authority}"
+        }).ToString());
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            absent.RootElement, "MYLEGND/masterapp", "legend/approved-changes"));
     }
 
     [Fact]
