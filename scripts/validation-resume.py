@@ -247,17 +247,16 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     import datetime
     legacy = 'Apply additive diagnostics migrations before restarting apps'
     if step.get('conclusion') == 'failure':
-        # Same canonical first-write history owner, NOT a second SQL authority.
-        # This original retired runner stops at a signed baseline-release
-        # prerequisite before entering PYMIGRATE. A failed step alone is never
-        # an absence proof; require exact original workflow, checkout, receipt,
-        # every publication skip, and the true executed error output.
+        # Existing first-SQL-write proof, not another authority. This exact
+        # retired workflow checks a signed baseline BEFORE calling PYMIGRATE.
+        # A failure alone NEVER proves no SQL: authenticate its original
+        # immutable source, completed GitHub history and a real denial output.
         import datetime
         marker = ('Live database baseline lacks a successful canonical release '
                   'receipt; no migration authorized.')
         data = source.encode('utf-8')
         blob = hashlib.sha1(
-            b'blob ' + str(len(data)).encode() + b'\\0' + data).hexdigest()
+            b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         if (blob != '207f8bc230e35e636e1342e020d2377feadeac2e'
             or run.get('status') != 'completed'
             or run.get('conclusion') != 'failure'
@@ -266,8 +265,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
             or job.get('conclusion') != 'failure'
             or (job.get('run_attempt') is not None and job['run_attempt'] != 1)
             or type(job.get('id')) is not int or job['id'] < 1
-            or step.get('name') != legacy
-            or step.get('status') != 'completed'):
+            or step.get('name') != legacy or step.get('status') != 'completed'):
             return False
         original_step = named_step_blocks(
             _job_blocks(source).get('release', '')).get(legacy, '')
@@ -314,67 +312,11 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
             if start.tzinfo is None or end.tzinfo is None or end < start:
                 return False
             log = _release_job_log(repository, job['id'], token)
-            clean = '\\n'.join(
-                re.sub(r'^\\d{4}-\\d{2}-\\d{2}T[0-9:.]+Z ', '', line)
+            clean = '\n'.join(
+                re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
                 for line in log.splitlines())
             checkouts = re.findall(
-                r'(?m)^\\[command\\]/usr/bin/git log -1 --format=%H\\n([a-f0-9]{40})_job_blocks(source).get('release', '')).get(legacy, '')
-    # A release job can fail *after* the migration no-op step; require the
-    # exact immutable source and its timestamp-bound no-write proof, rather
-    # than mistaking the failed parent for a SQL mutation.
-    trusted_source = _audited_legacy_migration_noop_source(source)
-    original_block = (hashlib.sha256(block.encode()).hexdigest()
-        == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc')
-    if (not (original_block or trusted_source)
-        or job.get('status') != 'completed'
-        or job.get('conclusion') not in {'success', 'failure'}
-        or type(job.get('id')) is not int
-        or step.get('name') != legacy or step.get('status') != 'completed'
-        or step.get('conclusion') != 'success'):
-        return False
-    release = _job_blocks(source).get('release', '')
-    context = {'environment': _workflow_top_level_field(source, 'env'),
-               'defaults': _workflow_top_level_field(source, 'defaults'),
-               'runtime': release.split('    steps:', 1)[0]}
-    if (not trusted_source and
-        hashlib.sha256(json.dumps(context, sort_keys=True).encode()).hexdigest() != '0b2c73c15828a62dc7440c79fe6ae3ac072af6a2442f1f5d52f31eeebd79629a'):
-        return False
-    try:
-        start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
-        end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
-        if start.tzinfo is None or end.tzinfo is None or end < start:
-            return False
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return False
-    key = (repository, job['id'], run['head_sha'], step['started_at'], step['completed_at'])
-    if key in _RELEASE_CHILD_NOOP_PROOFS:
-        return True
-    raw = _release_job_log(repository, job['id'], token)
-    text = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in raw.splitlines())
-    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
-    if heads != {run['head_sha']}:
-        return False
-    marker = _audited_legacy_migration_noop_marker(source) or LEGACY_NOOP_MARKER
-    hits = 0
-    for line in raw.splitlines():
-        stamp, separator, message = line.partition(' ')
-        if not separator or message != marker:
-            continue
-        try:
-            observed = datetime.datetime.fromisoformat(stamp.replace('Z', '+00:00'))
-        except ValueError:
-            return False
-        if observed.tzinfo is None or not start <= observed < end + datetime.timedelta(seconds=1):
-            return False
-        hits += 1
-    if hits != 1:
-        return False
-    _RELEASE_CHILD_NOOP_PROOFS.add(key)
-    return True
-
-
-
-,
+                r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$',
                 clean)
             if checkouts != [run['head_sha']]:
                 return False
@@ -387,9 +329,9 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
             if (len(observed) != 1 or observed[0].tzinfo is None
                 or not start <= observed[0] <= end + datetime.timedelta(seconds=2)):
                 return False
-            # Echoed source code is not execution output.
             completed = ('Schema ready. Executed the exact validated migration '
                          'bundle from the proven live database baseline.')
+            # The Actions echo of source code is NOT a successful SQL result.
             if any(row.partition('Z ')[2] == completed
                    for row in log.splitlines()):
                 return False
