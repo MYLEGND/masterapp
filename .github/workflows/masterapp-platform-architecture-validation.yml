@@ -212,6 +212,7 @@ jobs:
           # do not repeatedly discover only the first failing historical record
           # during a costly production migration preflight.
           python3 scripts/test-release-migration-history-audit.py
+          python3 scripts/test-release-retired-original-evidence.py
           LEGEND_MIGRATION_AUDIT_OUTPUT="$RUNNER_TEMP/legend-migration-history-audit.json" \
             python3 scripts/release-migration-history-audit.py
           if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
