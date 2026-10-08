@@ -595,6 +595,48 @@ class ChildHistorySafetyTests(unittest.TestCase):
                               return_value=log + log):
                 self.assertFalse(check())
 
+    def test_cancelled_release_parent_keeps_completed_migration_noop(self):
+        # Original October 3 release: migration exited without SQL at
+        # 02:54:23 UTC; the publishing parent cancelled much later.
+        import subprocess
+        head = '45e75f763e55308fd3c24061e9c240d859e84b98'
+        run_id = 37091277402
+        source = subprocess.check_output(
+            ['git', 'show', head + ':.github/workflows/' +
+             self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        run = dict(self.run, id=run_id, head_sha=head, status='completed',
+                   conclusion='cancelled', run_attempt=1)
+        job = dict(id=111112177324, status='completed',
+                   conclusion='cancelled', run_attempt=1)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-10-03T02:54:22Z',
+                    completed_at='2026-10-03T02:54:23Z')
+        receipt = dict(name='legend-release-step-state-'
+                       '8eae3bf13284cd4e7d4cec2d3db5d2cf80cbb484-37091277402-1',
+                       expired=False, workflow_run=dict(id=run_id))
+        log = ('2026-10-03T02:53:32.3558554Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-03T02:53:32.3581646Z ' + head + '\n'
+               '2026-10-03T02:54:23.9431705Z '
+               'No candidate migration source changed from the proven database baseline.\n')
+        with patch.object(self.authority, '_release_job_log', return_value=log), \
+             patch.object(self.authority, 'api_get',
+                          return_value=dict(artifacts=[receipt], total_count=1)):
+            prove = lambda: self.authority._legacy_migration_noop(
+                'owner/repo', run, job, step, source, 'fixture')
+            self.assertTrue(prove())
+            receipt['expired'] = True
+            self.assertFalse(prove())
+            receipt['expired'] = False
+            with patch.object(self.authority, '_release_job_log', return_value=log.replace(
+                    'No candidate migration source changed', 'Migration execution entered')):
+                self.assertFalse(prove())
+            run['conclusion'] = 'success'
+            self.assertFalse(prove())
+            run['conclusion'] = 'cancelled'
+            step['conclusion'] = 'failure'
+            self.assertFalse(prove())
+
     def test_old_wrapper_noop_does_not_require_future_rollback_format(self):
         import subprocess
         cases = (
