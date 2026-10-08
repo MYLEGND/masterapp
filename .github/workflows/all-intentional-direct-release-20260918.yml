@@ -165,6 +165,7 @@ jobs:
     if: needs.discover-live.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    environment: Production
     outputs:
       pending: ${{ steps.observe.outputs.pending || steps.skip.outputs.pending }}
     env:
