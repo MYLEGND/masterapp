@@ -1259,22 +1259,37 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
         return False
     matching = [run for run in runs
                 if release_run_source_pr(run) == owner['number']]
-    if len(matching) != 1:
+    # A failed nonpublishing candidate can have been recovered under a newer
+    # protected authority. Verify EACH immutable attempt, never assume two
+    # GitHub release attempts are interchangeable or treat failure as success.
+    if (not 1 <= len(matching) <= 2
+        or any(type(run.get('id')) is not int or run['id'] < 1 for run in matching)
+        or len({run['id'] for run in matching}) != len(matching)):
         return False
-    run = matching[0]
-    if (run.get('status') != 'completed'
-        or run.get('conclusion') != 'failure'
-        or run.get('head_sha') != owner.get('merge_commit_sha')):
+    original_merge = owner.get('merge_commit_sha')
+    if not isinstance(original_merge, str) or not SHA.fullmatch(original_merge):
         return False
-    records = _admission_records(api, run)
-    if len(records) != 1:
-        return False
-    record = records[0]
-    if (record.get('sourcePr') != owner['number']
-        or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
-        or record.get('executionAuthority') != owner['merge_commit_sha']):
-        return False
-    return _historical_fenced_prepublication_nonentry(api, run, record)
+    for run in matching:
+        authority_sha = run.get('head_sha')
+        if (run.get('status') != 'completed'
+            or run.get('conclusion') != 'failure'
+            or not isinstance(authority_sha, str)
+            or not SHA.fullmatch(authority_sha)
+            or (authority_sha != original_merge
+                and not ancestor(original_merge, authority_sha))):
+            return False
+        records = _admission_records(api, run)
+        if len(records) != 1:
+            return False
+        record = records[0]
+        if (record.get('sourcePr') != owner['number']
+            or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
+            or record.get('sourceMergeSha') != original_merge
+            or record.get('executionAuthority') != authority_sha
+            or record.get('applicationRevision') != owner.get('head', {}).get('sha')
+            or not _historical_fenced_prepublication_nonentry(api, run, record)):
+            return False
+    return True
 
 
 def pending_updates(api):
