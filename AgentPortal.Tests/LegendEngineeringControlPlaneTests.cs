@@ -60,8 +60,12 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         var release = new FounderReleaseFailureEvidence(
             37711890752, 523, candidate, new string('b', 40), "PREPUBLICATION");
         var observedUtc = new DateTime(2026, 10, 8, 2, 0, 0, DateTimeKind.Utc);
-        var first = LegendEngineeringOrchestrator.BuildReleaseFailureObservation(release, observedUtc);
-        var repeated = LegendEngineeringOrchestrator.BuildReleaseFailureObservation(release, observedUtc);
+        var first = Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+            release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+            release.FailureStage, observedUtc);
+        var repeated = Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+            release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+            release.FailureStage, observedUtc);
 
         Assert.Equal(first.DeduplicationKey, repeated.DeduplicationKey);
         Assert.Equal(64, first.DeduplicationKey.Length);
@@ -76,6 +80,10 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(EngineeringRole.HeadGpt, decision.AssignedRole);
         // Tier C remains a security-review boundary; this is never an
         // automatically repairable release-control source.
+        Assert.Throws<ArgumentException>(() =>
+            Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+                release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+                "PRIVATE_SECRET_PAYLOAD", observedUtc));
     }
 
     [Fact]
