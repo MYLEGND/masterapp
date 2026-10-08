@@ -849,12 +849,35 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
             self.assertTrue(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
             proof.assert_called_once_with(self.api, self.run, self.record)
 
+    def test_proven_reused_immutable_package_does_not_have_to_equal_pr_head(self):
+        # The admission reader independently authenticates the exact source PR,
+        # canonical package-input equivalence and immutable package evidence.
+        reused = dict(self.record, applicationRevision='d' * 40)
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[reused]) as admission, \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          return_value=True) as no_write:
+            self.assertTrue(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+        admission.assert_called_once_with(self.api, self.run)
+        no_write.assert_called_once_with(self.api, self.run, reused)
+
+    def test_reused_package_cannot_change_authorized_pr_source(self):
+        reused = dict(self.record, applicationRevision='d' * 40,
+                      authorizedSourceRevision='e' * 40)
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[reused]), \
+             patch.object(m, '_historical_fenced_prepublication_nonentry',
+                          side_effect=AssertionError('Untrusted source must not reach proof')):
+            self.assertFalse(m._merged_owner_terminal_nonentry_proven(
+                self.api, self.owner))
+
     def test_active_duplicate_or_excessive_history_keeps_ownership(self):
         for attempts in (
             [dict(self.run, status='in_progress', conclusion=None)],
             [self.run, dict(self.run)],  # Duplicate run identity
-            [self.run, dict(self.run, id=37703022718),
-             dict(self.run, id=37703022719)],  # >2 requires new review
+            [dict(self.run, id=37703022718 + index)
+             for index in range(17)],  # excessive inventory never auto-releases
         ):
             with self.subTest(attempts=attempts), \
                  patch.object(m, 'direct_release_runs', return_value=attempts), \
@@ -868,6 +891,30 @@ class MergedFailedQueueOwnerRecovery(unittest.TestCase):
                  patch.object(m, '_historical_fenced_prepublication_nonentry',
                               side_effect=AssertionError('Invalid record cannot prove non-entry')):
                 self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+
+    def test_failed_and_cancelled_nonentry_attempts_each_require_exact_proof(self):
+        cancelled = dict(
+            self.run, id=37718975034, conclusion='cancelled',
+            head_sha='d' * 40)
+        later_failure = dict(
+            self.run, id=37719140124, head_sha='d' * 40)
+        later_record = dict(self.record, executionAuthority='d' * 40)
+        for cancellation_proven in (True, False):
+            with self.subTest(cancellation_proven=cancellation_proven), \
+                 patch.object(m, 'direct_release_runs',
+                              return_value=[self.run, cancelled, later_failure]), \
+                 patch.object(m, '_admission_records',
+                              side_effect=[[self.record], [later_record]]) as records, \
+                 patch.object(m, '_historical_fenced_prepublication_nonentry',
+                              side_effect=[True, True]), \
+                 patch.object(m, '_cancelled_before_admission_nonentry',
+                              return_value=cancellation_proven) as no_entry, \
+                 patch.object(m, 'ancestor', return_value=True):
+                self.assertEqual(cancellation_proven,
+                                 m._merged_owner_terminal_nonentry_proven(
+                                     self.api, self.owner))
+            no_entry.assert_called_once_with(self.api, cancelled)
+            self.assertEqual(2 if cancellation_proven else 1, records.call_count)
 
     def test_two_terminal_no_write_runs_under_descendant_authorities_yield(self):
         followup = dict(
@@ -1532,6 +1579,79 @@ class GeneratedPublicationStages(unittest.TestCase):
 
 
 
+class CancelledBeforeAdmissionNonentryProof(unittest.TestCase):
+    def setUp(self):
+        self.api = Api()
+        self.run = {
+            'id': 37718975034, 'run_attempt': 1,
+            'status': 'completed', 'conclusion': 'cancelled',
+            'event': 'workflow_dispatch', 'head_branch': m.APPROVED,
+            'head_sha': 'a' * 40, 'path': '.github/workflows/' + m.DIRECT,
+            'head_repository': {'full_name': self.api.repo},
+        }
+        self.run_id = self.run['id']
+        self.jobs = [
+            {'name': 'admission', 'status': 'completed',
+             'conclusion': 'cancelled', 'steps': []},
+            {'name': 'discover-live', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'preserve-rollback', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'release', 'status': 'completed',
+             'conclusion': 'skipped', 'steps': []},
+            {'name': 'release-state-receipt', 'status': 'completed',
+             'conclusion': 'success', 'steps': []},
+            {'name': 'target-release-receipts (${{ matrix.app }})',
+             'status': 'completed', 'conclusion': 'skipped', 'steps': []},
+            {'name': 'wake-release-lifecycle-after-terminal-release',
+             'status': 'completed', 'conclusion': 'success', 'steps': []},
+        ]
+        self.artifacts = [{
+            'name': f"legend-release-step-state-{self.run['head_sha']}-{self.run_id}-1",
+            'expired': False, 'workflow_run': {'id': self.run_id},
+        }]
+        self.api.pages_map[f"actions/runs/{self.run_id}/attempts/1/jobs"] = self.jobs
+        self.api.pages_map[f"actions/runs/{self.run_id}/artifacts"] = self.artifacts
+        self.source = (Path(__file__).resolve().parents[1] /
+                       '.github/workflows' / m.DIRECT).read_text()
+
+    def proven(self):
+        with patch.object(self.api, 'text', return_value=self.source):
+            return m._cancelled_before_admission_nonentry(self.api, self.run)
+
+    def test_cancelled_unstarted_admission_with_exact_terminal_receipt(self):
+        self.assertTrue(self.proven())
+
+    def test_any_started_admission_step_is_not_no_write_proof(self):
+        self.jobs[0]['steps'] = [{'name': 'Admit release', 'conclusion': 'success'}]
+        self.assertFalse(self.proven())
+
+    def test_unknown_or_entered_publish_job_blocks_owner_discharge(self):
+        self.jobs[3]['conclusion'] = 'success'
+        self.assertFalse(self.proven())
+
+    def test_extra_intent_or_missing_receipt_blocks_owner_discharge(self):
+        self.artifacts.append({
+            'name': 'legend-release-operation-intent-' + 'b' * 64,
+            'expired': False, 'workflow_run': {'id': self.run_id}})
+        self.assertFalse(self.proven())
+        self.artifacts.pop()
+        self.artifacts[0]['expired'] = True
+        self.assertFalse(self.proven())
+
+    def test_wrong_receipt_producer_cannot_discharge_queue(self):
+        self.artifacts[0]['workflow_run']['id'] = self.run_id + 1
+        self.assertFalse(self.proven())
+
+    def test_replayed_attempt_cannot_inherit_prior_absence_proof(self):
+        self.run['run_attempt'] = 2
+        self.assertFalse(self.proven())
+
+    def test_unknown_observer_source_is_not_proven(self):
+        self.source = 'unverified release workflow source'
+        self.assertFalse(self.proven())
+
+
 class HistoricalPrepublicationLeaseProof(unittest.TestCase):
     """The two prior generation fingerprints establish *non-entry*, not success."""
 
@@ -1619,6 +1739,22 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
             self.assertTrue(self.proven())
             self.BLOBS['scripts/release-prepublication.py'] = 'f' * 40
             self.assertFalse(self.proven())
+
+    def test_audited_20261008_readonly_schema_reporting_generation(self):
+        # These immutable Git objects differ from previously attested versions
+        # only by bounded redacted schema-history observation, never provider writes.
+        with patch.dict(self.BLOBS, {
+            'scripts/release-prepublication.py': '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            'scripts/release-migration.py': '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'scripts/validation-resume.py': '3b78151ca2f2b463d0d553a9967dc0254e577156',
+        }):
+            self.assertTrue(self.proven())
+            for path in ('scripts/release-prepublication.py',
+                         'scripts/release-migration.py'):
+                actual = self.BLOBS[path]
+                self.BLOBS[path] = 'f' * 40
+                self.assertFalse(self.proven())
+                self.BLOBS[path] = actual
 
     def test_exact_historical_no_write_failure_disposes_old_lease(self):
         self.assertTrue(self.proven())

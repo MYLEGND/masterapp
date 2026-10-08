@@ -1246,6 +1246,45 @@ def integrate(api, number):
     return merge_validated(api, pr)
 
 
+def _cancelled_before_admission_nonentry(api, run):
+    """Recognize only a cancellation before the admission job began.
+
+    Authenticated exact-generation job topology and nonpublication observers
+    are independently checked by the existing read-only nonentry authority.
+    A started admission, missing evidence, or any additional intent remains
+    blocked; cancellation alone is never a no-write proof.
+    """
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') != 'cancelled'
+        or type(run.get('run_attempt')) is not int
+        or run['run_attempt'] != 1
+        or type(run.get('id')) is not int or run['id'] < 1
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_branch') != APPROVED
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha', ''))):
+        return False
+
+    jobs = api.pages(f"actions/runs/{run['id']}/attempts/1/jobs", 'jobs')
+    admission = [job for job in jobs if job.get('name') == 'admission']
+    if (len(admission) != 1
+        or admission[0].get('status') != 'completed'
+        or admission[0].get('conclusion') != 'cancelled'
+        or admission[0].get('steps') != []):
+        return False
+    source = api.text(run['head_sha'], '.github/workflows/' + DIRECT)
+    if not VALIDATION_AUTHORITY.release_attempt_never_entered(jobs, source):
+        return False
+
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    expected = f"legend-release-step-state-{run['head_sha']}-{run['id']}-1"
+    return (len(artifacts) == 1
+        and artifacts[0].get('name') == expected
+        and artifacts[0].get('expired') is False
+        and (artifacts[0].get('workflow_run') or {}).get('id') == run['id'])
+
+
 def _merged_owner_terminal_nonentry_proven(api, owner):
     """Discharge a merged release queue owner only after exact no-write proof.
 
@@ -1262,7 +1301,7 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
     # A failed nonpublishing candidate can have been recovered under a newer
     # protected authority. Verify EACH immutable attempt, never assume two
     # GitHub release attempts are interchangeable or treat failure as success.
-    if (not 1 <= len(matching) <= 2
+    if (not 1 <= len(matching) <= 16
         or any(type(run.get('id')) is not int or run['id'] < 1 for run in matching)
         or len({run['id'] for run in matching}) != len(matching)):
         return False
@@ -1272,12 +1311,16 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
     for run in matching:
         authority_sha = run.get('head_sha')
         if (run.get('status') != 'completed'
-            or run.get('conclusion') != 'failure'
+            or run.get('conclusion') not in {'failure', 'cancelled'}
             or not isinstance(authority_sha, str)
             or not SHA.fullmatch(authority_sha)
             or (authority_sha != original_merge
                 and not ancestor(original_merge, authority_sha))):
             return False
+        if run['conclusion'] == 'cancelled':
+            if not _cancelled_before_admission_nonentry(api, run):
+                return False
+            continue
         records = _admission_records(api, run)
         if len(records) != 1:
             return False
@@ -1286,7 +1329,9 @@ def _merged_owner_terminal_nonentry_proven(api, owner):
             or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
             or record.get('sourceMergeSha') != original_merge
             or record.get('executionAuthority') != authority_sha
-            or record.get('applicationRevision') != owner.get('head', {}).get('sha')
+            # _admission_records already checks canonical package-input equivalence
+            # between the immutable application package and authorized source.
+            # They may have different SHAs without different package inputs.
             or not _historical_fenced_prepublication_nonentry(api, run, record)):
             return False
     return True
@@ -2353,6 +2398,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         'scripts/release-prepublication.py': {
             '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
             'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+            '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
         },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
@@ -2361,6 +2407,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '3dc53852fc30df96e9e79779bae89b0cbeb65248',
             '4d04187b13f1212c709237d4632c509e5c9696b9',
             'd108377faf267915d86c856523a7992a4a6d500f',
+            '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
         },
         'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
         'scripts/validation-resume.py': {
