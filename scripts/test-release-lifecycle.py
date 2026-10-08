@@ -823,6 +823,82 @@ class ReleaseQueueSerialization(unittest.TestCase):
         self.assertEqual(450, m.release_queue_lease(api)["ownerPr"])
 
 
+
+class MergedFailedQueueOwnerRecovery(unittest.TestCase):
+    def setUp(self):
+        self.api = Api()
+        self.owner = {
+            'number': 522, 'state': 'closed', 'merged_at': '2026-10-07T23:33:45Z',
+            'head': {'sha': 'b' * 40}, 'merge_commit_sha': 'c' * 40,
+        }
+        self.run = {
+            'id': 37703022717, 'status': 'completed', 'conclusion': 'failure',
+            'head_sha': 'c' * 40,
+            'display_title': m.release_dispatch_identity(522, 'b' * 40, 'c' * 40),
+        }
+        self.record = {
+            'sourcePr': 522, 'authorizedSourceRevision': 'b' * 40,
+            'executionAuthority': 'c' * 40,
+        }
+
+    def test_positive_terminal_no_write_receipt_allows_old_owner_to_yield(self):
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[self.record]), \
+             patch.object(m, '_historical_fenced_prepublication_nonentry', return_value=True) as proof:
+            self.assertTrue(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+            proof.assert_called_once_with(self.api, self.run, self.record)
+
+    def test_active_or_multiple_or_ambiguous_history_keeps_ownership(self):
+        for attempts in (
+            [dict(self.run, status='in_progress', conclusion=None)],
+            [self.run, dict(self.run, id=37703022718)],
+        ):
+            with self.subTest(attempts=attempts), \
+                 patch.object(m, 'direct_release_runs', return_value=attempts), \
+                 patch.object(m, '_admission_records', side_effect=AssertionError('No ambiguous history read')):
+                self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+        for records in ([], [self.record, self.record],
+                        [dict(self.record, executionAuthority='d' * 40)]):
+            with self.subTest(records=records), \
+                 patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+                 patch.object(m, '_admission_records', return_value=records), \
+                 patch.object(m, '_historical_fenced_prepublication_nonentry',
+                              side_effect=AssertionError('Invalid record cannot prove non-entry')):
+                self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+
+    def test_entered_or_unknown_mutation_never_disposes_merged_queue(self):
+        with patch.object(m, 'direct_release_runs', return_value=[self.run]), \
+             patch.object(m, '_admission_records', return_value=[self.record]), \
+             patch.object(m, '_historical_fenced_prepublication_nonentry', return_value=False):
+            self.assertFalse(m._merged_owner_terminal_nonentry_proven(self.api, self.owner))
+
+    @patch.object(m, 'staging_only', return_value=False)
+    @patch.object(m, 'git', return_value=SimpleNamespace(returncode=0, stdout='', stderr=''))
+    def test_proven_no_write_owner_promotes_validated_waiting_pr(self, _git, _staging):
+        product = {
+            'number': 523, 'state': 'open', 'draft': False,
+            'author_association': 'OWNER', 'base': {'ref': m.APPROVED},
+            'head': {'sha': 'd' * 40, 'ref': 'repair/probe',
+                     'repo': {'full_name': self.api.repo}},
+        }
+        self.api.api_map['pulls/522'] = self.owner
+        self.api.api_map['pulls/523'] = product
+        self.api.pages_map['pulls/523/files'] = [{'filename': 'AgentPortal/Program.cs'}]
+        self.api.pages_map['pulls?state=open&base=legend%2Fapproved-changes'] = [product]
+        self.api.context_status(self.api.ref(m.APPROVED),
+                                m.RELEASE_QUEUE_CONTEXT, 'pending',
+                                'owner-pr=522 validation-to-production')
+        m._request_release_queue(self.api, product)
+        with patch.object(m, '_merged_owner_terminal_nonentry_proven', return_value=True), \
+             patch.object(m, 'candidate_validation', return_value=None), \
+             patch.object(m, 'sync_candidate_to_current_approved', return_value=None), \
+             patch.object(m, '_rerun_required_validations', return_value={'rerun': [], 'missing': []}):
+            result = m.pending_updates(self.api)
+        self.assertEqual('RELEASE_QUEUE_PROMOTED', result['state'])
+        self.assertEqual(523, result['pr'])
+        self.assertEqual(523, m.release_queue_lease(self.api)['ownerPr'])
+
+
 class AutomaticMergeRelease(unittest.TestCase):
     @patch.object(m, "candidate_validation", return_value=None)
     def test_green_merge_defers_one_dispatch_to_same_workflow_reconciliation(self, _):
