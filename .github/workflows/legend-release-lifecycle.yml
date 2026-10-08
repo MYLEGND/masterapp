@@ -164,3 +164,26 @@ jobs:
           path: ${{ runner.temp }}/branch-cleanup.json
           retention-days: 30
           if-no-files-found: warn
+      # Read-only authenticated observer for *all* canonical validation
+      # workflows and the direct-release workflow. Never grants write authority.
+      - name: Diagnose completed validation-to-publication failures
+        if: always() && github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OBSERVED_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release-lifecycle.py diagnose-run \
+            --run "$OBSERVED_RUN_ID" \
+            --output "$RUNNER_TEMP/legend-release-failure-diagnostics.json"
+
+      - name: Retain read-only terminal failure diagnostics
+        if: always() && github.event_name == 'workflow_run'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-failure-observation-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/legend-release-failure-diagnostics.json
+          retention-days: 30
+          if-no-files-found: warn
+
