@@ -224,7 +224,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     # the exact terminal log, run/head, timestamps and marker are still required.
     raw_source = source.encode('utf-8')
     historical_blob = hashlib.sha1(
-        b'blob ' + str(len(raw_source)).encode() + b'\\0' + raw_source
+        b'blob ' + str(len(raw_source)).encode() + b'\0' + raw_source
     ).hexdigest()
     october3_noop = (
         run.get('id') == 37147581514
@@ -744,7 +744,7 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     # original authenticated intent and partition disposition.
                     source_bytes = source.encode('utf-8')
                     source_blob = hashlib.sha1(
-                        b'blob ' + str(len(source_bytes)).encode() + b'\\0' + source_bytes
+                        b'blob ' + str(len(source_bytes)).encode() + b'\0' + source_bytes
                     ).hexdigest()
                     is_attested_october3_noop = (
                         run_id == 37147581514
