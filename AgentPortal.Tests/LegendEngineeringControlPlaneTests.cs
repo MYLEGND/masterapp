@@ -109,6 +109,46 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(0, releaseCalls);
     }
 
+    [Fact]
+    public async Task NotificationFailure_DoesNotSuppressLaterIndependentNotificationOrAgentWork()
+    {
+        var continued = 0;
+        await LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+            _ => throw new HttpRequestException("private provider detail"),
+            "founder_notifications",
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            CancellationToken.None);
+        await LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+            _ =>
+            {
+                continued++;
+                return Task.CompletedTask;
+            },
+            "founder_digest",
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            CancellationToken.None);
+        Assert.Equal(1, continued);
+    }
+
+    [Fact]
+    public async Task NotificationCancellation_IsNeverSwallowed()
+    {
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var calls = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            LegendEngineeringHostedService.RunNonAuthoritativeObservationAsync(
+                _ =>
+                {
+                    calls++;
+                    return Task.CompletedTask;
+                },
+                "founder_notifications",
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+                cancelled.Token));
+        Assert.Equal(0, calls);
+    }
+
     [Theory]
     [InlineData("legend/approved-changes", true)]
     [InlineData(" production ", false)]
