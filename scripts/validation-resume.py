@@ -215,17 +215,31 @@ _RELEASE_CHILD_NOOP_PROOFS = set()
 # This is SOURCE-based, not another run-ID-specific admission bypass. Each
 # observed historical step still requires its own trusted Git head, completed
 # step timestamps and exact one-line no-migration marker.
-AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_BLOBS = frozenset({
-    'ad23c687da0e5dadf7c92a777cf26f71947e9bb0',
-    'd4404ba420b96623602f953b91f3fe1f31911433',
-    'b85c50eadf83daad32b787f2d37f7a32babe67a4',
-})
+LEGACY_NOOP_MARKER = (
+    'No candidate migration source changed from the database baseline; '
+    'migration receipt gate is not applicable.'
+)
+LEGACY_OLDER_NOOP_MARKER = (
+    'No candidate migration source changed from the proven database baseline.'
+)
+# Exact original Git blob fingerprints bind marker interpretation to audited
+# executable workflow sources; unknown historical generations fail closed.
+AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS = {
+    'ad23c687da0e5dadf7c92a777cf26f71947e9bb0': LEGACY_NOOP_MARKER,
+    'd4404ba420b96623602f953b91f3fe1f31911433': LEGACY_NOOP_MARKER,
+    'b85c50eadf83daad32b787f2d37f7a32babe67a4': LEGACY_NOOP_MARKER,
+    '207f8bc230e35e636e1342e020d2377feadeac2e': LEGACY_OLDER_NOOP_MARKER,
+}
+
+
+def _audited_legacy_migration_noop_marker(source):
+    raw = source.encode('utf-8')
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    return AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS.get(blob)
 
 
 def _audited_legacy_migration_noop_source(source):
-    raw = source.encode('utf-8')
-    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
-    return blob in AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_BLOBS
+    return _audited_legacy_migration_noop_marker(source) is not None
 
 
 def _legacy_migration_noop(repository, run, job, step, source, token):
@@ -268,7 +282,7 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
     if heads != {run['head_sha']}:
         return False
-    marker = 'No candidate migration source changed from the database baseline; migration receipt gate is not applicable.'
+    marker = _audited_legacy_migration_noop_marker(source) or LEGACY_NOOP_MARKER
     hits = 0
     for line in raw.splitlines():
         stamp, separator, message = line.partition(' ')
