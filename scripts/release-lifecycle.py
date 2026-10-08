@@ -2379,7 +2379,10 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     """
     if (
         run.get('status') != 'completed'
-        or run.get('conclusion') != 'failure'
+        # GitHub may label a completed parent cancelled after its release job
+        # already terminated as failure. The exact job-level mutation/receipt
+        # proof below remains mandatory; cancellation by itself proves nothing.
+        or run.get('conclusion') not in {'failure', 'cancelled'}
         or type(run.get('run_attempt')) is not int
         or not 1 <= run['run_attempt'] <= 2
         or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
@@ -2399,6 +2402,8 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
             '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
             'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
             '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            # Metadata-only schema-admission read probe; no new write owner.
+            '29c23b084d059d5f1663c98631be7557ec86fa67',
         },
         'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
         'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
