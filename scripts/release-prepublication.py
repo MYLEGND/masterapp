@@ -453,12 +453,17 @@ def migration_metadata_changed(base, revision):
     Infrastructure/Migrations. Do not mistake that for a schema-free release.
     """
     raw = run(
-        ["git", "diff", "--name-only", base, revision, "--", "Infrastructure/Data"],
+        ["git", "diff", "--name-only", base, revision, "--",
+         "Infrastructure/Data", "Infrastructure/Migrations"],
         capture=True,
     )
     return any(
         re.fullmatch(
             r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\.cs",
+            path.strip(),
+        )
+        or re.fullmatch(
+            r"Infrastructure/Migrations/[0-9]{14}_[A-Za-z0-9_]+\.Designer\.cs",
             path.strip(),
         )
         for path in raw.splitlines()
