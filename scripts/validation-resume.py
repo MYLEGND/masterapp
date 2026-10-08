@@ -1103,7 +1103,9 @@ def _attested_retired_legacy_failure(repository, run, job, step, source, attempt
     block = named_step_blocks(_job_blocks(source).get('release', '')).get(
         'Apply additive diagnostics migrations before restarting apps', '')
     if ("set -euo pipefail" not in block or
-        "python3 - <<'PYMIGRATE'" not in block):
+        "python3 - <<'PYMIGRATE'" not in block or
+        (guard == 'baseline' and
+         'No candidate migration source changed from the proven database baseline.' not in block)):
         return False
     try:
         _trusted_child_producer(repository, run)
@@ -1154,10 +1156,12 @@ def _attested_retired_legacy_failure(repository, run, job, step, source, attempt
             if entered:
                 return False
             if guard == 'baseline':
-                return ('Database baseline release receipt verified:' not in clean
+                return (not any(x.startswith('Database baseline release receipt verified:')
+                                for x in observed)
                         and not any(x.startswith('Infrastructure/Migrations/')
                                     for x in observed)
-                        and "No candidate migration source changed" not in clean
+                        and not any(x == 'No candidate migration source changed from the proven database baseline.'
+                                    for x in observed)
                         and not any('Schema ready. Executed the exact validated migration'
                                     in x for x in observed))
             return (any('PendingModelChangesWarning' in x for x in observed)
