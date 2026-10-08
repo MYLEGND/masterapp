@@ -45,8 +45,8 @@ public sealed partial class FounderSoftwareRemediationService
 
         using var client = await CreateGitHubClientAsync(options, cancellationToken);
         var observations = new List<FounderReleaseFailureEvidence>(5);
-        using var document = await ReadReleaseEvidenceJsonAsync(client,
-            $"repos/{options.RepositoryIdentity}/actions/runs?branch={Uri.EscapeDataString(options.BaseBranch)}&event=workflow_dispatch&per_page=100",
+        using var document = await ReadInspectionJsonAsync(client,
+            $"repos/{options.RepositoryIdentity}/actions/runs?branch={Uri.EscapeDataString(options.BaseBranch)}&event=workflow_dispatch&per_page=50",
             cancellationToken);
         var root = document.RootElement;
         if (!root.TryGetProperty("workflow_runs", out var runs) ||
@@ -63,7 +63,7 @@ public sealed partial class FounderSoftwareRemediationService
 
             // An authenticated run is not sufficient: the source PR and exact
             // protected merge ancestry must also be proven before ingestion.
-            using var prDoc = await ReadReleaseEvidenceJsonAsync(client,
+            using var prDoc = await ReadInspectionJsonAsync(client,
                 $"repos/{options.RepositoryIdentity}/pulls/{parsed.SourcePullRequest}",
                 cancellationToken);
             var pr = prDoc.RootElement;
@@ -77,14 +77,14 @@ public sealed partial class FounderSoftwareRemediationService
                 continue;
             if (!string.Equals(merge, parsed.AuthoritySha, StringComparison.Ordinal))
             {
-                using var lineage = await ReadReleaseEvidenceJsonAsync(client,
+                using var lineage = await ReadInspectionJsonAsync(client,
                     $"repos/{options.RepositoryIdentity}/compare/{merge}...{parsed.AuthoritySha}",
                     cancellationToken);
                 if (ReadString(lineage.RootElement, "status") != "ahead")
                     continue;
             }
 
-            using var jobsDoc = await ReadReleaseEvidenceJsonAsync(client,
+            using var jobsDoc = await ReadInspectionJsonAsync(client,
                 $"repos/{options.RepositoryIdentity}/actions/runs/{parsed.RunId}/jobs?filter=latest&per_page=100",
                 cancellationToken);
             var jobsRoot = jobsDoc.RootElement;
@@ -158,15 +158,4 @@ public sealed partial class FounderSoftwareRemediationService
         return "UNCLASSIFIED";
     }
 
-    private static async Task<JsonDocument> ReadReleaseEvidenceJsonAsync(
-        HttpClient client, string path, CancellationToken cancellationToken)
-    {
-        using var response = await SendGitHubAsync(
-            client, HttpMethod.Get, path, null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException("trusted_release_evidence_unavailable");
-        return await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken),
-            cancellationToken: cancellationToken);
-    }
 }
