@@ -551,9 +551,13 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
             "2f60d22e05e2917a9c48db0db1ba58632ab57d02",
             "29c23b084d059d5f1663c98631be7557ec86fa67",
             "75b2ca1eaee45852e6f896df5caa5366a709af05",
+            # Reviewed finite-code prepublication diagnostic generation.
+            "87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c",
         },
         "scripts/release-migration.py": {
             "819fa223f62e6b97fbbdd28092f765b1f57e6f90",
+            # Same no-replay journal semantics; emits reason codes before failure.
+            "4c4bff74892a9924efb45f3968e06a61dffbcab5",
         },
     }
     try:
