@@ -2405,6 +2405,11 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.old = os.getcwd()
         os.chdir(self.temp.name)
         self.git("init", "-q")
+        # Background git maintenance can race TemporaryDirectory cleanup on
+        # hosted runners, creating .git/objects after the fixture exits.
+        # Disable it ONLY in this temporary test repository.
+        self.git("config", "gc.auto", "0")
+        self.git("config", "maintenance.auto", "false")
         self.git("config", "user.email", "fixture@example.invalid")
         self.git("config", "user.name", "Fixture")
         self.write("AgentPortal.Tests/AgentPortal.Tests.csproj", '<Project><ItemGroup><None Include="../.github/workflows/all-intentional-direct-release-20260918.yml" Link="release.yml" CopyToOutputDirectory="PreserveNewest" /></ItemGroup></Project>')
@@ -2422,9 +2427,20 @@ class Step5DependencyBehaviorTests(unittest.TestCase):
         self.base = self.commit()
 
     def tearDown(self):
+        import errno
         import os
+        import time
         os.chdir(self.old)
-        self.temp.cleanup()
+        # Only absorb a transient directory-entry race. Other cleanup errors
+        # still fail the test; no validation assertions are relaxed.
+        for attempt in range(5):
+            try:
+                self.temp.cleanup()
+                break
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY or attempt == 4:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     def git(self, *args):
         import subprocess
