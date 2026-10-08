@@ -62,9 +62,13 @@ jobs:
             --output "$RUNNER_TEMP/approved-head-preflight.json"
 
   validate:
-    needs: approved-head-preflight
+    needs: [approved-head-preflight, validated-migration-probe]
     name: architecture-validation
-    if: github.event_name != 'workflow_dispatch' || inputs.package_revision == ''
+    if: >-
+      always() &&
+      needs.approved-head-preflight.result == 'success' &&
+      (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      (github.event_name != 'workflow_dispatch' || inputs.package_revision == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -564,9 +568,13 @@ jobs:
 
 
   validated-release-package-plan:
-    needs: approved-head-preflight
+    needs: [approved-head-preflight, validated-migration-probe]
     name: validated-release-package-plan
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')
+    if: >-
+      always() &&
+      needs.approved-head-preflight.result == 'success' &&
+      (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != ''))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
