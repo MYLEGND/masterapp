@@ -53,6 +53,28 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(self.legacy(marker=False)['code'],
                          'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE')
 
+    def test_actual_ef_entry_is_never_claimed_no_write(self):
+        row = {}
+        auth = SimpleNamespace(_release_job_log=lambda *args:
+            "2026-10-01T13:20:53.6483219Z Applying migration "
+            "'20261001070000_AddLegendEngineeringControlPlane'.")
+        code = audit.legacy_failure_reason(
+            auth, 'MYLEGND/masterapp', {'id': 99}, 'stub', row)
+        self.assertEqual(code, 'EF_MIGRATION_EXECUTION_ENTERED')
+        self.assertEqual(row['attemptedMigrationIds'],
+                         ['20261001070000_AddLegendEngineeringControlPlane'])
+        self.assertIn(code, audit.BLOCKED_CODES)
+
+    def test_model_drift_is_not_misclassified_as_sql_execution(self):
+        row = {}
+        auth = SimpleNamespace(_release_job_log=lambda *args:
+            "2026-09-25T19:01:57.9698892Z System.InvalidOperationException: "
+            "Microsoft.EntityFrameworkCore.Migrations.PendingModelChangesWarning")
+        code = audit.legacy_failure_reason(
+            auth, 'MYLEGND/masterapp', {'id': 90}, 'stub', row)
+        self.assertEqual(code, 'EF_PENDING_MODEL_CHANGE')
+        self.assertNotIn('attemptedMigrationIds', row)
+
     def test_incomplete_history_fails_not_skips(self):
         auth = SimpleNamespace(
             TRUSTED_PR_BASE='legend/approved-changes',
