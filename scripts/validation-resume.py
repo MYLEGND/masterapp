@@ -289,14 +289,17 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
         },
         'scripts/release-migration.py': {
             '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            'd108377faf267915d86c856523a7992a4a6d500f',
         },
         'scripts/release-prepublication.py': {
+            'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
             '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
             '29c23b084d059d5f1663c98631be7557ec86fa67',
             '75b2ca1eaee45852e6f896df5caa5366a709af05',
         },
     }
     sources = {}
+    approved_source_blobs = {}
     for path, approved_blobs in approved.items():
         source = _release_history_source(repository, run['head_sha'], path, token)
         data = source.encode('utf-8')
@@ -304,6 +307,22 @@ def _attested_migration_prewrite_failure(repository, run, job, step, token):
         if blob not in approved_blobs:
             return False
         sources[path] = source
+        approved_source_blobs[path] = blob
+    # Historical source generations were audited as exact *pairs*.
+    # Never combine two individually recognized blobs into an unreviewed runner.
+    prepublication_blob = approved_source_blobs['scripts/release-prepublication.py']
+    migration_blob = approved_source_blobs['scripts/release-migration.py']
+    if (prepublication_blob, migration_blob) not in {
+        ('bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+         'd108377faf267915d86c856523a7992a4a6d500f'),
+        ('2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+         '819fa223f62e6b97fbbdd28092f765b1f57e6f90'),
+        ('29c23b084d059d5f1663c98631be7557ec86fa67',
+         '819fa223f62e6b97fbbdd28092f765b1f57e6f90'),
+        ('75b2ca1eaee45852e6f896df5caa5366a709af05',
+         '819fa223f62e6b97fbbdd28092f765b1f57e6f90'),
+    }:
+        return False
     migration = sources['scripts/release-migration.py']
     before_write = "migration_stage('mutation-admission', journal.before_mutation, observation)"
     execution = "migration_stage('bundle-execution',"
