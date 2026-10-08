@@ -262,6 +262,97 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     return True
 
 
+def _attested_migration_prewrite_failure(repository, run, job, step, token):
+    """Prove ONE historical migration child never reached its first SQL write.
+
+    Reuse the existing trusted release source, complete Actions history and
+    bounded job-log authorities. No source SHA, exception text, missing artifact
+    or GitHub job conclusion alone is permission to execute a migration.
+    """
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') not in {'failure', 'cancelled'}
+        or run.get('run_attempt') != 1
+        or type(job.get('id')) is not int or job['id'] < 1
+        or job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+        or step.get('name') != DIRECT_RELEASE_CHILDREN['migrations']['step']
+        or step.get('status') != 'completed' or step.get('conclusion') != 'failure'):
+        return False
+    _trusted_child_producer(repository, run)
+
+    # Every accepted source blob was inspected against these historical runs:
+    # 37711890752, 37719140124, 37720449533, 37722599537,
+    # 37733970018. The migration runner calls before_mutation BEFORE the
+    # executable bundle. Its first-write gate has no SQL side effects.
+    approved = {
+        '.github/workflows/' + DIRECT_RELEASE_WORKFLOW: {
+            'bd84c42297a50b29dfa20c2ed926b8233074720e',
+        },
+        'scripts/release-migration.py': {
+            '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+        },
+        'scripts/release-prepublication.py': {
+            '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            '29c23b084d059d5f1663c98631be7557ec86fa67',
+            '75b2ca1eaee45852e6f896df5caa5366a709af05',
+        },
+    }
+    sources = {}
+    for path, approved_blobs in approved.items():
+        source = _release_history_source(repository, run['head_sha'], path, token)
+        data = source.encode('utf-8')
+        blob = hashlib.sha1(('blob ' + str(len(data)) + '\0').encode('ascii') + data).hexdigest()
+        if blob not in approved_blobs:
+            return False
+        sources[path] = source
+    migration = sources['scripts/release-migration.py']
+    before_write = "migration_stage('mutation-admission', journal.before_mutation, observation)"
+    execution = "migration_stage('bundle-execution',"
+    if before_write not in migration or execution not in migration or migration.index(before_write) >= migration.index(execution):
+        return False
+
+    # Artifacts are authoritative only if the inventory is COMPLETE, bound
+    # to this exact run, unexpired and contains NO child/write intent/success.
+    run_id = run['id']
+    payload = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+    artifacts = payload.get('artifacts')
+    if (not isinstance(artifacts, list) or type(payload.get('total_count')) is not int
+        or payload['total_count'] != len(artifacts) or len(artifacts) > 100
+        or any(not isinstance(a, dict) or a.get('expired') is not False
+               or (a.get('workflow_run') or {}).get('id') != run_id
+               or not isinstance(a.get('name'), str) for a in artifacts)):
+        return False
+    names = [a['name'] for a in artifacts]
+    if len(names) != len(set(names)):
+        return False
+    expected_rollback = {
+        f"diagnostics-rollback-{key}-{run['head_sha']}"
+        for key in ('portal', 'client', 'protect', 'parfait', 'website')
+    }
+    if not expected_rollback.issubset(names):
+        return False
+    other = set(names) - expected_rollback
+    admission = [n for n in other if re.fullmatch(r'legend-release-admission-[a-f0-9]{64}', n)]
+    state = [n for n in other if re.fullmatch(
+        rf'legend-release-step-state-[a-f0-9]{{40}}-{run_id}-1', n)]
+    plan = [n for n in other if re.fullmatch(r'legend-release-transaction-plan-[a-f0-9]{64}', n)]
+    if (len(admission) != 1 or len(state) != 1 or len(plan) > 1
+        or len(other) != len(admission) + len(state) + len(plan)):
+        return False
+
+    # The prepublication process emits only a fixed redacted failure label.
+    # The exact, single runtime log marker must match the bound executable
+    # generation. A failed step without this positive evidence remains blocked.
+    raw = _release_job_log(repository, job['id'], token)
+    markers = {
+        'LEGEND_PREPUBLICATION_MIGRATION:Database contains applied migration history absent from validated bundle',
+        'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission',
+    }
+    emitted = [line.partition('Z ')[2] for line in raw.splitlines()
+               if re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z '
+                               r'LEGEND_PREPUBLICATION_MIGRATION:.*', line)]
+    return len(emitted) == 1 and emitted[0] in markers
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None):
     """Authorize first mutation only from complete positive execution evidence.
@@ -339,6 +430,10 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 if len(steps) != 1:
                     raise RuntimeError("Release child execution detail unavailable")
                 if steps[0].get("status") == "queued" or steps[0].get("conclusion") == "skipped":
+                    continue
+                if (child == 'migrations' and steps[0].get('name') == gate['step']
+                    and steps[0].get('conclusion') == 'failure'
+                    and _attested_migration_prewrite_failure(repository, run, job, steps[0], token)):
                     continue
                 if child == 'migrations' and steps[0].get('name') != gate['step']:
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
