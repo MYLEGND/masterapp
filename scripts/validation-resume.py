@@ -516,8 +516,8 @@ def release_runtime_profile(selected_names):
 def release_ef_metadata_path(path):
     """Canonical EF discovery metadata that can change the compiled migration catalog."""
     return isinstance(path, str) and bool(
-        re.fullmatch(r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\\.cs", path)
-        or re.fullmatch(r"Infrastructure/Migrations/[0-9]{14}_[A-Za-z0-9_]+\\.Designer\\.cs", path)
+        re.fullmatch(r"Infrastructure/Data/[A-Za-z0-9_]*(?:DbContext|MigrationMetadata)\.cs", path)
+        or re.fullmatch(r"Infrastructure/Migrations/[0-9]{14}_[A-Za-z0-9_]+\.Designer\.cs", path)
     )
 
 
