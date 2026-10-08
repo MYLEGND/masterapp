@@ -1018,8 +1018,8 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
         failure = ('Migration stage unresolved: mutation-admission'
                    '; preserve prior evidence and reconcile without replay.')
         output = io.StringIO()
-        response = subprocess.CompletedProcess([], 1, marker + '\\n', failure)
-        with patch.object(owner.subprocess, 'run', return_value=response), \\
+        response = subprocess.CompletedProcess([], 1, marker + '\n', failure)
+        with patch.object(owner.subprocess, 'run', return_value=response), \
              patch('sys.stdout', output):
             with self.assertRaisesRegex(RuntimeError,
                                         'LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: mutation-admission'):
@@ -1027,8 +1027,8 @@ class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
         self.assertIn(marker, output.getvalue())
         self.assertIn('::error title=LEGEND migration admission::', output.getvalue())
         output = io.StringIO()
-        response = subprocess.CompletedProcess([], 1, marker + '\\nPassword=secret', failure)
-        with patch.object(owner.subprocess, 'run', return_value=response), \\
+        response = subprocess.CompletedProcess([], 1, marker + '\nPassword=secret', failure)
+        with patch.object(owner.subprocess, 'run', return_value=response), \
              patch('sys.stdout', output):
             with self.assertRaises(RuntimeError):
                 owner._invoke_migration_bundle()
