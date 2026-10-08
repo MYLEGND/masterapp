@@ -3206,6 +3206,107 @@ class SingleBranchTopology(unittest.TestCase):
         )
 
 
+
+class ValidationToProductionDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.run_id = 37765986494
+        self.run = dict(
+            id=self.run_id, name='LEGEND approved direct release',
+            path='.github/workflows/' + m.DIRECT,
+            event='workflow_dispatch', head_sha='a' * 40,
+            head_repository={'full_name': 'MYLEGND/masterapp'},
+            status='completed', conclusion='failure', run_attempt=1,
+        )
+        self.job = dict(
+            id=113276473989, name='release', status='completed',
+            conclusion='failure',
+            steps=[dict(name='Synchronize canonical pre-publication resource lanes',
+                        number=22, conclusion='failure')],
+        )
+        self.calls = []
+        outer = self
+
+        class Reader:
+            repo = 'MYLEGND/masterapp'
+            token = 'fixture-token'
+            def api(self, path):
+                outer.calls.append(('GET', path))
+                return outer.run
+            def pages(self, path, key=None):
+                outer.calls.append(('PAGES', path, key))
+                return [outer.job]
+        self.reader = Reader()
+
+    def report(self):
+        with patch.object(m, '_release_safe_log_reason', return_value=None):
+            return m.diagnose_completed_workflow(self.reader, self.run_id)
+
+    def test_authenticated_direct_release_finds_exact_failed_stage_and_job(self):
+        row = self.report()['failures'][0]
+        self.assertEqual('PREPUBLICATION', row['stage'])
+        self.assertEqual(self.job['id'], row['jobId'])
+        self.assertEqual(22, row['stepNumber'])
+        self.assertEqual('EXACT_CAUSE_NOT_CLASSIFIED', row['reasonCode'])
+        self.assertTrue(all(call[0] in {'GET', 'PAGES'} for call in self.calls))
+
+    def test_canonical_migration_reason_never_authorizes_replay(self):
+        with patch.object(m, '_release_safe_log_reason', return_value={
+            'reasonCode': 'HISTORICAL_PREWRITE_PROOF_REJECTED',
+            'historicalRun': 37722599537, 'historicalAttempt': 1,
+        }):
+            row = m.diagnose_completed_workflow(self.reader, self.run_id)['failures'][0]
+        self.assertEqual('RECONCILE_EVIDENCE_NO_REPLAY', row['remedy'])
+        self.assertEqual(37722599537, row['historicalRun'])
+
+    def test_all_canonical_validation_workflows_are_observed(self):
+        for name, (path, stage, events) in m.OBSERVED_WORKFLOWS.items():
+            if stage == 'DIRECT_RELEASE':
+                continue
+            with self.subTest(name=name):
+                self.run.update(name=name, path='.github/workflows/' + path,
+                                event='pull_request')
+                self.job['steps'][0]['name'] = 'untrusted-step'
+                row = self.report()['failures'][0]
+                self.assertEqual(stage, row['stage'])
+                self.assertEqual('UNVERIFIED_STEP', row['step'])
+                self.assertEqual('EXACT_CAUSE_NOT_CLASSIFIED', row['reasonCode'])
+
+    def test_untrusted_or_incomplete_evidence_fails_closed(self):
+        self.run['head_repository'] = {'full_name': 'attacker/repo'}
+        with self.assertRaisesRegex(RuntimeError, 'Untrusted'):
+            self.report()
+        self.run['head_repository'] = {'full_name': 'MYLEGND/masterapp'}
+        self.run['status'] = 'in_progress'
+        with self.assertRaisesRegex(RuntimeError, 'unproven'):
+            self.report()
+        self.run['status'] = 'completed'
+        self.job['status'] = 'in_progress'
+        with self.assertRaisesRegex(RuntimeError, 'not yet stable'):
+            self.report()
+
+    def test_terminal_runner_failure_without_step_is_explicitly_unknown(self):
+        self.job['steps'] = []
+        row = self.report()['failures'][0]
+        self.assertEqual('EXACT_CAUSE_NOT_CLASSIFIED', row['reasonCode'])
+        self.assertEqual('UNVERIFIED_STEP', row['step'])
+        self.assertIsNone(row['stepNumber'])
+
+    def test_successful_run_emits_no_failure_and_never_requests_write(self):
+        self.run['conclusion'] = 'success'
+        self.job['conclusion'] = 'success'
+        self.assertEqual([], self.report()['failures'])
+        self.assertTrue(all(call[0] in {'GET', 'PAGES'} for call in self.calls))
+
+    def test_existing_lifecycle_is_sole_observer(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    '.github/workflows/legend-release-lifecycle.yml').read_text()
+        self.assertIn('Diagnose completed validation-to-publication failures', workflow)
+        self.assertIn("github.event_name == 'workflow_run'", workflow)
+        self.assertIn('scripts/release-lifecycle.py diagnose-run', workflow)
+        self.assertNotIn('workflow_dispatch:', workflow.split(
+            'Diagnose completed validation-to-publication failures', 1)[1])
+
+
 class StagingSafety(unittest.TestCase):
     @patch.object(m, "staging_only", return_value=True)
     def test_hold_blocks_automatic_mutations(self, _):
