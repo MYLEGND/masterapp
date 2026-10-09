@@ -517,6 +517,28 @@ class ComponentEvidenceIntegrationTests(unittest.TestCase):
             history.return_value=current+'\n'
             self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
 
+    def test_merged_run_recovers_commit_bound_pr_and_rejects_ambiguous_associations(self):
+        url='https://api.github.com/repos/owner/repo'
+        pull=dict(base=dict(ref=m.TRUSTED_PR_BASE,sha='0'*40,repo=dict(url=url)),
+                  head=dict(sha=self.candidate,repo=dict(url=url)))
+        self.run['pull_requests']=[]
+        with patch.dict(os.environ, GITHUB_TOKEN='synthetic-test-token'), \
+             patch.object(m,'api_get',return_value=[pull]) as api, \
+             patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m,'git_show_file',return_value='approved executor'):
+            self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            api.assert_called_once_with('owner/repo',f'commits/{self.producer}/pulls?per_page=100','synthetic-test-token')
+            for rows in ([], [pull,pull], [dict(pull,base=dict(ref='unapproved'))]):
+                api.return_value=rows
+                self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            api.return_value=[pull]*100
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.trusted_component_run('owner/repo',self.run,self.candidate)
+            api.side_effect=m.EvidenceLookupUnavailable('provider unavailable')
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.trusted_component_run('owner/repo',self.run,self.candidate)
+
     def test_arbitrary_execution_hash_and_later_upload_are_rejected(self):
         original=self.receipt['executionIdentity']
         self.receipt['executionIdentity']='9'*64
