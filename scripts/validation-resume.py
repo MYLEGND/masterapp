@@ -1841,6 +1841,12 @@ LIFECYCLE_AUTHORITY_PATHS = (
 )
 
 RELEASE_EXECUTION_CONTROL_INPUTS = (
+    "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
+    "scripts/PackageRestoreProbe/Program.cs",
+    "scripts/release-migration-history-audit.py",
+    "scripts/test-release-migration-history-audit.py",
+    "scripts/test-release-migration-probe-retry.py",
+    "scripts/test-release-retired-original-evidence.py",
     "scripts/migration-probe-package.py",
     "scripts/release-prepublication.py",
     "scripts/release-child-receipt.py",
@@ -1851,10 +1857,6 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
     "scripts/MigrationReleaseProbe/**",
     "scripts/release-migration.py",
     "scripts/test-release-migration.py",
-    "scripts/release-migration-history-audit.py",
-    "scripts/test-release-migration-history-audit.py",
-    "scripts/test-release-retired-original-evidence.py",
-    "scripts/test-release-migration-probe-retry.py",
     "scripts/release-workflow.py",
     "scripts/test-release-workflow.py",
     "scripts/release-operation-evidence.py",

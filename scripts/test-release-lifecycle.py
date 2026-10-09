@@ -846,6 +846,33 @@ class ReleaseQueueSerialization(unittest.TestCase):
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    def test_exact_readiness_tooling_repair_preserves_merged_owner_lease(self, _, __):
+        api = Api()
+        repair = self.pr(551, "b" * 40)
+        api.api_map["pulls/551"] = repair
+        api.pages_map["pulls/551/files"] = [{"filename": path} for path in (
+            "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
+            "scripts/PackageRestoreProbe/Program.cs",
+            "scripts/release-migration-history-audit.py",
+            "scripts/test-release-migration-history-audit.py",
+            "scripts/test-release-migration-probe-retry.py",
+            "scripts/test-release-retired-original-evidence.py",
+        )]
+        api.pages_map["pulls?state=open&base=legend%2Fapproved-changes"] = [repair]
+        api.context_status(api.ref(m.APPROVED), m.RELEASE_QUEUE_CONTEXT,
+                           "pending", "owner-pr=550 validation-to-production")
+        merged = []
+        api.api_map["pulls/551/merge"] = lambda data, method: (
+            merged.append((data, method)) or {"merged": True, "sha": "c" * 40})
+        with patch.object(m, "candidate_validation", return_value=None):
+            result = m.pending_updates(api)
+        self.assertEqual("MERGED", result["state"])
+        self.assertEqual([({"merge_method": "merge", "sha": "b" * 40}, "PUT")], merged)
+        self.assertEqual(550, m.release_queue_lease(api)["ownerPr"])
+        self.assertEqual([], api.dispatched)
+
+    @patch.object(m, "staging_only", return_value=False)
+    @patch.object(m, "git", return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
     def test_ready_application_reconsidered_after_validation_without_earlier_claim(self, _, __):
         api = Api()
         pr = self.pr(514, 'b' * 40)
