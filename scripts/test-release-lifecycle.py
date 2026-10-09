@@ -515,8 +515,8 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
                 value = super().text(revision, path)
                 if path == "scripts/release-lifecycle.py":
                     return value.replace(
-                        '        return (ancestor(old_revision, new_revision) and\n',
-                        '        return (True and\n',
+                        '        return ancestor(old_revision, new_revision)\n',
+                        '        return True\n',
                     )
                 return value
         result = m.candidate_control_plane_integrity(
@@ -530,14 +530,29 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
                 value = super().text(revision, path)
                 if path == "scripts/release-lifecycle.py":
                     return value.replace(
-                        "                    api, run, record, required_targets=overlap))",
-                        "                    api, run, record))",
+                        "        api, run, record, required_targets=overlap)",
+                        "        api, run, record)",
                     )
                 return value
         result = m.candidate_control_plane_integrity(
             Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
         )
-        self.assertIn("strict descendant target-scoped stale-lease supersession", result)
+        self.assertIn("per-target receipt gate for descendant leases", result)
+
+    def test_guard_rejects_bypassing_receipt_gate_at_admission(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        "                and _forward_supersession_receipt_proven(api, run, record, candidate)\n",
+                        "                and True\n",
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("fail-closed live-provenance lease discharge", result)
 
     def test_guard_rejects_ephemeral_target_outcome_transaction_gate(self):
         class Drift(Api):
