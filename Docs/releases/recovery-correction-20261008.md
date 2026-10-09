@@ -227,6 +227,43 @@ fixture construction and harness compilation. These are component measurements,
 not submission-to-live timing. No end-to-end percentile, cold-release duration,
 or verified 10–15 minute release result is established.
 
+## Artifact-specific preservation and readiness cleanup checkpoint
+
+Independent review found that matching live source SHA could certify a different
+ZIP digest, and that the early `exact_live` workflow shortcut bypassed artifact
+proof. The deployment reconciler now requires the original durable intent and
+one successful provider deployment outside its recorded baseline. The journal
+refuses source-only, failed-provider, empty, multiple, or baseline-only evidence.
+Existing compatible success receipts remain immutable. Missing intent or expired
+provider history blocks reconciliation; healthy source provenance alone does not
+permit another upload or a new artifact success receipt.
+
+The baseline owner no longer declares a source-only no-op. Matching live targets
+pass through the existing verified-package transaction, preserving them without
+upload when exact operation proof exists. The active `exact-live-noop` receipt
+branch and its validation/publication bypass conditions are removed. Historical
+receipt readers and separate reviewed routing recovery remain intact. The old
+pre-upload negative-proof grammar is retained by its exact audited function hash;
+it cannot admit historical SHA-only success or relax intent-before-execution.
+
+Production readiness now shares one bounded same-job observation with read-only
+preflight. Mutation reconciliation still obtains fresh database state. Probe
+restoration uses the immutable artifact ID and one shared 240-second download
+budget inside the worker; no nested retry-budget multiplication is introduced.
+
+Focused integrated verification used isolated Python 3.12 with hosted CI
+semantics: 50 operation-evidence, 79 migration/readiness, 74 deployment, and 190
+lifecycle tests passed. The same-SHA/different-ZIP scenario asserts zero uploads
+and zero success receipts. Tests retain successful sibling and lost-acknowledgment
+proof. These are modeled provider failures, not production failure injections.
+
+CI on `0453162e85d0e4e8cecb0d907646b1f3671b4dfa` passed security and
+migration package production. Architecture exposed an immediate readiness result
+assignment rejected by the AST guard and unit tests inheriting hosted execution.
+The guard now recognizes both an immediate call and assignment of its result;
+delaying the call remains rejected. Unit scenarios explicitly select hosted
+execution. New exact-head CI is required for this local correction.
+
 ## Outstanding comprehensive requirements
 
 - Early trusted readiness is implemented in this candidate but still requires

@@ -5807,7 +5807,16 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
                      if isinstance(row, (ast.FunctionDef, ast.AsyncFunctionDef)) and row.name == method_name), None) if owner else None
         return ast.dump(node) if node is not None else None
 
-    if (function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile') or
+    historical_reconcile = next((node for node in ast.parse(historical_deploy).body
+                                 if isinstance(node, ast.FunctionDef) and node.name == 'reconcile'), None)
+    # Retain the audited pre-upload negative proof from the prior write-ahead
+    # generation. Its later SHA-only success semantics are never executed here.
+    # Exact source hashing is independent of the reader's Python AST version.
+    prior_reconcile = (historical_reconcile is not None and hashlib.sha256(
+        ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() ==
+        'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502')
+    if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
+         and not prior_reconcile) or
             method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
             method_dump(current_evidence, 'OperationJournal', 'before_submit')):
         return False

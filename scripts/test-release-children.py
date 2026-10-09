@@ -347,6 +347,24 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
                     firstPendingMigrationId=None if ready else '20261007134500_AddFounderAssistantRules',
                     lastAppliedMigrationId='20261003091500_CanonicalizeBusinessFinanceToolState')
 
+    def test_same_job_admission_reuses_observation_but_rejects_stale_scope(self):
+        scope = dict(GITHUB_RUN_ID='7', GITHUB_RUN_ATTEMPT='1', RELEASE_SHA='a' * 40,
+            APPLICATION_RELEASE_SHA='b' * 40, DATABASE_AUTHORITY='portal', RELEASE_RESOURCE_GROUP='group')
+        path = Path(self.temp.name) / 'observation.json'
+        migration.retain_preflight_observation(path, self.schema(True), environment=scope, now=lambda: 1000)
+        before = migration.load_preflight_observation(path, environment=scope, now=lambda: 1001)
+        with patch.object(migration, 'observe', side_effect=AssertionError('Duplicate SQL observation')) as observe, \
+             patch.object(migration, 'mutation_admission', return_value={'state': 'not-required'}) as admission:
+            self.assertEqual('ready', migration.preflight(None, self.probe, None, observation=before))
+            observe.assert_not_called()
+            admission.assert_called_once()
+        for key in scope:
+            with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.load_preflight_observation(path, environment=scope | {key: 'changed'}, now=lambda: 1001)
+        for now in (999, 1901):
+            with self.subTest(now=now), self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.load_preflight_observation(path, environment=scope, now=lambda: now)
+
     def test_fresh_zero_pending_reuses_without_bundle_or_historical_scans(self):
         with patch.object(migration, 'observe', return_value=self.schema(True)), \
              patch.object(migration, 'journal_type',
@@ -413,6 +431,7 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
              patch.object(prepublication, 'git_ok', return_value=True), \
              patch.object(prepublication, 'changed_migrations', return_value=[]), \
              patch.object(prepublication, 'release_proven'), \
+             patch.object(prepublication, 'restore_migration_probe'), \
              patch.object(prepublication, 'run', return_value='{"runId":1,"artifact":"probe"}'), \
              patch.object(prepublication, '_invoke_migration_bundle') as execute:
             os.environ['MIGRATION_READINESS_PENDING'] = 'true'

@@ -107,6 +107,7 @@ jobs:
       founder_cloudflare: ${{ steps.live.outputs.founder_cloudflare }}
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       exact_live: ${{ steps.live.outputs.exact_live }}
+      rollback_required: ${{ steps.live.outputs.rollback_required }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
       package_identity: ${{ steps.live.outputs.package_identity }}
       resource_group: ${{ steps.live.outputs.resource_group }}
@@ -208,7 +209,7 @@ jobs:
         if: steps.probe.outputs.runId != ''
         uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.probe.outputs.artifact }}
+          artifact-ids: ${{ steps.probe.outputs.artifactId }}
           run-id: ${{ steps.probe.outputs.runId }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/migration-probe
@@ -250,6 +251,7 @@ jobs:
           import os
           probe = pathlib.Path(os.environ['RUNNER_TEMP']) / 'migration-probe/MigrationReleaseProbe.dll'
           before = owner.observe(probe, owner.connection_string())
+          owner.retain_preflight_observation(pathlib.Path(os.environ['RUNNER_TEMP']) / 'migration-readiness-observation.json', before)
           pending = before['pendingCount'] > 0
           with open(sys.argv[1], 'a') as output:
               output.write('pending=' + str(pending).lower() + '\n')
@@ -318,25 +320,31 @@ jobs:
         if: steps.observe.outputs.pending == 'true'
         env:
           MIGRATION_PROBE_DLL: ${{ runner.temp }}/migration-probe/MigrationReleaseProbe.dll
+          MIGRATION_READINESS_OBSERVATION: ${{ runner.temp }}/migration-readiness-observation.json
         run: |
           set -euo pipefail
           python3 scripts/release-migration.py --preflight
 
   preserve-rollback:
     needs: [discover-live, migration-readiness]
-    if: needs.discover-live.outputs.preserve_live_targets != 'true' && needs.discover-live.outputs.exact_live != 'true'
+    if: needs.discover-live.outputs.preserve_live_targets != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
     steps:
+      - name: Record rollback not required for matching application revision
+        if: matrix.revision == needs.discover-live.outputs.application_release_sha
+        run: echo 'Rollback package not required; canonical artifact reconciliation still applies.'
       - uses: actions/checkout@v4
+        if: matrix.revision != needs.discover-live.outputs.application_release_sha
         with:
           ref: ${{ matrix.revision }}
           fetch-depth: 0
 
       - name: Load current canonical release authority without changing rollback source
+        if: matrix.revision != needs.discover-live.outputs.application_release_sha
         shell: bash
         run: |
           set -euo pipefail
@@ -345,6 +353,7 @@ jobs:
 
       - name: Reuse exact retained live package when available
         id: retained
+        if: matrix.revision != needs.discover-live.outputs.application_release_sha
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -416,11 +425,11 @@ jobs:
           echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
 
       - uses: actions/setup-dotnet@v4
-        if: matrix.static != true && steps.retained.outputs.reused != 'true'
+        if: matrix.static != true && steps.retained.outputs.reused != 'true' && matrix.revision != needs.discover-live.outputs.application_release_sha
         with:
           dotnet-version: '10.x'
       - name: Preserve source-equivalent rollback without production data
-        if: steps.retained.outputs.reused != 'true'
+        if: steps.retained.outputs.reused != 'true' && matrix.revision != needs.discover-live.outputs.application_release_sha
         env:
           PROJECT: ${{ matrix.project }}
           SOURCE_ROOT: ${{ matrix.sourceRoot }}
@@ -445,6 +454,7 @@ jobs:
           printf '%s %s source-equivalent rebuild\n' "$APP" "$REVISION" > /tmp/rollback/manifest.txt
           sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
       - uses: actions/upload-artifact@v4
+        if: matrix.revision != needs.discover-live.outputs.application_release_sha
         with:
           name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}
           path: /tmp/rollback/
@@ -473,7 +483,6 @@ jobs:
       WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
       FOUNDER_CLOUDFLARE: ${{ needs.discover-live.outputs.founder_cloudflare }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
-      EXACT_LIVE: ${{ needs.discover-live.outputs.exact_live }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
       RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
@@ -501,11 +510,11 @@ jobs:
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@v4
-        if: env.WEBSITE_ONLY != 'true' && env.EXACT_LIVE != 'true'
+        if: env.WEBSITE_ONLY != 'true'
         with:
           dotnet-version: '10.x'
       - uses: actions/setup-node@v4
-        if: (env.WEBSITE_ROUTING == 'true' || env.FOUNDER_CLOUDFLARE == 'true') && env.EXACT_LIVE != 'true'
+        if: (env.WEBSITE_ROUTING == 'true' || env.FOUNDER_CLOUDFLARE == 'true')
         with:
           node-version: '24'
           cache: npm
@@ -513,7 +522,6 @@ jobs:
 
       - name: Reuse exact successful validation package when available
         id: reusevalidated
-        if: env.EXACT_LIVE != 'true'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -635,7 +643,7 @@ jobs:
           PYCLIENTENTRY
       - name: Build exact selected release candidate
         id: build
-        if: env.WEBSITE_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
+        if: env.WEBSITE_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true'
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           echo "Preserved exact candidate build from immutable validation artifact; production rebuild is forbidden."
@@ -653,19 +661,19 @@ jobs:
           echo "Preserved exact .NET/full-suite validation for the immutable application revision."
       - name: Verify shared web catalog contracts
         id: web
-        if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true'
+        if: env.PUBLIC_ONLY != 'true' && env.PRESERVE_LIVE_TARGETS != 'true'
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           echo "Preserved exact release web-contract validation from architecture proof."
       - name: Verify selected website catalog and build
         id: websitechecks
-        if: env.SELECTED_HAS_STATIC == 'true' && env.EXACT_LIVE != 'true'
+        if: env.SELECTED_HAS_STATIC == 'true'
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           echo "Preserved exact website build/check validation from immutable validation artifact."
       - name: Publish exact selected application packages
         id: package
-        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (env.SELECTED_HAS_STATIC != 'true' || steps.websitechecks.outcome == 'success')))
+        if: always() && env.PRESERVE_LIVE_TARGETS != 'true' && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (env.SELECTED_HAS_STATIC != 'true' || steps.websitechecks.outcome == 'success')))
         run: |
           test "$REUSE_VALIDATED_PACKAGE" = true
           python3 scripts/release-package.py verify \
@@ -694,7 +702,7 @@ jobs:
 
       - name: Load preserved rollback packages for transactional publication
         id: rollbackpackages
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && needs.discover-live.outputs.rollback_required == 'true' && steps.package.outcome == 'success' }}
         uses: actions/download-artifact@v4
         with:
           pattern: diagnostics-rollback-*-${{ env.RELEASE_SHA }}
@@ -713,7 +721,7 @@ jobs:
 
       - name: Prepare complete immutable release transaction
         id: transactionprepare
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.rollbackpackages.outcome == 'success' && steps.evidenceruntime.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.rollbackpackages.outcome == 'success' || (needs.discover-live.outputs.rollback_required == 'false' && steps.rollbackpackages.outcome == 'skipped')) && steps.evidenceruntime.outcome == 'success' }}
         shell: bash
         env:
           # BEGIN GENERATED CANONICAL TARGET OUTCOMES
@@ -732,7 +740,7 @@ jobs:
 
       - name: Synchronize canonical pre-publication resource lanes
         id: prepublication
-        if: ${{ !cancelled() && env.VALIDATE_ONLY != 'true' && steps.azure.outcome == 'success' && ((env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && steps.transactionprepare.outcome == 'success') || (env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true')) }}
+        if: ${{ !cancelled() && env.VALIDATE_ONLY != 'true' && steps.azure.outcome == 'success' && ((env.REUSE_TRANSACTION_PLAN == 'true' && env.PRESERVE_LIVE_TARGETS != 'true' && steps.transactionprepare.outcome == 'success') || (env.PRESERVE_LIVE_TARGETS == 'true' && env.WEBSITE_ROUTING == 'true')) }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -788,7 +796,7 @@ jobs:
 
       - name: Refresh Azure OIDC before transactional publication
         id: azuredeploy
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.EXACT_LIVE != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && env.VALIDATE_ONLY != 'true' && steps.package.outcome == 'success' }}
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -1177,7 +1185,7 @@ jobs:
 
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true' || env.EXACT_LIVE == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
+        if: ${{ !cancelled() && (steps.transaction.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (env.WEBSITE_ROUTING != 'true' || steps.routinglive.outcome == 'success') && (env.FOUNDER_CLOUDFLARE != 'true' || steps.foundercloud.outcome == 'success') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1209,7 +1217,6 @@ jobs:
           WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
           FOUNDER_CLOUDFLARE: ${{ env.FOUNDER_CLOUDFLARE }}
           PRESERVE_LIVE_TARGETS: ${{ env.PRESERVE_LIVE_TARGETS }}
-          EXACT_LIVE: ${{ env.EXACT_LIVE }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
@@ -1219,7 +1226,6 @@ jobs:
           website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
           founder_cloudflare=os.environ.get('FOUNDER_CLOUDFLARE')=='true'
           preserve_live=os.environ.get('PRESERVE_LIVE_TARGETS')=='true'
-          exact_live=os.environ.get('EXACT_LIVE')=='true'
           base=os.environ['BASE']
           package=os.environ['PACKAGE']
           azure=os.environ['AZURE']
@@ -1230,15 +1236,10 @@ jobs:
           founder_cloud=os.environ['FOUNDER_CLOUD']
 
           if validate_only:
-              assert not preserve_live and not exact_live
+              assert not preserve_live
               assert base=='success' and package=='success'
               assert effective_transaction=='skipped' and live=='skipped'
               mode='validate-only'
-          elif exact_live:
-              assert not preserve_live and not website_routing and not founder_cloudflare
-              assert base=='success' and live=='success'
-              assert effective_transaction=='skipped'
-              mode='exact-live-noop'
           elif preserve_live:
               assert website_routing
               assert base=='success' and azure=='success' and live=='success'
@@ -1434,7 +1435,6 @@ jobs:
         if: >-
           needs.release.result == 'success' &&
           needs.discover-live.outputs.validate_only != 'true' &&
-          needs.discover-live.outputs.exact_live != 'true' &&
           needs.discover-live.outputs.preserve_live_targets != 'true' &&
           needs.discover-live.outputs.package_identity != ''
         shell: bash
@@ -1463,7 +1463,6 @@ jobs:
         if: >-
           needs.release.result == 'success' &&
           needs.discover-live.outputs.validate_only != 'true' &&
-          needs.discover-live.outputs.exact_live != 'true' &&
           needs.discover-live.outputs.preserve_live_targets != 'true' &&
           needs.discover-live.outputs.package_identity != ''
         uses: actions/upload-artifact@v4

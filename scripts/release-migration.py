@@ -306,6 +306,35 @@ def mutation_admission(before, bundle_digest=None):
     return {'state': 'proven', 'materialIdentity': material, 'partitionIdentity': partition}
 
 
+def preflight_observation_scope(environment):
+    keys = ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'RELEASE_SHA',
+            'APPLICATION_RELEASE_SHA', 'DATABASE_AUTHORITY', 'RELEASE_RESOURCE_GROUP')
+    scope = {key: environment.get(key) for key in keys}
+    if any(not isinstance(value, str) or not value for value in scope.values()):
+        raise RuntimeError('Migration stage unresolved: preparation')
+    return scope
+
+
+def retain_preflight_observation(path, observation, *, environment=None, now=time.time):
+    """Retain one trusted job's read for its admission check, never mutation."""
+    scope = preflight_observation_scope(os.environ if environment is None else environment)
+    record = dict(schemaVersion=1, scope=scope, observedAt=now(), observation=observation)
+    path.write_text(json.dumps(record, sort_keys=True) + '\n')
+
+
+def load_preflight_observation(path, *, environment=None, now=time.time):
+    scope = preflight_observation_scope(os.environ if environment is None else environment)
+    if path.stat().st_size > 4 * 1024 * 1024:
+        raise RuntimeError('Migration stage unresolved: preparation')
+    record = json.loads(path.read_text())
+    stamp = record.get('observedAt')
+    if (record.get('schemaVersion') != 1 or record.get('scope') != scope or
+            type(stamp) not in (int, float) or not 0 <= now() - stamp <= 900 or
+            not isinstance(record.get('observation'), dict)):
+        raise RuntimeError('Migration stage unresolved: preparation')
+    return record['observation']
+
+
 def preflight(bundle, probe, connection, *, observation=None):
     """Early, strictly READ-ONLY release gate. No intent or SQL write occurs here.
 
@@ -409,7 +438,10 @@ if __name__ == '__main__':
         if not probe.is_file() or (not is_preflight and not bundle.is_file()):
             raise RuntimeError('Validated migration bundle or read-only probe unavailable')
         if is_preflight:
-            result = preflight(bundle if bundle.is_file() else None, probe, connection_string())
+            retained = os.environ.get('MIGRATION_READINESS_OBSERVATION')
+            observation = load_preflight_observation(Path(retained)) if retained else None
+            result = preflight(bundle if bundle.is_file() else None, probe,
+                               None if observation is not None else connection_string(), observation=observation)
         else:
             result = reconcile(bundle, probe, connection_string(), readiness=production_readiness)
             print('Schema ready; validated migration child ' + result + '.')

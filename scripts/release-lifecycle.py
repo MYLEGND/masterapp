@@ -622,7 +622,7 @@ def candidate_control_plane_integrity(api, pr, names):
         function = next((node for node in validation_tree.body
                          if isinstance(node, ast.FunctionDef) and node.name == name), None)
         statement = function.body[0] if function and function.body else None
-        if not (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call) and
+        if not (isinstance(statement, (ast.Expr, ast.Assign)) and isinstance(statement.value, ast.Call) and
                 isinstance(statement.value.func, ast.Name) and statement.value.func.id == 'require_readiness'):
             return 'Candidate bypassed early readiness before validation or package planning'
     lifecycle_jobs = VALIDATION_AUTHORITY._job_blocks(source['lifecycle_workflow'])

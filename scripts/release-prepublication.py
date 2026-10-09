@@ -22,6 +22,7 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 import urllib.request
 
 
@@ -554,12 +555,7 @@ def run_migration_lane():
         "--directory", "/tmp/migration-probe",
     ], capture=True, timeout=180)
     plan = json.loads(plan_raw)
-    run([
-        "gh", "run", "download", str(plan["runId"]),
-        "--repo", os.environ["GITHUB_REPOSITORY"],
-        "--name", plan["artifact"],
-        "--dir", "/tmp/migration-probe",
-    ], timeout=240)
+    restore_migration_probe(plan)
     run([
         sys.executable, "scripts/migration-probe-package.py", "verify",
         "--tool-revision", run(["git", "rev-parse", "HEAD"], capture=True).strip(),
@@ -568,6 +564,16 @@ def run_migration_lane():
     ], timeout=180)
     _invoke_migration_bundle()
     return {"status": "reconciled", "changedMigrations": changed}
+
+
+def restore_migration_probe(plan):
+    artifact_id = plan.get('artifactId')
+    if type(artifact_id) is not int or artifact_id <= 0:
+        raise RuntimeError('Validated migration probe immutable identity missing')
+    authority = release_authority()
+    with authority.evidence_lookup_budget(time.monotonic() + 240):
+        authority._download_run_artifact(os.environ['GITHUB_REPOSITORY'],
+            plan['runId'], plan['artifact'], Path('/tmp/migration-probe'), artifact_id=artifact_id)
 
 
 

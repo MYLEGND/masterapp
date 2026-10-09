@@ -332,6 +332,18 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         names = ["scripts/release-lifecycle.py"]
         self.assertIsNone(m.candidate_control_plane_integrity(api, pr, names))
 
+    def test_readiness_result_assignment_keeps_first_gate_and_delayed_gate_is_rejected(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                if path == 'scripts/validation-resume.py':
+                    return source.replace('    readiness = require_readiness(args.repository, args.current_sha)',
+                                          '    readiness = None\n    readiness = require_readiness(args.repository, args.current_sha)')
+                return source
+        self.assertIsNone(m.candidate_control_plane_integrity(Api(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+        self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
     def test_activated_readiness_cannot_be_removed_to_reenter_bootstrap(self):
         class Drift(Api):
             def text(self, revision, path):
@@ -3530,4 +3542,7 @@ class StagingSafety(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Unit scenarios opt into hosted execution explicitly; the runner environment
+    # must not turn synthetic revisions into real Git/GitHub lookups.
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+        unittest.main()

@@ -127,6 +127,31 @@ class DurableOperationProtocolTests(unittest.TestCase):
         preserved = self.make(publisher=forbidden).record_success(['successful-operation'])
         self.assertEqual(preserved['producingRun'], 10)
 
+    def test_source_only_or_failed_provider_cannot_create_artifact_receipt(self):
+        operation = self.make()
+        with self.assertRaisesRegex(RuntimeError, 'Exact deployment intent'):
+            operation.record_success(['old-artifact-at-same-source'])
+        self.assertEqual([], list(self.path.iterdir()))
+        operation.before_submit(['old-artifact-at-same-source'])
+        for ids in ([], ['old-artifact-at-same-source'], ['first', 'second']):
+            with self.subTest(ids=ids), self.assertRaisesRegex(RuntimeError, 'Unique successful'):
+                operation.record_success(ids)
+        self.assertEqual(1, len(list(self.path.iterdir())))  # Intent only.
+
+    def test_legacy_success_keeps_valid_post_intent_proof_without_rewriting(self):
+        operation = self.make()
+        operation.before_submit(['baseline'])
+        operation.record_success(['deployed'])
+        path = self.path / ('success' + operation.operation_id)
+        receipt = json.loads(path.read_text())
+        receipt['deploymentIds'] = ['baseline', 'deployed']
+        path.write_text(json.dumps(receipt))
+        original = path.read_bytes()
+        self.assertEqual(receipt, self.make().record_success(['deployed']))
+        self.assertEqual(original, path.read_bytes())
+        with self.assertRaisesRegex(RuntimeError, 'matching provider'):
+            self.make().record_success(['unrelated'])
+
     def test_sdk_error_payload_not_exposed(self):
         result = type('Result', (), dict(returncode=1, stdout='secret signed URL', stderr='secret token'))()
         with patch.object(journal.subprocess, 'run', return_value=result):
@@ -363,6 +388,16 @@ class CanonicalHistoryTests(unittest.TestCase):
         )
         with patch.object(self.authority, '_release_job_log', return_value=log):
             self.assertIsNone(self.legacy_history())
+            original = self.old_deployer
+            self.old_deployer = original.replace('def reconcile(', 'def unrecognized_reconcile(', 1)
+            self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+            with self.assertRaisesRegex(RuntimeError, 'may have written'):
+                self.legacy_history()
+            self.old_deployer = original
+            self.old_evidence = self.old_evidence.replace('def before_submit(', 'def changed_before_submit(', 1)
+            self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+            with self.assertRaisesRegex(RuntimeError, 'may have written'):
+                self.legacy_history()
 
     def test_preupload_failure_proof_rejects_any_submit_marker(self):
         self.legacy_fixture('a' * 40)

@@ -62,15 +62,6 @@ def reusable_live_application_revision(rows, head):
 
 
 
-def exact_live_release(rows, application_release_sha, release_mode, website_routing, founder_cloudflare=False):
-    """True only when publication cannot change any selected app or auxiliary runtime."""
-    return (
-        release_mode == 'approved-only'
-        and not website_routing
-        and not founder_cloudflare
-        and bool(rows)
-        and all(row['revision'] == application_release_sha for row in rows)
-    )
 
 
 def _release_package_module():
@@ -332,15 +323,10 @@ def main():
             application_release_sha = validate_revision(preserved_package['revision'])
             package_identity = preserved_package['packageIdentity']
             print('Preserving immutable package producer provenance:', application_release_sha)
-    exact_live = exact_live_release(
-        rows,
-        application_release_sha,
-        release_mode,
-        website_routing,
-        founder_cloudflare,
-    )
-    if exact_live:
-        print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
+    # Source provenance alone cannot certify the requested immutable bytes.
+    # Matching targets use canonical transaction preflight and retained intent /
+    # provider evidence for zero-upload preservation, including fresh readiness.
+    exact_live = False  # Retained output contract for historical callers.
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
@@ -377,6 +363,7 @@ def main():
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('exact_live=' + str(exact_live).lower() + '\n')
+            out.write('rollback_required=' + str(any(row['revision'] != application_release_sha for row in rows)).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
             out.write('package_identity=' + package_identity + '\n')
 

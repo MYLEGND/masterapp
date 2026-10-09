@@ -201,57 +201,27 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
         else:
             live = azure.revision_live()
         failed = new[0] if new and new[0]['status'] == 3 else None
-        retained_failed_candidate = (
-            failed is not None and
-            reconcile_only and
-            journal is not None and
-            journal.intent is not None and
-            live is True and
-            not active
-        )
-        if failed is not None and not retained_failed_candidate:
-            raise RuntimeError(
-                f"Azure deployment {failed['id']} failed. "
-                "Inspect its deployment log; no automatic restart.")
-        if retained_failed_candidate:
-            # The original write remains truthfully provider-failed. A later
-            # recovery may only preserve the runtime when the retained immutable
-            # intent binds this candidate and Azure is terminal/idle at that exact
-            # candidate. Never resubmit and never relabel the failed provider row.
-            stable += 1
-            if stable >= 2:
-                try:
-                    journal.record_success([])
-                except Exception as exc:
-                    if require_receipt:
-                        raise DeploymentReconciliationRequired(
-                            'Exact candidate live after terminal provider failure but durable reconciliation receipt unavailable; preserve publication'
-                        ) from exc
-                    print(
-                        '::warning::Exact candidate is live and idle after terminal provider failure; '
-                        'durable success receipt is pending final read-only transaction reconciliation.',
-                        flush=True,
-                    )
-                    return 'preserved-receipt-pending'
-                print(
-                    f'Azure deployment {failed["id"]} is terminal-failed, but the retained immutable candidate '
-                    'is repeatedly proven live and idle; preserving without replay.',
-                    flush=True,
-                )
-                return 'preserved'
-        elif active:
+        if failed is not None:
+            raise DeploymentReconciliationRequired(
+                f"Azure deployment {failed['id']} failed; matching runtime SHA does not prove "
+                "the requested artifact. Preserve live state; no automatic replay.")
+        if active:
             # Even exact provenance cannot authorize success while another upload
             # may still replace/restart that revision. Wait for Azure to settle.
             stable = 0
         elif live:
-            # Before upload, preserve exact live candidate. After upload require
-            # terminal Azure success AND two consecutive healthy revision reads.
-            if not submitted or (new and new[0]['status'] == 4):
+            # Matching source alone cannot attach this package's digest to an
+            # unrelated earlier deployment. An exact intent (on resume) plus a
+            # unique successful post-intent operation establishes artifact proof.
+            if not submitted:
+                raise DeploymentReconciliationRequired(
+                    'Live source matches but exact artifact publication intent is unproven; no upload authorized')
+            if new and new[0]['status'] == 4:
                 stable += 1
                 if stable >= 2:
                     if journal is not None:
                         try:
-                            journal.record_success([row['id'] for row in rows if row['status'] == 4])
+                            journal.record_success([row['id'] for row in new if row['status'] == 4])
                         except Exception as exc:
                             if require_receipt:
                                 raise DeploymentReconciliationRequired(
@@ -408,6 +378,8 @@ def preflight_target(key, package, revision, baseline, journal):
     active = any(row['status'] in (0, 1, 2) for row in rows)
     if observed is None or active:
         raise DeploymentReconciliationRequired('Pre-publication runtime or active deployment remains unverified')
+    if observed == revision:
+        raise DeploymentReconciliationRequired('Live source matches but requested artifact is unproven before production mutation')
     if journal is not None and getattr(journal, 'history_error', None) is not None and observed != revision:
         if observed != baseline:
             raise DeploymentReconciliationRequired('Original publication history unproven; no release mutation authorized') from journal.history_error

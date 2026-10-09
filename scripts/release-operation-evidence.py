@@ -143,6 +143,12 @@ class OperationJournal:
         return True
 
     def record_success(self, deployment_ids):
+        if self.intent is None:
+            raise RuntimeError('Exact deployment intent required before artifact success')
+        observed = self._ids(deployment_ids)
+        baseline_ids = set(self._ids(self.intent.get('baselineDeploymentIds')))
+        if len(observed) != 1 or set(observed).intersection(baseline_ids):
+            raise RuntimeError('Unique successful post-intent deployment required')
         existing = self.authority.release_operation_history(
             self.repository, self.operation_id, self.identity['applicationRevision'],
             self.identity['target'], self.run, self.attempt, self.token, phase='success')
@@ -150,15 +156,16 @@ class OperationJournal:
             if (any(existing.get(key) != value for key, value in self.identity.items()) or
                     existing.get('baseline') != self.baseline or existing.get('phase') != 'success'):
                 raise RuntimeError("Prior deployment success receipt identity mismatch")
-            self._ids(existing.get('deploymentIds'))
+            retained = set(self._ids(existing.get('deploymentIds')))
+            if (self._ids(existing.get('baselineDeploymentIds')) != sorted(baseline_ids) or
+                    retained - baseline_ids != set(observed)):
+                raise RuntimeError('Prior artifact receipt lacks matching provider deployment proof')
             return existing
-        # Exact-candidate targets with no prior upload need no synthetic intent.
-        # A receipt records the live proof only; it cannot authorize any POST.
-        record = dict(self.intent or self.identity, schemaVersion=1,
+        record = dict(self.intent, schemaVersion=1,
                       operationId=self.operation_id, baseline=self.baseline,
                       packageProducerRun=self.producer, producingRun=self.run,
                       producingAttempt=self.attempt, phase='success',
-                      deploymentIds=self._ids(deployment_ids))
+                      deploymentIds=observed)
         return self.publisher('legend-release-operation-success-' + self.operation_id, record)
 
 

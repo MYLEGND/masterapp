@@ -62,10 +62,19 @@ class FakeAzure:
         )
 
 
+class RetainedJournal:
+    # Provider-only fixtures retain the original successful write intent.
+    baseline = None
+    intent = {'baselineDeploymentIds': []}
+    def __init__(self): self.successes = []
+    def record_success(self, ids): self.successes.append(ids)
+
+
 class ReconciliationTests(unittest.TestCase):
-    def test_exact_live_revision_is_preserved_without_upload(self):
+    def test_matching_live_revision_without_artifact_proof_blocks_without_upload(self):
         azure = FakeAzure([[row('old', 4)]], [True])
-        self.assertEqual('preserved', azure.run())
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+            azure.run()
         self.assertEqual(0, azure.uploads)
 
     def test_504_and_active_deployment_are_polled_never_resubmitted(self):
@@ -76,7 +85,7 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_preexisting_active_candidate_finishes_without_any_upload(self):
         azure = FakeAzure([[row('pending', 1)], [row('pending', 4)]], [False, True, True])
-        self.assertEqual('preserved', azure.run())
+        self.assertEqual('preserved', azure.run(journal=RetainedJournal()))
         self.assertEqual(0, azure.uploads)
 
     def test_terminal_failure_stays_failed_even_if_runtime_responds(self):
@@ -85,7 +94,7 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(1, azure.uploads)
 
-    def test_retained_failed_upload_preserves_exact_live_candidate_without_replay(self):
+    def test_retained_failed_upload_cannot_certify_matching_source_without_artifact_proof(self):
         class Journal:
             baseline = 'b' * 40
             history_error = None
@@ -103,12 +112,10 @@ class ReconciliationTests(unittest.TestCase):
         azure.observed_revision = lambda: 'a' * 40
         journal = Journal()
 
-        self.assertEqual(
-            'preserved',
-            azure.run(baseline='b' * 40, reconcile_only=True, journal=journal),
-        )
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'does not prove'):
+            azure.run(baseline='b' * 40, reconcile_only=True, journal=journal)
         self.assertEqual(0, azure.uploads)
-        self.assertEqual([[]], journal.successes)
+        self.assertEqual([], journal.successes)
 
     def test_exact_live_receipt_transport_failure_is_deferred_without_upload_replay(self):
         class Journal:
@@ -340,7 +347,7 @@ class ReconciliationTests(unittest.TestCase):
         with self.assertRaises(deploy.DeploymentReconciliationRequired):
             first.run()
         resumed = FakeAzure([[], [row('delayed-original', 4)]], [False, True, True])
-        self.assertEqual('preserved', resumed.run(reconcile_only=True))
+        self.assertEqual('preserved', resumed.run(reconcile_only=True, journal=RetainedJournal()))
         self.assertEqual(1, first.uploads)
         self.assertEqual(0, resumed.uploads)
 
@@ -360,7 +367,8 @@ class ReconciliationTests(unittest.TestCase):
                     with self.assertRaises(deploy.DeploymentDrift):
                         azure.run(baseline='b' * 40)
                 elif observed == azure.revision:
-                    self.assertEqual('preserved', azure.run(baseline='b' * 40))
+                    with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+                        azure.run(baseline='b' * 40)
                 else:
                     with self.assertRaises(deploy.DeploymentReconciliationRequired):
                         azure.run(baseline='b' * 40, reconcile_only=True)
@@ -368,6 +376,34 @@ class ReconciliationTests(unittest.TestCase):
 
 
 class PackageTests(unittest.TestCase):
+    def test_different_artifact_at_same_sha_cannot_be_certified_from_live_sha(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        revision = 'a' * 40
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = root / 'first'; first.mkdir()
+            second = root / 'second'; second.mkdir()
+            live, live_digest = self.make_package(first, revision=revision)
+            requested, _ = self.make_package(second, revision=revision)
+            with zipfile.ZipFile(requested, 'a') as archive:
+                archive.writestr('different-compiled-output.dll', b'new toolchain bytes')
+            requested_digest = hashlib.sha256(requested.read_bytes()).hexdigest()
+            (second / 'SHA256SUMS').write_text(f'{requested_digest}  {requested.name}\n')
+            self.assertNotEqual(live_digest, deploy.verify_package(requested, revision))
+            azure = FakeAzure([[row('existing-artifact', 4)]], [True])
+            azure.revision = revision
+            azure.observed_revision = lambda: revision
+            journal = SimpleNamespace(baseline=revision, intent=None, history_error=None,
+                identity=dict(applicationRevision=revision, packageDigest=requested_digest), record_success=Mock())
+            with patch.object(deploy, 'target_azure', return_value=azure):
+                with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact is unproven'):
+                    deploy.preflight_target('portal', requested, revision, revision, journal)
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+                azure.run(journal=journal)
+            journal.record_success.assert_not_called()
+            self.assertEqual(0, azure.uploads)
+
     def make_package(self, folder, static=False, revision='a' * 40):
         path = Path(folder) / 'app.zip'
         with zipfile.ZipFile(path, 'w') as archive:
@@ -1057,6 +1093,24 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
         cls.owner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.owner)
 
+    def test_probe_restore_uses_immutable_id_and_rejects_missing_identity(self):
+        owner = self.owner
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from contextlib import nullcontext
+        download = Mock()
+        budget = Mock(side_effect=lambda deadline: nullcontext())
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'owner/repo'}), \
+             patch.object(owner.time, 'monotonic', return_value=1000), \
+             patch.object(owner, 'release_authority', return_value=SimpleNamespace(_download_run_artifact=download, evidence_lookup_budget=budget)):
+            owner.restore_migration_probe(dict(runId=7, artifact='probe', artifactId=19))
+            download.assert_called_once_with('owner/repo', 7, 'probe', Path('/tmp/migration-probe'), artifact_id=19)
+            for value in (None, 0, -1, True, '19'):
+                with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'immutable identity'):
+                    owner.restore_migration_probe(dict(runId=7, artifact='probe', artifactId=value))
+            self.assertEqual(1, download.call_count)
+            budget.assert_called_once_with(1240)
+
     def test_registered_metadata_and_context_changes_require_probe(self):
         owner = self.owner
         paths = (
@@ -1069,6 +1123,38 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'git', 'diff', '--name-only', 'a' * 40, 'b' * 40,
             '--', 'Infrastructure/Data', 'Infrastructure/Migrations',
         ], capture=True)
+
+    def test_delayed_probe_provider_exhausts_one_budget_before_migration(self):
+        from types import SimpleNamespace
+        owner = self.owner
+        authority = owner.release_authority()
+        budget = authority.evidence_lookup_budget
+        elapsed, calls = [0.0], []
+        def get(*args, **kwargs):
+            calls.append(kwargs['timeout'])
+            elapsed[0] += min(119, kwargs['timeout'])
+            return SimpleNamespace(returncode=1, stderr='HTTP 503')
+        environment = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
+            EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
+            DATABASE_AUTHORITY='portal', GITHUB_REPOSITORY='owner/repo', MIGRATION_READINESS_PENDING='false')
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, environment), \
+             patch.object(owner, 'git_ok', return_value=True), \
+             patch.object(owner, 'changed_migrations', return_value=[]), \
+             patch.object(owner, 'release_proven'), \
+             patch.object(owner, 'run', return_value=json.dumps(dict(runId=7, artifact='probe', artifactId=19))), \
+             patch.object(owner, 'Path', return_value=Path(temporary)), \
+             patch.object(owner, 'release_authority', return_value=authority), \
+             patch.object(owner.time, 'monotonic', side_effect=lambda: elapsed[0]), \
+             patch.object(authority, 'evidence_lookup_budget', side_effect=lambda deadline: budget(deadline, clock=lambda: elapsed[0])), \
+             patch.object(authority.time, 'sleep', side_effect=lambda delay: elapsed.__setitem__(0, elapsed[0] + delay)), \
+             patch.object(authority.subprocess, 'run', side_effect=get), \
+             patch.object(owner, '_invoke_migration_bundle') as migrate:
+            with self.assertRaises(authority.EvidenceLookupUnavailable):
+                owner.run_migration_lane()
+            self.assertEqual(240, elapsed[0])
+            self.assertEqual(2, len(calls))
+            migrate.assert_not_called()
 
     def test_designer_only_migration_metadata_change_enters_existing_probe(self):
         owner = self.owner
@@ -1117,6 +1203,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             patch.object(owner, 'migration_metadata_changed', return_value=True),
             patch.object(owner, 'release_proven') as release_proof,
             patch.object(owner, 'run', side_effect=read) as command,
+            patch.object(owner, 'restore_migration_probe'),
             patch.object(owner, '_invoke_migration_bundle') as migrate,
         ):
             result = owner.run_migration_lane()
@@ -1144,6 +1231,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             patch.object(owner, '_invoke_migration_bundle') as migrate,
             patch.object(owner, 'release_proven') as release_proof,
             patch.object(owner, 'run', return_value=json.dumps({'runId': 123, 'artifact': 'validated-probe'})),
+            patch.object(owner, 'restore_migration_probe'),
         ):
             result = owner.run_migration_lane()
         self.assertEqual({'status': 'reconciled', 'changedMigrations': []}, result)
