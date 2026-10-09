@@ -65,7 +65,12 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(code, 'EF_MIGRATION_EXECUTION_ENTERED')
         self.assertEqual(row['attemptedMigrationIds'],
                          ['20261001070000_AddLegendEngineeringControlPlane'])
-        self.assertIn(code, audit.BLOCKED_CODES)
+        # An entered EF bundle is NOT a pre-write proof failure, but it is
+        # NEVER a no-op. Retain the positive SQL-reconciliation obligation;
+        # the physical catalog and child journal are still checked separately.
+        self.assertIn(code, audit.STATUS_CODES)
+        self.assertNotIn(code, audit.BLOCKED_CODES)
+        self.assertEqual(code, 'EF_MIGRATION_EXECUTION_ENTERED')
 
     def test_model_drift_is_not_misclassified_as_sql_execution(self):
         row = {}
