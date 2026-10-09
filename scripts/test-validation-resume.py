@@ -1357,7 +1357,7 @@ jobs:
         self.assertEqual((), m.release_targets_for_paths([path]))
         self.assertTrue(m.release_control_only_path(path))
 
-    def test_readiness_tooling_classification_preserves_validation_and_package_authority(self):
+    def test_readiness_tooling_classification_preserves_validation_authority(self):
         adapter = (
             "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
             "scripts/PackageRestoreProbe/Program.cs",
@@ -1377,9 +1377,10 @@ jobs:
                 self.assertTrue(topology["releaseControlAuthorityChange"])
                 self.assertIn(".github/workflows/masterapp-platform-architecture-validation.yml", topology["required"])
                 self.assertIn(".github/workflows/approved-release-security-validation.yml", topology["required"])
-        for path in adapter:
-            self.assertIn(path, m.PACKAGE_AUTHORITY_PATHS)
-            self.assertTrue(m.package_canary_input_path(path))
+        # Byte-production inputs enter PACKAGE_AUTHORITY_PATHS with the adapter
+        # implementation in PR551; the prerequisite must not hash absent files.
+        for path in m.PACKAGE_AUTHORITY_PATHS:
+            self.assertTrue((ROOT / path).is_file())
         for path in (
             "scripts/PackageRestoreProbe/Unexpected.cs",
             "scripts/release-migration-history-audit-new.py",

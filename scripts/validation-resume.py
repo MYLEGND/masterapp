@@ -1789,8 +1789,6 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
 })
 
 PACKAGE_AUTHORITY_PATHS = frozenset({
-    "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
-    "scripts/PackageRestoreProbe/Program.cs",
     "scripts/release-package.py",
     ".config/dotnet-tools.json",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
