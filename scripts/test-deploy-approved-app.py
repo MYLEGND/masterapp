@@ -411,6 +411,23 @@ class PackageTests(unittest.TestCase):
 
 
 class PackageContractTests(unittest.TestCase):
+    def test_candidate_component_build_requires_no_evidence_credential(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request'}, clear=True), \
+             patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package._RELEASE_AUTHORITY, 'require_readiness', side_effect=AssertionError('Credentialed lookup in build')) as lookup, \
+             patch.object(package, 'build_migration_bundle', side_effect=lambda output: (output / package.MIGRATION_BUNDLE).write_bytes(b'candidate')) as build:
+            receipt = package.build_component('a' * 40, 'migration', Path(temporary))
+            self.assertEqual(hashlib.sha256(b'candidate').hexdigest(), receipt['sha256'])
+            self.assertEqual(1, build.call_count)
+            lookup.assert_not_called()
+
+
     def test_deployment_and_workflow_orchestration_changes_preserve_package_identity(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
         package = importlib.util.module_from_spec(spec)
@@ -485,10 +502,19 @@ class PackageContractTests(unittest.TestCase):
              patch.object(package._RELEASE_AUTHORITY, '_download_run_artifact', side_effect=download) as restore, \
              patch.object(package, 'build_migration_bundle') as build:
             output = Path(temporary)
-            self.assertEqual(receipt, package.build_component(revision, 'migration', output))
+            self.assertEqual(receipt, package.promote_rehearsed_migration(revision, output, proof))
             self.assertEqual(body, (output / package.MIGRATION_BUNDLE).read_bytes())
             self.assertEqual('reused-success', json.loads((output / 'migration.reuse.json').read_text())['state'])
             self.assertEqual(1, restore.call_count)
+            build.assert_not_called()
+            # A new job attempt retains the same validated bytes without trying
+            # to recreate the previous attempt's immutable upload identity.
+            first = package.promoted_migration_artifact(revision, 1)
+            second = package.promoted_migration_artifact(revision, 2)
+            self.assertNotEqual(first, second)
+            self.assertEqual(second, package.promoted_migration_artifact(revision, 2))
+            self.assertEqual(receipt, package.promote_rehearsed_migration(revision, output, proof))
+            self.assertEqual(body, (output / package.MIGRATION_BUNDLE).read_bytes())
             build.assert_not_called()
 
     def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):

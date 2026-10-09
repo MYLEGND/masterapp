@@ -4827,7 +4827,7 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
 
 
 def cmd_package_canary_plan(args):
-    require_readiness(args.repository, args.current_sha)
+    readiness = require_readiness(args.repository, args.current_sha)
     try:
         result = compute_package_canary_plan(
             args.repository,
@@ -4847,6 +4847,20 @@ def cmd_package_canary_plan(args):
             "reason": "planner_error_fail_closed",
             "plannerError": type(exc).__name__,
         }
+    result['migrationReused'] = False
+    if result['needed'] and readiness.get('receipt', {}).get('rehearsalSource'):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('canonical_package', Path(__file__).with_name('release-package.py'))
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        receipt = package.promote_rehearsed_migration(args.current_sha,
+            Path(args.output).parent / 'validated-release-migration', readiness)
+        if receipt is None:
+            raise ValueError('Authenticated rehearsal component could not be promoted')
+        result['migrationReused'] = True
+        result['migrationSourceReceipt'] = readiness['receipt']['rehearsalSource']
+        result['migrationArtifact'] = package.promoted_migration_artifact(args.current_sha,
+            int(os.environ['GITHUB_RUN_ATTEMPT']))
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 

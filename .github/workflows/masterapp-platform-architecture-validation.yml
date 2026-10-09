@@ -672,6 +672,8 @@ jobs:
       validation_run_id: ${{ steps.packageplan.outputs.validation_run_id }}
       evidence_run_id: ${{ steps.packageplan.outputs.evidence_run_id }}
       evidence_head_sha: ${{ steps.packageplan.outputs.evidence_head_sha }}
+      migration_reused: ${{ steps.packageplan.outputs.migration_reused }}
+      migration_artifact: ${{ steps.packageplan.outputs.migration_artifact }}
     steps:
       - name: Checkout exact package planning authority
         uses: actions/checkout@v4
@@ -723,9 +725,20 @@ jobs:
               output.write(f"revision={sys.argv[3]}\n")
               output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
               output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
+              output.write('migration_reused='+str(bool(data.get('migrationReused'))).lower()+'\n')
+              output.write(f"migration_artifact={data.get('migrationArtifact') or ''}\n")
           print(json.dumps(data,sort_keys=True))
           PYPACKAGEPLAN
           fi
+
+      - name: Preserve promoted rehearsed migration component
+        if: steps.packageplan.outputs.migration_reused == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.packageplan.outputs.migration_artifact }}
+          path: ${{ runner.temp }}/validated-release-migration/
+          retention-days: 7
+          if-no-files-found: error
 
   validated-release-package-components:
     needs: validated-release-package-plan
@@ -744,6 +757,7 @@ jobs:
       MSBUILDDISABLENODEREUSE: '1'
     steps:
       - name: Checkout exact package component authority
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
@@ -751,7 +765,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup .NET for canonical package component build
-        if: matrix.component != 'website'
+        if: matrix.component != 'website' && (matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true')
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
@@ -766,6 +780,7 @@ jobs:
 
       - name: Build immutable validated release package component
         id: component
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -776,6 +791,7 @@ jobs:
             --output "$GITHUB_OUTPUT"
 
       - name: Preserve immutable validated release package component
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-${{ matrix.component }}
@@ -783,6 +799,10 @@ jobs:
           retention-days: 7
           if-no-files-found: error
           overwrite: true
+
+      - name: Retain authenticated rehearsed migration success
+        if: matrix.component == 'migration' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
+        run: echo 'LEGEND_PACKAGE:REUSED:migration:authenticated planner receipt; exact bytes verified by assembly'
 
   validated-release-package:
     needs:
@@ -812,6 +832,13 @@ jobs:
           pattern: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-*
           path: ${{ runner.temp }}/validated-release-package
           merge-multiple: true
+
+      - name: Load exact promoted migration attempt
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.validated-release-package-plan.outputs.migration_artifact }}
+          path: ${{ runner.temp }}/validated-release-package
 
       - name: Build immutable validated release package
         id: package

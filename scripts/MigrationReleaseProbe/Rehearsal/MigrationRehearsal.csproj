@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Compile Include="../CandidateContract.cs" Link="CandidateContract.cs" />
     <ProjectReference Include="../../../Infrastructure/Infrastructure.csproj" />
   </ItemGroup>

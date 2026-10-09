@@ -165,9 +165,15 @@ stop; failed/skipped/cancelled child outcomes do not wait for an active parent.
 Attempt and shared elapsed-time budgets bound recovery. General historical lookup
 indexing and complete recovery-composition coverage remain unfinished.
 
-The shared dependency graph selected vulnerable `System.Security.Cryptography.Xml`
-8.0.2. Infrastructure now pins 8.0.4 without suppressing vulnerability checks.
-The updated minimal bundle SHA-256 is
+The minimal executable dependency graphs selected obsolete vulnerable
+`System.Security.Cryptography.Xml` 8.0.2 because transitive framework references
+do not participate in NuGet pruning. The first Infrastructure 8.0.4 pin failed
+the required warnings-as-errors gate with NU1510. The corrected probe and fixture
+explicitly reference their required `Microsoft.AspNetCore.App` framework; the
+obsolete package is absent from both restored graphs. The probe builds with zero
+warnings/errors and no suppression. This follows the
+[documented NuGet framework pruning behavior](https://learn.microsoft.com/en-us/nuget/reference/errors-and-warnings/nu1510).
+The prior pin-based minimal bundle SHA-256 was
 `990bb197aa5a3ca5058713f3ce1d040c029284baac0288d85f550ab9c9ecb224`.
 Disposable SQL verification observed one intent, one actual bundle invocation,
 two success-receipt attempts, preserved synthetic row/default, and verified physical
@@ -175,6 +181,16 @@ postconditions. The measured operation/recovery interval was 9.383 seconds.
 The journal failure was modeled in memory; SQL execution was real. The representative
 baseline used retained approved inventory, not a fresh production observation.
 Build, queue, and SQL startup are excluded; this is not end-to-end timing.
+That bundle's proof is preserved historical evidence; the framework-reference
+correction changes artifact inputs and requires new exact bundle proof.
+
+Checkpoint `cefb044402afe90f33a9c91ba18c614a6703fec9` passed the untouched approved
+integrity guard and was pushed to PR #551. Exact CI exposed the pruning defect
+above and a missing evidence-read token in the candidate migration build. The
+correction moves authenticated rehearsal promotion into the existing planning
+stage. The candidate build performs no online evidence lookup and receives no
+added token. Promoted artifacts have attempt-specific identities; assembly selects
+the exact planned artifact, preventing same-name conflicts after planner reruns.
 
 Current focused proof includes 189 lifecycle tests, 187 validation-resume tests
 on isolated CI-compatible Python 3.12, 22 readiness trust tests after the latest

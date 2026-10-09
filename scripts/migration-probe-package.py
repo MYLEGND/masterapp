@@ -92,7 +92,7 @@ def prepare_rehearsal_candidate(revision, directory, output):
     component.mkdir()
     # Canonical package owner produces the exact bundle once, before app fanout.
     if not package.restore_prepared_migration(revision, component, expected['identity']):
-        package.build_component(revision, 'migration', component, reuse_rehearsal=False)
+        package.build_component(revision, 'migration', component)
     (directory / 'observation.json').write_text(json.dumps(baseline, sort_keys=True) + '\n')
     if output:
         with open(output, 'a') as stream:

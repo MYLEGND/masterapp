@@ -209,32 +209,44 @@ def component_file(component: str) -> str:
     raise ValueError("Unknown release package component: " + component)
 
 
-def build_component(revision: str, component: str, output: Path, *, reuse_rehearsal=True):
+def promoted_migration_artifact(revision, attempt):
+    revision = normalize_revision(revision)
+    if type(attempt) is not int or attempt < 1:
+        raise ValueError('Promoted component requires exact producing attempt')
+    return f'validated-rehearsed-migration-{revision}-a{attempt}'
+
+
+def promote_rehearsed_migration(revision, output, evidence):
+    """The credentialed planner restores bytes; the build lane receives no token."""
     revision = validate_revision(revision)
     output.mkdir(parents=True, exist_ok=True)
-    if component == 'migration' and reuse_rehearsal and os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('GITHUB_EVENT_NAME') == 'pull_request':
-        evidence = _RELEASE_AUTHORITY.require_readiness(os.environ['GITHUB_REPOSITORY'], revision)
-        source = evidence.get('receipt', {}).get('rehearsalSource')
-        if source:
-            import tempfile
-            with tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'], source['runId'], source['artifact'], root,
-                                                         artifact_id=source['artifactId'])
-                receipt = json.loads((root / 'migration/migration.component.json').read_text())
-                bundle = root / 'migration' / MIGRATION_BUNDLE
-                expected = dict(schema=COMPONENT_SCHEMA, applicationReleaseSha=revision,
-                    packageContractSha256=contract_hash(), packageIdentity=package_identity(revision),
-                    component='migration', file=MIGRATION_BUNDLE, sha256=sha256_file(bundle))
-                if receipt != expected or receipt['sha256'] != evidence['receipt']['rehearsal']['bundleDigest']:
-                    raise ValueError('Validated rehearsal bundle is not the exact package component')
-                shutil.copy2(bundle, output / MIGRATION_BUNDLE)
-                (output / MIGRATION_BUNDLE).chmod(0o755)
-                shutil.copy2(root / 'migration/migration.component.json', output / 'migration.component.json')
-                (output / 'migration.reuse.json').write_text(json.dumps(dict(state='reused-success',
-                    sourceReceipt=source, compatibilityProof=expected), sort_keys=True) + '\n')
-                print('LEGEND_PACKAGE:REUSED:migration:source=' + str(source['runId']))
-                return receipt
+    source = evidence.get('receipt', {}).get('rehearsalSource')
+    if source:
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'], source['runId'], source['artifact'], root,
+                                                     artifact_id=source['artifactId'])
+            receipt = json.loads((root / 'migration/migration.component.json').read_text())
+            bundle = root / 'migration' / MIGRATION_BUNDLE
+            expected = dict(schema=COMPONENT_SCHEMA, applicationReleaseSha=revision,
+                packageContractSha256=contract_hash(), packageIdentity=package_identity(revision),
+                component='migration', file=MIGRATION_BUNDLE, sha256=sha256_file(bundle))
+            if receipt != expected or receipt['sha256'] != evidence['receipt']['rehearsal']['bundleDigest']:
+                raise ValueError('Validated rehearsal bundle is not the exact package component')
+            shutil.copy2(bundle, output / MIGRATION_BUNDLE)
+            (output / MIGRATION_BUNDLE).chmod(0o755)
+            shutil.copy2(root / 'migration/migration.component.json', output / 'migration.component.json')
+            (output / 'migration.reuse.json').write_text(json.dumps(dict(state='reused-success',
+                sourceReceipt=source, compatibilityProof=expected), sort_keys=True) + '\n')
+            print('LEGEND_PACKAGE:REUSED:migration:source=' + str(source['runId']))
+            return receipt
+    return None
+
+
+def build_component(revision: str, component: str, output: Path):
+    revision = validate_revision(revision)
+    output.mkdir(parents=True, exist_ok=True)
     print('LEGEND_PACKAGE:EXECUTE:' + component + ':compatible_component_receipt_unavailable')
     destination = output / component_file(component)
     if destination.exists():
