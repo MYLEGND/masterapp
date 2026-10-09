@@ -1718,6 +1718,73 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, 'api_get', side_effect=api):
             self.assertFalse(prove(**valid))
 
+    def test_completed_inline_ef_history_reconciles_without_mutation(self):
+        import subprocess
+        head = 'd604a009da7a2b7662099f6aaa389393013933e5'
+        current = '69f397ce73630fc1359dbf5cd284b5c51effbc4a'
+        def source(repo, revision, path, token):
+            return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+        workflow = source('', head, '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW, '')
+        run = dict(id=36898643763, head_sha=head, status='completed', conclusion='success',
+                   run_attempt=1, event='workflow_dispatch', head_branch=self.authority.TRUSTED_PR_BASE,
+                   head_repository={'full_name': 'owner/repo'},
+                   path='.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success', started_at='2026-10-01T17:29:00Z',
+                    completed_at='2026-10-01T17:30:00Z')
+        build = dict(name='Build exact selected release candidate', conclusion='success',
+                     started_at='2026-10-01T17:25:00Z', completed_at='2026-10-01T17:28:00Z')
+        job = dict(id=110493195108, status='completed', conclusion='success', steps=[step, build] +
+                   [dict(name=name, conclusion='success') for name in
+                    ('Publish exact selected application packages', 'Direct deploy AgentPortal',
+                     'Enforce complete direct deployment outcome',
+                     'Verify every deployed target and collect all failures')])
+        log = ('2026-10-01T17:24:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-01T17:24:01Z ' + head + '\n'
+               '2026-10-01T17:25:00Z   REUSE_VALIDATED_PACKAGE: false\n'
+               '2026-10-01T17:27:28Z Build succeeded.\n'
+               '2026-10-01T17:29:56Z Schema ready. Applied candidate migrations only; no down migrations.\n')
+        admission = dict(total_count=1, jobs=[dict(name='discover-live', status='completed', conclusion='success')])
+        artifacts = dict(total_count=1, artifacts=[dict(name='translation-direct-release-' + head, expired=False)])
+        kwargs = dict(first_pending_migration_id='20261007134500_AddFounderAssistantRules',
+                      last_applied_migration_id='20261003091500_CanonicalizeBusinessFinanceToolState',
+                      current_application_revision=current)
+        def prove(**overrides):
+            return self.authority._legacy_completed_bundle_is_separate_from_pending_sql(
+                'owner/repo', run, job, step, overrides.pop('workflow', workflow), 1, 'fixture',
+                **(kwargs | overrides))
+        with patch.object(self.authority, '_release_job_log', return_value=log) as logs, \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=head) as producer, \
+             patch.object(self.authority, '_release_history_source', side_effect=source), \
+             patch.object(self.authority, '_release_history_api', return_value=admission), \
+             patch.object(self.authority, 'api_get', return_value=artifacts), \
+             patch.object(self.authority.subprocess, 'run', wraps=subprocess.run) as calls:
+            self.assertTrue(prove())
+            self.assertEqual(len(calls.call_args_list), 7)  # Four source reads + ancestry + two migration trees.
+            self.assertTrue(all(call.args[0][0] == 'git' for call in calls.call_args_list))
+            self.assertFalse(prove(workflow=workflow.replace('database', 'unknown-database')))
+            self.assertFalse(prove(first_pending_migration_id='20261001160000_AddLegendEngineeringOperationalContract'))
+            self.assertFalse(prove(last_applied_migration_id='20260901000000_Unknown'))
+            for old, new in [('Build succeeded.', 'Build FAILED.'),
+                             ('17:27:28Z Build', '17:24:28Z Build'),
+                             ('REUSE_VALIDATED_PACKAGE: false', 'REUSE_VALIDATED_PACKAGE: true'),
+                             ('Schema ready.', 'Schema unknown.'), (head, 'f' * 40)]:
+                logs.return_value = log.replace(old, new)
+                self.assertFalse(prove(), (old, new))
+            logs.return_value = log
+            producer.return_value = 'f' * 40
+            self.assertFalse(prove())
+            producer.return_value = head
+            for key, value in [('run_attempt', 2), ('conclusion', 'failure'), ('head_branch', 'untrusted')]:
+                original = run[key]; run[key] = value
+                self.assertFalse(prove(), key)
+                run[key] = original
+            admission['jobs'][0]['conclusion'] = 'skipped'
+            self.assertFalse(prove())
+            admission['jobs'][0]['conclusion'] = 'success'
+            artifacts['artifacts'][0]['expired'] = True
+            self.assertFalse(prove())
+
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess
         source = subprocess.check_output(['git', 'show', 'd406e911:.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)

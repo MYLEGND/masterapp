@@ -528,6 +528,12 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
     cannot satisfy this read-only compatibility proof.
     """
     import datetime
+    # This retired generation compiled locally and executed EF --no-build. It
+    # really mutated SQL; this is completed-history reconciliation, NOT a noop
+    # allowlist or permission to replay a missing intent. Pin the audited full
+    # workflow rather than trusting a marker or a run ID.
+    inline = hashlib.sha256(source.encode()).hexdigest() == (
+        'e596c919e0aa2f99ede614467d756bf7606f1b343f2fb18d0d1f0c0334181d4e')
     valid_id = re.compile(r'^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$')
     valid_sha = re.compile(r'^[a-f0-9]{40}$')
     if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
@@ -535,7 +541,7 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
         or job.get('status') != 'completed' or job.get('conclusion') != 'success'
         or step.get('name') != 'Apply additive diagnostics migrations before restarting apps'
         or step.get('status') != 'completed' or step.get('conclusion') != 'success'
-        or not _audited_legacy_migration_noop_source(source)
+        or not (inline or _audited_legacy_migration_noop_source(source))
         or not all(isinstance(value, str) and valid_id.fullmatch(value) for value in
                    (first_pending_migration_id, last_applied_migration_id))
         or not valid_sha.fullmatch(current_application_revision or '')):
@@ -543,11 +549,36 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
     def exactly(name):
         return sum(x.get('name') == name and x.get('conclusion') == 'success'
                    for x in job.get('steps', [])) == 1
-    if not (exactly('Verify restored immutable validation package')
-            and exactly('Retain exact approved release receipt')
+    required = (('Build exact selected release candidate',
+                 'Publish exact selected application packages',
+                 'Direct deploy AgentPortal', 'Enforce complete direct deployment outcome')
+                if inline else ('Verify restored immutable validation package',
+                                'Retain exact approved release receipt'))
+    if not (all(exactly(name) for name in required)
             and exactly('Verify every deployed target and collect all failures')):
         return False
     try:
+        if inline:
+            _trusted_child_producer(repository, run)
+            # Authenticate the original admission semantics, including the
+            # reviewed request and exact-head validation reader it imported.
+            owners = {
+                'scripts/approved-release-baseline.py': 'e2b2bada659a17265aab97fe91098e69d3399909d6bcce83c112f0a529336b20',
+                'scripts/release-lifecycle.py': '66ff9be20166cf9d3fff421bd6f90b277857788cdfb974fe521034322edca727',
+                'scripts/validation-resume.py': '99f3c15343a9536f8a6b8edfcab8cbcbf6c9c4202d3d82fe47a17432d0b2dc33',
+                'scripts/release_policy.py': 'cc73125e7147270b19b6c8ed85f6b5ae3f72bf7d28fe576ca0efbea61572e574',
+            }
+            for path, digest in owners.items():
+                if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+                    return False
+            inventory = _release_history_api(repository,
+                f"actions/runs/{run['id']}/attempts/1/jobs?per_page=100", token)
+            jobs = inventory.get('jobs', [])
+            admission = [row for row in jobs if row.get('name') == 'discover-live']
+            if (inventory.get('total_count') != len(jobs) or len(admission) != 1
+                or admission[0].get('status') != 'completed'
+                or admission[0].get('conclusion') != 'success'):
+                return False
         start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
         end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
         if start.tzinfo is None or end.tzinfo is None or end < start:
@@ -558,7 +589,23 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
         heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
         if heads != {run['head_sha']}:
             return False
-        marker = 'Schema ready. Executed the exact validated migration bundle from the proven live database baseline.'
+        marker = ('Schema ready. Applied candidate migrations only; no down migrations.' if inline else
+                  'Schema ready. Executed the exact validated migration bundle from the proven live database baseline.')
+        if inline:
+            # continue-on-error step conclusions and the reuse shortcut do not
+            # prove compilation. Require the actual bounded compiler outcome.
+            build = next(row for row in job['steps'] if row['name'] == 'Build exact selected release candidate')
+            build_start = datetime.datetime.fromisoformat(build['started_at'].replace('Z', '+00:00'))
+            build_end = datetime.datetime.fromisoformat(build['completed_at'].replace('Z', '+00:00'))
+            build_stamps = []
+            for line in log.splitlines():
+                date, sep, message = line.partition(' ')
+                if sep and message == 'Build succeeded.':
+                    build_stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
+            if (len(build_stamps) != 1 or not build_start <= build_stamps[0] <= build_end + datetime.timedelta(seconds=2)
+                or build_end > start or '  REUSE_VALIDATED_PACKAGE: true' in clean
+                or '  REUSE_VALIDATED_PACKAGE: false' not in clean):
+                return False
         stamps = []
         for line in log.splitlines():
             date, sep, message = line.partition(' ')
@@ -569,7 +616,8 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
         prior = _release_attempt_package_revision(repository, run, attempt, job, token, 'portal', aggregate=True)
         if not isinstance(prior, str) or not valid_sha.fullmatch(prior) or prior == current_application_revision:
             return False
-        approved_receipt = 'legend-approved-release-' + prior + '-masterapp-portal'
+        approved_receipt = (('translation-direct-release-' + prior) if inline else
+                            ('legend-approved-release-' + prior + '-masterapp-portal'))
         artifacts = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
         records = artifacts.get('artifacts')
         if (not isinstance(records, list)
@@ -577,6 +625,8 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
             or len(records) != artifacts['total_count']
             or len([row for row in records
                     if row.get('name') == approved_receipt and row.get('expired') is False]) != 1):
+            return False
+        if inline and prior != run['head_sha']:
             return False
         if subprocess.run(['git', 'merge-base', '--is-ancestor', prior, current_application_revision],
                           check=False, capture_output=True).returncode:
