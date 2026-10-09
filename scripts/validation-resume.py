@@ -5130,9 +5130,14 @@ def trusted_component_run(repository, run, candidate):
     head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
     url = 'https://api.github.com/repos/' + repository
     approved, producer = base.get('sha', ''), run['head_sha']
-    if (base.get('ref') != TRUSTED_PR_BASE or head.get('sha') != producer or
+    if (base.get('ref') != TRUSTED_PR_BASE or not re.fullmatch('[a-f0-9]{40}', head.get('sha', '')) or
             not re.fullmatch('[a-f0-9]{40}', approved) or
             any(row.get('repo', {}).get('url') != url for row in (head, base))):
+        return False
+    # GitHub refreshes pull_requests[].head when the PR advances. The run's
+    # head_sha remains the immutable producer; require it in the reported lineage.
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', producer, head['sha']],
+                      capture_output=True, check=False).returncode:
         return False
     if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, producer],
                       capture_output=True, check=False).returncode:

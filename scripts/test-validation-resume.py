@@ -479,13 +479,19 @@ class ComponentEvidenceIntegrationTests(unittest.TestCase):
         self.run['pull_requests']=[dict(base=dict(ref=m.TRUSTED_PR_BASE,sha='0'*40,repo=dict(url=url)),
             head=dict(sha=self.producer,repo=dict(url=url)))]
         with patch.object(m,'_trusted_lineage_run',return_value=True), \
-             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)) as ancestry, \
              patch.object(m,'git_show_file',return_value='approved executor') as source:
             self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
             source.side_effect=lambda revision,path: 'candidate executor' if revision==self.producer else 'approved executor'
             self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
             source.side_effect=None
             self.run['pull_requests'][0]['head']['sha']='9'*40
+            self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            self.assertIn(['git', 'merge-base', '--is-ancestor', self.producer, '9'*40], [call.args[0] for call in ancestry.call_args_list])
+            ancestry.return_value=SimpleNamespace(returncode=1)
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            ancestry.return_value=SimpleNamespace(returncode=0)
+            self.run['pull_requests'][0]['head']['sha']='not-a-sha'
             self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
             self.run['pull_requests'][0]['head']['sha']=self.producer
             self.run['pull_requests'][0]['base']['ref']='unapproved'
