@@ -104,6 +104,74 @@ class PackageDescriptorIntegrationTests(unittest.TestCase):
             self.assertEqual(old,m.attach_package_descriptor('owner/repo',old,self.run,'placeholder'))
 
 
+class LegacyRollbackReceiptTests(unittest.TestCase):
+    def setUp(self):
+        self.revision='a'*40; self.identity='b'*64
+        self.receipt=dict(schemaVersion=1,applicationReleaseSha=self.revision,
+            target=m.RELEASE_TARGETS['portal']['releaseName'],transaction='committed-or-preserved')
+        self.run=dict(id=88,run_attempt=2,head_sha='c'*40,event='workflow_dispatch',
+            path='.github/workflows/'+m.DIRECT_RELEASE_WORKFLOW,head_branch=m.TRUSTED_PR_BASE,
+            status='completed',conclusion='success',head_repository=dict(full_name='owner/repo'))
+        self.job=dict(name='release',status='completed',conclusion='success',steps=[
+            dict(name=name,status='completed',conclusion='success') for name in (
+                'Verify every deployed target and collect all failures',
+                'Enforce complete direct deployment outcome')])
+        self.link='legend-approved-package-link-'+self.revision+'-'+self.identity
+        self.validated=dict(reusable=True,runId=77,revision=self.revision,
+            artifact='founder-diagnostics-packages-'+self.identity,packageIdentity=self.identity)
+        self.producer=self.revision
+
+    def invoke(self):
+        with patch.dict(m.os.environ,GITHUB_TOKEN='placeholder'), \
+             patch.object(m,'_artifact_rows',return_value=[dict(id=901,name='receipt',workflow_run=dict(id=88))]), \
+             patch.object(m,'api_get',return_value=self.run), \
+             patch.object(m,'_release_history_json',return_value=self.receipt), \
+             patch.object(m,'_release_history_api',return_value=dict(total_count=1,jobs=[self.job])), \
+             patch.object(m,'_release_attempt_package_revision',return_value=self.producer) as proof, \
+             patch.object(m,'_run_artifact_names',return_value={self.link}), \
+             patch.object(m,'compute_validated_package_evidence',return_value=self.validated):
+            result=m.compute_rollback_evidence('owner/repo',self.revision,'portal')
+            if result['reusable']:
+                proof.assert_called_once_with('owner/repo',self.run,2,self.job,'placeholder','portal')
+            return result
+
+    def test_original_receipt_preserves_authenticated_package_without_rebuild(self):
+        result=self.invoke()
+        self.assertTrue(result['reusable']);self.assertEqual(77,result['runId'])
+        self.assertEqual(88,result['releaseRunId']);self.assertEqual(self.identity,result['packageIdentity'])
+
+    def test_malformed_or_unversioned_legacy_receipts_cannot_authorize_reuse(self):
+        original=dict(self.receipt)
+        for delta in ({'schemaVersion':0},{'schemaVersion':True},{'applicationReleaseSha':'d'*40},
+                      {'target':'masterapp-client'},{'transaction':'uploaded'},
+                      {'targetMaterial':{}},{'extra':'unrecognized'}):
+            with self.subTest(delta=delta):
+                self.receipt=original|delta
+                with self.assertRaises(ValueError):self.invoke()
+
+    def test_skipped_cancelled_or_failed_live_proof_is_not_success(self):
+        for conclusion in ('skipped','cancelled','failure'):
+            with self.subTest(conclusion=conclusion):
+                self.job['steps'][0]['conclusion']=conclusion
+                with self.assertRaisesRegex(ValueError,'live verification'):self.invoke()
+
+    def test_original_package_producer_must_match_live_revision(self):
+        self.producer='d'*40
+        with self.assertRaisesRegex(ValueError,'package producer mismatch'):self.invoke()
+
+    def test_incomplete_or_active_release_is_not_legacy_proof(self):
+        self.job['status']='in_progress'
+        with self.assertRaisesRegex(ValueError,'successful release'):self.invoke()
+
+    def test_wrong_package_link_does_not_restore_unrelated_bytes(self):
+        self.link='legend-approved-package-link-'+'d'*40+'-'+self.identity
+        self.assertFalse(self.invoke()['reusable'])
+
+    def test_missing_validated_package_remains_unavailable(self):
+        self.validated={'reusable':False}
+        self.assertFalse(self.invoke()['reusable'])
+
+
 class RehearsedPackagePlanTests(unittest.TestCase):
     def test_reused_bundle_must_match_exact_rehearsal_before_any_build(self):
         candidate,producer='a'*40,'b'*40

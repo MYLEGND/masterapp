@@ -6051,7 +6051,37 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
                     return dict(result,reusable=True,runId=source['runId'],releaseRunId=run_id,
                         packageArtifact=source['artifact']['name'],artifactId=source['artifact']['id'],
                         packageDigest=source['sha256'],componentSource=True,reason='exact_live_target_component_receipt')
-                if receipt.get('schemaVersion') != 2 or 'targetMaterial' in receipt:
+                if receipt.get('schemaVersion') == 1:
+                    # Original target receipts predate component provenance.
+                    # Authenticate their exact format and original successful
+                    # live verification; do not restamp them as schema 2/3.
+                    if (type(receipt.get('schemaVersion')) is not int or
+                            receipt != dict(schemaVersion=1, applicationReleaseSha=revision,
+                                            target=release_name, transaction='committed-or-preserved')):
+                        raise ValueError('Legacy rollback target receipt binding mismatch')
+                    attempt = run.get('run_attempt')
+                    if type(attempt) is not int or attempt < 1 or run.get('event') != 'workflow_dispatch':
+                        raise ValueError('Legacy rollback release attempt unproven')
+                    inventory = _release_history_api(repository,
+                        f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+                    jobs = inventory.get('jobs')
+                    if (not isinstance(jobs, list) or type(inventory.get('total_count')) is not int
+                            or inventory['total_count'] != len(jobs)):
+                        raise EvidenceLookupUnavailable('Legacy rollback job inventory incomplete')
+                    owners = [job for job in jobs if job.get('name') == 'release']
+                    if (len(owners) != 1 or owners[0].get('status') != 'completed'
+                            or owners[0].get('conclusion') != 'success'):
+                        raise ValueError('Legacy rollback successful release unproven')
+                    owner = owners[0]
+                    for name in ('Verify every deployed target and collect all failures',
+                                 'Enforce complete direct deployment outcome'):
+                        steps = [step for step in owner.get('steps', []) if step.get('name') == name]
+                        if (len(steps) != 1 or steps[0].get('status') != 'completed'
+                                or steps[0].get('conclusion') != 'success'):
+                            raise ValueError('Legacy rollback live verification unproven')
+                    if _release_attempt_package_revision(repository, run, attempt, owner, token, app) != revision:
+                        raise ValueError('Legacy rollback original package producer mismatch')
+                elif receipt.get('schemaVersion') != 2 or 'targetMaterial' in receipt:
                     raise ValueError('Historical target receipt schema unsupported')
             artifact_names = _run_artifact_names(repository, run_id, token)
             link_prefix = f"legend-approved-package-link-{revision}-"
