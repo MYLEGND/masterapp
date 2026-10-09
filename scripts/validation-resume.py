@@ -1848,6 +1848,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
 # Application identity excludes release/test/control-only edits. This authority is
 # shared by release baseline resolution and package-canary preservation.
 RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "Docs/releases/recovery-correction-20261008.md",
     "AGENTS.md",
     ".github/CODEOWNERS",
     ".github/copilot-instructions.md",

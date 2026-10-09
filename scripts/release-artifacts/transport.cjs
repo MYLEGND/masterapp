@@ -7,7 +7,7 @@ const {DefaultArtifactClient} = require('@actions/artifact');
 
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
-async function publish(client, name, record) {
+async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
   const admission = /^legend-release-admission-[a-f0-9]{64}$/.test(name);
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
@@ -128,9 +128,13 @@ async function publish(client, name, record) {
           throw new Error('Artifact upload did not return durable identity');
         artifactId = result.id;
       } catch {
-        // The upload may have committed. Reconcile once by exact immutable
+        // The upload may have committed. Reconcile with bounded read-only observation by exact immutable
         // name and bytes; absence or uncertainty never permits another upload.
-        artifactId = await existing();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt) await sleep(attempt * 1000);
+          artifactId = await existing();
+          if (artifactId !== null) break;
+        }
         if (artifactId === null) throw new Error('Artifact upload outcome unresolved');
       }
     }

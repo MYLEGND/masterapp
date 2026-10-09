@@ -169,7 +169,30 @@ test('ambiguous identity and unavailable inventory authorize no upload', async (
 test('unknown upload outcome cannot authorize a retry or success', async () => {
   const client = durableClient();
   client.uploadArtifact = async () => { client.state.uploads++; throw new Error('Unknown'); };
-  await assert.rejects(publish(client, name, record), /outcome unresolved/);
+  await assert.rejects(publish(client, name, record, {sleep: async () => {}}), /outcome unresolved/);
   assert.equal(client.state.uploads, 1);
   assert.equal(client.state.downloads, 0);
+});
+
+test('overlapping publishers converge through provider immutable-name conflict', async () => {
+  const client = durableClient();
+  let accepted = 0;
+  let arrivals = 0;
+  let open;
+  const both = new Promise(resolve => { open = resolve; });
+  const original = client.uploadArtifact;
+  client.uploadArtifact = async (...args) => {
+    arrivals++;
+    if (arrivals === 2) open();
+    await both;
+    // Model the provider's supported create-only artifact-name constraint.
+    if (accepted) throw new Error('409 immutable artifact already exists');
+    accepted++;
+    return original(...args);
+  };
+  const results = await Promise.all([publish(client, name, record), publish(client, name, record)]);
+  assert.deepEqual(results, [{artifactId: 45}, {artifactId: 45}]);
+  assert.equal(arrivals, 2);
+  assert.equal(accepted, 1);
+  assert.equal(client.state.uploads, 1);
 });

@@ -327,6 +327,21 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         )
         self.assertIn("no longer read-only", result)
 
+    def test_guard_rejects_unapproved_diagnostic_credential_execution(self):
+        for filename, removed in (
+            ('deployment-diagnostics.yml', "github.ref == 'refs/heads/legend/approved-changes'"),
+            ('legend-production-readonly-diagnostic.yml', "github.ref == 'refs/heads/legend/approved-changes'"),
+            ('legend-production-readonly-diagnostic.yml', 'git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes'),
+        ):
+            with self.subTest(filename=filename, removed=removed):
+                class Drift(Api):
+                    def text(self, revision, path):
+                        value = super().text(revision, path)
+                        return value.replace(removed, 'true') if path == '.github/workflows/' + filename else value
+                result = m.candidate_control_plane_integrity(
+                    Drift(), {"head": {"sha": "b" * 40}}, ['.github/workflows/' + filename])
+                self.assertIn('unapproved', result)
+
     def test_guard_rejects_retired_deployment_bypass_reintroduction(self):
         result = m.candidate_control_plane_integrity(
             Api(), {"head": {"sha": "b" * 40}}, ["deploy-portal.sh"]

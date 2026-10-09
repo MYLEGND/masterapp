@@ -905,6 +905,15 @@ def candidate_control_plane_integrity(api, pr, names):
         if any(token in source[label] for token in diagnostic_forbidden):
             return f'Candidate {label} workflow is no longer read-only'
 
+    for label, job in (('deployment_diagnostics', 'inspect'),
+                       ('production_readonly', 'production-readonly-diagnostic')):
+        blocks = VALIDATION_AUTHORITY._job_blocks(source[label])
+        body = blocks.get(job, '')
+        if "github.ref == 'refs/heads/legend/approved-changes'" not in body:
+            return f'Candidate {label} allows unapproved production credential execution'
+    if 'git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes' not in source['production_readonly']:
+        return 'Candidate production_readonly executes unapproved candidate code with production credentials'
+
     lifecycle_workflow = source['lifecycle_workflow']
     if not all(token in lifecycle_workflow for token in (
         'pull_request_target:',
