@@ -216,6 +216,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ steps.probe.outputs.artifactId }}
+          merge-multiple: true
           run-id: ${{ steps.probe.outputs.runId }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/migration-probe

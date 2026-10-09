@@ -667,6 +667,19 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Reconcile complete immutable release transaction', workflow)
 
 
+    def test_single_authenticated_probe_extracts_at_verified_root(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        download=workflow.split('      - name: Reuse immutable migration probe without rebuilding\n',1)[1].split('      - name:',1)[0]
+        verify=workflow.split('      - name: Verify retained migration probe identity and digest\n',1)[1].split('      - uses:',1)[0]
+        # ID-based download defaults to an artifact-name child directory even
+        # for one ID. The verifier/observer consume the exact root below.
+        self.assertIn('artifact-ids: ${{ steps.probe.outputs.artifactId }}', download)
+        self.assertIn('run-id: ${{ steps.probe.outputs.runId }}', download)
+        self.assertIn('merge-multiple: true', download)
+        self.assertIn('path: ${{ runner.temp }}/migration-probe', download)
+        self.assertIn('--directory "$RUNNER_TEMP/migration-probe"', verify)
+        self.assertNotIn('pattern:', download)
+
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
