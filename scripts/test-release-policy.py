@@ -167,12 +167,15 @@ class ReleaseScopeSelection(unittest.TestCase):
         workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         block = workflow.split('  preserve-rollback:', 1)[1].split('  release:', 1)[0]
         steps = block.split('      - ')[1:]
-        self.assertGreaterEqual(len(steps), 7)
+        self.assertEqual(4, len(steps))
+        self.assertIn('scripts/release-package.py restore-rollback', block)
+        self.assertNotIn('dotnet publish', block)
+        self.assertNotIn('npm ci', block)
         for step in steps:
             if 'Record rollback not required' in step:
-                self.assertIn('matrix.revision == needs.discover-live.outputs.application_release_sha', step)
+                self.assertIn('matrix.revision == matrix.desiredProducerRevision', step)
             else:
-                self.assertIn('matrix.revision != needs.discover-live.outputs.application_release_sha',
+                self.assertIn('matrix.revision != matrix.desiredProducerRevision',
                               step.split('        run:', 1)[0])
         download = workflow.split('      - name: Load preserved rollback packages for transactional publication', 1)[1].split('      - name:', 1)[0]
         self.assertIn("needs.discover-live.outputs.rollback_required == 'true'", download)
@@ -670,8 +673,13 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         authority=(ROOT.parent / 'scripts/validation-resume.py').read_text()
         self.assertIn('f"founder-diagnostics-packages-{package_identity}"', authority)
         self.assertNotIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
-        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/current-validation-resume.py"', workflow)
-        self.assertIn('python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package', workflow)
+        self.assertIn('path: .legend-evidence-authority', workflow)
+        evidence_checkout=workflow.split('      - name: Checkout current approved evidence authority\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('ref: ${{ github.sha }}', evidence_checkout)
+        self.assertIn('persist-credentials: false', evidence_checkout)
+        self.assertIn('python3 .legend-evidence-authority/scripts/validation-resume.py validated-package', workflow)
+        self.assertIn('artifact-ids: ${{ steps.reusevalidated.outputs.artifact_id }}', workflow)
+        self.assertIn('--source-evidence "$RUNNER_TEMP/validated-package-evidence.json"', workflow)
         self.assertIn('rollback-evidence', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('scripts/validation-resume.py verify-live', workflow)
@@ -691,8 +699,10 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}', workflow)
         self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
         self.assertIn('Reuse exact retained live package when available', workflow)
-        self.assertIn('Load current canonical release authority without changing rollback source', workflow)
-        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', workflow)
+        self.assertIn('Checkout canonical rollback package authority', workflow)
+        self.assertIn('scripts/release-package.py restore-rollback', workflow)
+        self.assertNotIn('dotnet publish', workflow)
+        self.assertNotIn('npm ci --prefix Legend-Website', workflow)
         self.assertNotIn('EXACT_LIVE', workflow)
         self.assertNotIn("mode='exact-live-noop'", workflow)
         self.assertIn('retention-days: 30', workflow)
@@ -747,7 +757,11 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("git diff --name-only", package_plan)
         self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
-        self.assertIn('component: [portal, client, protect, parfait, website, migration]', workflow)
+        self.assertIn('component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}', workflow)
+        self.assertIn("if: needs.validated-release-package-plan.outputs.components_needed == 'true'", workflow)
+        self.assertIn('scripts/validation-resume.py component-sources', workflow)
+        self.assertIn('artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}', workflow)
+        self.assertIn('Record immutable component source', workflow)
         self.assertIn('scripts/release-package.py build-component', workflow)
         self.assertIn('scripts/release-package.py assemble', workflow)
         self.assertIn('merge-multiple: true', workflow)
