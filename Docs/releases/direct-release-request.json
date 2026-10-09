@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
   "purpose": "Complete the authorized five-target publication after independently verified migration completion. Reconcile current database history and physical schema without replaying completed migrations; use exact validated immutable components, corrected canonical source binding and target frontier, durable receipts, and live acceptance. Preserve all compatible work and stop at unresolved mutation ambiguity.",
-  "requestId": "founder-pr551-verified-migration-publication-legacy-rollback-20261009",
+  "requestId": "founder-pr551-installed-policy-publication-20261009",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
