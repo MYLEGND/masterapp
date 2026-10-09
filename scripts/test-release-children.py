@@ -2065,6 +2065,19 @@ class MigrationBoundaryResolutionTests(unittest.TestCase):
             migration.production_readiness(dict(ready=False,databaseIdentity='c'*64,schemaIdentity='d'*64,baselineIdentity='e'*64))
 
 
+class MigrationProbeDeadlineTests(unittest.TestCase):
+    def test_inner_read_retries_cannot_restart_outer_deadline(self):
+        from types import SimpleNamespace
+        failure=SimpleNamespace(returncode=1,stderr='LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ',stdout='')
+        with patch.object(migration.time,'monotonic',side_effect=[10,11,13,13,15]), \
+             patch.object(migration.time,'sleep') as sleep, \
+             patch.object(migration.subprocess,'run',return_value=failure) as run:
+            with self.assertRaisesRegex(RuntimeError,'deadline exceeded'):
+                migration.observe(None,'synthetic',activity=True,deadline=15)
+        self.assertEqual([5,2],[call.kwargs['timeout'] for call in run.call_args_list])
+        self.assertEqual([2,2],[call.args[0] for call in sleep.call_args_list])
+
+
 class MigrationProductionObservationTests(unittest.TestCase):
     def setUp(self):
         import os, contextlib
@@ -2111,6 +2124,40 @@ class MigrationProductionObservationTests(unittest.TestCase):
         with patch.object(migration,'observe',side_effect=RuntimeError('activity unresolved')) as observer:
             with self.assertRaises(RuntimeError): migration.production_observation(None,None)
             self.assertEqual(1,observer.call_count)
+
+    def test_busy_database_retries_only_observation_and_restarts_pair(self):
+        active=RuntimeError(migration.PROBE_TERMINAL_REASONS['MUTATION_ACTIVITY_ACTIVE'])
+        sleeps=[]
+        with patch.object(migration,'observe',side_effect=[dict(self.before),active,
+                dict(self.before),dict(self.before)]) as observer:
+            result=migration.production_observation(None,None,clock=lambda:100,
+                sleep=sleeps.append,jitter=lambda low,high:0)
+        self.assertEqual(['settle-workers-and-history'],self.events)
+        self.assertEqual(4,observer.call_count)
+        self.assertEqual([1],sleeps)
+        self.assertEqual({190}, {call.kwargs['deadline'] for call in observer.call_args_list})
+        self.assertEqual('settled',result['mutationActivity'])
+
+    def test_sustained_user_activity_stops_at_retry_budget(self):
+        active=RuntimeError(migration.PROBE_TERMINAL_REASONS['MUTATION_ACTIVITY_ACTIVE'])
+        sleeps=[]
+        with patch.object(migration,'observe',side_effect=active) as observer:
+            with self.assertRaisesRegex(RuntimeError,'activity remains active'):
+                migration.production_observation(None,None,clock=lambda:100,
+                    sleep=sleeps.append,jitter=lambda low,high:0)
+        self.assertEqual(6,observer.call_count)
+        self.assertEqual([1,2,4,8,16],sleeps)
+        self.assertEqual(['settle-workers-and-history'],self.events)
+
+    def test_activity_retry_deadline_is_shared_and_not_reset(self):
+        active=RuntimeError(migration.PROBE_TERMINAL_REASONS['MUTATION_ACTIVITY_ACTIVE'])
+        with patch.object(migration,'observe',side_effect=active) as observer:
+            sleep=unittest.mock.Mock()
+            with self.assertRaisesRegex(RuntimeError,'activity remains active'):
+                migration.production_observation(None,None,clock=iter([100,191]).__next__,
+                    sleep=sleep,jitter=lambda low,high:0)
+        self.assertEqual(1,observer.call_count)
+        sleep.assert_not_called()
 
 
 class MigrationObservationReceiptTests(unittest.TestCase):
