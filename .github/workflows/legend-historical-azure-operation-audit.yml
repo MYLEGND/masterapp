@@ -1,0 +1,172 @@
+name: LEGEND historical Azure operation audit (read only)
+
+# One-shot audit starts on its own approved merge. No publication, lease changes,
+# database access, reruns, or Kudu POST operations are permitted.
+on:
+  push:
+    branches: [legend/approved-changes]
+    paths:
+      - .github/workflows/legend-historical-azure-operation-audit.yml
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: legend-historical-azure-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/legend/approved-changes' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: Production
+    steps:
+      - name: Checkout protected approved execution authority
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Authenticate existing read-only Azure observation
+        uses: azure/login@v2
+        with:
+          client-id: \${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: \${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: \${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Audit original unresolved operation intents against live Azure
+        shell: bash
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, hashlib, json, os, pathlib, re, subprocess, tempfile, urllib.request
+          sources = (
+              (37527468541, 'portal', '194cb2f3532b02b75a24b0c185efe0a2ba0235ca062f3fbb11a8c9f347e69aba'),
+              (37527468541, 'protect', '4ee58fe577823839bd8a0d9e256700f22f614ae4b7131979e64fc2025627a823'),
+              (37960925070, 'protect', 'f04fba50a2a63438ff858b728a9335a0c080e2a14635f398af24ac5b3a4eaed6'),
+          )
+          endpoints = {
+              'portal': ('masterapp-portal', 'https://portal.mylegnd.com/api/runtime-provenance'),
+              'protect': ('masterapp-protect', 'https://masterapp-protect.azurewebsites.net/api/runtime-provenance'),
+          }
+          def command(args):
+              p = subprocess.run(args, text=True, capture_output=True, timeout=65, check=False)
+              if p.returncode:
+                  raise RuntimeError('READ_ONLY_PROVIDER_QUERY_FAILED')
+              return p.stdout
+          def observed(url):
+              try:
+                  with urllib.request.urlopen(
+                      urllib.request.Request(url + '?audit=' + os.environ['GITHUB_RUN_ID'],
+                                             headers={'Cache-Control':'no-cache'}), timeout=15
+                  ) as response:
+                      if response.status != 200 or response.url.split('?')[0] != url:
+                          return None
+                      data = json.loads(response.read(8192))
+                      value = data.get('sourceRevision')
+                      return value if isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) else None
+              except (OSError, ValueError, KeyError):
+                  return None
+          target_observations = {}
+          for key, (app, url) in endpoints.items():
+              try:
+                  rows = json.loads(command(['az','webapp','log','deployment','list',
+                      '-g','masterapp-rg','-n',app,'--only-show-errors','-o','json']))
+                  if not isinstance(rows,list) or any(
+                      not isinstance(row,dict) or not isinstance(row.get('id'),str)
+                      or type(row.get('status')) is not int or row['status'] not in range(5)
+                      for row in rows):
+                      raise RuntimeError('UNRECOGNIZED_DEPLOYMENT_LIST')
+                  target_observations[key] = {
+                      'readable': True, 'historyWindowCount': len(rows),
+                      'activeDeploymentCount': sum(row['status'] in (0,1,2) for row in rows),
+                      'deployments': [{'id':row['id'],'status':row['status']} for row in rows],
+                      'observedRevision': observed(url),
+                  }
+              except (RuntimeError, ValueError, subprocess.TimeoutExpired):
+                  target_observations[key] = {'readable': False, 'error':'AZURE_READ_UNPROVEN'}
+          findings = []
+          with tempfile.TemporaryDirectory(prefix='legend-readonly-intent-') as work:
+              for run, target, operation in sources:
+                  row = dict(producingRun=run,target=target,operationId=operation)
+                  name = 'legend-release-operation-intent-' + operation
+                  dest = pathlib.Path(work) / operation
+                  dest.mkdir()
+                  try:
+                      command(['gh','run','download',str(run),'--repo','MYLEGND/masterapp',
+                          '--name',name,'--dir',str(dest)])
+                      intent = json.loads((dest/'operation.json').read_text())
+                      identity = {k:intent.get(k) for k in
+                          ('target','applicationRevision','packageDigest')}
+                      expected = hashlib.sha256(json.dumps(identity,sort_keys=True,
+                          separators=(',',':')).encode()).hexdigest()
+                      ids = intent.get('baselineDeploymentIds')
+                      if (intent.get('schemaVersion') not in (1,2)
+                          or intent.get('phase') != 'intent'
+                          or intent.get('producingRun') != run
+                          or intent.get('target') != target
+                          or intent.get('operationId') != operation
+                          or expected != operation
+                          or not isinstance(ids,list)
+                          or len(ids) > 1000 or len(set(ids)) != len(ids)
+                          or any(not isinstance(v,str) for v in ids)):
+                          raise RuntimeError('AUTHENTICATED_INTENT_INVALID')
+                      row['originalRevision'] = intent['applicationRevision']
+                      row['originalBaseline'] = intent.get('baseline')
+                      azure = target_observations[target]
+                      if not azure['readable']:
+                          row['classification'] = 'AZURE_STATUS_UNAVAILABLE'
+                      else:
+                          after = [d for d in azure['deployments'] if d['id'] not in ids]
+                          row.update(
+                              visiblePostBaselineDeployments=after,
+                              visiblePostBaselineCount=len(after),
+                              activeDeploymentCount=azure['activeDeploymentCount'],
+                              liveRevision=azure['observedRevision'])
+                          # A rolling provider history or subsequent deployment
+                          # cannot itself prove this original upload was not entered.
+                          if azure['activeDeploymentCount']:
+                              row['classification'] = 'ACTIVE_PROVIDER_OPERATION_BLOCKS'
+                          elif len(after)==1 and after[0]['status'] in (3,4):
+                              row['classification'] = 'SINGLE_TERMINAL_POST_BASELINE_OBSERVED_NOT_RECEIPT'
+                          else:
+                              row['classification'] = 'HISTORICAL_OPERATION_OUTCOME_UNPROVEN'
+                  except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired):
+                      row['classification'] = 'ORIGINAL_INTENT_READBACK_UNPROVEN'
+                  findings.append(row)
+          payload = {
+              'schemaVersion':1,
+              'kind':'LEGEND_READ_ONLY_AZURE_OPERATION_AUDIT',
+              'producingRun':int(os.environ['GITHUB_RUN_ID']),
+              'approvedExecutionSha':os.environ['GITHUB_SHA'],
+              'observedUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'sideEffects':'none',
+              'provider':target_observations,
+              'originalOperations':findings,
+              'automaticLeaseDischargeAuthorized':False,
+              'automaticDeploymentAuthorized':False,
+          }
+          path = pathlib.Path(os.environ['RUNNER_TEMP'])/'legend-azure-operations-readonly.json'
+          path.write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          for row in findings:
+              print(f"run={row['producingRun']} target={row['target']} classification={row['classification']}")
+          if any(not item['readable'] for item in target_observations.values()):
+              raise SystemExit('Azure status incomplete; no resource lease may be discharged')
+          if any(row['classification']=='ORIGINAL_INTENT_READBACK_UNPROVEN' for row in findings):
+              raise SystemExit('Original intent readback incomplete; no resource lease may be discharged')
+          PY
+
+      - name: Retain bounded observation without credentials
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-historical-azure-audit-\${{ github.run_id }}
+          path: \${{ runner.temp }}/legend-azure-operations-readonly.json
+          retention-days: 14
+          if-no-files-found: error
