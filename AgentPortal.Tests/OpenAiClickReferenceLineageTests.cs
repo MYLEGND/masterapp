@@ -177,16 +177,17 @@ public sealed class OpenAiClickReferenceLineageTests
         })
         {
             var source = File.ReadAllText(Path.Combine(root, relative));
-            Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
-            Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
-            Assert.Contains("oppref: lead.Oppref", source, StringComparison.Ordinal);
-            Assert.Contains("UnifiedEventContextBuilder.Build(", source, StringComparison.Ordinal);
-            Assert.Contains("httpContext: HttpContext", source, StringComparison.Ordinal);
-            Assert.Contains("UnifiedEventContextBuilder.ResolveOpenAiBrowserReference(HttpContext?.Request)", source, StringComparison.Ordinal);
+            Assert.Contains("UnifiedEventContextBuilder.BuildWebsiteLead(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Request.Cookies[\"__obref\"]", source, StringComparison.Ordinal);
         }
 
         var builder = File.ReadAllText(Path.Combine(root, "Infrastructure", "Analytics", "UnifiedEventContextBuilder.cs"));
+        Assert.Contains("public static UnifiedEventContext BuildWebsiteLead(", builder, StringComparison.Ordinal);
+        Assert.Contains("utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmTerm\")", builder, StringComparison.Ordinal);
+        Assert.Contains("utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, \"UtmContent\")", builder, StringComparison.Ordinal);
+        Assert.Contains("oppref: lead.Oppref", builder, StringComparison.Ordinal);
         Assert.Contains("ResolveOpenAiBrowserReference(HttpRequest? request", builder, StringComparison.Ordinal);
         Assert.Contains("MetaLeadTrackingWorkflow.ResolveCookieValue(request, \"__obref\")", builder, StringComparison.Ordinal);
         Assert.Contains("CanUseOpenAiBrowserReference(request)", builder, StringComparison.Ordinal);

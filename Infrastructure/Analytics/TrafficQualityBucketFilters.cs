@@ -1,12 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 using Domain.Entities;
 using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
 
+/// <summary>One classification policy for reporting, trust summaries and marketing eligibility.
+/// Scores describe observed behavior, never verified identity. Attribution and event names add no confidence.</summary>
 public static class TrafficQualityBucketFilters
 {
     public const string RealHumanTrafficClientValue = "real_human_traffic";
@@ -17,775 +16,143 @@ public static class TrafficQualityBucketFilters
     public const string InternalQaClientValue = "internal_qa";
     public const string AllTrafficClientValue = "all_traffic";
 
-    private static readonly string[] StrongHumanEventTypes =
-    [
-        "page_engaged_15s",
-        "page_engaged_30s",
-        "page_engaged_60s",
-        "scroll_depth_50",
-        "scroll_depth_75",
-        "scroll_depth_90",
-        "scroll_depth_100",
-        "lead_form_submit_success",
-        "website_lead_submitted",
-        "lead_persisted",
-        "appointment_booked",
-        "appointment_completed",
-        "life_step2_submit_success",
-        "results_contact_submit",
-        "life_contact_first_submit_success",
-        "life_contact_first_complete"
-    ];
+    private static readonly Expression<Func<AnalyticsEvent, bool>> Internal = e => e.IsInternal ||
+        (e.Environment != null && (e.Environment.ToLower().StartsWith("dev") || e.Environment.ToLower().StartsWith("stag") ||
+        e.Environment.ToLower().StartsWith("preview") || e.Environment.ToLower().StartsWith("sandbox") ||
+        e.Environment.ToLower().StartsWith("qa") || e.Environment.ToLower().StartsWith("test") || e.Environment.ToLower().StartsWith("local"))) ||
+        (e.Host != null && (e.Host.ToLower().Contains("localhost") || e.Host.StartsWith("127.0.0.1") || e.Host.StartsWith("::1") || e.Host.StartsWith("[::1]")));
+    private static readonly Expression<Func<AnalyticsEvent, bool>> Automated = e => e.WebDriver == true || e.IsHeadless == true ||
+        (e.UserAgent ?? "").ToLower().Contains("bot") || (e.UserAgent ?? "").ToLower().Contains("crawler") ||
+        (e.UserAgent ?? "").ToLower().Contains("spider") || (e.UserAgent ?? "").ToLower().Contains("headless") ||
+        (e.UserAgent ?? "").ToLower().Contains("selenium") || (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
+        (e.UserAgent ?? "").ToLower().Contains("playwright") || (e.UserAgent ?? "").ToLower().Contains("curl") ||
+        (e.UserAgent ?? "").ToLower().Contains("wget") || (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
+        (e.UserAgent ?? "").ToLower().Contains("httpclient");
+    private static readonly Expression<Func<AnalyticsEvent, bool>> Anomalous = e =>
+        e.ScrollPercent < 0 || e.ScrollPercent > 100 || e.HumanInteractionCount < 0 || e.MouseMoveCount < 0 ||
+        e.EngagedMilliseconds < 0 || e.EngagedMilliseconds > e.DwellMilliseconds;
+    private static readonly Expression<Func<AnalyticsEvent, int>> Score = e =>
+        e.UserAgent == null || e.UserAgent == "" ? 0 :
+        ((e.HumanInteractionCount ?? 0) >= 3 ? 45 : (e.HumanInteractionCount ?? 0) >= 1 ? 35 : 0) +
+        ((e.EngagedMilliseconds ?? 0) >= 15000 ? 30 : (e.EngagedMilliseconds ?? 0) >= 5000 ? 20 : 0) +
+        ((e.ScrollPercent ?? 0) >= 50 ? 20 : (e.ScrollPercent ?? 0) >= 25 ? 15 : 0) +
+        ((e.MouseMoveCount ?? 0) >= 5 ? 5 : 0);
+    private static readonly Func<AnalyticsEvent, int> ScoreValue = Score.Compile();
+    public static int HumanScore(AnalyticsEvent e) => ScoreValue(e);
 
-    private static readonly string[] ModerateHumanEventTypes =
-    [
-        "page_engaged_5s",
-        "page_engaged_10s",
-        "scroll_depth_25",
-        "cta_click",
-        "quote_cta_click",
-        "cta_clicked",
-        "quote_entry_engaged",
-        "quote_step_complete",
-        "form_start",
-        "lead_form_start",
-        "first_question_answered",
-        "contact_step_view",
-        "quote_contact_step_view",
-        "life_contact_first_start"
-    ];
-
-    // Shared analytics buckets should treat only explicit dev/test-like environment
-    // labels as non-production. App/site names such as "ParfaitApp" are runtime
-    // identifiers, not traffic-quality signals, and should not be auto-classified
-    // as internal QA.
-
-    public static List<WebsiteLead> ApplyLeadBucketMembershipInMemory(
-        IEnumerable<WebsiteLead> leads,
-        IEnumerable<AnalyticsEvent> events,
-        TrafficQualityMode mode)
+    private sealed class Replace(ParameterExpression from, Expression to) : ExpressionVisitor
     {
-        var leadList = leads.ToList();
-        if (mode == TrafficQualityMode.AllTraffic || leadList.Count == 0)
-            return leadList;
-
-        var eventList = events.ToList();
-        var selectedEvents = ApplyEventBucketMembershipInMemory(eventList, mode);
-
-        var allSessionIds = eventList
-            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-            .Select(e => e.SessionId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var allVisitorIds = eventList
-            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
-            .Select(e => e.VisitorId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var selectedSessionIds = selectedEvents
-            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-            .Select(e => e.SessionId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var selectedVisitorIds = selectedEvents
-            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
-            .Select(e => e.VisitorId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var standaloneLeadPredicate = BuildLeadPredicate(mode).Compile();
-
-        return leadList.Where(lead =>
-        {
-            var sessionId = lead.SessionId?.Trim();
-            if (!string.IsNullOrWhiteSpace(sessionId) && allSessionIds.Contains(sessionId))
-                return selectedSessionIds.Contains(sessionId);
-
-            var visitorId = lead.VisitorId?.Trim();
-            if (!string.IsNullOrWhiteSpace(visitorId) && allVisitorIds.Contains(visitorId))
-                return selectedVisitorIds.Contains(visitorId);
-
-            // Server-originated leads can exist without a matching browser event.
-            // In that case only, classify from the lead's own authoritative context.
-            return standaloneLeadPredicate(lead);
-        }).ToList();
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : base.VisitParameter(node);
     }
-
-    private sealed record InMemoryEventBucketMembership(
-        HashSet<string> SessionIds,
-        HashSet<string> VisitorIds,
-        HashSet<Guid> EventIds);
-
     public static Expression<Func<AnalyticsEvent, bool>> BuildEventPredicate(TrafficQualityMode mode)
     {
-        return mode switch
+        var p = Expression.Parameter(typeof(AnalyticsEvent), "e");
+        Expression Bind(LambdaExpression x) => new Replace(x.Parameters[0], p).Visit(x.Body)!;
+        var internalTraffic = Bind(Internal); var bot = Bind(Automated); var score = Bind(Score);
+        var external = Expression.AndAlso(Expression.Not(internalTraffic), Expression.Not(bot));
+        var suspicious = Bind(Anomalous);
+        var valid = Expression.AndAlso(external, Expression.Not(suspicious));
+        var human = Expression.GreaterThanOrEqual(score, Expression.Constant(90));
+        var likely = Expression.AndAlso(Expression.GreaterThanOrEqual(score, Expression.Constant(60)), Expression.Not(human));
+        Expression body = mode switch
         {
-            TrafficQualityMode.AllTraffic => e => true,
-
-            TrafficQualityMode.InternalQa => e =>
-                e.IsInternal ||
-                (e.Environment != null &&
-                 e.Environment != "" &&
-                 (e.Environment.ToLower().StartsWith("dev") ||
-                  e.Environment.ToLower().StartsWith("stag") ||
-                  e.Environment.ToLower().StartsWith("preview") ||
-                  e.Environment.ToLower().StartsWith("sandbox") ||
-                  e.Environment.ToLower().StartsWith("qa") ||
-                  e.Environment.ToLower().StartsWith("test") ||
-                  e.Environment.ToLower().StartsWith("local"))) ||
-                (e.Host != null &&
-                 e.Host != "" &&
-                 (e.Host.ToLower().Contains("localhost") ||
-                  e.Host.StartsWith("127.0.0.1") ||
-                  e.Host.StartsWith("::1") ||
-                  e.Host.StartsWith("[::1]"))),
-
-            TrafficQualityMode.LikelyBotsAutomation => e =>
-                !(e.IsInternal ||
-                  (e.Environment != null &&
-                   e.Environment != "" &&
-                   (e.Environment.ToLower().StartsWith("dev") ||
-                    e.Environment.ToLower().StartsWith("stag") ||
-                    e.Environment.ToLower().StartsWith("preview") ||
-                    e.Environment.ToLower().StartsWith("sandbox") ||
-                    e.Environment.ToLower().StartsWith("qa") ||
-                    e.Environment.ToLower().StartsWith("test") ||
-                    e.Environment.ToLower().StartsWith("local"))) ||
-                  (e.Host != null &&
-                   e.Host != "" &&
-                   (e.Host.ToLower().Contains("localhost") ||
-                    e.Host.StartsWith("127.0.0.1") ||
-                    e.Host.StartsWith("::1") ||
-                    e.Host.StartsWith("[::1]")))) &&
-                (e.WebDriver == true ||
-                 e.IsHeadless == true ||
-                 (e.UserAgent ?? "").ToLower().Contains("bot") ||
-                 (e.UserAgent ?? "").ToLower().Contains("crawler") ||
-                 (e.UserAgent ?? "").ToLower().Contains("spider") ||
-                 (e.UserAgent ?? "").ToLower().Contains("headless") ||
-                 (e.UserAgent ?? "").ToLower().Contains("selenium") ||
-                 (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
-                 (e.UserAgent ?? "").ToLower().Contains("playwright") ||
-                 (e.UserAgent ?? "").ToLower().Contains("curl") ||
-                 (e.UserAgent ?? "").ToLower().Contains("wget") ||
-                 (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
-                 (e.UserAgent ?? "").ToLower().Contains("httpclient")),
-
-            TrafficQualityMode.SuspiciousActivity => e =>
-                !(e.IsInternal ||
-                  (e.Environment != null &&
-                   e.Environment != "" &&
-                   (e.Environment.ToLower().StartsWith("dev") ||
-                    e.Environment.ToLower().StartsWith("stag") ||
-                    e.Environment.ToLower().StartsWith("preview") ||
-                    e.Environment.ToLower().StartsWith("sandbox") ||
-                    e.Environment.ToLower().StartsWith("qa") ||
-                    e.Environment.ToLower().StartsWith("test") ||
-                    e.Environment.ToLower().StartsWith("local"))) ||
-                  (e.Host != null &&
-                   e.Host != "" &&
-                   (e.Host.ToLower().Contains("localhost") ||
-                    e.Host.StartsWith("127.0.0.1") ||
-                    e.Host.StartsWith("::1") ||
-                    e.Host.StartsWith("[::1]")))) &&
-                !(e.WebDriver == true ||
-                  e.IsHeadless == true ||
-                  (e.UserAgent ?? "").ToLower().Contains("bot") ||
-                  (e.UserAgent ?? "").ToLower().Contains("crawler") ||
-                  (e.UserAgent ?? "").ToLower().Contains("spider") ||
-                  (e.UserAgent ?? "").ToLower().Contains("headless") ||
-                  (e.UserAgent ?? "").ToLower().Contains("selenium") ||
-                  (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (e.UserAgent ?? "").ToLower().Contains("playwright") ||
-                  (e.UserAgent ?? "").ToLower().Contains("curl") ||
-                  (e.UserAgent ?? "").ToLower().Contains("wget") ||
-                  (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (e.UserAgent ?? "").ToLower().Contains("httpclient")) &&
-                (e.IsBounceCandidate == true || e.IsExitPage == true) &&
-                (e.EngagedMilliseconds == null || e.EngagedMilliseconds < 1000) &&
-                (e.DwellMilliseconds == null || e.DwellMilliseconds < 5000) &&
-                (e.ScrollPercent == null || e.ScrollPercent < 15) &&
-                (e.HumanInteractionCount == null || e.HumanInteractionCount <= 0) &&
-                (e.MouseMoveCount == null || e.MouseMoveCount < 2),
-
-            TrafficQualityMode.RealHumanTraffic => e =>
-                !(e.IsInternal ||
-                  (e.Environment != null &&
-                   e.Environment != "" &&
-                   (e.Environment.ToLower().StartsWith("dev") ||
-                    e.Environment.ToLower().StartsWith("stag") ||
-                    e.Environment.ToLower().StartsWith("preview") ||
-                    e.Environment.ToLower().StartsWith("sandbox") ||
-                    e.Environment.ToLower().StartsWith("qa") ||
-                    e.Environment.ToLower().StartsWith("test") ||
-                    e.Environment.ToLower().StartsWith("local"))) ||
-                  (e.Host != null &&
-                   e.Host != "" &&
-                   (e.Host.ToLower().Contains("localhost") ||
-                    e.Host.StartsWith("127.0.0.1") ||
-                    e.Host.StartsWith("::1") ||
-                    e.Host.StartsWith("[::1]")))) &&
-                !(e.WebDriver == true ||
-                  e.IsHeadless == true ||
-                  (e.UserAgent ?? "").ToLower().Contains("bot") ||
-                  (e.UserAgent ?? "").ToLower().Contains("crawler") ||
-                  (e.UserAgent ?? "").ToLower().Contains("spider") ||
-                  (e.UserAgent ?? "").ToLower().Contains("headless") ||
-                  (e.UserAgent ?? "").ToLower().Contains("selenium") ||
-                  (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (e.UserAgent ?? "").ToLower().Contains("playwright") ||
-                  (e.UserAgent ?? "").ToLower().Contains("curl") ||
-                  (e.UserAgent ?? "").ToLower().Contains("wget") ||
-                  (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (e.UserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((e.IsBounceCandidate == true || e.IsExitPage == true) &&
-                  (e.EngagedMilliseconds == null || e.EngagedMilliseconds < 1000) &&
-                  (e.DwellMilliseconds == null || e.DwellMilliseconds < 5000) &&
-                  (e.ScrollPercent == null || e.ScrollPercent < 15) &&
-                  (e.HumanInteractionCount == null || e.HumanInteractionCount <= 0) &&
-                  (e.MouseMoveCount == null || e.MouseMoveCount < 2)) &&
-                e.SessionId != null &&
-                e.SessionId != "" &&
-                e.VisitorId != null &&
-                e.VisitorId != "" &&
-                (StrongHumanEventTypes.Contains(e.EventType ?? "") ||
-                 (e.EngagedMilliseconds != null && e.EngagedMilliseconds >= 5000) ||
-                 (e.DwellMilliseconds != null && e.DwellMilliseconds >= 15000) ||
-                 (e.ScrollPercent != null && e.ScrollPercent >= 50) ||
-                 (e.HumanInteractionCount != null && e.HumanInteractionCount >= 3) ||
-                 (e.MouseMoveCount != null && e.MouseMoveCount >= 10)),
-
-            TrafficQualityMode.LikelyHuman => e =>
-                !(e.IsInternal ||
-                  (e.Environment != null &&
-                   e.Environment != "" &&
-                   (e.Environment.ToLower().StartsWith("dev") ||
-                    e.Environment.ToLower().StartsWith("stag") ||
-                    e.Environment.ToLower().StartsWith("preview") ||
-                    e.Environment.ToLower().StartsWith("sandbox") ||
-                    e.Environment.ToLower().StartsWith("qa") ||
-                    e.Environment.ToLower().StartsWith("test") ||
-                    e.Environment.ToLower().StartsWith("local"))) ||
-                  (e.Host != null &&
-                   e.Host != "" &&
-                   (e.Host.ToLower().Contains("localhost") ||
-                    e.Host.StartsWith("127.0.0.1") ||
-                    e.Host.StartsWith("::1") ||
-                    e.Host.StartsWith("[::1]")))) &&
-                !(e.WebDriver == true ||
-                  e.IsHeadless == true ||
-                  (e.UserAgent ?? "").ToLower().Contains("bot") ||
-                  (e.UserAgent ?? "").ToLower().Contains("crawler") ||
-                  (e.UserAgent ?? "").ToLower().Contains("spider") ||
-                  (e.UserAgent ?? "").ToLower().Contains("headless") ||
-                  (e.UserAgent ?? "").ToLower().Contains("selenium") ||
-                  (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (e.UserAgent ?? "").ToLower().Contains("playwright") ||
-                  (e.UserAgent ?? "").ToLower().Contains("curl") ||
-                  (e.UserAgent ?? "").ToLower().Contains("wget") ||
-                  (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (e.UserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((e.IsBounceCandidate == true || e.IsExitPage == true) &&
-                  (e.EngagedMilliseconds == null || e.EngagedMilliseconds < 1000) &&
-                  (e.DwellMilliseconds == null || e.DwellMilliseconds < 5000) &&
-                  (e.ScrollPercent == null || e.ScrollPercent < 15) &&
-                  (e.HumanInteractionCount == null || e.HumanInteractionCount <= 0) &&
-                  (e.MouseMoveCount == null || e.MouseMoveCount < 2)) &&
-                !(e.SessionId != null &&
-                  e.SessionId != "" &&
-                  e.VisitorId != null &&
-                  e.VisitorId != "" &&
-                  (StrongHumanEventTypes.Contains(e.EventType ?? "") ||
-                   (e.EngagedMilliseconds != null && e.EngagedMilliseconds >= 5000) ||
-                   (e.DwellMilliseconds != null && e.DwellMilliseconds >= 15000) ||
-                   (e.ScrollPercent != null && e.ScrollPercent >= 50) ||
-                   (e.HumanInteractionCount != null && e.HumanInteractionCount >= 3) ||
-                   (e.MouseMoveCount != null && e.MouseMoveCount >= 10))) &&
-                ((e.SessionId != null && e.SessionId != "") ||
-                 (e.VisitorId != null && e.VisitorId != "")) &&
-                (StrongHumanEventTypes.Contains(e.EventType ?? "") ||
-                 ModerateHumanEventTypes.Contains(e.EventType ?? "") ||
-                 (e.EngagedMilliseconds != null && e.EngagedMilliseconds >= 1000) ||
-                 (e.DwellMilliseconds != null && e.DwellMilliseconds >= 5000) ||
-                 (e.ScrollPercent != null && e.ScrollPercent >= 15) ||
-                 (e.HumanInteractionCount != null && e.HumanInteractionCount >= 1) ||
-                 (e.MouseMoveCount != null && e.MouseMoveCount >= 3) ||
-                 (e.ReferrerHost != null && e.ReferrerHost != "") ||
-                 (e.UtmSource != null && e.UtmSource != "") ||
-                 (e.UtmMedium != null && e.UtmMedium != "") ||
-                 (e.UtmCampaign != null && e.UtmCampaign != "") ||
-                 (e.MetaCampaignId != null && e.MetaCampaignId != "") ||
-                 (e.MetaAdSetId != null && e.MetaAdSetId != "") ||
-                 (e.MetaAdId != null && e.MetaAdId != "") ||
-                 (e.Fbclid != null && e.Fbclid != "")),
-
-            TrafficQualityMode.ReviewedNeeded => e =>
-                !(e.IsInternal ||
-                  (e.Environment != null &&
-                   e.Environment != "" &&
-                   (e.Environment.ToLower().StartsWith("dev") ||
-                    e.Environment.ToLower().StartsWith("stag") ||
-                    e.Environment.ToLower().StartsWith("preview") ||
-                    e.Environment.ToLower().StartsWith("sandbox") ||
-                    e.Environment.ToLower().StartsWith("qa") ||
-                    e.Environment.ToLower().StartsWith("test") ||
-                    e.Environment.ToLower().StartsWith("local"))) ||
-                  (e.Host != null &&
-                   e.Host != "" &&
-                   (e.Host.ToLower().Contains("localhost") ||
-                    e.Host.StartsWith("127.0.0.1") ||
-                    e.Host.StartsWith("::1") ||
-                    e.Host.StartsWith("[::1]")))) &&
-                !(e.WebDriver == true ||
-                  e.IsHeadless == true ||
-                  (e.UserAgent ?? "").ToLower().Contains("bot") ||
-                  (e.UserAgent ?? "").ToLower().Contains("crawler") ||
-                  (e.UserAgent ?? "").ToLower().Contains("spider") ||
-                  (e.UserAgent ?? "").ToLower().Contains("headless") ||
-                  (e.UserAgent ?? "").ToLower().Contains("selenium") ||
-                  (e.UserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (e.UserAgent ?? "").ToLower().Contains("playwright") ||
-                  (e.UserAgent ?? "").ToLower().Contains("curl") ||
-                  (e.UserAgent ?? "").ToLower().Contains("wget") ||
-                  (e.UserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (e.UserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((e.IsBounceCandidate == true || e.IsExitPage == true) &&
-                  (e.EngagedMilliseconds == null || e.EngagedMilliseconds < 1000) &&
-                  (e.DwellMilliseconds == null || e.DwellMilliseconds < 5000) &&
-                  (e.ScrollPercent == null || e.ScrollPercent < 15) &&
-                  (e.HumanInteractionCount == null || e.HumanInteractionCount <= 0) &&
-                  (e.MouseMoveCount == null || e.MouseMoveCount < 2)) &&
-                !(e.SessionId != null &&
-                  e.SessionId != "" &&
-                  e.VisitorId != null &&
-                  e.VisitorId != "" &&
-                  (StrongHumanEventTypes.Contains(e.EventType ?? "") ||
-                   (e.EngagedMilliseconds != null && e.EngagedMilliseconds >= 5000) ||
-                   (e.DwellMilliseconds != null && e.DwellMilliseconds >= 15000) ||
-                   (e.ScrollPercent != null && e.ScrollPercent >= 50) ||
-                   (e.HumanInteractionCount != null && e.HumanInteractionCount >= 3) ||
-                   (e.MouseMoveCount != null && e.MouseMoveCount >= 10))) &&
-                !(((e.SessionId != null && e.SessionId != "") ||
-                   (e.VisitorId != null && e.VisitorId != "")) &&
-                  (StrongHumanEventTypes.Contains(e.EventType ?? "") ||
-                   ModerateHumanEventTypes.Contains(e.EventType ?? "") ||
-                   (e.EngagedMilliseconds != null && e.EngagedMilliseconds >= 1000) ||
-                   (e.DwellMilliseconds != null && e.DwellMilliseconds >= 5000) ||
-                   (e.ScrollPercent != null && e.ScrollPercent >= 15) ||
-                   (e.HumanInteractionCount != null && e.HumanInteractionCount >= 1) ||
-                   (e.MouseMoveCount != null && e.MouseMoveCount >= 3) ||
-                   (e.ReferrerHost != null && e.ReferrerHost != "") ||
-                   (e.UtmSource != null && e.UtmSource != "") ||
-                   (e.UtmMedium != null && e.UtmMedium != "") ||
-                   (e.UtmCampaign != null && e.UtmCampaign != "") ||
-                   (e.MetaCampaignId != null && e.MetaCampaignId != "") ||
-                   (e.MetaAdSetId != null && e.MetaAdSetId != "") ||
-                   (e.MetaAdId != null && e.MetaAdId != "") ||
-                   (e.Fbclid != null && e.Fbclid != ""))),
-
-            _ => BuildEventPredicate(TrafficQualityMode.RealHumanTraffic)
+            TrafficQualityMode.AllTraffic => Expression.Constant(true),
+            TrafficQualityMode.InternalQa => internalTraffic,
+            TrafficQualityMode.LikelyBotsAutomation => Expression.AndAlso(Expression.Not(internalTraffic), bot),
+            TrafficQualityMode.RealHumanTraffic => Expression.AndAlso(valid, human),
+            TrafficQualityMode.LikelyHuman => Expression.AndAlso(valid, likely),
+            // Absence of interaction is unknown, not proof of suspicious activity.
+            TrafficQualityMode.SuspiciousActivity => Expression.AndAlso(external, suspicious),
+            _ => Expression.AndAlso(valid, Expression.LessThan(score, Expression.Constant(60)))
         };
+        return Expression.Lambda<Func<AnalyticsEvent, bool>>(body, p);
+    }
+    private static readonly TrafficQualityMode[] Precedence = [TrafficQualityMode.InternalQa, TrafficQualityMode.LikelyBotsAutomation,
+        TrafficQualityMode.SuspiciousActivity, TrafficQualityMode.RealHumanTraffic, TrafficQualityMode.LikelyHuman];
+    private static readonly IReadOnlyDictionary<TrafficQualityMode, Func<AnalyticsEvent, bool>> Predicates =
+        Precedence.ToDictionary(x => x, x => BuildEventPredicate(x).Compile());
+    public static TrafficQualityMode Classify(IEnumerable<AnalyticsEvent> evidence)
+    {
+        var rows = evidence.ToArray();
+        foreach (var mode in Precedence) if (rows.Any(Predicates[mode])) return mode;
+        return TrafficQualityMode.ReviewedNeeded;
+    }
+    private sealed class BucketSeed
+    {
+        public AnalyticsEvent Row { get; set; } = null!;
+        public int Rank { get; set; }
     }
 
-    public static List<AnalyticsEvent> ApplyEventBucketMembershipInMemory(
-        IEnumerable<AnalyticsEvent> events,
-        TrafficQualityMode mode)
+    public static IQueryable<AnalyticsEvent> ApplyEventBucketMembership(IQueryable<AnalyticsEvent> query, TrafficQualityMode mode, IQueryable<AnalyticsEvent>? evidence = null)
     {
-        var eventList = events.ToList();
-        if (mode == TrafficQualityMode.AllTraffic || eventList.Count == 0)
-            return eventList;
-
-        var internalQaBucket = BuildEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.InternalQa).Compile()));
-        if (mode == TrafficQualityMode.InternalQa)
-            return ApplyEventBucketMembership(eventList, internalQaBucket);
-
-        var botCandidates = ExcludeEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.LikelyBotsAutomation).Compile()),
-            internalQaBucket);
-        var botBucket = BuildEventBucketMembership(botCandidates);
-        if (mode == TrafficQualityMode.LikelyBotsAutomation)
-            return ApplyEventBucketMembership(eventList, botBucket);
-
-        var realHumanCandidates = ExcludeEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.RealHumanTraffic).Compile()),
-            internalQaBucket,
-            botBucket);
-        var realHumanBucket = BuildEventBucketMembership(realHumanCandidates);
-        if (mode == TrafficQualityMode.RealHumanTraffic)
-            return ApplyEventBucketMembership(eventList, realHumanBucket);
-
-        var likelyHumanCandidates = ExcludeEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.LikelyHuman).Compile()),
-            internalQaBucket,
-            botBucket,
-            realHumanBucket);
-        var likelyHumanBucket = BuildEventBucketMembership(likelyHumanCandidates);
-        if (mode == TrafficQualityMode.LikelyHuman)
-            return ApplyEventBucketMembership(eventList, likelyHumanBucket);
-
-        // Bucket membership is session-oriented, so a later strong-human action
-        // should outrank an early starter row that briefly looks bounce-like.
-        var suspiciousCandidates = ExcludeEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.SuspiciousActivity).Compile()),
-            internalQaBucket,
-            botBucket,
-            realHumanBucket,
-            likelyHumanBucket);
-        var suspiciousBucket = BuildEventBucketMembership(suspiciousCandidates);
-        if (mode == TrafficQualityMode.SuspiciousActivity)
-            return ApplyEventBucketMembership(eventList, suspiciousBucket);
-
-        var reviewedNeededCandidates = ExcludeEventBucketMembership(
-            eventList,
-            internalQaBucket,
-            botBucket,
-            realHumanBucket,
-            likelyHumanBucket,
-            suspiciousBucket);
-
-        return ApplyEventBucketMembership(
-            eventList,
-            BuildEventBucketMembership(reviewedNeededCandidates));
-    }
-
-    private static InMemoryEventBucketMembership BuildEventBucketMembership(IEnumerable<AnalyticsEvent> events)
-    {
-        var sessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var visitorIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var eventIds = new HashSet<Guid>();
-
-        foreach (var analyticsEvent in events)
+        if (mode == TrafficQualityMode.AllTraffic) return query;
+        var parameter = Expression.Parameter(typeof(AnalyticsEvent), "row");
+        Expression rank = Expression.Constant(Precedence.Length);
+        for (var index = Precedence.Length - 1; index >= 0; index--)
         {
-            if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
-                sessionIds.Add(analyticsEvent.SessionId!);
-            else if (!string.IsNullOrWhiteSpace(analyticsEvent.VisitorId))
-                visitorIds.Add(analyticsEvent.VisitorId!);
-            else
-                eventIds.Add(analyticsEvent.EventId);
+            var predicate = BuildEventPredicate(Precedence[index]);
+            rank = Expression.Condition(new Replace(predicate.Parameters[0], parameter).Visit(predicate.Body)!, Expression.Constant(index), rank);
         }
-
-        return new InMemoryEventBucketMembership(sessionIds, visitorIds, eventIds);
+        var projection = Expression.Lambda<Func<AnalyticsEvent, BucketSeed>>(Expression.MemberInit(
+            Expression.New(typeof(BucketSeed)),
+            Expression.Bind(typeof(BucketSeed).GetProperty(nameof(BucketSeed.Row))!, parameter),
+            Expression.Bind(typeof(BucketSeed).GetProperty(nameof(BucketSeed.Rank))!, rank)), parameter);
+        var sessionIds = query.Where(e => e.SessionId != null && e.SessionId != "").Select(e => e.SessionId);
+        var eventIds = query.Select(e => e.EventId);
+        var candidates = (evidence ?? query).Where(e => sessionIds.Contains(e.SessionId) || eventIds.Contains(e.EventId));
+        // One set-based aggregation and join, rather than one correlated query per bucket per event.
+        var buckets = candidates.Select(projection).GroupBy(s => new {
+            s.Row.CommerceBusinessId, s.Row.AgentTrackingProfileId, Host = (s.Row.Host ?? "").ToLower(),
+            Session = s.Row.SessionId ?? "", Visitor = s.Row.VisitorId ?? "",
+            Singleton = s.Row.SessionId == null || s.Row.SessionId == "" ? s.Row.EventId : Guid.Empty
+        }).Select(g => new { g.Key, Rank = g.Min(s => s.Rank) });
+        var targetRank = Array.IndexOf(Precedence, mode);
+        if (targetRank < 0) targetRank = Precedence.Length;
+        return query.Join(buckets.Where(b => b.Rank == targetRank), e => new {
+            e.CommerceBusinessId, e.AgentTrackingProfileId, Host = (e.Host ?? "").ToLower(),
+            Session = e.SessionId ?? "", Visitor = e.VisitorId ?? "",
+            Singleton = e.SessionId == null || e.SessionId == "" ? e.EventId : Guid.Empty
+        }, b => b.Key, (e, _) => e);
     }
 
-    private static IEnumerable<AnalyticsEvent> ExcludeEventBucketMembership(
-        IEnumerable<AnalyticsEvent> events,
-        params InMemoryEventBucketMembership[] excludedBuckets)
+    private static string Identity(AnalyticsEvent e) => $"{e.CommerceBusinessId}|{e.AgentTrackingProfileId}|{e.Host?.ToLowerInvariant()}|" +
+        (!string.IsNullOrWhiteSpace(e.SessionId) ? "s:" + e.SessionId + "|" + e.VisitorId : "e:" + e.EventId);
+    public static List<AnalyticsEvent> ApplyEventBucketMembershipInMemory(IEnumerable<AnalyticsEvent> events, TrafficQualityMode mode, IEnumerable<AnalyticsEvent>? evidence = null)
     {
-        return events.Where(analyticsEvent => !excludedBuckets.Any(bucket => IsEventInBucket(analyticsEvent, bucket)));
+        var rows = events.ToList();
+        if (mode == TrafficQualityMode.AllTraffic) return rows;
+        var buckets = (evidence ?? rows).Concat(rows).GroupBy(Identity).ToDictionary(g => g.Key, g => Classify(g));
+        return rows.Where(e => buckets[Identity(e)] == mode).ToList();
     }
-
-    private static List<AnalyticsEvent> ApplyEventBucketMembership(
-        IEnumerable<AnalyticsEvent> events,
-        InMemoryEventBucketMembership bucket)
+    public static List<WebsiteLead> ApplyLeadBucketMembershipInMemory(IEnumerable<WebsiteLead> leads, IEnumerable<AnalyticsEvent> events, TrafficQualityMode mode)
     {
-        return events.Where(analyticsEvent => IsEventInBucket(analyticsEvent, bucket)).ToList();
+        if (mode == TrafficQualityMode.AllTraffic) return leads.ToList();
+        var groups = events.GroupBy(Identity).ToDictionary(g => g.Key, g => Classify(g));
+        return leads.Where(l => {
+            var row = UnifiedEventMapper.LeadBehaviorEvidence(l);
+            return (groups.TryGetValue(Identity(row), out var bucket) ? bucket : Classify([row])) == mode;
+        }).ToList();
     }
-
-    private static bool IsEventInBucket(AnalyticsEvent analyticsEvent, InMemoryEventBucketMembership bucket)
-    {
-        if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
-            return bucket.SessionIds.Contains(analyticsEvent.SessionId!);
-
-        if (!string.IsNullOrWhiteSpace(analyticsEvent.VisitorId))
-            return bucket.VisitorIds.Contains(analyticsEvent.VisitorId!);
-
-        return bucket.EventIds.Contains(analyticsEvent.EventId);
-    }
-
     public static Expression<Func<WebsiteLead, bool>> BuildLeadPredicate(TrafficQualityMode mode)
     {
-        return mode switch
-        {
-            TrafficQualityMode.AllTraffic => l => true,
-
-            TrafficQualityMode.InternalQa => l =>
-                l.IsInternal ||
-                (l.Environment != null &&
-                 l.Environment != "" &&
-                 (l.Environment.ToLower().StartsWith("dev") ||
-                  l.Environment.ToLower().StartsWith("stag") ||
-                  l.Environment.ToLower().StartsWith("preview") ||
-                  l.Environment.ToLower().StartsWith("sandbox") ||
-                  l.Environment.ToLower().StartsWith("qa") ||
-                  l.Environment.ToLower().StartsWith("test") ||
-                  l.Environment.ToLower().StartsWith("local"))) ||
-                (l.Host != null &&
-                 l.Host != "" &&
-                 (l.Host.ToLower().Contains("localhost") ||
-                  l.Host.StartsWith("127.0.0.1") ||
-                  l.Host.StartsWith("::1") ||
-                  l.Host.StartsWith("[::1]"))),
-
-            TrafficQualityMode.LikelyBotsAutomation => l =>
-                !(l.IsInternal ||
-                  (l.Environment != null &&
-                   l.Environment != "" &&
-                   (l.Environment.ToLower().StartsWith("dev") ||
-                    l.Environment.ToLower().StartsWith("stag") ||
-                    l.Environment.ToLower().StartsWith("preview") ||
-                    l.Environment.ToLower().StartsWith("sandbox") ||
-                    l.Environment.ToLower().StartsWith("qa") ||
-                    l.Environment.ToLower().StartsWith("test") ||
-                    l.Environment.ToLower().StartsWith("local"))) ||
-                  (l.Host != null &&
-                   l.Host != "" &&
-                   (l.Host.ToLower().Contains("localhost") ||
-                    l.Host.StartsWith("127.0.0.1") ||
-                    l.Host.StartsWith("::1") ||
-                    l.Host.StartsWith("[::1]")))) &&
-                ((l.ClientUserAgent ?? "").ToLower().Contains("bot") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("crawler") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("spider") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("headless") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("selenium") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("puppeteer") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("playwright") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("curl") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("wget") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("python-requests") ||
-                 (l.ClientUserAgent ?? "").ToLower().Contains("httpclient")),
-
-            TrafficQualityMode.SuspiciousActivity => l =>
-                !(l.IsInternal ||
-                  (l.Environment != null &&
-                   l.Environment != "" &&
-                   (l.Environment.ToLower().StartsWith("dev") ||
-                    l.Environment.ToLower().StartsWith("stag") ||
-                    l.Environment.ToLower().StartsWith("preview") ||
-                    l.Environment.ToLower().StartsWith("sandbox") ||
-                    l.Environment.ToLower().StartsWith("qa") ||
-                    l.Environment.ToLower().StartsWith("test") ||
-                    l.Environment.ToLower().StartsWith("local"))) ||
-                  (l.Host != null &&
-                   l.Host != "" &&
-                   (l.Host.ToLower().Contains("localhost") ||
-                    l.Host.StartsWith("127.0.0.1") ||
-                    l.Host.StartsWith("::1") ||
-                    l.Host.StartsWith("[::1]")))) &&
-                !((l.ClientUserAgent ?? "").ToLower().Contains("bot") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("crawler") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("spider") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("headless") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("selenium") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("playwright") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("curl") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("wget") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("httpclient")) &&
-                (l.SessionId == null || l.SessionId == "") &&
-                (l.VisitorId == null || l.VisitorId == "") &&
-                (l.UtmSource == null || l.UtmSource == "") &&
-                (l.UtmMedium == null || l.UtmMedium == "") &&
-                (l.UtmCampaign == null || l.UtmCampaign == "") &&
-                (l.MetaCampaignId == null || l.MetaCampaignId == "") &&
-                (l.MetaAdSetId == null || l.MetaAdSetId == "") &&
-                (l.MetaAdId == null || l.MetaAdId == "") &&
-                (l.Fbclid == null || l.Fbclid == "") &&
-                (l.Fbp == null || l.Fbp == "") &&
-                (l.Fbc == null || l.Fbc == "") &&
-                !l.TermsAccepted,
-
-            TrafficQualityMode.RealHumanTraffic => l =>
-                !(l.IsInternal ||
-                  (l.Environment != null &&
-                   l.Environment != "" &&
-                   (l.Environment.ToLower().StartsWith("dev") ||
-                    l.Environment.ToLower().StartsWith("stag") ||
-                    l.Environment.ToLower().StartsWith("preview") ||
-                    l.Environment.ToLower().StartsWith("sandbox") ||
-                    l.Environment.ToLower().StartsWith("qa") ||
-                    l.Environment.ToLower().StartsWith("test") ||
-                    l.Environment.ToLower().StartsWith("local"))) ||
-                  (l.Host != null &&
-                   l.Host != "" &&
-                   (l.Host.ToLower().Contains("localhost") ||
-                    l.Host.StartsWith("127.0.0.1") ||
-                    l.Host.StartsWith("::1") ||
-                    l.Host.StartsWith("[::1]")))) &&
-                !((l.ClientUserAgent ?? "").ToLower().Contains("bot") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("crawler") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("spider") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("headless") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("selenium") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("playwright") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("curl") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("wget") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((l.SessionId == null || l.SessionId == "") &&
-                  (l.VisitorId == null || l.VisitorId == "") &&
-                  (l.UtmSource == null || l.UtmSource == "") &&
-                  (l.UtmMedium == null || l.UtmMedium == "") &&
-                  (l.UtmCampaign == null || l.UtmCampaign == "") &&
-                  (l.MetaCampaignId == null || l.MetaCampaignId == "") &&
-                  (l.MetaAdSetId == null || l.MetaAdSetId == "") &&
-                  (l.MetaAdId == null || l.MetaAdId == "") &&
-                  (l.Fbclid == null || l.Fbclid == "") &&
-                  (l.Fbp == null || l.Fbp == "") &&
-                  (l.Fbc == null || l.Fbc == "") &&
-                  !l.TermsAccepted) &&
-                l.SessionId != null &&
-                l.SessionId != "" &&
-                l.VisitorId != null &&
-                l.VisitorId != "" &&
-                (l.TermsAccepted ||
-                 l.MarketingEmailConsent ||
-                 l.CallTextConsent ||
-                 (l.UtmSource != null && l.UtmSource != "") ||
-                 (l.UtmMedium != null && l.UtmMedium != "") ||
-                 (l.UtmCampaign != null && l.UtmCampaign != "") ||
-                 (l.MetaCampaignId != null && l.MetaCampaignId != "") ||
-                 (l.MetaAdSetId != null && l.MetaAdSetId != "") ||
-                 (l.MetaAdId != null && l.MetaAdId != "") ||
-                 (l.Fbclid != null && l.Fbclid != "") ||
-                 (l.Fbp != null && l.Fbp != "") ||
-                 (l.Fbc != null && l.Fbc != "")),
-
-            TrafficQualityMode.LikelyHuman => l =>
-                !(l.IsInternal ||
-                  (l.Environment != null &&
-                   l.Environment != "" &&
-                   (l.Environment.ToLower().StartsWith("dev") ||
-                    l.Environment.ToLower().StartsWith("stag") ||
-                    l.Environment.ToLower().StartsWith("preview") ||
-                    l.Environment.ToLower().StartsWith("sandbox") ||
-                    l.Environment.ToLower().StartsWith("qa") ||
-                    l.Environment.ToLower().StartsWith("test") ||
-                    l.Environment.ToLower().StartsWith("local"))) ||
-                  (l.Host != null &&
-                   l.Host != "" &&
-                   (l.Host.ToLower().Contains("localhost") ||
-                    l.Host.StartsWith("127.0.0.1") ||
-                    l.Host.StartsWith("::1") ||
-                    l.Host.StartsWith("[::1]")))) &&
-                !((l.ClientUserAgent ?? "").ToLower().Contains("bot") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("crawler") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("spider") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("headless") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("selenium") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("playwright") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("curl") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("wget") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((l.SessionId == null || l.SessionId == "") &&
-                  (l.VisitorId == null || l.VisitorId == "") &&
-                  (l.UtmSource == null || l.UtmSource == "") &&
-                  (l.UtmMedium == null || l.UtmMedium == "") &&
-                  (l.UtmCampaign == null || l.UtmCampaign == "") &&
-                  (l.MetaCampaignId == null || l.MetaCampaignId == "") &&
-                  (l.MetaAdSetId == null || l.MetaAdSetId == "") &&
-                  (l.MetaAdId == null || l.MetaAdId == "") &&
-                  (l.Fbclid == null || l.Fbclid == "") &&
-                  (l.Fbp == null || l.Fbp == "") &&
-                  (l.Fbc == null || l.Fbc == "") &&
-                  !l.TermsAccepted) &&
-                !(l.SessionId != null &&
-                  l.SessionId != "" &&
-                  l.VisitorId != null &&
-                  l.VisitorId != "" &&
-                  (l.TermsAccepted ||
-                   l.MarketingEmailConsent ||
-                   l.CallTextConsent ||
-                   (l.UtmSource != null && l.UtmSource != "") ||
-                   (l.UtmMedium != null && l.UtmMedium != "") ||
-                   (l.UtmCampaign != null && l.UtmCampaign != "") ||
-                   (l.MetaCampaignId != null && l.MetaCampaignId != "") ||
-                   (l.MetaAdSetId != null && l.MetaAdSetId != "") ||
-                   (l.MetaAdId != null && l.MetaAdId != "") ||
-                   (l.Fbclid != null && l.Fbclid != "") ||
-                   (l.Fbp != null && l.Fbp != "") ||
-                   (l.Fbc != null && l.Fbc != ""))) &&
-                ((l.SessionId != null && l.SessionId != "") ||
-                 (l.VisitorId != null && l.VisitorId != "") ||
-                 (l.UtmSource != null && l.UtmSource != "") ||
-                 (l.UtmMedium != null && l.UtmMedium != "") ||
-                 (l.UtmCampaign != null && l.UtmCampaign != "") ||
-                 (l.MetaCampaignId != null && l.MetaCampaignId != "") ||
-                 (l.MetaAdSetId != null && l.MetaAdSetId != "") ||
-                 (l.MetaAdId != null && l.MetaAdId != "") ||
-                 (l.Fbclid != null && l.Fbclid != "") ||
-                 (l.Fbp != null && l.Fbp != "") ||
-                 (l.Fbc != null && l.Fbc != "") ||
-                 l.TermsAccepted ||
-                 l.MarketingEmailConsent ||
-                 l.CallTextConsent),
-
-            TrafficQualityMode.ReviewedNeeded => l =>
-                !(l.IsInternal ||
-                  (l.Environment != null &&
-                   l.Environment != "" &&
-                   (l.Environment.ToLower().StartsWith("dev") ||
-                    l.Environment.ToLower().StartsWith("stag") ||
-                    l.Environment.ToLower().StartsWith("preview") ||
-                    l.Environment.ToLower().StartsWith("sandbox") ||
-                    l.Environment.ToLower().StartsWith("qa") ||
-                    l.Environment.ToLower().StartsWith("test") ||
-                    l.Environment.ToLower().StartsWith("local"))) ||
-                  (l.Host != null &&
-                   l.Host != "" &&
-                   (l.Host.ToLower().Contains("localhost") ||
-                    l.Host.StartsWith("127.0.0.1") ||
-                    l.Host.StartsWith("::1") ||
-                    l.Host.StartsWith("[::1]")))) &&
-                !((l.ClientUserAgent ?? "").ToLower().Contains("bot") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("crawler") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("spider") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("headless") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("selenium") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("puppeteer") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("playwright") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("curl") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("wget") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("python-requests") ||
-                  (l.ClientUserAgent ?? "").ToLower().Contains("httpclient")) &&
-                !((l.SessionId == null || l.SessionId == "") &&
-                  (l.VisitorId == null || l.VisitorId == "") &&
-                  (l.UtmSource == null || l.UtmSource == "") &&
-                  (l.UtmMedium == null || l.UtmMedium == "") &&
-                  (l.UtmCampaign == null || l.UtmCampaign == "") &&
-                  (l.MetaCampaignId == null || l.MetaCampaignId == "") &&
-                  (l.MetaAdSetId == null || l.MetaAdSetId == "") &&
-                  (l.MetaAdId == null || l.MetaAdId == "") &&
-                  (l.Fbclid == null || l.Fbclid == "") &&
-                  (l.Fbp == null || l.Fbp == "") &&
-                  (l.Fbc == null || l.Fbc == "") &&
-                  !l.TermsAccepted) &&
-                !(l.SessionId != null &&
-                  l.SessionId != "" &&
-                  l.VisitorId != null &&
-                  l.VisitorId != "" &&
-                  (l.TermsAccepted ||
-                   l.MarketingEmailConsent ||
-                   l.CallTextConsent ||
-                   (l.UtmSource != null && l.UtmSource != "") ||
-                   (l.UtmMedium != null && l.UtmMedium != "") ||
-                   (l.UtmCampaign != null && l.UtmCampaign != "") ||
-                   (l.MetaCampaignId != null && l.MetaCampaignId != "") ||
-                   (l.MetaAdSetId != null && l.MetaAdSetId != "") ||
-                   (l.MetaAdId != null && l.MetaAdId != "") ||
-                   (l.Fbclid != null && l.Fbclid != "") ||
-                   (l.Fbp != null && l.Fbp != "") ||
-                   (l.Fbc != null && l.Fbc != ""))) &&
-                !(((l.SessionId != null && l.SessionId != "") ||
-                   (l.VisitorId != null && l.VisitorId != "") ||
-                   (l.UtmSource != null && l.UtmSource != "") ||
-                   (l.UtmMedium != null && l.UtmMedium != "") ||
-                   (l.UtmCampaign != null && l.UtmCampaign != "") ||
-                   (l.MetaCampaignId != null && l.MetaCampaignId != "") ||
-                   (l.MetaAdSetId != null && l.MetaAdSetId != "") ||
-                   (l.MetaAdId != null && l.MetaAdId != "") ||
-                   (l.Fbclid != null && l.Fbclid != "") ||
-                   (l.Fbp != null && l.Fbp != "") ||
-                   (l.Fbc != null && l.Fbc != "") ||
-                   l.TermsAccepted ||
-                   l.MarketingEmailConsent ||
-                   l.CallTextConsent)),
-
-            _ => BuildLeadPredicate(TrafficQualityMode.RealHumanTraffic)
-        };
+        // Standalone intake is a business fact, not proof of human behavior. Reuse the same policy without invented telemetry.
+        var lead = Expression.Parameter(typeof(WebsiteLead), "lead");
+        var body = new ProjectLead(lead).Visit(BuildEventPredicate(mode).Body)!;
+        return Expression.Lambda<Func<WebsiteLead, bool>>(body, lead);
     }
-
+    private sealed class ProjectLead(ParameterExpression lead) : ExpressionVisitor
+    {
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Expression is ParameterExpression p && p.Type == typeof(AnalyticsEvent))
+            {
+                var name = node.Member.Name == "UserAgent" ? "ClientUserAgent" : node.Member.Name;
+                var property = typeof(WebsiteLead).GetProperty(name);
+                return property is null ? Expression.Default(node.Type) : Expression.Property(lead, property);
+            }
+            return base.VisitMember(node);
+        }
+    }
     public static string ToClientValue(TrafficQualityMode mode)
     {
         return mode switch

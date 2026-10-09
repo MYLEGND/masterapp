@@ -64,8 +64,11 @@ public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
                 var phone = linkedLead?.Phone;
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(60));
+                var nameParts = (row.Name ?? string.Empty).Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                var firstName = nameParts.Length > 0 ? nameParts[0] : string.Empty;
+                var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
                 sent = await sender.TrySendAsync(recipient, "New website inquiry",
-                    $"<p>{WebUtility.HtmlEncode(row.Name)} · {WebUtility.HtmlEncode(row.Email)}{(string.IsNullOrWhiteSpace(phone) ? "" : " · " + WebUtility.HtmlEncode(phone))}</p><p>{WebUtility.HtmlEncode(row.Message).Replace("\n", "<br>")}</p><p>Page: {WebUtility.HtmlEncode(row.SourcePath)}</p>",
+                    WebsiteLeadEmailTemplate.Build("New website inquiry", firstName, lastName, row.Email, phone, row.Message, row.SourcePath),
                     replyToEmail: row.Email, cancellationToken: timeout.Token);
             }
         }

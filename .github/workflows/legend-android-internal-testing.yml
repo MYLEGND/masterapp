@@ -3,11 +3,6 @@ name: Deploy Legend Android to Internal Testing
 # Production release authority for Google Play internal testing.
 
 on:
-  push:
-    branches:
-      - production
-    paths:
-      - '.github/workflows/legend-android-internal-testing.yml'
   workflow_dispatch:
     inputs:
       release_notes:
@@ -25,11 +20,12 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
   deploy-internal:
-    if: (github.ref == 'refs/heads/production' && (github.event_name == 'push' || inputs.confirmation == 'DEPLOY_INTERNAL')) || (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'BUILD_SIGNED')
+    if: github.ref == 'refs/heads/legend/approved-changes' && github.event_name == 'workflow_dispatch' && (inputs.confirmation == 'DEPLOY_INTERNAL' || inputs.confirmation == 'BUILD_SIGNED')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: google-play-internal
@@ -46,16 +42,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android 17 SDK
-        shell: bash
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
 
       - name: Validate protected build configuration
         shell: bash
@@ -104,7 +90,76 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve exact Android validation identity
+        id: androididentity
+        shell: bash
+        env:
+          LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
+          LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
+          LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
+          LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
+          LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
+        run: |
+          set -euo pipefail
+          expected_cert="$(tr -d ':[:space:]' < Legend-Android/app/signing/play-upload-sha1.txt | tr '[:upper:]' '[:lower:]')"
+          config_hash="$(
+            printf '%s\0%s\0%s\0%s\0%s\0%s\0%s'               "$GITHUB_SHA"               "$expected_cert"               "$LEGEND_API_BASE_URL"               "$LEGEND_ENTRA_TENANT_ID"               "$LEGEND_ENTRA_CLIENT_ID"               "$LEGEND_ENTRA_AUTHORITY"               "$LEGEND_ENTRA_SCOPE" |
+              sha256sum | cut -d ' ' -f 1
+          )"
+          echo "hash=$config_hash" >> "$GITHUB_OUTPUT"
+          echo "artifact=legend-android-signed-$GITHUB_SHA-$config_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse exact signed Android bundle when available
+        id: reuseandroid
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.androididentity.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          artifacts="$(gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100")"
+          while read -r candidate_run; do
+            [ -n "$candidate_run" ] || continue
+            run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
+            if [ "$(printf '%s' "$run" | jq -r '.path // ""')" = ".github/workflows/legend-android-internal-testing.yml" ] &&
+               [ "$(printf '%s' "$run" | jq -r '.head_sha // ""')" = "$GITHUB_SHA" ]; then
+              run_id="$candidate_run"
+              break
+            fi
+          done < <(printf '%s' "$artifacts" | jq -r '.artifacts[] | select(.expired == false) | .workflow_run.id' | awk '!seen[$0]++')
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then
+            echo "REUSE_ANDROID_BUNDLE=true" >> "$GITHUB_ENV"
+            echo "Exact Android compile/test/lint/sign evidence preserved from run $run_id."
+          else
+            echo "REUSE_ANDROID_BUNDLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Load exact signed Android bundle
+        if: steps.reuseandroid.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.androididentity.outputs.artifact }}
+          path: ${{ runner.temp }}/legend-android-release
+          run-id: ${{ steps.reuseandroid.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Set up Android SDK
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android 17 SDK
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        shell: bash
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+
+      - name: Set up Gradle
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Create production runtime configuration
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
         shell: bash
         env:
           LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
@@ -124,11 +179,13 @@ jobs:
           } > Legend-Android/legend.properties
 
       - name: Compile, test, lint, and build release bundle
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
         working-directory: Legend-Android
         shell: bash
         run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleRelease
 
       - name: Sign and verify release bundle
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
         shell: bash
         env:
           LEGEND_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
@@ -136,19 +193,27 @@ jobs:
           LEGEND_KEY_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          bundle_path="Legend-Android/app/build/outputs/bundle/release/app-release.aab"
+          bundle_path="$RUNNER_TEMP/legend-android-release/app-release.aab"
           jarsigner -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -keypass:env LEGEND_KEY_PASSWORD "$bundle_path" "$LEGEND_KEY_ALIAS"
           jarsigner -verify -strict -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD "$bundle_path" "$LEGEND_KEY_ALIAS"
+
+      - name: Stage exact signed Android release
+        if: env.REUSE_ANDROID_BUNDLE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/legend-android-release"
+          cp Legend-Android/app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/legend-android-release/app-release.aab"
+          cp "$RUNNER_TEMP/legend-upload-cert.der" "$RUNNER_TEMP/legend-android-release/legend-upload-cert.der"
 
       - name: Save signed release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: legend-android-signed-${{ github.run_id }}
-          path: |
-            Legend-Android/app/build/outputs/bundle/release/app-release.aab
-            ${{ runner.temp }}/legend-upload-cert.der
+          name: ${{ steps.androididentity.outputs.artifact }}
+          path: ${{ runner.temp }}/legend-android-release/
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
 
       - name: Authenticate to Google Play without a downloaded JSON key
         if: inputs.confirmation == 'DEPLOY_INTERNAL' || (github.event_name == 'push' && vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT != '')

@@ -23,6 +23,7 @@ public sealed class LegendConnectLanguageTeacherTests
         var teacher = CreateTeacher(handler, new Dictionary<string, string?>
         {
             ["LegendConnect:ModelTraining:Backend"] = "LocalMlx",
+            ["LegendConnect:LanguageTeacher:ExternalLearningEnabled"] = "false",
             ["OpenAI:ApiKey"] = "configured-but-not-authorized",
             ["OpenAI:LegendFounderAiModel"] = "configured-teacher"
         });
@@ -69,7 +70,7 @@ public sealed class LegendConnectLanguageTeacherTests
     }
 
     [Fact]
-    public void SharedOpenAiProviderConfiguration_ActivatesBothRoleSpecificBoundaries()
+    public void SharedOpenAiProviderConfiguration_DoesNotActivateRoleSpecificBoundaries()
     {
         var handler = new StubHttpMessageHandler();
         var teacher = CreateTeacher(
@@ -85,8 +86,10 @@ public sealed class LegendConnectLanguageTeacherTests
         var criticPreflight = teacher.Preflight(
             LegendLanguageTeacherRole.Critic);
 
-        Assert.True(teacherPreflight.IsReady, teacherPreflight.FailureCode);
-        Assert.True(criticPreflight.IsReady, criticPreflight.FailureCode);
+        Assert.False(teacherPreflight.IsReady);
+        Assert.False(criticPreflight.IsReady);
+        Assert.Equal("language_teacher_configuration_missing", teacherPreflight.FailureCode);
+        Assert.Equal("language_teacher_configuration_missing", criticPreflight.FailureCode);
         Assert.NotEqual(
             teacherPreflight.ConfigurationFingerprint,
             criticPreflight.ConfigurationFingerprint);
@@ -454,7 +457,11 @@ public sealed class LegendConnectLanguageTeacherTests
     {
         var configuration =
             new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["LegendConnect:ModelTraining:Backend"] = "OpenAI" })
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["LegendConnect:ModelTraining:Backend"] = "OpenAI",
+                    ["LegendConnect:LanguageTeacher:ExternalLearningEnabled"] = "true"
+                })
                 .AddInMemoryCollection(settings)
                 .Build();
 

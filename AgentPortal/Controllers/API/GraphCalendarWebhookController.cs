@@ -30,7 +30,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMicrosoftCalendarConnectionAuthority _calendarConnections;
-    private readonly MetaSignalCrmOutcomeService _outcomes;
+    private readonly CanonicalCrmOutcomeService _outcomes;
 
     public GraphCalendarWebhookController(
         MasterAppDbContext db,
@@ -38,7 +38,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
         IMicrosoftCalendarConnectionAuthority calendarConnections,
-        MetaSignalCrmOutcomeService outcomes)
+        CanonicalCrmOutcomeService outcomes)
     {
         _db = db;
         _logger = logger;
@@ -271,7 +271,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         syncLog.Error = null;
 
         _db.AppointmentSyncLogs.Add(syncLog);
-        await _db.SaveChangesAsync(cancellationToken);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, cancellationToken);
     }
 
     private async Task ApplyGraphEventToAppointmentAsync(
@@ -380,7 +380,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         syncLog.Error = null;
 
         _db.AppointmentSyncLogs.Add(syncLog);
-        await _db.SaveChangesAsync(cancellationToken);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(_db, cancellationToken);
     }
 
     private async Task<LeadAppointment?> TryCreateBusinessAppointmentFromEventAsync(
@@ -461,7 +461,14 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        var targetStage = appointment.Status switch
+        var leadTargetStage = appointment.Status switch
+        {
+            LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Rescheduled => "Booked",
+            LeadAppointmentStatus.Completed => "Qualified",
+            LeadAppointmentStatus.Cancelled or LeadAppointmentStatus.NoShow => "Contacted",
+            _ => null
+        };
+        var clientTargetStage = appointment.Status switch
         {
             LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Rescheduled => "MeetingScheduled",
             LeadAppointmentStatus.Completed => "Qualified",
@@ -469,7 +476,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             _ => null
         };
 
-        if (string.IsNullOrWhiteSpace(targetStage))
+        if (string.IsNullOrWhiteSpace(leadTargetStage) || string.IsNullOrWhiteSpace(clientTargetStage))
             return;
 
         var waitingOn = appointment.Status switch
@@ -484,7 +491,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         {
             LeadAppointmentStatus.Rescheduled => "Appointment rescheduled automatically from Microsoft calendar.",
             LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed => "Appointment booked automatically from Microsoft calendar.",
-            LeadAppointmentStatus.Completed => "Appointment completed automatically after scheduled end.",
+            LeadAppointmentStatus.Completed => "Appointment completion recorded.",
             LeadAppointmentStatus.Cancelled => "Appointment cancelled automatically from Microsoft calendar.",
             LeadAppointmentStatus.NoShow => "Appointment marked no-show.",
             _ => $"Appointment status synced automatically: {appointment.Status}."
@@ -505,6 +512,11 @@ public sealed class GraphCalendarWebhookController : ControllerBase
 
                 lead.CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus;
                 lead.AgentUserId = appointment.OwnerAgentUserId ?? lead.AgentUserId;
+                if (!string.Equals(lead.CrmStage, leadTargetStage, StringComparison.OrdinalIgnoreCase))
+                    meta.StageEnteredUtc = utcNow;
+                lead.CrmStage = leadTargetStage;
+                lead.Bucket = leadTargetStage;
+                meta.PipelineStage = leadTargetStage;
                 lead.UpdatedUtc = utcNow;
 
                 meta.WaitingOn = waitingOn;
@@ -543,6 +555,9 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         {
             var meta = ClientCrmMetaSerializer.Deserialize(profile.CrmNotes) ?? new ClientCrmMeta();
 
+            if (!string.Equals(meta.PipelineStage, clientTargetStage, StringComparison.OrdinalIgnoreCase))
+                meta.StageEnteredUtc = utcNow;
+            meta.PipelineStage = clientTargetStage;
             meta.WaitingOn = waitingOn;
             meta.Activities ??= new List<ClientCrmActivity>();
             meta.Activities.Insert(0, new ClientCrmActivity

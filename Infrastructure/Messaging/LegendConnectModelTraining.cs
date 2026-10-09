@@ -737,12 +737,9 @@ internal sealed class OpenAiLegendConnectModelTrainingBackend
         out Uri filesEndpoint,
         out Uri jobsEndpoint)
     {
-        key =
-            (_configuration[Prefix + "ApiKey"] ??
-             Environment.GetEnvironmentVariable(
-                 "OPENAI_API_KEY") ??
-             string.Empty)
-            .Trim();
+        key = _configuration.GetValue<bool>(Prefix + "OpenAiPaygEnabled")
+            ? (_configuration[Prefix + "ApiKey"] ?? string.Empty).Trim()
+            : string.Empty;
 
         var files =
             (_configuration[Prefix + "FilesEndpoint"] ??

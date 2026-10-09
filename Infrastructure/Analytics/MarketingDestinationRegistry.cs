@@ -91,11 +91,11 @@ public sealed class MetaMarketingDestination(MarketingConnectionStore connection
             !MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(eventName, outcome.MetadataJson))
             return Decision(true, true, "canonical_outcome_not_dispatch_eligible");
 
-        return Decision(true, true, "eligible");
+        return Decision(true, true, "mapping_ready");
     }
 
     private MarketingDestinationDecision Decision(bool supported, bool configured, string reason) =>
-        new(Key, supported, configured, supported && configured && reason == "eligible", reason);
+        new(Key, supported, configured, supported && configured && reason == "mapping_ready", reason);
 }
 
 /// <summary>
@@ -119,16 +119,89 @@ public sealed class OpenAiMarketingDestination(
 
         var destination = MarketingConversionDestinationCatalog.ResolveOpenAi(outcome.NormalizedEventName);
         if (!outcome.IsServerAuthority || destination is null)
-            return new(Key, Supported: false, Configured: false, Eligible: false, Reason: "event_not_supported");
+            return new(Key, Supported: false, Configured: false, MappingReady: false, Reason: "event_not_supported");
 
         var connection = await connections.GetAsync(owner, cancellationToken);
         if (!connection.Connected)
-            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_configured");
+            return new(Key, Supported: true, Configured: false, MappingReady: false, Reason: "destination_not_configured");
 
         var configured = connection.PixelConfigured && connection.ConversionsApiConfigured;
         if (!configured)
-            return new(Key, Supported: true, Configured: false, Eligible: false, Reason: "destination_not_ready");
+            return new(Key, Supported: true, Configured: false, MappingReady: false, Reason: "destination_not_ready");
 
-        return new(Key, Supported: true, Configured: true, Eligible: true, Reason: "eligible");
+        return new(Key, Supported: true, Configured: true, MappingReady: true, Reason: "mapping_ready");
+    }
+}
+
+
+/// <summary>
+/// Google Ads connection participates in the canonical destination registry for
+/// discovery/readiness. Conversion upload remains fail-closed until an exact
+/// conversion-action mapping is configured; reporting still uses canonical outcomes.
+/// </summary>
+public sealed class GoogleMarketingDestination(MarketingConnectionStore connections) : IMarketingDestination
+{
+    public string Key => MarketingDestinationKeys.Google;
+
+    public async ValueTask<MarketingDestinationDecision> EvaluateAsync(
+        MarketingOwnerScope owner,
+        MarketingOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        var eventName = outcome.NormalizedEventName;
+        if (!outcome.IsServerAuthority || !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName))
+            return new(Key, false, false, false, "event_not_supported");
+        var connection = await connections.GetProviderConnectionAsync(owner, Key, cancellationToken);
+        if (!connection.Connected)
+            return new(Key, true, false, false, "destination_not_configured");
+        if (!connection.Ready)
+            return new(Key, true, false, false, "account_selection_required");
+
+        var measurement = await connections.GetProviderMeasurementConfigurationAsync(owner, Key, cancellationToken);
+        if (!measurement.MappingReady)
+            return new(Key, true, true, false, measurement.Status);
+        if (!measurement.Mappings.Any(mapping =>
+                string.Equals(mapping.CanonicalEventName, eventName, StringComparison.OrdinalIgnoreCase)))
+            return new(Key, true, true, false, "canonical_event_not_mapped");
+        if (PaidAdsClickReference.NormalizeGoogle(
+                CanonicalAdvertisingEventProjection.ReadString(outcome.MetadataJson, "gclid")) is null)
+            return new(Key, true, true, false, "google_click_reference_missing");
+        return new(Key, true, true, true, "mapping_ready");
+    }
+}
+
+/// <summary>
+/// TikTok Ads connection participates in the canonical destination registry for
+/// discovery/readiness. Conversion upload remains fail-closed until an exact
+/// event-source mapping is configured; reporting still uses canonical outcomes.
+/// </summary>
+public sealed class TikTokMarketingDestination(MarketingConnectionStore connections) : IMarketingDestination
+{
+    public string Key => MarketingDestinationKeys.TikTok;
+
+    public async ValueTask<MarketingDestinationDecision> EvaluateAsync(
+        MarketingOwnerScope owner,
+        MarketingOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        var eventName = outcome.NormalizedEventName;
+        if (!outcome.IsServerAuthority || !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName))
+            return new(Key, false, false, false, "event_not_supported");
+        var connection = await connections.GetProviderConnectionAsync(owner, Key, cancellationToken);
+        if (!connection.Connected)
+            return new(Key, true, false, false, "destination_not_configured");
+        if (!connection.Ready)
+            return new(Key, true, false, false, "account_selection_required");
+
+        var measurement = await connections.GetProviderMeasurementConfigurationAsync(owner, Key, cancellationToken);
+        if (!measurement.MappingReady)
+            return new(Key, true, true, false, measurement.Status);
+        if (!measurement.Mappings.Any(mapping =>
+                string.Equals(mapping.CanonicalEventName, eventName, StringComparison.OrdinalIgnoreCase)))
+            return new(Key, true, true, false, "canonical_event_not_mapped");
+        if (PaidAdsClickReference.NormalizeTikTok(
+                CanonicalAdvertisingEventProjection.ReadString(outcome.MetadataJson, "ttclid")) is null)
+            return new(Key, true, true, false, "tiktok_click_reference_missing");
+        return new(Key, true, true, true, "mapping_ready");
     }
 }

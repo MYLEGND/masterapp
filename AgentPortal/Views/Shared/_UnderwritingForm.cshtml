@@ -140,8 +140,8 @@
     };
 }
 
-<div class="uw-overlay" id="uwOverlay" data-uw-product="@uwProduct" data-uw-subtitle="@uwSubtitle" hidden>
-    <div class="uw-dialog" id="uwDialog" role="dialog" aria-modal="true" aria-labelledby="uwTitle">
+<div class="uw-overlay" id="uwOverlay" data-legend-modal-surface data-uw-product="@uwProduct" data-uw-subtitle="@uwSubtitle" hidden>
+    <div class="uw-dialog" id="uwDialog" data-legend-modal-panel role="dialog" aria-modal="true" aria-labelledby="uwTitle">
         <div class="uw-head">
             <div class="uw-brand">
                 <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
@@ -153,7 +153,7 @@
             <button type="button" class="uw-close" data-uw-close aria-label="Close underwriting form">×</button>
         </div>
 
-        <form id="uwForm" class="uw-form">
+        <form id="uwForm" class="uw-form" data-legend-modal-scroll>
             <div class="uw-context-bar">
                 <div class="uw-context-copy">
                     <span class="uw-context-label">Builder Source</span>

@@ -74,6 +74,11 @@ public sealed class TimeRangeRequest
                 grouping = TimeGrouping.Day;
                 label = "Last 30 Days";
                 break;
+            case "90d":
+                start = localTodayUtc.AddDays(-89);
+                grouping = TimeGrouping.Week;
+                label = "Last 90 Days";
+                break;
             case "month":
                 start = LocalMidnightToUtc(new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0), tz);
                 grouping = TimeGrouping.Day;

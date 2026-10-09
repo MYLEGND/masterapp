@@ -208,8 +208,8 @@ public sealed class OpenAiAdsAccountConnectionAuthorityTests
 
         Assert.True(decision.Supported);
         Assert.True(decision.Configured);
-        Assert.True(decision.Eligible);
-        Assert.Equal("eligible", decision.Reason);
+        Assert.True(decision.MappingReady);
+        Assert.Equal("mapping_ready", decision.Reason);
     }
 
     private static MarketingOwnerScope Owner(string kind) => kind switch

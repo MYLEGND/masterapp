@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Shared.Analytics;
 
@@ -70,14 +69,14 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
     private readonly MasterAppDbContext _db;
     private readonly IPublicBookingCalendarMatcher _calendarMatcher;
     private readonly IPublicBookingResolver _publicBookingResolver;
-    private readonly MetaSignalCrmOutcomeService _outcomes;
+    private readonly CanonicalCrmOutcomeService _outcomes;
     private readonly ILogger<PublicBookingConfirmationService> _logger;
 
     public PublicBookingConfirmationService(
         MasterAppDbContext db,
         IPublicBookingCalendarMatcher calendarMatcher,
         IPublicBookingResolver publicBookingResolver,
-        MetaSignalCrmOutcomeService outcomes,
+        CanonicalCrmOutcomeService outcomes,
         ILogger<PublicBookingConfirmationService> logger)
     {
         _db = db;

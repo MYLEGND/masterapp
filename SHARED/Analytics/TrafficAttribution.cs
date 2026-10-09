@@ -20,7 +20,7 @@ namespace Shared.Analytics
     {
         private static readonly HashSet<string> PaidSources = new(StringComparer.OrdinalIgnoreCase)
         {
-            "adwords", "googleads", "google_ads", "gads", "bingads", "meta_ads",
+            "adwords", "googleads", "google_ads", "gads", "tiktokads", "tiktok_ads", "bingads", "meta_ads",
             "facebook_ads", "instagram_ads", "paidsearch", "display", "paid_social",
             "cpc", "ppc", "remarketing", "retargeting"
         };
@@ -181,7 +181,9 @@ namespace Shared.Analytics
             bool isInternal = false,
             string? environment = null,
             string? host = null,
-            string? oppref = null)
+            string? oppref = null,
+            string? gclid = null,
+            string? ttclid = null)
         {
             utmSource = Normalize(utmSource);
             utmMedium = Normalize(utmMedium);
@@ -194,6 +196,8 @@ namespace Shared.Analytics
             environment = Normalize(environment);
             host = NormalizeHost(host);
             oppref = Normalize(oppref);
+            gclid = Normalize(gclid);
+            ttclid = Normalize(ttclid);
 
             var specialTraffic = ClassifySpecialTraffic(
                 isInternal,
@@ -207,12 +211,16 @@ namespace Shared.Analytics
                 metaCampaignId,
                 metaAdSetId,
                 metaAdId,
-                oppref);
+                oppref,
+                gclid,
+                ttclid);
 
             if (specialTraffic.HasValue)
                 return specialTraffic.Value;
 
             if (!string.IsNullOrWhiteSpace(oppref) ||
+                !string.IsNullOrWhiteSpace(gclid) ||
+                !string.IsNullOrWhiteSpace(ttclid) ||
                 !string.IsNullOrWhiteSpace(fbclid) ||
                 !string.IsNullOrWhiteSpace(metaCampaignId) ||
                 !string.IsNullOrWhiteSpace(metaAdSetId) ||

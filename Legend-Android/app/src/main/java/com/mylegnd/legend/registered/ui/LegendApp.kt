@@ -612,7 +612,7 @@ private val LocalLegendOpenSharedPost = staticCompositionLocalOf<(String) -> Uni
 private val LocalLegendSocialShare = staticCompositionLocalOf<(SocialPost) -> Unit> { {} }
 
 /** A shell event, not a second home controller. Home remains the owner of creation. */
-private enum class LegendHomeChromeAction { CREATE }
+private enum class LegendHomeChromeAction { CREATE, NOTIFICATIONS }
 
 @Composable
 private fun LegendPillNavigation(
@@ -930,7 +930,13 @@ private fun AuthenticatedShell(
         factory = LegendViewModelFactory { CommunitySafetyReviewViewModel(container.communityRepository, participantType) },
     )
     val notifications: NotificationsViewModel = viewModel(
-        factory = LegendViewModelFactory { NotificationsViewModel(container.notificationRepository, participantType) },
+        factory = LegendViewModelFactory {
+            NotificationsViewModel(
+                container.notificationRepository,
+                participantType,
+                isFounder = session.capabilities.isFounder,
+            )
+        },
     )
     val founderAi: FounderAiViewModel = viewModel(
         key = "founder-ai:" + MessagingViewModel.sessionKey(session.accountId, session.actor.identity),
@@ -971,6 +977,10 @@ private fun AuthenticatedShell(
         destination.conversationId?.let {
             tab = LegendTab.MESSAGES
             requestedConversationId = it
+        }
+        if (destination.openNotifications) {
+            tab = LegendTab.HOME
+            homeChromeAction = LegendHomeChromeAction.NOTIFICATIONS
         }
         container.notificationNavigation.markHandled(destination)
     }
@@ -1748,6 +1758,8 @@ private fun HomeScreen(
     val publication by socialViewModel.publication.collectAsStateWithLifecycle()
     val socialState by socialViewModel.state.collectAsStateWithLifecycle()
     val accountActivity by notificationsViewModel.activity.collectAsStateWithLifecycle()
+    val engineeringActivity by notificationsViewModel.engineering.collectAsStateWithLifecycle()
+    val engineeringDecisionInFlight by notificationsViewModel.engineeringDecisionInFlight.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var creating by remember { mutableStateOf(false) }
     var scriptureOpen by remember { mutableStateOf(false) }
@@ -1763,6 +1775,13 @@ private fun HomeScreen(
     LaunchedEffect(chromeAction) {
         when (chromeAction) {
             LegendHomeChromeAction.CREATE -> creating = true
+            LegendHomeChromeAction.NOTIFICATIONS -> {
+                notificationsViewModel.loadActivity()
+                socialViewModel.load()
+                notificationsOpen = true
+                viewedAt = java.time.Instant.now().toString()
+                notificationPreferences.edit().putString(notificationKey, viewedAt).apply()
+            }
             null -> Unit
         }
         if (chromeAction != null) onChromeActionHandled()
@@ -1783,7 +1802,16 @@ private fun HomeScreen(
             val home = (homeState as LoadState.Data<MobileHomeResponse>).value
             val network = (socialState as? LoadState.Data<SocialSnapshot>)?.value?.activity.orEmpty()
             val accountItems = (accountActivity as? LoadState.Data<List<MessagingActivityNotification>>)?.value.orEmpty()
-            val notificationCount = LegendInAppActivityProjection.unreadCount(LegendInAppActivityProjection.make(network, accountItems), viewedAt)
+            val engineeringItems = (engineeringActivity as? LoadState.Data<List<FounderEngineeringActionItem>>)?.value.orEmpty()
+            val genericUnread = LegendInAppActivityProjection.unreadCount(
+                LegendInAppActivityProjection.make(network, accountItems),
+                viewedAt,
+            )
+            val viewedInstant = runCatching { java.time.Instant.parse(viewedAt) }.getOrDefault(java.time.Instant.MIN)
+            val engineeringUnread = engineeringItems.count {
+                runCatching { java.time.Instant.parse(it.updatedUtc) }.getOrDefault(java.time.Instant.MIN) > viewedInstant
+            }
+            val notificationCount = genericUnread + engineeringUnread
             val activityCount = planner.entries.size
             LazyColumn(
                 modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
@@ -1937,10 +1965,16 @@ private fun HomeScreen(
     }
     if (notificationsOpen) {
         LegendHomeNotificationsSheet(
-            socialState = socialState, accountState = accountActivity,
-            social = socialViewModel, mediaRepository = mediaRepository, participantType = participantType,
+            socialState = socialState,
+            accountState = accountActivity,
+            engineeringState = engineeringActivity,
+            engineeringDecisionInFlight = engineeringDecisionInFlight,
+            social = socialViewModel,
+            mediaRepository = mediaRepository,
+            participantType = participantType,
             dismiss = { notificationsOpen = false },
             retry = { notificationsViewModel.loadActivity(); socialViewModel.load() },
+            decideEngineering = notificationsViewModel::decideEngineering,
         )
     }
 }
@@ -8559,37 +8593,175 @@ private fun LegendNetworkMetrics(author: SocialAuthor, viewModel: SocialViewMode
 
 @Composable
 private fun LegendHomeNotificationsSheet(
-    socialState: LoadState<SocialSnapshot>, accountState: LoadState<List<MessagingActivityNotification>>,
-    social: SocialViewModel, mediaRepository: AuthenticatedMediaRepository, participantType: String,
-    dismiss: () -> Unit, retry: () -> Unit,
+    socialState: LoadState<SocialSnapshot>,
+    accountState: LoadState<List<MessagingActivityNotification>>,
+    engineeringState: LoadState<List<FounderEngineeringActionItem>>,
+    engineeringDecisionInFlight: String?,
+    social: SocialViewModel,
+    mediaRepository: AuthenticatedMediaRepository,
+    participantType: String,
+    dismiss: () -> Unit,
+    retry: () -> Unit,
+    decideEngineering: (FounderEngineeringActionItem, String) -> Unit,
 ) {
     val openProfile = LocalLegendOpenProfile.current
     val snapshot = (socialState as? LoadState.Data<SocialSnapshot>)?.value
-    val entries = LegendInAppActivityProjection.make(snapshot?.activity.orEmpty(),
-        (accountState as? LoadState.Data<List<MessagingActivityNotification>>)?.value.orEmpty())
+    val entries = LegendInAppActivityProjection.make(
+        snapshot?.activity.orEmpty(),
+        (accountState as? LoadState.Data<List<MessagingActivityNotification>>)?.value.orEmpty(),
+    )
+    val engineeringItems =
+        (engineeringState as? LoadState.Data<List<FounderEngineeringActionItem>>)?.value.orEmpty()
     var selectedPost by remember { mutableStateOf<SocialPost?>(null) }
+    var denyCandidate by remember { mutableStateOf<FounderEngineeringActionItem?>(null) }
+
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
-        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(
+            Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(LegendSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+        ) {
             item {
                 Surface(color = LegendColors.Navy, shape = LegendShapes.Control) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(LegendSpacing.Lg),
+                        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+                    ) {
                         Text(legendLocalized("Notifications"), style = LegendTypography.Title, color = LegendColors.OnNavy)
-                        Text(legendLocalized("Follows, reactions, comments, reposts, and account updates."), style = LegendTypography.Supporting, color = LegendColors.OnNavy)
+                        Text(
+                            legendLocalized("Founder engineering actions, account updates, follows, reactions, comments, and reposts."),
+                            style = LegendTypography.Supporting,
+                            color = LegendColors.OnNavy.copy(alpha = 0.78f),
+                        )
                         Text(legendLocalized("IN-APP ACTIVITY"), color = LegendColors.GoldBright, style = LegendTypography.Eyebrow)
                     }
                 }
             }
-            if (socialState is LoadState.Error || accountState is LoadState.Error) item { LegendInlineRetry("Some activity could not be loaded.", retry) }
-            if (socialState is LoadState.Loading || accountState is LoadState.Loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            if (entries.isEmpty() && socialState is LoadState.Data && accountState is LoadState.Data) item { Text(legendLocalized("You're all caught up"), color = LegendColors.TextSecondary) }
+
+            if (engineeringItems.isNotEmpty()) {
+                item {
+                    Text(
+                        legendLocalized("FOUNDER ENGINEERING"),
+                        style = LegendTypography.Eyebrow,
+                        color = LegendColors.Gold,
+                    )
+                }
+                items(engineeringItems, key = { "engineering:" + it.workItemId }) { item ->
+                    val actionRequired = item.requiresFounderAction
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = LegendShapes.Control,
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (actionRequired) LegendColors.Navy else LegendColors.SurfaceElevated,
+                        ),
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(LegendSpacing.Md),
+                            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+                        ) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    legendLocalized(if (actionRequired) "YOUR ACTION" else "LEGEND STATUS"),
+                                    style = LegendTypography.Eyebrow,
+                                    color = LegendColors.GoldBright,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    legendDateTime(item.updatedUtc),
+                                    style = LegendTypography.Caption,
+                                    color = if (actionRequired) LegendColors.OnNavy.copy(alpha = .62f) else LegendColors.TextTertiary,
+                                )
+                            }
+                            Text(
+                                item.title,
+                                style = LegendTypography.CardTitle,
+                                color = if (actionRequired) LegendColors.OnNavy else LegendColors.TextPrimary,
+                            )
+                            Text(
+                                item.summary,
+                                style = LegendTypography.Supporting,
+                                color = if (actionRequired) LegendColors.OnNavy.copy(alpha = .82f) else LegendColors.TextSecondary,
+                            )
+                            Surface(
+                                color = if (actionRequired) LegendColors.OnNavy.copy(alpha = .06f) else LegendColors.SurfaceInset,
+                                shape = LegendShapes.Control,
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(LegendSpacing.Sm),
+                                    verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro),
+                                ) {
+                                    Text(legendLocalized("NEXT STEP"), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                                    Text(
+                                        item.actionStep,
+                                        style = LegendTypography.Supporting,
+                                        color = if (actionRequired) LegendColors.OnNavy else LegendColors.TextPrimary,
+                                    )
+                                }
+                            }
+                            Text(
+                                item.technicalSummary,
+                                style = LegendTypography.Caption,
+                                color = if (actionRequired) LegendColors.OnNavy.copy(alpha = .56f) else LegendColors.TextTertiary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            item.primaryAction?.let { decision ->
+                                Button(
+                                    onClick = { decideEngineering(item, decision) },
+                                    enabled = engineeringDecisionInFlight == null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = LegendColors.GoldBright,
+                                        contentColor = LegendColors.Midnight,
+                                    ),
+                                ) {
+                                    Text(legendLocalized(item.primaryActionLabel ?: "Approve"))
+                                }
+                            }
+                            if (item.secondaryAction != null) {
+                                OutlinedButton(
+                                    onClick = { denyCandidate = item },
+                                    enabled = engineeringDecisionInFlight == null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = LegendShapes.Control,
+                                ) {
+                                    Text(
+                                        legendLocalized(item.secondaryActionLabel ?: "Deny"),
+                                        color = if (actionRequired) LegendColors.GoldBright else LegendColors.Navy,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (socialState is LoadState.Error || accountState is LoadState.Error || engineeringState is LoadState.Error) {
+                item { LegendInlineRetry("Some activity could not be loaded.", retry) }
+            }
+            if (socialState is LoadState.Loading || accountState is LoadState.Loading || engineeringState is LoadState.Loading) {
+                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            }
+            if (entries.isEmpty() && engineeringItems.isEmpty() &&
+                socialState is LoadState.Data && accountState is LoadState.Data && engineeringState is LoadState.Data
+            ) {
+                item { Text(legendLocalized("You're all caught up"), color = LegendColors.TextSecondary) }
+            }
             items(entries, key = { it.id }) { entry ->
-                Card(onClick = {
-                    val post = (snapshot?.posts.orEmpty() + snapshot?.shortVideos.orEmpty() + snapshot?.stories.orEmpty()).firstOrNull { it.id == entry.postId }
-                    if (post != null) selectedPost = post else entry.author?.let(openProfile)
-                }, enabled = entry.author != null, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = LegendColors.Navy)) {
-                    Column(Modifier.padding(16.dp)) {
+                Card(
+                    onClick = {
+                        val post = (snapshot?.posts.orEmpty() + snapshot?.shortVideos.orEmpty() + snapshot?.stories.orEmpty())
+                            .firstOrNull { it.id == entry.postId }
+                        if (post != null) selectedPost = post else entry.author?.let(openProfile)
+                    },
+                    enabled = entry.author != null,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = LegendShapes.Control,
+                    colors = CardDefaults.cardColors(containerColor = LegendColors.Navy),
+                ) {
+                    Column(Modifier.padding(LegendSpacing.Md)) {
                         Text(entry.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                        Text(entry.detail, style = LegendTypography.Supporting, color = LegendColors.OnNavy)
+                        Text(entry.detail, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = .80f))
                         Text(legendDateTime(entry.occurredUtc), color = LegendColors.GoldBright, style = LegendTypography.Caption)
                     }
                 }
@@ -8597,8 +8769,30 @@ private fun LegendHomeNotificationsSheet(
             item { TextButton(onClick = dismiss) { Text(legendLocalized("Done")) } }
         }
     }
+
+    denyCandidate?.let { item ->
+        AlertDialog(
+            onDismissRequest = { denyCandidate = null },
+            title = { Text(legendLocalized("Deny this release?")) },
+            text = { Text(legendLocalized("This closes this exact release request. It will not deploy.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val decision = item.secondaryAction ?: return@TextButton
+                    denyCandidate = null
+                    decideEngineering(item, decision)
+                }) {
+                    Text(legendLocalized(item.secondaryActionLabel ?: "Deny"), color = LegendColors.Error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { denyCandidate = null }) { Text(legendLocalized("Cancel")) }
+            },
+        )
+    }
+
     selectedPost?.let { selected ->
-        val post = (snapshot?.posts.orEmpty() + snapshot?.shortVideos.orEmpty() + snapshot?.stories.orEmpty()).firstOrNull { it.id == selected.id } ?: selected
+        val post = (snapshot?.posts.orEmpty() + snapshot?.shortVideos.orEmpty() + snapshot?.stories.orEmpty())
+            .firstOrNull { it.id == selected.id } ?: selected
         LegendPostDetailSheet(post, social, mediaRepository, participantType) { selectedPost = null }
     }
 }

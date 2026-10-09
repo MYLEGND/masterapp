@@ -40,13 +40,21 @@ function escapeHtml(value) {
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.LegendPublicInquiryForm = Object.freeze({ publicInquiryForm, mountPublicInquiryForms });
-  const start = async () => {
-    const mounted = mountPublicInquiryForms(document);
-    if (mounted > 0) await import(new URL('./legend-public-inquiry.js', import.meta.url).href);
+  let runtimePromise = null;
+  const ensureRuntime = async () => {
+    mountPublicInquiryForms(document);
+    if (!document.querySelector(
+      '[data-website-inquiry]:not([data-preview]),' +
+      '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
+    )) return;
+    runtimePromise ||= import(new URL('./legend-public-inquiry.js', import.meta.url).href);
+    await runtimePromise;
   };
+  const start = () => { void ensureRuntime(); };
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => { void start(); }, { once: true });
+    document.addEventListener('DOMContentLoaded', start, { once: true });
   } else {
-    void start();
+    start();
   }
+  window.addEventListener('legend:website-content-rendered', start);
 }

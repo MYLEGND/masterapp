@@ -1,4 +1,16 @@
 (() => {
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  const WEBSITE_STUDIO_ISOLATED =
+    window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+    websiteStudioParams.has('legendEdit') ||
+    websiteStudioParams.has('legendMaterialize');
+  if (WEBSITE_STUDIO_ISOLATED) {
+    // Website Studio is a zero-production-signal environment. Do not create
+    // visitor/session attribution, listeners, queues, page views, CTA events,
+    // form events, provider bridges, or network ingestion from edit/migration.
+    window.__legendTrackingSuppressedForWebsiteStudio = true;
+    return;
+  }
   if (window.__legendTrackingInitialized) {
     return;
   }
@@ -143,6 +155,9 @@
       }));
     } catch {
       // Optional provider listeners cannot break canonical analytics.
+    }
+    if (window.__legendTrackingInitialized && allowedEvents.has('measurement_consent_changed')) {
+      void sendEvent({EventType:'measurement_consent_changed'});
     }
     return { ...measurementConsent };
   }
@@ -447,6 +462,8 @@
       utmTerm: sanitizeAttributionValue(raw?.utmTerm),
       utmContent: sanitizeAttributionValue(raw?.utmContent),
       fbclid: sanitizeAttributionValue(raw?.fbclid),
+      gclid: sanitizeAttributionValue(raw?.gclid),
+      ttclid: sanitizeAttributionValue(raw?.ttclid),
       oppref: sanitizeAttributionValue(raw?.oppref),
       metaCampaignId: sanitizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: sanitizeAttributionValue(raw?.metaAdSetId),
@@ -464,6 +481,8 @@
       attribution.utmTerm ||
       attribution.utmContent ||
       attribution.fbclid ||
+      attribution.gclid ||
+      attribution.ttclid ||
       attribution.oppref ||
       attribution.metaCampaignId ||
       attribution.metaAdSetId ||
@@ -521,6 +540,8 @@
       utmTerm: params.get('utm_term'),
       utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid'),
+      gclid: params.get('gclid'),
+      ttclid: params.get('ttclid'),
       oppref: params.get('oppref'),
       metaCampaignId: params.get('meta_campaign_id'),
       metaAdSetId: params.get('meta_adset_id'),
@@ -541,6 +562,8 @@
       utmTerm: payload.UtmTerm,
       utmContent: payload.UtmContent,
       fbclid: payload.Fbclid,
+      gclid: payload.Gclid,
+      ttclid: payload.Ttclid,
       oppref: payload.Oppref,
       metaCampaignId: payload.MetaCampaignId,
       metaAdSetId: payload.MetaAdSetId,
@@ -573,6 +596,8 @@
       utmTerm: firstTouchAttribution?.utmTerm,
       utmContent: firstTouchAttribution?.utmContent,
       fbclid: firstTouchAttribution?.fbclid,
+      gclid: firstTouchAttribution?.gclid,
+      ttclid: firstTouchAttribution?.ttclid,
       oppref: firstTouchAttribution?.oppref,
       metaCampaignId: firstTouchAttribution?.metaCampaignId,
       metaAdSetId: firstTouchAttribution?.metaAdSetId,
@@ -618,16 +643,16 @@
     }
   }
 
-  listen(document, 'mousemove', () => {
-    recordHumanInteraction(true);
+  listen(document, 'mousemove', (e) => {
+    if (e.isTrusted) recordHumanInteraction(true);
   }, { passive: true });
 
-  listen(document, 'pointerdown', () => {
-    recordHumanInteraction(false);
+  listen(document, 'pointerdown', (e) => {
+    if (e.isTrusted) recordHumanInteraction(false);
   }, { passive: true });
 
-  listen(document, 'touchstart', () => {
-    recordHumanInteraction(false);
+  listen(document, 'touchstart', (e) => {
+    if (e.isTrusted) recordHumanInteraction(false);
   }, { passive: true });
 
   listen(document, 'click', (e) => {
@@ -708,6 +733,7 @@
     const trigger = body.EventType === 'form_start' ? 'form_started'
       : body.EventType === 'form_submit_attempt' ? 'submit_attempt'
       : body.EventType === 'form_field_focus' ? 'field_started'
+      : body.EventType === 'form_field_complete' ? 'field_completed'
       : body.EventType === 'form_field_error' ? 'validation_failed'
       : body.EventType === 'cta_click' || body.ElementKey ? 'click' : null;
     if (!trigger) return body;
@@ -750,6 +776,9 @@
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
+    let metadata = {}; try { metadata = JSON.parse(payload.MetadataJson || '{}') || {}; } catch {}
+    metadata = {...metadata, measurementConsentAllowed: measurementAllowed(),
+      measurementConsentState: measurementConsent.state, measurementConsentSource: measurementConsent.source};
     return {
       SchemaVersion: payload.SchemaVersion || payload.schemaVersion || TRACKING_SCHEMA_VERSION,
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
@@ -778,13 +807,15 @@
       UtmTerm: attribution.utmTerm || null,
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
+      Gclid: attribution.gclid || null,
+      Ttclid: attribution.ttclid || null,
       Oppref: attribution.oppref || null,
       Obref: measurementAllowed() ? readFirstPartyCookie('__obref') : null,
       MetaCampaignId: attribution.metaCampaignId || null,
       MetaAdSetId: attribution.metaAdSetId || null,
       MetaAdId: attribution.metaAdId || null,
       SubmitOutcome: payload.SubmitOutcome || null,
-      MetadataJson: payload.MetadataJson || null,
+      MetadataJson: JSON.stringify(metadata),
       AgentTrackingProfileId: AGENT_ID,
       AgentSlug: AGENT_SLUG,
       Environment: payload.Environment || null,
@@ -845,6 +876,10 @@
         };
       }
 
+      let receipt = null;
+      try { receipt = await response.json(); } catch {}
+      body.MarketingEligibility = receipt?.marketingEligibility || { eligible: false, reason: 'eligibility_receipt_unavailable' };
+      writeQueuedEvents(readQueuedEvents().filter(item => item.body?.ClientEventId !== body.ClientEventId));
       return {
         ok: true,
         statusCode: response.status,
@@ -927,13 +962,24 @@
   function publishCanonical(body) {
     if (canonicalPublished.has(body.ClientEventId)) return;
     canonicalPublished.add(body.ClientEventId);
-    const envelope = Object.freeze({ ...body });
-    canonicalHistory.push(envelope);
+    canonicalHistory.push(Object.freeze({ ...body }));
     if (canonicalHistory.length > 128) canonicalHistory.shift();
-    for (const listener of canonicalSubscribers.values()) {
-      try { listener(envelope); } catch (error) { debug('optional projection failed', { message: error?.message }); }
+    // Once the server observes sufficient behavior, replay earlier accepted facts in this same session.
+    // Browser heuristics never grant destination eligibility.
+    if (body.MarketingEligibility?.eligible !== true) return;
+    for (let i = 0; i < canonicalHistory.length; i++) {
+      const prior = canonicalHistory[i];
+      if (prior.SessionId !== body.SessionId || prior.VisitorId !== body.VisitorId) continue;
+      let priorMetadata = {}; try { priorMetadata = JSON.parse(prior.MetadataJson || '{}'); } catch {}
+      if (priorMetadata.measurementConsentAllowed !== true) continue;
+      const envelope = Object.freeze({ ...prior, MarketingEligibility: body.MarketingEligibility });
+      canonicalHistory[i] = envelope;
+      for (const listener of canonicalSubscribers.values()) {
+        try { listener(envelope); } catch (error) { debug('optional projection failed', { message: error?.message }); }
+      }
     }
   }
+
   function subscribeCanonical(key, listener) {
     if (canonicalSubscribers.has(key)) return () => {};
     canonicalSubscribers.set(key, listener);
@@ -983,6 +1029,8 @@
         quoteType: body.QuoteType,
         submitOutcome: body.SubmitOutcome
       });
+      // Persist before transport: navigation may terminate the process before a failure callback runs.
+      if (criticalEvents.has(body.EventType)) queueCriticalEvent(body, null, 0, 'awaiting_acknowledgement');
       const maxAttempts = criticalEvents.has(body.EventType) ? TRACKING_MAX_RETRIES : 1;
       let attempt = 0;
       let lastFailure = null;
@@ -1055,6 +1103,7 @@
 
   // ── Beacon send (page-exit and form-abandon — survives navigation/close) ──
   function beaconSend(body) {
+    if (criticalEvents.has(body?.EventType)) queueCriticalEvent(body, null, 0, 'beacon_unacknowledged');
     debug('beaconSend', {
       eventType: body?.EventType,
       formKey: body?.FormKey,
@@ -1076,12 +1125,17 @@
     }
   }
 
+  let queueFlushInProgress = false;
   async function flushQueuedEvents(reason, options = {}) {
+    if (queueFlushInProgress) return false;
+    queueFlushInProgress = true;
+    try {
     const queue = readQueuedEvents();
     if (!Array.isArray(queue) || queue.length === 0) {
       return false;
     }
 
+    const acknowledgedIds = new Set();
     const keep = [];
     const maxItems = Number.isFinite(options.maxItems) ? options.maxItems : queue.length;
 
@@ -1097,8 +1151,8 @@
       }
 
       if (options.useBeacon) {
-        const sent = beaconSend(queued.body);
-        if (!sent) {
+        beaconSend(queued.body);
+        { // A beacon is only browser-queued; retain until a later acknowledged retry.
           keep.push({
             ...queued,
             retryCount: Number(queued.retryCount || 0) + 1,
@@ -1111,6 +1165,7 @@
       const result = await postBody(queued.body);
       if (result.ok) {
         publishCanonical(queued.body);
+        acknowledgedIds.add(queued.body.ClientEventId);
         continue;
       }
       if (!result.ok) {
@@ -1124,8 +1179,11 @@
       }
     }
 
-    writeQueuedEvents(keep);
-    return keep.length !== queue.length;
+    const updates = new Map(keep.map(item => [item.body.ClientEventId, item]));
+    writeQueuedEvents(readQueuedEvents().filter(item => !acknowledgedIds.has(item.body?.ClientEventId))
+      .map(item => updates.get(item.body?.ClientEventId) || item));
+    return acknowledgedIds.size > 0;
+    } finally { queueFlushInProgress = false; }
   }
 
   // ============================================================
@@ -1975,7 +2033,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       UtmSource: attr.utmSource, UtmMedium: attr.utmMedium, UtmCampaign: attr.utmCampaign,
       UtmId: attr.utmId, UtmTerm: attr.utmTerm, UtmContent: attr.utmContent,
       MetaCampaignId: attr.metaCampaignId, MetaAdSetId: attr.metaAdSetId, MetaAdId: attr.metaAdId,
-      Fbclid: attr.fbclid, ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
+      Fbclid: attr.fbclid, Gclid: attr.gclid, Ttclid: attr.ttclid, Oppref: attr.oppref,
+      ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
     };
     Object.entries(values).forEach(([name, value]) => {
       const field = form.elements.namedItem(name);
@@ -2038,6 +2097,16 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     const state = ensureFormTrackState(formKey);
     syncFormAttribution(form);
     const focusedFields = new Set();
+    const completedFields = new Set();
+    const fieldValuePresent = field => {
+      if (!field || field.type === 'hidden') return false;
+      if (field.type === 'checkbox' || field.type === 'radio') return field.checked === true;
+      return String(field.value ?? '').trim().length > 0;
+    };
+    const fieldIsValid = field => {
+      try { return typeof field?.checkValidity !== 'function' || field.checkValidity(); }
+      catch { return true; }
+    };
     const handler = event => {
       state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
@@ -2047,11 +2116,34 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
           ['INPUT','SELECT','TEXTAREA'].includes(field.tagName)) {
         focusedFields.add(fieldName);
         sendEvent({EventType:'form_field_focus', FormKey:formKey, FieldName:fieldName,
-          ElementKey:field.dataset.cmsId || field.id || fieldName});
+          ElementKey:field.dataset.cmsId || field.dataset.cmsFieldKey || field.id || fieldName});
       }
+      if (event.type === 'change' && fieldName && !completedFields.has(fieldName) &&
+          ['INPUT','SELECT','TEXTAREA'].includes(field?.tagName || '') &&
+          fieldValuePresent(field) && fieldIsValid(field)) {
+        completedFields.add(fieldName);
+        sendEvent({EventType:'form_field_complete', FormKey:formKey, FieldName:fieldName,
+          ElementKey:field.dataset.cmsId || field.dataset.cmsFieldKey || field.id || fieldName});
+      }
+    };
+    const invalidHandler = event => {
+      const field = event.target;
+      const fieldName = field?.name || field?.id;
+      if (!fieldName || !['INPUT','SELECT','TEXTAREA'].includes(field?.tagName || '')) return;
+      const validity = field.validity || {};
+      const errorType = validity.valueMissing ? 'required'
+        : validity.typeMismatch ? 'type'
+        : validity.patternMismatch ? 'pattern'
+        : validity.rangeUnderflow ? 'min'
+        : validity.rangeOverflow ? 'max'
+        : validity.tooShort ? 'too_short'
+        : validity.tooLong ? 'too_long'
+        : 'invalid';
+      trackCustomFieldError(formKey, fieldName, errorType);
     };
     listen(form, 'focusin', handler);
     listen(form, 'change', handler);
+    listen(form, 'invalid', invalidHandler, true);
     let submitRevision = 0;
     const isAjax = form.dataset.ajaxSubmit === 'true';
     form._trackSubmitAttempt = (valid, errorCount = 0) => {
@@ -2156,11 +2248,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   wireClick('[data-cta="quote_index_disability_start"]', 'quote_index_disability_start', 'quote_click');
   wireClick('[data-cta="quote_index_health_start"]',     'quote_index_health_start',     'quote_click');
 
-  document.querySelectorAll('form[data-form-key]').forEach(f => {
-    const key = f.getAttribute('data-form-key');
-    if (!key) return;
-    wireFormStart(f, key);
-  });
+  function bindCanonicalForms(root = document) {
+    if (!root?.querySelectorAll) return 0;
+    let bound = 0;
+    root.querySelectorAll('form[data-form-key]').forEach(form => {
+      const key = form.getAttribute('data-form-key');
+      if (!key || form._legendTrackingBound) return;
+      wireFormStart(form, key);
+      bound++;
+    });
+    return bound;
+  }
+
+  bindCanonicalForms(document);
+  listen(window, 'legend:website-content-rendered', () => bindCanonicalForms(document));
 
 
   // ============================================================
@@ -2204,6 +2305,12 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     registerBinding(node, binding, elementId) {
       canonicalBindings.set(binding.id, {node, binding, elementId});
       return () => canonicalBindings.delete(binding.id);
+    },
+    bindForms(root = document) {
+      return bindCanonicalForms(root);
+    },
+    syncFormAttribution(form) {
+      syncFormAttribution(form);
     },
     signalAliases: Object.freeze({ ...(ANALYTICS_CONFIG.signalAliases || {}) }),
     measurementConsent: Object.freeze({
@@ -2250,6 +2357,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      gclid: attribution.gclid || null,
+      ttclid: attribution.ttclid || null,
       oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,
@@ -2267,6 +2376,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
+      gclid: attribution.gclid || null,
+      ttclid: attribution.ttclid || null,
       oppref: attribution.oppref || null,
       metaCampaignId: attribution.metaCampaignId || null,
       metaAdSetId: attribution.metaAdSetId || null,

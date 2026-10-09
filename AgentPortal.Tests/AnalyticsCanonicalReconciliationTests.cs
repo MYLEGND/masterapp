@@ -281,7 +281,7 @@ public sealed class AnalyticsCanonicalReconciliationTests
     }
 
     [Fact]
-    public async Task StandaloneServerLeadUsesLeadContextOnlyWhenNoBrowserIdentityExists()
+    public async Task StandaloneServerLeadDoesNotInventHumanEvidence()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var businessId = Guid.NewGuid();
@@ -318,8 +318,11 @@ public sealed class AnalyticsCanonicalReconciliationTests
         var summary = await analytics.GetSummaryAsync(range, ScopeContext.ForBusiness(businessId));
         var conversions = await analytics.GetConversionsAsync(range, ScopeContext.ForBusiness(businessId));
 
-        Assert.Equal(1, summary.VerifiedLeads);
-        Assert.Equal(1, conversions.TotalConversions);
+        Assert.Equal(0, summary.VerifiedLeads);
+        Assert.Equal(0, conversions.TotalConversions);
+        range = new TimeRangeRequest { FromUtc = range.FromUtc, ToUtc = range.ToUtc, QualityMode = TrafficQualityMode.ReviewedNeeded };
+        Assert.Equal(1, (await analytics.GetSummaryAsync(range, ScopeContext.ForBusiness(businessId))).VerifiedLeads);
+        Assert.Equal(1, (await analytics.GetConversionsAsync(range, ScopeContext.ForBusiness(businessId))).TotalConversions);
     }
 
     private static AnalyticsEvent Event(

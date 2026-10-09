@@ -65,7 +65,7 @@ public class WebsiteAnalyticsScopeTests
 
         var accessor = new HttpContextAccessor { HttpContext = http };
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
-        var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
+        var protector = new Infrastructure.Analytics.MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
         var aiDataBuilder = new WebsiteAnalyticsAiDataBuilder(
             analytics.Object,
             Mock.Of<IMetaAdsService>(),

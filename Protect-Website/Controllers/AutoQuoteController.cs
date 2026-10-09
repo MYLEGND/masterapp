@@ -13,10 +13,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
-using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
-using ProtectWebsite.Services.Communication;
 
 using Shared.Analytics;
 namespace Protect_Website.Controllers
@@ -35,10 +33,10 @@ namespace Protect_Website.Controllers
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly ILogger<AutoQuoteController> _logger;
-        private readonly IProtectEmailSender _emailSender;
+        private readonly IWebsiteInquiryEmailSender _emailSender;
 
         public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver, WebsiteIntakeRecipientResolver intakeRecipients,
-            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<AutoQuoteController> logger)
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IWebsiteInquiryEmailSender emailSender, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -224,7 +222,9 @@ await TryWriteLeadEventAsync(
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    var ctx = BuildTrackingContext("quote_auto", lead, eventType, metadata, eventUtc);
+                    var ctx = UnifiedEventContextBuilder.BuildWebsiteLead(
+                        HttpContext, lead, eventType, metadata,
+                        pageKey: "quote_auto", pageVariant: "website", pageMode: "site_mode", eventUtc: eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -541,86 +541,17 @@ await TryWriteLeadEventAsync(
             return RedirectToAction("Index", "ThankYou");
         }
 
-        private UnifiedEventContext BuildTrackingContext(
-            string quoteKey,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            DateTime? eventUtc = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventId: AnalyticsEventCatalog.TryGet(eventType, out var identityDefinition) && identityDefinition.CountsAsConfirmedLead
-                    ? Infrastructure.Leads.CanonicalLeadEventIdentity.Resolve(lead) : null,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: quoteKey,
-                effectivePageKey: quoteKey,
-                pageVariant: "website",
-                pageMode: "site_mode",
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                utmTerm: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmTerm"),
-                utmContent: CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "UtmContent"),
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                oppref: lead.Oppref,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: lead.InterestType,
-                metadata: metadata);
-        }
-
-        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
+private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
             var resolution = await WebsiteLeadOwnerAuthority.ResolveAsync(
                 HttpContext,
                 _resolver,
                 _intakeRecipients,
-                ResolveExplicitAgentSlugFromRequest(),
                 HttpContext?.RequestAborted ?? CancellationToken.None);
             return (resolution.RecipientEmail, resolution.AgentProfileId, resolution.AgentSlug, resolution.IsFounderPath);
         }
 
-        private static string? ExtractSlugFromPath(string? pathOrUrl)
-        {
-            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-            var value = pathOrUrl.Trim();
-            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-            {
-                value = uri.AbsolutePath;
-            }
-
-            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-            {
-                return segments[1];
-            }
-
-            return null;
-        }
-
-        private string? ResolveExplicitAgentSlugFromRequest()
-        {
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug))
-                return formSlug.Trim();
-
-            return ExtractSlugFromPath(Request?.Path.Value)
-                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-        }
-
-        private static void NormalizeLists(AutoQuoteFormModel model)
+private static void NormalizeLists(AutoQuoteFormModel model)
         {
             model.Drivers ??= new List<Driver>();
             model.Vehicles ??= new List<Vehicle>();

@@ -1413,6 +1413,7 @@ public sealed class LegendConnectOperationalProofTests
                     services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddConfiguration(Configuration())
                         .AddInMemoryCollection(new Dictionary<string, string?> { ["Founder:Upn"] = "founder@example.test" }).Build());
                     services.AddScoped<AgentPortal.Services.Tracking.IAgentTrackingService, AgentPortal.Services.Tracking.AgentTrackingService>();
+                    services.AddScoped<Shared.PortalShell.IPortalShellIdentityResolver, AgentPortal.Services.AgentPortalShellIdentityResolver>();
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectRuntimePolicyAuthority>();
                     services.AddScoped<ILegendConnectRuntimePolicyAuthority>(

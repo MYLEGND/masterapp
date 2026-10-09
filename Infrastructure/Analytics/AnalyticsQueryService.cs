@@ -32,9 +32,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         else if (owner.AgentTrackingProfileId is { } agent) query = query.Where(e => e.AgentTrackingProfileId == agent && e.CommerceBusinessId == null);
         else query = query.Where(e => e.CommerceBusinessId == null);
         var result = new List<AnalyticsEvent>();
-        foreach (var source in await query.ToListAsync(ct))
-            if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, source, ct) == owner)
-                result.Add(source);
+        foreach (var group in (await query.ToListAsync(ct)).GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host, e.WebsiteContentVersionId,
+            SiteKey = CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "siteKey") }))
+            if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, group.First(), ct) == owner)
+                result.AddRange(group);
         return result;
     }
 
@@ -115,7 +116,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         System.Threading.CancellationToken cancellationToken = default)
     {
         var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync(cancellationToken);
-        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode);
+        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode,
+            await LoadClassificationEvidenceAsync(rawEvents, [], range.QualityMode, scope, scopedAgentIds, cancellationToken));
     }
 
     private async Task<List<AnalyticsEvent>> LoadFilteredEventsInRangeAsync(
@@ -126,7 +128,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         Guid[]? scopedAgentIds = null)
     {
         var rawEvents = await EventsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds).ToListAsync();
-        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode);
+        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode,
+            await LoadClassificationEvidenceAsync(rawEvents, [], qualityMode, scope, scopedAgentIds));
     }
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
@@ -170,10 +173,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
-        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode);
         var rawLeads = await BaseLeadsWithoutQualityFilter(range, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
-        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, rawEvents, range.QualityMode);
+        var evidence = await LoadClassificationEvidenceAsync(rawEvents, rawLeads, range.QualityMode, scope, scopedAgentIds, cancellationToken);
+        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode, evidence);
+        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence, range.QualityMode);
         return (events, leads);
     }
 
@@ -187,122 +191,31 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var rawEvents = await EventsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
-        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode);
         var rawLeads = await LeadsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds)
             .ToListAsync(cancellationToken);
-        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, rawEvents, qualityMode);
+        var evidence = await LoadClassificationEvidenceAsync(rawEvents, rawLeads, qualityMode, scope, scopedAgentIds, cancellationToken);
+        var events = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode, evidence);
+        var leads = TrafficQualityBucketFilters.ApplyLeadBucketMembershipInMemory(rawLeads, evidence, qualityMode);
         return (events, leads);
     }
 
-    private static Expression<Func<AnalyticsEvent, bool>> QualityPredicateEvents(TrafficQualityMode mode) =>
-        TrafficQualityBucketFilters.BuildEventPredicate(mode);
-
-    private sealed class EventBucketMembership
+    private async Task<List<AnalyticsEvent>> LoadClassificationEvidenceAsync(List<AnalyticsEvent> events, List<WebsiteLead> leads,
+        TrafficQualityMode mode, ScopeContext scope, Guid[]? scopedAgentIds, CancellationToken ct = default)
     {
-        public EventBucketMembership(
-            IQueryable<string> sessionIds,
-            IQueryable<string> visitorIds,
-            IQueryable<Guid> eventIds)
-        {
-            SessionIds = sessionIds;
-            VisitorIds = visitorIds;
-            EventIds = eventIds;
-        }
-
-        public IQueryable<string> SessionIds { get; }
-        public IQueryable<string> VisitorIds { get; }
-        public IQueryable<Guid> EventIds { get; }
+        if (mode == TrafficQualityMode.AllTraffic) return events;
+        // CRM outcomes retain the acquisition session even when it predates the reporting window.
+        // Load only behavioral fields; owner/host/visitor matching remains in the shared classifier.
+        var sessions = events.Select(e => e.SessionId).Concat(leads.Select(l => l.SessionId))
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToArray();
+        if (sessions.Length == 0) return events;
+        var query = _db.AnalyticsEvents.AsNoTracking().Where(ScopePredicateEvents(scope, scopedAgentIds))
+            .Where(e => sessions.Contains(e.SessionId) && e.EventUtc <= DateTime.UtcNow);
+        var evidence = await UnifiedEventMapper.ProjectBehaviorEvidence(query).ToListAsync(ct);
+        return evidence.Concat(events).ToList();
     }
 
-    // Traffic buckets are assigned at the session/visitor identity level so
-    // supporting rows like page_view inherit the session's final quality bucket.
-    private static IQueryable<AnalyticsEvent> ApplyQualityFilterEvents(IQueryable<AnalyticsEvent> query, TrafficQualityMode mode)
-    {
-        if (mode == TrafficQualityMode.AllTraffic)
-            return query;
-
-        // Performance-critical:
-        // Use direct row-level predicates for selectable analytics quality buckets.
-        // The previous identity-bucket implementation generated nested SessionId /
-        // VisitorId / EventId Contains() subqueries, which caused production modal
-        // timeouts under filtered modes.
-        return query.Where(QualityPredicateEvents(mode));
-    }
-
-    private static EventBucketMembership BuildEventBucketMembership(
-        IQueryable<AnalyticsEvent> query,
-        Expression<Func<AnalyticsEvent, bool>> bucketPredicate,
-        params EventBucketMembership[] excludedBuckets)
-    {
-        var candidates = query.Where(bucketPredicate);
-        return BuildEventBucketMembership(ExcludeEventBucketMembership(candidates, excludedBuckets));
-    }
-
-    private static EventBucketMembership BuildRemainingEventBucketMembership(
-        IQueryable<AnalyticsEvent> query,
-        params EventBucketMembership[] excludedBuckets)
-        => BuildEventBucketMembership(ExcludeEventBucketMembership(query, excludedBuckets));
-
-    private static EventBucketMembership BuildEventBucketMembership(IQueryable<AnalyticsEvent> query)
-    {
-        var sessionIds = query
-            .Where(e => e.SessionId != null && e.SessionId != string.Empty)
-            .Select(e => e.SessionId!)
-            .Distinct();
-
-        var visitorIds = query
-            .Where(e =>
-                (e.SessionId == null || e.SessionId == string.Empty) &&
-                e.VisitorId != null &&
-                e.VisitorId != string.Empty)
-            .Select(e => e.VisitorId!)
-            .Distinct();
-
-        var eventIds = query
-            .Where(e =>
-                (e.SessionId == null || e.SessionId == string.Empty) &&
-                (e.VisitorId == null || e.VisitorId == string.Empty))
-            .Select(e => e.EventId)
-            .Distinct();
-
-        return new EventBucketMembership(sessionIds, visitorIds, eventIds);
-    }
-
-    private static IQueryable<AnalyticsEvent> ExcludeEventBucketMembership(
-        IQueryable<AnalyticsEvent> query,
-        params EventBucketMembership[] excludedBuckets)
-    {
-        foreach (var excludedBucket in excludedBuckets)
-        {
-            query = query.Where(e =>
-                ((e.SessionId != null && e.SessionId != string.Empty) &&
-                 !excludedBucket.SessionIds.Contains(e.SessionId!)) ||
-                (((e.SessionId == null || e.SessionId == string.Empty) &&
-                  e.VisitorId != null &&
-                  e.VisitorId != string.Empty) &&
-                 !excludedBucket.VisitorIds.Contains(e.VisitorId!)) ||
-                ((e.SessionId == null || e.SessionId == string.Empty) &&
-                 (e.VisitorId == null || e.VisitorId == string.Empty) &&
-                 !excludedBucket.EventIds.Contains(e.EventId)));
-        }
-
-        return query;
-    }
-
-    private static IQueryable<AnalyticsEvent> ApplyEventBucketMembership(
-        IQueryable<AnalyticsEvent> query,
-        EventBucketMembership bucket)
-        => query.Where(e =>
-            ((e.SessionId != null && e.SessionId != string.Empty) &&
-             bucket.SessionIds.Contains(e.SessionId!)) ||
-            (((e.SessionId == null || e.SessionId == string.Empty) &&
-              e.VisitorId != null &&
-              e.VisitorId != string.Empty) &&
-             bucket.VisitorIds.Contains(e.VisitorId!)) ||
-            ((e.SessionId == null || e.SessionId == string.Empty) &&
-             (e.VisitorId == null || e.VisitorId == string.Empty) &&
-             bucket.EventIds.Contains(e.EventId)));
-
+    private IQueryable<AnalyticsEvent> ApplyQualityFilterEvents(IQueryable<AnalyticsEvent> query, TrafficQualityMode mode)
+        => TrafficQualityBucketFilters.ApplyEventBucketMembership(query, mode, _db.AnalyticsEvents.AsNoTracking().Where(e => e.EventUtc <= DateTime.UtcNow));
 
     // SCOPE SAFETY RULE:
     // Global scope must NEVER be passed directly into analytics queries.
@@ -398,10 +311,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var founderIds = scopedAgentIds is { Length: > 0 }
                 ? scopedAgentIds
                 : new[] { scope.AgentTrackingProfileId.Value };
+            var founderSiteMarker = string.IsNullOrWhiteSpace(scope.SiteKey)
+                ? null
+                : $"\"SiteKey\":\"{scope.SiteKey.Trim()}\"";
             return l => l.CommerceBusinessId == null &&
+                (founderSiteMarker == null || (l.MetadataJson != null && l.MetadataJson.Contains(founderSiteMarker))) &&
                 ((l.AgentTrackingProfileId.HasValue && founderIds.Contains(l.AgentTrackingProfileId.Value)) ||
                  (!l.AgentTrackingProfileId.HasValue && l.MetadataJson != null &&
-                  l.MetadataJson.Contains("\"SiteKey\":\"legend\"")));
+                  (l.MetadataJson.Contains("\"ReportingOwner\":\"founder\"") ||
+                   l.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
@@ -1020,6 +938,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmCampaign,
         string? UtmId,
         string? Fbclid,
+        string? Gclid,
+        string? Ttclid,
         string? Oppref,
         string? UtmTerm,
         string? UtmContent,
@@ -1074,6 +994,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmCampaign),
             NormalizeAttributionToken(e.UtmId),
             NormalizeAttributionToken(e.Fbclid),
+            NormalizeAttributionToken(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "gclid")),
+            NormalizeAttributionToken(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "ttclid")),
             NormalizeAttributionToken(e.Oppref),
             NormalizeAttributionToken(e.UtmTerm),
             NormalizeAttributionToken(e.UtmContent),
@@ -1091,6 +1013,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.UtmCampaign) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmId) ||
         !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Gclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.Ttclid) ||
         !string.IsNullOrWhiteSpace(snapshot.Oppref) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
@@ -1110,7 +1034,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             isInternal: snapshot.IsInternal,
             environment: snapshot.Environment,
             host: snapshot.Host,
-            oppref: snapshot.Oppref);
+            oppref: snapshot.Oppref,
+            gclid: snapshot.Gclid,
+            ttclid: snapshot.Ttclid);
 
     private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.IsMetaAttributedPaid(
@@ -1137,6 +1063,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         if (IsMetaAttributedPaid(snapshot))
             return 500;
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Gclid) ||
+            !string.IsNullOrWhiteSpace(snapshot.Ttclid))
+            return 475;
 
         if (!string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
             !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
@@ -1263,6 +1193,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? MetaCampaignId,
         string? MetaAdSetId,
         string? MetaAdId,
+        string? Gclid,
+        string? Ttclid,
         string? PageMode,
         MetaLeadTrackingState? MetaTracking);
 
@@ -1276,7 +1208,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null, null, null);
 
         try
         {
@@ -1295,12 +1227,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 ReadString("MetaCampaignId"),
                 ReadString("MetaAdSetId"),
                 ReadString("MetaAdId"),
+                ReadString("Gclid") ?? ReadString("gclid"),
+                ReadString("Ttclid") ?? ReadString("ttclid"),
                 ReadString("PageMode"),
                 MetaLeadTrackingJson.Read(lead.MetadataJson));
         }
         catch
         {
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -1316,6 +1250,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(lead.UtmCampaign),
             NormalizeAttributionToken(lead.UtmId) ?? metadata.UtmId,
             NormalizeAttributionToken(lead.Fbclid),
+            metadata.Gclid,
+            metadata.Ttclid,
             NormalizeAttributionToken(lead.Oppref),
             metadata.UtmTerm,
             metadata.UtmContent,

@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using Shared.Crm;
 
@@ -91,7 +92,7 @@ public sealed partial class BusinessWorkspaceService
             Note = $"Contact updated: {before} → {row.CrmStatus}/{stage}", Date = now.ToString("O"), CreatedUtc = now });
         row.CrmNotes = ClientCrmMetaSerializer.Serialize(meta, preferences.Stages);
         row.UpdatedUtc = now;
-        await db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db, ct);
         return ContactPayload(row, preferences);
     }
 
@@ -141,7 +142,7 @@ public sealed partial class BusinessWorkspaceService
             row.CrmNotes = ClientCrmMetaSerializer.Serialize(meta, preferences.Stages);
             row.UpdatedUtc = now;
         }
-        await db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db, ct);
         return new { ok = true, updated = rows.Count, revisions = rows.ToDictionary(x => x.LeadId, ContactRevision) };
     }
 
@@ -190,7 +191,7 @@ public sealed partial class BusinessWorkspaceService
             row.CrmNotes = ClientCrmMetaSerializer.Serialize(meta, preferences.Stages);
             row.UpdatedUtc = now;
         }
-        await db.SaveChangesAsync(ct);
+        await CanonicalCrmOutcomeService.SaveLeadChangesAsync(db, ct);
         return new { ok = true, updated = rows.Count, revisions = rows.ToDictionary(x => x.LeadId, ContactRevision) };
     }
 

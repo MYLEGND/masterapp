@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-09-28 to deploy the already validated and merged canonical marketing hardening release from legend/approved-changes through a merged release-control PR. Product code and target scope are unchanged.",
-  "purpose": "Final release-control dispatch for merged marketing hardening product PR #273. Deploy the validated canonical marketing hardening: shared inquiry intake across LEGEND/business/Protect/Parfait, scoped primary-account-email notifications, durable notification retry recovery, and canonical Meta/OpenAI measurement consent. No product logic changes in this release-control PR.",
-  "requestId": "canonical-marketing-hardening-release-final-20260928",
+  "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
+  "purpose": "Resume the existing authorized five-target publication after release 37954422758 stopped on database activity. Preserve compatible validation, immutable application components, rollback evidence, and completed migrations. Correct only the canonical read-only activity boundary, reconcile current database history and physical schema without migration replay, and require durable target receipts and live acceptance.",
+  "requestId": "founder-pr551-migration-activity-resume-20261009",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",

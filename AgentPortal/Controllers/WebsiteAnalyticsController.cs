@@ -39,10 +39,10 @@ namespace AgentPortal.Controllers;
         private readonly IVisitorConcentrationService _visitorConcentrationService;
         private readonly IKpiDetailBreakdownService _kpiDetailBreakdownService;
         private readonly IVisitorTrustScoringService _visitorTrustScoringService;
-        private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
+        private readonly Infrastructure.Analytics.MetaCapiCredentialProtector _metaCapiCredentialProtector;
         private readonly IAnalyticsIncidentQueryService _incidentMonitor;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, Infrastructure.Analytics.MetaCapiCredentialProtector metaCapiCredentialProtector)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -104,6 +104,7 @@ namespace AgentPortal.Controllers;
         ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
+        ViewData["InitialSiteKey"] = scope.ScopeType == ScopeType.Founder ? scope.SiteKey : null;
         // Founder Personal must hydrate with the permanent Founder tracking-profile id
         // so the browser preserves the same canonical scope on every AJAX refresh.
         ViewData["InitialScopeProfileId"] =
@@ -134,9 +135,16 @@ namespace AgentPortal.Controllers;
         ViewData["CanDeleteAnalyticsLeads"] = canDeleteAnalyticsLeads;
         if (canViewFounderTeamUi)
         {
-            // Ensure founder personal link is root
-            var rootBase = _landingRouteDiscovery.GetBaseUrl();
-            ViewData["PersonalLink"] = rootBase.EndsWith("/") ? rootBase : rootBase + "/";
+            // Public website links follow the selected Founder site. Product landing
+            // routes retain their separate Protect authority above.
+            var siteLinks = new Dictionary<string, string>
+            {
+                ["legend"] = (_config["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/",
+                ["protect"] = _landingRouteDiscovery.GetBaseUrl().TrimEnd('/') + "/"
+            };
+            var rootBase = siteLinks[scope.SiteKey == "protect" ? "protect" : "legend"];
+            ViewData["FounderSiteLinksJson"] = System.Text.Json.JsonSerializer.Serialize(siteLinks);
+            ViewData["PersonalLink"] = rootBase;
             ViewData["PersonalLinkAlt"] = null;
 
             var agents = await _tracking.GetAllProfilesAsync();
@@ -146,7 +154,7 @@ namespace AgentPortal.Controllers;
                 var urls = await _tracking.GetPersonalUrlsAsync(agent);
                 // Founder should surface root as primary
                 var primaryOverride = string.Equals(agent.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase)
-                    ? (rootBase.EndsWith("/") ? rootBase : rootBase + "/")
+                    ? rootBase
                     : urls.PrimaryUrl;
                 agentOptions.Add(new { id = agent.Id, name = agent.DisplayName ?? agent.AgentUpn ?? agent.Slug, slug = agent.Slug, primaryUrl = primaryOverride, altUrl = urls.AlternateSlugUrl });
             }
@@ -217,6 +225,10 @@ namespace AgentPortal.Controllers;
                 publicReady = !string.IsNullOrWhiteSpace(profile?.FullName) && !string.IsNullOrWhiteSpace(profile?.Phone),
                 metaCustomPixel = !string.IsNullOrWhiteSpace(marketing.PixelId),
                 openAiReady = openAiAccountReady,
+                googleReady = setup.Google.Ready,
+                googleOptimizationReady = setup.GoogleMeasurement.MappingReady,
+                tiktokReady = setup.TikTok.Ready,
+                tiktokOptimizationReady = setup.TikTokMeasurement.MappingReady,
                 bookingPersonalLive = bookingLive,
                 calendarLinked = calendarConnection.Connected
             },
@@ -233,6 +245,10 @@ namespace AgentPortal.Controllers;
                 metaCapiConfiguredSecurely = secureCapi,
                 metaCapiManagedAutomatically = true
             },
+            google = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.Google, setup.GoogleMeasurement),
+            tiktok = Infrastructure.Analytics.MarketingProviderSetupProjection.External(
+                setup.TikTok, setup.TikTokMeasurement),
             openAi = new
             {
                 revision = openAiConnection.Revision,
@@ -270,6 +286,8 @@ namespace AgentPortal.Controllers;
                     retrying = openAiHealth.RetryableDeliveries,
                     failed = openAiHealth.FailedDeliveries,
                     sent = openAiHealth.SentDeliveries,
+                    otherDestinationReceipts = openAiHealth.OtherDestinationReceipts,
+                    otherDestinationUnresolved = openAiHealth.OtherDestinationUnresolved,
                     lastSentUtc = openAiHealth.LastSentUtc,
                     providerMonitoringAvailable = openAiHealth.ProviderMonitoringAvailable,
                     recentProviderEvents = openAiHealth.RecentProviderEvents
@@ -296,6 +314,178 @@ namespace AgentPortal.Controllers;
                 calendarEmail = profile?.CalendarEmail
             }
         });
+    }
+
+    public sealed record ExternalAdsAccountRequest(
+        Guid? AgentProfileId,
+        string Provider,
+        string AccountId);
+
+    public sealed record ExternalAdsDisconnectRequest(
+        Guid? AgentProfileId,
+        string Provider);
+
+    public sealed record ExternalAdsMeasurementRequest(
+        Guid? AgentProfileId,
+        string Provider,
+        string? EventSourceId,
+        string? EventSourceType,
+        IReadOnlyList<MarketingProviderEventMapping> Mappings,
+        Guid ExpectedRevision,
+        string? MeasurementAccessToken = null);
+
+    [HttpGet("external-ads/connect")]
+    public async Task<IActionResult> ExternalAdsConnect(
+        [FromQuery] string provider,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        var target = Url.IsLocalUrl(returnUrl) ? returnUrl! : "/WebsiteAnalytics/Index";
+        try
+        {
+            var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/WebsiteAnalytics/external-ads/callback";
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Redirect(oauth.BuildConnectUrl(owner, provider, target, callback));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            var key = Uri.EscapeDataString((provider ?? "provider").Trim().ToLowerInvariant());
+            return Redirect($"{target}?provider={key}&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("external-ads/callback")]
+    public async Task<IActionResult> ExternalAdsCallback(
+        [FromQuery] string? code = null,
+        [FromQuery(Name = "auth_code")] string? authCode = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null,
+        CancellationToken cancellationToken = default)
+    {
+        var target = "/WebsiteAnalytics/Index";
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            var inspected = oauth.InspectState(state ?? string.Empty);
+            if (!await IsAuthorizedExternalAdsOwnerAsync(inspected.Owner, cancellationToken)) return Forbid();
+            target = Url.IsLocalUrl(inspected.ReturnUrl) ? inspected.ReturnUrl : target;
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+                return Redirect($"{target}?provider={Uri.EscapeDataString(inspected.Provider)}&status=error&message={Uri.EscapeDataString(message)}");
+            }
+
+            var result = await oauth.CompleteCallbackAsync(
+                inspected.Provider,
+                authCode ?? code ?? string.Empty,
+                state ?? string.Empty,
+                cancellationToken);
+            if (result.Owner != inspected.Owner ||
+                !await IsAuthorizedExternalAdsOwnerAsync(result.Owner, cancellationToken))
+                return Forbid();
+
+            var separator = target.Contains('?') ? '&' : '?';
+            return Redirect($"{target}{separator}provider={Uri.EscapeDataString(result.Provider)}&status=connected");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return Redirect($"{target}{(target.Contains('?') ? '&' : '?')}provider=external&status=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("external-ads/accounts")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ExternalAdsAccounts(
+        [FromQuery] string provider,
+        [FromQuery] Guid? agentProfileId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(agentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            return Json(new { provider, accounts = await oauth.GetAccountsAsync(owner, provider, cancellationToken) });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/select-account")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsSelectAccount(
+        [FromBody] ExternalAdsAccountRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            var oauth = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingExternalAdsOAuthService>();
+            await oauth.SelectAccountAsync(owner, request.Provider, request.AccountId, cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or HttpRequestException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/measurement")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsMeasurement(
+        [FromBody] ExternalAdsMeasurementRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            await MarketingConnections.SaveProviderMeasurementConfigurationAsync(
+                owner,
+                new MarketingProviderMeasurementUpdate(
+                    request.Provider,
+                    request.EventSourceId,
+                    request.EventSourceType,
+                    request.Mappings ?? [],
+                    request.ExpectedRevision,
+                    request.MeasurementAccessToken),
+                cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new { message = "Marketing provider connection changed. Reload and try again." });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("external-ads/disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExternalAdsDisconnect(
+        [FromBody] ExternalAdsDisconnectRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var owner = await ResolveAdvertisingOwnerAsync(request.AgentProfileId, cancellationToken);
+        if (owner is null || owner.CommerceBusinessId.HasValue) return Forbid();
+        try
+        {
+            await MarketingConnections.DisconnectAsync(owner, request.Provider, cancellationToken);
+            return await MarketingSetup(request.AgentProfileId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     public sealed record CalendarConnectionRevisionRequest(Guid? AgentProfileId, Guid ConnectionRevision);
@@ -1802,6 +1992,16 @@ namespace AgentPortal.Controllers;
         return resolved == owner;
     }
 
+    private async Task<bool> IsAuthorizedExternalAdsOwnerAsync(
+        Shared.Analytics.MarketingOwnerScope owner,
+        CancellationToken cancellationToken)
+    {
+        if (User.Identity?.IsAuthenticated != true || owner.CommerceBusinessId.HasValue)
+            return false;
+        var resolved = await ResolveAdvertisingOwnerAsync(owner.AgentTrackingProfileId, cancellationToken);
+        return resolved == owner;
+    }
+
     private async Task<bool> IsAuthorizedCalendarOwnerAsync(
         Shared.Analytics.MarketingOwnerScope owner,
         CancellationToken cancellationToken)
@@ -1812,9 +2012,27 @@ namespace AgentPortal.Controllers;
         return await ResolveMarketingOwnerAsync(tracking, cancellationToken) == owner;
     }
 
-    private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
-        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
+    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
+    {
+        var resolved = await new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
             .ResolveAsync(HttpContext, requestedAgentId, team);
+
+        if (resolved.ScopeType != ScopeType.Founder)
+            return resolved;
+
+        var requestedSite = Request.Query["siteKey"].ToString().Trim().ToLowerInvariant();
+        if (requestedSite is not ("legend" or "protect"))
+            return resolved;
+
+        return new ScopeContext
+        {
+            ScopeType = resolved.ScopeType,
+            AgentTrackingProfileId = resolved.AgentTrackingProfileId,
+            CommerceBusinessId = resolved.CommerceBusinessId,
+            ReportingOwner = resolved.ReportingOwner,
+            SiteKey = requestedSite
+        };
+    }
 
     private Task<Domain.Entities.AgentTrackingProfile?> GetCallerProfileAsync() =>
         new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger).GetCallerProfileAsync();
@@ -2001,95 +2219,36 @@ namespace AgentPortal.Controllers;
 
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
+        var total = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var buckets = new List<object>();
 
-        // Load all raw events + leads
-        var scopedAgentIds = await _db.AgentTrackingProfiles
-            .Where(p => true)
-            .Select(p => p.Id)
-            .ToArrayAsync();
-
-        var allEvents = await _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => !e.IsInternal && e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
-            .ToListAsync();
-
-        var allLeads = await _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal && !l.IsDeleted && l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
-            .ToListAsync();
-
-        // Compute attributed event rows
-        var attributed = allEvents
-            .Select(e =>
+        foreach (var trafficType in new[]
+        {
+            TrafficType.PaidAds,
+            TrafficType.Organic,
+            TrafficType.Direct,
+            TrafficType.Referral,
+            TrafficType.Unknown
+        })
+        {
+            var summary = await _analytics.GetSummaryAsync(range, scope, trafficType);
+            buckets.Add(new
             {
-                var src  = e.UtmSource?.Trim();
-                var med  = e.UtmMedium?.Trim();
-                var camp = e.UtmCampaign?.Trim();
-                var fb   = e.Fbclid?.Trim();
-                var t    = TrafficAttribution.Classify(
-                    src,
-                    med,
-                    camp,
-                    fb,
-                    referrerHost: e.ReferrerHost,
-                    metaCampaignId: e.MetaCampaignId,
-                    metaAdSetId: e.MetaAdSetId,
-                    metaAdId: e.MetaAdId,
-                    isInternal: e.IsInternal,
-                    environment: e.Environment,
-                    host: e.Host,
-                    oppref: e.Oppref);
-                return new { e.EventType, e.SessionId, t };
-            })
-            .ToList();
-
-        var eventBuckets = attributed
-            .GroupBy(r => r.t)
-            .OrderByDescending(g => g.Count())
-            .Select(g => new
-            {
-                Bucket = g.Key.ToString(),
-                Events = g.Count(),
-                Sessions = g.Where(r => r.SessionId != null).Select(r => r.SessionId!).Distinct().Count()
-            })
-            .ToList();
-
-        var leadBuckets = allLeads
-            .GroupBy(l => TrafficAttribution.Classify(
-                l.UtmSource,
-                l.UtmMedium,
-                l.UtmCampaign,
-                l.Fbclid,
-                metaCampaignId: l.MetaCampaignId,
-                metaAdSetId: l.MetaAdSetId,
-                metaAdId: l.MetaAdId,
-                isInternal: l.IsInternal,
-                environment: l.Environment,
-                host: l.Host,
-                oppref: l.Oppref))
-            .OrderByDescending(g => g.Count())
-            .Select(g => new
-            {
-                Bucket = g.Key.ToString(),
-                Leads = g.Count()
-            })
-            .ToList();
-
-        var zeroDataHints = new List<string>();
-        var paidEvents    = eventBuckets.FirstOrDefault(b => b.Bucket == "PaidAds")?.Events ?? 0;
-        var unknownEvents = eventBuckets.FirstOrDefault(b => b.Bucket == "Unknown")?.Events ?? 0;
-        if (paidEvents == 0 && unknownEvents > 0)
-            zeroDataHints.Add($"All traffic is Unknown/unattributed ({unknownEvents} events). PaidAds filter will return 0 rows. Check that utm_source/utm_medium are being sent on landing page_view events.");
-        if (paidEvents == 0 && allEvents.Count > 0)
-            zeroDataHints.Add("No PaidAds-classified events in range. If you expect paid traffic, verify UTM parameters are present on the first page_view of paid sessions.");
+                Bucket = trafficType.ToString(),
+                summary.Sessions,
+                summary.VerifiedLeads
+            });
+        }
 
         return Json(new
         {
             Range = range.Label,
-            TotalEvents = allEvents.Count,
-            TotalLeads = allLeads.Count,
-            EventBucketsByDirectAttribution = eventBuckets,
-            LeadBucketsByDirectAttribution = leadBuckets,
-            ZeroDataHints = zeroDataHints,
-            Note = "Attribution shown here is direct-field only (no session fallback). Actual query results use session→visitor fallback and may differ."
+            Scope = await ResolveScopeLabelAsync(scope, team),
+            QualityMode = TrafficQualityBucketFilters.ToClientValue(range.QualityMode),
+            TotalSessions = total.Sessions,
+            TotalLeads = total.VerifiedLeads,
+            Buckets = buckets,
+            Note = "Uses the same scoped attribution, session/visitor fallback and traffic-quality authority as production analytics."
         });
     }
 

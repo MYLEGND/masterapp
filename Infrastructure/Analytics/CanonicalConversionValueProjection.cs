@@ -17,7 +17,7 @@ public static class CanonicalConversionValueProjection
         foreach (var key in MinorUnitKeys)
         {
             var raw = CanonicalAdvertisingEventProjection.ReadString(metadataJson, key);
-            if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+            if (!long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount) || amount < 0)
                 continue;
             return new(amount, currency ?? "USD");
         }
@@ -25,11 +25,11 @@ public static class CanonicalConversionValueProjection
         foreach (var key in MajorUnitKeys)
         {
             var raw = CanonicalAdvertisingEventProjection.ReadString(metadataJson, key);
-            if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+            if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount < 0)
                 continue;
             if (currency is null) return null;
             var minor = decimal.ToInt64(decimal.Round(amount * 100m, 0, MidpointRounding.AwayFromZero));
-            return minor > 0 ? new(minor, currency) : null;
+            return minor >= 0 ? new(minor, currency) : null;
         }
 
         return null;

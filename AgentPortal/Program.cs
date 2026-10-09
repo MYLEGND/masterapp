@@ -45,6 +45,8 @@ using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingBackgroundWorkers(builder.Services, builder.Configuration);
+Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadBackgroundWorkers(builder.Services);
 builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // QuestPDF license (Community; change if revenue threshold exceeded)
@@ -155,14 +157,29 @@ builder.Services.AddSingleton<ILegendBlindAnswerOrderRandomizer, LegendBlindCryp
 builder.Services.AddScoped<LegendBlindComparativeBenchmarkRunner>();
 builder.Services.AddScoped<LegendFounderAiDiscourseStateService>();
 builder.Services.AddScoped<IFounderSoftwareRemediationService, FounderSoftwareRemediationService>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringStateStore>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringBudgetAuthority>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringContractAuthority, AgentPortal.Services.Engineering.LegendEngineeringContractAuthority>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringOrchestrator, AgentPortal.Services.Engineering.LegendEngineeringOrchestrator>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.IFounderEngineeringCommandCenterService, AgentPortal.Services.Engineering.FounderEngineeringCommandCenterService>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendChatGptPlanCredentialAuthority, AgentPortal.Services.Engineering.LegendChatGptPlanCredentialAuthority>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.ILegendEngineeringAgentAdapter, AgentPortal.Services.Engineering.ChatGptPlanResponsesAdapter>();
+builder.Services.AddHttpClient("LegendChatGptPlanOAuth", client => client.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient("LegendChatGptPlanInference", client => client.Timeout = TimeSpan.FromMinutes(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringReleaseCohortPlanner>();
+builder.Services.AddScoped<AgentPortal.Services.Engineering.LegendEngineeringFounderNotificationService>();
 builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendFounderAiConversationService>();
+builder.Services.AddLegendMasterAppReadAuthority();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
-builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
+builder.Services.AddScoped<CanonicalCrmOutcomeService>();
 builder.Services.AddScoped<EffectiveAgentContext>();
+builder.Services.AddScoped<Shared.PortalShell.IPortalShellIdentityResolver, AgentPortal.Services.AgentPortalShellIdentityResolver>();
 builder.Services.AddScoped<IMessagingActorContextResolver, AgentPortalMessagingActorContextResolver>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();
@@ -181,7 +198,7 @@ builder.Services.AddSingleton<ILandingRouteDiscoveryService, LandingRouteDiscove
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorConcentrationService, AgentPortal.Services.Analytics.VisitorConcentrationService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IKpiDetailBreakdownService, AgentPortal.Services.Analytics.KpiDetailBreakdownService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorTrustScoringService, AgentPortal.Services.Analytics.VisitorTrustScoringService>();
-builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsReviewService>();
 builder.Services.AddHttpClient("OpenAI", c =>
 {
     // IsNullOrWhiteSpace so an empty string in config ("BaseUrl": "") falls through
@@ -205,11 +222,6 @@ builder.Services.AddHttpClient("FounderGitHubRemediation", c =>
     c.BaseAddress = new Uri("https://api.github.com/");
     c.Timeout = TimeSpan.FromSeconds(30);
 });
-// Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
-if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Configuration))
-{
-    Console.WriteLine("[WARN] OpenAI API key is not configured. AI insights features will return error results until a key is set via OpenAI:ApiKey (config) or the OPENAI_API_KEY environment variable.");
-}
 // Retain the migration adapter as the sole registration; it delegates to SQL.
 builder.Services.Replace(ServiceDescriptor.Scoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>());
 builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
@@ -227,13 +239,12 @@ builder.Services.AddHostedService(static services =>
 builder.Services.AddHostedService<AccountClosureHostedService>();
 builder.Services.AddHostedService<AgentProfileImageLegacyBackfillHostedService>();
 builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
+builder.Services.AddHostedService<AgentPortal.Services.Engineering.LegendEngineeringHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
-builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
 builder.Services.AddHostedService<BillingReconciliationHostedService>();
 builder.Services.AddHostedService<ClientBillingNotificationDeliveryHostedService>();
 builder.Services.AddHostedService<HouseholdPartnerInvitationDeliveryHostedService>();
-builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
 builder.Services.AddSingleton<IngestSignatureValidator>();
 builder.Services.AddMemoryCache();

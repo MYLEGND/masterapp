@@ -29,7 +29,7 @@ public sealed class LegendFounderCloudToolExposureTests
     private const string FounderId = "587d1166-e29b-41d4-a716-446655440099";
 
     [Fact]
-    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesAuditedReadsAndReviewOnlyRepair()
+    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesAuditedReadsPlusBoundedFounderMemory()
     {
         await using var fixture = await Fixture.CreateAsync(enableMutations: true, enableRepository: true);
         var authority = fixture.Authority();
@@ -42,13 +42,19 @@ public sealed class LegendFounderCloudToolExposureTests
             .Select(value => JsonSerializer.SerializeToElement(value)).ToArray();
         Assert.Equal(new[]
         {
-            "legend_calculate", "legend_capabilities", "legend_client_lead_portfolio", "legend_inspect_repository",
-            "legend_prepare_software_repair", "legend_provider_capacity", "legend_software_remediation_status", "legend_system_overview"
+            "legend_calculate", "legend_capabilities", "legend_client_lead_portfolio", "legend_configuration_presence",
+            "legend_engineering_status", "legend_inspect_repair_validation", "legend_inspect_repository",
+            "legend_prepare_repair_packet", "legend_provider_capacity", "legend_read_masterapp",
+            "legend_remember_founder_rule", "legend_software_remediation_status", "legend_system_health",
+            "legend_system_inventory", "legend_system_overview", "legend_verify_repair_deployment"
         }, exposed.Select(value => value.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
         foreach (var schema in exposed)
         {
             var name = schema.GetProperty("name").GetString()!;
-            Assert.True(authority.IsReadOnly(name) || name == "legend_prepare_software_repair");
+            if (name == "legend_remember_founder_rule")
+                Assert.False(authority.IsReadOnly(name));
+            else
+                Assert.True(authority.IsReadOnly(name));
             Assert.Equal(original[name].GetRawText(), schema.GetRawText());
         }
         Assert.Empty(authority.GetAvailableCloudTools(fixture.Scope.ConversationId, LegendConnectExternalProviderPolicy.NativeOnly));
@@ -69,9 +75,7 @@ public sealed class LegendFounderCloudToolExposureTests
     [InlineData("legend_operational_diagnostics", "{}")]
     [InlineData("legend_research_internet", "{}")]
     [InlineData("legend_request_teacher_escalation", "{}")]
-    [InlineData("legend_inspect_repair_validation", "{\"pull_request_number\":42,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}")]
     [InlineData("legend_request_repair_release", "{\"pull_request_number\":42,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}")]
-    [InlineData("legend_verify_repair_deployment", "{\"commit_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}")]
     [InlineData("legend_future_sensitive_read", "{}")]
     public async Task SignedValidScopeCannotInvokeUnexposedRead_OrCreateExecutionLedger(string name, string arguments)
     {
@@ -109,12 +113,28 @@ public sealed class LegendFounderCloudToolExposureTests
         var names = output.EnumerateArray().Select(item => item.GetProperty("name").GetString()).ToArray();
         Assert.Contains("legend_calculate", names);
         Assert.DoesNotContain("legend_metric_detail", names);
-        Assert.Contains("legend_prepare_software_repair", names);
-        Assert.Equal(8, names.Length);
-        var proposal = output.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "legend_prepare_software_repair");
-        Assert.Equal("founder_exact_proposal_review", proposal.GetProperty("access").GetString());
-        Assert.False(proposal.GetProperty("canModifyRepository").GetBoolean());
-        Assert.False(proposal.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
+        Assert.DoesNotContain("legend_prepare_software_repair", names);
+        Assert.Contains("legend_remember_founder_rule", names);
+        Assert.Equal(16, names.Length);
+        Assert.All(output.EnumerateArray(), capability =>
+        {
+            Assert.False(capability.GetProperty("canModifyRepository").GetBoolean());
+            Assert.False(capability.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
+            Assert.False(capability.GetProperty("canMergeExactApprovedRepair").GetBoolean());
+        });
+    }
+
+    [Fact]
+    public async Task CloudMasterAppReadCatalogUsesCanonicalProjectionAuthority()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync(
+            "legend_read_masterapp",
+            "{\"operation\":\"catalog\",\"surface\":null,\"preset\":null,\"timezone_id\":null,\"timezone_offset_minutes\":null}"));
+        var output = JsonSerializer.SerializeToElement(response.Value).GetProperty("output");
+        Assert.Equal("LegendMasterAppReadAuthority", output.GetProperty("authority").GetString());
+        Assert.False(output.GetProperty("providerSpecificRegistry").GetBoolean());
+        Assert.Equal(JsonValueKind.Array, output.GetProperty("projections").ValueKind);
     }
 
     [Fact]
@@ -134,7 +154,7 @@ public sealed class LegendFounderCloudToolExposureTests
     }
 
     [Fact]
-    public async Task NonexposedMutationRetainsExistingExactFounderApprovalBoundary()
+    public async Task RepositoryMutationIsDeniedEvenWithExistingExactFounderApproval()
     {
         await using var fixture = await Fixture.CreateAsync(enableMutations: true);
         const string tool = "legend_release_approved_repair";
@@ -143,17 +163,17 @@ public sealed class LegendFounderCloudToolExposureTests
             .ReturnsAsync(new { publicationRequested = true, released = false });
         var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync(tool, arguments));
         Assert.Equal(403, denied.StatusCode);
-        Assert.Equal("cloud_action_approval_required", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
+        Assert.Equal("cloud_action_tool_not_exposed", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
         Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
         fixture.Remediation.VerifyNoOtherCalls();
         var approval = await fixture.Authority().IssueCloudActionApprovalAsync(fixture.Principal,
             fixture.Scope, tool, arguments, fixture.Scope.ExpiresUtc, CancellationToken.None);
         Assert.True(approval.Succeeded, approval.Error);
-        var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync(tool, arguments));
-        Assert.True(JsonSerializer.SerializeToElement(response.Value).GetProperty("output").GetProperty("publicationRequested").GetBoolean());
-        fixture.Remediation.Verify(value => value.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()), Times.Once);
+        var response = Assert.IsType<ObjectResult>(await fixture.CallbackAsync(tool, arguments));
+        Assert.Equal(403, response.StatusCode);
+        Assert.Equal("cloud_action_tool_not_exposed", JsonSerializer.SerializeToElement(response.Value).GetProperty("error").GetString());
         fixture.Remediation.VerifyNoOtherCalls();
-        Assert.Equal("FounderApproval", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).AuthorizationKind);
+        Assert.Equal("Approved", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
     }
 
     [Fact]
@@ -164,12 +184,13 @@ public sealed class LegendFounderCloudToolExposureTests
             LegendConnectExternalProviderPolicy.CloudflareFoundation).Select(tool => JsonSerializer.SerializeToElement(tool).GetProperty("name").GetString()).ToArray();
         Assert.DoesNotContain("legend_prepare_software_repair", names);
         Assert.DoesNotContain("legend_inspect_repository", names);
-        Assert.Equal(6, names.Length);
+        Assert.Contains("legend_remember_founder_rule", names);
+        Assert.Equal(15, names.Length);
         var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_capabilities", "{}"));
         var capabilities = JsonSerializer.SerializeToElement(response.Value).GetProperty("output").EnumerateArray()
             .Select(tool => tool.GetProperty("name").GetString()).ToArray();
         Assert.Equal(names.Order(), capabilities.Order());
-        var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", "{\"path\":null,\"git_reference\":null}"));
+        var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", "{\"path\":null,\"git_reference\":null,\"engineering_context_id\":null}"));
         Assert.Equal(403, denied.StatusCode);
         Assert.Equal("cloud_action_repository_disabled", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
         fixture.Remediation.VerifyNoOtherCalls();
@@ -189,7 +210,7 @@ public sealed class LegendFounderCloudToolExposureTests
         fixture.Configuration["FounderSoftwareRemediation:CandidateValidation:Enabled"] = setting;
         var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync(tool, arguments));
         Assert.Equal(403, denied.StatusCode);
-        Assert.Equal("cloud_action_mutations_disabled", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
+        Assert.Equal("cloud_action_tool_not_exposed", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
         Assert.Equal("Approved", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
         fixture.Remediation.VerifyNoOtherCalls();
     }
@@ -200,13 +221,75 @@ public sealed class LegendFounderCloudToolExposureTests
         await using var fixture = await Fixture.CreateAsync(enableRepository: true);
         fixture.Remediation.Setup(value => value.InspectRepositoryAsync(null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new { inspected = true, authority = "SyntheticRepositoryRead" });
-        const string arguments = "{\"path\":null,\"git_reference\":null}";
+        const string arguments = "{\"path\":null,\"git_reference\":null,\"engineering_context_id\":null}";
         Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", arguments));
         fixture.Configuration["FounderSoftwareRemediation:Enabled"] = "false";
         var denied = Assert.IsType<ObjectResult>(await fixture.CallbackAsync("legend_inspect_repository", arguments));
         Assert.Equal(403, denied.StatusCode);
         Assert.Equal("cloud_action_repository_disabled", JsonSerializer.SerializeToElement(denied.Value).GetProperty("error").GetString());
         fixture.Remediation.Verify(value => value.InspectRepositoryAsync(null, null, It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("legend_prepare_software_repair")]
+    [InlineData("legend_release_approved_repair")]
+    [InlineData("legend_engineering_bootstrap")]
+    [InlineData("legend_engineering_renew_turn")]
+    [InlineData("legend_engineering_complete_turn")]
+    [InlineData("legend_engineering_approve_release")]
+    public async Task RepositoryToolsAreAbsentFromModelCatalogsAndForgedCallsCannotDispatch(string tool)
+    {
+        await using var fixture = await Fixture.CreateAsync(enableMutations: true, enableRepository: true);
+        var authority = fixture.Authority();
+        foreach (var teacher in new[] { false, true })
+            Assert.DoesNotContain(authority.GetAvailableTools(true, fixture.Scope.ConversationId,
+                LegendConnectExternalProviderPolicy.CloudflareFoundation, teacher),
+                value => JsonSerializer.SerializeToElement(value).GetProperty("name").GetString() == tool);
+        Assert.DoesNotContain(authority.Capabilities,
+            value => JsonSerializer.SerializeToElement(value).GetProperty("name").GetString() == tool);
+        foreach (var mode in new[] { "legend", "teacher", "founder_work" })
+        {
+            if (mode != "founder_work")
+            {
+                var local = await authority.ExecuteAsync(fixture.Principal,
+                    new FounderAiToolCall("forged", tool, "{}"), mode, CancellationToken.None);
+                Assert.Equal("model_repository_write_forbidden", JsonDocument.Parse(local).RootElement.GetProperty("error").GetString());
+            }
+            var cloud = await authority.ExecuteAsync(fixture.Principal,
+                new FounderAiToolCall("forged", tool, "{}"), mode, CancellationToken.None,
+                LegendConnectExternalProviderPolicy.CloudflareFoundation, fixture.Scope);
+            Assert.Equal("cloud_action_tool_not_exposed", JsonDocument.Parse(cloud).RootElement.GetProperty("error").GetString());
+        }
+        fixture.Operations.VerifyNoOtherCalls();
+        fixture.Remediation.VerifyNoOtherCalls();
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FounderWorkSiteWorkflowAndSafeModelReadsRemainProjected()
+    {
+        await using var fixture = await Fixture.CreateAsync(enableMutations: true, enableRepository: true);
+        var authority = fixture.Authority();
+        var site = authority.GetAvailableFounderSiteTools()
+            .Select(value => JsonSerializer.SerializeToElement(value).GetProperty("name").GetString()).ToArray();
+        foreach (var tool in new[] { "legend_prepare_software_repair", "legend_engineering_bootstrap",
+            "legend_engineering_renew_turn", "legend_engineering_complete_turn", "legend_propose_ad_change" })
+            Assert.Contains(tool, site);
+        var model = authority.GetAvailableTools(true, fixture.Scope.ConversationId,
+            LegendConnectExternalProviderPolicy.CloudflareFoundation, false)
+            .Select(value => JsonSerializer.SerializeToElement(value).GetProperty("name").GetString()).ToArray();
+        foreach (var tool in new[] { "legend_inspect_repository", "legend_prepare_repair_packet",
+            "legend_remember_conversation_facts", "legend_propose_ad_change" })
+            Assert.Contains(tool, model);
+        // The site path still reaches its original consent guard, never dispatch.
+        var denied = await authority.ExecuteAsync(fixture.Principal,
+            new FounderAiToolCall("site", "legend_prepare_software_repair", "{}"),
+            "founder_work", CancellationToken.None);
+        Assert.DoesNotContain("model_repository_write_forbidden", denied);
+        using var deniedDocument = JsonDocument.Parse(denied);
+        Assert.False(deniedDocument.RootElement.GetProperty("succeeded").GetBoolean());
+        Assert.True(deniedDocument.RootElement.TryGetProperty("error", out _));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
@@ -228,6 +311,7 @@ public sealed class LegendFounderCloudToolExposureTests
             Configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = enableMutations ? "true" : null,
+                ["LegendConnect:Foundation:Cloudflare:MutationsEnabled"] = enableMutations ? "true" : null,
                 ["FounderSoftwareRemediation:Enabled"] = enableRepository ? "true" : null
             }).Build();
             var options = (DbContextOptions<MasterAppDbContext>)Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
@@ -235,6 +319,7 @@ public sealed class LegendFounderCloudToolExposureTests
             var services = new ServiceCollection();
             services.AddSingleton<IConfiguration>(Configuration);
             services.AddScoped(_ => new MasterAppDbContext(options));
+            services.AddScoped<LegendMasterAppReadAuthority>();
             ControllerTestHelpers.AddFounderHistoryServices(services);
             _services = services.BuildServiceProvider();
             Scopes = _services.GetRequiredService<IServiceScopeFactory>();

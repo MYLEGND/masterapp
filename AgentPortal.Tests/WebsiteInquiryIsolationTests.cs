@@ -20,7 +20,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using ProtectWebsite.Controllers;
-using ProtectWebsite.Services.Communication;
 using Shared.Analytics;
 using Xunit;
 
@@ -145,6 +144,8 @@ public sealed class WebsiteInquiryIsolationTests
                 }
             }
         };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSystemTemplateAuthority.Apply(WebsiteEditorSiteKeys.Business, document);
         var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
         version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
             document,
@@ -208,6 +209,7 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.True(lead.TermsAccepted);
         Assert.False(lead.MarketingEmailConsent);
         Assert.False(lead.CallTextConsent);
+        Assert.Contains("\"ReportingOwner\":\"founder\"", lead.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
         var founderCrm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
         Assert.Equal("founder-user", founderCrm.AgentUserId);
@@ -223,11 +225,94 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Null(analytics.CommerceBusinessId);
         Assert.Equal(f.VersionId, analytics.WebsiteContentVersionId);
         Assert.Contains("\"siteKey\":\"legend\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
 
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "founder@example.org",
             It.Is<string>(subject => subject.Contains("LEGEND", StringComparison.OrdinalIgnoreCase)),
-            It.IsAny<string>(),
+            It.Is<string>(html => html.Contains("#0f172a", StringComparison.OrdinalIgnoreCase) &&
+                                  html.Contains("Visitor Example", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FounderProtectContactUsesSameCanonicalLeadCrmAnalyticsEmailAndOwnerLineage()
+    {
+        using var f = new Fixture("https://protect.mylegnd.com");
+        var tracking = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "founder-user",
+            AgentUpn = "founder@example.org",
+            Slug = "founder",
+            DisplayName = "Founder",
+            Status = "active",
+            UpdatedUtc = DateTime.UtcNow
+        };
+        f.Db.Add(tracking);
+        f.Db.Add(new AgentProfile
+        {
+            AgentUserId = tracking.AgentUserId,
+            AgentUpn = "founder@example.org",
+            NormalizedEmail = "founder@example.org",
+            FullName = "Founder",
+            IsActive = true,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        var state = new WebsiteContentState
+        {
+            OwnerKey = tracking.AgentUserId,
+            SiteKey = WebsiteEditorSiteKeys.Protect,
+            PublishedVersionId = f.VersionId
+        };
+        f.Db.Add(state);
+        f.Db.Add(new WebsiteContentVersion
+        {
+            Id = f.VersionId,
+            StateId = state.Id,
+            CompiledPagesJson = "{\"pages\":{\"/contact\":{\"html\":\"published\"}}}"
+        });
+        await f.Db.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new AgentTrackingResolver(f.Db, NullLogger<AgentTrackingResolver>.Instance));
+        f.Controller.HttpContext.RequestServices = services.BuildServiceProvider();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with
+            {
+                SourcePath = "/contact",
+                SourceActionKey = "protect_founder_contact",
+                SessionId = "protect-founder-session",
+                VisitorId = "protect-founder-visitor"
+            },
+            CancellationToken.None));
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(tracking.Id, lead.AgentTrackingProfileId);
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Equal("ProtectionInquiry", lead.InterestType);
+        Assert.Contains("\"ReportingOwner\":\"founder\"", lead.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+
+        var crm = Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Equal("founder-user", crm.AgentUserId);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(tracking.Id, analytics.AgentTrackingProfileId);
+        Assert.Contains("\"siteKey\":\"protect\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"reportingOwner\":\"founder\"", analytics.MetadataJson ?? "", StringComparison.OrdinalIgnoreCase);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "founder@example.org",
+            It.Is<string>(subject => subject.Contains("Protection", StringComparison.OrdinalIgnoreCase)),
+            It.Is<string>(html => html.Contains("#0f172a", StringComparison.OrdinalIgnoreCase) &&
+                                  html.Contains("Visitor Example", StringComparison.OrdinalIgnoreCase)),
             It.IsAny<string?>(),
             "visitor@example.org",
             It.IsAny<bool>(),
@@ -399,6 +484,30 @@ public sealed class WebsiteInquiryIsolationTests
         var analytics = Assert.Single(await f.Db.AnalyticsEvents
             .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
         Assert.Null(CanonicalAdvertisingEventProjection.ReadString(analytics.MetadataJson, "obref"));
+        Assert.False(CanonicalAdvertisingEventProjection.ReadBoolean(
+            analytics.MetadataJson, "measurementConsentAllowed") == true);
+        Assert.Equal("denied", CanonicalAdvertisingEventProjection.ReadString(
+            analytics.MetadataJson, "measurementConsentState"));
+    }
+
+    [Fact]
+    public async Task GrantedMeasurementConsentIsPreservedOnCanonicalBusinessInquiryConversion()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with { MeasurementConsent = "granted" },
+            CancellationToken.None));
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents
+            .Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
+        Assert.True(CanonicalAdvertisingEventProjection.ReadBoolean(
+            analytics.MetadataJson, "measurementConsentAllowed") == true);
+        Assert.Equal("granted", CanonicalAdvertisingEventProjection.ReadString(
+            analytics.MetadataJson, "measurementConsentState"));
+        Assert.True(CanonicalAdvertisingEventProjection.CanProjectServer(analytics));
     }
 
     [Fact]
@@ -518,6 +627,344 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
     }
 
+
+    [Fact]
+    public async Task NativeExperience_UsesPublishedSchemaAndIncludesCustomAnswersInOwnerNotification()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var business = await f.Db.CommerceBusinesses.SingleAsync(x => x.Id == f.BusinessId);
+        business.OwnerEmail = "owner@example.org";
+        var ownerProfile = new ClientProfile
+        {
+            ClientUserId = Guid.NewGuid().ToString(),
+            Email = "owner@example.org"
+        };
+        f.Db.Add(ownerProfile);
+        f.Db.Add(new CommerceBusinessMember
+        {
+            CommerceBusinessId = f.BusinessId,
+            ClientProfileId = ownerProfile.Id,
+            Email = ownerProfile.Email,
+            NormalizedEmail = ownerProfile.Email.ToUpperInvariant(),
+            DisplayName = "Owner"
+        });
+
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "contact.project-estimator",
+            Type = "experience",
+            Tag = "form",
+            Title = "Project estimator",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "calculator",
+                SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+                Controls =
+                [
+                    new() { Key = "first_name", Type = "text", Label = "First name", Required = true, ContactRole = "first_name" },
+                    new() { Key = "last_name", Type = "text", Label = "Last name", Required = true, ContactRole = "last_name" },
+                    new() { Key = "phone", Type = "tel", Label = "Phone", Required = true, ContactRole = "phone" },
+                    new() { Key = "email", Type = "email", Label = "Email", Required = true, ContactRole = "email" },
+                    new() { Key = "consent", Type = "checkbox", Label = "Share my inquiry", Required = true, ContactRole = "consent" },
+                    new()
+                    {
+                        Key = "project_type", Type = "choice", Label = "Project type", Required = true,
+                        Options =
+                        [
+                            new() { Value = "installation", Label = "New installation" },
+                            new() { Value = "repair", Label = "Repair / upgrade" }
+                        ]
+                    },
+                    new() { Key = "project_size", Type = "number", Label = "Project size", Required = true, Min = 100, Max = 10000 },
+                    new() { Key = "submit", Type = "button", Label = "Send", Action = new() { Type = "submit" } }
+                ],
+                Steps =
+                [
+                    new() { Key = "main", ControlKeys = ["project_type", "project_size", "first_name", "last_name", "phone", "email", "consent", "submit"] }
+                ],
+                Calculations = new(StringComparer.Ordinal)
+                {
+                    ["estimate"] = new WebsiteExperienceExpression
+                    {
+                        Op = "multiply",
+                        Values =
+                        [
+                            new() { Op = "ref", Ref = "project_size" },
+                            new() { Op = "value", Value = System.Text.Json.JsonSerializer.SerializeToElement(2m) }
+                        ]
+                    }
+                },
+                Results =
+                [
+                    new()
+                    {
+                        Key = "estimate",
+                        Label = "Preliminary estimate",
+                        Format = "currency",
+                        Expression = new() { Op = "ref", Ref = "calc.estimate" }
+                    }
+                ]
+            }
+        };
+
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact.section",
+                            Type = "section",
+                            Tag = "section",
+                            Children = [experience]
+                        }
+                    ]
+                }
+            }
+        };
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
+        version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
+            WebsiteContentSanitizer.Sanitize(document),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        await f.Db.SaveChangesAsync();
+
+        var answers = new Dictionary<string, System.Text.Json.JsonElement>
+        {
+            ["first_name"] = System.Text.Json.JsonSerializer.SerializeToElement("Custom"),
+            ["last_name"] = System.Text.Json.JsonSerializer.SerializeToElement("Visitor"),
+            ["phone"] = System.Text.Json.JsonSerializer.SerializeToElement("(602) 555-0199"),
+            ["email"] = System.Text.Json.JsonSerializer.SerializeToElement("custom@example.org"),
+            ["consent"] = System.Text.Json.JsonSerializer.SerializeToElement(true),
+            ["project_type"] = System.Text.Json.JsonSerializer.SerializeToElement("installation"),
+            ["project_size"] = System.Text.Json.JsonSerializer.SerializeToElement(1500)
+        };
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(
+            f.Request() with
+            {
+                FirstName = "",
+                LastName = "",
+                Phone = "",
+                Email = "",
+                Message = "",
+                Consent = false,
+                SourceActionKey = null,
+                SourceFormElementId = experience.Id,
+                ExperienceId = experience.Id,
+                Answers = answers
+            },
+            CancellationToken.None));
+        Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
+
+        var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Contains("Project type: New installation", inquiry.Message, StringComparison.Ordinal);
+        Assert.Contains("Project size: 1500", inquiry.Message, StringComparison.Ordinal);
+        Assert.Contains("Preliminary estimate:", inquiry.Message, StringComparison.Ordinal);
+
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal("Custom", lead.FirstName);
+        Assert.Equal("Visitor", lead.LastName);
+        Assert.Equal("custom@example.org", lead.Email);
+        Assert.Contains("\"ExperienceId\":\"contact.project-estimator\"", lead.MetadataJson ?? "", StringComparison.Ordinal);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "owner@example.org",
+            It.IsAny<string>(),
+            It.Is<string>(html => html.Contains("New installation", StringComparison.Ordinal) &&
+                                  html.Contains("Preliminary estimate", StringComparison.Ordinal)),
+            It.IsAny<string?>(),
+            "custom@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task NativeExperience_RejectsAnswersNotDeclaredByPublishedSchema()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var experience = new WebsiteCompositionNode
+        {
+            Id = "contact.secure-form",
+            Type = "experience",
+            Tag = "form",
+            Experience = new WebsiteExperienceDefinition
+            {
+                Kind = "form",
+                SubmitCapability = WebsiteExperiencePolicy.LeadCaptureCapability,
+                Controls =
+                [
+                    new() { Key = "first_name", Type = "text", Required = true, ContactRole = "first_name" },
+                    new() { Key = "last_name", Type = "text", Required = true, ContactRole = "last_name" },
+                    new() { Key = "phone", Type = "tel", Required = true, ContactRole = "phone" },
+                    new() { Key = "email", Type = "email", Required = true, ContactRole = "email" },
+                    new() { Key = "consent", Type = "checkbox", Required = true, ContactRole = "consent" },
+                    new() { Key = "submit", Type = "button", Action = new() { Type = "submit" } }
+                ]
+            }
+        };
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Composition = [new() { Id = "contact.section", Type = "section", Tag = "section", Children = [experience] }]
+                }
+            }
+        };
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
+        version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
+            WebsiteContentSanitizer.Sanitize(document),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        await f.Db.SaveChangesAsync();
+
+        var answers = new Dictionary<string, System.Text.Json.JsonElement>
+        {
+            ["first_name"] = System.Text.Json.JsonSerializer.SerializeToElement("Secure"),
+            ["last_name"] = System.Text.Json.JsonSerializer.SerializeToElement("Visitor"),
+            ["phone"] = System.Text.Json.JsonSerializer.SerializeToElement("(602) 555-0199"),
+            ["email"] = System.Text.Json.JsonSerializer.SerializeToElement("secure@example.org"),
+            ["consent"] = System.Text.Json.JsonSerializer.SerializeToElement(true),
+            ["forged_server_field"] = System.Text.Json.JsonSerializer.SerializeToElement("Lead")
+        };
+
+        var response = await f.Controller.Submit(
+            f.Request() with { ExperienceId = experience.Id, Answers = answers },
+            CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(response);
+        Assert.Empty(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+    }
+
+
+    [Fact]
+    public async Task PublishedExperienceBinding_EnrichesObservedEventWithoutAllowingBrowserRetargeting()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var binding = WebsiteSignalBindingPolicy.Validate(
+        [
+            new WebsiteSignalBinding
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Trigger = "field_completed",
+                EventName = "PhoneFieldCompleted",
+                DeliveryMode = "destinations",
+                OncePerSession = false
+            }
+        ]).Single();
+
+        var document = new WebsiteContentDocument
+        {
+            Pages =
+            {
+                ["/contact"] = new WebsitePageDocument
+                {
+                    Composition =
+                    [
+                        new WebsiteCompositionNode
+                        {
+                            Id = "contact.phone-experience",
+                            Type = "experience",
+                            Tag = "form",
+                            Experience = new WebsiteExperienceDefinition
+                            {
+                                Kind = "form",
+                                Controls =
+                                [
+                                    new()
+                                    {
+                                        Key = "phone",
+                                        Type = "tel",
+                                        Label = "Phone",
+                                        ContactRole = "phone"
+                                    }
+                                ]
+                            },
+                            FieldSignals = new(StringComparer.Ordinal)
+                            {
+                                ["phone"] = [binding]
+                            }
+                        }
+                    ]
+                }
+            }
+        };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        WebsiteSiteSource.ValidateCanonical(document, WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Business));
+
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync(x => x.Id == f.VersionId);
+        version.DocumentJson = System.Text.Json.JsonSerializer.Serialize(
+            document,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        await f.Db.SaveChangesAsync();
+
+        var config = new ConfigurationBuilder().Build();
+        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), config);
+        var controller = WebsiteTrackingIngestTests.BuildController(f.Db);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton(f.Db);
+        services.AddSingleton(new PublicWebsiteRuntimeScopeResolver(f.Db, domains, config));
+        controller.HttpContext.RequestServices = services.BuildServiceProvider();
+        controller.Request.Host = new HostString("business.example");
+        controller.Request.Headers.Origin = "https://business.example";
+
+        var elementId = "contact.phone-experience:field:phone";
+        var request = new TrackingProxyController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            SessionId = Guid.NewGuid().ToString("N"),
+            VisitorId = Guid.NewGuid().ToString("N"),
+            Path = "/contact",
+            SiteKey = WebsiteEditorSiteKeys.Business,
+            EventType = "form_field_complete",
+            FormKey = "experience:contact.phone-experience",
+            FieldName = "phone",
+            WebsiteBindingId = binding.Id,
+            MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                configuredWebsiteSignal = true,
+                configuredSignalBindings = new[]
+                {
+                    new
+                    {
+                        id = binding.Id,
+                        elementId,
+                        eventName = "Purchase",
+                        actionKey = "forged_purchase",
+                        deliveryMode = "destinations"
+                    }
+                }
+            })
+        };
+
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, CancellationToken.None));
+        var row = Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+        Assert.Equal("form_field_complete", row.EventType);
+        Assert.Equal(binding.Id, row.WebsiteBindingId);
+        Assert.Contains("\"ActionKey\":\"phone_field_completed\"", row.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.Equal("phone", row.FieldName);
+        Assert.Equal(elementId, row.ElementKey);
+        Assert.Contains("\"EventName\":\"PhoneFieldCompleted\"", row.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain("forged_purchase", row.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain("\"eventName\":\"Purchase\"", row.MetadataJson ?? "", StringComparison.Ordinal);
+
+        request.ClientEventId = Guid.NewGuid();
+        request.EventType = "cta_click";
+        var rejected = await controller.Ingest(request, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(rejected);
+        Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+    }
+
     private sealed class Fixture : IDisposable
     {
         public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -525,7 +972,7 @@ public sealed class WebsiteInquiryIsolationTests
         public Guid BusinessId { get; } = Guid.NewGuid();
         public Guid VersionId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
-        public Mock<IProtectEmailSender> EmailSender { get; } = new();
+        public Mock<IWebsiteInquiryEmailSender> EmailSender { get; } = new();
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
         public Fixture(string origin = "https://business.example")
         {

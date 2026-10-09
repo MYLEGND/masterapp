@@ -11,6 +11,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Services;
 
@@ -31,6 +32,7 @@ public interface IFounderSoftwareRemediationService
     Task<object> TestRepairPreparationAsync(CancellationToken cancellationToken);
     Task<object> RevokeAsync(string founderUserId, CancellationToken cancellationToken);
     Task<object> InspectRepositoryAsync(string? path, string? gitReference, CancellationToken cancellationToken);
+    Task<FounderRepositorySourceResolution> ResolveRepositorySourcePathsAsync(IReadOnlyList<string> sourceHints, string? application, string commitSha, CancellationToken cancellationToken);
     Task<object> PrepareAsync(string actorMode, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> GetCandidateValidationReviewAsync(int pullRequestNumber, string headSha, string baseSha, string patchSha256, string trustedWorkflowSha, CancellationToken cancellationToken);
@@ -60,11 +62,10 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
     private const int MaximumTitleCharacters = 160;
     private const int MaximumSummaryCharacters = 4_000;
     private static readonly TimeSpan GitHubAppJwtLifetime = TimeSpan.FromMinutes(9);
-    // GitHub exposes the required check-run by its job identity, not the
-    // workflow display name. This is the exact current check name emitted by
-    // .github/workflows/agentportal-production-deploy.yml; deployments fail closed if it ever
-    // changes or ceases to be required on the protected production branch.
-    private static readonly string[] DefaultRequiredChecks = ["security"];
+    // GitHub exposes the required check-run by job identity. The protected
+    // approved branch requires the canonical architecture validator; lifecycle
+    // policy separately requires every owning validator before integration.
+    private static readonly string[] DefaultRequiredChecks = ["architecture-validation"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -216,8 +217,15 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         var options = ReadOptions();
         var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
         if (unavailable is not null) return unavailable;
-        if (!string.IsNullOrWhiteSpace(path) && !IsInspectableSourcePath(path))
-            return Failure("repository_path_not_allowed", "The requested path is outside the bounded non-sensitive source and test allow-list.");
+        string? disclosureClass = null;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            disclosureClass = ClassifyInspectableSourcePath(path);
+            if (disclosureClass is null)
+                return Failure("repository_path_not_allowed", "The requested path is outside the bounded canonical repository inspection policy.");
+            if (disclosureClass == LegendSiteToolDisclosureAuthority.PrivacyProtected)
+                return Failure("repository_privacy_protected", "The requested path belongs to privacy-protected runtime or user-data storage and is not inspected.");
+        }
         if (!string.IsNullOrWhiteSpace(gitReference) &&
             (!IsGitReference(gitReference) || gitReference.Contains("..", StringComparison.Ordinal) || gitReference.StartsWith('/')))
             return Failure("invalid_git_reference", "Repository inspection accepts only a branch name or immutable Git SHA.");
@@ -278,6 +286,21 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 if (size is null or < 0 or > MaximumFileCharacters * 4)
                     return Failure("repository_content_not_text", "The requested source exceeds the bounded text size.");
             }
+            if (disclosureClass != LegendSiteToolDisclosureAuthority.SafeSource)
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass,
+                    contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
+
             using var blob = await ReadInspectionJsonAsync(client,
                 $"repos/{options.RepositoryIdentity}/git/blobs/{blobSha}", deadline.Token);
             var encoded = ReadString(blob.RootElement, "content");
@@ -287,8 +310,34 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 text is null || Encoding.UTF8.GetByteCount(text) != size ||
                 text.Any(character => char.IsControl(character) && character is not ('\r' or '\n' or '\t')))
                 return Failure("repository_content_not_text", "The requested object is not verified bounded UTF-8 source text.");
+            if (ContainsPrivacySourceLiteral(text))
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass = LegendSiteToolDisclosureAuthority.PrivacyProtected,
+                    privacyLikeContent = true, contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
             if (ContainsSensitiveSourceLiteral(text))
-                return Failure("repository_sensitive_content", "The requested source contains credential-like material and cannot be returned.");
+            {
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
+                return new
+                {
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, path, sha = blobSha, blobSha, commitSha, size,
+                    exists = true, readable = false, disclosureClass = LegendSiteToolDisclosureAuthority.ExistenceOnly,
+                    credentialLikeContent = true, contentOmitted = true,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                    instructionAuthority = false, inspected = true
+                };
+            }
             unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
             if (unavailable is not null) return unavailable;
             return new
@@ -330,19 +379,88 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         }
     }
 
-    private static bool IsInspectableSourcePath(string path)
+    internal static string? ClassifyInspectableSourcePath(string path)
     {
-        // Read restrictions are additive. The repair/write policy is unchanged.
-        if (!IsAllowedPath(path) || path.Any(character => char.IsControl(character) || character is '%' or '?' or '#')) return false;
+        // This is a read-only disclosure policy. It intentionally does NOT call
+        // IsAllowedPath because that method is the stricter repair/write policy.
+        // Expanding readable metadata must never expand writable source.
+        if (string.IsNullOrWhiteSpace(path) || path.Length > MaximumPathLength ||
+            path.Contains('\\') || path.StartsWith('/') || path.Contains("..", StringComparison.Ordinal) ||
+            path.Contains('\0') || path.Any(character => char.IsControl(character) || character is '%' or '?' or '#'))
+            return null;
+
         var segments = path.Split('/');
-        if (segments.Length > 16 || segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment.StartsWith('.'))) return false;
-        return !segments.Any(segment =>
-            segment.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("private", StringComparison.OrdinalIgnoreCase) ||
-            segment.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
-            new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
-                .Contains(segment, StringComparer.OrdinalIgnoreCase));
+        if (segments.Length is < 2 or > 16 ||
+            segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment is "." or ".."))
+            return null;
+
+        if (segments.Any(segment => new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
+                .Contains(segment, StringComparer.OrdinalIgnoreCase)))
+            return LegendSiteToolDisclosureAuthority.PrivacyProtected;
+
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        if (extension is ".pem" or ".pfx" or ".key" or ".p12" or ".cer" or ".crt" ||
+            segments.Any(segment =>
+                segment.Equals(".env", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
+                segment.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("private", StringComparison.OrdinalIgnoreCase)) ||
+            path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase))
+            return LegendSiteToolDisclosureAuthority.ExistenceOnly;
+
+        if (path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith(".azure/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/deploy", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Security/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Auth/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authorization", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authentication", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Identity/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Remediation", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("RuntimeDiagnostic", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("FounderDiagnostics", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("MobileApiControllerBase", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase))
+            return LegendSiteToolDisclosureAuthority.IntegrityProtected;
+
+        return extension is
+            ".cs" or ".cshtml" or ".swift" or ".kt" or ".js" or ".mjs" or ".ts" or ".tsx" or ".jsx" or ".css" or
+            ".py" or ".csproj" or ".props" or ".targets" or ".sln" or ".md" or ".json" or ".sh" or ".yml" or ".yaml"
+                ? LegendSiteToolDisclosureAuthority.SafeSource
+                : null;
+    }
+
+    private static bool ContainsPrivacySourceLiteral(string text)
+    {
+        // High-confidence privacy admission only. A match denies the complete
+        // source body; it is never redacted into apparently exact evidence.
+        if (System.Text.RegularExpressions.Regex.IsMatch(
+                text,
+                """\b\d{3}-\d{2}-\d{4}\b|(?:phone|mobile|telephone|social[_ -]?security|ssn|account[_ -]?number|card[_ -]?number)\w*["']?\s*[:=]\s*[@]?['"][^'"\r\n]{5,80}['"]""",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(100)))
+            return true;
+
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                     text,
+                     @"\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b",
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+                     TimeSpan.FromMilliseconds(100)))
+        {
+            var domain = match.Groups[1].Value;
+            if (domain.EndsWith(".invalid", StringComparison.OrdinalIgnoreCase) ||
+                domain is "example.com" or "example.org" or "example.net" ||
+                domain.EndsWith(".example.com", StringComparison.OrdinalIgnoreCase) ||
+                domain.EndsWith(".example.org", StringComparison.OrdinalIgnoreCase))
+                continue;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ContainsSensitiveSourceLiteral(string text)
@@ -462,7 +580,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             using var response = await SendGitHubAsync(
                 client,
                 HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
+                $"repos/{options.RepositoryIdentity}/actions/workflows/all-intentional-direct-release-20260918.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
                 null,
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -480,14 +598,18 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
                 }).ToArray()
                 : Array.Empty<object>();
 
+            var liveProof = await ReadLiveDeploymentProofAsync(client, options, commitSha, cancellationToken);
             return new
             {
                 capability = "verify_deployment",
                 commitSha,
-                verifiedThrough = "existing GitHub protected-production workflow observations (not live deployment proof)",
-                liveDeploymentVerified = false,
+                verifiedThrough = "GitHub workflow observations plus canonical configured-host runtime provenance",
+                liveDeploymentVerified = liveProof.Verified,
+                liveProof,
                 workflowRuns = runs,
-                deploymentState = runs.Length == 0 ? "not_yet_observed" : "observed",
+                deploymentState = liveProof.Verified
+                    ? "live_verified"
+                    : runs.Length == 0 ? "not_yet_observed" : "workflow_observed_live_unverified",
                 directAzureAccess = false
             };
         }
@@ -558,44 +680,222 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
             checks = checksByName.Select(pair => new { name = pair.Key, conclusion = pair.Value }).ToArray(),
             eligibleForProtectedMerge = false,
             observedChecksPassed = identityMatches && validChecks,
-            mergeAuthority = "existing production workflow only; observed check names do not authorize merging",
+            mergeAuthority = "protected approved-branch lifecycle only; observed check names do not authorize merging",
             deployment = "not_authorized"
         };
     }
 
     private async Task<BranchProtectionVerification> ReadBranchProtectionAsync(HttpClient client, Options options, CancellationToken cancellationToken)
     {
-        using var response = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/branches/{Uri.EscapeDataString(options.BaseBranch)}/protection", null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            return new BranchProtectionVerification(false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+        using var response = await SendGitHubAsync(client, HttpMethod.Get,
+            $"repos/{options.RepositoryIdentity}/branches/{Uri.EscapeDataString(options.BaseBranch)}/protection",
+            null, cancellationToken);
 
-        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-        var root = document.RootElement;
-        var strict = root.TryGetProperty("required_status_checks", out var requiredStatus) &&
-                     requiredStatus.ValueKind == JsonValueKind.Object &&
-                     requiredStatus.TryGetProperty("strict", out var strictElement) && strictElement.GetBoolean();
-        var contexts = new HashSet<string>(StringComparer.Ordinal);
-        if (requiredStatus.ValueKind == JsonValueKind.Object && requiredStatus.TryGetProperty("contexts", out var contextsElement) && contextsElement.ValueKind == JsonValueKind.Array)
+        if (response.IsSuccessStatusCode)
         {
-            foreach (var context in contextsElement.EnumerateArray())
+            using var document = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            var strict = root.TryGetProperty("required_status_checks", out var requiredStatus) &&
+                         requiredStatus.ValueKind == JsonValueKind.Object &&
+                         requiredStatus.TryGetProperty("strict", out var strictElement) &&
+                         strictElement.GetBoolean();
+            var contexts = new HashSet<string>(StringComparer.Ordinal);
+            if (requiredStatus.ValueKind == JsonValueKind.Object &&
+                requiredStatus.TryGetProperty("contexts", out var contextsElement) &&
+                contextsElement.ValueKind == JsonValueKind.Array)
             {
-                var value = context.GetString();
-                if (!string.IsNullOrWhiteSpace(value))
-                    contexts.Add(value);
+                foreach (var context in contextsElement.EnumerateArray())
+                {
+                    var value = context.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        contexts.Add(value);
+                }
             }
+
+            var reviews = root.TryGetProperty("required_pull_request_reviews", out var reviewElement) &&
+                          reviewElement.ValueKind == JsonValueKind.Object;
+            var enforceAdmins = root.TryGetProperty("enforce_admins", out var adminsElement) &&
+                                adminsElement.ValueKind == JsonValueKind.Object &&
+                                adminsElement.TryGetProperty("enabled", out var enabledElement) &&
+                                enabledElement.GetBoolean();
+            var checksCovered = options.RequiredChecks.All(contexts.Contains);
+            return new BranchProtectionVerification(
+                strict && reviews && enforceAdmins && checksCovered,
+                strict && reviews && enforceAdmins && checksCovered ? "verified" : "incomplete",
+                strict,
+                reviews,
+                enforceAdmins,
+                contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
         }
 
-        var reviews = root.TryGetProperty("required_pull_request_reviews", out var reviewElement) && reviewElement.ValueKind == JsonValueKind.Object;
-        var enforceAdmins = root.TryGetProperty("enforce_admins", out var adminsElement) &&
-                            adminsElement.ValueKind == JsonValueKind.Object &&
-                            adminsElement.TryGetProperty("enabled", out var enabledElement) && enabledElement.GetBoolean();
-        var checksCovered = options.RequiredChecks.All(contexts.Contains);
-        return new BranchProtectionVerification(strict && reviews && enforceAdmins && checksCovered,
-            strict && reviews && enforceAdmins && checksCovered ? "verified" : "incomplete",
-            strict,
-            reviews,
-            enforceAdmins,
-            contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
+        // GitHub Apps without repository Administration permission cannot read the
+        // legacy branch-protection endpoint. The protected branch may instead be
+        // governed by repository rulesets, which are the canonical protection
+        // surface used by the release lifecycle. Fall back only for the expected
+        // access/not-found cases and continue to fail closed for other errors.
+        if (response.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.NotFound))
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        return await ReadRulesetProtectionAsync(client, options, cancellationToken);
+    }
+
+    private static async Task<BranchProtectionVerification> ReadRulesetProtectionAsync(
+        HttpClient client,
+        Options options,
+        CancellationToken cancellationToken)
+    {
+        using var inventoryResponse = await SendGitHubAsync(
+            client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/rulesets", null, cancellationToken);
+        if (!inventoryResponse.IsSuccessStatusCode)
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        using var inventory = await JsonDocument.ParseAsync(
+            await inventoryResponse.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        if (inventory.RootElement.ValueKind != JsonValueKind.Array)
+            return new BranchProtectionVerification(
+                false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+
+        var expectedRef = $"refs/heads/{options.BaseBranch}";
+        foreach (var row in inventory.RootElement.EnumerateArray())
+        {
+            if (!string.Equals(ReadString(row, "target"), "branch", StringComparison.Ordinal) ||
+                !string.Equals(ReadString(row, "enforcement"), "active", StringComparison.Ordinal) ||
+                !row.TryGetProperty("id", out var idElement) ||
+                !idElement.TryGetInt64(out var rulesetId) ||
+                rulesetId <= 0)
+                continue;
+
+            using var detailResponse = await SendGitHubAsync(
+                client, HttpMethod.Get,
+                $"repos/{options.RepositoryIdentity}/rulesets/{rulesetId}",
+                null, cancellationToken);
+            if (!detailResponse.IsSuccessStatusCode)
+                continue;
+
+            using var detail = await JsonDocument.ParseAsync(
+                await detailResponse.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            var root = detail.RootElement;
+
+            if (!RulesetAppliesExactlyToRef(root, expectedRef))
+                continue;
+
+            var noBypass = (!root.TryGetProperty("bypass_actors", out var bypassActors) ||
+                            bypassActors.ValueKind != JsonValueKind.Array ||
+                            bypassActors.GetArrayLength() == 0) &&
+                           (!root.TryGetProperty("current_user_can_bypass", out var bypassMode) ||
+                            bypassMode.ValueKind == JsonValueKind.Null ||
+                            (bypassMode.ValueKind == JsonValueKind.String &&
+                             string.Equals(bypassMode.GetString(), "never", StringComparison.Ordinal)));
+
+            var deletion = false;
+            var nonFastForward = false;
+            var pullRequest = false;
+            var strict = false;
+            var contexts = new HashSet<string>(StringComparer.Ordinal);
+
+            if (root.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var rule in rules.EnumerateArray())
+                {
+                    var type = ReadString(rule, "type");
+                    switch (type)
+                    {
+                        case "deletion":
+                            deletion = true;
+                            break;
+                        case "non_fast_forward":
+                            nonFastForward = true;
+                            break;
+                        case "pull_request":
+                            pullRequest = RulesetRequiresCanonicalMerge(rule);
+                            break;
+                        case "required_status_checks":
+                            if (rule.TryGetProperty("parameters", out var checkParameters) &&
+                                checkParameters.ValueKind == JsonValueKind.Object)
+                            {
+                                strict = checkParameters.TryGetProperty(
+                                             "strict_required_status_checks_policy",
+                                             out var strictElement) &&
+                                         strictElement.ValueKind == JsonValueKind.True;
+                                if (checkParameters.TryGetProperty(
+                                        "required_status_checks",
+                                        out var requiredChecks) &&
+                                    requiredChecks.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var check in requiredChecks.EnumerateArray())
+                                    {
+                                        var context = ReadString(check, "context");
+                                        if (!string.IsNullOrWhiteSpace(context))
+                                            contexts.Add(context);
+                                    }
+                                }
+                            }
+                            break;
+                    }
+                }
+            }
+
+            var checksCovered = options.RequiredChecks.All(contexts.Contains);
+            var satisfied = deletion && nonFastForward && pullRequest && strict && noBypass && checksCovered;
+            return new BranchProtectionVerification(
+                satisfied,
+                satisfied ? "verified" : "incomplete",
+                strict,
+                pullRequest,
+                noBypass,
+                contexts.OrderBy(value => value, StringComparer.Ordinal).ToArray());
+        }
+
+        return new BranchProtectionVerification(
+            false, "branch_protection_unavailable", false, false, false, Array.Empty<string>());
+    }
+
+    private static bool RulesetAppliesExactlyToRef(JsonElement ruleset, string expectedRef)
+    {
+        if (!ruleset.TryGetProperty("conditions", out var conditions) ||
+            conditions.ValueKind != JsonValueKind.Object ||
+            !conditions.TryGetProperty("ref_name", out var refName) ||
+            refName.ValueKind != JsonValueKind.Object ||
+            !refName.TryGetProperty("include", out var includes) ||
+            includes.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var included = includes.EnumerateArray().Any(item =>
+            item.ValueKind == JsonValueKind.String &&
+            string.Equals(item.GetString(), expectedRef, StringComparison.Ordinal));
+        if (!included)
+            return false;
+
+        if (!refName.TryGetProperty("exclude", out var excludes) ||
+            excludes.ValueKind != JsonValueKind.Array)
+            return true;
+
+        return !excludes.EnumerateArray().Any(item =>
+            item.ValueKind == JsonValueKind.String &&
+            string.Equals(item.GetString(), expectedRef, StringComparison.Ordinal));
+    }
+
+    private static bool RulesetRequiresCanonicalMerge(JsonElement rule)
+    {
+        if (!rule.TryGetProperty("parameters", out var parameters) ||
+            parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("allowed_merge_methods", out var methods) ||
+            methods.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var values = methods.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        return values.Length == 1 &&
+               string.Equals(values[0], "merge", StringComparison.Ordinal);
     }
 
     private async Task<HttpClient> CreateGitHubClientAsync(Options options, CancellationToken cancellationToken)
@@ -691,11 +991,11 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
     {
         using var branch = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/git/ref/heads/{Uri.EscapeDataString(options.BaseBranch)}", null, cancellationToken);
         if (!branch.IsSuccessStatusCode)
-            throw new FounderSoftwareRemediationException("production_base_unavailable", "The configured production base branch could not be read.");
+            throw new FounderSoftwareRemediationException("approved_base_unavailable", "The configured approved base branch could not be read.");
         using var document = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
         var sha = ReadNestedString(document.RootElement, "object", "sha");
         if (!IsCommitSha(sha))
-            throw new FounderSoftwareRemediationException("production_base_unavailable", "The production branch did not return an immutable commit SHA.");
+            throw new FounderSoftwareRemediationException("approved_base_unavailable", "The approved branch did not return an immutable commit SHA.");
         return sha!;
     }
 

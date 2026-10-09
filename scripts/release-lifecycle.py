@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Own branch integration, checked production promotion, and lossless branch retirement.
+"""Own approved-branch integration, direct-release recovery, and lossless branch retirement.
 
-Runs only trusted default-branch code. Never executes source-branch code. GitHub's
-merge API and existing release workflows retain validation/deployment authority.
+Runs only trusted default-branch code. Never executes source-branch code. The
+protected approved branch is the sole Git release authority; immutable release
+receipts and live provenance replace the retired production-branch promotion path.
 """
 import argparse
+import ast
+import base64
 import importlib.util
+import hashlib
+import http.client
+import tempfile
 import json
 import os
 from pathlib import Path
@@ -15,16 +21,49 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import sys
+import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_policy import staging_only
 
-APPROVED = 'legend/approved-changes'
-PRODUCTION = 'production'
-DIRECT = 'all-intentional-direct-release-20260918.yml'
-RIGOROUS = 'agentportal-production-deploy.yml'
-WEBSITE = 'legend-website-production-deploy.yml'
-KEEP = {APPROVED, PRODUCTION}
 SHA = re.compile(r'^[0-9a-f]{40}$')
+
+
+def _validation_authority_module():
+    path = Path(__file__).with_name("validation-resume.py")
+    spec = importlib.util.spec_from_file_location("validation_resume_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+VALIDATION_AUTHORITY = _validation_authority_module()
+
+
+def _release_package_module():
+    path = Path(__file__).with_name("release-package.py")
+    spec = importlib.util.spec_from_file_location("release_package_authority", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _operation_evidence_module():
+    path = Path(__file__).with_name("release-operation-evidence.py")
+    spec = importlib.util.spec_from_file_location("release_operation_evidence", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+OPERATION_EVIDENCE = _operation_evidence_module()
+PACKAGE_AUTHORITY = _release_package_module()
+APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
+DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
+PACKAGE_VALIDATION = VALIDATION_AUTHORITY.PACKAGE_VALIDATION_WORKFLOW
+KEEP = {APPROVED}
+RELEASE_QUEUE_CONTEXT = 'legend-release-queue'
+RELEASE_QUEUE_REQUEST_CONTEXT = 'legend-release-queue-request'
+RELEASE_QUEUE_OWNER = re.compile(r'^owner-pr=([0-9]+) validation-to-production$')
+RELEASE_QUEUE_REQUEST = re.compile(r'^requested-pr=([0-9]+)$')
 
 
 def git(*args, check=True):
@@ -38,39 +77,10 @@ def ancestor(before, after):
     return result.returncode == 0
 
 
-def commit_tree(revision):
-    result = git('rev-parse', revision + '^{tree}')
-    value = result.stdout.strip()
-    if not SHA.fullmatch(value):
-        raise RuntimeError('Cannot establish commit tree for canonical history')
-    return value
-
-
-def merge_base(left, right):
-    result = git('merge-base', left, right)
-    value = result.stdout.strip()
-    if not SHA.fullmatch(value):
-        raise RuntimeError('Cannot establish merge base for canonical history')
-    return value
-
-
-def history_only_production_divergence(production, approved):
-    """True only when production's unique lineage contributes zero tree changes.
-
-    This is the exact topology created by a protected production synchronization
-    merge whose content already came from approved changes. Preserving that merge
-    in approved changes repairs ancestry without changing the approved tree.
-    """
-    if ancestor(production, approved) or ancestor(approved, production):
-        return False
-    base = merge_base(production, approved)
-    return commit_tree(production) == commit_tree(base)
-
-
-def eligible(branch, approved, production, live, open_refs, active_refs, failed_refs):
+def eligible(branch, approved, live, open_refs, active_refs, failed_refs):
     name, sha = branch['name'], branch['commit']['sha']
     if name in KEEP or branch.get('protected'):
-        return False, 'release/protected branch'
+        return False, 'canonical/protected branch'
     if name in open_refs:
         return False, 'open pull request uses branch as source or base'
     if name in active_refs:
@@ -79,11 +89,9 @@ def eligible(branch, approved, production, live, open_refs, active_refs, failed_
         return False, 'latest branch workflow failed or was cancelled'
     if not ancestor(sha, approved):
         return False, 'unique history not preserved in approved changes'
-    if not ancestor(sha, production):
-        return False, 'awaiting checked production promotion'
     if not live or not all(ancestor(sha, row['revision']) for row in live):
         return False, 'not covered by every live web application revision'
-    return True, 'preserved in both release paths and every live web revision'
+    return True, 'preserved in approved changes and every live web revision'
 
 
 class GitHub:
@@ -94,38 +102,97 @@ class GitHub:
 
     def api(self, path, data=None, method=None):
         payload = json.dumps(data).encode() if data is not None else None
+        verb = method or ('POST' if payload is not None else 'GET')
         request = urllib.request.Request(self.root + '/' + path, data=payload,
-            method=method or ('POST' if payload is not None else 'GET'), headers={
+            method=verb, headers={
                 'Authorization': 'Bearer ' + self.token,
                 'Accept': 'application/vnd.github+json',
                 'Content-Type': 'application/json', 'User-Agent': 'legend-release-lifecycle'})
-        try:
-            with urllib.request.urlopen(request, timeout=45) as response:
-                body = response.read()
-                return json.loads(body) if body else None
-        except urllib.error.HTTPError as error:
-            # Do not log tokens, response bodies or environment dumps.
-            raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
+        attempts = 3 if verb == 'GET' else 1
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=VALIDATION_AUTHORITY.evidence_remaining(45)) as response:
+                    body = response.read()
+                    return json.loads(body) if body else None
+            except urllib.error.HTTPError as error:
+                retryable = verb == 'GET' and error.code in {408, 429, 500, 502, 503, 504}
+                if retryable and attempt + 1 < attempts:
+                    time.sleep(VALIDATION_AUTHORITY.evidence_remaining(2 ** attempt))
+                    continue
+                # Do not log tokens, response bodies or environment dumps.
+                raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
+            except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected):
+                if verb == 'GET' and attempt + 1 < attempts:
+                    time.sleep(VALIDATION_AUTHORITY.evidence_remaining(2 ** attempt))
+                    continue
+                # Read transport failures are safe to report but never replay writes.
+                raise RuntimeError(f'GitHub {request.method} {path}: transport unavailable') from None
 
     def pages(self, path, key=None):
         rows = []
+        expected_count = None
+        seen_jobs = set()
         for page in range(1, 101):
             result = self.api(path + ('&' if '?' in path else '?') + f'per_page=100&page={page}')
             values = result[key] if key else result
+            if key == 'jobs':
+                count = result.get('total_count')
+                if (not isinstance(values, list) or type(count) is not int or count < 0
+                        or (expected_count is not None and count != expected_count)):
+                    raise RuntimeError('Incomplete or changing job inventory')
+                expected_count = count
+                for job in values:
+                    identity = job.get('id') if isinstance(job, dict) else None
+                    if type(identity) is not int or identity < 1 or identity in seen_jobs:
+                        raise RuntimeError('Missing or duplicate job inventory identity')
+                    seen_jobs.add(identity)
             rows.extend(values)
             if len(values) < 100:
+                if key == 'jobs' and len(rows) != expected_count:
+                    raise RuntimeError('Incomplete job inventory')
                 return rows
         raise RuntimeError('Pagination limit reached; refusing incomplete branch evidence')
 
     def ref(self, name):
-        value = self.api('git/ref/heads/' + urllib.parse.quote(name, safe=''))['object']['sha']
-        if not SHA.fullmatch(value):
+        branch = self.api('branches/' + urllib.parse.quote(name, safe=''))
+        value = (branch.get('commit') or {}).get('sha')
+        if not SHA.fullmatch(value or ''):
             raise RuntimeError('Malformed branch revision')
         return value
 
     def dispatch(self, workflow, inputs=None):
         self.api('actions/workflows/' + workflow + '/dispatches',
                  {'ref': APPROVED, 'inputs': inputs or {}})
+
+    def text(self, revision, path):
+        row = self.api(
+            'contents/' + urllib.parse.quote(path, safe='/') +
+            '?ref=' + urllib.parse.quote(revision, safe='')
+        )
+        if row.get('encoding') != 'base64' or not isinstance(row.get('content'), str):
+            raise RuntimeError('Candidate control-plane source is unavailable')
+        try:
+            return base64.b64decode(row['content'], validate=False).decode('utf-8')
+        except (ValueError, UnicodeError):
+            raise RuntimeError('Candidate control-plane source is malformed') from None
+
+    def context_status(self, revision, context, state, description):
+        if (not SHA.fullmatch(revision or '')
+            or not isinstance(context, str) or not context
+            or state not in {'pending', 'success', 'failure', 'error'}):
+            raise ValueError('Malformed trusted validation status')
+        self.api(
+            'statuses/' + revision,
+            {
+                'state': state,
+                'context': context,
+                'description': description[:140],
+            },
+            method='POST',
+        )
+
+    def status(self, revision, state, description):
+        self.context_status(revision, 'architecture-validation', state, description)
 
 
 def live_revisions():
@@ -143,66 +210,1400 @@ def ready(pr, repo, base):
         and pr['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'})
 
 
-def candidate_validation(api, pr):
-    """Require the latest exact-head PR workflows, never a same-name check collision."""
-    head = pr['head']['sha']
-    runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
-    latest = {}
-    for run in sorted(runs, key=lambda r: (r.get('created_at', ''), r.get('id', 0)), reverse=True):
-        if run.get('head_sha') != head or run.get('event') != 'pull_request':
+
+def approved_head_state(api, pr):
+    """Return whether a PR head already contains the exact current approved head."""
+    approved = api.ref(APPROVED)
+    head = (pr.get("head") or {}).get("sha")
+    if not SHA.fullmatch(head or ""):
+        raise RuntimeError("Malformed candidate revision")
+    if head == approved:
+        return {
+            "current": True,
+            "approved": approved,
+            "candidate": head,
+            "mergeBase": approved,
+            "status": "identical",
+        }
+    compare = api.api(
+        "compare/" + urllib.parse.quote(approved, safe="") + "..." +
+        urllib.parse.quote(head, safe="")
+    )
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    status = compare.get("status")
+    return {
+        "current": merge_base == approved and status in {"ahead", "identical"},
+        "approved": approved,
+        "candidate": head,
+        "mergeBase": merge_base,
+        "status": status,
+    }
+
+
+def sync_candidate_to_current_approved(api, pr):
+    """Fast-forward a trusted same-repo candidate by merging approved into it.
+
+    The operation is additive only: no reset, rebase, force-push, or source
+    rewrite. A new PR head causes normal exact-head validation to restart.
+    """
+    state = approved_head_state(api, pr)
+    if state["current"]:
+        return None
+    if not ready(pr, api.repo, APPROVED):
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate is stale but is not eligible for trusted automatic base sync",
+            "pr": pr.get("number"),
+            **state,
+        }
+    try:
+        result = api.api(
+            "merges",
+            {
+                "base": pr["head"]["ref"],
+                "head": state["approved"],
+                "commit_message": (
+                    f"Sync current {APPROVED} into PR #{pr['number']} before validation"
+                ),
+            },
+            method="POST",
+        )
+    except RuntimeError as exc:
+        if any(f"HTTP {code}" in str(exc) for code in (409, 422)):
+            return {
+                "state": "BASE_SYNC_REQUIRED",
+                "retained": "Current approved head could not be merged cleanly into candidate",
+                "pr": pr["number"],
+                **state,
+            }
+        raise
+    fresh = api.api(f"pulls/{pr['number']}")
+    synced = (fresh.get("head") or {}).get("sha")
+    if not SHA.fullmatch(synced or ""):
+        raise RuntimeError("Approved-head synchronization did not produce a candidate revision")
+    return {
+        "state": "BASE_SYNCED",
+        "pr": pr["number"],
+        "previousHead": state["candidate"],
+        "approvedHead": state["approved"],
+        "head": synced,
+        "validation": "new synchronize event must validate the synced exact head",
+    }
+
+
+
+def _latest_commit_status(api, revision, context):
+    payload = api.api('commits/' + revision + '/status')
+    rows = payload.get('statuses') or []
+    matches = [row for row in rows if row.get('context') == context]
+    if not matches:
+        return None
+    return max(matches, key=lambda row: (
+        row.get('updated_at') or row.get('created_at') or '',
+        int(row.get('id') or 0),
+    ))
+
+
+def release_queue_lease(api):
+    approved = api.ref(APPROVED)
+    status = _latest_commit_status(api, approved, RELEASE_QUEUE_CONTEXT)
+    if not status or status.get('state') != 'pending':
+        return {'approved': approved, 'ownerPr': None, 'status': status}
+    match = RELEASE_QUEUE_OWNER.fullmatch(status.get('description') or '')
+    if match is None:
+        raise RuntimeError('Release queue lease on approved head is malformed')
+    return {'approved': approved, 'ownerPr': int(match.group(1)), 'status': status}
+
+
+def _release_publication_scope(api, pr, files=None):
+    """Resolve whether this exact PR can require application publication.
+
+    The release lease serializes only mutation-capable application publication.
+    Governance, documentation, test, and other non-publishing PRs never own that
+    lease and therefore cannot starve a validated product release.
+    """
+    rows = files if files is not None else api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in rows if row.get('filename')]
+    targets = tuple(VALIDATION_AUTHORITY.release_targets_for_paths(names))
+    control_only = bool(names) and all(
+        VALIDATION_AUTHORITY.release_control_only_path(name)
+        for name in names
+    )
+    return {
+        'files': rows,
+        'names': names,
+        'targets': targets,
+        'controlOnly': control_only,
+        'publicationRequired': bool(targets and not control_only),
+    }
+
+
+def _request_release_queue(api, pr):
+    head = pr.get('head', {}).get('sha')
+    if not SHA.fullmatch(head or ''):
+        raise RuntimeError('Release queue request has malformed candidate head')
+    api.context_status(
+        head,
+        RELEASE_QUEUE_REQUEST_CONTEXT,
+        'success',
+        f"requested-pr={pr['number']}",
+    )
+
+
+def claim_release_queue(api, pr):
+    """Acquire the one application-publication lease after validation is green."""
+    scope = _release_publication_scope(api, pr)
+    if not scope['publicationRequired']:
+        return {
+            'state': 'RELEASE_QUEUE_NOT_REQUIRED',
+            'pr': pr['number'],
+            'targets': list(scope['targets']),
+        }
+
+    _request_release_queue(api, pr)
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    if owner is not None:
+        if owner == pr['number']:
+            return {
+                'state': 'RELEASE_QUEUE_OWNER',
+                'pr': pr['number'],
+                'approved': lease['approved'],
+            }
+        return {
+            'state': 'RELEASE_QUEUED',
+            'retained': f"Queued behind active release PR #{owner}",
+            'pr': pr['number'],
+            'ownerPr': owner,
+        }
+
+    active = [row for row in direct_release_runs(api) if row.get('status') != 'completed']
+    if active:
+        return {
+            'state': 'RELEASE_QUEUED',
+            'retained': 'Queued until the active direct release reaches terminal provenance',
+            'pr': pr['number'],
+            'blockingRuns': [row['id'] for row in active],
+        }
+
+    api.context_status(
+        lease['approved'],
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr['number']} validation-to-production",
+    )
+    return {
+        'state': 'RELEASE_QUEUE_OWNER',
+        'pr': pr['number'],
+        'approved': lease['approved'],
+    }
+
+
+def _requested_release_queue(api):
+    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    queued = []
+    for pr in pulls:
+        if not ready(pr, api.repo, APPROVED):
             continue
-        latest.setdefault(run['path'].split('@')[0], run)
-    architecture = '.github/workflows/masterapp-platform-architecture-validation.yml'
-    if architecture not in latest:
-        return 'Exact-head architecture validation has not started'
+        head = pr.get('head', {}).get('sha')
+        if not SHA.fullmatch(head or ''):
+            continue
+        status = _latest_commit_status(api, head, RELEASE_QUEUE_REQUEST_CONTEXT)
+        match = RELEASE_QUEUE_REQUEST.fullmatch((status or {}).get('description') or '')
+        if ((status or {}).get('state') == 'success'
+            and match is not None
+            and int(match.group(1)) == pr['number']
+            and _release_publication_scope(api, pr)['publicationRequired']):
+            queued.append(pr)
+    return sorted(queued, key=lambda row: row['number'])
+
+
+def _rerun_required_validations(api, pr):
     files = api.pages(f"pulls/{pr['number']}/files")
-    if any(f['filename'].startswith(('AgentPortal.Tests/', 'AgentPortal/', 'ClientApp/', 'Protect-Website/', 'ParfaitApp/', 'SHARED/', 'Infrastructure/', 'Domain/')) or
-           f['filename'] == '.github/workflows/step5-isolated-conversion-mapping-validation.yml' for f in files):
-        if '.github/workflows/step5-isolated-conversion-mapping-validation.yml' not in latest:
-            return 'Exact-head full-suite comparison has not started'
-    failed = [path for path, run in latest.items()
-              if run.get('status') != 'completed' or run.get('conclusion') != 'success']
-    return 'Awaiting successful exact-head validation: ' + ', '.join(sorted(failed)) if failed else None
+    names = [row.get('filename') for row in files if row.get('filename')]
+    required = set(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
+    runs = api.pages('actions/runs?head_sha=' + pr['head']['sha'], 'workflow_runs')
+    latest = {}
+    for run in sorted(
+        runs,
+        key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+        reverse=True,
+    ):
+        path = run.get('path', '').split('@')[0]
+        if (run.get('head_sha') == pr['head']['sha']
+            and run.get('event') == 'pull_request'
+            and path in required):
+            latest.setdefault(path, run)
+    rerun = []
+    missing = []
+    for path in sorted(required):
+        run = latest.get(path)
+        if run is None:
+            missing.append(path)
+            continue
+        if run.get('status') == 'completed' and run.get('conclusion') != 'success':
+            api.api(f"actions/runs/{run['id']}/rerun", {}, method='POST')
+            rerun.append(run['id'])
+    return {'rerun': rerun, 'missing': missing}
+
+
+def promote_next_release_queue(api):
+    lease = release_queue_lease(api)
+    if lease['ownerPr'] is not None:
+        return None
+    if any(row.get('status') != 'completed' for row in direct_release_runs(api)):
+        return {'state': 'RELEASE_QUEUE_WAITING', 'retained': 'Active direct release still owns publication'}
+    candidates = _requested_release_queue(api)
+    if not candidates:
+        return None
+    pr = api.api(f"pulls/{candidates[0]['number']}")
+    if not ready(pr, api.repo, APPROVED):
+        return None
+    approved = api.ref(APPROVED)
+    api.context_status(
+        approved,
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr['number']} validation-to-production",
+    )
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return {**synced, 'queueOwnerPr': pr['number']}
+    wake = _rerun_required_validations(api, pr)
+    return {
+        'state': 'RELEASE_QUEUE_PROMOTED',
+        'pr': pr['number'],
+        'head': pr['head']['sha'],
+        'rerun': wake['rerun'],
+        'missingValidationRuns': wake['missing'],
+    }
+
+
+def _carry_release_queue(api, revision, pr_number):
+    api.context_status(
+        revision,
+        RELEASE_QUEUE_CONTEXT,
+        'pending',
+        f"owner-pr={pr_number} validation-to-production",
+    )
+
+
+def _release_release_queue(api, revision, pr_number, reason):
+    api.context_status(
+        revision,
+        RELEASE_QUEUE_CONTEXT,
+        'success',
+        f"released-pr={pr_number} {reason}"[:140],
+    )
+
+
+def _assignment_strings(tree, name):
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in node.targets
+        ):
+            value = node.value
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == 'frozenset'
+                and len(value.args) == 1
+            ):
+                value = value.args[0]
+            if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+                return {
+                    item.value for item in value.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                }
+    return set()
+
+
+def _function_source(source, tree, name):
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            return ast.get_source_segment(source, node) or ''
+    return ''
+
+
+def repository_ruleset_integrity(api):
+    """The protected branch must retain the external safety rails the lifecycle assumes."""
+    rows = api.api('rulesets')
+    if not isinstance(rows, list):
+        return 'Repository ruleset inventory unavailable'
+    for row in rows:
+        if row.get('enforcement') != 'active' or row.get('target') != 'branch':
+            continue
+        ruleset_id = row.get('id')
+        if type(ruleset_id) is not int:
+            continue
+        detail = api.api(f'rulesets/{ruleset_id}')
+        refs = (detail.get('conditions') or {}).get('ref_name') or {}
+        if 'refs/heads/' + APPROVED not in (refs.get('include') or []):
+            continue
+        if detail.get('bypass_actors'):
+            return 'Protected approved branch gained a ruleset bypass actor'
+        if detail.get('current_user_can_bypass') not in {None, 'never'}:
+            return 'Protected approved branch permits ruleset bypass'
+        rules = {rule.get('type'): rule for rule in detail.get('rules') or []}
+        required_types = {'deletion', 'non_fast_forward', 'pull_request', 'required_status_checks'}
+        missing = required_types - set(rules)
+        if missing:
+            return 'Protected approved branch ruleset lost: ' + ', '.join(sorted(missing))
+        checks = (rules['required_status_checks'].get('parameters') or {})
+        contexts = {
+            row.get('context') for row in checks.get('required_status_checks') or []
+            if row.get('context')
+        }
+        if checks.get('strict_required_status_checks_policy') is not True:
+            return 'Protected approved branch no longer requires strict up-to-date checks'
+        if 'architecture-validation' not in contexts:
+            return 'Protected approved branch lost trusted architecture-validation requirement'
+        merge = rules['pull_request'].get('parameters') or {}
+        if merge.get('allowed_merge_methods') != ['merge']:
+            return 'Protected approved branch merge method drifted from canonical merge-only policy'
+        return None
+    return 'Active approved-branch protection ruleset is missing'
+
+
+def candidate_control_plane_integrity(api, pr, names):
+    """Read candidate control files as data from trusted base code; never execute them."""
+    settings = repository_ruleset_integrity(api)
+    if settings:
+        return settings
+    if not any(VALIDATION_AUTHORITY.release_control_authority_path(name) for name in names):
+        return None
+
+    head = pr['head']['sha']
+    paths = {
+        'validation': 'scripts/validation-resume.py',
+        'lifecycle': 'scripts/release-lifecycle.py',
+        'lifecycle_workflow': '.github/workflows/legend-release-lifecycle.yml',
+        'direct_workflow': '.github/workflows/all-intentional-direct-release-20260918.yml',
+        'architecture_workflow': '.github/workflows/masterapp-platform-architecture-validation.yml',
+        'step5_workflow': '.github/workflows/step5-isolated-conversion-mapping-validation.yml',
+        'step6_workflow': '.github/workflows/step6-openai-ads-execution-validation.yml',
+        'step78_workflow': '.github/workflows/steps7-8-governed-advertising-validation.yml',
+        'security_workflow': '.github/workflows/approved-release-security-validation.yml',
+        'deployment': 'scripts/deploy-approved-app.py',
+        'workflow_renderer': 'scripts/release-workflow.py',
+        'deployment_docs': 'DEPLOYMENT.md',
+        'deployment_diagnostics': '.github/workflows/deployment-diagnostics.yml',
+        'production_readonly': '.github/workflows/legend-production-readonly-diagnostic.yml',
+        'prepublication': 'scripts/release-prepublication.py',
+        'migration': 'scripts/release-migration.py',
+        'founder_cloudflare': 'scripts/deploy-founder-cloudflare.py',
+        'auxiliary': 'scripts/release-auxiliary.py',
+        'router': 'scripts/release-router.py',
+        'cloudflare_routing': 'scripts/cloudflare-routing-authority.py',
+    }
+    try:
+        source = {key: api.text(head, path) for key, path in paths.items()}
+        validation_tree = ast.parse(source['validation'])
+        lifecycle_tree = ast.parse(source['lifecycle'])
+        deployment_tree = ast.parse(source['deployment'])
+        renderer_tree = ast.parse(source['workflow_renderer'])
+    except (RuntimeError, SyntaxError):
+        return 'Candidate release-control authority cannot be parsed from exact head'
+
+    assignments = {}
+    for node in validation_tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
+                    assignments[target.id] = node.value.value
+    if assignments.get('TRUSTED_PR_BASE') != APPROVED:
+        return 'Candidate changed the sole approved release branch authority'
+    if assignments.get('DIRECT_RELEASE_WORKFLOW') != DIRECT:
+        return 'Candidate changed the sole approved direct-release workflow authority'
+    if assignments.get('READINESS_SCHEMA') != 1:
+        return 'Candidate removed the activated early readiness authority'
+    for name in ('cmd_plan', 'cmd_package_canary_plan', 'cmd_step5_decision'):
+        function = next((node for node in validation_tree.body
+                         if isinstance(node, ast.FunctionDef) and node.name == name), None)
+        statement = function.body[0] if function and function.body else None
+        if not (isinstance(statement, (ast.Expr, ast.Assign)) and isinstance(statement.value, ast.Call) and
+                isinstance(statement.value.func, ast.Name) and statement.value.func.id == 'require_readiness'):
+            return 'Candidate bypassed early readiness before validation or package planning'
+    lifecycle_jobs = VALIDATION_AUTHORITY._job_blocks(source['lifecycle_workflow'])
+    for job in ('readiness-observe', 'release-readiness'):
+        block = lifecycle_jobs.get(job, '')
+        if (block.count('uses: actions/checkout@v4') != 1 or
+            block.count('ref: ${{ github.event.pull_request.base.sha || github.sha }}') != 1 or
+            'persist-credentials: false' not in block or
+            'contents: write' in block or 'actions: write' in block):
+            return 'Candidate weakened trusted read-only readiness execution'
+    rehearsal_job = VALIDATION_AUTHORITY._job_blocks(source['architecture_workflow']).get('migration-rehearsal', '')
+    if (not rehearsal_job or 'secrets.' in rehearsal_job or 'azure/login@' in rehearsal_job or
+        'environment: Production' in rehearsal_job or 'scripts/migration-probe-package.py rehearse' not in rehearsal_job):
+        return 'Candidate exposed production authority to isolated migration rehearsal'
+
+    protected_sets = (
+        ('lifecycle authority paths', 'LIFECYCLE_AUTHORITY_PATHS', set(VALIDATION_AUTHORITY.LIFECYCLE_AUTHORITY_PATHS)),
+        ('release execution control inputs', 'RELEASE_EXECUTION_CONTROL_INPUTS', set(VALIDATION_AUTHORITY.RELEASE_EXECUTION_CONTROL_INPUTS)),
+        ('package authority paths', 'PACKAGE_AUTHORITY_PATHS', set(VALIDATION_AUTHORITY.PACKAGE_AUTHORITY_PATHS)),
+        ('control-only exact paths', 'RELEASE_CONTROL_ONLY_EXACT', set(VALIDATION_AUTHORITY.RELEASE_CONTROL_ONLY_EXACT)),
+    )
+    for label, assignment, required in protected_sets:
+        candidate = _assignment_strings(validation_tree, assignment)
+        if not required <= candidate:
+            return f'Candidate removed protected {label}: ' + ', '.join(sorted(required - candidate))
+
+    retired = {
+        'deploy-portal.sh',
+        '.claude/settings.local.json',
+        'AgentPortal/deploy-live-zipdeploy.json',
+    }
+    if retired.intersection(names):
+        return 'Candidate reintroduced or modified a retired alternate production deployment path'
+
+    predicate = _function_source(source['validation'], validation_tree, 'release_control_authority_path')
+    if not all(token in predicate for token in (
+        'LIFECYCLE_AUTHORITY_PATHS', 'PACKAGE_AUTHORITY_PATHS', 'RELEASE_EXECUTION_CONTROL_INPUTS'
+    )):
+        return 'Candidate weakened canonical release-control authority classification'
+
+    topology = _function_source(source['validation'], validation_tree, 'required_validation_topology')
+    if not all(token in topology for token in (
+        'release_control_authority_change',
+        'release_control_authority_path',
+        'required.add(security)',
+    )):
+        return 'Candidate release-control changes no longer require canonical security validation'
+
+    candidate_validation_source = _function_source(
+        source['lifecycle'], lifecycle_tree, 'candidate_validation'
+    )
+    if not all(token in candidate_validation_source for token in (
+        'VALIDATION_AUTHORITY.required_validation_topology(names)',
+        "run.get('event') != 'pull_request'",
+        "latest[path].get('status') != 'completed'",
+        "latest[path].get('conclusion') != 'success'",
+        "for attempt in range(4)",
+        "time.sleep((attempt + 1) * 5)",
+    )):
+        return 'Candidate weakened exact-head merge validation'
+
+    guard_source = _function_source(source['lifecycle'], lifecycle_tree, 'candidate_control_plane_integrity')
+    sync_source = _function_source(source['lifecycle'], lifecycle_tree, 'sync_candidate_to_current_approved')
+    merge_source = _function_source(source['lifecycle'], lifecycle_tree, 'merge_validated')
+    if not guard_source or 'candidate_control_plane_integrity(api, pr, names)' not in merge_source:
+        return 'Candidate removed trusted control-plane integrity enforcement'
+    if merge_source.find('candidate_control_plane_integrity(api, pr, names)') > merge_source.find("pulls/{pr['number']}/merge"):
+        return 'Candidate moved control-plane integrity enforcement after merge'
+    if not sync_source or not all(token in sync_source for token in (
+        'approved_head_state(api, pr)',
+        '"merges"',
+        '"base": pr["head"]["ref"]',
+        '"head": state["approved"]',
+        '"state": "BASE_SYNCED"',
+    )):
+        return 'Candidate weakened automatic current-approved-head synchronization'
+    if 'base_state = approved_head_state(api, pr)' not in merge_source:
+        return 'Candidate removed final approved-head freshness guard before merge'
+
+    lifecycle_identity_source = _function_source(
+        source['validation'], validation_tree, 'lifecycle_authority_identity'
+    )
+    if not all(token in lifecycle_identity_source for token in (
+        'source.is_file()',
+        'source.exists()',
+        'b"present\\0"',
+        'b"absent\\0"',
+        'Lifecycle authority path is not a regular file',
+    )):
+        return 'Candidate weakened canonical lifecycle absent-path identity'
+
+    app_scope_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_app_only_admission_keys'
+    )
+    publication_proof_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_historical_application_publications_completed'
+    )
+    forward_supersession_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_forward_supersedes_completed_app_lease'
+    )
+    live_settlement_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_admission_covered_by_live_provenance'
+    )
+    admission_conflict_source = _function_source(
+        source['lifecycle'], lifecycle_tree, 'admission_conflicts'
+    )
+    if not all(token in app_scope_source for token in (
+        "'read/schema/masterapp'",
+        "'write/app/'",
+        'resource not in allowed',
+    )):
+        return 'Candidate weakened app-only stale-lease resource boundary'
+    if not all(token in publication_proof_source for token in (
+        "actions/runs/{run['id']}/artifacts",
+        "legend-release-operation-success-",
+        "VALIDATION_AUTHORITY._download_run_artifact",
+        "success.get('phase') != 'success'",
+        "success.get('producingRun') != run['id']",
+        "operation_id != expected_id",
+        'required.issubset(set(observed))',
+        "return set(observed) == set(keys)",
+    )):
+        return 'Candidate weakened durable historical publication proof'
+    if not all(token in forward_supersession_source for token in (
+        '_app_only_admission_keys(record)',
+        '_app_only_admission_keys(candidate)',
+        'if new_keys is None',
+        '_validate_admission_record_scope(candidate)',
+        'except Exception',
+        "old_revision == new_revision",
+        'overlap = set(old_keys).intersection(new_keys)',
+        'if not overlap',
+        'ancestor(old_revision, new_revision)',
+    )):
+        return 'Candidate weakened strict descendant target-scoped stale-lease supersession'
+    receipt_supersession_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_forward_supersession_receipt_proven'
+    )
+    if not all(token in receipt_supersession_source for token in (
+        '_app_only_admission_keys(record)',
+        '_validate_admission_record_scope(candidate)',
+        'overlap = set(old_keys).intersection(new_keys)',
+        'required_targets=overlap',
+    )):
+        return 'Candidate weakened per-target receipt gate for descendant leases'
+    if not all(token in live_settlement_source for token in (
+        '_app_only_admission_keys(record)',
+        "row.get('app')",
+        "row.get('revision')",
+        'ancestor(revision, observed[key])',
+    )):
+        return 'Candidate weakened canonical live-provenance stale-lease settlement'
+    if not all(token in admission_conflict_source for token in (
+        'live_snapshot_loaded = False',
+        '_forward_supersedes_completed_app_lease(record, candidate)',
+        '_forward_supersession_receipt_proven(api, run, record, candidate)',
+        '_historical_application_publications_completed(api, run, record)',
+        'live_revisions()',
+        '_admission_covered_by_live_provenance(record, live_snapshot)',
+        "run.get('status') == 'completed'",
+        'not own_run',
+    )):
+        return 'Candidate removed fail-closed live-provenance lease discharge'
+
+    if not all(token in source['lifecycle'] for token in (
+        "attempts = 3 if verb == 'GET' else 1",
+        "except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected)",
+        "if verb == 'GET' and attempt + 1 < attempts:",
+        "raise RuntimeError(f'GitHub {request.method} {path}: transport unavailable')",
+    )):
+        return 'Candidate weakened bounded lifecycle GitHub read retry'
+
+    execution_guard_source = _function_source(
+        source['validation'], validation_tree, 'assert_protected_release_execution'
+    )
+    if not all(token in execution_guard_source for token in (
+        'GITHUB_ACTIONS',
+        'GITHUB_EVENT_NAME',
+        'workflow_dispatch',
+        'GITHUB_REF',
+        'TRUSTED_PR_BASE',
+        'GITHUB_WORKFLOW_REF',
+        'DIRECT_RELEASE_WORKFLOW',
+        'GITHUB_RUN_ID',
+        'actions/runs/{run_id}',
+        'run.get("path")',
+        'run.get("head_branch")',
+        'run.get("event")',
+        'run.get("head_sha")',
+    )):
+        return 'Candidate weakened authenticated canonical release execution guard'
+
+    guarded_sources = {
+        'deployment': '_RELEASE_AUTHORITY.assert_protected_release_execution()',
+        'prepublication': 'release_authority().assert_protected_release_execution()',
+        'migration': 'release_authority().assert_protected_release_execution()',
+        'founder_cloudflare': 'release_authority().assert_protected_release_execution()',
+        'auxiliary': 'release_authority().assert_protected_release_execution()',
+        'router': "load('validation-resume').assert_protected_release_execution()",
+        'cloudflare_routing': 'release_authority().assert_protected_release_execution()',
+    }
+    for label, token in guarded_sources.items():
+        if token not in source[label]:
+            return f'Candidate {label} mutation authority lost protected release execution guard'
+
+    deployment_assignments = {}
+    for node in deployment_tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and isinstance(node.value, ast.Constant):
+                    deployment_assignments[target.id] = node.value.value
+    expected_limits = {
+        'PUBLICATION_RECONCILE_TIMEOUT_SECONDS': 420,
+        'FINALIZE_RECONCILE_TIMEOUT_SECONDS': 90,
+        'FINALIZE_RECONCILE_ATTEMPTS': 3,
+        'FINALIZE_RETRY_DELAY_SECONDS': 10,
+    }
+    if any(deployment_assignments.get(name) != value for name, value in expected_limits.items()):
+        return 'Candidate changed canonical bounded deployment timing authority'
+
+    reconcile_source = _function_source(source['deployment'], deployment_tree, 'reconcile')
+    publish_source = _function_source(source['deployment'], deployment_tree, 'publish_prepared_targets_parallel')
+    finalizer_source = _function_source(source['deployment'], deployment_tree, 'finalize_prepared_transaction')
+    if 'timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS' not in reconcile_source or 'timeout=1200' in reconcile_source:
+        return 'Candidate restored unbounded or legacy publication reconciliation'
+    if not all(token in publish_source for token in (
+        'ThreadPoolExecutor',
+        'executor.submit(worker, key)',
+        'as_completed',
+    )):
+        return 'Candidate removed canonical parallel target publication'
+    if not all(token in publish_source for token in (
+        "'schemaVersion': 2",
+        "'phase': 'publication'",
+        "'liveProven': True",
+        "'durableReceiptProven': durable",
+        "'liveProven': False",
+        "'durableReceiptProven': False",
+    )):
+        return 'Candidate can relabel first-pass publication evidence as deployment success'
+    if "'success': True" in publish_source or "'success': False" in publish_source:
+        return 'Candidate restored ambiguous first-pass deployment success booleans'
+    if not all(token in finalizer_source for token in (
+        "pending = {row['app']: row for row in plan['targets']}",
+        'for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):',
+        'pending.pop(key, None)',
+        'reconcile_only=True',
+        'timeout=FINALIZE_RECONCILE_TIMEOUT_SECONDS',
+        'max_status_failures=1',
+        'if attempt < FINALIZE_RECONCILE_ATTEMPTS:',
+    )):
+        return 'Candidate weakened canonical unresolved-only receipt finalization'
+    if '1200' in finalizer_source or '--reconcile-timeout-seconds' in source['deployment']:
+        return 'Candidate restored legacy receipt-finalization timing override'
+
+    render_source = _function_source(source['workflow_renderer'], renderer_tree, 'render')
+    if not all(token in render_source for token in (
+        'text.count(START) != 1',
+        'text.count(END) != 1',
+        'text.split(START, 1)',
+        'tail.split(END, 1)',
+        'generated.count(OUTCOME_START) != 1',
+        'generated.count(OUTCOME_END) != 1',
+        'generated.split(OUTCOME_START, 1)',
+        'tail.split(OUTCOME_END, 1)',
+    )):
+        return 'Candidate workflow renderer can rewrite outside canonical generated target blocks'
+    if any(token in source['workflow_renderer'] for token in (
+        'TARGET_OUTCOME_',
+        '--verify-outcomes',
+    )):
+        return 'Candidate restored ephemeral target outcomes as transaction authority'
+    renderer_writes = [
+        ast.get_source_segment(source['workflow_renderer'], node) or ''
+        for node in ast.walk(renderer_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == 'write_text'
+    ]
+    if renderer_writes != ['WORKFLOW.write_text(generated)']:
+        return 'Candidate workflow renderer gained an alternate file-write authority'
+    if any(token in source['workflow_renderer'] for token in (
+        'subprocess.', 'urllib.', 'requests.', 'os.system', '.unlink(', '.rename(', '.replace('
+    )):
+        return 'Candidate workflow renderer gained external mutation authority'
+
+    docs = source['deployment_docs']
+    if not all(token in docs for token in (
+        'legend/approved-changes',
+        'all-intentional-direct-release-20260918.yml',
+        'sole production deployment authority',
+    )):
+        return 'Candidate deployment guidance no longer points exclusively to canonical release authority'
+    if any(token in docs for token in (
+        'dotnet ef database update',
+        'az webapp deploy',
+        'zipdeploy',
+        'Deployment Center',
+    )):
+        return 'Candidate deployment guidance restored a manual production path'
+
+    diagnostic_forbidden = (
+        'list-publishing-credentials',
+        '/api/vfs/',
+        '/api/command',
+        'webapp restart',
+        'webapp deploy',
+        'appsettings set',
+        'connection-string set',
+        'zipdeploy',
+    )
+    for label in ('deployment_diagnostics', 'production_readonly'):
+        if any(token in source[label] for token in diagnostic_forbidden):
+            return f'Candidate {label} workflow is no longer read-only'
+
+    for label, job in (('deployment_diagnostics', 'inspect'),
+                       ('production_readonly', 'production-readonly-diagnostic')):
+        blocks = VALIDATION_AUTHORITY._job_blocks(source[label])
+        body = blocks.get(job, '')
+        if "github.ref == 'refs/heads/legend/approved-changes'" not in body:
+            return f'Candidate {label} allows unapproved production credential execution'
+    if 'git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes' not in source['production_readonly']:
+        return 'Candidate production_readonly executes unapproved candidate code with production credentials'
+
+    lifecycle_workflow = source['lifecycle_workflow']
+    if not all(token in lifecycle_workflow for token in (
+        'pull_request_target:',
+        'ref: legend/approved-changes',
+        'contents: write',
+        'pull-requests: write',
+        'actions: write',
+        'statuses: write',
+        'python3 scripts/release-lifecycle.py integrate --pr "$PR_NUMBER"',
+    )):
+        return 'Candidate weakened trusted protected-branch lifecycle execution'
+
+    direct_workflow = source['direct_workflow']
+    for token in (
+        'cancel-in-progress: false',
+        "if: github.ref == 'refs/heads/legend/approved-changes'",
+        'Verify selected authority belongs to protected event history',
+        'Prepare complete immutable release transaction',
+        'Reconcile complete immutable release transaction',
+        'Verify every deployed target and collect all failures',
+        'Enforce complete direct deployment outcome',
+        'Retain exact approved release receipt',
+        'Reconcile terminal release resource disposition',
+        'Preserve terminal release resource disposition',
+        'release-state-receipt:',
+        'python3 scripts/release-workflow.py --check',
+        '--publish-prepared-parallel',
+    ):
+        if token not in direct_workflow:
+            return 'Candidate direct-release workflow lost required invariant: ' + token
+
+    release_job = direct_workflow.split('\n  release:\n', 1)[1].split('\n  release-state-receipt:', 1)[0]
+    if 'timeout-minutes: 30' not in release_job:
+        return 'Candidate direct-release outer timeout drifted from canonical 30-minute fail-safe'
+    if direct_workflow.count('--finalize-only --transaction-plan /tmp/release-transaction.json') != 1:
+        return 'Candidate direct-release workflow gained duplicate receipt finalization'
+    transaction_step = direct_workflow.split(
+        '      - name: Reconcile complete immutable release transaction\n', 1
+    )[1].split('      - name: Run independent auxiliary release fanout\n', 1)[0]
+    if (
+        transaction_step.count('--finalize-only --transaction-plan /tmp/release-transaction.json') != 1
+        or 'TARGET_OUTCOME_' in transaction_step
+        or 'steps.publish_' in transaction_step
+        or '--verify-outcomes' in transaction_step
+    ):
+        return 'Candidate restored first-pass target outcome authority ahead of canonical finalization'
+    if 'TARGET_OUTCOME_' in direct_workflow or '--verify-outcomes' in direct_workflow:
+        return 'Candidate restored ephemeral target outcome transaction gate'
+    if '      - name: Publish canonical target (' in direct_workflow:
+        return 'Candidate restored false per-target deployment success surface'
+    if not all(token in direct_workflow for token in (
+        'Submit canonical selected targets in parallel',
+        'Confirm first-pass durable publication receipt (',
+        "result.get('durableReceiptProven') is not True",
+        'Preserve target-specific live-proven deployment receipt',
+        "'liveProven':True",
+        "'authority':'post-live-verification'",
+    )):
+        return 'Candidate lost separation between first-pass publication and live-proven deployment truth'
+    if any(token in direct_workflow for token in (
+        'transactionrecovery',
+        'TRANSACTION_RECOVERY',
+        '--reconcile-timeout-seconds',
+        'Recover exact-live transaction receipts without publication replay',
+    )):
+        return 'Candidate restored legacy workflow-owned receipt recovery'
+
+    architecture = source['architecture_workflow']
+    if 'name: architecture-validation' not in architecture and 'name: candidate-architecture-validation' not in architecture:
+        return 'Candidate architecture workflow lost its canonical validation job'
+    if 'Run branch lifecycle safety contracts' not in architecture:
+        return 'Candidate architecture workflow stopped exercising lifecycle contracts'
+
+    validation_workflows = {
+        'architecture': architecture,
+        'step5': source['step5_workflow'],
+        'step6': source['step6_workflow'],
+        'step78': source['step78_workflow'],
+        'security': source['security_workflow'],
+    }
+    for label, workflow in validation_workflows.items():
+        if (
+            'approved-head-preflight:' not in workflow
+            or 'Verify candidate contains current approved head' not in workflow
+            or 'ref: ${{ github.event.pull_request.head.sha || github.sha }}' not in workflow
+            or 'persist-credentials: false' not in workflow
+            or 'approved-head-preflight \\' not in workflow
+            or 'needs: approved-head-preflight' not in workflow
+        ):
+            return f'Candidate {label} validator lost canonical approved-head preflight'
+    # The migration-first DAG keeps approved-head checking as the true first
+    # authority, then requires validated migration probe before expensive
+    # architecture/package work. Accept either original or proven new shape;
+    # never waive the approved-head prerequisite on any entry path.
+    blocks = VALIDATION_AUTHORITY._job_blocks(architecture)
+    needs_probe = {
+        'validate': 'needs: [approved-head-preflight, validated-migration-probe]',
+        'validated-release-package-plan':
+            'needs: [approved-head-preflight, validated-migration-probe]',
+    }
+    probe = blocks.get('validated-migration-probe', '')
+    migration_first = (
+        all(expected in blocks.get(job, '') for job, expected in needs_probe.items())
+        and 'needs: approved-head-preflight' in probe
+        and 'name: validated-migration-probe' in probe
+        and all(
+            "needs.validated-migration-probe.result == 'success'"
+            in blocks.get(job, '')
+            for job in needs_probe
+        )
+    )
+    if not (architecture.count('needs: approved-head-preflight') >= 3
+            or migration_first):
+        return 'Candidate architecture validator allows package/probe work before approved-head preflight'
+
+    security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
+    if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
+        return 'Candidate security validation no longer covers approved-branch pull requests'
+    if '\n    paths:' in security_trigger or '\n    paths-ignore:' in security_trigger:
+        return 'Candidate security validation can be skipped by release-control path filtering'
+    return None
+
+
+def publish_trusted_validation_status(api, revision, state, detail):
+    descriptions = {
+        'pending': 'Trusted release authority is waiting for exact-head validation',
+        'success': 'Trusted release authority and exact-head validation passed',
+        'failure': 'Trusted release authority blocked unsafe control-plane drift',
+    }
+    api.status(revision, state, descriptions[state] if not detail else detail)
+
+
+def candidate_validation(api, pr):
+    """Require exact-head validators and retry only provider observation lag.
+
+    This is the sole merge-readiness observer. Validators own child-level reuse;
+    lifecycle never reruns their children here. GitHub's cross-workflow run
+    inventory is eventually consistent, so missing/active observations receive
+    bounded read-only retries. A completed failure remains immediately blocking.
+    """
+    head = pr['head']['sha']
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row['filename'] for row in files if row.get('filename')]
+    required = tuple(VALIDATION_AUTHORITY.required_validation_topology(names)['required'])
+
+    state = None
+    for attempt in range(4):
+        runs = api.pages('actions/runs?head_sha=' + head, 'workflow_runs')
+        latest = {}
+        for run in sorted(
+            runs,
+            key=lambda row: (row.get('created_at', ''), row.get('id', 0)),
+            reverse=True,
+        ):
+            if run.get('head_sha') != head or run.get('event') != 'pull_request':
+                continue
+            latest.setdefault(run['path'].split('@')[0], run)
+
+        missing = []
+        active = []
+        failed = []
+        for path in required:
+            run = latest.get(path)
+            if run is None:
+                missing.append(path)
+            elif latest[path].get('status') != 'completed':
+                active.append(path)
+            elif latest[path].get('conclusion') != 'success':
+                failed.append(path)
+
+        state = {'missing': missing, 'active': active, 'failed': failed}
+        if not missing and not active and not failed:
+            return None
+        if failed:
+            break
+        if attempt < 3 and os.environ.get('GITHUB_ACTIONS') == 'true':
+            time.sleep((attempt + 1) * 5)
+
+    unresolved = sorted(set(
+        (state or {}).get('missing', ())
+        + (state or {}).get('active', ())
+        + (state or {}).get('failed', ())
+    ))
+    return 'Awaiting successful exact-head validation: ' + ', '.join(unresolved)
+
+
+
+def automatic_release_targets(api, pr):
+    files = api.pages(f"pulls/{pr['number']}/files")
+    names = [row.get('filename') for row in files if row.get('filename')]
+    return VALIDATION_AUTHORITY.release_targets_for_paths(names)
+
+
+def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None):
+    return {
+        'automatic': 'true',
+        'source_pr': str(pr['number']),
+        'validated_sha': pr['head']['sha'],
+        'source_merge_sha': source_merge_sha or release_sha,
+        'merge_sha': release_sha,
+        'targets_json': json.dumps(list(targets), separators=(',', ':')),
+    }
+
+
+def await_readiness_child(api, run_id, candidate, approved, targets, *, minimum_attempt=1):
+    deadline = time.monotonic() + 600
+    while time.monotonic() < deadline:
+        with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+            run = VALIDATION_AUTHORITY.api_get(api.repo, f'actions/runs/{run_id}', api.token)
+            visible = type(run.get('run_attempt')) is int and run['run_attempt'] >= minimum_attempt
+            if visible and VALIDATION_AUTHORITY.readiness_child_succeeded(api.repo, run, 'release-readiness', run.get('run_attempt'), api.token):
+                proof = VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets, api.token)
+                if proof:
+                    return None
+                return {'state': 'READINESS_BLOCKED', 'retained': 'Successful child has no authenticated compatible receipt', 'runId': run_id}
+            if visible and run.get('status') == 'completed':
+                return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness child failed; preserve evidence and classify failure', 'runId': run_id}
+            if visible:
+                jobs = VALIDATION_AUTHORITY.api_get(api.repo,
+                    f"actions/runs/{run_id}/attempts/{run['run_attempt']}/jobs?per_page=100", api.token)
+                children = [row for row in jobs.get('jobs', []) if row.get('name') == 'release-readiness']
+                if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(children) > 1:
+                    return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness child inventory unproven', 'runId': run_id}
+                if children and children[0].get('status') == 'completed':
+                    return {'state': 'READINESS_BLOCKED', 'retained': 'Terminal readiness child requires classified recovery', 'runId': run_id}
+        time.sleep(min(10, max(0, deadline - time.monotonic())))
+    return {'state': 'READINESS_ACTIVE', 'retained': 'Readiness is still active after bounded observation', 'runId': run_id}
+
+
+def ensure_readiness_progress(api, pr):
+    with VALIDATION_AUTHORITY.evidence_lookup_budget(time.monotonic() + 720):
+        return _ensure_readiness_progress(api, pr)
+
+
+def _ensure_readiness_progress(api, pr):
+    """The existing lifecycle refreshes one expired read-only child in place."""
+    # Local diagnostics cannot dispatch recovery. Validation and production
+    # still enforce their own required readiness gates in every environment.
+    if os.environ.get('GITHUB_ACTIONS') != 'true':
+        return None
+    candidate, approved = pr['head']['sha'], api.ref(APPROVED)
+    if not re.search(r'^READINESS_SCHEMA = 1$', VALIDATION_AUTHORITY.git_show_file(approved, 'scripts/validation-resume.py'), re.M):
+        return None
+    if VALIDATION_AUTHORITY.readiness_scope(candidate, approved)['state'] == 'not-required':
+        return None
+    targets = VALIDATION_AUTHORITY.readiness_targets(candidate, approved)
+    with VALIDATION_AUTHORITY.evidence_lookup_budget(time.monotonic() + 90):
+        proof = VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets, api.token)
+        if proof:
+            return None
+        data = VALIDATION_AUTHORITY.api_get(api.repo,
+            'actions/workflows/legend-release-lifecycle.yml/runs?event=pull_request_target&head_sha=' + candidate + '&per_page=100', api.token)
+        runs = [row for row in data.get('workflow_runs', []) if row.get('head_sha') == candidate and
+                VALIDATION_AUTHORITY.trusted_readiness_run(api.repo, row, approved)]
+    if not runs:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'No trusted readiness producer; reopen the same PR to create its governed event'}
+    run = max(runs, key=lambda row: row['id'])
+    if run.get('status') != 'completed':
+        return await_readiness_child(api, run['id'], candidate, approved, targets)
+    if type(run.get('run_attempt')) is not int or run['run_attempt'] >= 3:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness refresh attempt budget exhausted; inspect the retained failing child', 'runId': run['id']}
+    jobs = VALIDATION_AUTHORITY.api_get(api.repo,
+        f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", api.token)
+    children = [row for row in jobs.get('jobs', []) if row.get('name') == 'readiness-observe']
+    if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(children) != 1:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness producing job inventory unproven'}
+    child = children[0]
+    # Expiry of successful observation is recoverable. Unknown/deterministic
+    # failures retain diagnostics and never become an automatic rerun loop.
+    if child.get('conclusion') == 'success':
+        finalizers = [row for row in jobs.get('jobs', []) if row.get('name') == 'release-readiness']
+        if (len(finalizers) != 1 or finalizers[0].get('status') != 'completed' or
+                finalizers[0].get('conclusion') != 'success' or
+                not VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets,
+                                                           api.token, require_fresh=False)):
+            return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness finalization lacks authenticated prior success; classify failure', 'jobId': child['id']}
+    elif VALIDATION_AUTHORITY.readiness_failure_kind(api.repo, run, approved, api.token) != 'transient-provider-read':
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Failed readiness observation requires classified recovery', 'jobId': child['id']}
+    identity = dict(candidateRevision=candidate, executionAuthority=approved,
+                    targetRun=run['id'], targetAttempt=run['run_attempt'], targetJob=child['id'])
+    result = OPERATION_EVIDENCE.readiness_refresh_once(identity,
+        lookup=lambda operation: VALIDATION_AUTHORITY.readiness_refresh_intent(api.repo, operation, approved, api.token),
+        observe=lambda: api.api(f"actions/runs/{run['id']}"),
+        publisher=lambda name, record: OPERATION_EVIDENCE.publish_record(name, record,
+            timeout=VALIDATION_AUTHORITY.evidence_remaining(180)),
+        execute=lambda: api.api(f"actions/jobs/{child['id']}/rerun", {}, method='POST'))
+    if result['state'] in {'READINESS_REFRESH_REQUESTED', 'READINESS_REFRESH_OBSERVED', 'READINESS_ACTIVE'}:
+        return await_readiness_child(api, run['id'], candidate, approved, targets,
+                                     minimum_attempt=identity['targetAttempt'] + 1)
+    return result
 
 
 def merge_validated(api, pr):
+    base_state = approved_head_state(api, pr)
+    if not base_state["current"]:
+        publish_trusted_validation_status(
+            api, pr["head"]["sha"], "pending",
+            "Candidate must contain the current approved head before validation can authorize merge",
+        )
+        return {
+            "state": "BASE_SYNC_REQUIRED",
+            "retained": "Candidate does not contain current approved head",
+            "pr": pr["number"],
+            **base_state,
+        }
+
+    scope = _release_publication_scope(api, pr)
+    files = scope['files']
+    names = scope['names']
+    targets = scope['targets']
+    publication_required = scope['publicationRequired']
+    head = pr['head']['sha']
+
+    integrity = candidate_control_plane_integrity(api, pr, names)
+    if integrity:
+        publish_trusted_validation_status(api, head, 'failure', integrity)
+        return {'state': 'VALIDATING', 'retained': integrity}
+
+    readiness = ensure_readiness_progress(api, pr)
+    if readiness is not None:
+        return readiness
     pending = candidate_validation(api, pr)
     if pending:
-        return {'retained': pending}
-    # Merge permission is not deployment permission. Only an exact changed release
-    # request authorizes publication; maintenance commits never expand to all apps.
-    publish = direct_only_request(pr['head']['sha'])
-    result = api.api(f"pulls/{pr['number']}/merge",
-        {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+        publish_trusted_validation_status(api, head, 'pending', '')
+        return {'state': 'VALIDATING', 'retained': pending}
+
+    publish_trusted_validation_status(api, head, 'success', '')
+
+    queue = None
+    if publication_required:
+        # Validation is complete before the scarce publication lease is touched.
+        # A waiting/human-bound governance PR can therefore never reserve the
+        # application deployment lane.
+        queue = claim_release_queue(api, pr)
+        if queue['state'] != 'RELEASE_QUEUE_OWNER':
+            return queue
+
+        # Queue acquisition can race another approved merge. Recheck freshness
+        # after claiming; release the lease instead of stranding later releases.
+        base_state = approved_head_state(api, pr)
+        if not base_state["current"]:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'candidate-stale-before-merge'
+            )
+            publish_trusted_validation_status(
+                api, head, "pending",
+                "Candidate must contain the current approved head before validation can authorize merge",
+            )
+            return {
+                "state": "BASE_SYNC_REQUIRED",
+                "retained": "Candidate became stale before merge; publication lease released",
+                "pr": pr["number"],
+                **base_state,
+            }
+    else:
+        # Discharge any lease left by an older lifecycle generation that admitted
+        # a non-publishing PR too early.
+        lease = release_queue_lease(api)
+        if lease['ownerPr'] == pr['number']:
+            _release_release_queue(
+                api, lease['approved'], pr['number'], 'no-production-publication-required'
+            )
+
+    try:
+        result = api.api(f"pulls/{pr['number']}/merge",
+            {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+    except RuntimeError as exc:
+        if publication_required and queue is not None:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'merge-not-completed'
+            )
+        if any(f"HTTP {code}" in str(exc) for code in (405, 409, 422)):
+            return {
+                'retained': 'Validated PR is not currently mergeable; source branch retained',
+                'pr': pr['number'],
+            }
+        raise
     if not result.get('merged'):
-        raise RuntimeError('Merge did not complete; source branch retained')
-    if publish:
-        api.dispatch(DIRECT, {'automatic': 'false'})
-    if any(f['filename'] == '.github/workflows/deployment-diagnostics.yml' for f in api.pages(f"pulls/{pr['number']}/files")):
+        if publication_required and queue is not None:
+            _release_release_queue(
+                api, queue['approved'], pr['number'], 'merge-not-completed'
+            )
+        return {
+            'retained': 'Merge did not complete; source branch retained',
+            'pr': pr['number'],
+        }
+
+    if publication_required:
+        _carry_release_queue(api, result['sha'], pr['number'])
+
+    # Validation success is the publication handoff. Application-affecting merges
+    # immediately enter the sole direct-release workflow with scope derived from
+    # the validated PR. No second authorization command or hand-maintained target
+    # table exists between merge and deployment.
+    if publication_required:
+        # Integration and dispatch are separate phases of the same serialized
+        # lifecycle invocation. The refresh/reconcile phase dispatches once;
+        # do not dispatch here then rediscover an eventually-visible run below.
+        release_result = {
+            'releaseRecovery': 'queued for the refreshed reconciliation phase',
+            'targets': list(targets),
+        }
+    else:
+        # The merge commit does not exist in this runner's local checkout yet.
+        # Historical recovery is intentionally deferred to the workflow's
+        # refresh -> reconcile phase, which fetches and resets to the newly
+        # approved commit before inspecting first-parent authorization history.
+        release_result = {
+            'releaseRecovery': 'deferred until refreshed approved checkout',
+        }
+
+    if any(row.get('filename') == '.github/workflows/deployment-diagnostics.yml' for row in files):
         api.dispatch('deployment-diagnostics.yml')
-    return {'mergedPr': pr['number'], 'sha': result['sha'], 'releaseDispatched': publish,
-            'automaticRelease': False}
+    return {
+        'state': 'MERGED',
+        'transitions': ['MERGE_READY', 'MERGED'],
+        'mergedPr': pr['number'],
+        'sha': result['sha'],
+        'releaseDispatched': bool(release_result and 'directRelease' in release_result),
+        'automaticRelease': publication_required,
+        'targets': list(targets),
+        'release': release_result,
+    }
 
 
 def integrate(api, number):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     pr = api.api(f'pulls/{number}')
+
+    # pull_request_target events can queue behind another lifecycle run. If that
+    # earlier run already merged this exact trusted PR, the delayed event is a
+    # replay, not a new integration failure. Prove the recorded merge is in the
+    # current approved lineage and return without dispatching anything again.
+    merged_sha = pr.get('merge_commit_sha')
+    already_integrated = (
+        pr.get('state') == 'closed'
+        and pr.get('merged_at')
+        and pr.get('base', {}).get('ref') == APPROVED
+        and pr.get('head', {}).get('repo')
+        and pr['head']['repo'].get('full_name') == api.repo
+        and pr.get('author_association') in {'OWNER', 'MEMBER', 'COLLABORATOR'}
+        and SHA.fullmatch(merged_sha or '')
+    )
+    if already_integrated:
+        approved = api.ref(APPROVED)
+        if ancestor(merged_sha, approved):
+            return {
+                'integration': 'already merged exact PR event preserved as no-op',
+                'mergedPr': number,
+                'sha': merged_sha,
+                'replayed': True,
+                'releaseDispatched': False,
+            }
+
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
+    synced = sync_candidate_to_current_approved(api, pr)
+    if synced is not None:
+        return synced
     return merge_validated(api, pr)
+
+
+def _cancelled_before_admission_nonentry(api, run):
+    """Recognize only a cancellation before the admission job began.
+
+    Authenticated exact-generation job topology and nonpublication observers
+    are independently checked by the existing read-only nonentry authority.
+    A started admission, missing evidence, or any additional intent remains
+    blocked; cancellation alone is never a no-write proof.
+    """
+    if (run.get('status') != 'completed'
+        or run.get('conclusion') != 'cancelled'
+        or type(run.get('run_attempt')) is not int
+        or run['run_attempt'] != 1
+        or type(run.get('id')) is not int or run['id'] < 1
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_branch') != APPROVED
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha', ''))):
+        return False
+
+    jobs = api.pages(f"actions/runs/{run['id']}/attempts/1/jobs", 'jobs')
+    admission = [job for job in jobs if job.get('name') == 'admission']
+    if (len(admission) != 1
+        or admission[0].get('status') != 'completed'
+        or admission[0].get('conclusion') != 'cancelled'
+        or admission[0].get('steps') != []):
+        return False
+    source = api.text(run['head_sha'], '.github/workflows/' + DIRECT)
+    if not VALIDATION_AUTHORITY.release_attempt_never_entered(jobs, source):
+        return False
+
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    expected = f"legend-release-step-state-{run['head_sha']}-{run['id']}-1"
+    return (len(artifacts) == 1
+        and artifacts[0].get('name') == expected
+        and artifacts[0].get('expired') is False
+        and (artifacts[0].get('workflow_run') or {}).get('id') == run['id'])
+
+
+def _merged_owner_terminal_nonentry_proven(api, owner):
+    """Discharge a merged release queue owner only after exact no-write proof.
+
+    This is NOT successful publication. A production owner with an entered
+    migration, app-settings, auxiliary or upload intent retains the lease.
+    """
+    if not owner.get('merged_at') or type(owner.get('number')) is not int:
+        return False
+    runs = direct_release_runs(api)
+    if any(run.get('status') != 'completed' for run in runs):
+        return False
+    matching = [run for run in runs
+                if release_run_source_pr(run) == owner['number']]
+    # A failed nonpublishing candidate can have been recovered under a newer
+    # protected authority. Verify EACH immutable attempt, never assume two
+    # GitHub release attempts are interchangeable or treat failure as success.
+    if (not 1 <= len(matching) <= 16
+        or any(type(run.get('id')) is not int or run['id'] < 1 for run in matching)
+        or len({run['id'] for run in matching}) != len(matching)):
+        return False
+    original_merge = owner.get('merge_commit_sha')
+    if not isinstance(original_merge, str) or not SHA.fullmatch(original_merge):
+        return False
+    for run in matching:
+        authority_sha = run.get('head_sha')
+        if (run.get('status') != 'completed'
+            or run.get('conclusion') not in {'failure', 'cancelled'}
+            or not isinstance(authority_sha, str)
+            or not SHA.fullmatch(authority_sha)
+            or (authority_sha != original_merge
+                and not ancestor(original_merge, authority_sha))):
+            return False
+        if run['conclusion'] == 'cancelled':
+            if not _cancelled_before_admission_nonentry(api, run):
+                return False
+            continue
+        records = _admission_records(api, run)
+        if len(records) != 1:
+            return False
+        record = records[0]
+        if (record.get('sourcePr') != owner['number']
+            or record.get('authorizedSourceRevision') != owner.get('head', {}).get('sha')
+            or record.get('sourceMergeSha') != original_merge
+            or record.get('executionAuthority') != authority_sha
+            # _admission_records already checks canonical package-input equivalence
+            # between the immutable application package and authorized source.
+            # They may have different SHAs without different package inputs.
+            or not _historical_fenced_prepublication_nonentry(api, run, record)):
+            return False
+    return True
 
 
 def pending_updates(api):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
+    # GitHub state may advance while a serialized lifecycle run is waiting.
+    # Refresh the canonical approved ref before any ancestry decision so a newly
+    # merged trusted PR can never appear as an unknown local commit.
+    refreshed = git('fetch', '--no-tags', '--prune', 'origin',
+                    f'+refs/heads/{APPROVED}:refs/remotes/origin/{APPROVED}', check=False)
+    if refreshed.returncode:
+        raise RuntimeError(refreshed.stderr)
+
+    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    retained_candidates = []
+
+    def reconsider(pr):
+        # The list can be stale by the time validation completes. Do not sync or
+        # mutate unrelated candidates; only the same still-ready immutable head
+        # may enter the existing exact-head merge and queue authority.
+        current = api.api(f"pulls/{pr['number']}")
+        if (not ready(current, api.repo, APPROVED)
+            or current['head']['sha'] != pr['head']['sha']):
+            return None
+        if not approved_head_state(api, current)['current']:
+            return None
+        result = merge_validated(api, current)
+        if result.get('state') == 'MERGED':
+            return result
+        retained_candidates.append({'pr': pr['number'],
+            'reason': result.get('retained', result.get('state', 'Validation pending'))})
+        return None
+
+    # Publication leases serialize application deployment, not validated repairs
+    # of the release authority itself. Scan these before an active/merged owner
+    # can return, continuing past any unvalidated candidate.
+    for pr in reversed(pulls):
+        if (ready(pr, api.repo, APPROVED)
+            and not _release_publication_scope(api, pr)['publicationRequired']):
+            result = reconsider(pr)
+            if result is not None:
+                return result
+
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    if owner is not None:
+        current = api.api(f"pulls/{owner}")
+        if current.get('state') == 'open':
+            if not _release_publication_scope(api, current)['publicationRequired']:
+                _release_release_queue(api, lease['approved'], owner, 'no-production-publication-required')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Non-publishing queue owner released without blocking application deployment',
+                }
+            if not ready(current, api.repo, APPROVED):
+                _release_release_queue(api, lease['approved'], owner, 'owner-no-longer-ready')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Previous queue owner is no longer ready; queue released',
+                }
+            synced = sync_candidate_to_current_approved(api, current)
+            if synced is not None:
+                return {**synced, 'queueOwnerPr': owner}
+            return merge_validated(api, current)
+        if current.get('merged_at'):
+            if _merged_owner_terminal_nonentry_proven(api, current):
+                _release_release_queue(api, lease['approved'], owner,
+                                       'terminal-failed-no-mutation-proven')
+                promoted = promote_next_release_queue(api)
+                return promoted or {
+                    'state': 'RELEASE_QUEUE_READY',
+                    'retained': 'Failed prior publication never entered a provider write; queue lease safely discharged',
+                }
+            return {
+                'state': 'RELEASE_QUEUE_WAITING_FOR_PRODUCTION',
+                'pr': owner,
+                'retained': 'Merged queue owner retains lease until terminal production provenance or exact no-mutation proof',
+            }
+        _release_release_queue(api, lease['approved'], owner, 'owner-closed-without-merge')
+        promoted = promote_next_release_queue(api)
+        return promoted or {
+            'state': 'RELEASE_QUEUE_READY',
+            'retained': 'Closed queue owner released without merge',
+        }
+
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
+
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
-    pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    #
+    # A retained/unvalidated PR must never starve another fully validated PR.
+    # Preserve its reason and continue scanning; stop only after a mutation
+    # actually succeeds.
     closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
-            return integrate(api, pr['number'])
+            if _release_publication_scope(api, pr)['publicationRequired']:
+                result = reconsider(pr)
+                if result is not None:
+                    return result
+            continue
         if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
             and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo
             and pr['head']['ref'] not in KEEP):
@@ -211,7 +1612,13 @@ def pending_updates(api):
                 old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
                 old['head']['ref'] == pr['head']['ref']]
             if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
-                return merge_validated(api, pr)
+                result = merge_validated(api, pr)
+                if 'retained' not in result:
+                    return result
+                retained_candidates.append({
+                    'pr': pr['number'],
+                    'reason': result['retained'],
+                })
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
@@ -227,288 +1634,1628 @@ def pending_updates(api):
         # Force-rewritten/unrelated work never inherits the prior PR's readiness.
         if not ancestor(pr['head']['sha'], head):
             continue
-        correction = api.api('pulls', {'head': name, 'base': APPROVED,
-            'title': 'Continue approved release corrections from ' + name,
-            'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
-                    'The direct release and checked production gates will rerun; branch deletion remains gated.'})
+        try:
+            correction = api.api('pulls', {'head': name, 'base': APPROVED,
+                'title': 'Continue approved release corrections from ' + name,
+                'body': 'Automatically carries new commits on the retained source branch after its previous approved PR. '
+                        'Owning validation and the approved direct-release authority will re-evaluate only invalidated evidence; branch deletion remains gated.'})
+        except RuntimeError as exc:
+            if 'HTTP 403' not in str(exc):
+                raise
+            retained_candidates.append({
+                'pr': pr['number'],
+                'branch': name,
+                'reason': 'Correction PR creation blocked; unique branch history retained without integration',
+            })
+            continue
         # The previous collaborator PR authorizes review, not skipping fresh CI.
         return {'correctionPr': correction['number'], 'retained': 'Fresh exact-head validation required'}
-    return {'integration': 'no ready changes or retained-branch corrections'}
+    result = {'integration': 'no validated ready changes or retained-branch corrections'}
+    if retained_candidates:
+        result['retainedCandidates'] = retained_candidates
+    return result
 
 
-def resolve_production(api, number, expected_head, dispatch=False):
-    if staging_only():
-        raise RuntimeError('Validation-only staging hold blocks production publication')
-    pr = api.api(f'pulls/{number}')
-    if (pr['state'] != 'open' or pr['draft'] or pr['base']['ref'] != PRODUCTION
-        or not pr['head']['repo'] or pr['head']['repo']['full_name'] != api.repo):
-        raise RuntimeError('Not a ready same-repository production PR')
-    head = pr['head']['sha']
-    if not SHA.fullmatch(expected_head or '') or head != expected_head:
-        raise RuntimeError('PR head changed or does not match the triggering workflow source')
-    if dispatch and pr['head']['ref'] != APPROVED:
-        raise RuntimeError('Dispatched production promotion must use the exact approved workflow revision')
-    bot_promotion = pr['head']['ref'] == APPROVED and pr['user']['login'] == 'github-actions[bot]'
-    if not bot_promotion and pr['author_association'] not in {'OWNER', 'MEMBER', 'COLLABORATOR'}:
-        raise RuntimeError('Untrusted production PR author')
-    if pr['head']['ref'] == 'hotfix/staging-batch' or pr['head']['ref'].startswith('hotfix/staging-batch/'):
-        raise RuntimeError('Unpublished staging batch is not a release candidate')
-    approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
-    if pr['base']['sha'] != production or not ancestor(head, approved):
-        raise RuntimeError('Production candidate is stale or absent from approved changes')
-    if not pr.get('mergeable') or not SHA.fullmatch(pr.get('merge_commit_sha') or ''):
-        raise RuntimeError('Production merge candidate not ready; retain branch and retry')
-    merge = pr['merge_commit_sha']
-    git('fetch', '--no-tags', 'origin', merge)
-    # A rigorous release must not roll back ANY currently deployed web app.
-    for row in live_revisions():
-        if not ancestor(row['revision'], merge):
-            raise RuntimeError('Production candidate would omit live history: ' + row['app'])
-    return {'sha': merge, 'head': head, 'base': production, 'number': str(number)}
+def release_targets(revision):
+    """Read the immutable target scope authorized by an approved release commit."""
+    result = git('show', revision + ':Docs/releases/direct-release-request.json', check=False)
+    if result.returncode:
+        return set()
+    try:
+        request = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return set()
+    if request.get('releaseMode') != 'approved-only':
+        return set()
+    if 'targets' not in request:
+        return set(VALIDATION_AUTHORITY.release_name_map())
+    targets = request.get('targets')
+    if not isinstance(targets, list) or any(not isinstance(item, str) for item in targets):
+        return set()
+    return set(targets)
 
 
 def successful_release(api, run, app=None):
+    """Accept only complete approved direct-release receipts.
+
+    Validation workflows may authorize a merge, but only the single direct-release
+    workflow can establish deployed application provenance.
+    """
     if run['status'] != 'completed' or run['conclusion'] != 'success':
         return False
     path = run['path'].split('@')[0]
-    if path not in {'.github/workflows/' + DIRECT, '.github/workflows/' + RIGOROUS, '.github/workflows/' + WEBSITE}:
+    if path != '.github/workflows/' + DIRECT:
         return False
     if run.get('head_repository', {}).get('full_name') != api.repo:
         return False
-    if path.endswith(DIRECT) and run.get('head_branch') != APPROVED:
-        return False
-    if path.endswith(WEBSITE) and (run.get('head_branch') != PRODUCTION or run.get('event') != 'push'):
+    if run.get('head_branch') != APPROVED:
         return False
     jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
-    required = {'discover-live', 'release'} if path.endswith(DIRECT) else {
-        'security', 'build', 'merge', 'migrate', 'deploy', 'verify-legend-native', 'verify-legend-native-sql'}
-    if path.endswith(WEBSITE):
-        gate = 'website-security' if any(j['name'] == 'website-security' for j in jobs) else 'security'
-        required = {gate, 'deploy'}
+    required = {'discover-live', 'release'}
     passed = {job['name'] for job in jobs if job['conclusion'] == 'success'}
     if not required <= passed:
         return False
-    if path.endswith(DIRECT):
-        release_job = next(job for job in jobs if job['name'] == 'release')
-        steps = release_job.get('steps', [])
-        if not any(step['name'] == 'Verify every deployed target and collect all failures' and step['conclusion'] == 'success' for step in steps):
-            return False
-        if not any(step['name'].startswith('Direct deploy ') and step['conclusion'] == 'success' for step in steps):
-            return False
+    release_job = next(job for job in jobs if job['name'] == 'release')
+    steps = release_job.get('steps', [])
+    if not any(step['name'] == 'Verify every deployed target and collect all failures'
+               and step['conclusion'] == 'success' for step in steps):
+        return False
+    if not any(step['name'] == 'Enforce complete direct deployment outcome'
+               and step['conclusion'] == 'success' for step in steps):
+        return False
     if app is None:
         return True
-    if path.endswith(RIGOROUS):
-        return app in {'portal', 'client'}
-    if path.endswith(WEBSITE):
-        return app == 'website'
-    target_steps = {'portal': 'Direct deploy AgentPortal', 'client': 'Direct deploy ClientApp',
-                    'protect': 'Direct deploy Protect', 'parfait': 'Direct deploy Parfait',
-                    'website': 'Direct deploy Website'}
-    release_job = next(job for job in jobs if job['name'] == 'release')
-    return any(step['name'] == target_steps.get(app) and step['conclusion'] == 'success'
-               for step in release_job.get('steps', []))
-
+    # A selected target may have been intentionally preserved because it was
+    # already live at APPLICATION_RELEASE_SHA. Final live proof + enforcement is
+    # authoritative; requiring the deploy step itself would reject safe retries.
+    release_name = _canonical_release_name(app)
+    return bool(release_name and release_name in release_targets(run.get('head_sha', '')))
 
 def direct_only_request(sha):
-    # A one-release exception, bound to the commit which changes the request.
-    # A later unrelated commit cannot inherit a stale promotion exemption.
-    path = 'Docs/releases/direct-release-request.json'
-    changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, '--', path, check=False)
-    if changed.returncode or path not in changed.stdout.splitlines():
+    # A one-release exception bound to the exact commit that changes the request.
+    # Two authorized shapes exist:
+    # 1) a validated PR merge that carries the request in the merge itself; or
+    # 2) a single-parent control-only authorization immediately after that merge.
+    path = VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH
+    lineage = git('rev-list', '--parents', '-n', '1', sha, check=False)
+    parts = lineage.stdout.strip().split() if not lineage.returncode else []
+    if not parts or parts[0] != sha or len(parts) not in {2, 3}:
         return False
+
     result = git('show', sha + ':' + path, check=False)
     if result.returncode:
         return False
-    return json.loads(result.stdout).get('releaseMode') == 'approved-only'
+    try:
+        request = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    if request.get('releaseMode') != 'approved-only':
+        return False
+
+    if len(parts) == 2:
+        changed = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha + '^1', sha, check=False)
+        if changed.returncode or changed.stdout.splitlines() != [path]:
+            return False
+        return True
+
+    # Product merge authorization: compare the request object directly against
+    # the first parent. This avoids merge diff simplification hiding a request
+    # change when the same merge also carries application/migration files.
+    prior = git('show', sha + '^1:' + path, check=False)
+    if prior.returncode:
+        return True
+    return prior.stdout != result.stdout
 
 
-def reconcile_history_only(api, production=None, approved=None):
-    """Preserve tree-neutral canonical production lineage in approved history.
+def direct_release_approved_pr(api, sha):
+    """Resolve an approved-only release to its exact validated source PR.
 
-    No product content, release request, deployment scope, or application state is
-    changed. Safety comes from the current production tip having the exact tree of
-    the common merge base, plus a post-merge proof that approved's tree is unchanged.
-    Any content-bearing divergence remains blocked for the checked release lifecycle.
+    Release authorization may be rewritten several times, and release-control-only
+    PRs may be merged between the last product PR and the final authorization.
+    A merged explicit request binds its own validated head; older single-parent
+    request formats walk backward through request-only commits and release-control
+    PR merges until the nearest product-changing merged PR is reached. Any malformed
+    lineage, non-control single-parent commit, excessive chain, or ambiguous PR map
+    fails closed.
     """
-    production = production or api.ref(PRODUCTION)
-    approved = approved or api.ref(APPROVED)
+    if not direct_only_request(sha):
+        return None
 
-    if ancestor(production, approved):
-        return {'relation': 'production-preserved', 'reconciled': False}
-    if ancestor(approved, production):
-        return {'relation': 'production-ahead', 'reconciled': False}
-    if not history_only_production_divergence(production, approved):
-        return {'relation': 'diverged-content', 'reconciled': False}
+    current = sha
+    request_path = VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH
+    for _ in range(16):
+        lineage = git('rev-list', '--parents', '-n', '1', current, check=False)
+        parts = lineage.stdout.strip().split() if not lineage.returncode else []
+        if not parts or parts[0] != current:
+            return None
 
-    before_tree = commit_tree(approved)
-    merge = api.api('merges', {
-        'base': APPROVED,
-        'head': production,
-        'commit_message': 'Preserve tree-neutral production synchronization history in approved changes'
-    })
-    merged_sha = (merge or {}).get('sha')
-    if not SHA.fullmatch(merged_sha or ''):
-        raise RuntimeError('Canonical history reconciliation did not return a merge revision')
+        if len(parts) == 3:
+            merged = current
+        elif len(parts) == 2:
+            parent = parts[1]
+            changed = git('diff-tree', '--no-commit-id', '--name-only', '-r',
+                          current + '^1', current, check=False)
+            if changed.returncode or changed.stdout.splitlines() != [request_path]:
+                return None
+            if direct_only_request(parent):
+                current = parent
+                continue
+            merged = parent
+        else:
+            return None
 
-    git('fetch', '--no-tags', 'origin', merged_sha)
-    current_approved = api.ref(APPROVED)
-    if current_approved != merged_sha:
-        raise RuntimeError('Approved branch moved during canonical history reconciliation')
-    if commit_tree(current_approved) != before_tree:
-        raise RuntimeError('History-only reconciliation changed approved product content')
-    if not ancestor(production, current_approved):
-        raise RuntimeError('Production history was not preserved by reconciliation')
+        pulls = api.pages('commits/' + merged + '/pulls')
+        matches = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == merged
+                   and p.get('base', {}).get('ref') == APPROVED]
+        if len(matches) != 1:
+            return None
+        pr = matches[0]
+        # A merged explicit request is itself the validated candidate authority.
+        # Its immutable package may have an older producer, resolved separately
+        # by the package owner. Walking past this PR loses authorization and can
+        # resurrect an unrelated older product release after control-only merges.
+        if len(parts) == 3 and direct_only_request(merged):
+            if pr.get('head', {}).get('sha') != parts[2]:
+                return None
+            return pr
+        files = api.pages(f"pulls/{pr['number']}/files")
+        names = {row.get('filename') for row in files}
+        if names and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name)
+            for name in names if name
+        ):
+            merge_lineage = git('rev-list', '--parents', '-n', '1', merged, check=False)
+            merge_parts = merge_lineage.stdout.strip().split() if not merge_lineage.returncode else []
+            if len(merge_parts) != 3 or merge_parts[0] != merged:
+                return None
+            current = merge_parts[1]
+            continue
+        return pr
 
-    return {
-        'relation': 'production-history-reconciled',
-        'reconciled': True,
-        'productionSha': production,
-        'approvedSha': current_approved
-    }
+    return None
 
 
-def branch_parity(api):
-    """Canonical verifier/reconciler used by the branch-parity workflow."""
-    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
-    history = reconcile_history_only(api, production, approved)
-    if history.get('retained'):
-        raise RuntimeError(history['retained'])
-    if history.get('reconciled'):
-        production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+def authorization_release_proven(api, authorization_sha, targets):
+    """Accept a successful direct release bound to the exact authorization commit.
 
-    if production == approved:
-        return {'relation': 'identical', 'productionSha': production, 'approvedSha': approved}
-    if ancestor(production, approved):
-        return {'relation': 'approved-ahead', 'productionSha': production, 'approvedSha': approved}
-    if ancestor(approved, production):
-        return {'relation': 'production-ahead', 'productionSha': production, 'approvedSha': approved}
-    raise RuntimeError('Canonical branches contain content-bearing divergent history')
+    Older release workflow generations wrote a generic receipt keyed by the
+    approved merge/authorization SHA rather than the application source SHA.
+    The workflow run itself is durable proof only when it is the sole canonical
+    direct-release workflow, targets this approved authorization, and its final
+    live verification and enforcement both succeeded.
+    """
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(authorization_sha, safe=''),
+        'workflow_runs',
+    )
+    for run in runs:
+        if run.get('head_sha') != authorization_sha:
+            continue
+        if not successful_release(api, run):
+            continue
+        authorized = release_targets(authorization_sha)
+        if targets <= authorized:
+            return True
+    return False
+
+
+def pending_legacy_release_authorization(api, approved):
+    """Compatibility reader over the sole automatic/explicit target frontier."""
+    return next((row for row in pending_automatic_releases(api, approved)
+                 if row.get('authorizationMode') == 'explicit'), None)
+
+
+def _validated_package_evidence(api, revision):
+    identity = PACKAGE_AUTHORITY.package_identity(revision)
+    return VALIDATION_AUTHORITY.compute_validated_package_evidence(
+        api.repo,
+        revision,
+        identity,
+    )
+
+
+def _package_backfill_disposition(api, approved):
+    """Bound recovery at the existing approved workflow identity.
+
+    Historical dispatch records do not expose package_revision. Until exact
+    package intent can be authenticated, a prior run conservatively owns this
+    authority's backfill scope. Completion is not permission to schedule again.
+    """
+    runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(approved, safe=''),
+        'workflow_runs',
+    )
+    matching = [run for run in runs
+                if run.get('path', '').split('@')[0] == '.github/workflows/' + PACKAGE_VALIDATION
+                and run.get('event') == 'workflow_dispatch'
+                and run.get('head_sha') == approved]
+    if not matching:
+        return None
+    if any(run.get('head_branch') != APPROVED
+           or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+           or type(run.get('id')) is not int or run['id'] < 1
+           or type(run.get('run_attempt')) is not int or run['run_attempt'] < 1
+           for run in matching):
+        return {'packageBackfill': 'blocked',
+                'retained': 'Existing package backfill identity is incomplete; reconcile run authority before any dispatch'}
+    active = [run for run in matching if run.get('status') != 'completed']
+    run = max(active or matching, key=lambda row: row['id'])
+    evidence = {'backfillRunId': run['id'], 'backfillAttempt': run['run_attempt'],
+                'backfillConclusion': run.get('conclusion'), 'backfillAuthority': approved}
+    if active:
+        return {**evidence, 'packageBackfill': 'already queued or running'}
+    return {**evidence, 'packageBackfill': 'blocked',
+            'retained': 'Prior backfill completed without available compatible package evidence; repeated dispatch prohibited',
+            'resume': 'Reconcile retained artifacts and classify the exact failed run; resume only its failed jobs when safe, or install a reviewed authority correction'}
+
+
+def _package_backfill_preflight(api, revision, approved):
+    """Use the package builder's canonical eligibility proof before dispatch."""
+    return VALIDATION_AUTHORITY.compute_package_backfill_plan(
+        api.repo,
+        revision,
+        approved,
+    )
+
+
+def pending_automatic_releases(api, approved):
+    """Derive the durable queue from approved first-parent PR authorization history.
+
+    Keep the newest authorization for each target; never roll a newer target back
+    to an older queued head. A satisfied or failed newest head suppresses only its
+    own targets, so it cannot erase another application's pending publication.
+    No mutable queue or second authorization store is introduced.
+    """
+    history = git('rev-list', '--first-parent', approved, check=False)
+    if history.returncode:
+        raise RuntimeError('Unable to inspect approved first-parent automatic release history')
+    pending = []
+    covered = set()
+    merges = {}
+    for pr in api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe='')):
+        if pr.get('merged_at') and pr.get('base', {}).get('ref') == APPROVED:
+            merges.setdefault(pr.get('merge_commit_sha'), []).append(pr)
+    all_targets = {row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()}
+    for sha in history.stdout.splitlines():
+        if covered == all_targets:
+            break  # older authorizations cannot change any target's frontier
+        if not SHA.fullmatch(sha):
+            continue
+        explicit = direct_only_request(sha)
+        if explicit:
+            targets = release_targets(sha)
+            if targets and set(targets) <= covered:
+                continue
+            pr = direct_release_approved_pr(api, sha)
+            if not targets or pr is None:
+                # Unknown authorization scope cannot safely expose an older
+                # frontier. Preserve uncertainty instead of guessing a target.
+                return [{'authorizationMode': 'explicit', 'authorizationSha': sha,
+                         'retained': 'Explicit release scope or validated source PR is unproven'}]
+            names = []
+        else:
+            matches = merges.get(sha, [])
+            if len(matches) != 1:
+                # Closed-PR collection snapshots can lag immediately after a merge.
+                # Resolve the exact first-parent commit directly before allowing an
+                # older queued candidate to become the apparent frontier.
+                associated = api.pages('commits/' + sha + '/pulls')
+                matches = [
+                    candidate for candidate in associated
+                    if candidate.get('merged_at')
+                    and candidate.get('merge_commit_sha') == sha
+                    and candidate.get('base', {}).get('ref') == APPROVED
+                ]
+            if len(matches) != 1:
+                continue
+            pr = matches[0]
+            files = api.pages(f"pulls/{pr['number']}/files")
+            names = [row['filename'] for row in files if row.get('filename')]
+            targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+            if not targets:
+                continue
+        revision = pr.get('head', {}).get('sha')
+        if not SHA.fullmatch(revision or ''):
+            raise RuntimeError('Automatic release source PR has invalid validated head identity')
+        control_only = bool(names) and all(
+            VALIDATION_AUTHORITY.release_control_only_path(name) for name in names)
+        if control_only and not _validated_package_evidence(api, revision).get('reusable'):
+            continue
+        overlap = covered.intersection(targets)
+        covered.update(targets)
+        if overlap == set(targets):
+            continue
+        if overlap:
+            # Do not silently drop the untouched portion of an older atomic
+            # transaction, and do not invent authorization to split it either.
+            pending.append({'authorizationSha': sha, 'applicationRevision': revision,
+                            'targets': sorted(targets) if explicit else list(targets), 'sourcePr': pr['number'],
+                            'authorizationMode': 'explicit' if explicit else 'automatic',
+                            'retained': 'Partially superseded atomic release needs a validated combined successor',
+                            'supersededTargets': sorted(overlap)})
+            continue
+        package_evidence = _validated_package_evidence(api, revision)
+        publication_revision = package_evidence.get('revision', revision) if package_evidence.get('reusable') else revision
+        complete = (authorization_release_proven(api, sha, set(targets)) if explicit else
+                    all(release_proven(api, publication_revision, app=target) for target in targets))
+        if complete:
+            continue
+        row = {'authorizationSha': sha, 'applicationRevision': revision,
+               'targets': sorted(targets) if explicit else list(targets), 'sourcePr': pr['number'],
+               'authorizationMode': 'explicit' if explicit else 'automatic'}
+        validation = candidate_validation(api, pr)
+        if validation:
+            row['retained'] = validation
+        pending.append(row)
+    # Stable FIFO among the independent frontier, irrespective of API ordering.
+    return list(reversed(pending))
+
+
+def direct_release_runs(api):
+    """Read canonical direct-release history from the repository run inventory.
+
+    The workflow-specific runs endpoint returns HTTP 403 to the trusted lifecycle
+    GITHUB_TOKEN in this repository. The repository-wide run inventory is the
+    same Actions authority and is already required elsewhere by the lifecycle;
+    filter it locally to the one canonical workflow and approved branch.
+    """
+    return [row for row in api.pages(
+        'actions/runs?branch=' + urllib.parse.quote(APPROVED, safe='') + '&event=workflow_dispatch',
+        'workflow_runs')
+        if row.get('head_branch') == APPROVED
+        and row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT]
+
+
+def release_dispatch_identity(pr_number, revision, execution_sha):
+    if not SHA.fullmatch(revision or '') or not SHA.fullmatch(execution_sha or ''):
+        raise ValueError('Malformed immutable release dispatch identity')
+    return f"LEGEND release pr={int(pr_number)} candidate={revision} authority={execution_sha}"
+
+
+def release_run_source_pr(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=([0-9]+) candidate=[a-f0-9]{40} authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return int(match.group(1)) if match else None
+
+
+def release_run_candidate(run):
+    match = re.fullmatch(
+        r'LEGEND release pr=[0-9]+ candidate=([a-f0-9]{40}) authority=[a-f0-9]{40}',
+        run.get('display_title', ''),
+    )
+    return match.group(1) if match else None
+
+
+def automatic_release_admission(api, pr, approved, runs, *, authorization_mode='automatic'):
+    """Admit once, plus one bounded exact-live proof recovery after a settled failed parent."""
+    active = [row for row in runs if row.get('status') != 'completed']
+    if active:
+        return {'state': 'WAITING_FOR_CONFLICTING_RELEASE', 'retained': 'Queued in approved PR history until active transaction completes',
+                'blockingRuns': [row['id'] for row in active]}
+    identity = release_dispatch_identity(pr['number'], pr['head']['sha'], approved)
+    identities = {identity}
+    if authorization_mode == 'explicit':
+        identities.add(release_dispatch_identity(0, approved, approved))
+    attempted = [row for row in runs if row.get('display_title') in identities
+                 or (row.get('head_sha') == approved
+                     and not row.get('display_title', '').startswith('LEGEND release pr='))]
+    if attempted:
+        exact = [row for row in attempted if row.get('display_title') in identities]
+        # One prior exact run may be retried only when it durably proves that
+        # publication never entered, or when terminal provider proof shows the
+        # immutable application revision is already live. The first case retries
+        # admission after a cleared dependency; the second is proof-only recovery.
+        # A second attempted run exhausts the bounded recovery budget.
+        if len(attempted) == 1 and len(exact) == 1:
+            if _never_admitted(api, exact[0]):
+                return None
+            if _release_exact_live_terminal(api, exact[0]):
+                return None
+        return {'state': 'FAILED_NEEDS_REPAIR', 'retained': 'Exact candidate/authority release already attempted; bounded non-entry/exact-live recovery exhausted or not proven'}
+    return None
+
+
+def admit_automatic_release(api, pr, approved, targets, *, source_merge_sha=None, runs=None, authorization_mode='automatic'):
+    """One admission path for a freshly merged head and a recovered queued head.
+
+    Called under the lifecycle workflow mutex. The publisher retains its global
+    transaction mutex until durable resource reservations cover every mutation.
+    """
+    runs = direct_release_runs(api) if runs is None else runs
+    blocked = automatic_release_admission(api, pr, approved, runs, authorization_mode=authorization_mode)
+    if blocked:
+        return blocked
+    identity = release_dispatch_identity(pr['number'], pr['head']['sha'], approved)
+    dispatched = getattr(api, '_dispatch_handoffs', set())
+    if identity in dispatched:
+        return {'state': 'RELEASE_DISPATCHED', 'retained': 'This lifecycle invocation already handed off the exact candidate'}
+    # Retain the handoff even if GitHub's dispatch response is ambiguous. Only
+    # the later workflow/lease reconciliation may decide whether it executed.
+    dispatched.add(identity)
+    api._dispatch_handoffs = dispatched
+    inputs = (automatic_release_inputs(pr, approved, targets, source_merge_sha=source_merge_sha)
+              if authorization_mode == 'automatic' else {
+                  'automatic': 'false', 'source_pr': str(pr['number']),
+                  'validated_sha': pr['head']['sha'], 'merge_sha': approved,
+              })
+    api.dispatch(DIRECT, inputs)
+    return {'state': 'RELEASE_DISPATCHED', 'directRelease': authorization_mode + ' validated-merge release', 'targets': list(targets)}
+
+
+def dispatch_pending_automatic_release(api, approved, *, queue=None):
+    # One ordered frontier, one package recovery path, one dispatch predicate.
+    queue = pending_automatic_releases(api, approved) if queue is None else queue
+    if not queue:
+        return None
+    runs = direct_release_runs(api)
+    retained = []
+    for pending in queue:
+        if 'retained' in pending:
+            retained.append(pending)
+            continue
+        pr_identity = {'number': pending['sourcePr'], 'head': {'sha': pending['applicationRevision']}}
+        mode = pending.get('authorizationMode', 'automatic')
+        execution = pending['authorizationSha'] if mode == 'explicit' else approved
+        blocked = automatic_release_admission(api, pr_identity, execution, runs, authorization_mode=mode)
+        if blocked:
+            if 'blockingRuns' in blocked:
+                return {**blocked, 'pendingCandidates': queue}
+            retained.append({**pending, **blocked})
+            continue
+        package = _validated_package_evidence(api, pending['applicationRevision'])
+        if not package.get('reusable'):
+            preflight = _package_backfill_preflight(api, pending['applicationRevision'], approved)
+            if not preflight.get('allowed'):
+                retained.append({
+                    **pending,
+                    'state': 'SUPERSEDED' if preflight.get('reason') == 'application_inputs_changed_since_validated_revision' else 'WAITING_FOR_DEPENDENCY',
+                    'packageBackfill': 'not dispatched',
+                    'packageReason': preflight.get('reason') or package.get('reason'),
+                    'retained': 'Historical package backfill is ineligible under current approved application lineage',
+                })
+                continue
+            backfill = _package_backfill_disposition(api, approved)
+            if backfill:
+                retained.append({**pending, **backfill})
+                continue
+            api.dispatch(PACKAGE_VALIDATION, {'package_revision': pending['applicationRevision']})
+            return {'state': 'WAITING_FOR_DEPENDENCY', 'packageBackfill': 'dispatched for exact green automatic application revision',
+                    'packageReason': package.get('reason'), **pending}
+        pr = api.api(f"pulls/{pending['sourcePr']}")
+        if not pr:
+            retained.append({**pending, 'retained': 'Automatic release recovery could not reload source PR'})
+            continue
+        if pr.get('head', {}).get('sha') != pending['applicationRevision']:
+            retained.append({**pending, 'retained': 'Source PR head changed after queue discovery'})
+            continue
+        admission = admit_automatic_release(api, pr, execution, tuple(pending['targets']),
+                                             source_merge_sha=pending['authorizationSha'], runs=runs,
+                                             authorization_mode=mode)
+        return {**admission, **pending, 'packageEvidenceRunId': package.get('runId')}
+    return {'state': 'WAITING_FOR_DEPENDENCY', 'retained': 'Pending candidates require proof or repair', 'pendingCandidates': retained}
+
+
+def dispatch_pending_legacy_release(api, approved):
+    """Compatibility caller; no independent discovery, package or dispatch policy."""
+    pending = pending_legacy_release_authorization(api, approved)
+    if not pending:
+        return None
+    result = dispatch_pending_automatic_release(
+        api, approved, queue=[{**pending, 'authorizationMode': 'explicit'}])
+    # Retain the legacy single-intent response shape for existing callers.
+    if result and result.get('pendingCandidates'):
+        return result['pendingCandidates'][0]
+    return result
+
+
+def release_execution_state(api, run):
+    """Derive lifecycle state from the actual canonical worker and child evidence."""
+    if successful_release(api, run):
+        return 'COMPLETE'
+    jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+    release_jobs = [job for job in jobs if job.get('name') == 'release']
+    steps = release_jobs[0].get('steps', []) if release_jobs else []
+    publications = [
+        step for step in steps
+        if (
+            step.get('name', '').startswith('Publish canonical')
+            or step.get('name') == 'Submit canonical selected targets in parallel'
+        )
+    ]
+    if run.get('status') == 'completed':
+        artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+        names = {item.get('name', '') for item in artifacts if not item.get('expired')}
+        intents = {name.removeprefix('legend-release-operation-intent-') for name in names
+                   if name.startswith('legend-release-operation-intent-')}
+        successes = {name.removeprefix('legend-release-operation-success-') for name in names
+                     if name.startswith('legend-release-operation-success-')}
+        settled = any(name.startswith('legend-release-disposition-') for name in names)
+        if intents - successes and not settled:
+            return 'DEPLOYMENT_RECONCILIATION'
+        if settled and _release_exact_live_terminal(api, run):
+            return 'LIVE_PROOF_REQUIRED'
+        return 'WAITING_FOR_CONFLICTING_RELEASE' if _never_admitted(api, run) else 'FAILED_NEEDS_REPAIR'
+    if any(step.get('status') == 'in_progress' for step in publications):
+        return 'DEPLOYING'
+    if any(step.get('name') == 'Reconcile complete immutable release transaction'
+           and step.get('conclusion') == 'success' for step in steps):
+        return 'LIVE_PROOF_REQUIRED'
+    return 'RELEASE_DISPATCHED'
 
 
 def reconcile(api, trigger=None):
+    """Wake one serialized validation-to-production queue after terminal events."""
     if staging_only():
-        return {'promotion': 'disabled while validation-only staging hold is active'}
+        return {'release': 'disabled while validation-only staging hold is active'}
+
+    approved = api.ref(APPROVED)
+    lease = release_queue_lease(api)
+    owner = lease['ownerPr']
+    runs = direct_release_runs(api)
+
+    if owner is not None:
+        owner_pr = api.api(f"pulls/{owner}")
+        if not _release_publication_scope(api, owner_pr)['publicationRequired']:
+            _release_release_queue(api, approved, owner, 'no-production-publication-required')
+            promoted = promote_next_release_queue(api)
+            if promoted:
+                return promoted
+            owner = None
+
+    if owner is not None:
+        successful = [
+            row for row in runs
+            if release_run_source_pr(row) == owner and successful_release(api, row)
+        ]
+        if successful:
+            _release_release_queue(api, approved, owner, 'terminal-live-provenance')
+            promoted = promote_next_release_queue(api)
+            return promoted or {
+                'state': 'COMPLETE',
+                'pr': owner,
+                'release': 'terminal live provenance released validation-to-production lease',
+            }
+
+        if owner_pr.get('merged_at'):
+            # A publication-capable owner keeps the lease until terminal live
+            # provenance. Non-publishing owners were discharged above.
+            pass
+
+    automatic = dispatch_pending_automatic_release(api, approved)
+    if automatic:
+        return automatic
+
+    if any(row.get('status') != 'completed' for row in runs):
+        return {
+            'state': 'RELEASE_QUEUE_WAITING',
+            'release': 'active direct release retains validation-to-production lease',
+        }
+
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
-        if not successful_release(api, run):
-            return {'retained': 'No successful applicable release; no promotion or cleanup'}
-    # Recover missed workflow events and transient merge-back failures on every
-    # schedule. A failed production attempt never authorizes this synchronization.
-    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+        path = run.get('path', '').split('@')[0]
+        if path in {'.github/workflows/' + DIRECT, '.github/workflows/' + PACKAGE_VALIDATION}:
+            if run.get('conclusion') != 'success':
+                return {
+                    'state': 'FAILED_NEEDS_REPAIR',
+                    'retained': 'Triggered release or package attempt needs reconciliation or repair; queue lease retained',
+                }
 
-    # Protected production synchronization creates a merge commit that can be
-    # topologically unique while contributing no content beyond the shared base.
-    # Preserve only that proven, tree-neutral lineage before evaluating an exact
-    # approved-only release request; this repairs ancestry without expanding scope.
-    history = reconcile_history_only(api, production, approved)
-    if history.get('retained'):
-        return history
-    if history.get('reconciled'):
-        return history
+    current = [
+        row for row in runs
+        if row.get('head_sha') == approved
+        and not (
+            row.get('status') == 'completed'
+            and _never_admitted(api, row)
+        )
+    ]
+    if current:
+        latest = max(current, key=lambda row: (row.get('id', 0), row.get('run_attempt', 1)))
+        return {
+            'state': release_execution_state(api, latest),
+            'retained': 'Exact approved release already attempted; queue lease retained until terminal proof',
+        }
 
-    if direct_only_request(approved):
-        runs = api.pages('actions/runs?head_sha=' + approved, 'workflow_runs')
-        if not any(r['path'].split('@')[0] == '.github/workflows/' + DIRECT for r in runs):
-            pulls = api.pages('commits/' + approved + '/pulls')
-            pr = next((p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == approved and p['base']['ref'] == APPROVED), None)
-            if pr is not None:
-                pending = candidate_validation(api, pr)
-                if pending: return {'retained': pending}
-                api.dispatch(DIRECT, {'automatic': 'false'})
-                return {'directRelease': 'recovered exact scoped request', 'promotion': 'disabled for approved-only release'}
-        return {'promotion': 'disabled for this exact approved-only release'}
-    if not ancestor(production, approved):
-        if not release_proven(api, production, production=True):
-            return {'retained': 'Current production tip is not bound to successful release proof'}
-        api.api('merges', {'base': APPROVED, 'head': production,
-            'commit_message': 'Preserve successfully validated production release in approved changes'})
-        git('fetch', '--no-tags', 'origin')
-        return {'synchronizedProduction': production, 'directReleaseDispatched': False}
-    # Never promote newer unreleased edits using an older workflow's green result.
-    if ancestor(approved, production):
-        return {'promotion': 'already preserved in production'}
-    runs = api.api('actions/runs?head_sha=' + approved + '&per_page=100')['workflow_runs']
-    direct_runs = [r for r in runs if r['path'].split('@')[0] == '.github/workflows/' + DIRECT
-                   and r['head_branch'] == APPROVED]
-    if not direct_runs:
-        return {'promotion': 'awaiting successful direct release of current approved head'}
-    if not successful_release(api, direct_runs[0]):
-        return {'promotion': 'awaiting successful direct release of current approved head'}
-    pulls = api.pages('pulls?state=open&base=production')
-    pr = next((p for p in pulls if p['head']['ref'] == APPROVED and p['head']['repo']['full_name'] == api.repo), None)
-    if pr is None:
-        pr = api.api('pulls', {'head': APPROVED, 'base': PRODUCTION,
-            'title': 'Promote successfully released approved changes through production gates',
-            'body': 'Automatically prepared after the exact approved revision passed direct deployment. '
-                    'The existing production CI, security, artifact and live proof gates remain required. '
-                    'Source branches remain until both release paths preserve them and deployment is proven.'})
-    # Dispatch runs the SAME rigorous workflow, avoiding bot-created PR event suppression.
-    active = api.api('actions/runs?status=in_progress&per_page=100')['workflow_runs']
-    active += api.api('actions/runs?status=queued&per_page=100')['workflow_runs']
-    if any(r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS for r in active):
-        return {'promotionPr': pr['number'], 'validation': 'already queued or running'}
-    # Avoid repeatedly paying for the same failed exact candidate on every schedule.
-    previous = [r for r in runs if r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS and (
-                         (r.get('event') == 'pull_request' and any(p['number'] == pr['number'] for p in r.get('pull_requests', []))) or
-                         (r.get('event') == 'workflow_dispatch' and r.get('display_title') == 'LEGEND rigorous PR ' + str(pr['number'])))]
-    if previous:
-        return {'promotionPr': pr['number'], 'validation': 'already attempted; corrections or explicit rerun required'}
-    api.dispatch(RIGOROUS, {'pull_request': str(pr['number'])})
-    return {'promotionPr': pr['number'], 'validation': 'dispatched; no gates bypassed'}
+    promoted = promote_next_release_queue(api)
+    if promoted:
+        return promoted
+    return {'state': 'READY', 'release': 'no application publication required for exact approved head'}
 
 
-def undeployed_artifact_changes(sha, production):
-    # A web receipt cannot certify App Store, Play or Worker publication. Find
-    # the branch's first-parent fork; retain native/Worker work conservatively.
-    mainline = set(git('rev-list', '--first-parent', production).stdout.splitlines())
-    fork = next((c for c in git('rev-list', '--first-parent', sha).stdout.splitlines()
-                 if c in mainline), None)
-    if not fork:
-        return True
-    paths = git('diff', '--name-only', '--no-renames', fork, sha).stdout.splitlines()
-    return any(p.startswith(('Legend-ios/', 'Legend-Android/', 'Legend-Cloudflare/')) for p in paths)
+def _admission_identity(record):
+    payload = {key: value for key, value in record.items() if key != 'admissionId'}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def website_only_revision(revision):
-    # Historical website-only production releases had their own security gate.
-    # That evidence is valid only for the exact website-owned first-parent diff.
-    paths = git('diff', '--name-only', '--no-renames', revision + '^1', revision).stdout.splitlines()
-    return bool(paths) and all(p.startswith('Legend-Website/') or p in {
-        'Legend-Design/legend-design.tokens.json',
-        'Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png',
-        '.github/workflows/legend-website-production-deploy.yml'} for p in paths)
+def _validate_admission_record_scope(record):
+    targets = record.get('selectedTargets')
+    keys = VALIDATION_AUTHORITY.selected_release_target_keys(targets)
+    resources = record.get('resources')
+    if (not isinstance(resources, list) or not resources
+        or len(resources) != len(set(resources))
+        or any(not isinstance(value, str) or not re.fullmatch(
+            r'(?:read|write)/(?:app/masterapp-[a-z0-9-]+|schema/masterapp|cloudflare/(?:founder|router))',
+            value) for value in resources)):
+        raise RuntimeError('Release admission resource ownership is malformed')
+
+    owned = set(resources)
+    required = {
+        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
+        for key in keys
+    }
+    if not required.issubset(owned):
+        raise RuntimeError('Release admission record is missing canonical target ownership')
+    if (
+        any(not VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['static'] for key in keys)
+        and 'read/schema/masterapp' not in owned
+        and 'write/schema/masterapp' not in owned
+    ):
+        raise RuntimeError('Release admission record is missing canonical schema ownership')
+    return tuple(keys)
 
 
-def release_proven(api, revision, production=False, app=None):
-    runs = api.pages('actions/runs?head_sha=' + revision, 'workflow_runs')
-    # A PR run records its source SHA; provenance records the actual merge SHA.
-    for pr in api.pages('commits/' + revision + '/pulls'):
-        if (pr.get('merge_commit_sha') == revision and pr.get('merged_at')
-            and pr['base']['ref'] == PRODUCTION and pr['head']['repo']
-            and pr['head']['repo']['full_name'] == api.repo):
-            runs += [r for r in api.pages('actions/runs?head_sha=' + pr['head']['sha'], 'workflow_runs')
-                     if r['path'].split('@')[0] == '.github/workflows/' + RIGOROUS and (
-                         (r.get('event') == 'pull_request' and any(p['number'] == pr['number'] for p in r.get('pull_requests', []))) or
-                         (r.get('event') == 'workflow_dispatch' and r.get('display_title') == 'LEGEND rigorous PR ' + str(pr['number'])))]
-    allowed = {'.github/workflows/' + RIGOROUS, '.github/workflows/' + WEBSITE}
-    if not production:
-        allowed.add('.github/workflows/' + DIRECT)
-    runs = [r for r in runs if r['path'].split('@')[0] in allowed]
-    runs.sort(key=lambda r: (r.get('updated_at') or r.get('run_started_at') or r['created_at'], r.get('run_attempt', 1)), reverse=True)
-    # An unrelated successful workflow never masks a failed release attempt.
-    if any(r['status'] == 'completed' and r['conclusion'] != 'success' for r in runs[:1]):
+def _admission_records(api, run):
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    records = []
+    for artifact in artifacts:
+        name = artifact.get('name', '')
+        if not name.startswith('legend-release-admission-'):
+            continue
+        if artifact.get('expired'):
+            raise RuntimeError('Release admission evidence expired; resource disposition must be reconciled')
+        with tempfile.TemporaryDirectory(prefix='legend-admission-') as directory:
+            VALIDATION_AUTHORITY._download_run_artifact(api.repo, run['id'], name, Path(directory))
+            path = Path(directory) / 'operation.json'
+            if path.stat().st_size > 32768:
+                raise RuntimeError('Oversized admission record')
+            record = json.loads(path.read_text())
+        if (record.get('schemaVersion') != 1 or record.get('phase') != 'admission'
+            or record.get('producingRun') != run['id']
+            or record.get('admissionId') != _admission_identity(record)
+            or name != 'legend-release-admission-' + record['admissionId']):
+            raise RuntimeError('Release admission identity does not match its durable producer')
+        _validate_admission_record_scope(record)
+        if (run.get('event') != 'workflow_dispatch'
+            or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+            or run.get('head_sha') != record.get('executionAuthority')
+            or not isinstance(record.get('producingAttempt'), int)
+            or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 1)
+            or record.get('authorizationMode') not in {'automatic', 'explicit'}):
+            raise RuntimeError('Untrusted release admission producer or authorization mode')
+        pr = api.api(f"pulls/{record['sourcePr']}")
+        if (not pr.get('merged_at') or pr.get('base', {}).get('ref') != APPROVED
+            or pr.get('head', {}).get('sha') != record.get('authorizedSourceRevision')
+            or pr.get('merge_commit_sha') != record.get('sourceMergeSha')
+            or not ancestor(record['sourceMergeSha'], record['executionAuthority'])):
+            raise RuntimeError('Admission source no longer binds its validated approved PR')
+        if not VALIDATION_AUTHORITY.package_inputs_compatible(
+                record['applicationRevision'], record['authorizedSourceRevision']):
+            raise RuntimeError('Admission authorized source is not equivalent to its immutable package inputs')
+        package = VALIDATION_AUTHORITY.compute_validated_package_evidence(
+            api.repo, record['applicationRevision'], record['packageIdentity'], allow_equivalent=False)
+        if (not package.get('reusable') or package.get('revision') != record.get('applicationRevision')
+            or package.get('packageIdentity') != record.get('packageIdentity')):
+            raise RuntimeError('Admission immutable package binding is missing or changed')
+        if record['authorizationMode'] == 'explicit' and not direct_only_request(record['executionAuthority']):
+            raise RuntimeError('Admission lacks exact explicit release authorization')
+
+        # selectedTargets/resources are immutable output of the exact trusted
+        # historical admission. Re-deriving them with today's path classifier
+        # would reinterpret prior authorization after policy changes and can
+        # deadlock later unrelated releases.
+        records.append(record)
+    return records
+
+
+def _never_admitted(api, run):
+    # A skipped latest retry cannot erase an earlier entered publication.
+    attempts = run.get('run_attempt', 1)
+    if type(attempts) is not int or attempts < 1:
         return False
-    if production:
-        rigorous = [r for r in runs if r['path'].split('@')[0].endswith(RIGOROUS)]
-        if rigorous:
-            return successful_release(api, rigorous[0])
-        return bool(runs) and website_only_revision(revision) and successful_release(api, runs[0])
+    for attempt in range(1, attempts + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        if VALIDATION_AUTHORITY.release_attempt_never_entered(jobs):
+            continue
+        if not SHA.fullmatch(run.get('head_sha', '')):
+            return False
+        source = api.text(run['head_sha'], '.github/workflows/' + DIRECT)
+        if not VALIDATION_AUTHORITY.release_attempt_never_entered(jobs, source):
+            return False
+    return True
+
+
+
+def _historical_release_mutation_steps(source):
+    """Return mutation-capable steps for the exact historical workflow generation.
+
+    The current release has one canonical pre-publication owner. Older trusted
+    generations used four serial owners. Historical verification recognizes the
+    shape that actually exists in the supplied workflow text; it never restores a
+    legacy execution path to the current workflow.
+    """
+    blocks = VALIDATION_AUTHORITY.named_step_blocks(
+        VALIDATION_AUTHORITY._job_blocks(source).get('release', '')
+    )
+    prepare = 'Prepare complete immutable release transaction'
+    if prepare not in blocks or '--prepare-only' not in blocks[prepare]:
+        return None
+
+    prepublication = 'Synchronize canonical pre-publication resource lanes'
+    legacy_prepublication = {
+        'Synchronize selected shared authorization and publisher runtimes',
+        'Synchronize selected editor ticket authority',
+        'Prepare canonical business website routing authority',
+        'Apply additive diagnostics migrations before restarting apps',
+    }
+    auxiliary = 'Run independent auxiliary release fanout'
+    legacy_auxiliary = {
+        'Deploy and activate LEGEND Founder Cloudflare baseline',
+        'Reconcile public custom-hostname Cloudflare policy',
+        'Deploy shared Cloudflare business website router',
+    }
+    mutation = {
+        prepare,
+        'Reconcile complete immutable release transaction',
+    }
+    if prepublication in blocks:
+        mutation.add(prepublication)
+    elif legacy_prepublication.issubset(blocks):
+        mutation.update(legacy_prepublication)
+    else:
+        return None
+
+    if auxiliary in blocks:
+        mutation.add(auxiliary)
+    elif legacy_auxiliary.issubset(blocks):
+        mutation.update(legacy_auxiliary)
+    else:
+        return None
+
+    mutation.update(
+        gate['step']
+        for child, gate in VALIDATION_AUTHORITY.DIRECT_RELEASE_CHILDREN.items()
+        if child not in {
+            'live-proof',
+            'migrations', 'shared-config', 'editor-config',
+            'founder-cloudflare', 'routing-cloudflare',
+        }
+    )
+    legacy_target_steps = {
+        f'Publish canonical target ({key})'
+        for key in VALIDATION_AUTHORITY.RELEASE_TARGETS
+    }
+    present_legacy_target_steps = legacy_target_steps.intersection(blocks)
+    if present_legacy_target_steps:
+        if present_legacy_target_steps != legacy_target_steps:
+            return None
+        mutation.update(legacy_target_steps)
+    parallel = {
+        name for name, block in blocks.items()
+        if '--publish-prepared-parallel' in block
+    }
+    if len(parallel) > 1:
+        return None
+    mutation.update(parallel)
+    if not mutation.issubset(blocks):
+        return None
+    return mutation
+
+
+def _admission_nonmutating_terminal(api, run):
+    """Prove a completed historical admission never crossed into mutation.
+
+    Proof is bound to the exact historical workflow generation that executed.
+    Later workflow edits cannot turn a safely failed old run into a permanent
+    resource lease. Absence alone is never enough: the producer must be trusted,
+    the artifact inventory must contain no durable operation/child intent, and
+    every canonical mutation-capable step must be positively skipped. Transaction
+    preparation may itself fail (or be skipped), but may never have succeeded.
+    """
+    if run.get('status') != 'completed':
+        return False
+    if (run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('head_branch') != APPROVED
+        or run.get('event') != 'workflow_dispatch'
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()):
+        return False
+
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    names = {item.get('name', '') for item in artifacts}
+    if any(
+        name.startswith('legend-release-operation-intent-')
+        or name.startswith('legend-release-child-intent-')
+        for name in names
+    ):
+        return False
+
+    attempts = run.get('run_attempt', 1)
+    if type(attempts) is not int or attempts < 1:
+        return False
+    workflow_path = '.github/workflows/' + DIRECT
+    revision = run.get('head_sha', '')
+    if not SHA.fullmatch(revision):
+        return False
+    original = git('show', revision + ':' + workflow_path, check=False)
+    if original.returncode:
+        return False
+    mutation = _historical_release_mutation_steps(original.stdout)
+    if not mutation:
+        return False
+
+    prepare = 'Prepare complete immutable release transaction'
+    for attempt in range(1, attempts + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        release_jobs = [job for job in jobs if job.get('name') == 'release']
+        if len(release_jobs) != 1:
+            return False
+        release = release_jobs[0]
+        if release.get('conclusion') == 'skipped':
+            continue
+        if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
+            return False
+        steps = release.get('steps')
+        if not isinstance(steps, list):
+            return False
+        outcomes = {}
+        for step in steps:
+            outcomes.setdefault(step.get('name'), []).append(step)
+        for name in mutation:
+            matches = outcomes.get(name, [])
+            if len(matches) != 1:
+                return False
+            conclusion = matches[0].get('conclusion')
+            if name == prepare:
+                if conclusion not in {'failure', 'skipped'}:
+                    return False
+            elif conclusion != 'skipped':
+                return False
+    return True
+
+
+
+def _historical_fenced_prepublication_nonentry(api, run, record):
+    """Discharge only a proven no-write historical prepublication failure.
+
+    These historical workflow/script object identities were independently checked:
+    every app configuration or database mutation required a durable child intent
+    readback before the provider write. Publication required a separate durable
+    operation intent. Unknown workflow generations and missing evidence remain
+    leased; this predicate does not treat a failed job as no mutation by itself.
+    """
+    if (
+        run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'
+        or type(run.get('run_attempt')) is not int
+        or not 1 <= run['run_attempt'] <= 2
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or run.get('head_branch') != APPROVED
+        or run.get('event') != 'workflow_dispatch'
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha', ''))
+    ):
+        return False
+
+    # Content-addressed evidence, not a blanket exception for failed releases.
+    # A change to even one mutation owner must be reviewed before extending
+    # this historical source-generation proof.
+    historical = {
+        '.github/workflows/' + DIRECT: {'bd84c42297a50b29dfa20c2ed926b8233074720e'},
+        'scripts/release-prepublication.py': {
+            '29bb5e5b5a0c44d4ebc951250a54eb07aee7620b',
+            'bd98fb920bfa67eb5e4f7a3ab27f2a46db13e087',
+            '2f60d22e05e2917a9c48db0db1ba58632ab57d02',
+            # PR #525 execution authority fe115eb9: EF metadata-only
+            # probe registration added. The historical write owners remain
+            # journaled, and all mutation receipts must still be absent.
+            '29c23b084d059d5f1663c98631be7557ec86fa67',
+            '75b2ca1eaee45852e6f896df5caa5366a709af05',
+            '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+        },
+        'scripts/release-child-receipt.py': {'b1e262458f8ccac1132f7f71cb434d47b805116a'},
+        'scripts/release-operation-evidence.py': {'ed61e19c3e6f19c433e9fb489c80cd13b7e084b9'},
+        'scripts/release-migration.py': {
+            '42efc3425a97f9ba8b35ba2a6dde6e41272032b1',
+            '3dc53852fc30df96e9e79779bae89b0cbeb65248',
+            '4d04187b13f1212c709237d4632c509e5c9696b9',
+            'd108377faf267915d86c856523a7992a4a6d500f',
+            '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+            '4c4bff74892a9924efb45f3968e06a61dffbcab5',
+        },
+        'scripts/deploy-approved-app.py': {'39d5b972bf47d9f29146fe44929e005843ffd234'},
+        'scripts/validation-resume.py': {
+            '34e30ff044dada73593f3662f71fc3f442f869b2',
+            'db82785acd1dcf8c2f84a43ec22d8c5116959199',
+            '3b78151ca2f2b463d0d553a9967dc0254e577156',
+            '5ba28b3b96031c769e7d683adebfc5613632b219',
+            '60090e0650a7d1c1213f799697a3fe9bafa319c0',
+            'fa42ed4b237f153cb00dc1d77bd0fc990db35aa4',
+            '72da45e6af8996c112cd51df4b5c078815347283',
+            'db01b82df5704ced5f02d35aea36764592b4e08d',
+            'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2',
+        },
+    }
+    revision = run['head_sha']
+    observed_blobs = {}
+    for path, approved_blobs in historical.items():
+        observed = git('rev-parse', revision + ':' + path, check=False)
+        if observed.returncode != 0:
+            return False
+        observed_blobs[path] = observed.stdout.strip()
+
+    # The final prepublication generation changed the journal as well as its
+    # caller. Admit only this complete audited source tuple, never arbitrary
+    # combinations of independently recognized mutation owners. All inventory,
+    # step and positive first-write witnesses below remain mandatory.
+    fenced_generation = observed_blobs == {
+        '.github/workflows/' + DIRECT: 'bd84c42297a50b29dfa20c2ed926b8233074720e',
+        'scripts/release-prepublication.py': '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+        'scripts/release-child-receipt.py': 'b1e262458f8ccac1132f7f71cb434d47b805116a',
+        'scripts/release-operation-evidence.py': '28b20739c7782db41134725b2e031f44d6c93f82',
+        'scripts/release-migration.py': 'f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5',
+        'scripts/deploy-approved-app.py': '39d5b972bf47d9f29146fe44929e005843ffd234',
+        'scripts/validation-resume.py': '63f4fbe895230f2b52c29116505432ff3ee9710a',
+    }
+    if not fenced_generation and any(
+        observed_blobs[path] not in approved_blobs
+        for path, approved_blobs in historical.items()
+    ):
+        return False
+
+    # The six newer historical generations were audited as complete source
+    # triples, not a cross-product of independently acceptable writer blobs.
+    # Changes to any of these coupled owners must fail closed until reviewed.
+    newer = {
+        ('75b2ca1eaee45852e6f896df5caa5366a709af05',
+         '819fa223f62e6b97fbbdd28092f765b1f57e6f90',
+         resume)
+        for resume in (
+            '5ba28b3b96031c769e7d683adebfc5613632b219',
+            '60090e0650a7d1c1213f799697a3fe9bafa319c0',
+            'fa42ed4b237f153cb00dc1d77bd0fc990db35aa4',
+            '72da45e6af8996c112cd51df4b5c078815347283',
+        )
+    } | {
+        ('87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+         '4c4bff74892a9924efb45f3968e06a61dffbcab5',
+         resume)
+        for resume in (
+            'db01b82df5704ced5f02d35aea36764592b4e08d',
+            'db062d6f7124261e7deeb6bfc4e6ebfd1abd26b2',
+        )
+    }
+    generation = tuple(observed_blobs[path] for path in (
+        'scripts/release-prepublication.py', 'scripts/release-migration.py',
+        'scripts/validation-resume.py'))
+    if (generation[0] in {item[0] for item in newer}
+        or generation[1] == '4c4bff74892a9924efb45f3968e06a61dffbcab5'
+        or generation[2] in {item[2] for item in newer}):
+        if not fenced_generation and generation not in newer:
+            return False
+
+    keys = _validate_admission_record_scope(record)
+    if (
+        not keys or record.get('producingAttempt') != 1
+        # The historical routing settings owner can write outside a partition
+        # child intent. This proof therefore covers only non-routing app/schema
+        # scope; routing/Founder auxiliary leases require their own disposition.
+        or any(resource.startswith('write/cloudflare/')
+               for resource in record['resources'])
+    ):
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    if not isinstance(artifacts, list) or any(
+        not isinstance(row, dict) or row.get('expired') is not False
+        or not isinstance(row.get('name'), str) for row in artifacts
+    ):
+        return False
+    names = [item['name'] for item in artifacts]
+    if len(names) != len(set(names)):
+        return False
+    expected = {
+        'legend-release-admission-' + record['admissionId'],
+    }
+    expected.update(
+        f"legend-release-step-state-{record['applicationRevision']}-{run['id']}-{attempt}"
+        for attempt in range(1, run['run_attempt'] + 1)
+    )
+    # Rollback packages are immutable inputs downloaded from previously
+    # validated producer runs. They are NOT mutation-intent receipts, and a
+    # successful "reuse retained live package" needs no re-upload in THIS
+    # release. Require an all-or-none inventory when local rollback artifacts
+    # do exist; partial inventory remains unproven. The release job, exact
+    # mutation-step outcomes, and full artifact inventory below still own
+    # the no-write proof. Do not introduce another admission ledger.
+    rollback = {
+        f"diagnostics-rollback-{key}-{revision}" for key in keys
+    }
+    actual = set(names)
+    retained_here = actual & rollback
+    optional = actual - expected - rollback
+    if (not expected.issubset(actual)
+        or retained_here not in (set(), rollback)
+        or len(optional) > 1
+        or any(not re.fullmatch(
+            r'legend-release-transaction-plan-[0-9a-f]{64}', name)
+            for name in optional)):
+        return False
+
+    source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
+    if source.returncode:
+        return False
+    mutation = _historical_release_mutation_steps(source.stdout)
+    prepare = 'Prepare complete immutable release transaction'
+    prepublication = 'Synchronize canonical pre-publication resource lanes'
+    finalizer = 'Reconcile complete immutable release transaction'
+    if mutation is None or not {prepare, prepublication, finalizer}.issubset(mutation):
+        return False
+    for attempt in range(1, run['run_attempt'] + 1):
+        jobs = api.pages(f"actions/runs/{run['id']}/attempts/{attempt}/jobs", 'jobs')
+        release_jobs = [job for job in jobs if job.get('name') == 'release']
+        if len(release_jobs) != 1:
+            return False
+        release = release_jobs[0]
+        if release.get('status') != 'completed' or release.get('conclusion') != 'failure':
+            return False
+        steps = release.get('steps')
+        if not isinstance(steps, list):
+            return False
+        outcomes = {}
+        for step in steps:
+            outcomes.setdefault(step.get('name'), []).append(step.get('conclusion'))
+        # An earlier failed transaction-plan GET is a non-entry. A later
+        # successful local plan may fail during prepublication only when all
+        # mutation intents are positively absent in the full artifact inventory.
+        preparation = outcomes.get(prepare)
+        if preparation == ['success']:
+            required = {prepare: 'success', prepublication: 'failure', finalizer: 'success'}
+        elif preparation == ['failure']:
+            required = {prepare: 'failure', prepublication: 'skipped', finalizer: 'skipped'}
+        else:
+            return False
+        required.update({name: 'skipped' for name in mutation - set(required)})
+        required.update({
+            'Reconcile terminal release resource disposition': 'skipped',
+            'Preserve terminal release resource disposition': 'skipped',
+            'Retain exact approved release receipt': 'skipped',
+        })
+        if not all(outcomes.get(name) == [conclusion] for name, conclusion in required.items()):
+            return False
+        if fenced_generation or generation in newer:
+            # Reuse the sole canonical first-SQL-write witness instead of
+            # trusting a failed job or missing artifact. It authenticates the
+            # exact migration-denial marker inside this failed step's timestamps
+            # and the immutable source which raises it before bundle execution.
+            matches = [step for step in steps if step.get('name') == prepublication]
+            if len(matches) != 1 or not VALIDATION_AUTHORITY._historical_migration_prewrite_proven(
+                api.repo, run, release, matches[0], attempt, os.environ.get('GH_TOKEN', '')
+            ):
+                return False
+    return True
+
+
+
+def _admission_disposition(api, run, record):
+    if run.get('status') != 'completed':
+        return None
+    name = 'legend-release-disposition-' + record['admissionId'] + '-' + str(run.get('run_attempt', 1))
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    matching = [row for row in artifacts if row.get('name') == name and not row.get('expired')]
+    if len(matching) != 1:
+        return None
+    with tempfile.TemporaryDirectory(prefix='legend-disposition-') as directory:
+        VALIDATION_AUTHORITY._download_run_artifact(api.repo, run['id'], name, Path(directory))
+        value = json.loads((Path(directory) / 'release-disposition.json').read_text())
+    if (
+        value.get('schemaVersion') != 1
+        or value.get('terminal') is not True
+        or value.get('mutableChildrenSettled') is not True
+        or value.get('admissionId') != record['admissionId']
+        or value.get('candidateRevision') != record['applicationRevision']
+        or value.get('producingRun') != run['id']
+        or value.get('producingAttempt') != run.get('run_attempt', 1)
+        or value.get('resources') != record['resources']
+    ):
+        return None
+    return value
+
+
+def _admission_settled(api, run, record):
+    value = _admission_disposition(api, run, record)
+    if value is None:
+        return False
+    targets = {row.get('target') for row in value.get('targets', []) if row.get('idle') is True}
+    expected = set(VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']))
+    return targets == expected
+
+
+def _admission_exact_live_terminal(api, run, record):
+    """Prove a failed parent needs proof recovery only, never another application upload."""
+    value = _admission_disposition(api, run, record)
+    if value is None:
+        return False
+    expected = set(VALIDATION_AUTHORITY.selected_release_target_keys(record['selectedTargets']))
+    rows = value.get('targets')
+    if not isinstance(rows, list) or len(rows) != len(expected):
+        return False
+    observed = {}
+    for row in rows:
+        key = row.get('target')
+        if (
+            key in observed
+            or key not in expected
+            or row.get('idle') is not True
+            or row.get('revision') != record['applicationRevision']
+        ):
+            return False
+        observed[key] = row['revision']
+    return set(observed) == expected
+
+
+def _release_exact_live_terminal(api, run):
+    if run.get('status') != 'completed' or run.get('conclusion') == 'success':
+        return False
+    records = _admission_records(api, run)
+    return bool(records) and all(_admission_exact_live_terminal(api, run, record) for record in records)
+
+
+
+def _admission_superseded_by_terminal_success(api, run, record, runs):
+    """Discharge an older lease only after a later terminal success of the exact immutable release.
+
+    Automatic release scope comes from durable admission evidence, not from a
+    mutable/manual release-request file on the later control-plane authority.
+    """
+    if run.get('status') != 'completed':
+        return False
+    required = (
+        'sourcePr',
+        'authorizedSourceRevision',
+        'applicationRevision',
+        'selectedTargets',
+        'resources',
+    )
+    if any(record.get(key) is None for key in required):
+        return False
+    source_pr = record.get('sourcePr')
+    source_revision = record.get('authorizedSourceRevision')
+    if type(source_pr) is not int or not SHA.fullmatch(source_revision or ''):
+        return False
+
+    for later in runs:
+        if later.get('id', 0) <= run.get('id', 0):
+            continue
+        if release_run_source_pr(later) != source_pr:
+            continue
+        if release_run_candidate(later) != source_revision:
+            continue
+        if later.get('status') != 'completed' or not successful_release(api, later):
+            continue
+        for later_record in _admission_records(api, later):
+            if all(later_record.get(key) == record.get(key) for key in required):
+                return True
+    return False
+
+def _app_only_admission_keys(record):
+    """Return canonical app keys only when a lease owns no auxiliary writes."""
+    try:
+        keys = _validate_admission_record_scope(record)
+    except Exception:
+        return None
+    allowed = {'read/schema/masterapp'}
+    allowed.update(
+        'write/app/' + VALIDATION_AUTHORITY.RELEASE_TARGETS[key]['releaseName']
+        for key in keys
+    )
+    resources = record.get('resources')
+    if (
+        not isinstance(resources, list)
+        or not resources
+        or any(resource not in allowed for resource in resources)
+    ):
+        return None
+    return tuple(keys)
+
+
+def _historical_application_publications_completed(api, run, record, *, required_targets=None):
+    """Validate all receipts; prove each required app, never infer success from steps."""
+    if run.get('status') != 'completed':
+        return False
+    keys = _app_only_admission_keys(record)
+    revision = record.get('applicationRevision')
+    if keys is None or not SHA.fullmatch(revision or ''):
+        return False
+    required = set(keys) if required_targets is None else set(required_targets)
+    if not required or not required.issubset(set(keys)):
+        return False
+    artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
+    observed = {}
+    for artifact in artifacts:
+        name = artifact.get('name', '')
+        match = re.fullmatch(r'legend-release-operation-success-([a-f0-9]{64})', name)
+        if match is None:
+            continue
+        if artifact.get('expired'):
+            return False
+        with tempfile.TemporaryDirectory(prefix='legend-operation-success-') as directory:
+            try:
+                VALIDATION_AUTHORITY._download_run_artifact(
+                    api.repo, run['id'], name, Path(directory)
+                )
+                path = Path(directory) / 'operation.json'
+                if path.stat().st_size > 32768:
+                    return False
+                success = json.loads(path.read_text())
+            except Exception:
+                return False
+        target = success.get('target')
+        digest = success.get('packageDigest')
+        operation_id = success.get('operationId')
+        expected_id = hashlib.sha256(json.dumps(
+            {
+                'target': target,
+                'applicationRevision': success.get('applicationRevision'),
+                'packageDigest': digest,
+            },
+            sort_keys=True,
+            separators=(',', ':'),
+        ).encode()).hexdigest()
+        if (
+            success.get('schemaVersion') != 1
+            or success.get('phase') != 'success'
+            or success.get('producingRun') != run['id']
+            or type(success.get('producingAttempt')) is not int
+            or not 1 <= success['producingAttempt'] <= run.get('run_attempt', 1)
+            or success.get('applicationRevision') != revision
+            or target not in keys
+            or not re.fullmatch(r'[a-f0-9]{64}', digest or '')
+            or operation_id != match.group(1)
+            or operation_id != expected_id
+            or target in observed
+        ):
+            return False
+        observed[target] = operation_id
+    if required_targets is None:
+        return set(observed) == set(keys)
+    return required.issubset(set(observed))
+
+
+def _forward_supersedes_completed_app_lease(record, candidate):
+    """Roll forward the overlapping app slice of a completed app-only lease.
+
+    Application writes are independently journaled per target. A newer strict
+    descendant may supersede only the overlap with independently verified
+    durable success receipts. Unresolved app writes retain their original lease.
+    The historical lease must remain app-only; no schema or auxiliary write
+    can be discharged here.
+
+    Preserve the original app-only candidate boundary when it applies. A newer
+    candidate that additionally owns schema or auxiliary resources may fall back
+    to the canonical admission-scope validator; those newer resources are never
+    inherited from, or used to settle, the historical app-only lease.
+    """
+    old_keys = _app_only_admission_keys(record)
+    new_keys = _app_only_admission_keys(candidate)
+    if new_keys is None:
+        try:
+            new_keys = _validate_admission_record_scope(candidate)
+        except Exception:
+            new_keys = None
+    old_revision = record.get('applicationRevision')
+    new_revision = candidate.get('applicationRevision')
+    if (
+        old_keys is None
+        or new_keys is None
+        or not SHA.fullmatch(old_revision or '')
+        or not SHA.fullmatch(new_revision or '')
+        or old_revision == new_revision
+    ):
+        return False
+
+    overlap = set(old_keys).intersection(new_keys)
+    if not overlap:
+        return False
+
+    try:
+        return ancestor(old_revision, new_revision)
+    except Exception:
+        return False
+
+
+def _forward_supersession_receipt_proven(api, run, record, candidate):
+    """Independently prove old operation success for every newly overlapping app.
+
+    Preserve the historical strict-ancestry function contract. Admission must
+    require *both* ancestor proof and per-overlap receipt proof; neither alone
+    can discard an unsettled upload lease.
+    """
+    old_keys = _app_only_admission_keys(record)
+    new_keys = _app_only_admission_keys(candidate)
+    if new_keys is None:
+        try:
+            new_keys = _validate_admission_record_scope(candidate)
+        except Exception:
+            return False
+    if old_keys is None or new_keys is None:
+        return False
+    overlap = set(old_keys).intersection(new_keys)
+    if not overlap:
+        return False
+    return _historical_application_publications_completed(
+        api, run, record, required_targets=overlap)
+
+
+def _admission_covered_by_live_provenance(record, rows):
+    """Discharge only completed historical app leases production has already passed.
+
+    This is intentionally narrower than a provider receipt: it applies only to
+    application-write leases and consumes the same canonical live provenance
+    authority as release planning. Any auxiliary/runtime-control resource remains
+    dependent on its own durable disposition proof.
+    """
+    keys = _app_only_admission_keys(record)
+    revision = record.get('applicationRevision')
+    if keys is None or not SHA.fullmatch(revision or ''):
+        return False
+
+    expected = set(keys)
+    observed = {}
+    for row in rows or ():
+        key = row.get('app')
+        if key not in expected:
+            continue
+        live = row.get('revision')
+        if key in observed or not SHA.fullmatch(live or ''):
+            return False
+        observed[key] = live
+    if set(observed) != expected:
+        return False
+
+    try:
+        return all(ancestor(revision, observed[key]) for key in expected)
+    except Exception:
+        return False
+
+
+def _completed_pre_admission_direct_workflow(api, run, approved_revision):
+    """Exclude only completed legacy workflows from a lease they never issued.
+
+    Source-verified pre-admission releases have no resource admission record.
+    Their original Azure upload intents remain governed by the independent
+    deployment operation journal. A running legacy release, unknown source,
+    unapproved revision, or modern workflow is never excluded.
+    Avoid exhausting the GitHub Actions artifact API by reading every old run.
+    """
+    revision = run.get('head_sha')
+    if (
+        run.get('status') != 'completed'
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_branch') != APPROVED
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(revision or '')
+        or not SHA.fullmatch(approved_revision or '')
+    ):
+        return False
+    try:
+        if not ancestor(revision, approved_revision):
+            return False
+        source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
+        if source.returncode:
+            return False
+        jobs = VALIDATION_AUTHORITY._job_blocks(source.stdout)
+    except (RuntimeError, ValueError, OSError):
+        return False  # Unknown source identity never gets the historical exception.
+    return (
+        'release' in jobs
+        and 'discover-live' in jobs
+        and 'admission' not in jobs
+        and 'Admit canonical release resource ownership' not in source.stdout
+    )
+
+
+def admission_conflicts(api, candidate, *, current_run):
+    """Called only while holding the shared scheduler/admission workflow mutex."""
+    conflicts = []
+    runs = direct_release_runs(api)
+    live_snapshot_loaded = False
+    live_snapshot = None
     for run in runs:
-        if run['path'].split('@')[0].endswith(WEBSITE) and app != 'website':
+        own_run = run['id'] == current_run
+        if not own_run and _completed_pre_admission_direct_workflow(
+            api, run, candidate.get('executionAuthority')
+        ):
+            continue  # No admission lease existed; the operation journal still governs uploads.
+        if run.get('status') == 'completed' and successful_release(api, run):
+            continue  # exact terminal live proof discharges this publication lease
+        # A completed run that provably never entered any mutation phase owns no
+        # live release resource. Discharge it before interpreting historical
+        # admission scope through the current target/path inventory.
+        if not own_run and _admission_nonmutating_terminal(api, run):
             continue
-        if run['path'].split('@')[0].endswith(RIGOROUS) and app not in {'portal', 'client'}:
+        records = _admission_records(api, run)
+        if own_run:
+            current_attempt = int(os.environ.get('GITHUB_RUN_ATTEMPT', '1'))
+            records = [record for record in records if record['producingAttempt'] < current_attempt]
+            if not records:
+                # The active admission cannot prove its own downstream jobs skipped.
+                # Inspect every earlier attempt; only proven non-entry permits retry.
+                prior_attempts = dict(run, run_attempt=current_attempt - 1)
+                if current_attempt == 1 or _never_admitted(api, prior_attempts):
+                    continue
+        if not records:
+            if run.get('status') == 'completed' and _never_admitted(api, run):
+                continue
+            jobs = api.pages(f"actions/runs/{run['id']}/jobs?filter=latest", 'jobs')
+            introduced = any(job.get('name') == 'admission' for job in jobs)
+            if introduced or run.get('status') != 'completed':
+                conflicts.append({'runId': run['id'], 'reason': 'Unknown or missing resource admission evidence'})
+            # Historical terminal workflows predate the resource lease contract.
+            # Their upload history is still reconciled by the operation journal;
+            # active legacy workflows always block new admission globally.
             continue
-        return successful_release(api, run, app=app)
+        for record in records:
+            if (_admission_settled(api, run, record)
+                or _admission_nonmutating_terminal(api, run)
+                or (not own_run and _historical_fenced_prepublication_nonentry(api, run, record))
+                or _admission_superseded_by_terminal_success(api, run, record, runs)):
+                continue
+            if not VALIDATION_AUTHORITY.release_resources_overlap(candidate['resources'], record['resources']):
+                continue
+            if (
+                not own_run
+                and run.get('status') == 'completed'
+                and _forward_supersedes_completed_app_lease(record, candidate)
+                and _forward_supersession_receipt_proven(api, run, record, candidate)
+            ):
+                continue
+            if (
+                not own_run
+                and run.get('status') == 'completed'
+                and _historical_application_publications_completed(api, run, record)
+            ):
+                if not live_snapshot_loaded:
+                    live_snapshot_loaded = True
+                    try:
+                        live_snapshot = live_revisions()
+                    except Exception:
+                        live_snapshot = None
+                if live_snapshot is not None and _admission_covered_by_live_provenance(record, live_snapshot):
+                    continue
+            continuation = ((run.get('status') == 'completed' or own_run)
+                            and record['applicationRevision'] == candidate['applicationRevision']
+                            and record['selectedTargets'] == candidate['selectedTargets']
+                            and record['resources'] == candidate['resources'])
+            if continuation:
+                # Same immutable transaction resumes under a new control revision.
+                # Original per-target intent still forbids every ambiguous replay.
+                continue
+            conflicts.append({'runId': run['id'], 'admissionId': record['admissionId'],
+                              'reason': 'Conflicting release lacks terminal exact-live disposition'})
+    return conflicts
+
+
+def admit_worker(api):
+    """Common resource admission for manual and automatic direct workers."""
+    if staging_only():
+        return {'state': 'WAITING_FOR_DEPENDENCY', 'admitted': False, 'retained': 'Validation-only staging hold'}
+    authority = os.environ.get('RELEASE_SHA', '')
+    if not SHA.fullmatch(authority) or git('rev-parse', 'HEAD').stdout.strip() != authority:
+        raise RuntimeError('Admission checkout is not the exact approved execution authority')
+    automatic = os.environ.get('AUTOMATIC_RELEASE') == 'true'
+    if automatic:
+        pr = api.api('pulls/' + str(int(os.environ['AUTOMATIC_SOURCE_PR'])))
+        revision = os.environ.get('AUTOMATIC_VALIDATED_SHA')
+        source_merge = os.environ.get('AUTOMATIC_SOURCE_MERGE_SHA') or authority
+        if (not pr.get('merged_at') or pr.get('base', {}).get('ref') != APPROVED
+            or pr.get('merge_commit_sha') != source_merge or pr.get('head', {}).get('sha') != revision
+            or not ancestor(source_merge, authority)):
+            raise RuntimeError('Automatic admission does not bind one merged validated PR')
+        paths = [row['filename'] for row in api.pages(f"pulls/{pr['number']}/files") if row.get('filename')]
+        targets = list(VALIDATION_AUTHORITY.release_targets_for_paths(paths))
+        if json.loads(os.environ['AUTOMATIC_TARGETS_JSON']) != targets:
+            raise RuntimeError('Admission target scope differs from canonical PR ownership')
+        routing = False
+    else:
+        if not direct_only_request(authority):
+            raise RuntimeError('Manual worker has no exact approved release authorization')
+        pr = direct_release_approved_pr(api, authority)
+        if pr is None:
+            raise RuntimeError('Manual release does not bind one validated source PR')
+        revision = pr['head']['sha']
+        source_merge = pr.get('merge_commit_sha') or authority
+        paths = [row['filename'] for row in api.pages(f"pulls/{pr['number']}/files") if row.get('filename')]
+        request = json.loads(git('show', authority + ':' + VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH).stdout)
+        targets = sorted(release_targets(authority))
+        routing = request.get('cloudflareWebsiteRouting', False)
+        if not isinstance(routing, bool):
+            raise RuntimeError('Malformed routing release authorization')
+    pending = candidate_validation(api, pr)
+    if pending:
+        return {'state': 'VALIDATING', 'admitted': False, 'retained': pending}
+    package = _validated_package_evidence(api, revision)
+    if not package.get('reusable'):
+        return {'state': 'WAITING_FOR_DEPENDENCY', 'admitted': False,
+                'retained': 'Immutable validated package proof is required before resource admission'}
+    run_id = int(os.environ['GITHUB_RUN_ID'])
+    record = {'schemaVersion': 1, 'phase': 'admission', 'authorizationMode': 'automatic' if automatic else 'explicit', 'sourcePr': pr['number'],
+              'authorizedSourceRevision': revision, 'packageIdentity': package['packageIdentity'],
+              'applicationRevision': package['revision'], 'executionAuthority': authority,
+              'sourceMergeSha': source_merge, 'selectedTargets': targets,
+              'resources': VALIDATION_AUTHORITY.release_admission_resources(paths, targets, routing=routing),
+              'producingRun': run_id, 'producingAttempt': int(os.environ['GITHUB_RUN_ATTEMPT'])}
+    record['admissionId'] = _admission_identity(record)
+    conflicts = admission_conflicts(api, record, current_run=run_id)
+    if conflicts:
+        return {'state': 'WAITING_FOR_CONFLICTING_RELEASE', 'admitted': False, 'blockers': conflicts}
+    OPERATION_EVIDENCE.publish_record('legend-release-admission-' + record['admissionId'], record)
+    return {'state': 'RELEASE_READY', 'admitted': True, 'admission': record}
+
+
+def _canonical_release_name(app):
+    if app is None:
+        return None
+    if app in VALIDATION_AUTHORITY.RELEASE_TARGETS:
+        return VALIDATION_AUTHORITY.RELEASE_TARGETS[app]["releaseName"]
+    if app in VALIDATION_AUTHORITY.release_name_map():
+        return app
+    return None
+
+
+def release_proven(api, revision, app=None):
+    """Require a durable successful direct-release receipt for a live app revision.
+
+    The workflow head can be a release-control-only descendant while the deployed
+    application identity intentionally remains an earlier source revision. The
+    artifact name binds proof to APPLICATION_RELEASE_SHA instead of guessing from
+    the workflow head.
+    """
+    release_name = _canonical_release_name(app)
+    if app is not None and release_name is None:
+        return False
+    name = 'legend-approved-release-' + revision + (('-' + release_name) if release_name else '')
+    artifacts = api.pages(
+        'actions/artifacts?name=' + urllib.parse.quote(name, safe=''),
+        'artifacts',
+    )
+    run_ids = []
+    for artifact in artifacts:
+        if artifact.get('expired'):
+            continue
+        run_id = (artifact.get('workflow_run') or {}).get('id')
+        if isinstance(run_id, int) and run_id not in run_ids:
+            run_ids.append(run_id)
+    for run_id in run_ids:
+        run = api.api(f'actions/runs/{run_id}')
+        # Target-specific artifact names are the scope proof for modern
+        # transactional releases. Legacy generic receipts still fall back to the
+        # committed request check below.
+        if successful_release(api, run):
+            return True
+
+    # Bootstrap durable proof for exact-head direct releases that completed before
+    # the application-release receipt artifact existed. This is intentionally
+    # narrower than receipt reuse: the workflow run itself must be for this exact
+    # live revision, and successful_release still requires the sole direct-release
+    # workflow, approved branch, target scope, final live proof and enforcement.
+    # Control-only descendants therefore still require the receipt artifact above.
+    exact_runs = api.pages(
+        'actions/runs?head_sha=' + urllib.parse.quote(revision, safe=''),
+        'workflow_runs',
+    )
+    exact_runs.sort(
+        key=lambda row: (
+            row.get('updated_at') or row.get('run_started_at') or row.get('created_at', ''),
+            row.get('run_attempt', 1),
+        ),
+        reverse=True,
+    )
+    for run in exact_runs:
+        if run.get('head_sha') != revision:
+            continue
+        if successful_release(api, run, app=app):
+            return True
     return False
 
 
@@ -516,84 +3263,510 @@ def cleanup(api, apply=False):
     if staging_only():
         return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     branches = api.pages('branches')
-    approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
+    approved = api.ref(APPROVED)
     live = live_revisions()
-    if not release_proven(api, production, production=True):
-        return {'retained': 'Current production base lacks a successful complete release receipt'}
     for row in live:
         if not release_proven(api, row['revision'], app=row['app']):
-            return {'retained': 'Live app lacks an exact successful deployment receipt: ' + row['app']}
-    for revision in [approved, production, *(r['revision'] for r in live)]:
+            return {'retained': 'Live app lacks an exact successful direct-release receipt: ' + row['app']}
+    for revision in [approved, *(row['revision'] for row in live)]:
         git('cat-file', '-e', revision + '^{commit}')
+
     pulls = api.pages('pulls?state=open')
-    open_refs = {p['base']['ref'] for p in pulls} | {
-        p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
-    # Fetch all active runs, not only the first page of repository activity.
+    open_refs = {pull['base']['ref'] for pull in pulls} | {
+        pull['head']['ref'] for pull in pulls
+        if pull['head']['repo'] and pull['head']['repo']['full_name'] == api.repo
+    }
     active = []
     for status in ('queued', 'in_progress', 'waiting', 'requested', 'pending'):
         active.extend(api.pages('actions/runs?status=' + status, 'workflow_runs'))
-    if any(r['path'].split('@')[0] in {'.github/workflows/' + DIRECT, '.github/workflows/' + RIGOROUS, '.github/workflows/legend-website-production-deploy.yml'} for r in active):
-        return {'retained': 'A release is queued or running; live evidence may change'}
-    active_refs = {r['head_branch'] for r in active}
+    if any(row.get('path', '').split('@')[0] == '.github/workflows/' + DIRECT for row in active):
+        return {'retained': 'A direct release is queued or running; live evidence may change'}
+    active_refs = {row['head_branch'] for row in active}
+
     rows = []
     for branch in branches:
         name, sha = branch['name'], branch['commit']['sha']
         latest = api.pages('actions/runs?branch=' + urllib.parse.quote(name, safe=''), 'workflow_runs')
-        latest.sort(key=lambda r: r.get('updated_at') or r['created_at'], reverse=True)
+        latest.sort(key=lambda row: row.get('updated_at') or row['created_at'], reverse=True)
         failed = {name} if latest and latest[0]['conclusion'] not in {'success', 'skipped', None} else set()
-        allowed, reason = eligible(branch, approved, production, live, open_refs, active_refs, failed)
-        if allowed and undeployed_artifact_changes(sha, production):
-            allowed, reason = False, 'native or Worker publication evidence required; web receipt is insufficient'
+        allowed, reason = eligible(branch, approved, live, open_refs, active_refs, failed)
         row = {'branch': name, 'sha': sha, 'eligible': allowed, 'reason': reason, 'deleted': False}
         if allowed and apply:
-            # Recheck repository references and open work immediately before the atomic lease.
-            if api.ref(APPROVED) != approved or api.ref(PRODUCTION) != production:
-                raise RuntimeError('Release branch moved during cleanup; stop and retry from fresh evidence')
+            if api.ref(APPROVED) != approved:
+                raise RuntimeError('Approved branch moved during cleanup; stop and retry from fresh evidence')
             current = api.api('branches/' + urllib.parse.quote(name, safe=''))
             fresh_pulls = api.pages('pulls?state=open')
-            used = any(p['base']['ref'] == name or (p['head']['repo'] and
-                p['head']['repo']['full_name'] == api.repo and p['head']['ref'] == name) for p in fresh_pulls)
+            used = any(
+                pull['base']['ref'] == name or (
+                    pull['head']['repo']
+                    and pull['head']['repo']['full_name'] == api.repo
+                    and pull['head']['ref'] == name
+                )
+                for pull in fresh_pulls
+            )
             recent = api.pages('actions/runs?branch=' + urllib.parse.quote(name, safe=''), 'workflow_runs')
-            recent.sort(key=lambda r: r.get('updated_at') or r['created_at'], reverse=True)
+            recent.sort(key=lambda item: item.get('updated_at') or item['created_at'], reverse=True)
             if (used or current['protected'] or current['commit']['sha'] != sha
-                or any(r['status'] != 'completed' for r in recent)
+                or any(item['status'] != 'completed' for item in recent)
                 or (recent and recent[0]['conclusion'] not in {'success', 'skipped'})):
                 row['reason'] = 'branch gained work or protection during cleanup'
             else:
-                # Compare-and-delete: a concurrent push makes the lease fail.
-                result = git('push', '--force-with-lease=refs/heads/' + name + ':' + sha,
-                    'origin', ':refs/heads/' + name, check=False)
+                result = git(
+                    'push', '--force-with-lease=refs/heads/' + name + ':' + sha,
+                    'origin', ':refs/heads/' + name, check=False
+                )
                 if result.returncode:
                     raise RuntimeError('Atomic branch deletion failed; branch retained: ' + name)
                 row['deleted'] = True
         rows.append(row)
-    return {'approvedSha': approved, 'productionSha': production, 'live': live, 'branches': rows}
+    return {'approvedSha': approved, 'live': live, 'branches': rows}
 
+# One read-only, post-terminal view over the existing GitHub evidence channel.
+# This is observation only: NEVER use this report to authorize a release,
+# resurrect a failed operation, or mark an application as live.
+OBSERVED_WORKFLOWS = {
+    'MasterApp platform architecture validation':
+        ('masterapp-platform-architecture-validation.yml', 'ARCHITECTURE_VALIDATION', {'pull_request', 'push', 'workflow_dispatch'}),
+    'Step 5 isolated conversion mapping validation':
+        ('step5-isolated-conversion-mapping-validation.yml', 'STEP5_VALIDATION', {'pull_request', 'push'}),
+    'Step 6 isolated ChatGPT Ads execution validation':
+        ('step6-openai-ads-execution-validation.yml', 'STEP6_VALIDATION', {'pull_request', 'push'}),
+    'Steps 7-8 governed advertising and Promote This validation':
+        ('steps7-8-governed-advertising-validation.yml', 'STEPS7_8_VALIDATION', {'pull_request', 'push'}),
+    'LEGEND approved release security validation':
+        ('approved-release-security-validation.yml', 'SECURITY_VALIDATION', {'pull_request', 'push'}),
+    'LEGEND approved direct release':
+        (DIRECT, 'DIRECT_RELEASE', {'workflow_dispatch'}),
+}
+TERMINAL_FAILURES = {'failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'}
+RELEASE_FAILURE_STAGES = {
+    'admission': 'RELEASE_ADMISSION',
+    'discover-live': 'LIVE_BASELINE_DISCOVERY',
+    'release': 'RELEASE_EXECUTION',
+    'release-state-receipt': 'RELEASE_EVIDENCE',
+}
+RELEASE_STEP_STAGES = {
+    'Synchronize canonical pre-publication resource lanes': 'PREPUBLICATION',
+    'Submit canonical selected targets in parallel': 'APPLICATION_PUBLICATION',
+    'Reconcile complete immutable release transaction': 'DEPLOYMENT_RECONCILIATION',
+    'Verify every deployed target and collect all failures': 'LIVE_PROVENANCE',
+    'Retain exact approved release receipt': 'RELEASE_RECEIPT',
+    'Admit canonical release resource ownership': 'RELEASE_ADMISSION',
+}
+SAFE_NAME = re.compile(r'^[A-Za-z0-9 _.,()/-]{1,150}$')
+
+
+def _canonical_step_names(workflow_path):
+    """Allow display only for step labels from protected, checked-out workflow."""
+    path = Path(__file__).resolve().parents[1] / '.github' / 'workflows' / workflow_path
+    source = path.read_text()
+    return set(re.findall(r'(?m)^\s+- name: ([A-Za-z0-9 _.,()/-]{1,150})\s*$', source))
+
+
+def _release_safe_log_reason(api, run_id, job_id, step):
+    if step != 'Synchronize canonical pre-publication resource lanes':
+        return None
+    # Consume the existing authenticated job-log reader solely for exact
+    # finite-code matches. Never pass through arbitrary GitHub/provider text.
+    try:
+        migration_path = Path(__file__).with_name('release-migration.py')
+        spec = importlib.util.spec_from_file_location('canonical_release_diagnostics', migration_path)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
+        codes = set(migration.MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
+        safe = re.compile(
+            r'^20\d{2}-\d{2}-\d{2}T[0-9:.]+Z '
+            r'LEGEND_MIGRATION_ADMISSION_DIAGNOSTIC:('
+            + '|'.join(re.escape(item) for item in sorted(codes))
+            + r')(?::run=([1-9][0-9]{0,12})(?::attempt=([1-9][0-9]{0,2}))?)?$'
+        )
+        log = VALIDATION_AUTHORITY._release_job_log(api.repo, job_id, api.token)
+        matches = [found.groups() for line in log.splitlines()
+                   if (found := safe.fullmatch(line))]
+        if len(matches) == 1:
+            code, source_run, source_attempt = matches[0]
+            return dict(reasonCode=code,
+                        historicalRun=int(source_run) if source_run else None,
+                        historicalAttempt=int(source_attempt) if source_attempt else None)
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError,
+            subprocess.SubprocessError):
+        pass
+    return None
+
+
+def diagnose_completed_workflow(api, run_id):
+    """Fail-closed, complete-iteration error locator across existing pipelines.
+
+    No raw logs, provider responses, URLs, secrets, or unknown step names leave
+    this boundary. A precise underlying reason is asserted only when the
+    canonical owner emitted a trusted finite-code marker.
+    """
+    if type(run_id) is not int or not 0 < run_id < 10**13:
+        raise ValueError('Invalid GitHub run identity')
+    run = api.api(f'actions/runs/{run_id}')
+    if (not isinstance(run, dict) or run.get('id') != run_id
+        or run.get('status') != 'completed'):
+        raise RuntimeError('Terminal run identity or status unproven')
+    name = run.get('name')
+    if name not in OBSERVED_WORKFLOWS:
+        raise RuntimeError('Unrecognized workflow; no diagnostic classification')
+    workflow_path, default_stage, events = OBSERVED_WORKFLOWS[name]
+    path = (run.get('path') or '').split('@')[0]
+    if (path != '.github/workflows/' + workflow_path
+        or run.get('event') not in events
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(run.get('head_sha') or '')):
+        raise RuntimeError('Untrusted workflow producer; diagnostic evidence rejected')
+    attempt = run.get('run_attempt')
+    if type(attempt) is not int or not 0 < attempt <= 100:
+        raise RuntimeError('Invalid workflow attempt evidence')
+    jobs = api.pages(f'actions/runs/{run_id}/attempts/{attempt}/jobs', key='jobs')
+    if not jobs:
+        raise RuntimeError('Terminal run has no authenticated jobs')
+    names = _canonical_step_names(workflow_path)
+    results = []
+    incomplete = False
+    for job in jobs:
+        if job.get('status') != 'completed':
+            incomplete = True
+            continue
+        outcome = job.get('conclusion')
+        if outcome not in TERMINAL_FAILURES:
+            continue
+        job_id = job['id']  # validated by GitHub.pages
+        label = job.get('name', '')
+        owner = label if isinstance(label, str) and SAFE_NAME.fullmatch(label) else 'UNVERIFIED_JOB'
+        steps = job.get('steps')
+        if not isinstance(steps, list):
+            raise RuntimeError('Failed job step inventory unavailable')
+        failures = [step for step in steps if step.get('conclusion') in TERMINAL_FAILURES]
+        if not failures:
+            failures = [None]  # e.g. failed runner provisioning before a step entered
+        for failure in failures:
+            number = failure.get('number') if failure is not None else None
+            if number is not None and (type(number) is not int or number < 1 or number > 1000):
+                raise RuntimeError('Malformed failed-step identity')
+            label_step = failure.get('name') if failure is not None else None
+            display = label_step if label_step in names else 'UNVERIFIED_STEP'
+            stage = (RELEASE_STEP_STAGES.get(display,
+                RELEASE_FAILURE_STAGES.get(owner, default_stage))
+                if name == 'LEGEND approved direct release' else default_stage)
+            row = dict(runId=run_id, attempt=attempt, jobId=job_id,
+                       job=owner, stepNumber=number, step=display, stage=stage,
+                       outcome=outcome, reasonCode='EXACT_CAUSE_NOT_CLASSIFIED',
+                       remedy='INSPECT_ORIGINAL_STEP_EVIDENCE')
+            if name == 'LEGEND approved direct release':
+                detail = _release_safe_log_reason(api, run_id, job_id, display)
+                if detail is not None:
+                    row.update(detail)
+                    row['remedy'] = 'RECONCILE_EVIDENCE_NO_REPLAY'
+            results.append(row)
+    if incomplete:
+        raise RuntimeError('Terminal run job inventory not yet stable')
+    if run.get('conclusion') in TERMINAL_FAILURES and not results:
+        results.append(dict(runId=run_id, attempt=attempt, jobId=None,
+            job='UNVERIFIED_JOB', stepNumber=None, step='UNVERIFIED_STEP',
+            stage=default_stage, outcome=run.get('conclusion'),
+            reasonCode='NO_FAILED_STEP_ATTESTED',
+            remedy='INSPECT_ORIGINAL_STEP_EVIDENCE'))
+    result = dict(schemaVersion=1, observationOnly=True,
+                  workflow=name, runId=run_id, attempt=attempt,
+                  conclusion=run.get('conclusion'), failures=results)
+    for row in results:
+        # Every emitted word below is from fixed enums, verified numeric IDs,
+        # or a source-validated static step label.
+        detail = (f"{row['stage']}:{row['reasonCode']} "
+                  f"run={run_id} attempt={attempt} job={row['jobId'] or 'unavailable'} "
+                  f"step={row['stepNumber'] or 'unavailable'}")
+        print(f'::error title=LEGEND lifecycle failure diagnosis::{detail}', flush=True)
+    summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    if summary and results:
+        with open(summary, 'a') as target:
+            target.write(f'\n### LEGEND {default_stage}: authenticated failed steps\n')
+            target.write('Reason codes report the owning stage. Exact root cause is unknown unless explicitly classified. No automatic write is authorized.\n')
+            for row in results:
+                target.write(f"- {row['stage']} / {row['reasonCode']}; "
+                             f"run {run_id}, attempt {attempt}, job {row['jobId']}, "
+                             f"step {row['stepNumber'] or 'unavailable'}\n")
+    return result
+
+
+def readiness_context(api, number):
+    pr = api.api(f'pulls/{number}')
+    approved = api.api('git/ref/heads/' + APPROVED)['object']['sha']
+    if (pr.get('state') != 'open' or pr.get('base', {}).get('ref') != APPROVED or
+        pr.get('base', {}).get('repo', {}).get('full_name') != api.repo or
+        pr.get('head', {}).get('repo', {}).get('full_name') != api.repo or
+        pr.get('author_association') not in {'OWNER', 'MEMBER', 'COLLABORATOR'} or
+        git('rev-parse', 'HEAD').stdout.strip() != approved):
+        raise RuntimeError('READINESS_ADMISSION_DENIED')
+    candidate = pr['head']['sha']
+    if not SHA.fullmatch(candidate):
+        raise RuntimeError('READINESS_CANDIDATE_INVALID')
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        if os.environ.get('GITHUB_EVENT_NAME') != 'pull_request_target':
+            raise RuntimeError('READINESS_TRUSTED_EVENT_REQUIRED')
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        if event.get('pull_request', {}).get('head', {}).get('sha') != candidate:
+            raise RuntimeError('READINESS_CANDIDATE_SUPERSEDED')
+    # Fetch objects only. Candidate code is never checked out in this authority.
+    if git('cat-file', '-e', candidate + '^{commit}', check=False).returncode:
+        credentials = base64.b64encode(('x-access-token:' + api.token).encode()).decode()
+        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin', candidate], capture_output=True,
+            timeout=90, check=False, env=os.environ | {'GIT_CONFIG_COUNT': '1',
+                'GIT_CONFIG_KEY_0': 'http.https://github.com/.extraheader',
+                'GIT_CONFIG_VALUE_0': 'AUTHORIZATION: basic ' + credentials})
+        if fetched.returncode:
+            raise RuntimeError('READINESS_CANDIDATE_OBJECTS_UNAVAILABLE')
+    if not ancestor(approved, candidate):
+        raise RuntimeError('READINESS_APPROVED_BASE_CHANGED')
+    targets = VALIDATION_AUTHORITY.readiness_targets(candidate, approved)
+    return pr, approved, candidate, targets
+
+
+def _readiness_module(filename):
+    spec = importlib.util.spec_from_file_location('readiness_' + filename.replace('-', '_'),
+                                                 Path(__file__).with_name(filename + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _readiness_probe(api, revision, directory, *, deadline):
+    packager = _readiness_module('migration-probe-package')
+    identity = VALIDATION_AUTHORITY.migration_probe_identity(revision, revision)
+    while True:
+        with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+            proof = VALIDATION_AUTHORITY.migration_probe_evidence(api.repo, identity,
+                                                                include_active=True, candidate=revision)
+            if proof.get('reusable'):
+                VALIDATION_AUTHORITY._download_run_artifact(api.repo, proof['runId'], proof['artifact'], directory,
+                                                            artifact_id=proof['artifactId'])
+                packager.manifest(directory, revision, revision)
+                return proof
+        if time.monotonic() >= deadline:
+            raise RuntimeError('READINESS_MINIMAL_ARTIFACT_UNAVAILABLE')
+        time.sleep(min(10, max(0, deadline - time.monotonic())))
+
+
+def _readiness_step(stage, operation, *args, **kwargs):
+    # Retain location only; never retain provider payloads or operation arguments.
+    try:
+        return operation(*args, **kwargs)
+    except Exception as exc:
+        exc.readiness_stage = stage
+        raise
+
+
+def readiness_observe(api, number, directory):
+    started = time.monotonic()
+    pr, approved, candidate, targets = _readiness_step('candidate-admission', readiness_context, api, number)
+    scope = _readiness_step('scope-resolution', VALIDATION_AUTHORITY.readiness_scope, candidate, approved)
+    directory.mkdir(parents=True, exist_ok=True)
+    if scope['state'] == 'not-required':
+        (directory / 'observation.json').write_text(json.dumps(scope, sort_keys=True) + '\n')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('identity=' + scope['identity'] + '\n')
+            stream.write('artifact=legend-readiness-observation-' + scope['identity'] + '-a' + os.environ['GITHUB_RUN_ATTEMPT'] + '\n')
+            stream.write('pending=false\n')
+        return scope
+    identity = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    deadline = started + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        trusted = _readiness_step('approved-probe-evidence', _readiness_probe, api, approved, root / 'approved', deadline=deadline)
+        candidate_proof = _readiness_step('candidate-probe-evidence', _readiness_probe, api, candidate, root / 'candidate', deadline=deadline)
+        contract = root / 'candidate/migration-contract.json'
+        if not contract.is_file():
+            raise RuntimeError('READINESS_CANDIDATE_CONTRACT_UNAVAILABLE')
+        approved_contract = root / 'approved/migration-contract.json'
+        if not approved_contract.is_file() or max(contract.stat().st_size, approved_contract.stat().st_size) > 4 * 1024 * 1024:
+            raise RuntimeError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN')
+        contract_proof = _readiness_step('migration-contract', VALIDATION_AUTHORITY.candidate_migration_contract_proven, candidate, approved,
+            json.loads(contract.read_text()), json.loads(approved_contract.read_text()))
+        profile = VALIDATION_AUTHORITY.release_runtime_profile(targets or
+            [row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()])
+        os.environ.update(RELEASE_RESOURCE_GROUP=profile['resourceGroup'], DATABASE_AUTHORITY=profile['databaseAuthority'])
+        publication = _readiness_step('publication-prerequisites', _readiness_module('release-prepublication').deployment_readiness, targets)
+        migration = _readiness_module('release-migration')
+        connection = _readiness_step('database-configuration', migration.connection_string)
+        before = _readiness_step('database-schema-observation', migration.observe,
+            root / 'approved/MigrationReleaseProbe.dll', connection, contract=contract)
+        result = dict(identity, **before, candidate=candidate, executionAuthority=approved,
+                      contractDigest=hashlib.sha256(contract.read_bytes()).hexdigest(),
+                      producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
+                      candidateProbe=candidate_proof, approvedProbe=trusted,
+                      contractAuthority=contract_proof,
+                      deploymentReadiness='proven', deploymentObservation=publication,
+                      state='blocked', reason='awaiting_rehearsal_and_mutation_admission',
+                      readinessObservationSeconds=round(time.monotonic() - started, 3))
+        # Only bounded schema/target metadata is written, never configuration.
+        (directory / 'observation.json').write_text(json.dumps(result, sort_keys=True) + '\n')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('identity=' + identity['identity'] + '\n')
+            stream.write('artifact=legend-readiness-observation-' + identity['identity'] + '-a' + os.environ['GITHUB_RUN_ATTEMPT'] + '\n')
+            stream.write('pending=' + str(before['pendingCount'] > 0).lower() + '\n')
+        return {'state': 'executed-success', 'identity': identity['identity'], 'pendingCount': before['pendingCount']}
+
+
+def readiness_finalize(api, number, directory):
+    pr, approved, candidate, targets = readiness_context(api, number)
+    scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
+    observation = json.loads((directory / 'observation.json').read_text())
+    if scope['state'] == 'not-required':
+        if observation != scope:
+            raise RuntimeError('READINESS_SCOPE_CHANGED')
+        (directory / 'readiness.json').write_text(json.dumps(scope, sort_keys=True) + '\n')
+        return scope
+    expected = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    if (any(observation.get(key) != value for key, value in expected.items()) or
+        observation.get('candidate') != candidate or observation.get('executionAuthority') != approved or
+        observation.get('producingRun') != int(os.environ['GITHUB_RUN_ID']) or
+        type(observation.get('producingAttempt')) is not int or
+        not 1 <= observation['producingAttempt'] <= int(os.environ['GITHUB_RUN_ATTEMPT'])):
+        raise RuntimeError('READINESS_OBSERVATION_IDENTITY_CHANGED')
+    if observation['pendingCount']:
+        deadline = time.monotonic() + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
+        while True:
+            with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+                proof = VALIDATION_AUTHORITY.migration_rehearsal_evidence(api.repo, candidate, expected, api.token, baseline=observation)
+            if proof:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('READINESS_REHEARSAL_UNAVAILABLE')
+            time.sleep(min(10, max(0, deadline - time.monotonic())))
+        rehearsal = proof['receipt']
+        if (rehearsal.get('schemaIdentity') != observation['schemaIdentity'] or
+            rehearsal.get('baselineIdentity') != observation['baselineIdentity'] or
+            rehearsal.get('contractDigest') != observation['contractDigest']):
+            raise RuntimeError('READINESS_REHEARSAL_BASELINE_CHANGED')
+        migration = _readiness_module('release-migration')
+        profile = VALIDATION_AUTHORITY.release_runtime_profile(targets or
+            [row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()])
+        os.environ.update(RELEASE_RESOURCE_GROUP=profile['resourceGroup'], DATABASE_AUTHORITY=profile['databaseAuthority'],
+                          APPLICATION_RELEASE_SHA=candidate, RELEASE_SHA=approved)
+        observation['mutationAdmissionProof'] = migration.mutation_admission(observation, rehearsal['bundleDigest'])
+        observation['rehearsal'] = rehearsal
+        observation['rehearsalSource'] = rehearsal['bundleSource']
+    else:
+        observation['mutationAdmissionProof'] = _readiness_module('release-migration').mutation_admission(observation)
+    observation.update(producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']), state='executed-success',
+        reason='readiness_prerequisites_proven', mutationAdmission=observation['mutationAdmissionProof']['state'])
+    VALIDATION_AUTHORITY.validate_readiness_receipt(observation, expected)
+    (directory / 'readiness.json').write_text(json.dumps(observation, sort_keys=True) + '\n')
+    return {'state': 'executed-success', 'identity': expected['identity']}
+
+
+def readiness_failure_classification(exc):
+    if isinstance(exc, VALIDATION_AUTHORITY.EvidenceLookupUnavailable) and (
+            exc.code in {408, 429, 500, 502, 503, 504} or
+            str(exc) == 'Transient artifact evidence read exhausted bounded retries'):
+        return 'transient-provider-read'
+    if type(exc) is RuntimeError and str(exc) in {
+            'Schema probe process deadline exceeded', 'Transient SQL schema read exhausted bounded retries'}:
+        return 'transient-provider-read'
+    return 'unclassified-or-nonrecoverable'
+
+
+
+READINESS_DIAGNOSTIC_STAGES = frozenset({
+    'candidate-admission', 'scope-resolution', 'approved-probe-evidence',
+    'candidate-probe-evidence', 'migration-contract', 'publication-prerequisites',
+    'database-configuration', 'database-schema-observation',
+})
+READINESS_DIAGNOSTIC_REASONS = frozenset({
+    'READINESS_ADMISSION_DENIED', 'READINESS_CANDIDATE_INVALID',
+    'READINESS_TRUSTED_EVENT_REQUIRED', 'READINESS_CANDIDATE_SUPERSEDED',
+    'READINESS_CANDIDATE_OBJECTS_UNAVAILABLE', 'READINESS_APPROVED_BASE_CHANGED',
+    'READINESS_MINIMAL_ARTIFACT_UNAVAILABLE', 'READINESS_CANDIDATE_CONTRACT_UNAVAILABLE',
+    'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN', 'PHYSICAL_SCHEMA_DRIFT',
+})
+
+
+def readiness_failure_diagnostic(exc):
+    # Exact allowlists, not regex redaction: arbitrary errors can contain secrets.
+    stage = getattr(exc, 'readiness_stage', None)
+    result = {'stage': stage if stage in READINESS_DIAGNOSTIC_STAGES else 'readiness-observation',
+              'reasonCode': 'UNCLASSIFIED_ERROR_REDACTED'}
+    if isinstance(exc, VALIDATION_AUTHORITY.EvidenceLookupUnavailable):
+        result['reasonCode'] = 'EVIDENCE_LOOKUP_UNAVAILABLE'
+        if type(exc.code) is int and 100 <= exc.code <= 599:
+            result['httpStatus'] = exc.code
+    elif type(exc) in {RuntimeError, ValueError}:
+        message = str(exc)
+        contract_reasons = {
+            'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required': 'MIGRATION_RUNTIME_DEPENDENCIES_CHANGED',
+            'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions': 'MIGRATION_METADATA_DIFFERS_FROM_APPROVED',
+        }
+        if message in contract_reasons:
+            result['reasonCode'] = contract_reasons[message]
+        elif message in READINESS_DIAGNOSTIC_REASONS:
+            result['reasonCode'] = message
+        elif message == 'Schema probe process deadline exceeded':
+            result['reasonCode'] = 'SCHEMA_PROBE_DEADLINE_EXCEEDED'
+        elif message == 'Transient SQL schema read exhausted bounded retries':
+            result['reasonCode'] = 'SCHEMA_READ_RETRIES_EXHAUSTED'
+    elif type(exc) is TimeoutError:
+        result['reasonCode'] = 'OPERATION_TIMEOUT'
+    elif type(exc) is json.JSONDecodeError:
+        result['reasonCode'] = 'INVALID_JSON_EVIDENCE'
+    elif type(exc) is FileNotFoundError:
+        result['reasonCode'] = 'REQUIRED_FILE_UNAVAILABLE'
+    return result
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'resolve-production', 'reconcile', 'branch-parity', 'cleanup'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run', 'readiness-admit', 'readiness-observe', 'readiness-finalize'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
-    parser.add_argument('--expected-head')
-    parser.add_argument('--dispatch', choices=['true', 'false'], default='false')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--directory', type=Path)
     args = parser.parse_args()
     api = GitHub()
-    if args.command == 'integrate':
+    if args.command == 'readiness-admit':
+        _, approved, candidate, targets = readiness_context(api, args.pr)
+        scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+                stream.write('required=' + str(scope['state'] != 'not-required').lower() + '\n')
+        result = {'state': 'executed-success', 'approved': approved, 'candidate': candidate,
+                  'targets': targets, 'readinessScope': scope}
+    elif args.command == 'readiness-observe':
+        try:
+            result = readiness_observe(api, args.pr, args.directory)
+        except Exception as exc:
+            event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+            failure = dict(schemaVersion=1, candidate=event['pull_request']['head']['sha'],
+                executionAuthority=git('rev-parse', 'HEAD').stdout.strip(),
+                producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
+                classification=readiness_failure_classification(exc),
+                **readiness_failure_diagnostic(exc))
+            args.directory.mkdir(parents=True, exist_ok=True)
+            (args.directory / 'failure.json').write_text(json.dumps(failure, sort_keys=True) + '\n')
+            diagnostic = 'READINESS_BLOCKED:' + failure['classification'] + ':' + failure['stage'] + ':' + failure['reasonCode']
+            if 'httpStatus' in failure:
+                diagnostic += ':HTTP_' + str(failure['httpStatus'])
+            print(diagnostic, file=sys.stderr)
+            raise RuntimeError(diagnostic) from None
+    elif args.command == 'readiness-finalize':
+        result = readiness_finalize(api, args.pr, args.directory)
+    elif args.command == 'admit-worker':
+        result = admit_worker(api)
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write('admitted=' + str(result['admitted']).lower() + '\n')
+            output.write('state=' + result['state'] + '\n')
+            if result.get('admitted'):
+                output.write('admission_id=' + result['admission']['admissionId'] + '\n')
+                output.write('resources=' + json.dumps(result['admission']['resources'], separators=(',', ':')) + '\n')
+    elif args.command == 'diagnose-run':
+        result = diagnose_completed_workflow(api, args.run)
+    elif args.command == 'integrate':
         result = integrate(api, args.pr)
     elif args.command == 'pending-updates':
         result = pending_updates(api)
-    elif args.command == 'resolve-production':
-        result = resolve_production(api, args.pr, args.expected_head, args.dispatch == 'true')
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
-            for key, value in result.items():
-                out.write(key + '=' + value + '\n')
     elif args.command == 'reconcile':
         result = reconcile(api, args.run)
-    elif args.command == 'branch-parity':
-        result = branch_parity(api)
     else:
         result = cleanup(api, args.apply)
     if args.output:

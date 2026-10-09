@@ -172,7 +172,7 @@ public class WebsiteAnalyticsDeleteLeadTests
             metaSignalAnalytics,
             NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance, db, config,
             Mock.Of<IUnifiedMarketingPerformanceService>(), Mock.Of<Infrastructure.WebsiteEditing.IPromotionOrchestrationService>());
-        var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
+        var protector = new Infrastructure.Analytics.MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
 
         return new WebsiteAnalyticsController(
             analytics,

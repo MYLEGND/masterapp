@@ -4,6 +4,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Blobs.Specialized;
 using Domain.Social;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -15,22 +16,6 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         SocialMediaUploadLimits.MaximumMediaBytes;
     private const int MaximumOriginalFileNameLength = 255;
     private const int CopyBufferSize = 80 * 1024;
-
-    private static readonly IReadOnlyDictionary<string, SupportedSocialMediaType>
-        SupportedMediaTypes =
-            new Dictionary<string, SupportedSocialMediaType>(
-                StringComparer.OrdinalIgnoreCase)
-            {
-                [".jpg"] = new("Image", "image/jpeg"),
-                [".jpeg"] = new("Image", "image/jpeg"),
-                [".png"] = new("Image", "image/png"),
-                [".webp"] = new("Image", "image/webp"),
-                [".heic"] = new("Image", "image/heic"),
-                [".heif"] = new("Image", "image/heif"),
-                [".mp4"] = new("Video", "video/mp4"),
-                [".mov"] = new("Video", "video/quicktime"),
-                [".webm"] = new("Video", "video/webm")
-            };
 
     private readonly string _rootPath;
     private readonly long _maximumMediaBytes;
@@ -104,18 +89,38 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 "The social media filename is invalid.");
         }
 
-        var extension = Path.GetExtension(safeOriginalName);
-
-        if (!SupportedMediaTypes.TryGetValue(
-                extension,
-                out var supportedType))
+        if (UploadValidator.IsDangerousExtension(Path.GetExtension(safeOriginalName)))
         {
             return SocialMediaStorageResult.Failure(
                 "SOCIAL_MEDIA_TYPE_INVALID",
                 "This social media file type is not permitted.");
         }
 
-        var normalizedExtension = extension.ToLowerInvariant();
+        var prefix = await ReadPrefixAsync(content, 4096, cancellationToken);
+        var detectedContentType = UploadValidator.CanonicalContentType(
+            UploadValidator.DetectContentType(prefix.ToArray()));
+        if (detectedContentType is null ||
+            !UploadValidator.VisualMediaContentTypes().Contains(detectedContentType))
+        {
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_TYPE_INVALID",
+                "This social media file type is not permitted.");
+        }
+
+        var mediaKind = detectedContentType.StartsWith("image/", StringComparison.Ordinal)
+            ? "Image"
+            : detectedContentType.StartsWith("video/", StringComparison.Ordinal)
+                ? "Video"
+                : string.Empty;
+        var normalizedExtension = UploadValidator.CanonicalExtensionForContentType(detectedContentType);
+        if (mediaKind.Length == 0 || string.IsNullOrWhiteSpace(normalizedExtension))
+        {
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_TYPE_INVALID",
+                "This social media file type is not permitted.");
+        }
+
+        var supportedType = new SupportedSocialMediaType(mediaKind, detectedContentType);
         var storedFileName = $"{mediaAssetId:N}{normalizedExtension}";
 
         // Date partitioning prevents an indefinitely flat storage directory.
@@ -131,6 +136,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 supportedType,
                 declaredSizeBytes,
                 content,
+                prefix,
                 cancellationToken)
             : await StoreOnFileSystemAsync(
                 storageKey,
@@ -139,6 +145,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 supportedType,
                 declaredSizeBytes,
                 content,
+                prefix,
                 cancellationToken);
     }
 
@@ -149,6 +156,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         SupportedSocialMediaType supportedType,
         long declaredSizeBytes,
         Stream content,
+        ReadOnlyMemory<byte> prefix,
         CancellationToken cancellationToken)
     {
         var blobClient = _blobContainer!.GetBlobClient(storageKey);
@@ -176,7 +184,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                     destination,
                     _maximumMediaBytes,
                     durationProbe: supportedType.MediaKind == "Video" ? new Mp4HeaderDurationProbe() : null,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken,
+                    prefix: prefix);
             }
 
             if (actualSizeBytes != declaredSizeBytes)
@@ -250,6 +259,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         SupportedSocialMediaType supportedType,
         long declaredSizeBytes,
         Stream content,
+        ReadOnlyMemory<byte> prefix,
         CancellationToken cancellationToken)
     {
         var physicalPath = ResolvePhysicalPath(storageKey);
@@ -285,7 +295,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                     destination,
                     _maximumMediaBytes,
                     durationProbe,
-                    cancellationToken);
+                    cancellationToken,
+                    prefix);
             }
 
             if (actualSizeBytes != declaredSizeBytes)
@@ -849,10 +860,24 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         Stream destination,
         long maximumBytes,
         Mp4HeaderDurationProbe? durationProbe,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> prefix = default)
     {
         var buffer = new byte[CopyBufferSize];
         long totalBytes = 0;
+
+        if (!prefix.IsEmpty)
+        {
+            totalBytes = prefix.Length;
+            if (totalBytes > maximumBytes)
+                throw new SocialMediaMaximumSizeExceededException();
+
+            durationProbe?.Inspect(prefix.Span);
+            if (durationProbe?.DurationSeconds > SocialMediaUploadLimits.MaximumVideoDurationSeconds)
+                throw new SocialVideoDurationExceededException();
+
+            await destination.WriteAsync(prefix, cancellationToken);
+        }
 
         while (true)
         {
@@ -876,6 +901,26 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 buffer.AsMemory(0, bytesRead),
                 cancellationToken);
         }
+    }
+
+    private static async Task<ReadOnlyMemory<byte>> ReadPrefixAsync(
+        Stream source,
+        int maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[Math.Max(1, maximumBytes)];
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = await source.ReadAsync(
+                buffer.AsMemory(total, buffer.Length - total),
+                cancellationToken);
+            if (read == 0)
+                break;
+            total += read;
+        }
+
+        return buffer.AsMemory(0, total);
     }
 
     private void DeleteEmptyParentDirectories(string physicalPath)

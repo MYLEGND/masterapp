@@ -1,0 +1,5 @@
+name: Prepare canonical release evidence transport
+description: Expose the current job's artifact runtime to the synchronous deployment journal
+runs:
+  using: node20
+  main: prepare.cjs

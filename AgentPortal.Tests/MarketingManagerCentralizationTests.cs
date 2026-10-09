@@ -1,11 +1,53 @@
 using System;
 using System.IO;
+using Infrastructure.Analytics;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
 
 public sealed class MarketingManagerCentralizationTests
 {
+    [Fact]
+    public void FounderGrowthOperator_DefaultsRevenueDecisionsToRealHumanTraffic()
+    {
+        var root = Root();
+        var tools = Read(root, "AgentPortal", "Services", "LegendFounderToolAuthority.cs");
+        var start = tools.IndexOf("case \"legend_growth_operator\"", StringComparison.Ordinal);
+        var end = tools.IndexOf("case \"legend_propose_ad_change\"", start, StringComparison.Ordinal);
+        Assert.True(start >= 0, "Founder growth operator case is required.");
+        if (end < 0) end = tools.Length;
+        var growth = tools[start..end];
+        Assert.Contains("TrafficQualityMode.RealHumanTraffic", growth, StringComparison.Ordinal);
+        Assert.DoesNotContain("TrafficQualityMode.AllTraffic", growth, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LeadPriority_UsesStageConditionedPaidProbabilityWithoutEarlyStageInversion()
+    {
+        var calibration = new SignalOutcomeCalibrationAiRow
+        {
+            QualifiedRate = 60m,
+            AppointmentRate = 30m,
+            ApplicationRate = 24m,
+            IssuedRate = 20m,
+            PaidRate = 12m
+        };
+
+        var newLead = MarketingManagerService.PaidProbabilityForStage("New", calibration);
+        var qualified = MarketingManagerService.PaidProbabilityForStage("Qualified", calibration);
+        var booked = MarketingManagerService.PaidProbabilityForStage("Booked", calibration);
+        var application = MarketingManagerService.PaidProbabilityForStage("ApplicationSubmitted", calibration);
+        var issued = MarketingManagerService.PaidProbabilityForStage("PolicyIssued", calibration);
+
+        Assert.Equal(12m, newLead);
+        Assert.Equal(20m, qualified);
+        Assert.Equal(40m, booked);
+        Assert.Equal(50m, application);
+        Assert.Equal(60m, issued);
+        Assert.True(newLead < qualified && qualified < booked && booked < application && application < issued);
+    }
+
     [Fact]
     public void SharedAnalyticsUi_UsesOneMarketingManagerAndUnifiedPerformanceSurface()
     {
@@ -116,24 +158,6 @@ public sealed class MarketingManagerCentralizationTests
     }
 
     [Fact]
-    public void CanonicalMarketingHardeningRelease_RemainsScopedToActualRuntimeConsumers()
-    {
-        var root = Root();
-        var request = Read(root, "Docs", "releases", "direct-release-request.json");
-
-        Assert.Contains("\"masterapp-portal\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-protect\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-parfait\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-website\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"masterapp-client\"", request, StringComparison.Ordinal);
-        Assert.Contains("\"cloudflareWebsiteRouting\": false", request, StringComparison.Ordinal);
-        Assert.Contains("\"preserveLiveTargets\": false", request, StringComparison.Ordinal);
-        Assert.Contains("\"releaseMode\": \"approved-only\"", request, StringComparison.Ordinal);
-        Assert.Contains("canonical-marketing-hardening-release-final-20260928", request, StringComparison.Ordinal);
-        Assert.Contains("LEGEND/business/Protect/Parfait", request, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AgentAndBusinessAdapters_DelegateToCanonicalInfrastructureServices()
     {
         var root = Root();
@@ -160,7 +184,7 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("CanonicalMarketingOutcomeProjection.ConfirmedOutcomes", performance, StringComparison.Ordinal);
         Assert.DoesNotContain("MetaSignalEvents", performance, StringComparison.Ordinal);
         Assert.Contains("OpenAiClickReference.Normalize", Read(root, "Infrastructure", "Analytics", "CanonicalMarketingOutcomeProjection.cs"), StringComparison.Ordinal);
-        Assert.Contains("Campaign-level revenue is not inferred", performance, StringComparison.Ordinal);
+        Assert.Contains("Campaign-level downstream attribution is used only where canonical campaign lineage is proven", performance, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -201,7 +225,8 @@ public sealed class MarketingManagerCentralizationTests
         Assert.Contains("console.error(err);\n      return;", summary, StringComparison.Ordinal);
         Assert.DoesNotContain("renderSummaryUnavailable", summary[supportStart..], StringComparison.Ordinal);
         Assert.Contains("loadMarketingPerformance()", summary[supportStart..], StringComparison.Ordinal);
-        Assert.Contains("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+        Assert.DoesNotContain("loadGrowthEconomics()", summary[supportStart..], StringComparison.Ordinal);
+        Assert.Contains("renderGrowthEconomics(data.economics)", js, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -275,8 +300,10 @@ public sealed class MarketingManagerCentralizationTests
 
         Assert.Contains("async function fetchJson(key, url, params = {}, timeoutMs = 0)", js, StringComparison.Ordinal);
         Assert.Contains("async function fetchPostJson(key, url, body = null, timeoutMs = 0)", js, StringComparison.Ordinal);
-        Assert.Contains("marketingManagerRequestBody(),\n        15000)", js, StringComparison.Ordinal);
+        Assert.Contains("const params = { ...marketingManagerRequestBody(), ...marketingManagerSiteParams() };", js, StringComparison.Ordinal);
+        Assert.Contains("params,\n          45000)", js, StringComparison.Ordinal);
         Assert.Contains("marketingManagerRequestBody({ goal }),\n        20000)", js, StringComparison.Ordinal);
+        Assert.Contains("marketingManagerSiteParams()", js, StringComparison.Ordinal);
         Assert.Contains("Zero activity is valid evidence.", js, StringComparison.Ordinal);
         Assert.Contains("The Growth Plan can still be built from the goal and available canonical evidence.", js, StringComparison.Ordinal);
 

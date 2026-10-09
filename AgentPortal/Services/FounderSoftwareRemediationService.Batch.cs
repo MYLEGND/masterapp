@@ -121,9 +121,9 @@ public sealed partial class FounderSoftwareRemediationService
         try
         {
             var client = await CreateGitHubClientAsync(options, token);
-            var production = await ReadBranchShaAsync(client, options, token);
-            if (priorHead is null && production != proposal.BaseSha)
-                throw new InvalidOperationException("Production base changed.");
+            var approved = await ReadBranchShaAsync(client, options, token);
+            if (priorHead is null && approved != proposal.BaseSha)
+                throw new InvalidOperationException("Approved base changed.");
             var refPath = $"repos/{options.RepositoryIdentity}/git/ref/heads/{batch.PreviewBranch}";
             using (var branch = await SendGitHubAsync(client, HttpMethod.Get, refPath, null, token))
             {
@@ -165,7 +165,7 @@ public sealed partial class FounderSoftwareRemediationService
                 $"repos/{options.RepositoryIdentity}/git/refs" + (priorHead is null ? "" : "/heads/" + batch.PreviewBranch),
                 priorHead is null ? new { @ref = "refs/heads/" + batch.PreviewBranch, sha } : (object)new { sha, force = false }, token);
             reference.EnsureSuccessStatusCode();
-            batch.BaseSha = priorHead is null ? production : batch.BaseSha;
+            batch.BaseSha = priorHead is null ? approved : batch.BaseSha;
             batch.HeadSha = sha;
             if (batch.PullRequestNumber is null)
             {
@@ -207,7 +207,7 @@ public sealed partial class FounderSoftwareRemediationService
         if (batch?.State != "Staged" || batch.HeadSha != headSha || batch.PullRequestNumber != number)
             return Failure("batch_identity_changed", "Publish requires the exact staged, reviewed batch identity.");
         if (await ReadBranchShaAsync(client, options, token) != batch.BaseSha)
-            return Failure("production_base_changed", "Production advanced. Reconcile and revalidate the batch before publication.");
+            return Failure("approved_base_changed", "Approved changes advanced. Reconcile and revalidate the batch before publication.");
         batch.State = "Publishing";
         batch.Revision = Guid.NewGuid().ToString("N");
         batch.UpdatedUtc = DateTime.UtcNow;
@@ -259,6 +259,7 @@ public sealed partial class FounderSoftwareRemediationService
             return new { capability = "release_approved_repair", released = false, publicationRequested = true,
                 approvedHeadSha = headSha, publishedHeadSha = publishSha, treeSha = tree, pullRequestNumber = publicationNumber,
                 publicationBranch,
+                batchRevision = batch.Revision,
                 deployment = "Existing protected workflow requested; checks, merge and live deployment are not yet verified." };
         }
         catch (Exception)

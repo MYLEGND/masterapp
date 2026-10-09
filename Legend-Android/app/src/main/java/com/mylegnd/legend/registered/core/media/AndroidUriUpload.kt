@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
 import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.source
@@ -17,7 +18,7 @@ internal class AndroidUriRequestBody(
     private val uri: Uri,
     private val type: MediaType?,
 ) : RequestBody() {
-    override fun contentType() = type
+    override fun contentType() = type ?: "application/octet-stream".toMediaType()
     override fun contentLength(): Long = resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
     override fun writeTo(sink: BufferedSink) {
         resolver.openInputStream(uri)?.source()?.use(sink::writeAll)

@@ -28,7 +28,6 @@ using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using ProtectWebsite.Services.Communication;
 using Shared.Analytics;
 using Shared.Crm;
 using Xunit;
@@ -611,7 +610,7 @@ public sealed class BusinessWorkspaceTests
         var row = new CommerceWebsiteInquiry { CommerceBusinessId = business.Id, Email = "visitor@example.org", Message = "<script>unsafe</script>" };
         db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
         await db.SaveChangesAsync();
-        var sender = new Mock<IProtectEmailSender>();
+        var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender.Setup(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.Is<string>(s => s.Contains("&lt;script&gt;") && !s.Contains("<script>")), null, row.Email, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var service = new BusinessInquiryNotificationService(db, new(db, new ConfigurationBuilder().Build()), sender.Object);
         await service.DeliverPendingAsync(default);

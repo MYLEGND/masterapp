@@ -7,9 +7,34 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 from release_policy import read_request, staging_only
 
 ROOT = Path(__file__).resolve().parent
+
+
+class FounderCloudflareCommandExecution(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            'founder_cloudflare_deploy',
+            ROOT / 'deploy-founder-cloudflare.py',
+        )
+        self.deploy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.deploy)
+
+    def test_non_capture_run_executes_command(self):
+        completed = SimpleNamespace(stdout='ignored')
+        with patch.object(self.deploy.subprocess, 'run', return_value=completed) as run:
+            result = self.deploy.run('echo', 'hello', capture=False)
+        run.assert_called_once()
+        self.assertIsNone(result)
+
+    def test_capture_run_executes_command_and_returns_stdout(self):
+        completed = SimpleNamespace(stdout='captured')
+        with patch.object(self.deploy.subprocess, 'run', return_value=completed) as run:
+            result = self.deploy.run('echo', 'hello', capture=True)
+        run.assert_called_once()
+        self.assertEqual('captured', result)
 
 
 class ReleaseScopeSelection(unittest.TestCase):
@@ -45,27 +70,176 @@ class ReleaseScopeSelection(unittest.TestCase):
             [row[0] for row in selected],
             ['portal', 'protect', 'parfait', 'website'])
 
-    def test_unreviewed_scope_still_fails_closed(self):
+    def test_any_unique_inventory_subset_is_selected_without_a_parallel_scope_registry(self):
+        names = [
+            self.baseline._validation_authority.RELEASE_TARGETS[key]['releaseName']
+            for key in list(self.baseline._validation_authority.RELEASE_TARGETS)[::2]
+        ]
+        selected = self.baseline.selected_targets({
+            'releaseMode': 'approved-only',
+            'targets': names,
+        })
+        self.assertEqual(
+            names,
+            [self.baseline._validation_authority.RELEASE_TARGETS[row[0]]['releaseName'] for row in selected],
+        )
+
+    def test_unknown_target_still_fails_closed(self):
         with self.assertRaises(ValueError):
             self.baseline.selected_targets({
                 'releaseMode': 'approved-only',
-                'targets': ['masterapp-client', 'masterapp-parfait']
+                'targets': ['not-a-canonical-target'],
             })
 
+
+    def test_target_scope_is_derived_from_canonical_source_roots_and_shared_changes_expand_fail_closed(self):
+        authority = self.baseline._validation_authority
+        first_key = next(iter(authority.RELEASE_TARGETS))
+        first = authority.RELEASE_TARGETS[first_key]
+        specific = authority.release_targets_for_paths([first['sourceRoot'] + '/example.txt'])
+        self.assertEqual((first['releaseName'],), specific)
+        shared = authority.release_targets_for_paths(['SHARED/example.txt'])
+        self.assertEqual(
+            tuple(row['releaseName'] for row in authority.RELEASE_TARGETS.values()),
+            shared,
+        )
+        self.assertEqual(tuple(), authority.release_targets_for_paths(['scripts/test-release-policy.py']))
+        self.assertEqual(tuple(), authority.release_targets_for_paths(['AGENTS.md']))
+        self.assertTrue(authority.release_control_authority_path('AGENTS.md'))
+
+
+    def test_release_control_only_changes_preserve_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value=(
+                ".github/workflows/all-intentional-direct-release-20260918.yml\n"
+                "scripts/validation-resume.py\n"
+                "Docs/releases/direct-release-request.json\n"
+            ),
+        ):
+            self.assertEqual(
+                "a" * 40,
+                self.baseline.reusable_live_application_revision(rows, "b" * 40),
+            )
+
+    def test_approved_automatic_release_reuses_live_identity_after_validated_control_only_change(self):
+        source=(ROOT / 'approved-release-baseline.py').read_text()
+        approved_block=source.split(
+            "elif release_mode == 'approved-only' and github_release_context:", 1
+        )[1].split("elif release_mode == 'approved-only':", 1)[0]
+        self.assertIn(
+            'validated_revision = validated_application_revision(',
+            approved_block,
+        )
+        self.assertIn(
+            'reusable_live_application_revision(rows, validated_revision)',
+            approved_block,
+        )
+        self.assertIn(
+            'Preserving exact live application identity across validated control/test-only changes:',
+            approved_block,
+        )
+
+    def test_runtime_change_invalidates_live_application_identity(self):
+        rows = [{"revision": "a" * 40}]
+        with patch.object(
+            self.baseline.subprocess,
+            "check_output",
+            return_value="AgentPortal/Services/Engineering/LegendEngineeringOrchestrator.cs\n",
+        ):
+            self.assertIsNone(
+                self.baseline.reusable_live_application_revision(rows, "b" * 40)
+            )
+
+
+    def test_source_only_live_noop_cannot_bypass_artifact_transaction(self):
+        source = (ROOT / 'approved-release-baseline.py').read_text()
+        workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertFalse(hasattr(self.baseline, 'exact_live_release'))
+        self.assertIn('exact_live = False', source)
+        self.assertNotIn('outputs.exact_live !=', workflow)
+        self.assertNotIn("mode='exact-live-noop'", workflow)
+        self.assertIn('Prepare complete immutable release transaction', workflow)
+
+    def test_matching_targets_cannot_build_or_transfer_rollback_packages(self):
+        workflow = (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        block = workflow.split('  preserve-rollback:', 1)[1].split('  release:', 1)[0]
+        steps = block.split('      - ')[1:]
+        self.assertEqual(4, len(steps))
+        self.assertIn('scripts/release-package.py restore-rollback', block)
+        self.assertNotIn('dotnet publish', block)
+        self.assertNotIn('npm ci', block)
+        for step in steps:
+            if 'Record rollback not required' in step:
+                self.assertIn('matrix.revision == matrix.desiredProducerRevision', step)
+            else:
+                self.assertIn('matrix.revision != matrix.desiredProducerRevision',
+                              step.split('        run:', 1)[0])
+        download = workflow.split('      - name: Load preserved rollback packages for transactional publication', 1)[1].split('      - name:', 1)[0]
+        self.assertIn("needs.discover-live.outputs.rollback_required == 'true'", download)
+        prepare = workflow.split('      - name: Prepare complete immutable release transaction', 1)[1].split('      - name:', 1)[0]
+        self.assertIn("needs.discover-live.outputs.rollback_required == 'false' && steps.rollbackpackages.outcome == 'skipped'", prepare)
+
+    def test_package_identity_is_source_bound_not_release_scope_bound(self):
+        targets = (
+            ("portal", "portal.mylegnd.com", "AgentPortal/AgentPortal.csproj"),
+        )
+        first = self.baseline.release_package_identity("a" * 40, targets, False, "")
+        second = self.baseline.release_package_identity(
+            "a" * 40,
+            targets + (("client", "client.mylegnd.com", "ClientApp/ClientApp.csproj"),),
+            False,
+            "",
+        )
+        routing = self.baseline.release_package_identity(
+            "a" * 40,
+            targets,
+            True,
+            "camoexterior.com",
+        )
+        other_revision = self.baseline.release_package_identity("b" * 40, targets, False, "")
+        self.assertEqual(first, second)
+        self.assertEqual(first, routing)
+        self.assertNotEqual(first, other_revision)
+
+    def test_validated_application_revision_rejects_post_validation_product_changes(self):
+        with patch.object(self.baseline, "validate_revision", side_effect=lambda value: value), \
+             patch.object(self.baseline.subprocess, "run"), \
+             patch.object(self.baseline.subprocess, "check_output", return_value="Docs/releases/direct-release-request.json\n"):
+            self.assertEqual(
+                "a" * 40,
+                self.baseline.validated_application_revision("a" * 40, "b" * 40),
+            )
+        with patch.object(self.baseline, "validate_revision", side_effect=lambda value: value), \
+             patch.object(self.baseline.subprocess, "run"), \
+             patch.object(self.baseline.subprocess, "check_output", return_value="AgentPortal/Program.cs\n"):
+            with self.assertRaisesRegex(ValueError, "application changes after the validated PR head"):
+                self.baseline.validated_application_revision("a" * 40, "b" * 40)
+
+    def test_different_live_target_revisions_cannot_share_application_identity(self):
+        rows = [{"revision": "a" * 40}, {"revision": "b" * 40}]
+        self.assertIsNone(
+            self.baseline.reusable_live_application_revision(rows, "c" * 40)
+        )
+
     def test_automatic_dispatch_does_not_expand_explicit_scope(self):
-        request={'releaseMode':'approved-only','targets':['masterapp-portal','masterapp-client','masterapp-protect']}
+        authority=self.baseline._validation_authority
+        keys=list(authority.RELEASE_TARGETS)[:3]
+        requested=[authority.RELEASE_TARGETS[key]['releaseName'] for key in keys]
+        request={'releaseMode':'approved-only','targets':requested}
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/'outputs'
             with patch('sys.argv',['baseline','--automatic','--output',str(output)]), \
                  patch.object(self.baseline,'read_request',return_value=request), \
-                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],revision='a'*40)), \
+                 patch.object(self.baseline,'observe',side_effect=lambda target:dict(app=target[0],releaseName=authority.RELEASE_TARGETS[target[0]]['releaseName'],revision='a'*40)), \
                  patch.object(self.baseline.subprocess,'check_output',return_value='b'*40), \
                  patch.object(self.baseline.subprocess,'run'),patch.dict(os.environ,{'GITHUB_ACTIONS':'false'}):
                 self.baseline.main()
-            text=output.read_text()
-            self.assertIn('masterapp-protect',text)
-            self.assertNotIn('masterapp-parfait',text)
-            self.assertNotIn('masterapp-website',text)
+            outputs=dict(line.split('=',1) for line in output.read_text().splitlines() if '=' in line)
+            self.assertEqual(requested,json.loads(outputs['targets']))
+            self.assertEqual(requested,[row['releaseName'] for row in json.loads(outputs['matrix'])['include']])
 
     def test_complete_inventory_can_include_cloudflare_routing_in_one_release(self):
         request = {
@@ -79,7 +253,7 @@ class ReleaseScopeSelection(unittest.TestCase):
             output = Path(directory) / 'release-outputs'
             with patch('sys.argv', ['baseline', '--output', str(output)]), \
                  patch.object(self.baseline, 'read_request', return_value=request), \
-                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(self.baseline, 'observe', side_effect=lambda target: dict(app=target[0], releaseName=self.baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'], revision='a' * 40)), \
                  patch.object(self.baseline.subprocess, 'check_output', return_value='b' * 40), \
                  patch.object(self.baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                 self.baseline.main()
@@ -88,17 +262,803 @@ class ReleaseScopeSelection(unittest.TestCase):
             self.assertIn('"masterapp-website"', values)
 
 
+class DirectReleaseAuthorizationResolution(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('release_lifecycle', ROOT / 'release-lifecycle.py')
+        self.lifecycle = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.lifecycle)
+
+    def test_control_only_authorization_resolves_immediately_preceding_merged_pr(self):
+        head = 'a' * 40
+        merged = 'b' * 40
+        pr = {
+            'number': 308,
+            'merged_at': '2026-09-30T06:01:03Z',
+            'merge_commit_sha': merged,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                return SimpleNamespace(returncode=0, stdout=f'{head} {merged}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        class Api:
+            def pages(self, path, key=None):
+                self.path = path
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/308/files':
+                    return [{'filename': 'SHARED/wwwroot/css/dashboard-home-shared.css'}]
+                return []
+
+        api = Api()
+        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(api, head)
+
+        self.assertEqual(resolved['number'], 308)
+        self.assertEqual(api.path, 'pulls/308/files')
+
+    def test_release_control_merge_with_architecture_workflow_resolves_product_pr(self):
+        head = 'a' * 40
+        control_merge = 'b' * 40
+        product_merge = 'c' * 40
+        control_side = 'd' * 40
+        product_side = 'e' * 40
+        product_base = 'f' * 40
+        control_pr = {
+            'number': 319,
+            'merged_at': '2026-09-30T07:40:42Z',
+            'merge_commit_sha': control_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+        product_pr = {
+            'number': 318,
+            'merged_at': '2026-09-30T07:34:36Z',
+            'merge_commit_sha': product_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == 'commits/' + control_merge + '/pulls':
+                    return [control_pr]
+                if path == 'pulls/319/files':
+                    return [
+                        {'filename': '.github/workflows/masterapp-platform-architecture-validation.yml'},
+                        {'filename': 'scripts/release-lifecycle.py'},
+                        {'filename': 'scripts/test-release-policy.py'},
+                    ]
+                if path == 'commits/' + product_merge + '/pulls':
+                    return [product_pr]
+                if path == 'pulls/318/files':
+                    return [{'filename': 'AgentPortal/wwwroot/css/legend-app-shell.css'}]
+                return []
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                if current == head:
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {control_merge}\n')
+                if current == control_merge:
+                    return SimpleNamespace(returncode=0, stdout=f'{control_merge} {product_merge} {control_side}\n')
+                if current == product_merge:
+                    return SimpleNamespace(returncode=0, stdout=f'{product_merge} {product_base} {product_side}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request', side_effect=lambda sha: sha == head), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
+
+        self.assertEqual(resolved['number'], 318)
+
+    def test_chained_control_only_authorizations_resolve_nearest_merged_pr(self):
+        head = 'a' * 40
+        prior = 'b' * 40
+        merged = 'c' * 40
+        pr = {
+            'number': 310,
+            'merged_at': '2026-09-30T06:20:00Z',
+            'merge_commit_sha': merged,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                self.path = path
+                if path == 'commits/' + merged + '/pulls':
+                    return [pr]
+                if path == 'pulls/310/files':
+                    return [{'filename': 'AgentPortal/wwwroot/css/clients-index.css'}]
+                return []
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                if current == head:
+                    return SimpleNamespace(returncode=0, stdout=f'{head} {prior}\n')
+                if current == prior:
+                    return SimpleNamespace(returncode=0, stdout=f'{prior} {merged}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        api = Api()
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha in {head, prior}), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(api, head)
+
+        self.assertEqual(resolved['number'], 310)
+        self.assertEqual(api.path, 'pulls/310/files')
+
+    def test_candidate_validation_never_reinterprets_a_failed_required_workflow(self):
+        head = 'a' * 40
+        workflow = next(iter(self.lifecycle.VALIDATION_AUTHORITY.required_validation_topology(
+            ['scripts/validation-resume.py']
+        )['required']))
+        pr = {'number': 44, 'head': {'sha': head}}
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == 'actions/runs?head_sha=' + head:
+                    return [{
+                        'id': 77,
+                        'head_sha': head,
+                        'event': 'pull_request',
+                        'created_at': '1',
+                        'path': workflow,
+                        'status': 'completed',
+                        'conclusion': 'failure',
+                    }]
+                if path == 'pulls/44/files':
+                    return [{'filename': 'scripts/validation-resume.py'}]
+                return []
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertIn(workflow, pending)
+
+
+    def test_chained_release_resolution_rejects_intervening_product_commit(self):
+        head = 'a' * 40
+        parent = 'b' * 40
+
+        class Api:
+            def pages(self, path, key=None):
+                raise AssertionError('product-bearing control ancestry must fail before GitHub lookup')
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                return SimpleNamespace(returncode=0, stdout=f'{head} {parent}\n')
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\nInfrastructure/WebsiteEditing/WebsiteSiteSource.cs\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
+
+    def test_release_control_pr_is_skipped_in_favor_of_nearest_product_pr(self):
+        head = 'a' * 40
+        control_request = 'b' * 40
+        control_merge = 'c' * 40
+        before_control = 'd' * 40
+        product_merge = 'e' * 40
+        product_pr = {
+            'number': 302,
+            'merged_at': '2026-09-30T06:14:36Z',
+            'merge_commit_sha': product_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+        control_pr = {
+            'number': 311,
+            'merged_at': '2026-09-30T06:36:22Z',
+            'merge_commit_sha': control_merge,
+            'base': {'ref': self.lifecycle.APPROVED},
+        }
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == 'commits/' + control_merge + '/pulls':
+                    return [control_pr]
+                if path == 'pulls/311/files':
+                    return [
+                        {'filename': '.github/workflows/masterapp-platform-architecture-validation.yml'},
+                        {'filename': 'scripts/release-lifecycle.py'},
+                        {'filename': 'scripts/test-release-policy.py'},
+                        {'filename': 'scripts/test-release-lifecycle.py'},
+                    ]
+                if path == 'commits/' + product_merge + '/pulls':
+                    return [product_pr]
+                if path == 'pulls/302/files':
+                    return [{'filename': 'Infrastructure/WebsiteEditing/WebsiteSiteSource.cs'}]
+                raise AssertionError(path)
+
+        def fake_git(*args, **kwargs):
+            if args[:4] == ('rev-list', '--parents', '-n', '1'):
+                current = args[4]
+                mapping = {
+                    head: head + ' ' + control_request + '\n',
+                    control_request: control_request + ' ' + control_merge + '\n',
+                    control_merge: control_merge + ' ' + before_control + ' ' + ('9' * 40) + '\n',
+                    before_control: before_control + ' ' + product_merge + '\n',
+                    product_merge: product_merge + ' ' + ('8' * 40) + ' ' + ('7' * 40) + '\n',
+                }
+                return SimpleNamespace(returncode=0, stdout=mapping[current])
+            if args and args[0] == 'diff-tree':
+                return SimpleNamespace(returncode=0, stdout='Docs/releases/direct-release-request.json\n')
+            return SimpleNamespace(returncode=1, stdout='')
+
+        with patch.object(self.lifecycle, 'direct_only_request',
+                          side_effect=lambda sha: sha in {head, control_request, before_control}), \
+             patch.object(self.lifecycle, 'git', side_effect=fake_git):
+            resolved = self.lifecycle.direct_release_approved_pr(Api(), head)
+
+        self.assertEqual(resolved['number'], 302)
+
+    def test_shared_resume_authority_requires_every_consuming_validation(self):
+        head = "a" * 40
+        pr = {
+            "number": 400,
+            "head": {"sha": head},
+        }
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+        step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+        step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "4", "id": 4},
+                        {"head_sha": head, "event": "pull_request", "path": step5,
+                         "status": "completed", "conclusion": "success", "created_at": "3", "id": 3},
+                        {"head_sha": head, "event": "pull_request", "path": step78,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/400/files":
+                    return [{"filename": "scripts/validation-resume.py"}]
+                if path == "pulls/400/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        self.assertIn(step6, pending)
+
+    def test_step5_workflow_change_requires_exact_step5_validation(self):
+        head = "b" * 40
+        pr = {"number": 401, "head": {"sha": head}}
+        architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+        step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+
+        class Api:
+            def pages(self, path, key=None):
+                if path == "actions/runs?head_sha=" + head:
+                    return [
+                        {"head_sha": head, "event": "pull_request", "path": architecture,
+                         "status": "completed", "conclusion": "success", "created_at": "2", "id": 2},
+                    ]
+                if path == "pulls/401/files":
+                    return [{"filename": step5}]
+                if path == "pulls/401/commits":
+                    return [{"sha": head}]
+                raise AssertionError(path)
+
+        pending = self.lifecycle.candidate_validation(Api(), pr)
+        security = ".github/workflows/approved-release-security-validation.yml"
+        self.assertEqual(
+            "Awaiting successful exact-head validation: " + security + ", " + step5,
+            pending,
+        )
+
+    def test_direct_release_authorization_rejects_extra_changed_files(self):
+        path = 'Docs/releases/direct-release-request.json'
+        with patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
+                returncode=0, stdout=path + '\nAgentPortal/Program.cs\n')):
+            self.assertFalse(self.lifecycle.direct_only_request('c' * 40))
+
+    def test_direct_release_resolution_rejects_octopus_authorization_commit(self):
+        head = 'd' * 40
+
+        class Api:
+            def pages(self, path, key=None):
+                raise AssertionError('ambiguous authorization lineage must fail before GitHub lookup')
+
+        with patch.object(self.lifecycle, 'direct_only_request', return_value=True), \
+             patch.object(self.lifecycle, 'git', return_value=SimpleNamespace(
+                 returncode=0, stdout=head + ' ' + ('e' * 40) + ' ' + ('f' * 40) + ' ' + ('9' * 40) + '\n')):
+            self.assertIsNone(self.lifecycle.direct_release_approved_pr(Api(), head))
+
+
 class ApprovedReleaseResumePolicy(unittest.TestCase):
-    def test_exact_live_targets_are_preserved_across_retries(self):
+    def test_step5_recovery_preserves_evidence_and_rechecks_only_introduced_classes(self):
+        workflow=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        self.assertNotIn('scripts/validation-resume.py plan \\\n', workflow)
+        self.assertIn('Resolve one canonical Step 5 resume decision', workflow)
+        self.assertIn('historical_evidence_unavailable_run_full_step5', workflow)
+        self.assertIn('refusing to discard completed evidence and rerun the full suite', workflow)
+        self.assertIn("needs.plan.outputs.baseline_run_required", workflow)
+        self.assertIn('Recheck only newly introduced Step 5 failure classes', workflow)
+        self.assertIn('Bounded same-run Step 5 recheck reconciled all introduced failures.', workflow)
+        self.assertIn('Preserve bounded Step 5 recovery state', workflow)
+        self.assertIn('Enforce final Step 5 outcome after bounded recovery', workflow)
+
+    def test_exact_live_targets_are_preserved_by_one_transactional_authority(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        base=workflow.split('      - name: Verify current live base before publication\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('for attempt in range(3):', base)
+        self.assertIn('{408,429,500,502,503,504}', base)
+        self.assertIn("Cache-Control':'no-cache", base)
         self.assertIn('Preserve targets already live at exact candidate', workflow)
-        self.assertIn("steps.resumestate.outputs.portal_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.client_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.protect_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.parfait_live != 'true'", workflow)
-        self.assertIn("steps.resumestate.outputs.website_live != 'true'", workflow)
-        self.assertIn("preservedExactLiveTargets", workflow)
-        self.assertIn("was already live at the exact candidate but redeployed", workflow)
+        self.assertIn("actual not in {row['revision'], candidate}", workflow)
+        self.assertIn('exact candidate already live; preserve and continue reconciliation', workflow)
+        self.assertIn('Live revision drifted outside preserved baseline/candidate', workflow)
+        self.assertIn('scripts/validation-resume.py live-state', workflow)
+        self.assertIn('Reconcile complete immutable release transaction', workflow)
+        self.assertIn('Run independent auxiliary release fanout', workflow)
+        self.assertIn('Deploy and activate LEGEND Founder Cloudflare baseline', workflow)
+        self.assertIn('scripts/release-auxiliary.py', workflow)
+        self.assertNotIn('scripts/deploy-founder-cloudflare.py deploy', workflow)
+        self.assertNotIn('npx wrangler deploy --config wrangler.website-routing.jsonc', workflow)
+        auxiliary=(ROOT / 'release-auxiliary.py').read_text()
+        self.assertIn('ThreadPoolExecutor', auxiliary)
+        self.assertIn('isolated_cloudflare_workspace("founder")', auxiliary)
+        self.assertIn('isolated_cloudflare_workspace("router")', auxiliary)
+        self.assertEqual(1, auxiliary.count('"npm", "ci"'))
+        self.assertNotIn('install_toolchain', auxiliary)
+        self.assertIn('"scripts/deploy-founder-cloudflare.py"', auxiliary)
+        self.assertIn('"scripts/release-router.py"', auxiliary)
+        founder_owner=(ROOT / 'deploy-founder-cloudflare.py').read_text()
+        self.assertIn('LEGEND_CLOUDFLARE_ROOT', founder_owner)
+        self.assertEqual(1, founder_owner.count('run("npm", "ci"'))
+        self.assertNotIn('Restore Founder Cloudflare baseline after downstream release failure', workflow)
+        self.assertNotIn('scripts/deploy-founder-cloudflare.py rollback', workflow)
+        self.assertIn('FOUNDER_CLOUDFLARE', workflow)
+        self.assertIn('--targets-json "$SELECTED_TARGETS"', workflow)
+        self.assertIn('--baselines-json "$LIVE_BASELINES"', workflow)
+        self.assertNotIn('Restore complete application baseline after downstream release failure', workflow)
+        self.assertNotIn('--rollback-only', workflow)
+        self.assertIn('--prepare-only --transaction-plan', workflow)
+        self.assertIn('--finalize-only --transaction-plan', workflow)
+        self.assertNotIn('steps.resumestate.outputs.portal_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.client_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.protect_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.parfait_live', workflow)
+        self.assertNotIn('steps.resumestate.outputs.website_live', workflow)
+
+    def test_founder_worker_subdomain_is_explicitly_activated_and_restored(self):
+        deploy=(ROOT.parent / 'scripts/deploy-founder-cloudflare.py').read_text()
+        self.assertIn('/workers/scripts/{worker}/subdomain', deploy)
+        self.assertIn('set_worker_subdomain(account, worker, True)', deploy)
+        self.assertIn('founder_worker_subdomain_not_enabled', deploy)
+        self.assertIn('previousWorkerSubdomainEnabled', deploy)
+        self.assertNotIn('restore_worker(account, worker, previous_version, previous_subdomain_enabled)', deploy)
+        self.assertIn('journal.before_mutation', deploy)
+
+    def test_release_execution_contains_no_duplicate_target_or_infrastructure_literals(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        authority=(ROOT.parent / 'scripts/validation-resume.py')
+        spec=importlib.util.spec_from_file_location('validation_authority_audit',authority)
+        module=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        generator_spec=importlib.util.spec_from_file_location('workflow_generator', ROOT.parent / 'scripts/release-workflow.py')
+        generator=importlib.util.module_from_spec(generator_spec)
+        generator_spec.loader.exec_module(generator)
+        self.assertEqual(workflow, generator.render(workflow, module.RELEASE_TARGETS))
+        before,generated=workflow.split(generator.START,1)
+        _,after=generated.split(generator.END,1)
+        hand_authored=before+after
+        for row in module.RELEASE_TARGETS.values():
+            self.assertNotIn(row['releaseName'], hand_authored)
+            self.assertNotIn(row['azureHost'], workflow)
+        self.assertNotIn(module.RELEASE_RESOURCE_GROUP, workflow)
+        self.assertNotIn(module.MIGRATION_BUNDLE_NAME, workflow)
+        self.assertNotIn(module.ROUTING_WORKER_NAME, workflow)
+        self.assertNotIn(module.DOMAIN_REFRESH_PROJECT, workflow)
+        self.assertNotIn("paths: ['Docs/releases/direct-release-request.json']", workflow)
+        self.assertIn('targets_json:', workflow)
+        self.assertIn('Reconcile complete immutable release transaction', workflow)
+
+
+    def test_trusted_lifecycle_binds_runtime_before_durable_recovery(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        maintain=workflow.split('  maintain:',1)[1]
+        checkout=maintain.index('ref: legend/approved-changes')
+        install=maintain.index('name: Install canonical durable operation transport')
+        bind=maintain.index('name: Bind canonical lifecycle evidence runtime')
+        integrate=maintain.index('name: Integrate ready approved change and start direct release')
+        resume=maintain.index('name: Resume ready changes and corrections on retained branches')
+        self.assertLess(checkout, install)
+        self.assertLess(install, bind)
+        self.assertLess(bind, integrate)
+        self.assertLess(bind, resume)
+        self.assertEqual(1, maintain.count('uses: ./scripts/release-artifacts'))
+        self.assertNotIn('github.event.pull_request.head.sha', maintain[:bind])
+
+    def test_single_authenticated_probe_extracts_at_verified_root(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        download=workflow.split('      - name: Reuse immutable migration probe without rebuilding\n',1)[1].split('      - name:',1)[0]
+        verify=workflow.split('      - name: Verify retained migration probe identity and digest\n',1)[1].split('      - uses:',1)[0]
+        # ID-based download defaults to an artifact-name child directory even
+        # for one ID. The verifier/observer consume the exact root below.
+        self.assertIn('artifact-ids: ${{ steps.probe.outputs.artifactId }}', download)
+        self.assertIn('run-id: ${{ steps.probe.outputs.runId }}', download)
+        self.assertIn('merge-multiple: true', download)
+        self.assertIn('path: ${{ runner.temp }}/migration-probe', download)
+        self.assertIn('--directory "$RUNNER_TEMP/migration-probe"', verify)
+        self.assertNotIn('pattern:', download)
+
+    def test_direct_release_reuses_only_exact_validated_package_evidence(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        self.assertIn('Reuse exact successful validation package when available', workflow)
+        authority=(ROOT.parent / 'scripts/validation-resume.py').read_text()
+        self.assertIn('f"founder-diagnostics-packages-{package_identity}"', authority)
+        self.assertNotIn('founder-diagnostics-packages-${PACKAGE_IDENTITY}', workflow)
+        self.assertIn('path: .legend-evidence-authority', workflow)
+        evidence_checkout=workflow.split('      - name: Checkout current approved evidence authority\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('ref: ${{ github.sha }}', evidence_checkout)
+        self.assertIn('persist-credentials: false', evidence_checkout)
+        self.assertIn('python3 .legend-evidence-authority/scripts/validation-resume.py validated-package', workflow)
+        self.assertIn('artifact-ids: ${{ steps.reusevalidated.outputs.artifact_id }}', workflow)
+        self.assertIn('--source-evidence "$RUNNER_TEMP/validated-package-evidence.json"', workflow)
+        pending_sql=workflow.split('  migration-readiness:',1)[1].split('  preserve-rollback:',1)[0]
+        self.assertIn('--pinned-source-json "$PINNED_PACKAGE"', pending_sql)
+        self.assertIn('artifact-ids: ${{ steps.package.outputs.artifactId }}', pending_sql)
+        self.assertIn('--source-evidence "$RUNNER_TEMP/migration-package-evidence.json"', pending_sql)
+        self.assertIn('RELEASE_CANDIDATE_SHA: ${{ needs.discover-live.outputs.readiness_candidate }}', pending_sql)
+
+        self.assertIn('rollback-evidence', workflow)
+        self.assertIn('scripts/validation-resume.py live-state', workflow)
+        self.assertIn('scripts/validation-resume.py verify-live', workflow)
+        self.assertIn('REUSE_VALIDATED_PACKAGE=true', workflow)
+        self.assertIn('release refuses to rebuild production bytes', workflow)
+        self.assertIn('scripts/release-package.py verify', workflow)
+        self.assertIn('verify-release-coverage', workflow)
+        self.assertIn('Capture exact release step-state receipt', workflow)
+        self.assertIn('Preserve exact release step-state receipt artifact', workflow)
+        self.assertIn("'steps':steps", workflow)
+        self.assertNotIn("STEP_STATE_JSON", workflow)
+        self.assertIn('Retain exact approved release receipt', workflow)
+        self.assertIn('legend-approved-release-${{ env.APPLICATION_RELEASE_SHA }}', workflow)
+        self.assertNotIn('Retain exact deployable candidate packages', workflow)
+        self.assertIn('Bind successful release to canonical validated package', workflow)
+        self.assertIn('Preserve validated package release binding', workflow)
+        self.assertIn('legend-approved-package-link-${{ needs.discover-live.outputs.application_release_sha }}-${{ needs.discover-live.outputs.package_identity }}', workflow)
+        self.assertIn("'applicationReleaseSha':os.environ['APPLICATION_RELEASE_SHA']", workflow)
+        self.assertIn('Reuse exact retained live package when available', workflow)
+        self.assertIn('Checkout canonical rollback package authority', workflow)
+        self.assertIn('scripts/release-package.py restore-rollback', workflow)
+        self.assertNotIn('dotnet publish', workflow)
+        self.assertNotIn('npm ci --prefix Legend-Website', workflow)
+        self.assertNotIn('EXACT_LIVE', workflow)
+        self.assertNotIn("mode='exact-live-noop'", workflow)
+        self.assertIn('retention-days: 30', workflow)
+        architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        package_block=architecture.split('      - name: Preserve immutable validated release package\n',1)[1].split('      - name:',1)[0]
+        self.assertIn('retention-days: 90', package_block)
+
+        def step(name):
+            return workflow.split('      - name: ' + name + '\n', 1)[1].split('      - name:', 1)[0]
+
+        self.assertNotIn('dotnet build', step('Build exact selected release candidate'))
+        self.assertNotIn('dotnet publish', step('Publish exact selected application packages'))
+        self.assertNotIn('npm ', step('Publish exact selected application packages'))
+        prepublication = step('Synchronize canonical pre-publication resource lanes')
+        self.assertIn('scripts/release-prepublication.py', prepublication)
+        self.assertEqual(1, workflow.count('Synchronize canonical pre-publication resource lanes'))
+        for stale in (
+            'Synchronize selected shared authorization and publisher runtimes',
+            'Synchronize selected editor ticket authority',
+            'Prepare canonical business website routing authority',
+            'Apply additive diagnostics migrations before restarting apps',
+        ):
+            self.assertNotIn(stale, workflow)
+
+        prepublication_owner = (ROOT / 'release-prepublication.py').read_text()
+        self.assertIn('ThreadPoolExecutor', prepublication_owner)
+        self.assertIn('configure_all_targets', prepublication_owner)
+        self.assertIn('run_migration_lane', prepublication_owner)
+        self.assertIn('pool.submit(configure_all_targets)', prepublication_owner)
+        self.assertIn('pool.submit(run_migration_lane)', prepublication_owner)
+        self.assertIn('child_receipt(child, app, partition, prepare=True)', prepublication_owner)
+        self.assertIn('"az", "webapp", "config", "appsettings", "set"', prepublication_owner)
+        self.assertIn('scripts/release-package.py', prepublication_owner)
+        self.assertIn('scripts/migration-probe-package.py', prepublication_owner)
+        self.assertIn('scripts/release-migration.py', prepublication_owner)
+        self.assertIn('release_proven', prepublication_owner)
+        self.assertNotIn("dotnet-ef database update", prepublication_owner)
+
+        migration_owner = (ROOT / 'release-migration.py').read_text()
+        self.assertIn("RELEASE_RESOURCE_GROUP", migration_owner)
+        self.assertIn("'SQLCONNSTR_MasterAppDb': connection", migration_owner)
+        self.assertIn('capture_output=True', migration_owner)
+        self.assertNotIn("print(connection)", migration_owner)
+
+    def test_architecture_validation_publishes_one_canonical_package_from_parallel_components(self):
+        workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('validated-release-package-plan:', workflow)
+        self.assertIn('validated-release-package-components:', workflow)
+        self.assertIn('validated-release-package:', workflow)
+        self.assertIn('scripts/validation-resume.py package-canary-plan', workflow)
+        package_plan = workflow.split('      - name: Resolve whether application bytes changed\n', 1)[1].split('      - name:', 1)[0]
+        self.assertNotIn("git diff --name-only", package_plan)
+        self.assertNotIn("release_control_only_path", package_plan)
+        self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
+        self.assertIn('component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}', workflow)
+        self.assertIn("needs.validated-release-package-plan.outputs.components_needed == 'true'", workflow)
+        self.assertIn('scripts/validation-resume.py component-sources', workflow)
+        self.assertIn('artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}', workflow)
+        self.assertIn('Record immutable component source', workflow)
+        self.assertIn('scripts/release-package.py build-component', workflow)
+        self.assertIn('scripts/release-package.py assemble', workflow)
+        self.assertIn('merge-multiple: true', workflow)
+        self.assertIn('scripts/release-package.py verify', workflow)
+        self.assertIn('Preserve immutable validated release package', workflow)
+        self.assertIn('retention-days: 90', workflow)
+        self.assertIn('Run release web contract regressions', workflow)
+        component_block = workflow.split('  validated-release-package-components:\n', 1)[1].split('  validated-release-package:\n', 1)[0]
+        self.assertIn("always() && !cancelled()", component_block)
+        self.assertIn("needs.validated-release-package-plan.result == 'success'", component_block)
+        self.assertNotIn('scripts/release-package.py build \\', component_block)
+        final_block = workflow.split('  validated-release-package:\n', 1)[1].split('  wake-release-lifecycle-after-package-backfill:\n', 1)[0]
+        self.assertNotIn('dotnet publish', final_block)
+        self.assertNotIn('npm ci', final_block)
+
+    def test_approved_security_validation_preserves_static_release_safety_gates(self):
+        workflow=(ROOT.parent / '.github/workflows/approved-release-security-validation.yml').read_text()
+        self.assertIn('scripts/validation-resume.py plan', workflow)
+        self.assertIn('name: approved-release-security', workflow)
+        self.assertIn('Run independent security validation fanout', workflow)
+        self.assertIn('Validate database migration artifacts', workflow)
+        self.assertIn('Reject skipped security tests', workflow)
+        self.assertIn('Audit dependency vulnerabilities', workflow)
+        self.assertIn('Scan committed configuration for secrets', workflow)
+        self.assertIn('Verify shared composition authorities', workflow)
+        self.assertIn('Reject inline Azure key-ring wiring', workflow)
+        self.assertIn('run_simple no-skips no_skips', workflow)
+        self.assertIn('run_simple secret-scan secret_scan', workflow)
+        self.assertIn('run_simple composition composition', workflow)
+        self.assertIn('run_simple keyring keyring', workflow)
+        self.assertIn('run_simple diff-check diff_check', workflow)
+        self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow)
+        self.assertNotIn("steps.plan.outcome == 'success'", workflow.split('  security_database:\n',1)[1])
+        self.assertIn('cancel-in-progress: true', workflow)
+        self.assertNotIn('webapps-deploy', workflow)
+        self.assertNotIn('database update', workflow)
+        self.assertNotIn('git/ref/heads/production', workflow)
+
+    def test_architecture_independent_gates_fan_out_without_duplicate_execution(self):
+        workflow=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('Run independent architecture gate fanout', workflow)
+        fanout=workflow.split('      - name: Run independent architecture gate fanout\n',1)[1].split(
+            '      - name: Run Founder diagnostics and safe GPT Codex regressions\n',1
+        )[0]
+        for lane in (
+            'founder-diagnostics-regressions',
+            'domain-release',
+            'website-regressions',
+            'meta-regressions',
+            'booking-regressions',
+            'crm-regressions',
+            'form-tracking',
+            'release-web-contracts',
+            'release-policy',
+        ):
+            self.assertIn('run_lane '+lane, fanout)
+        self.assertNotIn("steps.gate_compile_regression.outcome == 'success'", fanout)
+        self.assertIn('COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}', fanout)
+        self.assertIn('[ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]', fanout)
+        self.assertIn('/tmp/masterapp/bin/AgentPortal.Tests/Release', workflow)
+        self.assertIn('/tmp/masterapp/obj/AgentPortal.Tests', workflow)
+        self.assertNotIn('AgentPortal.Tests/bin/Release/net10.0/AgentPortal.Tests.dll', workflow)
+        compile_block=workflow.split('      - name: Compile full regression test project\n',1)[1].split(
+            '      - name: Preserve exact compiled regression material\n',1
+        )[0]
+        self.assertIn("if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'", compile_block)
+        self.assertIn('echo "material_ready=true" >> "$GITHUB_OUTPUT"', compile_block)
+        release_web=fanout.split('release_web_contracts() {',1)[1].split('release_policy() {',1)[0]
+        self.assertNotIn('dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', release_web)
+
+    def test_steps78_parallel_lanes_join_fail_closed_under_original_check_name(self):
+        workflow=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertIn('advertising_dotnet:', workflow)
+        self.assertIn('advertising_ui:', workflow)
+        self.assertIn('advertising_evidence:', workflow)
+        self.assertIn('name: advertising-validation', workflow)
+        evidence=workflow.split('  advertising_evidence:\n',1)[1]
+        self.assertIn('needs.advertising_dotnet.result', evidence)
+        self.assertIn('needs.advertising_ui.result', evidence)
+        self.assertIn('Require all advertising validation lanes', evidence)
+        self.assertIn('Record canonical child execution evidence', evidence)
+        self.assertLess(
+            evidence.index('Record canonical child execution evidence'),
+            evidence.index('Require all advertising validation lanes'),
+        )
+
+    def test_old_second_release_workflows_are_removed(self):
+        workflows=ROOT.parent / '.github/workflows'
+        self.assertFalse((workflows / 'agentportal-production-deploy.yml').exists())
+        self.assertFalse((workflows / 'legend-website-production-deploy.yml').exists())
+        self.assertFalse((workflows / 'legend-canonical-branch-parity.yml').exists())
+
+    def test_android_build_reuse_is_bound_to_source_config_and_certificate_identity(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-android-internal-testing.yml').read_text()
+        self.assertIn('Resolve exact Android validation identity', workflow)
+        self.assertIn('Reuse exact signed Android bundle when available', workflow)
+        self.assertIn('legend-android-signed-$GITHUB_SHA-$config_hash', workflow)
+        self.assertIn('REUSE_ANDROID_BUNDLE=true', workflow)
+        self.assertIn('Validate upload keystore before building', workflow)
+
+    def test_feature_validation_workflows_use_canonical_resume_authority(self):
+        names = (
+            'masterapp-platform-architecture-validation.yml',
+            'step6-openai-ads-execution-validation.yml',
+            'steps7-8-governed-advertising-validation.yml',
+            'approved-release-security-validation.yml',
+        )
+        for name in names:
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('scripts/validation-resume.py plan', workflow, name)
+            self.assertIn('Restore PR-local validation gate evidence', workflow, name)
+            self.assertIn('--resume-cache "/tmp/validation-resume-cache/validation-resume.json"', workflow, name)
+            self.assertIn('--cache-output /tmp/validation-resume-cache/validation-resume.json', workflow, name)
+            self.assertIn('Save PR-local validation gate evidence', workflow, name)
+            self.assertNotIn('checkpoint-gate --workflow', workflow, name)
+            self.assertIn('cancel-in-progress: true', workflow, name)
+
+        for name in (
+            'masterapp-platform-architecture-validation.yml',
+            'step6-openai-ads-execution-validation.yml',
+            'approved-release-security-validation.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', workflow, name)
+
+        step78=(ROOT.parent / '.github/workflows/steps7-8-governed-advertising-validation.yml').read_text()
+        self.assertNotIn('VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}', step78)
+        self.assertIn('GITHUB_TOKEN: ${{ github.token }}', step78)
+        self.assertIn('advertising_evidence:', step78)
+        step5=(ROOT.parent / '.github/workflows/step5-isolated-conversion-mapping-validation.yml').read_text()
+        self.assertNotIn('scripts/validation-resume.py plan \\\n', step5)
+        self.assertEqual(1, step5.count('scripts/validation-resume.py step5-decision'))
+        self.assertIn('--resume-cache /tmp/step5-resume-cache', step5)
+        self.assertNotIn('PYCACHE', step5)
+        self.assertNotIn('PYGRAPH', step5)
+        self.assertNotIn('graphql_parent_success', step5)
+        self.assertIn('Resolve one canonical Step 5 resume decision', step5)
+        self.assertIn('scripts/validation-resume.py step5-baseline', step5)
+        self.assertIn('candidate_restore_run', step5)
+        self.assertIn('candidate_build_run', step5)
+        self.assertIn('candidate_focused_run', step5)
+        self.assertIn('candidate_full_run', step5)
+        self.assertIn('comparison_run', step5)
+        self.assertIn('cancel-in-progress: true', step5)
+        self.assertIn('step5-tree-candidate-', step5)
+        self.assertIn('step5-tree-baseline-', step5)
+        self.assertNotIn('candidate_baseline_jobs_unchanged', step5)
+        self.assertNotIn('gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$baseline_name', step5)
+        self.assertFalse((ROOT.parent / '.github/workflows/step5-approved-baseline-control.yml').exists())
+
+    def test_release_lifecycle_has_no_parallel_validation_path_registry(self):
+        lifecycle_script=(ROOT / 'release-lifecycle.py').read_text()
+        self.assertIn('VALIDATION_AUTHORITY.required_validation_topology(names)', lifecycle_script)
+        self.assertIn('def candidate_validation(api, pr):', lifecycle_script)
+        self.assertIn("run.get('status') != 'completed'", lifecycle_script)
+        self.assertIn("run.get('conclusion') != 'success'", lifecycle_script)
+        self.assertIn('for attempt in range(4)', lifecycle_script)
+        self.assertNotIn('validation_neutral_path', lifecycle_script)
+        self.assertNotIn('architecture_product_validation', lifecycle_script)
+        self.assertNotIn('architecture_public_website_validation', lifecycle_script)
+        self.assertNotIn('STEP6_VALIDATION_PATHS', lifecycle_script)
+        self.assertNotIn('STEP78_VALIDATION_PATHS', lifecycle_script)
+        self.assertNotIn('VALIDATION_NEUTRAL_PATHS =', lifecycle_script)
+
+    def test_direct_release_has_one_canonical_bounded_receipt_finalizer(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        deploy=(ROOT / 'deploy-approved-app.py').read_text()
+        transaction=workflow.split(
+            '      - name: Reconcile complete immutable release transaction\n',1
+        )[1].split('      - name:',1)[0]
+        self.assertIn('--finalize-only --transaction-plan /tmp/release-transaction.json', transaction)
+        self.assertNotIn('--reconcile-timeout-seconds', workflow)
+        self.assertNotIn('Recover exact-live transaction receipts without publication replay', workflow)
+        self.assertNotIn('transactionrecovery', workflow)
+        self.assertNotIn('TRANSACTION_RECOVERY', workflow)
+        self.assertIn('FINALIZE_RECONCILE_TIMEOUT_SECONDS = 90', deploy)
+        self.assertIn('FINALIZE_RECONCILE_ATTEMPTS = 3', deploy)
+        self.assertIn('FINALIZE_RETRY_DELAY_SECONDS = 10', deploy)
+        self.assertIn('for attempt in range(1, FINALIZE_RECONCILE_ATTEMPTS + 1):', deploy)
+        self.assertIn('max_status_failures=1', deploy)
+        self.assertNotIn('--reconcile-timeout-seconds', deploy)
+
+    def test_release_has_bounded_parallel_publication_and_no_alternate_entrypoints(self):
+        root=ROOT.parent
+        workflow=(root / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        deploy=(ROOT / 'deploy-approved-app.py').read_text()
+        diagnostics=(root / '.github/workflows/deployment-diagnostics.yml').read_text()
+        docs=(root / 'DEPLOYMENT.md').read_text()
+
+        self.assertIn('PUBLICATION_RECONCILE_TIMEOUT_SECONDS = 420', deploy)
+        self.assertIn('timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS', deploy)
+        self.assertIn('publish_prepared_targets_parallel', deploy)
+        self.assertIn('ThreadPoolExecutor', deploy)
+        release=workflow.split('\n  release:\n',1)[1].split('\n  release-state-receipt:',1)[0]
+        self.assertIn('timeout-minutes: 30', release)
+        self.assertIn('--publish-prepared-parallel', release)
+        self.assertEqual(1, workflow.count('--finalize-only --transaction-plan /tmp/release-transaction.json'))
+
+        self.assertFalse((root / 'deploy-portal.sh').exists())
+        self.assertFalse((root / '.claude/settings.local.json').exists())
+        self.assertFalse((root / 'AgentPortal/deploy-live-zipdeploy.json').exists())
+
+        for token in (
+            'list-publishing-credentials', '/api/vfs/', '/api/command',
+            'webapp restart', 'webapp deploy', 'appsettings set',
+            'connection-string set', 'zipdeploy',
+        ):
+            self.assertNotIn(token, diagnostics)
+        self.assertIn('sole production deployment authority', docs)
+        self.assertIn('legend/approved-changes', docs)
+
+    def test_terminal_children_wake_only_the_protected_lifecycle(self):
+        architecture=(ROOT.parent / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        direct=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        wake=(ROOT / 'wake-release-lifecycle.py').read_text()
+
+        self.assertIn('wake-release-lifecycle-after-package-backfill:', architecture)
+        package_wake=architecture.split(
+            '  wake-release-lifecycle-after-package-backfill:\n',1
+        )[1].split('\n  validated-migration-probe:',1)[0]
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.package_revision != ''", package_wake)
+        self.assertIn('actions: write', package_wake)
+        self.assertIn('contents: read', package_wake)
+        self.assertIn('scripts/wake-release-lifecycle.py', package_wake)
+        self.assertNotIn('deploy-approved-app.py', package_wake)
+
+        self.assertIn('wake-release-lifecycle-after-terminal-release:', direct)
+        release_wake=direct.split(
+            '  wake-release-lifecycle-after-terminal-release:\n',1
+        )[1]
+        self.assertIn('needs: [target-release-receipts, release-state-receipt]', release_wake)
+        self.assertIn('if: always()', release_wake)
+        self.assertIn('actions: write', release_wake)
+        self.assertIn('contents: read', release_wake)
+        self.assertIn('scripts/wake-release-lifecycle.py', release_wake)
+        self.assertNotIn('deploy-approved-app.py', release_wake)
+
+        self.assertIn('release_run:', lifecycle)
+        self.assertIn("github.event.workflow_run.id || inputs.release_run || ''", lifecycle)
+        self.assertIn('actions/workflows/{LIFECYCLE}/dispatches', wake)
+        self.assertIn('"inputs": {"release_run": RUN_ID}', wake)
+        self.assertIn('APPROVED = "legend/approved-changes"', wake)
+        self.assertIn('LIFECYCLE = "legend-release-lifecycle.yml"', wake)
+        self.assertNotIn('deploy-approved-app', wake)
+        self.assertNotIn('release-package.py', wake)
+
+    def test_release_mutation_authorities_remain_serialized(self):
+        for name in (
+            'legend-release-lifecycle.yml',
+            'all-intentional-direct-release-20260918.yml',
+        ):
+            workflow=(ROOT.parent / '.github/workflows' / name).read_text()
+            self.assertIn('cancel-in-progress: false', workflow, name)
+
+    def test_release_orchestrator_contract_checks_are_receipt_reusable(self):
+        lifecycle=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        self.assertIn('scripts/validation-resume.py lifecycle-evidence', lifecycle)
+        self.assertIn('REUSE_LIFECYCLE_CONTRACTS=', lifecycle)
+        self.assertNotIn('sha256sum               .github/workflows/legend-release-lifecycle.yml', lifecycle)
+        self.assertNotIn('actions/artifacts?name=$artifact_name', lifecycle)
+        self.assertIn('Recover authorized direct release when needed', lifecycle)
+        self.assertNotIn('production gates', lifecycle.lower())
 
 
 class ReleasePolicy(unittest.TestCase):
@@ -143,7 +1103,7 @@ class ReleasePolicy(unittest.TestCase):
             output = Path(directory) / 'outputs'
             with patch('sys.argv', ['baseline', '--automatic', '--output', str(output)]), \
                  patch.object(baseline, 'read_request', return_value={'releaseMode': 'validate-only'}), \
-                 patch.object(baseline, 'observe', side_effect=lambda target: dict(app=target[0], revision='a' * 40)), \
+                 patch.object(baseline, 'observe', side_effect=lambda target: dict(app=target[0], releaseName=baseline._validation_authority.RELEASE_TARGETS[target[0]]['releaseName'], revision='a' * 40)), \
                  patch.object(baseline.subprocess, 'check_output', return_value='b' * 40), \
                  patch.object(baseline.subprocess, 'run'), patch.dict(os.environ, {'GITHUB_ACTIONS': 'false'}):
                 baseline.main()
