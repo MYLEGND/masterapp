@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import shutil
 from pathlib import Path
 import tempfile
 import threading
@@ -446,6 +447,409 @@ class PackageTests(unittest.TestCase):
 
 
 
+class ComponentIsolationTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('isolation_package_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        for path in ('source', 'nuget', 'npm', 'artifacts', 'website-workspace', 'tools/node', 'tools/python', 'authority', 'probe'):
+            (self.root / path).mkdir(parents=True)
+        (self.root / 'source/Legend-Website').mkdir()
+        (self.root / 'source/Legend-Website/package.json').write_text('{}')
+        self.image = self.package.PACKAGE_TOOL_IMAGES['sdk']
+
+    def command(self, phase='publish', component='website'):
+        return self.package.isolated_component_command(component, self.root,
+            ['python3', 'scripts/release-package.py'], phase=phase)
+
+    def test_publish_inputs_readonly_and_modules_are_disposable_outputs(self):
+        command = self.command()
+        mounts = [command[index + 1] for index, value in enumerate(command) if value == '--mount']
+        for target in ('/src', '/deps/nuget', '/deps/npm', '/src/Legend-Website/package.json', '/tools/node', '/tools/python', '/authority', '/probe'):
+            self.assertTrue(next(row for row in mounts if ',dst=' + target + ',' in row).endswith(',readonly'))
+        for target in ('/tmp/masterapp', '/src/Legend-Website'):
+            self.assertTrue(any(row.endswith(',dst=' + target) for row in mounts))
+        self.assertNotIn('docker.sock', '\n'.join(mounts))
+        self.assertEqual(self.image, command[-3])
+
+    def test_only_restore_has_network_and_observe_has_no_writable_bind_mount(self):
+        for phase in ('restore', 'publish', 'observe'):
+            command = self.command(phase)
+            self.assertEqual('bridge' if phase == 'restore' else 'none', command[command.index('--network') + 1])
+            if phase == 'observe':
+                self.assertTrue(all(command[index + 1].endswith(',readonly')
+                    for index, value in enumerate(command) if value == '--mount'))
+            self.assertIn('--read-only', command)
+            self.assertIn('no-new-privileges', command)
+
+    def test_tokens_proxy_home_and_run_environment_are_never_forwarded(self):
+        first = self.command()
+        with patch.dict(os.environ, dict(GITHUB_TOKEN='test-token', AZURE_CLIENT_SECRET='test-secret',
+                ACTIONS_RUNTIME_TOKEN='test-runtime', HTTPS_PROXY='test-proxy', HOME='/private-host',
+                GITHUB_RUN_ATTEMPT='123', GITHUB_SHA='new-sha')):
+            self.assertEqual(first, self.command())
+        environment = [first[index + 1] for index, value in enumerate(first) if value == '--env']
+        self.assertIn('npm_config_offline=true', environment)
+        self.assertIn('HOME=/tmp/home', environment)
+        self.assertFalse(any(value.startswith(('GITHUB_', 'AZURE_', 'ACTIONS_', 'HTTPS_PROXY=')) for value in environment))
+
+    def test_escaped_mount_or_mutable_tool_reference_is_rejected(self):
+        (self.root / 'nuget').rmdir()
+        (self.root / 'nuget').symlink_to(self.root.parent, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'outside owned stage'):
+            self.command()
+
+    def test_tool_extraction_authenticates_exact_image_and_never_starts_container(self):
+        shutil.rmtree(self.root / 'tools')
+        image_id, container_id = 'sha256:' + 'c' * 64, 'd' * 64
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            value = ''
+            if command[:3] == ['docker', 'image', 'inspect']:
+                value = json.dumps([dict(Os='linux', Architecture='amd64', Id=image_id)])
+            elif command[:2] == ['docker', 'create']:
+                value = container_id
+            elif command[:3] == ['docker', 'container', 'inspect']:
+                value = json.dumps([dict(Image=image_id, State=dict(Running=False))])
+            elif command[:2] == ['docker', 'cp']:
+                target = Path(command[-1]); target.mkdir()
+                for relative in self.package.PACKAGE_TOOL_PATHS[target.name]:
+                    file = target / relative; file.parent.mkdir(parents=True, exist_ok=True); file.write_bytes(b'pinned-tool')
+            return type('Result', (), dict(stdout=value, returncode=0))()
+        with patch.object(self.package.subprocess, 'run', side_effect=run):
+            proof = self.package.prepare_isolated_tools(self.root)
+        self.assertEqual(2, sum(command[:2] == ['docker', 'create'] for command in calls))
+        self.assertEqual(2, sum(command[:2] == ['docker', 'rm'] for command in calls))
+        self.assertFalse(any(command[:2] == ['docker', 'start'] for command in calls))
+        self.assertEqual(self.package.PACKAGE_TOOL_IMAGES['node'], proof['tools']['node']['image'])
+        self.assertEqual(image_id, proof['tools']['node']['imageId'])
+        with self.assertRaises(FileExistsError):
+            self.package.prepare_isolated_tools(self.root)
+
+    def test_tool_identity_covers_content_modes_links_and_rejects_escape(self):
+        import time
+        tree = self.root / 'tools/node'
+        binary = tree / 'compiler'; binary.write_bytes(b'original')
+        link = tree / 'alias'; link.symlink_to('compiler')
+        first = self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+        self.assertEqual(first, self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10))
+        binary.write_bytes(b'changed')
+        changed = self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+        self.assertNotEqual(first['identity'], changed['identity'])
+        binary.chmod(0o755)
+        self.assertNotEqual(changed['identity'], self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)['identity'])
+        link.unlink(); link.symlink_to('/etc/passwd')
+        with self.assertRaisesRegex(ValueError, 'escapes verified tree'):
+            self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+
+    def test_source_materialization_keeps_exact_commit_without_host_state(self):
+        repository = self.root / 'repository'
+        repository.mkdir()
+        def git(*args):
+            return subprocess.check_output(['git', *args], cwd=repository, stderr=subprocess.DEVNULL, text=True).strip()
+        git('init')
+        git('config', 'user.name', 'Synthetic Test')
+        git('config', 'user.email', 'synthetic@example.invalid')
+        (repository / 'input.txt').write_text('committed input')
+        git('add', 'input.txt')
+        git('commit', '-m', 'synthetic source')
+        revision = git('rev-parse', 'HEAD')
+        git('remote', 'add', 'private', 'https://example.invalid/private')
+        (repository / 'input.txt').write_text('uncommitted edit')
+        (repository / 'private.txt').write_text('untracked synthetic credential')
+        shutil.rmtree(self.root / 'source')
+        with patch.object(self.package, 'ROOT', repository):
+            result = self.package.materialize_component_source(revision, self.root)
+        self.assertEqual(1, result['files'])
+        self.assertEqual('committed input', (self.root / 'source/input.txt').read_text())
+        self.assertFalse((self.root / 'source/private.txt').exists())
+        self.assertNotIn('remote', (self.root / 'source/.git/config').read_text())
+        self.assertEqual(revision, subprocess.check_output(['git', '-C', str(self.root / 'source'),
+            'rev-parse', '--verify', 'HEAD^{commit}'], text=True).strip())
+
+    def test_publish_scratch_drops_unmeasured_restore_state_and_preserves_cache(self):
+        (self.root / 'website-workspace/.npmrc').write_text('injected restore setting')
+        (self.root / 'website-workspace/generated.js').write_text('unmeasured restore output')
+        (self.root / 'npm/retained-cache').write_text('retained verified dependency')
+        self.package.prepare_website_workspace('website', self.root, phase='publish')
+        self.assertEqual(['package.json'], sorted(path.name for path in (self.root / 'website-workspace').iterdir()))
+        self.assertEqual('', (self.root / 'website-workspace/package.json').read_text())
+        self.assertEqual('{}', (self.root / 'source/Legend-Website/package.json').read_text())
+        self.assertEqual('retained verified dependency', (self.root / 'npm/retained-cache').read_text())
+
+    def test_timeout_reclaims_only_exact_owned_container_and_never_retries(self):
+        identity = 'b' * 64
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[:2] == ['docker', 'run']:
+                Path(command[command.index('--cidfile') + 1]).write_text(identity)
+                raise subprocess.TimeoutExpired(command, 1)
+            self.assertEqual(['docker', 'rm', '--force', identity], command)
+            return type('Result', (), {'returncode': 0})()
+        with patch.object(self.package.subprocess, 'run', side_effect=run):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.package.run_isolated_component('website', self.root, ['node', '--version'],
+                    phase='publish', timeout=1)
+        self.assertEqual(2, len(calls))
+        evidence = list(self.root.glob('*.cleanup.json'))
+        self.assertEqual(1, len(evidence))
+        self.assertEqual(dict(containerId=identity, attempted=True, removed=True), json.loads(evidence[0].read_text()))
+
+    def test_unknown_container_identity_never_triggers_cleanup_by_name(self):
+        def run(command, **kwargs):
+            Path(command[command.index('--cidfile') + 1]).write_text('other-container')
+            raise KeyboardInterrupt()
+        with patch.object(self.package.subprocess, 'run', side_effect=run) as execute:
+            with self.assertRaises(KeyboardInterrupt):
+                self.package.run_isolated_component('website', self.root, ['node', '--version'],
+                    phase='publish', timeout=1)
+            self.assertEqual(1, execute.call_count)
+        self.assertFalse(list(self.root.glob('*.cleanup.json')))
+
+
+
+class ComponentRestoreBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('restore_boundary_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.stage = Path(self.temporary.name)
+        self.obj = self.stage / 'artifacts/obj/App'
+        self.obj.mkdir(parents=True)
+        for name in ('project.assets.json', 'App.csproj.nuget.g.props', 'App.csproj.nuget.g.targets'):
+            (self.obj / name).write_text('{}' if name.endswith('.json') else '<Project/>')
+        self.material = dict(projectPaths=['App/App.csproj'])
+
+    def test_only_verified_restore_inputs_survive_and_original_evidence_is_preserved(self):
+        (self.obj / 'unmeasured-restore-script').write_text('unmeasured')
+        (self.stage / 'artifacts/fake-compiled.dll').write_text('must not suppress compilation')
+        identity = self.package.freeze_component_restore(self.stage, self.material)
+        self.assertEqual(64, len(identity))
+        self.assertEqual(3, len(list(self.obj.iterdir())))
+        self.assertFalse((self.stage / 'artifacts/fake-compiled.dll').exists())
+        self.assertTrue((self.stage / 'restore-observation/fake-compiled.dll').exists())
+        self.assertTrue((self.stage / 'restore-observation/obj/App/unmeasured-restore-script').exists())
+
+    def test_superseded_cache_is_unmounted_but_transitive_versions_remain(self):
+        cache = self.stage / 'nuget'
+        for relative in ('example/1.0', 'example/2.0', 'transitive/1.0'):
+            path = cache / relative
+            path.mkdir(parents=True)
+            (path / 'input.dll').write_text(relative)
+        for name, package in (('App', 'example/2.0'), ('Shared', 'transitive/1.0')):
+            path = self.stage / 'artifacts/obj' / name / 'project.assets.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(dict(version=4, libraries={package: dict(type='package', path=package)})))
+        result = self.package.narrow_restore_cache(self.stage)
+        self.assertEqual(['example/1.0'], result['excluded'])
+        self.assertEqual(['example/2.0', 'transitive/1.0'], result['selected'])
+        self.assertEqual('selected-unverified', result['state'])
+        self.assertFalse((cache / 'example/1.0').exists())
+        self.assertEqual('example/1.0', (self.stage / 'restore-cache-observation/example/1.0/input.dll').read_text())
+        self.assertTrue((cache / 'transitive/1.0/input.dll').is_file())
+
+    def test_cache_selection_rejects_traversal_and_symlinks_before_mutation(self):
+        cache = self.stage / 'nuget'
+        cache.mkdir()
+        for relative in ('../escape', 'example/..', '/example/1.0'):
+            (self.obj / 'project.assets.json').write_text(json.dumps(dict(version=4,
+                libraries={relative: dict(type='package', path=relative)})))
+            with self.assertRaisesRegex(ValueError, 'Unsafe restore selection package path'):
+                self.package.narrow_restore_cache(self.stage)
+            self.assertFalse((self.stage / 'restore-cache-observation').exists())
+        (cache / 'alias').symlink_to(self.obj, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Unsafe restore selection entry'):
+            self.package.narrow_restore_cache(self.stage)
+        self.assertTrue(cache.is_dir())
+
+    def test_untrusted_inventory_and_symlink_do_not_replace_original_state(self):
+        for projects in (['../outside.csproj'], ['App/App.csproj', 'Other/App.csproj'], []):
+            with self.subTest(projects=projects):
+                clean = self.stage / 'publish-inputs'
+                if clean.exists(): shutil.rmtree(clean)
+                with self.assertRaises(ValueError):
+                    self.package.freeze_component_restore(self.stage, dict(projectPaths=projects))
+                self.assertTrue(self.obj.is_dir())
+        clean = self.stage / 'publish-inputs'
+        if clean.exists(): shutil.rmtree(clean)
+        (self.obj / 'project.assets.json').unlink()
+        (self.obj / 'project.assets.json').symlink_to('/etc/passwd')
+        with self.assertRaisesRegex(ValueError, 'Unsafe verified restore'):
+            self.package.freeze_component_restore(self.stage, self.material)
+        self.assertTrue(self.obj.is_dir())
+
+
+class ResolvedPackageMaterialTests(unittest.TestCase):
+    def setUp(self):
+        import base64
+        spec = importlib.util.spec_from_file_location('resolved_package_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.repo, self.cache, self.obj, self.sdk = (self.root / name for name in ('repo', 'cache', 'artifacts', 'sdk'))
+        for path in (self.repo / 'App', self.repo / 'Shared', self.sdk):
+            path.mkdir(parents=True)
+        (self.sdk / 'runtime.json').write_text('{}')
+        for name in ('App', 'Shared'):
+            (self.repo / name / (name + '.csproj')).write_text('<Project/>')
+        self.directory = self.cache / 'example/1.0.0'
+        self.directory.mkdir(parents=True)
+        self.archive = self.directory / 'example.1.0.0.nupkg'
+        (self.directory / 'lib').mkdir()
+        (self.directory / 'lib/library.dll').write_bytes(b'compiler input')
+        with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.writestr('lib/library.dll', b'compiler input')
+        self.library = dict(type='package', path='example/1.0.0', files=['lib/library.dll'],
+                            sha512=base64.b64encode(hashlib.sha512(self.archive.read_bytes()).digest()).decode())
+        self.assets = {}
+        for name in ('App', 'Shared'):
+            project = self.repo / name / (name + '.csproj')
+            references = {} if name == 'Shared' else {str(self.repo / 'Shared/Shared.csproj'): {'projectPath': str(self.repo / 'Shared/Shared.csproj')}}
+            data = dict(version=3, packageFolders={str(self.cache): {}}, project={'version': '1.0.0', 'restore': {'projectPath': str(project),
+                'frameworks': {'net10.0': {'projectReferences': references}}},
+                'frameworks': {'net10.0': {'runtimeIdentifierGraphPath': str(self.sdk / 'runtime.json')}}},
+                targets={'net10.0': {'Example/1.0.0': {'compile': {'lib/library.dll': {}}}}},
+                libraries={'Example/1.0.0': dict(self.library)})
+            path = self.obj / 'obj' / name / 'project.assets.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(data))
+            for suffix in ('.nuget.g.props', '.nuget.g.targets'):
+                (path.parent / (name + '.csproj' + suffix)).write_text('<Project/>')
+            self.assets[name] = path
+        self.package.ROOT = self.repo
+        self.package.APPS = {'app': ('App/App.csproj', 'app.zip', False)}
+
+    def identity(self):
+        return self.package.resolved_restore_identity('app', self.obj, [self.cache], self.sdk)
+
+    def test_verified_transitive_graph_is_stable_but_dependency_and_framework_changes_invalidate(self):
+        first = self.identity()
+        self.assertEqual(first, self.identity())
+        self.assertEqual(2, first['projectCount'])
+        self.assertEqual(1, first['packageCount'])
+        data = json.loads(self.assets['Shared'].read_text())
+        data['project']['frameworks']['net10.0']['frameworkReferences'] = {'Microsoft.AspNetCore.App': {}}
+        self.assets['Shared'].write_text(json.dumps(data))
+        self.assertNotEqual(first['identity'], self.identity()['identity'])
+        (self.sdk / 'runtime.json').write_text('{"changed":true}')
+        self.assertNotEqual(first['identity'], self.identity()['identity'])
+
+    def test_v4_framework_aliases_remain_distinct_and_schema_changes_invalidate(self):
+        first = self.identity()['identity']
+        data = json.loads(self.assets['App'].read_text())
+        data['version'] = 4
+        data['project']['frameworks']['net10.0']['targetAlias'] = 'net10.0'
+        self.assets['App'].write_text(json.dumps(data))
+        second = self.identity()['identity']
+        self.assertNotEqual(first, second)
+        data['project']['frameworks']['alternate'] = dict(data['project']['frameworks']['net10.0'], targetAlias='alternate')
+        data['targets']['alternate'] = {}
+        self.assets['App'].write_text(json.dumps(data))
+        self.assertNotEqual(second, self.identity()['identity'])
+        data['packageFolders'][str(self.root / 'unverified-cache')] = {}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'search roots differ'):
+            self.identity()
+
+    def test_generated_metadata_is_bound_and_undeclared_cache_roots_are_rejected(self):
+        first = self.identity()['identity']
+        (self.directory / '.nupkg.metadata').write_text('{"version":2}')
+        self.assertNotEqual(first, self.identity()['identity'])
+        (self.cache / 'undeclared').mkdir()
+        with self.assertRaisesRegex(ValueError, 'Unmeasured input'):
+            self.identity()
+
+    def test_generated_import_mutation_changes_identity(self):
+        first = self.identity()['identity']
+        path = self.assets['Shared'].parent / 'Shared.csproj.nuget.g.targets'
+        path.write_text('<Project><Import Project="unexpected.targets"/></Project>')
+        self.assertNotEqual(first, self.identity()['identity'])
+
+    def test_extra_cache_file_and_omitted_analyzer_input_are_rejected(self):
+        injected = self.directory / 'lib/injected.dll'
+        injected.write_bytes(b'injected compiler input')
+        with self.assertRaisesRegex(ValueError, 'inventory differs'):
+            self.identity()
+        injected.unlink()
+        data = json.loads(self.assets['App'].read_text())
+        data['targets']['net10.0']['Example/1.0.0']['analyzers'] = {'analyzers/missing.dll': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'compiler input absent'):
+            self.identity()
+
+    def test_nuget_empty_asset_group_is_not_an_unverified_compiler_file(self):
+        data = json.loads(self.assets['App'].read_text())
+        data['targets']['net10.0']['Example/1.0.0']['compile'] = {'lib/net10.0/_._': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        self.assertEqual(1, self.identity()['packageCount'])
+        data['targets']['net10.0']['Example/1.0.0']['compile'] = {'../_._': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'escapes owning root'):
+            self.identity()
+
+    def test_shared_count_byte_and_deadline_budgets_fail_closed(self):
+        for key, value, reason in (('projects', 1, 'project budget'), ('packages', 0, 'package budget'),
+                                   ('entries', 0, 'inventory invalid'), ('fileBytes', 1, 'file budget'),
+                                   ('totalBytes', 1, 'byte budget'), ('seconds', 0, 'deadline')):
+            with self.subTest(boundary=key), patch.dict(self.package.RESTORE_MATERIAL_LIMITS, {key: value}):
+                with self.assertRaisesRegex(ValueError, reason):
+                    self.identity()
+
+    def test_restore_material_symlink_escape_is_rejected(self):
+        path = self.assets['App']
+        outside = self.root / 'outside.json'
+        outside.write_bytes(path.read_bytes())
+        path.unlink()
+        path.symlink_to(outside)
+        with self.assertRaisesRegex(ValueError, 'symlink escapes'):
+            self.identity()
+
+    def test_archive_and_extracted_compile_input_corruption_are_rejected(self):
+        original = self.archive.read_bytes()
+        self.archive.write_bytes(original + b'tampered')
+        with self.assertRaisesRegex(ValueError, 'archive digest mismatch'):
+            self.identity()
+        self.archive.write_bytes(original)
+        (self.directory / 'lib/library.dll').write_bytes(b'tampered extracted generator')
+        with self.assertRaisesRegex(ValueError, 'Extracted package content'):
+            self.identity()
+
+    def test_missing_transitive_restore_and_unsupported_schema_fail_closed(self):
+        original = self.assets['Shared'].read_text()
+        self.assets['Shared'].unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.identity()
+        data = json.loads(original)
+        data['version'] = 99
+        self.assets['Shared'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'Unsupported restore material'):
+            self.identity()
+
+    def test_untrusted_paths_and_conflicting_dependency_hashes_are_rejected(self):
+        original = json.loads(self.assets['App'].read_text())
+        for field, value in (('path', '../outside'), ('sha512', 'not-a-digest'),
+                             ('files', ['../outside'])):
+            data = json.loads(json.dumps(original))
+            data['libraries']['Example/1.0.0'][field] = value
+            self.assets['App'].write_text(json.dumps(data))
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.identity()
+        self.assets['App'].write_text(json.dumps(original))
+        original['project']['frameworks']['net10.0']['runtimeIdentifierGraphPath'] = str(self.root / 'outside')
+        self.assets['App'].write_text(json.dumps(original))
+        with self.assertRaisesRegex(ValueError, 'outside measured SDK'):
+            self.identity()
+
+
 class PackageContractTests(unittest.TestCase):
     def test_candidate_component_build_requires_no_evidence_credential(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
@@ -463,6 +867,69 @@ class PackageContractTests(unittest.TestCase):
             self.assertEqual(1, build.call_count)
             lookup.assert_not_called()
 
+    def test_application_component_delegates_once_to_isolated_owner(self):
+        spec = importlib.util.spec_from_file_location('isolated_owner_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package, 'build_static', side_effect=AssertionError('host build')), \
+             patch.object(package, 'build_dotnet', side_effect=AssertionError('host build')), \
+             patch.object(package, 'build_isolated_component', side_effect=lambda revision, component, output:
+                 (output / package.component_file(component)).write_bytes(b'verified isolated bytes')) as isolated:
+            output = Path(folder)
+            for component in package.APPS:
+                receipt = package.build_component('a' * 40, component, output)
+                self.assertEqual(hashlib.sha256(b'verified isolated bytes').hexdigest(), receipt['sha256'])
+                isolated.assert_called_with('a' * 40, component, output)
+            self.assertEqual(len(package.APPS), isolated.call_count)
+
+    def test_content_component_keeps_actual_producer_and_rejects_unsafe_reuse(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        candidate, producer = 'a' * 40, 'b' * 40
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            component = 'portal'
+            path = directory / package.component_file(component)
+            with zipfile.ZipFile(path, 'w') as archive:
+                archive.writestr('wwwroot/_deployment-provenance.json', json.dumps({'releaseSha': producer}))
+            receipt = dict(schema=package.CONTENT_COMPONENT_SCHEMA, producerRevision=producer,
+                contentIdentity='c' * 64, executionIdentity='e' * 64, component=component, file=path.name,
+                sha256=package.sha256_file(path))
+            receipt_path = directory / (component + '.component.json')
+            receipt_path.write_text(json.dumps(receipt))
+            original = path.read_bytes()
+            with patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+                 patch.object(package._RELEASE_AUTHORITY, 'package_component_manifest',
+                    return_value=dict(contentIdentity='c' * 64, reusable=True)) as closure:
+                with self.assertRaisesRegex(ValueError, 'execution environment unproven'):
+                    package.verify_component(candidate, component, directory)
+                with self.assertRaisesRegex(ValueError, 'content receipt mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='f' * 64)
+                self.assertEqual(receipt, package.verify_component(candidate, component, directory, execution_identity='e' * 64))
+                self.assertEqual(original, path.read_bytes())
+                self.assertEqual(producer, package.embedded_revision(path, False))
+                closure.side_effect = [dict(contentIdentity='d' * 64, reusable=True), dict(contentIdentity='c' * 64, reusable=True)]
+                with self.assertRaisesRegex(ValueError, 'dependencies changed'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                closure.side_effect = None
+                closure.return_value = dict(contentIdentity='c' * 64, reusable=False)
+                with self.assertRaisesRegex(ValueError, 'closure unproven'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                closure.return_value = dict(contentIdentity='c' * 64, reusable=True)
+                receipt['producerRevision'] = candidate
+                receipt_path.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError, 'embedded producer mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                receipt['producerRevision'] = producer
+                receipt['sha256'] = 'f' * 64
+                receipt_path.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError, 'content receipt mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
 
     def test_deployment_and_workflow_orchestration_changes_preserve_package_identity(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')

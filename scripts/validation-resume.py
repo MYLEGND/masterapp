@@ -1890,6 +1890,8 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
 
 PACKAGE_AUTHORITY_PATHS = frozenset({
     "scripts/release-package.py",
+    "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
+    "scripts/PackageRestoreProbe/Program.cs",
     ".config/dotnet-tools.json",
     ".github/workflows/masterapp-platform-architecture-validation.yml",
 })
@@ -1908,7 +1910,6 @@ PACKAGE_BUILD_WORKFLOW = '.github/workflows/masterapp-platform-architecture-vali
 PACKAGE_COMPONENT_BUILD_STEPS = (
     'Checkout exact package component authority',
     'Setup .NET for canonical package component build',
-    'Setup Node for canonical static package component build',
     'Build immutable validated release package component',
 )
 PACKAGE_ASSEMBLY_BUILD_STEPS = (
@@ -1970,6 +1971,193 @@ def release_control_only_path(path: str) -> bool:
 
 def package_canary_input_path(path: str) -> bool:
     return path in PACKAGE_AUTHORITY_PATHS or not release_control_only_path(path)
+
+
+def package_component_manifest(revision, component):
+    """Resolve one package's content closure through the canonical target graph.
+
+    This is evidence identity, not an MSBuild interpreter. Literal references and
+    linked inputs are followed across projects; conditions conservatively include
+    both branches. Unresolved evaluation disables reuse for this consumer, without
+    invalidating independent components. Revision is provenance, not a hash input.
+    """
+    import posixpath
+    import xml.etree.ElementTree as ET
+    if component not in RELEASE_TARGETS and component != 'migration':
+        raise ValueError('Unknown package component')
+    raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', revision]).decode()
+    tree = {}
+    for entry in raw.split('\0'):
+        if entry:
+            meta, path = entry.split('\t', 1)
+            mode, kind, oid = meta.split()
+            tree[path] = dict(mode=mode, kind=kind, oid=oid)
+    inputs, reasons, edges, visited = set(), set(), set(), set()
+
+    def subtree(root):
+        inputs.update(path for path in tree if path == root or path.startswith(root + '/'))
+
+    def relative(owner, value):
+        value = value.replace('\\', '/')
+        if value.startswith('$(MSBuildThisFileDirectory)'):
+            value = value.removeprefix('$(MSBuildThisFileDirectory)')
+        if any(char in value for char in ('$','%','@')) or value.startswith('/'):
+            reasons.add('unresolved_msbuild_input:' + owner)
+            return None
+        path = posixpath.normpath(posixpath.join(posixpath.dirname(owner), value))
+        if path == '..' or path.startswith('../'):
+            reasons.add('external_msbuild_input:' + owner)
+            return None
+        return path
+
+    def document(path, project=False):
+        if path in visited: return
+        visited.add(path)
+        inputs.add(path)
+        if path not in tree:
+            reasons.add('missing_build_input:' + path)
+            return
+        if project:
+            subtree(posixpath.dirname(path))
+        try:
+            root = ET.fromstring(git_show_file(revision, path))
+        except (ET.ParseError, RuntimeError):
+            reasons.add('unreadable_build_input:' + path)
+            return
+        # These reviewed properties affect compiler/output semantics directly;
+        # their values are already hashed in the owning document. Unknown
+        # properties may introduce unobserved files through SDK evaluation.
+        known_properties = {
+            'TargetFramework', 'TargetFrameworks', 'OutputType', 'ImplicitUsings',
+            'Nullable', 'ImportProjectExtensionProps', 'UserSecretsId',
+            'AddRazorSupportForMvc', 'UseRazorSourceGenerator',
+            'EnableDefaultEmbeddedResourceItems', 'DefaultItemExcludes',
+            'CopyLocalLockFileAssemblies', 'IsPackable', 'IsTestProject',
+            'BaseIntermediateOutputPath', 'BaseOutputPath', 'MSBuildProjectExtensionsPath',
+            'MasterAppArtifactsRoot', 'AppendRuntimeIdentifierToOutputPath',
+            'AppendTargetFrameworkToOutputPath',
+        }
+        for group in root.iter():
+            if group.tag.rsplit('}', 1)[-1] == 'PropertyGroup':
+                if any(node.tag.rsplit('}', 1)[-1] not in known_properties for node in group):
+                    reasons.add('unresolved_build_property:' + path)
+        for node in root.iter():
+            tag = node.tag.rsplit('}', 1)[-1]
+            if tag in {'Exec', 'UsingTask'}:
+                reasons.add('unresolved_build_task:' + path)
+            if tag == 'HintPath' and node.text:
+                target = relative(path, node.text.strip())
+                if target is not None: inputs.add(target)
+            for attribute in ('SourceFiles', 'File', 'AssemblyFile'):
+                if node.get(attribute):
+                    for value in node.get(attribute).split(';'):
+                        target = relative(path, value)
+                        if target is not None:
+                            inputs.add(target)
+                            edges.add((path, target))
+            if tag == 'Target':
+                for task in node:
+                    if task.tag.rsplit('}', 1)[-1] not in {'PropertyGroup', 'ItemGroup'}:
+                        reasons.add('unresolved_build_task:' + path)
+            if tag == 'Import' and node.get('Sdk'):
+                continue  # SDK content is governed by pinned toolchain/workflow.
+            field = 'Project' if tag == 'Import' else 'Include'
+            value = node.get(field) or node.get('Update')
+            if not value or tag == 'PackageReference': continue
+            for item in value.split(';'):
+                target = relative(path, item)
+                if target is None: continue
+                edges.add((path, target))
+                if tag in {'ProjectReference', 'Import'}:
+                    if '*' in target or '?' in target:
+                        reasons.add('unresolved_build_reference:' + path)
+                    else:
+                        document(target, project=tag == 'ProjectReference')
+                else:
+                    # Keep the pattern edge even when it matches no current file:
+                    # discovery of a newly linked input changes the next manifest.
+                    inputs.update(name for name in tree if fnmatch.fnmatchcase(name, target))
+
+    row = RELEASE_TARGETS.get(component)
+    if row and row['static']:
+        subtree(row['sourceRoot'])
+        builder = row['sourceRoot'] + '/scripts/build.mjs'
+        if builder in tree:
+            # JavaScript is executable authority, not a declarative manifest.
+            # Collect observed literal inputs for impact diagnostics, but do not
+            # infer a complete closure from regexes or run candidate code here.
+            reasons.add('unresolved_static_build_inputs:' + builder)
+            source = git_show_file(revision, builder)
+            for value in re.findall(r"['\"]([^'\"\n]+/[^'\"\n]+)['\"]", source):
+                candidates = (value, posixpath.normpath(posixpath.join(posixpath.dirname(builder), value)))
+                for target in candidates:
+                    if target in tree:
+                        inputs.add(target)
+                        edges.add((builder, target))
+    else:
+        document('scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj' if component == 'migration' else row['project'], project=True)
+        # Directory build/package props can be inherited at any project ancestor.
+        ancestors_checked = set()
+        while visited - ancestors_checked:
+            project = sorted(visited - ancestors_checked)[0]
+            ancestors_checked.add(project)
+            parent = posixpath.dirname(project)
+            while True:
+                for name in ('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props'):
+                    path = posixpath.join(parent, name) if parent else name
+                    inputs.add(path)  # Absence is an input too.
+                    if path in tree: document(path)
+                if not parent: break
+                parent = posixpath.dirname(parent)
+        inputs.update(('global.json', 'NuGet.Config', 'nuget.config', '.config/dotnet-tools.json'))
+    inputs.update(PACKAGE_AUTHORITY_PATHS)
+    inputs.add('scripts/validation-resume.py')
+    for source in tuple(inputs):
+        parent = posixpath.dirname(source)
+        while True:
+            names = ('.gitattributes', '.npmrc') if row and row['static'] else (
+                '.gitattributes', '.editorconfig', '.globalconfig',
+                'NuGet.Config', 'NuGet.config', 'nuget.config')
+            for name in names:
+                inputs.add(posixpath.join(parent, name) if parent else name)
+            if not (row and row['static']):
+                inputs.update(path for path in tree if posixpath.dirname(path) == parent and path.endswith('.globalconfig'))
+            if not parent: break
+            parent = posixpath.dirname(parent)
+    for path in inputs:
+        if path in tree and (tree[path]['kind'] != 'blob' or tree[path]['mode'] not in {'100644', '100755'}):
+            reasons.add('nonregular_build_input:' + path)
+    records = {path: tree.get(path, {'absent': True}) for path in sorted(inputs)}
+    # Parent aggregation is not a child input. Bind the component execution
+    # envelope separately, retaining setup/toolchain/build/security semantics.
+    workflow = git_show_file(revision, PACKAGE_BUILD_WORKFLOW)
+    jobs = _job_blocks(workflow)
+    execution = jobs.get('validated-release-package-components')
+    if execution is None: raise ValueError('Canonical component builder missing')
+    records[PACKAGE_BUILD_WORKFLOW] = {'execution': execution,
+        'header': workflow.split('\njobs:', 1)[0]}
+    def authority_content(path, excluded=(), selected=None):
+        parsed = ast.parse(git_show_file(revision, path))
+        nodes = []
+        for node in parsed.body:
+            name = getattr(node, 'name', None)
+            if selected is not None:
+                assigned = {target.id for target in getattr(node, 'targets', ()) if isinstance(target, ast.Name)}
+                if name not in selected and not assigned.intersection(selected): continue
+            elif name in excluded:
+                continue  # Only the separate assembly/verification bodies.
+            nodes.append(ast.dump(node, include_attributes=False))
+        return {'semantics': nodes}
+    records['scripts/release-package.py'] = authority_content('scripts/release-package.py',
+        excluded=('assemble_components', 'verify_all'))
+    records['scripts/validation-resume.py'] = authority_content('scripts/validation-resume.py',
+        selected=('package_component_manifest', '_job_blocks', 'RELEASE_TARGETS',
+                  'PACKAGE_AUTHORITY_PATHS', 'PACKAGE_BUILD_WORKFLOW'))
+    material = dict(schemaVersion=1, component=component, target=row,
+                    inputs=records, edges=sorted(edges), uncertainty=sorted(reasons))
+    identity = hashlib.sha256(json.dumps(material, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return dict(material, contentIdentity=identity, producerRevision=revision,
+                reusable=not reasons, invalidationReasons=sorted(reasons))
 
 WORKFLOW_PATHS = {
     name: ".github/workflows/" + name

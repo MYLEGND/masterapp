@@ -287,6 +287,44 @@ copying raw provider payloads. Focused Python 3.12 readiness tests passed.
 Independent review accepted this delta only; final integrated release review is
 still required.
 
+## Isolated package compilation integration
+
+The canonical package owner now routes application components through one isolated
+build envelope. Candidate source comes from the exact Git object tree; immutable
+SDK, Node, and Python images supply measured tools. Candidate execution receives
+no production or evidence credentials. Dependency restore alone has network
+access. Compilation runs with no network, read-only source/tools/package caches,
+controlled output directories, two CPUs, a 6 GiB memory limit, and a bounded
+operation deadline with exact-container cleanup.
+
+The NuGet verifier checks the final transitive assets graph, signed archive content,
+extracted files, generated imports and metadata, and the measured SDK runtime graph.
+A real restore downloaded superseded resolution versions outside the final graph.
+The owner now quarantines that excluded inventory outside every mounted directory,
+then applies the unchanged full verifier to every retained dependency. Selection
+is explicitly not verification. Only verified assets and generated props/targets
+enter fresh compilation intermediate directories; previous restore outputs remain
+available for diagnosis and cannot suppress compilation.
+
+Local integration evidence: website publication and verification completed in
+18.639 seconds. The .NET Parfait proof retained completed source/tool/bootstrap/
+restore work, admitted 92 packages across four projects, quarantined 31 superseded
+versions, and completed offline publication plus post-verification in a 338.727
+second resume (316.420 seconds compilation/publication). The before/after dependency
+identity matched. Its ZIP digest was
+`30cb7a5267ce1da1127a5918b65d0adca756c05c1a020e86e00a542ac42450f6`.
+These are local mechanism proofs against preserved source plus the reviewed
+package-owner delta; they are neither hosted release artifacts nor end-to-end
+submission-to-live measurements. Focused restore, package-contract, isolation, and
+dependency/legacy-compatibility tests passed. Both reviewers accepted this bounded
+delta; final integrated-candidate review remains required.
+
+Host application setup/build paths were removed from component jobs. The existing
+migration build/promotion authority is retained. Historical workflow fingerprints
+still include their original setup steps. The component source/dependency manifest
+and strict v2 reader are foundations only: mixed-producer assembly and downstream
+consumers remain unactivated pending their integration proof.
+
 ## Outstanding comprehensive requirements
 
 - Early trusted readiness is implemented in this candidate but still requires

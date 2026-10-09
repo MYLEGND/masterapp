@@ -774,18 +774,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup .NET for canonical package component build
-        if: matrix.component != 'website' && (matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true')
+        if: matrix.component == 'migration' && needs.validated-release-package-plan.outputs.migration_reused != 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.401'
-
-      - name: Setup Node for canonical static package component build
-        if: matrix.component == 'website'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: Legend-Website/package-lock.json
 
       - name: Build immutable validated release package component
         id: component

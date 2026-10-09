@@ -15,6 +15,128 @@ spec.loader.exec_module(m)
 
 
 
+class PackageComponentDependencyTests(unittest.TestCase):
+    def setUp(self):
+        self.files = {
+            'Portal/Portal.csproj': '<Project><ItemGroup><ProjectReference Include="../Shared/Shared.csproj" /></ItemGroup></Project>',
+            'Portal/page.cshtml': 'original view',
+            'Portal/private.cs': 'original portal',
+            'Client/Client.csproj': '<Project><ItemGroup><ProjectReference Include="../Shared/Shared.csproj" /><Content Include="../Portal/*.cshtml" /></ItemGroup></Project>',
+            'Client/client.cs': 'original client',
+            'Shared/Shared.csproj': '<Project />', 'Shared/shared.cs': 'original shared',
+            'Website/package-lock.json': 'locked', 'Website/index.js': 'original static',
+            'Directory.Build.props': '<Project />', 'global.json': '{"sdk":"pinned"}',
+            'scripts/release-package.py': 'SCHEMA = "v1"\ndef build_component(): return 1\ndef assemble_components(): return 1\n',
+            'scripts/validation-resume.py': 'PACKAGE_AUTHORITY_PATHS = ()\ndef package_component_manifest(): return 1\n',
+            m.PACKAGE_BUILD_WORKFLOW: 'name: Build\njobs:\n  validated-release-package-components:\n    runs-on: pinned\n    steps:\n      - run: build-component\n  validated-release-package:\n    steps:\n      - run: aggregate\n',
+        }
+        self.targets = {key: dict(project=project, sourceRoot=root, static=static) for key, project, root, static in (
+            ('portal','Portal/Portal.csproj','Portal',False), ('client','Client/Client.csproj','Client',False),
+            ('website','static','Website',True))}
+
+    def manifests(self, revision='a' * 40):
+        import hashlib
+        raw = ''.join('100644 blob ' + hashlib.sha1(content.encode()).hexdigest() + '\t' + path + '\0'
+                      for path, content in sorted(self.files.items())).encode()
+        with patch.object(m, 'RELEASE_TARGETS', self.targets), \
+             patch.object(m.subprocess, 'check_output', return_value=raw), \
+             patch.object(m, 'git_show_file', side_effect=lambda revision, path: self.files[path]):
+            return {key: m.package_component_manifest(revision, key) for key in self.targets}
+
+    def changed(self, before, after):
+        return {key for key in before if before[key]['contentIdentity'] != after[key]['contentIdentity']}
+
+    def test_new_revision_and_parent_aggregation_preserve_children(self):
+        before = self.manifests()
+        self.files[m.PACKAGE_BUILD_WORKFLOW] = self.files[m.PACKAGE_BUILD_WORKFLOW].replace('run: aggregate','run: revised-aggregate')
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace('assemble_components(): return 1','assemble_components(): return 2')
+        after = self.manifests('b' * 40)
+        self.assertEqual(set(), self.changed(before, after))
+        self.assertTrue(all(row['reusable'] for row in after.values()))
+
+    def test_linked_discovery_and_shared_dependency_close_real_consumers(self):
+        before = self.manifests()
+        self.files['Portal/new.cshtml'] = 'new linked view'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Shared/shared.cs'] = 'changed shared'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Portal/private.cs'] = 'changed portal only'
+        self.assertEqual({'portal'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        del self.files['Portal/new.cshtml']
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+
+    def test_toolchain_and_authority_change_reject_affected_old_identity(self):
+        before = self.manifests()
+        self.files['global.json'] = '{"sdk":"changed"}'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace('build_component(): return 1','build_component(): return 2')
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+
+    def test_unknown_input_blocks_only_its_consumer_reuse(self):
+        self.files['Client/Client.csproj'] = '<Project><Import Project="$(Unproven)/input.props" /></Project>'
+        rows = self.manifests()
+        self.assertFalse(rows['client']['reusable'])
+        self.assertEqual(['unresolved_msbuild_input:Client/Client.csproj'], rows['client']['invalidationReasons'])
+        self.assertTrue(rows['portal']['reusable'])
+        self.assertTrue(rows['website']['reusable'])
+
+    def test_cli_semantics_are_component_inputs(self):
+        self.files['scripts/release-package.py'] += 'def main(): return build_component()\n'
+        before = self.manifests()
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace(
+            'def main(): return build_component()', 'def main():\n import os\n os.environ["BUILD_SETTING"] = "changed"\n return build_component()')
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+
+    def test_unknown_sdk_property_and_custom_task_cannot_hide_external_input(self):
+        for xml in ('<PropertyGroup><ApplicationManifest>../external.manifest</ApplicationManifest></PropertyGroup>',
+                    '<Target Name="Custom"><CustomTask Input="../external.txt" /></Target>'):
+            with self.subTest(xml=xml):
+                self.files['Client/Client.csproj'] = '<Project>' + xml + '</Project>'
+                rows = self.manifests()
+                self.assertFalse(rows['client']['reusable'])
+                self.assertTrue(rows['portal']['reusable'])
+                self.assertTrue(rows['website']['reusable'])
+
+    def test_checkout_and_compiler_config_discovery_invalidate_real_consumers(self):
+        before = self.manifests()
+        self.files['.gitattributes'] = '*.cs text eol=lf'
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+        for path in ('.editorconfig', 'new.globalconfig', 'NuGet.config'):
+            before = self.manifests()
+            self.files[path] = 'new configuration'
+            self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+
+    def test_nested_import_directory_and_new_project_ancestors_are_closed(self):
+        self.files['Client/Client.csproj'] = '<Project><Import Project="build/input.props" /></Project>'
+        self.files['Client/build/input.props'] = '<Project><Import Project="$(MSBuildThisFileDirectory)next.props" /></Project>'
+        self.files['Client/build/next.props'] = '<Project><ItemGroup><ProjectReference Include="../../Extra/App.csproj" /></ItemGroup></Project>'
+        self.files['Extra/App.csproj'] = '<Project />'
+        self.files['Extra/Directory.Build.props'] = '<Project><ItemGroup><Content Include="../external.txt" /></ItemGroup></Project>'
+        self.files['external.txt'] = 'original'
+        before = self.manifests()
+        self.assertTrue(before['client']['reusable'])
+        self.assertIn('external.txt', before['client']['inputs'])
+        self.files['external.txt'] = 'changed'
+        self.assertEqual({'client'}, self.changed(before, self.manifests()))
+
+    def test_static_external_inputs_are_recorded_without_claiming_executable_closure(self):
+        self.files['Website/scripts/build.mjs'] = "import x from '../../Shared/external.mjs'; const x=resolve(repoRoot,'Design/tokens.json');"
+        self.files['Shared/external.mjs'] = 'export default 1'
+        self.files['Design/tokens.json'] = '{}'
+        before = self.manifests()
+        self.assertFalse(before['website']['reusable'])
+        for path in ('Shared/external.mjs', 'Design/tokens.json'):
+            self.files[path] += 'changed'
+            self.assertIn('website', self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Portal/private.cs'] += 'changed'
+        self.assertNotIn('website', self.changed(before, self.manifests()))
+
+
 class EarlyReadinessEvidenceTests(unittest.TestCase):
     def setUp(self):
         import datetime
