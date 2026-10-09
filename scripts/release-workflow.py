@@ -137,13 +137,17 @@ def main():
     generated = render(text, targets)
     package_text = PACKAGE_WORKFLOW.read_text()
     package_generated = render_components(package_text, targets)
+    # The protected renderer owns writes to the release workflow only.
+    # Component downloads are checked against the same inventory without
+    # expanding this renderer's file-write authority.
+    if package_generated != package_text:
+        raise SystemExit('Component downloads drifted from canonical inventory; update the reviewed architecture block')
     if args.check:
-        if generated != text or package_generated != package_text:
+        if generated != text:
             raise SystemExit('Publication steps drifted from the canonical release inventory; run scripts/release-workflow.py')
         print('Canonical target publication steps match inventory.')
     else:
         WORKFLOW.write_text(generated)
-        PACKAGE_WORKFLOW.write_text(package_generated)
 
 
 if __name__ == '__main__':
