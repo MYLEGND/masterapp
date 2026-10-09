@@ -5141,7 +5141,14 @@ def trusted_component_run(repository, run, candidate):
         return False
     if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, producer],
                       capture_output=True, check=False).returncode:
-        return False
+        # GitHub also refreshes the PR base SHA. Recover only an actual protected
+        # first-parent ancestor, never an arbitrary candidate branch ancestor.
+        history = subprocess.check_output(['git', 'rev-list', '--first-parent', approved], text=True).splitlines()
+        approved = next((sha for sha in history if re.fullmatch('[a-f0-9]{40}', sha) and sha != producer and
+            subprocess.run(['git', 'merge-base', '--is-ancestor', sha, producer],
+                           capture_output=True, check=False).returncode == 0), None)
+        if approved is None:
+            return False
     # Includes the entire approved workflow so another candidate-controlled job
     # cannot become an artifact writer. Authority changes use governed bootstrap.
     paths = PACKAGE_AUTHORITY_PATHS | {'scripts/validation-resume.py'}

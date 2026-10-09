@@ -497,6 +497,26 @@ class ComponentEvidenceIntegrationTests(unittest.TestCase):
             self.run['pull_requests'][0]['base']['ref']='unapproved'
             self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
 
+    def test_advanced_pr_base_uses_only_approved_first_parent_ancestor(self):
+        current, historical = '8'*40, '0'*40
+        url='https://api.github.com/repos/owner/repo'
+        self.run['pull_requests']=[dict(base=dict(ref=m.TRUSTED_PR_BASE,sha=current,repo=dict(url=url)),
+            head=dict(sha=self.candidate,repo=dict(url=url)))]
+        def ancestry(args, **kwargs):
+            return SimpleNamespace(returncode=0 if args[-2:] in ([self.producer,self.candidate], [historical,self.producer]) else 1)
+        with patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m.subprocess,'run',side_effect=ancestry), \
+             patch.object(m.subprocess,'check_output',return_value=current+'\n'+historical+'\n') as history, \
+             patch.object(m,'git_show_file',return_value='approved executor') as source:
+            self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            history.assert_called_once_with(['git','rev-list','--first-parent',current],text=True)
+            self.assertTrue(any(call.args[0]==historical for call in source.call_args_list))
+            source.side_effect=lambda sha,path: 'tampered' if sha==self.producer else 'approved'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            source.side_effect=None
+            history.return_value=current+'\n'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+
     def test_arbitrary_execution_hash_and_later_upload_are_rejected(self):
         original=self.receipt['executionIdentity']
         self.receipt['executionIdentity']='9'*64
