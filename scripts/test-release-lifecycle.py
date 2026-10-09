@@ -515,8 +515,23 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
                 value = super().text(revision, path)
                 if path == "scripts/release-lifecycle.py":
                     return value.replace(
-                        '        return ancestor(old_revision, new_revision)\n',
-                        '        return True\n',
+                        '        return (ancestor(old_revision, new_revision) and\n',
+                        '        return (True and\n',
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("strict descendant target-scoped stale-lease supersession", result)
+
+    def test_guard_rejects_removing_receipt_required_for_descendant_lease(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        "                    api, run, record, required_targets=overlap))",
+                        "                    api, run, record))",
                     )
                 return value
         result = m.candidate_control_plane_integrity(
