@@ -764,7 +764,7 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertNotIn("release_control_only_path", package_plan)
         self.assertNotIn('needs: validate\n    if: github.event_name', workflow)
         self.assertIn('component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}', workflow)
-        self.assertIn("if: needs.validated-release-package-plan.outputs.components_needed == 'true'", workflow)
+        self.assertIn("needs.validated-release-package-plan.outputs.components_needed == 'true'", workflow)
         self.assertIn('scripts/validation-resume.py component-sources', workflow)
         self.assertIn('artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}', workflow)
         self.assertIn('Record immutable component source', workflow)
@@ -776,6 +776,8 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('retention-days: 90', workflow)
         self.assertIn('Run release web contract regressions', workflow)
         component_block = workflow.split('  validated-release-package-components:\n', 1)[1].split('  validated-release-package:\n', 1)[0]
+        self.assertIn("always() && !cancelled()", component_block)
+        self.assertIn("needs.validated-release-package-plan.result == 'success'", component_block)
         self.assertNotIn('scripts/release-package.py build \\', component_block)
         final_block = workflow.split('  validated-release-package:\n', 1)[1].split('  wake-release-lifecycle-after-package-backfill:\n', 1)[0]
         self.assertNotIn('dotnet publish', final_block)

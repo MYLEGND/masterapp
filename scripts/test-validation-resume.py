@@ -807,6 +807,46 @@ class ArtifactEvidenceReadRetryTests(unittest.TestCase):
         self.assertEqual((1, 0, 'Artifact evidence read unavailable'), (count, sleeps, error))
 
 
+class PackageJobSchedulingTests(unittest.TestCase):
+    def test_backfill_skipped_ancestors_do_not_skip_required_components(self):
+        import re
+        blocks = m._job_blocks((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())
+        def admitted(job, required='true', components='success', plan='success', cancelled=False):
+            expression = re.search(r"    if: (.*?)\n    runs-on:", blocks[job], re.S).group(1).removeprefix('>-').strip()
+            # Model GitHub's implicit success() across the skipped backfill
+            # probe/rehearsal ancestors. Removing explicit status handling fails.
+            if not re.search(r'\b(always|cancelled|success|failure)\(', expression):
+                return False
+            fields = {
+                'needs.validated-release-package-plan.result': plan,
+                'needs.validated-release-package-plan.outputs.components_needed': required,
+                'needs.validated-release-package-components.result': components,
+                'github.event_name': 'workflow_dispatch',
+                'inputs.package_revision': 'a' * 40,
+            }
+            for key in sorted(fields, key=len, reverse=True):
+                expression = expression.replace(key, repr(fields[key]))
+            expression = expression.replace('always()', 'True').replace('cancelled()', repr(cancelled))
+            expression = expression.replace('&&', ' and ').replace('||', ' or ')
+            expression = re.sub(r'!(?!=)', ' not ', expression)
+            return bool(eval(' '.join(expression.split()), {'__builtins__': {}}, {}))
+        component = 'validated-release-package-components'
+        assembly = 'validated-release-package'
+        self.assertTrue(admitted(component))
+        self.assertTrue(admitted(assembly))
+        self.assertFalse(admitted(assembly, components='skipped'))
+        self.assertFalse(admitted(component, required='false'))
+        self.assertTrue(admitted(assembly, required='false', components='skipped'))
+        for job in (component, assembly):
+            for required in ('', 'unknown'):
+                self.assertFalse(admitted(job, required=required))
+            for plan in ('failed', 'skipped', 'cancelled'):
+                self.assertFalse(admitted(job, plan=plan))
+            self.assertFalse(admitted(job, cancelled=True))
+        for result in ('failure', 'cancelled', ''):
+            self.assertFalse(admitted(assembly, components=result))
+
+
 class Step5JobSchedulingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

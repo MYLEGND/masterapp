@@ -33,6 +33,8 @@ Evidence transport failures retry bounded read-only requests. If the planner sti
 
 A failed validation or deployment preserves all unaffected successful evidence. Repair the canonical failed source on the retained branch, then resume from the invalidated gate. Full reruns occur only when evidence cannot safely be reused.
 
+Package backfill uses explicit job status conditions so intentionally skipped PR-only probe/rehearsal ancestors cannot suppress required component builds. Assembly accepts a skipped component matrix only when the authenticated planner explicitly requires no component execution. A completed backfill with unavailable compatible package evidence blocks repeated dispatch under the same approved authority and retains its run/attempt identity. Historical dispatch records do not expose the requested package revision, so this guard conservatively covers that authority's backfill scope. Reconcile retained artifacts and the exact failure before resuming failed jobs; a reviewed authority correction receives a fresh eligibility assessment. This does not clear production ownership or authorize a mutation retry.
+
 If a merged change needs deployment correction, the approved branch remains the source authority and a new explicit release request or corrected approved descendant is used. No branch promotion, merge-back, parity reconciliation, or second release branch exists.
 
 ## Validation

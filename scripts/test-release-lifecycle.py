@@ -2959,6 +2959,48 @@ class WorkerAdmissionPackageIdentity(unittest.TestCase):
 
 
 class HistoricalReleaseRecovery(unittest.TestCase):
+    def test_backfill_terminal_attempt_stops_equivalent_dispatch_for_both_callers(self):
+        approved = 'a' * 40
+        pending = dict(authorizationSha='b' * 40, applicationRevision='c' * 40,
+                       targets=[canonical_name('portal')], sourcePr=385)
+        for conclusion in ('failure', 'cancelled', 'success', 'timed_out'):
+            api = Api()
+            run = dict(id=73, run_attempt=2, head_sha=approved, head_branch=m.APPROVED,
+                       head_repository=dict(full_name=api.repo), event='workflow_dispatch',
+                       path='.github/workflows/' + m.PACKAGE_VALIDATION,
+                       status='completed', conclusion=conclusion)
+            api.pages_map['actions/runs?head_sha=' + approved] = [run]
+            with patch.object(m, '_validated_package_evidence', return_value={'reusable': False}), \
+                 patch.object(m, '_package_backfill_preflight', return_value={'allowed': True}), \
+                 patch.object(m, 'pending_automatic_releases', return_value=[pending]), \
+                 patch.object(m, 'pending_legacy_release_authorization', return_value=pending):
+                automatic = m.dispatch_pending_automatic_release(api, approved)
+                legacy = m.dispatch_pending_legacy_release(api, approved)
+                self.assertEqual('blocked', automatic['pendingCandidates'][0]['packageBackfill'])
+                self.assertEqual('blocked', legacy['packageBackfill'])
+                self.assertEqual(73, legacy['backfillRunId'])
+                self.assertEqual(2, legacy['backfillAttempt'])
+                self.assertEqual([], api.dispatched)
+
+    def test_backfill_lookup_scopes_authority_and_rejects_unproven_identity(self):
+        api = Api()
+        approved = 'a' * 40
+        endpoint = 'actions/runs?head_sha=' + approved
+        run = dict(id=73, run_attempt=1, head_sha=approved, head_branch=m.APPROVED,
+                   head_repository=dict(full_name=api.repo), event='workflow_dispatch',
+                   path='.github/workflows/' + m.PACKAGE_VALIDATION,
+                   status='in_progress', conclusion=None)
+        api.pages_map[endpoint] = [run]
+        self.assertEqual('already queued or running', m._package_backfill_disposition(api, approved)['packageBackfill'])
+        for changes in ({'head_repository': {'full_name': 'other/repo'}}, {'run_attempt': None}, {'id': None}):
+            api.pages_map[endpoint] = [{**run, **changes}]
+            self.assertEqual('blocked', m._package_backfill_disposition(api, approved)['packageBackfill'])
+        for changes in ({'head_sha': 'b' * 40}, {'event': 'pull_request'}, {'path': 'other.yml'}):
+            api.pages_map[endpoint] = [{**run, **changes}]
+            self.assertIsNone(m._package_backfill_disposition(api, approved))
+        api.pages_map[endpoint] = [run]
+        self.assertIsNone(m._package_backfill_disposition(api, 'b' * 40))
+
     @patch.object(m, "release_proven", return_value=False)
     @patch.object(m, "release_targets")
     @patch.object(m, "candidate_validation", return_value=None)
@@ -3050,7 +3092,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_package_backfill_disposition", return_value=None)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
     def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __, ___):
@@ -3074,7 +3116,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_package_backfill_disposition", return_value={"packageBackfill": "already queued or running"})
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
     def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __, ___):
@@ -3092,7 +3134,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual([], api.dispatched)
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_package_backfill_disposition", return_value=None)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
     def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __, ___):
@@ -3114,7 +3156,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_package_backfill_disposition", return_value={"packageBackfill": "already queued or running"})
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
     def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __, ___):

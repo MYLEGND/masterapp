@@ -776,7 +776,10 @@ jobs:
   validated-release-package-components:
     needs: validated-release-package-plan
     name: validated-release-package-components (${{ matrix.component }})
-    if: needs.validated-release-package-plan.outputs.components_needed == 'true'
+    if: >-
+      always() && !cancelled() &&
+      needs.validated-release-package-plan.result == 'success' &&
+      needs.validated-release-package-plan.outputs.components_needed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -872,10 +875,13 @@ jobs:
       - validated-release-package-components
     name: validated-release-package
     if: >-
-      always() &&
+      always() && !cancelled() &&
       (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')) &&
       needs.validated-release-package-plan.result == 'success' &&
-      (needs.validated-release-package-components.result == 'success' || needs.validated-release-package-components.result == 'skipped')
+      ((needs.validated-release-package-components.result == 'success' &&
+        needs.validated-release-package-plan.outputs.components_needed == 'true') ||
+       (needs.validated-release-package-components.result == 'skipped' &&
+        needs.validated-release-package-plan.outputs.components_needed == 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

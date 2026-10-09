@@ -1876,17 +1876,39 @@ def _validated_package_evidence(api, revision):
     )
 
 
-def _package_backfill_running(api, approved):
+def _package_backfill_disposition(api, approved):
+    """Bound recovery at the existing approved workflow identity.
+
+    Historical dispatch records do not expose package_revision. Until exact
+    package intent can be authenticated, a prior run conservatively owns this
+    authority's backfill scope. Completion is not permission to schedule again.
+    """
     runs = api.pages(
         'actions/runs?head_sha=' + urllib.parse.quote(approved, safe=''),
         'workflow_runs',
     )
-    return any(
-        run.get('path', '').split('@')[0] == '.github/workflows/' + PACKAGE_VALIDATION
-        and run.get('event') == 'workflow_dispatch'
-        and run.get('status') != 'completed'
-        for run in runs
-    )
+    matching = [run for run in runs
+                if run.get('path', '').split('@')[0] == '.github/workflows/' + PACKAGE_VALIDATION
+                and run.get('event') == 'workflow_dispatch'
+                and run.get('head_sha') == approved]
+    if not matching:
+        return None
+    if any(run.get('head_branch') != APPROVED
+           or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+           or type(run.get('id')) is not int or run['id'] < 1
+           or type(run.get('run_attempt')) is not int or run['run_attempt'] < 1
+           for run in matching):
+        return {'packageBackfill': 'blocked',
+                'retained': 'Existing package backfill identity is incomplete; reconcile run authority before any dispatch'}
+    active = [run for run in matching if run.get('status') != 'completed']
+    run = max(active or matching, key=lambda row: row['id'])
+    evidence = {'backfillRunId': run['id'], 'backfillAttempt': run['run_attempt'],
+                'backfillConclusion': run.get('conclusion'), 'backfillAuthority': approved}
+    if active:
+        return {**evidence, 'packageBackfill': 'already queued or running'}
+    return {**evidence, 'packageBackfill': 'blocked',
+            'retained': 'Prior backfill completed without available compatible package evidence; repeated dispatch prohibited',
+            'resume': 'Reconcile retained artifacts and classify the exact failed run; resume only its failed jobs when safe, or install a reviewed authority correction'}
 
 
 def _package_backfill_preflight(api, revision, approved):
@@ -2087,8 +2109,9 @@ def dispatch_pending_automatic_release(api, approved):
                     'retained': 'Historical package backfill is ineligible under current approved application lineage',
                 })
                 continue
-            if _package_backfill_running(api, approved):
-                retained.append({**pending, 'packageBackfill': 'already queued or running'})
+            backfill = _package_backfill_disposition(api, approved)
+            if backfill:
+                retained.append({**pending, **backfill})
                 continue
             api.dispatch(PACKAGE_VALIDATION, {'package_revision': pending['applicationRevision']})
             return {'state': 'WAITING_FOR_DEPENDENCY', 'packageBackfill': 'dispatched for exact green automatic application revision',
@@ -2124,11 +2147,9 @@ def dispatch_pending_legacy_release(api, approved):
                 'retained': 'Historical release package backfill is ineligible under current approved application lineage',
                 **pending,
             }
-        if _package_backfill_running(api, approved):
-            return {
-                'packageBackfill': 'already queued or running',
-                **pending,
-            }
+        backfill = _package_backfill_disposition(api, approved)
+        if backfill:
+            return {**pending, **backfill}
         api.dispatch(PACKAGE_VALIDATION, {
             'package_revision': pending['applicationRevision'],
         })
