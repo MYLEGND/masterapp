@@ -1357,6 +1357,40 @@ jobs:
         self.assertEqual((), m.release_targets_for_paths([path]))
         self.assertTrue(m.release_control_only_path(path))
 
+    def test_readiness_tooling_classification_preserves_validation_and_package_authority(self):
+        adapter = (
+            "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
+            "scripts/PackageRestoreProbe/Program.cs",
+        )
+        paths = adapter + (
+            "scripts/release-migration-history-audit.py",
+            "scripts/test-release-migration-history-audit.py",
+            "scripts/test-release-migration-probe-retry.py",
+            "scripts/test-release-retired-original-evidence.py",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue(m.release_control_only_path(path))
+                self.assertTrue(m.release_control_authority_path(path))
+                self.assertEqual((), m.release_targets_for_paths([path]))
+                topology = m.required_validation_topology([path])
+                self.assertTrue(topology["releaseControlAuthorityChange"])
+                self.assertIn(".github/workflows/masterapp-platform-architecture-validation.yml", topology["required"])
+                self.assertIn(".github/workflows/approved-release-security-validation.yml", topology["required"])
+        for path in adapter:
+            self.assertIn(path, m.PACKAGE_AUTHORITY_PATHS)
+            self.assertTrue(m.package_canary_input_path(path))
+        for path in (
+            "scripts/PackageRestoreProbe/Unexpected.cs",
+            "scripts/release-migration-history-audit-new.py",
+            "AgentPortal/Program.cs",
+            "Infrastructure/Migrations/NewMigration.cs",
+        ):
+            with self.subTest(unclassified=path):
+                self.assertFalse(m.release_control_only_path(path))
+                self.assertTrue(m.package_canary_input_path(path))
+                self.assertTrue(m.release_targets_for_paths([path]))
+
     def test_ai_governance_files_never_select_application_publication(self):
         paths = [
             ".github/CODEOWNERS",
