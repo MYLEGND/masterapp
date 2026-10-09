@@ -524,6 +524,36 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         )
         self.assertIn("strict descendant target-scoped stale-lease supersession", result)
 
+    def test_guard_rejects_removing_receipt_required_for_descendant_lease(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        "        api, run, record, required_targets=overlap)",
+                        "        api, run, record)",
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("per-target receipt gate for descendant leases", result)
+
+    def test_guard_rejects_bypassing_receipt_gate_at_admission(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                value = super().text(revision, path)
+                if path == "scripts/release-lifecycle.py":
+                    return value.replace(
+                        "                and _forward_supersession_receipt_proven(api, run, record, candidate)\n",
+                        "                and True\n",
+                    )
+                return value
+        result = m.candidate_control_plane_integrity(
+            Drift(), {"head": {"sha": "b" * 40}}, ["scripts/release-lifecycle.py"]
+        )
+        self.assertIn("fail-closed live-provenance lease discharge", result)
+
     def test_guard_rejects_ephemeral_target_outcome_transaction_gate(self):
         class Drift(Api):
             def text(self, revision, path):
@@ -2595,7 +2625,8 @@ class ResourceAdmission(unittest.TestCase):
             resources=self.candidate['resources'],
         )
         self.candidate['applicationRevision'] = 'd' * 40
-        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+        with self.operation_success_receipts('c' * 40, 'client'), \
+             patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
@@ -2620,7 +2651,8 @@ class ResourceAdmission(unittest.TestCase):
         )
         self.assertIn('read/schema/masterapp', self.prior['resources'])
         self.assertIn('write/schema/masterapp', self.candidate['resources'])
-        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+        with self.operation_success_receipts('c' * 40, 'client'), \
+             patch.object(m, '_admission_records', return_value=[self.prior]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
@@ -2656,7 +2688,8 @@ class ResourceAdmission(unittest.TestCase):
             'selectedTargets': [canonical_name('portal')],
             'resources': self.resources(['AgentPortal/Program.cs']),
         }
-        with patch.object(m, '_admission_records', return_value=[old]), \
+        with self.operation_success_receipts('c' * 40, 'portal'), \
+             patch.object(m, '_admission_records', return_value=[old]), \
              patch.object(m, '_admission_settled', return_value=False), \
              patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
              patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
@@ -2665,6 +2698,56 @@ class ResourceAdmission(unittest.TestCase):
             self.assertEqual([], m.admission_conflicts(self.api, portal_candidate, current_run=99))
         lineage.assert_called_with('c' * 40, 'd' * 40)
         observed.assert_not_called()
+
+    def test_unresolved_protect_upload_cannot_be_superseded_by_newer_revision(self):
+        self.run.update(status='completed', conclusion='failure')
+        old_paths = ['AgentPortal/Program.cs', 'Protect-Website/Program.cs']
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('portal'), canonical_name('protect')],
+            resources=self.resources(old_paths),
+        )
+        self.candidate.update(
+            applicationRevision='d' * 40,
+            selectedTargets=[canonical_name('protect')],
+            resources=self.resources(['Protect-Website/Program.cs']),
+        )
+        # Portal has a verifiable success receipt; Protect has an unresolved
+        # operation intent and must not be released merely by newer ancestry.
+        with self.operation_success_receipts('c' * 40, 'portal'), \
+             patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('no live-only shortcut')):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+            self.assertEqual([98], [item['runId'] for item in blocked])
+            # An independently settled sibling may proceed without
+            # falsely claiming that Protect is settled too.
+            self.candidate.update(
+                selectedTargets=[canonical_name('portal')],
+                resources=self.resources(['AgentPortal/Program.cs']),
+            )
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_descendant_with_no_operation_success_receipt_remains_blocked(self):
+        self.run.update(status='completed', conclusion='failure')
+        self.prior.update(
+            applicationRevision='c' * 40,
+            selectedTargets=[canonical_name('client')],
+            resources=self.candidate['resources'],
+        )
+        self.candidate['applicationRevision'] = 'd' * 40
+        self.api.pages_map['actions/runs/98/artifacts'] = []
+        with patch.object(m, '_admission_records', return_value=[self.prior]), \
+             patch.object(m, '_admission_settled', return_value=False), \
+             patch.object(m, '_admission_nonmutating_terminal', return_value=False), \
+             patch.object(m, '_admission_superseded_by_terminal_success', return_value=False), \
+             patch.object(m, 'ancestor', return_value=True), \
+             patch.object(m, 'live_revisions', side_effect=AssertionError('no live-only shortcut')):
+            blocked = m.admission_conflicts(self.api, self.candidate, current_run=99)
+        self.assertEqual([98], [item['runId'] for item in blocked])
 
     def test_forward_supersession_rejects_divergence_and_auxiliary_writes(self):
         self.run.update(status='completed', conclusion='failure')

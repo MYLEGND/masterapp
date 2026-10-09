@@ -4042,11 +4042,11 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
             self.assertFalse(m.release_attempt_never_entered(self.omitted, source))
         self.assertTrue(m.release_attempt_never_entered(self.skipped))
 
-    def history(self, attempts, *, total_extra=0, untrusted=False, run_attempt=1, malformed_attempt=False, missing_count=False):
+    def history(self, attempts, *, total_extra=0, untrusted=False, run_attempt=1, malformed_attempt=False, missing_count=False, status="completed"):
         prior = {'id': 8, 'head_branch': m.TRUSTED_PR_BASE, 'event': 'workflow_dispatch',
                  'head_repository': {'full_name': 'owner/repo'}, 'head_sha': 'b' * 40,
                  'path': '.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW,
-                 'run_attempt': len(attempts), 'status': 'completed'}
+                 'run_attempt': len(attempts), 'status': status}
         if malformed_attempt:
             prior['run_attempt'] = run_attempt
         if untrusted:
@@ -4082,6 +4082,27 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
             if kind == 'transaction':
                 return m.release_transaction_plan_history('owner/repo', plan_id, revision, targets, 99, 1, 'token')
             return m.release_operation_history('owner/repo', 'op', revision, next(iter(targets)), 99, 1, 'token')
+
+    def test_terminal_zero_job_attempt_is_not_a_missing_publication_owner(self):
+        for kind in ('transaction', 'operation'):
+            self.assertIsNone(self.check_history(kind, [self.skipped, []]))
+            self.assertIsNone(self.check_history(kind, [[]]))
+
+    def test_active_empty_attempt_and_incomplete_inventory_remain_unproven(self):
+        for options in ({'status': 'in_progress'}, {'total_extra': 1}, {'missing_count': True}):
+            with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                self.check_history('transaction', [[]], **options)
+        self.assertIsNone(self.check_history('transaction', [[], self.skipped], status='in_progress'))
+
+    def test_empty_later_attempt_does_not_erase_earlier_publication(self):
+        entered = [dict(name='release', status='completed', conclusion='failure', steps=[
+            dict(name='Prepare complete immutable release transaction', status='completed', conclusion='success')])]
+        with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven, 'Original transaction plan is missing'):
+            self.check_history('transaction', [entered, []])
+
+    def test_missing_owner_reason_identifies_exact_run_and_attempt(self):
+        with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven, 'run=8 attempt=1'):
+            self.check_history('transaction', [[dict(name='admission', conclusion='failure')]])
 
     def test_both_history_owners_accept_exact_proven_nonentry(self):
         for kind in ['transaction', 'operation']:
