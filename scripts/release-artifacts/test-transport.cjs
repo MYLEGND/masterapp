@@ -131,6 +131,20 @@ test('lost upload acknowledgment reconciles identical content without duplicate 
   assert.equal(client.state.downloads, 1);
 });
 
+test('readiness rerun intent uses canonical immutable transport and rejects widened payloads', async () => {
+  const client = durableClient({lostAck: true});
+  const intent = {schemaVersion: 1, phase: 'intent', operationId: 'e'.repeat(64),
+    candidateRevision: 'a'.repeat(40), executionAuthority: 'b'.repeat(40),
+    targetRun: 12, targetAttempt: 1, targetJob: 34, producingRun: 56, producingAttempt: 1};
+  const artifact = 'legend-readiness-recovery-' + intent.operationId;
+  assert.deepEqual(await publish(client, artifact, intent), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 1);
+  await assert.rejects(publish(client, artifact, {...intent, targetJob: '34'}), /Invalid/);
+  await assert.rejects(publish(client, artifact, {...intent, command: 'arbitrary'}), /Invalid/);
+  assert.equal(client.state.uploads, 1);
+});
+
 test('readback failure and worker restart preserve prior upload', async () => {
   const client = durableClient({failReadback: true});
   await assert.rejects(publish(client, name, record), /Temporary read failure/);

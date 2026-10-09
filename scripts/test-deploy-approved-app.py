@@ -442,15 +442,54 @@ class PackageContractTests(unittest.TestCase):
 
 
     def test_isolated_migration_component_owns_its_project_restore(self):
-        source = (ROOT / 'release-package.py').read_text()
-        block = source.split('def build_migration_bundle(output: Path):', 1)[1].split(
-            '\ndef ', 1
-        )[0]
-        restore = block.index('run("dotnet", "restore", "AgentPortal/AgentPortal.csproj"')
-        bundle = block.index('"migrations", "bundle"')
-        self.assertLess(restore, bundle)
-        self.assertIn('previously serialized app publish', block)
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            (output / package.MIGRATION_BUNDLE).write_bytes(b'isolated fixture')
+            with patch.object(package, 'run') as execute:
+                package.build_migration_bundle(output)
+            calls = [call.args for call in execute.call_args_list]
+            startup = 'scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj'
+            self.assertEqual(('dotnet', 'restore', startup, '--nologo'), calls[0])
+            self.assertEqual(('dotnet', 'tool', 'restore'), calls[1])
+            self.assertEqual(startup, calls[2][calls[2].index('--startup-project') + 1])
+            self.assertEqual(3, len(calls))
+            self.assertNotIn('AgentPortal/AgentPortal.csproj', sum((list(row) for row in calls), []))
 
+
+    def test_rehearsed_migration_component_is_promoted_without_rebuilding(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        revision, body = 'a' * 40, b'exact validated migration bytes'
+        digest = hashlib.sha256(body).hexdigest()
+        receipt = dict(schema=package.COMPONENT_SCHEMA, applicationReleaseSha=revision,
+            packageContractSha256='b' * 64, packageIdentity='c' * 64,
+            component='migration', file=package.MIGRATION_BUNDLE, sha256=digest)
+        proof = {'receipt': {'rehearsalSource': {'runId': 91, 'artifact': 'retained-rehearsal', 'artifactId': 123},
+                             'rehearsal': {'bundleDigest': digest}}}
+        def download(repo, run, name, root, *, artifact_id):
+            self.assertEqual(123, artifact_id)
+            self.assertEqual((91, 'retained-rehearsal'), (run, name))
+            (root / 'migration').mkdir()
+            (root / 'migration' / package.MIGRATION_BUNDLE).write_bytes(body)
+            (root / 'migration/migration.component.json').write_text(json.dumps(receipt))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REPOSITORY': 'MYLEGND/masterapp'}), \
+             patch.object(package, 'validate_revision', return_value=revision), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package._RELEASE_AUTHORITY, 'require_readiness', return_value=proof), \
+             patch.object(package._RELEASE_AUTHORITY, '_download_run_artifact', side_effect=download) as restore, \
+             patch.object(package, 'build_migration_bundle') as build:
+            output = Path(temporary)
+            self.assertEqual(receipt, package.build_component(revision, 'migration', output))
+            self.assertEqual(body, (output / package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual('reused-success', json.loads((output / 'migration.reuse.json').read_text())['state'])
+            self.assertEqual(1, restore.call_count)
+            build.assert_not_called()
 
     def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
@@ -852,6 +891,50 @@ class PreparedTransactionTests(unittest.TestCase):
                 deploy.read_transaction_plan(path, 'd' * 40)
             with self.assertRaises(ValueError):
                 deploy.read_transaction_plan(path, 'a' * 40, 'client')
+
+
+class DeploymentReadinessTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('readiness_prepublication_test', ROOT / 'release-prepublication.py')
+        self.owner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.owner)
+        self.targets = [row['releaseName'] for row in deploy.TARGETS.values()]
+        self.profile = deploy._RELEASE_AUTHORITY.release_runtime_profile(self.targets)
+        self.env = {'RELEASE_RESOURCE_GROUP': self.profile['resourceGroup'],
+                    'DATABASE_AUTHORITY': self.profile['databaseAuthority']}
+
+    def test_target_readiness_uses_only_provider_reads_and_canonical_configuration(self):
+        calls = []
+        def observe(*args):
+            calls.append(args)
+            if args[:2] == ('webapp', 'show'):
+                name = args[args.index('-n') + 1]
+                return {'id': '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/' + name, 'state': 'Running'}
+            self.assertEqual(('webapp', 'log', 'deployment', 'list'), args[:4])
+            return []
+        with patch.dict(os.environ, self.env), patch.object(self.owner, 'az_json', side_effect=observe), \
+             patch.object(self.owner, 'source_authority') as source, patch.object(self.owner, 'app_settings'), \
+             patch.object(self.owner, 'configure_target') as mutate:
+            result = self.owner.deployment_readiness(self.targets)
+        self.assertEqual('executed-success', result['state'])
+        self.assertEqual(set(self.targets), {row['target'] for row in result['targets']})
+        self.assertEqual(2 * len(self.targets), len(calls))
+        self.assertEqual(1, source.call_count)
+        mutate.assert_not_called()
+
+    def test_missing_target_blocks_without_configuration_mutation(self):
+        with patch.dict(os.environ, self.env), patch.object(self.owner, 'az_json', return_value={}), \
+             patch.object(self.owner, 'source_authority'), patch.object(self.owner, 'configure_target') as mutate:
+            with self.assertRaisesRegex(RuntimeError, 'missing or not running'):
+                self.owner.deployment_readiness(self.targets[:1])
+        mutate.assert_not_called()
+
+    def test_wrong_environment_is_rejected_before_provider_access(self):
+        with patch.dict(os.environ, self.env | {'RELEASE_RESOURCE_GROUP': 'wrong'}), \
+             patch.object(self.owner, 'az_json') as provider:
+            with self.assertRaisesRegex(RuntimeError, 'canonical inventory'):
+                self.owner.deployment_readiness(self.targets)
+        provider.assert_not_called()
 
 
 class SettingsIdempotenceTests(unittest.TestCase):

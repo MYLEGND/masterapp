@@ -13,6 +13,300 @@ spec.loader.exec_module(m)
 
 
 
+class EarlyReadinessEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.now = datetime.datetime(2026, 10, 9, tzinfo=datetime.timezone.utc)
+        self.expected = {'schemaVersion': 1, 'identity': 'a' * 64}
+        self.receipt = dict(self.expected, state='executed-success',
+            observedUtc=self.now.isoformat(), databaseIdentity='b' * 64,
+            baselineIdentity='f' * 64,
+            schemaIdentity='c' * 64, contractDigest='d' * 64, pendingCount=0,
+            mutationAdmission='not-required', deploymentReadiness='proven')
+        self.repo = 'MYLEGND/masterapp'
+        self.approved = '1' * 40
+        self.candidate = '2' * 40
+        repo = {'url': 'https://api.github.com/repos/' + self.repo}
+        self.run = dict(id=42, event='pull_request_target', head_branch='repair/example',
+            head_sha=self.candidate, head_repository={'full_name': self.repo},
+            path='.github/workflows/legend-release-lifecycle.yml',
+            pull_requests=[dict(head=dict(ref='repair/example', sha=self.candidate, repo=repo),
+                                base=dict(ref=m.TRUSTED_PR_BASE, sha=self.approved, repo=repo))])
+
+    def validate(self):
+        return m.validate_readiness_receipt(self.receipt, self.expected, now=self.now)
+
+    def test_failure_classification_requires_successful_exact_attempt_preservation(self):
+        self.run['run_attempt'] = 2
+        name = 'legend-readiness-failure-' + self.candidate + '-a2'
+        artifact = dict(id=19, name=name, expired=False)
+        upload = dict(name='Preserve classified readiness failure', status='completed', conclusion='success')
+        producer = dict(name='readiness-observe', status='completed', conclusion='failure', steps=[upload])
+        failure = dict(schemaVersion=1, candidate=self.candidate, executionAuthority=self.approved,
+            producingRun=42, producingAttempt=2, classification='transient-provider-read')
+        for fault in ('none', 'skipped-upload', 'failed-upload', 'wrong-job', 'successful-job', 'wrong-attempt', 'wrong-authority', 'missing-id'):
+            import copy
+            a, p, f = copy.deepcopy(artifact), copy.deepcopy(producer), dict(failure)
+            if fault == 'skipped-upload': p['steps'][0]['conclusion'] = 'skipped'
+            elif fault == 'failed-upload': p['steps'][0]['conclusion'] = 'failure'
+            elif fault == 'wrong-job': p['name'] = 'candidate-controlled-name'
+            elif fault == 'successful-job': p['conclusion'] = 'success'
+            elif fault == 'wrong-attempt': f['producingAttempt'] = 1
+            elif fault == 'wrong-authority': f['executionAuthority'] = 'f' * 40
+            elif fault == 'missing-id': a.pop('id')
+            with self.subTest(fault=fault), patch.object(m, 'trusted_readiness_run', return_value=True), \
+                 patch.object(m, 'api_get', side_effect=[dict(total_count=1, artifacts=[a]), dict(total_count=1, jobs=[p])]), \
+                 patch.object(m, '_release_history_json', return_value=f):
+                if fault in ('wrong-attempt', 'wrong-authority'):
+                    with self.assertRaisesRegex(ValueError, 'producer identity mismatch'):
+                        m.readiness_failure_kind(self.repo, self.run, self.approved, 'token')
+                else:
+                    result = m.readiness_failure_kind(self.repo, self.run, self.approved, 'token')
+                    self.assertEqual('transient-provider-read' if fault == 'none' else 'untrusted', result)
+
+    def test_compatible_current_receipt_reused_without_execution(self):
+        self.assertIs(self.receipt, self.validate())
+
+    def test_skipped_failed_cancelled_blocked_do_not_prove_readiness(self):
+        for state in ('skipped', 'failed', 'cancelled', 'blocked', 'not-required'):
+            with self.subTest(state=state):
+                self.receipt['state'] = state
+                with self.assertRaisesRegex(ValueError, 'READINESS_NOT_SUCCESSFUL'):
+                    self.validate()
+
+    def test_expired_future_or_naive_time_rejected(self):
+        for stamp, code in [('2026-10-08T23:44:59Z', 'EXPIRED'),
+                            ('2026-10-09T00:00:31Z', 'EXPIRED'),
+                            ('2026-10-09T00:00:00', 'TIME_UNPROVEN'), (None, 'TIME_UNPROVEN')]:
+            with self.subTest(stamp=stamp):
+                self.receipt['observedUtc'] = stamp
+                with self.assertRaisesRegex(ValueError, code): self.validate()
+
+    def test_missing_or_tampered_scope_rejected(self):
+        self.receipt['identity'] = 'e' * 64
+        with self.assertRaisesRegex(ValueError, 'INPUTS_CHANGED'): self.validate()
+
+    def test_missing_count_cannot_hide_pending_migrations(self):
+        for count in (None, -1, True, '0', 10001):
+            with self.subTest(count=count):
+                self.receipt['pendingCount'] = count
+                with self.assertRaisesRegex(ValueError, 'PROOF_INCOMPLETE'): self.validate()
+
+    def test_candidate_contract_cannot_omit_or_reclassify_approved_operations(self):
+        import copy
+        approved = {'schemaVersion': 1, 'migrations': [dict(id='20261007134500_AddFounderAssistantRules',
+            supported=True, columns=[dict(name='Rules', type='nvarchar(max)', nullable=False, default='[]')])]}
+        for kind in ('omit', 'invent', 'supported', 'type', 'nullable', 'default'):
+            contract = copy.deepcopy(approved)
+            if kind == 'omit': contract['migrations'] = []
+            elif kind == 'invent': contract['migrations'][0]['id'] = '20261008134500_Fabricated'
+            elif kind == 'supported': contract['migrations'][0]['supported'] = False
+            else: contract['migrations'][0]['columns'][0][kind] = 'altered'
+            with self.subTest(kind=kind), patch.object(m, 'migration_probe_identity', return_value={'runtimeIdentity': 'a'}):
+                with self.assertRaisesRegex(ValueError, 'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN'):
+                    m.candidate_migration_contract_proven(self.candidate, self.approved, contract, approved)
+
+    def test_changed_discovery_or_runtime_requires_reviewed_extraction_rule(self):
+        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]):
+            with self.assertRaisesRegex(ValueError, 'dependency content changed'):
+                m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
+
+    def test_unchanged_migration_definitions_allow_new_candidate_without_metadata_trust(self):
+        contract = {'schemaVersion': 1, 'migrations': []}
+        with patch.object(m, 'migration_probe_identity', return_value={'runtimeIdentity': 'same'}):
+            self.assertEqual('proven', m.candidate_migration_contract_proven(self.candidate, self.approved, contract, contract)['state'])
+
+    def test_rehearsal_producer_inputs_are_independently_recomputed(self):
+        import copy
+        run = dict(self.run, event='pull_request', path='.github/workflows/' + m.PACKAGE_VALIDATION_WORKFLOW)
+        expected = dict(self.expected, targets=['portal'])
+        with patch.object(m, '_trusted_lineage_run', return_value=True), \
+             patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m, 'readiness_identity', return_value=expected) as compute:
+            self.assertTrue(m.trusted_rehearsal_run(self.repo, run, self.candidate, expected))
+            self.assertEqual([(self.candidate, self.approved, ['portal']),
+                              (self.approved, self.approved, ['portal'])], [call.args for call in compute.call_args_list])
+            compute.return_value = dict(expected, identity='changed-semantics')
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, run, self.candidate, expected))
+            compute.side_effect = [dict(expected, rehearsalExecutionIdentity='candidate-fabricated'),
+                                   dict(expected, rehearsalExecutionIdentity='approved')]
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, run, self.candidate,
+                dict(expected, rehearsalExecutionIdentity='candidate-fabricated')))
+            compute.side_effect = None
+            wrong = copy.deepcopy(run)
+            wrong['pull_requests'][0]['base']['ref'] = 'unapproved'
+            compute.reset_mock()
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, wrong, self.candidate, expected))
+            compute.assert_not_called()
+
+    def test_pending_requires_exact_rehearsal_inputs(self):
+        self.receipt['pendingCount'] = 1
+        self.receipt['mutationAdmission'] = 'proven'
+        with self.assertRaisesRegex(ValueError, 'REHEARSAL_MISSING'): self.validate()
+        self.receipt['rehearsal'] = dict(proven=True, contractDigest='d' * 64,
+            schemaIdentity='c' * 64, baselineIdentity='f' * 64, bundleDigest='e' * 64)
+        self.validate()
+        self.receipt['rehearsal']['schemaIdentity'] = 'f' * 64
+        with self.assertRaisesRegex(ValueError, 'REHEARSAL_MISSING'): self.validate()
+
+    def test_actual_pr_target_metadata_authenticates_base_not_head(self):
+        self.assertTrue(m.trusted_readiness_run(self.repo, self.run, self.approved))
+        self.assertNotEqual(self.approved, self.run['head_sha'])
+
+    def test_fork_wrong_base_and_non_target_event_rejected(self):
+        import copy
+        for kind in ('fork', 'base', 'event', 'head', 'workflow'):
+            run = copy.deepcopy(self.run)
+            if kind == 'fork': run['pull_requests'][0]['head']['repo']['url'] += '-fork'
+            if kind == 'base': run['pull_requests'][0]['base']['sha'] = '3' * 40
+            if kind == 'event': run['event'] = 'pull_request'
+            if kind == 'head': run['head_sha'] = '4' * 40
+            if kind == 'workflow': run['path'] = '.github/workflows/other.yml'
+            with self.subTest(kind=kind):
+                self.assertFalse(m.trusted_readiness_run(self.repo, run, self.approved))
+
+    def test_blocker_stops_planning_before_expensive_work(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate, event='pull_request')
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')), \
+             patch.object(m, '_compute_validation_plan_once') as plan:
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_plan(args)
+            plan.assert_not_called()
+
+    def test_package_blocker_is_not_converted_into_build_fallback(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate)
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')), \
+             patch.object(m, 'package_inputs_compatible') as package:
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_package_canary_plan(args)
+            package.assert_not_called()
+
+    def test_successful_child_survives_failed_parent_and_new_attempt(self):
+        run = dict(self.run, run_attempt=3, status='completed', conclusion='failure')
+        jobs = {'total_count': 1, 'jobs': [{'name': 'release-readiness', 'status': 'completed', 'conclusion': 'success'}]}
+        with patch.object(m, 'api_get', return_value=jobs) as api:
+            self.assertTrue(m.readiness_child_succeeded(self.repo, run, 'release-readiness', 1, 'token'))
+            self.assertIn('/attempts/1/jobs', api.call_args.args[1])
+            self.assertFalse(m.readiness_child_succeeded(self.repo, run, 'release-readiness', 4, 'token'))
+            self.assertEqual(1, api.call_count)
+
+    def test_skipped_or_incomplete_producer_job_never_counts_as_success(self):
+        for conclusion, total in [('skipped', 1), ('success', 2), ('cancelled', 1), ('failure', 1)]:
+            jobs = {'total_count': total, 'jobs': [{'name': 'release-readiness', 'status': 'completed', 'conclusion': conclusion}]}
+            with patch.object(m, 'api_get', return_value=jobs):
+                self.assertFalse(m.readiness_child_succeeded(self.repo, self.run, 'release-readiness', 1, 'token'))
+
+    def test_immutable_attempt_artifacts_preserve_older_children(self):
+        run = dict(self.run, run_attempt=3)
+        names = {'proof-' + 'a' * 64 + '-a1', 'proof-' + 'a' * 64 + '-a3',
+                 'proof-' + 'b' * 64 + '-a2'}
+        artifacts = [dict(id=i + 1, name=name, expired=False) for i, name in enumerate(sorted(names))]
+        with patch.object(m, 'api_get', return_value={'total_count': len(artifacts), 'artifacts': artifacts}):
+            rows = list(m.readiness_artifact_candidates(self.repo, [run], 'proof-', 'a' * 64, 'token', lambda r: True))
+        self.assertEqual(['-a3', '-a1'], [artifact['name'][-3:] for _, artifact in rows])
+
+    def test_attempt_substitution_rejected_before_successful_child_can_authorize(self):
+        import json
+        import hashlib
+        body = b'validated-bundle'
+        for reader, filename in ((m.readiness_evidence, 'readiness.json'),
+                                  (m.readiness_observation_evidence, 'observation.json'),
+                                  (m.migration_rehearsal_evidence, 'rehearsal.json')):
+            receipt = dict(self.receipt, producingRun=42, producingAttempt=1,
+                executionAuthority=self.approved, candidate=self.candidate,
+                readinessIdentity=self.expected['identity'], proven=True,
+                bundleDigest=hashlib.sha256(body).hexdigest(),
+                counts={'mutations': 1, 'intents': 1, 'successReceipts': 2})
+            artifact = dict(id=123, name='proof-' + self.expected['identity'] + '-a2')
+            def download(repo, run, name, root, *, artifact_id):
+                self.assertEqual(123, artifact_id)
+                (root / filename).write_text(json.dumps(receipt))
+                (root / 'migration').mkdir()
+                (root / 'migration' / m.MIGRATION_BUNDLE_NAME).write_bytes(body)
+            with self.subTest(reader=reader.__name__), \
+                 patch.object(m, 'readiness_identity', return_value=self.expected), \
+                 patch.object(m, 'api_get', return_value={}), \
+                 patch.object(m, 'readiness_artifact_candidates', return_value=[(dict(self.run, run_attempt=2), artifact)]), \
+                 patch.object(m, '_download_run_artifact', side_effect=download), \
+                 patch.object(m, 'validate_readiness_receipt'), \
+                 patch.object(m, 'readiness_child_succeeded', return_value=True) as child:
+                args = (self.repo, self.candidate, self.expected, 'token') if reader == m.migration_rehearsal_evidence else (self.repo, self.candidate, self.approved, [], 'token')
+                with self.assertRaisesRegex(ValueError, 'ARTIFACT_ATTEMPT_MISMATCH'):
+                    reader(*args)
+                child.assert_not_called()
+
+    def test_duplicate_or_incomplete_artifact_inventory_is_not_reuse(self):
+        row = dict(id=1, name='proof-' + self.expected['identity'] + '-a1', expired=False)
+        for data, error in (({'total_count': 2, 'artifacts': [row]}, m.EvidenceLookupUnavailable),
+                            ({'total_count': 2, 'artifacts': [row, dict(row, id=2)]}, ValueError)):
+            with patch.object(m, 'api_get', return_value=data), self.assertRaises(error):
+                list(m.readiness_artifact_candidates(self.repo, [self.run], 'proof-', self.expected['identity'], 'token', lambda r: True))
+
+    def test_readiness_deadline_preserves_blocked_state_without_fresh_plan(self):
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request'}), \
+             patch.object(m, 'approved_head_preflight', return_value={'current': True, 'approvedHeadSha': self.approved}), \
+             patch.object(m, 'git_show_file', return_value='READINESS_SCHEMA = 1'), \
+             patch.object(m, 'git_changed', return_value=[]), \
+             patch.object(m, 'readiness_evidence', return_value=None) as lookup, \
+             patch.object(m, 'READINESS_WAIT_SECONDS', 1):
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'):
+                m.require_readiness(self.repo, self.candidate, clock=iter([0, 1]).__next__, sleep=lambda _: None)
+            self.assertEqual(1, lookup.call_count)
+
+    def test_step5_blocker_stops_partition_execution(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate)
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')):
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_step5_decision(args)
+
+
+class ProbeAttemptAndBudgetTests(unittest.TestCase):
+    def test_probe_retains_original_success_after_parent_rerun_failure(self):
+        artifact = dict(id=8, name='probe', expired=False, created_at='2026-10-09T00:01:00Z')
+        first = dict(id=10, name='validated-migration-probe', status='completed', conclusion='success',
+            run_attempt=1, started_at='2026-10-09T00:00:00Z', completed_at='2026-10-09T00:02:00Z')
+        later = dict(first, id=20, run_attempt=2, conclusion='failure',
+            started_at='2026-10-09T01:00:00Z', completed_at='2026-10-09T01:02:00Z')
+        run = dict(id=42, run_attempt=2, conclusion='failure')
+        for outcome, expected in (('success', {'artifactId': 8, 'producingAttempt': 1, 'producerJobId': 10}),
+                                  ('skipped', None), ('cancelled', None), ('failure', None)):
+            with self.subTest(outcome=outcome), patch.object(m, 'api_get', side_effect=[
+                {'total_count': 1, 'artifacts': [artifact]},
+                {'total_count': 2, 'jobs': [later, dict(first, conclusion=outcome)]}]):
+                self.assertEqual(expected, m.migration_probe_artifact('owner/repo', run, 'probe', 'token'))
+
+    def test_nested_lookup_cannot_extend_outer_deadline(self):
+        with m.evidence_lookup_budget(10, clock=lambda: 7):
+            self.assertEqual(3, m.evidence_remaining(30))
+            with m.evidence_lookup_budget(100, clock=lambda: 9):
+                self.assertEqual(1, m.evidence_remaining(120))
+            self.assertEqual(3, m.evidence_remaining(120))
+        self.assertEqual(120, m.evidence_remaining(120))
+
+    def test_expired_budget_prevents_provider_read(self):
+        with m.evidence_lookup_budget(10, clock=lambda: 10), \
+             patch.object(m.urllib.request, 'urlopen') as remote:
+            with self.assertRaisesRegex(m.EvidenceLookupUnavailable, 'deadline exhausted'):
+                m.api_get('owner/repo', 'actions/runs', 'token')
+            remote.assert_not_called()
+
+    def test_immutable_artifact_get_extracts_bytes_and_rejects_traversal(self):
+        import zipfile
+        for path, valid in (('proof.json', True), ('../escape', False)):
+            def read(command, **kwargs):
+                self.assertEqual(['gh', 'api', 'repos/owner/repo/actions/artifacts/123/zip'], command)
+                with zipfile.ZipFile(kwargs['stdout'], 'w') as archive:
+                    archive.writestr(path, 'evidence')
+                return SimpleNamespace(returncode=0, stderr='')
+            with tempfile.TemporaryDirectory() as directory, patch.object(m.subprocess, 'run', side_effect=read) as get:
+                root = Path(directory) / 'artifact'
+                if valid:
+                    m._download_run_artifact('owner/repo', 42, 'name-is-not-identity', root, artifact_id=123)
+                    self.assertEqual('evidence', (root / path).read_text())
+                else:
+                    with self.assertRaisesRegex(ValueError, 'unsafe entries'):
+                        m._download_run_artifact('owner/repo', 42, 'name-is-not-identity', root, artifact_id=123)
+                    self.assertFalse((Path(directory) / 'escape').exists())
+                self.assertEqual(1, get.call_count)
+
+
 class ArtifactEvidenceReadRetryTests(unittest.TestCase):
     def get(self, values):
         import os
@@ -1498,7 +1792,7 @@ jobs:
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "migration_probe_identity", return_value=identity), \
-             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}), \
+             patch.object(m, "migration_probe_artifact", return_value={'artifactId': 123, 'producingAttempt': 1, 'producerJobId': 7}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
             result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
         self.assertTrue(result["reusable"])
@@ -1519,12 +1813,12 @@ jobs:
         with patch.object(m, "api_get", return_value={"workflow_runs": [old, valid]}), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "migration_probe_identity", side_effect=[m.MigrationProbeAuthorityMissing("missing"), identity]), \
-             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}) as artifacts, \
+             patch.object(m, "migration_probe_artifact", return_value={'artifactId': 123}) as artifacts, \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
             result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
         self.assertTrue(result["reusable"])
         self.assertEqual(77, result["runId"])
-        artifacts.assert_called_once_with("MYLEGND/masterapp", 77, "token")
+        artifacts.assert_called_once_with("MYLEGND/masterapp", valid, identity['artifact'], "token")
 
     def test_probe_history_without_child_requires_fresh_build(self):
         identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}

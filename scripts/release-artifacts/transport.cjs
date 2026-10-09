@@ -11,9 +11,10 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
   const admission = /^legend-release-admission-[a-f0-9]{64}$/.test(name);
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
-  if (!admission && !child && !plan && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
+  const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
+  if (!admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
-  const allowed = new Set(plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
@@ -21,7 +22,13 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
     'baselineDeploymentIds', 'phase', 'deploymentIds']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (plan) {
+  if (recovery) {
+    if (record.schemaVersion !== 1 || record.phase !== 'intent' || name !== `legend-readiness-recovery-${record.operationId}` ||
+        !/^[a-f0-9]{64}$/.test(record.operationId) ||
+        ['candidateRevision', 'executionAuthority'].some(key => !/^[a-f0-9]{40}$/.test(record[key])) ||
+        ['targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1))
+      throw new Error('Invalid readiness recovery intent');
+  } else if (plan) {
     if (record.schemaVersion !== 1 || name !== `legend-release-transaction-plan-${record.planId}` ||
         !/^[a-f0-9]{64}$/.test(record.planId) || !/^[a-f0-9]{40}$/.test(record.candidateRevision) ||
         ['producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1) ||

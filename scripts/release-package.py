@@ -145,14 +145,15 @@ def build_migration_bundle(output: Path):
     # This component runs in an isolated package lane. It must materialize the
     # project graph it consumes instead of inheriting project.assets.json from a
     # previously serialized app publish.
-    run("dotnet", "restore", "AgentPortal/AgentPortal.csproj", "--nologo", env=env)
+    startup = "scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj"
+    run("dotnet", "restore", startup, "--nologo", env=env)
     run("dotnet", "tool", "restore", env=env)
     destination = output / MIGRATION_BUNDLE
     run(
         "dotnet", "tool", "run", "dotnet-ef", "migrations", "bundle",
         "--force",
         "--project", "Infrastructure/Infrastructure.csproj",
-        "--startup-project", "AgentPortal/AgentPortal.csproj",
+        "--startup-project", startup,
         "--context", "MasterAppDbContext",
         "--configuration", "Release",
         "--output", str(destination),
@@ -164,6 +165,42 @@ def build_migration_bundle(output: Path):
 COMPONENT_SCHEMA = "legend-validated-release-package-component.v1"
 
 
+def restore_prepared_migration(revision, output, readiness_identity):
+    """Recover a completed bundle child even if its rehearsal/parent failed."""
+    import tempfile
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    authority = _RELEASE_AUTHORITY
+    workflow = authority.PACKAGE_VALIDATION_WORKFLOW
+    data = authority.api_get(repository, 'actions/workflows/' + workflow + '/runs?event=pull_request&per_page=100', token)
+    trusted = lambda run: authority._trusted_lineage_run(repository, run, '.github/workflows/' + workflow,
+                                                       revision, require_completed=False)
+    for run, artifact in authority.readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-rehearsal-bundle-', readiness_identity, token, trusted):
+        attempt = int(artifact['name'].rsplit('-a', 1)[1])
+        if not authority.readiness_child_succeeded(repository, run, 'migration-rehearsal-prepare', attempt, token):
+            continue
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            authority._download_run_artifact(repository, run['id'], artifact['name'], root, artifact_id=artifact['id'])
+            bundle = root / 'migration' / MIGRATION_BUNDLE
+            receipt = json.loads((root / 'migration/migration.component.json').read_text())
+            expected = dict(schema=COMPONENT_SCHEMA, applicationReleaseSha=revision,
+                packageContractSha256=contract_hash(), packageIdentity=package_identity(revision),
+                component='migration', file=MIGRATION_BUNDLE, sha256=sha256_file(bundle))
+            if receipt != expected:
+                continue
+            output.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundle, output / MIGRATION_BUNDLE)
+            (output / MIGRATION_BUNDLE).chmod(0o755)
+            shutil.copy2(root / 'migration/migration.component.json', output / 'migration.component.json')
+            proof = dict(state='reused-success', sourceReceipt={'runId': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id']},
+                         compatibilityProof=expected)
+            (output / 'migration.reuse.json').write_text(json.dumps(proof, sort_keys=True) + '\n')
+            return proof
+    return None
+
+
 def component_file(component: str) -> str:
     if component in APPS:
         return APPS[component][1]
@@ -172,9 +209,33 @@ def component_file(component: str) -> str:
     raise ValueError("Unknown release package component: " + component)
 
 
-def build_component(revision: str, component: str, output: Path):
+def build_component(revision: str, component: str, output: Path, *, reuse_rehearsal=True):
     revision = validate_revision(revision)
     output.mkdir(parents=True, exist_ok=True)
+    if component == 'migration' and reuse_rehearsal and os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('GITHUB_EVENT_NAME') == 'pull_request':
+        evidence = _RELEASE_AUTHORITY.require_readiness(os.environ['GITHUB_REPOSITORY'], revision)
+        source = evidence.get('receipt', {}).get('rehearsalSource')
+        if source:
+            import tempfile
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                _RELEASE_AUTHORITY._download_run_artifact(os.environ['GITHUB_REPOSITORY'], source['runId'], source['artifact'], root,
+                                                         artifact_id=source['artifactId'])
+                receipt = json.loads((root / 'migration/migration.component.json').read_text())
+                bundle = root / 'migration' / MIGRATION_BUNDLE
+                expected = dict(schema=COMPONENT_SCHEMA, applicationReleaseSha=revision,
+                    packageContractSha256=contract_hash(), packageIdentity=package_identity(revision),
+                    component='migration', file=MIGRATION_BUNDLE, sha256=sha256_file(bundle))
+                if receipt != expected or receipt['sha256'] != evidence['receipt']['rehearsal']['bundleDigest']:
+                    raise ValueError('Validated rehearsal bundle is not the exact package component')
+                shutil.copy2(bundle, output / MIGRATION_BUNDLE)
+                (output / MIGRATION_BUNDLE).chmod(0o755)
+                shutil.copy2(root / 'migration/migration.component.json', output / 'migration.component.json')
+                (output / 'migration.reuse.json').write_text(json.dumps(dict(state='reused-success',
+                    sourceReceipt=source, compatibilityProof=expected), sort_keys=True) + '\n')
+                print('LEGEND_PACKAGE:REUSED:migration:source=' + str(source['runId']))
+                return receipt
+    print('LEGEND_PACKAGE:EXECUTE:' + component + ':compatible_component_receipt_unavailable')
     destination = output / component_file(component)
     if destination.exists():
         destination.unlink()

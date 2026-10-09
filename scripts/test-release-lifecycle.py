@@ -36,6 +36,71 @@ def successful_jobs(target_step="Publish selected head as one transaction"):
     ]
 
 
+class ReadinessRefreshTests(unittest.TestCase):
+    def test_terminal_child_blocks_while_its_parent_remains_active(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        for conclusion in ('failure', 'cancelled', 'skipped'):
+            with self.subTest(conclusion=conclusion), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[
+                     dict(id=12, run_attempt=2, status='in_progress'),
+                     dict(total_count=1, jobs=[dict(name='release-readiness', status='completed', conclusion=conclusion)])]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=False), \
+                 patch.object(m.time, 'sleep') as sleep:
+                self.assertEqual('READINESS_BLOCKED', m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [])['state'])
+                sleep.assert_not_called()
+
+    def test_only_authenticated_completed_readiness_can_refresh_after_expiry(self):
+        candidate, approved = 'a' * 40, 'b' * 40
+        api = SimpleNamespace(repo='owner/repo', token='token', ref=lambda _: approved)
+        run = dict(id=12, head_sha=candidate, run_attempt=1, status='completed')
+        for conclusion, retained, expected in (('failure', None, 0), ('skipped', None, 0),
+                                               ('success', None, 0), ('success', {'receipt': 'authenticated'}, 1)):
+            jobs = dict(total_count=2, jobs=[dict(id=21, name='readiness-observe', status='completed', conclusion='success'),
+                dict(id=22, name='release-readiness', status='completed', conclusion=conclusion)])
+            with self.subTest(conclusion=conclusion, retained=retained), \
+                 patch.dict(os.environ, {'GITHUB_ACTIONS': 'true'}), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'git_show_file', return_value='READINESS_SCHEMA = 1\n'), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_targets', return_value=[]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence', side_effect=[None, retained]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'trusted_readiness_run', return_value=True), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[dict(workflow_runs=[run]), jobs]), \
+                 patch.object(m.OPERATION_EVIDENCE, 'readiness_refresh_once', return_value={'state': 'READINESS_REFRESH_REQUESTED'}) as refresh, \
+                 patch.object(m, 'await_readiness_child', return_value=None):
+                result = m.ensure_readiness_progress(api, {'head': {'sha': candidate}})
+                self.assertEqual(expected, refresh.call_count)
+                if expected: self.assertIsNone(result)
+                else: self.assertEqual('READINESS_BLOCKED', result['state'])
+
+    def test_only_classified_transient_reads_permit_automatic_refresh(self):
+        for error, kind in ((m.VALIDATION_AUTHORITY.EvidenceLookupUnavailable(status=503), 'transient-provider-read'),
+                            (m.VALIDATION_AUTHORITY.EvidenceLookupUnavailable(status=403), 'unclassified-or-nonrecoverable'),
+                            (RuntimeError('Schema probe process deadline exceeded'), 'transient-provider-read'),
+                            (RuntimeError('PHYSICAL_SCHEMA_DRIFT'), 'unclassified-or-nonrecoverable'),
+                            (RuntimeError('private provider payload'), 'unclassified-or-nonrecoverable')):
+            self.assertEqual(kind, m.readiness_failure_classification(error))
+
+    def test_delayed_new_attempt_visibility_preserves_request_and_waits_for_exact_child(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        old = dict(id=12, run_attempt=1, status='completed')
+        new = dict(id=12, run_attempt=2, status='completed')
+        with patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[old, old, new]) as reads, \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=True) as child, \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence', return_value={'receipt': 'authenticated'}) as proof, \
+             patch.object(m.time, 'sleep'):
+            self.assertIsNone(m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [], minimum_attempt=2))
+            self.assertEqual(3, reads.call_count)
+            child.assert_called_once_with('owner/repo', new, 'release-readiness', 2, 'token')
+            self.assertEqual(1, proof.call_count)
+
+    def test_unknown_failed_attempt_stops_without_reclassifying_it_as_success(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        with patch.object(m.VALIDATION_AUTHORITY, 'api_get', return_value=dict(id=12, run_attempt=2, status='completed')), \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=False), \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence') as proof:
+            self.assertEqual('READINESS_BLOCKED', m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [], minimum_attempt=2)['state'])
+            proof.assert_not_called()
+
+
 class GitHubTransportRetry(unittest.TestCase):
     class Response:
         def __enter__(self):
@@ -266,6 +331,22 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         pr = {"head": {"sha": "b" * 40}}
         names = ["scripts/release-lifecycle.py"]
         self.assertIsNone(m.candidate_control_plane_integrity(api, pr, names))
+
+    def test_activated_readiness_cannot_be_removed_to_reenter_bootstrap(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                return source.replace('READINESS_SCHEMA = 1', 'READINESS_SCHEMA = 0') if path == 'scripts/validation-resume.py' else source
+        reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py'])
+        self.assertIn('removed the activated early readiness', reason)
+
+    def test_untrusted_candidate_checkout_in_readiness_is_rejected(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                return source.replace('ref: ${{ github.event.pull_request.base.sha || github.sha }}', 'ref: ${{ github.event.pull_request.head.sha }}', 1) if path == '.github/workflows/legend-release-lifecycle.yml' else source
+        reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['.github/workflows/legend-release-lifecycle.yml'])
+        self.assertIn('trusted read-only readiness', reason)
 
     def test_non_control_change_still_requires_repository_safety_rails_only(self):
         api = Api()

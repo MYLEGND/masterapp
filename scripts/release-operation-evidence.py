@@ -22,11 +22,11 @@ def _authority():
     return module
 
 
-def publish_record(name, record):
+def publish_record(name, record, *, timeout=180):
     result = subprocess.run(
         ['node', str(Path(__file__).with_name('release-artifacts') / 'transport.cjs')],
         input=json.dumps(dict(name=name, record=record)), capture_output=True,
-        text=True, timeout=180, check=False)
+        text=True, timeout=timeout, check=False)
     # Do not forward SDK output: error strings can include signed URLs.
     marker = 'LEGEND_OPERATION_RESULT='
     rows = [line[len(marker):] for line in result.stdout.splitlines() if line.startswith(marker)]
@@ -36,6 +36,47 @@ def publish_record(name, record):
     if type(artifact.get('artifactId')) is not int or artifact['artifactId'] < 1:
         raise RuntimeError("Deployment operation lacks durable readback identity")
     return artifact
+
+
+def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publish_record, environment=None):
+    """Record one read-only child rerun request; ambiguous delivery never replays.
+
+    The serialized lifecycle supplies authenticated lookup and exact provider
+    observation. This is operation evidence, not another recovery scheduler.
+    """
+    env = os.environ if environment is None else environment
+    if (set(identity) != {'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob'} or
+        any(not re.fullmatch('[a-f0-9]{40}', str(identity[key])) for key in ('candidateRevision', 'executionAuthority')) or
+        any(type(identity[key]) is not int or identity[key] < 1 for key in ('targetRun', 'targetAttempt', 'targetJob'))):
+        raise ValueError('Invalid readiness recovery identity')
+    operation_inputs = {key: value for key, value in identity.items() if key != 'executionAuthority'}
+    operation = hashlib.sha256(json.dumps(operation_inputs, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    prior = lookup(operation)
+    remote = observe()
+    if remote.get('id') != identity['targetRun'] or type(remote.get('run_attempt')) is not int:
+        raise RuntimeError('Readiness recovery remote identity unproven')
+    if remote['run_attempt'] > identity['targetAttempt']:
+        return {'state': 'READINESS_REFRESH_OBSERVED', 'runId': remote['id'], 'attempt': remote['run_attempt']}
+    if remote['run_attempt'] != identity['targetAttempt'] or remote.get('status') != 'completed':
+        return {'state': 'READINESS_ACTIVE', 'runId': remote['id']}
+    if prior is not None:
+        if any(prior.get(key) != value for key, value in operation_inputs.items()) or prior.get('operationId') != operation:
+            raise RuntimeError('Readiness recovery intent mismatch')
+        return {'state': 'READINESS_BLOCKED', 'reason': 'rerun_acknowledgment_unresolved',
+                'operationId': operation, 'resume': 'Reconcile the recorded target job/run attempt; do not submit another request'}
+    record = dict(identity, schemaVersion=1, operationId=operation, phase='intent',
+                  producingRun=int(env['GITHUB_RUN_ID']), producingAttempt=int(env['GITHUB_RUN_ATTEMPT']))
+    publisher('legend-readiness-recovery-' + operation, record)
+    try:
+        execute()
+    except Exception:
+        # The retained intent plus exact remote observation is the only resume
+        # boundary. No exception text or second POST crosses this boundary.
+        remote = observe()
+        if remote.get('id') == identity['targetRun'] and remote.get('run_attempt', 0) > identity['targetAttempt']:
+            return {'state': 'READINESS_REFRESH_OBSERVED', 'runId': remote['id'], 'attempt': remote['run_attempt']}
+        return {'state': 'READINESS_BLOCKED', 'reason': 'rerun_acknowledgment_unresolved', 'operationId': operation}
+    return {'state': 'READINESS_REFRESH_REQUESTED', 'runId': identity['targetRun'], 'jobId': identity['targetJob']}
 
 
 class OperationJournal:

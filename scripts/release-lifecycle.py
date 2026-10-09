@@ -111,19 +111,19 @@ class GitHub:
         attempts = 3 if verb == 'GET' else 1
         for attempt in range(attempts):
             try:
-                with urllib.request.urlopen(request, timeout=45) as response:
+                with urllib.request.urlopen(request, timeout=VALIDATION_AUTHORITY.evidence_remaining(45)) as response:
                     body = response.read()
                     return json.loads(body) if body else None
             except urllib.error.HTTPError as error:
                 retryable = verb == 'GET' and error.code in {408, 429, 500, 502, 503, 504}
                 if retryable and attempt + 1 < attempts:
-                    time.sleep(2 ** attempt)
+                    time.sleep(VALIDATION_AUTHORITY.evidence_remaining(2 ** attempt))
                     continue
                 # Do not log tokens, response bodies or environment dumps.
                 raise RuntimeError(f'GitHub {request.method} {path}: HTTP {error.code}') from None
             except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected):
                 if verb == 'GET' and attempt + 1 < attempts:
-                    time.sleep(2 ** attempt)
+                    time.sleep(VALIDATION_AUTHORITY.evidence_remaining(2 ** attempt))
                     continue
                 # Read transport failures are safe to report but never replay writes.
                 raise RuntimeError(f'GitHub {request.method} {path}: transport unavailable') from None
@@ -616,6 +616,27 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate changed the sole approved release branch authority'
     if assignments.get('DIRECT_RELEASE_WORKFLOW') != DIRECT:
         return 'Candidate changed the sole approved direct-release workflow authority'
+    if assignments.get('READINESS_SCHEMA') != 1:
+        return 'Candidate removed the activated early readiness authority'
+    for name in ('cmd_plan', 'cmd_package_canary_plan', 'cmd_step5_decision'):
+        function = next((node for node in validation_tree.body
+                         if isinstance(node, ast.FunctionDef) and node.name == name), None)
+        statement = function.body[0] if function and function.body else None
+        if not (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call) and
+                isinstance(statement.value.func, ast.Name) and statement.value.func.id == 'require_readiness'):
+            return 'Candidate bypassed early readiness before validation or package planning'
+    lifecycle_jobs = VALIDATION_AUTHORITY._job_blocks(source['lifecycle_workflow'])
+    for job in ('readiness-observe', 'release-readiness'):
+        block = lifecycle_jobs.get(job, '')
+        if (block.count('uses: actions/checkout@v4') != 1 or
+            block.count('ref: ${{ github.event.pull_request.base.sha || github.sha }}') != 1 or
+            'persist-credentials: false' not in block or
+            'contents: write' in block or 'actions: write' in block):
+            return 'Candidate weakened trusted read-only readiness execution'
+    rehearsal_job = VALIDATION_AUTHORITY._job_blocks(source['architecture_workflow']).get('migration-rehearsal', '')
+    if (not rehearsal_job or 'secrets.' in rehearsal_job or 'azure/login@' in rehearsal_job or
+        'environment: Production' in rehearsal_job or 'scripts/migration-probe-package.py rehearse' not in rehearsal_job):
+        return 'Candidate exposed production authority to isolated migration rehearsal'
 
     protected_sets = (
         ('lifecycle authority paths', 'LIFECYCLE_AUTHORITY_PATHS', set(VALIDATION_AUTHORITY.LIFECYCLE_AUTHORITY_PATHS)),
@@ -1118,6 +1139,92 @@ def automatic_release_inputs(pr, release_sha, targets, *, source_merge_sha=None)
     }
 
 
+def await_readiness_child(api, run_id, candidate, approved, targets, *, minimum_attempt=1):
+    deadline = time.monotonic() + 600
+    while time.monotonic() < deadline:
+        with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+            run = VALIDATION_AUTHORITY.api_get(api.repo, f'actions/runs/{run_id}', api.token)
+            visible = type(run.get('run_attempt')) is int and run['run_attempt'] >= minimum_attempt
+            if visible and VALIDATION_AUTHORITY.readiness_child_succeeded(api.repo, run, 'release-readiness', run.get('run_attempt'), api.token):
+                proof = VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets, api.token)
+                if proof:
+                    return None
+                return {'state': 'READINESS_BLOCKED', 'retained': 'Successful child has no authenticated compatible receipt', 'runId': run_id}
+            if visible and run.get('status') == 'completed':
+                return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness child failed; preserve evidence and classify failure', 'runId': run_id}
+            if visible:
+                jobs = VALIDATION_AUTHORITY.api_get(api.repo,
+                    f"actions/runs/{run_id}/attempts/{run['run_attempt']}/jobs?per_page=100", api.token)
+                children = [row for row in jobs.get('jobs', []) if row.get('name') == 'release-readiness']
+                if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(children) > 1:
+                    return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness child inventory unproven', 'runId': run_id}
+                if children and children[0].get('status') == 'completed':
+                    return {'state': 'READINESS_BLOCKED', 'retained': 'Terminal readiness child requires classified recovery', 'runId': run_id}
+        time.sleep(min(10, max(0, deadline - time.monotonic())))
+    return {'state': 'READINESS_ACTIVE', 'retained': 'Readiness is still active after bounded observation', 'runId': run_id}
+
+
+def ensure_readiness_progress(api, pr):
+    with VALIDATION_AUTHORITY.evidence_lookup_budget(time.monotonic() + 720):
+        return _ensure_readiness_progress(api, pr)
+
+
+def _ensure_readiness_progress(api, pr):
+    """The existing lifecycle refreshes one expired read-only child in place."""
+    # Local diagnostics cannot dispatch recovery. Validation and production
+    # still enforce their own required readiness gates in every environment.
+    if os.environ.get('GITHUB_ACTIONS') != 'true':
+        return None
+    candidate, approved = pr['head']['sha'], api.ref(APPROVED)
+    if not re.search(r'^READINESS_SCHEMA = 1$', VALIDATION_AUTHORITY.git_show_file(approved, 'scripts/validation-resume.py'), re.M):
+        return None
+    targets = VALIDATION_AUTHORITY.readiness_targets(candidate, approved)
+    with VALIDATION_AUTHORITY.evidence_lookup_budget(time.monotonic() + 90):
+        proof = VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets, api.token)
+        if proof:
+            return None
+        data = VALIDATION_AUTHORITY.api_get(api.repo,
+            'actions/workflows/legend-release-lifecycle.yml/runs?event=pull_request_target&head_sha=' + candidate + '&per_page=100', api.token)
+        runs = [row for row in data.get('workflow_runs', []) if row.get('head_sha') == candidate and
+                VALIDATION_AUTHORITY.trusted_readiness_run(api.repo, row, approved)]
+    if not runs:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'No trusted readiness producer; reopen the same PR to create its governed event'}
+    run = max(runs, key=lambda row: row['id'])
+    if run.get('status') != 'completed':
+        return await_readiness_child(api, run['id'], candidate, approved, targets)
+    if type(run.get('run_attempt')) is not int or run['run_attempt'] >= 3:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness refresh attempt budget exhausted; inspect the retained failing child', 'runId': run['id']}
+    jobs = VALIDATION_AUTHORITY.api_get(api.repo,
+        f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", api.token)
+    children = [row for row in jobs.get('jobs', []) if row.get('name') == 'readiness-observe']
+    if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(children) != 1:
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness producing job inventory unproven'}
+    child = children[0]
+    # Expiry of successful observation is recoverable. Unknown/deterministic
+    # failures retain diagnostics and never become an automatic rerun loop.
+    if child.get('conclusion') == 'success':
+        finalizers = [row for row in jobs.get('jobs', []) if row.get('name') == 'release-readiness']
+        if (len(finalizers) != 1 or finalizers[0].get('status') != 'completed' or
+                finalizers[0].get('conclusion') != 'success' or
+                not VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets,
+                                                           api.token, require_fresh=False)):
+            return {'state': 'READINESS_BLOCKED', 'retained': 'Readiness finalization lacks authenticated prior success; classify failure', 'jobId': child['id']}
+    elif VALIDATION_AUTHORITY.readiness_failure_kind(api.repo, run, approved, api.token) != 'transient-provider-read':
+        return {'state': 'READINESS_BLOCKED', 'retained': 'Failed readiness observation requires classified recovery', 'jobId': child['id']}
+    identity = dict(candidateRevision=candidate, executionAuthority=approved,
+                    targetRun=run['id'], targetAttempt=run['run_attempt'], targetJob=child['id'])
+    result = OPERATION_EVIDENCE.readiness_refresh_once(identity,
+        lookup=lambda operation: VALIDATION_AUTHORITY.readiness_refresh_intent(api.repo, operation, approved, api.token),
+        observe=lambda: api.api(f"actions/runs/{run['id']}"),
+        publisher=lambda name, record: OPERATION_EVIDENCE.publish_record(name, record,
+            timeout=VALIDATION_AUTHORITY.evidence_remaining(180)),
+        execute=lambda: api.api(f"actions/jobs/{child['id']}/rerun", {}, method='POST'))
+    if result['state'] in {'READINESS_REFRESH_REQUESTED', 'READINESS_REFRESH_OBSERVED', 'READINESS_ACTIVE'}:
+        return await_readiness_child(api, run['id'], candidate, approved, targets,
+                                     minimum_attempt=identity['targetAttempt'] + 1)
+    return result
+
+
 def merge_validated(api, pr):
     base_state = approved_head_state(api, pr)
     if not base_state["current"]:
@@ -1144,6 +1251,9 @@ def merge_validated(api, pr):
         publish_trusted_validation_status(api, head, 'failure', integrity)
         return {'state': 'VALIDATING', 'retained': integrity}
 
+    readiness = ensure_readiness_progress(api, pr)
+    if readiness is not None:
+        return readiness
     pending = candidate_validation(api, pr)
     if pending:
         publish_trusted_validation_status(api, head, 'pending', '')
@@ -3294,16 +3404,186 @@ def diagnose_completed_workflow(api, run_id):
     return result
 
 
+def readiness_context(api, number):
+    pr = api.api(f'pulls/{number}')
+    approved = api.api('git/ref/heads/' + APPROVED)['object']['sha']
+    if (pr.get('state') != 'open' or pr.get('base', {}).get('ref') != APPROVED or
+        pr.get('base', {}).get('repo', {}).get('full_name') != api.repo or
+        pr.get('head', {}).get('repo', {}).get('full_name') != api.repo or
+        pr.get('author_association') not in {'OWNER', 'MEMBER', 'COLLABORATOR'} or
+        git('rev-parse', 'HEAD').stdout.strip() != approved):
+        raise RuntimeError('READINESS_ADMISSION_DENIED')
+    candidate = pr['head']['sha']
+    if not SHA.fullmatch(candidate):
+        raise RuntimeError('READINESS_CANDIDATE_INVALID')
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        if os.environ.get('GITHUB_EVENT_NAME') != 'pull_request_target':
+            raise RuntimeError('READINESS_TRUSTED_EVENT_REQUIRED')
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        if event.get('pull_request', {}).get('head', {}).get('sha') != candidate:
+            raise RuntimeError('READINESS_CANDIDATE_SUPERSEDED')
+    # Fetch objects only. Candidate code is never checked out in this authority.
+    if git('cat-file', '-e', candidate + '^{commit}', check=False).returncode:
+        credentials = base64.b64encode(('x-access-token:' + api.token).encode()).decode()
+        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin', candidate], capture_output=True,
+            timeout=90, check=False, env=os.environ | {'GIT_CONFIG_COUNT': '1',
+                'GIT_CONFIG_KEY_0': 'http.https://github.com/.extraheader',
+                'GIT_CONFIG_VALUE_0': 'AUTHORIZATION: basic ' + credentials})
+        if fetched.returncode:
+            raise RuntimeError('READINESS_CANDIDATE_OBJECTS_UNAVAILABLE')
+    if not ancestor(approved, candidate):
+        raise RuntimeError('READINESS_APPROVED_BASE_CHANGED')
+    targets = VALIDATION_AUTHORITY.readiness_targets(candidate, approved)
+    return pr, approved, candidate, targets
+
+
+def _readiness_module(filename):
+    spec = importlib.util.spec_from_file_location('readiness_' + filename.replace('-', '_'),
+                                                 Path(__file__).with_name(filename + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _readiness_probe(api, revision, directory, *, deadline):
+    packager = _readiness_module('migration-probe-package')
+    identity = VALIDATION_AUTHORITY.migration_probe_identity(revision, revision)
+    while True:
+        with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+            proof = VALIDATION_AUTHORITY.migration_probe_evidence(api.repo, identity,
+                                                                include_active=True, candidate=revision)
+            if proof.get('reusable'):
+                VALIDATION_AUTHORITY._download_run_artifact(api.repo, proof['runId'], proof['artifact'], directory,
+                                                            artifact_id=proof['artifactId'])
+                packager.manifest(directory, revision, revision)
+                return proof
+        if time.monotonic() >= deadline:
+            raise RuntimeError('READINESS_MINIMAL_ARTIFACT_UNAVAILABLE')
+        time.sleep(min(10, max(0, deadline - time.monotonic())))
+
+
+def readiness_observe(api, number, directory):
+    started = time.monotonic()
+    pr, approved, candidate, targets = readiness_context(api, number)
+    identity = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    directory.mkdir(parents=True, exist_ok=True)
+    deadline = started + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        trusted = _readiness_probe(api, approved, root / 'approved', deadline=deadline)
+        candidate_proof = _readiness_probe(api, candidate, root / 'candidate', deadline=deadline)
+        contract = root / 'candidate/migration-contract.json'
+        if not contract.is_file():
+            raise RuntimeError('READINESS_CANDIDATE_CONTRACT_UNAVAILABLE')
+        approved_contract = root / 'approved/migration-contract.json'
+        if not approved_contract.is_file() or max(contract.stat().st_size, approved_contract.stat().st_size) > 4 * 1024 * 1024:
+            raise RuntimeError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN')
+        contract_proof = VALIDATION_AUTHORITY.candidate_migration_contract_proven(candidate, approved,
+            json.loads(contract.read_text()), json.loads(approved_contract.read_text()))
+        profile = VALIDATION_AUTHORITY.release_runtime_profile(targets or
+            [row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()])
+        os.environ.update(RELEASE_RESOURCE_GROUP=profile['resourceGroup'], DATABASE_AUTHORITY=profile['databaseAuthority'])
+        publication = _readiness_module('release-prepublication').deployment_readiness(targets)
+        migration = _readiness_module('release-migration')
+        before = migration.observe(root / 'approved/MigrationReleaseProbe.dll', migration.connection_string(), contract=contract)
+        result = dict(identity, **before, candidate=candidate, executionAuthority=approved,
+                      contractDigest=hashlib.sha256(contract.read_bytes()).hexdigest(),
+                      producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
+                      candidateProbe=candidate_proof, approvedProbe=trusted,
+                      contractAuthority=contract_proof,
+                      deploymentReadiness='proven', deploymentObservation=publication,
+                      state='blocked', reason='awaiting_rehearsal_and_mutation_admission',
+                      readinessObservationSeconds=round(time.monotonic() - started, 3))
+        # Only bounded schema/target metadata is written, never configuration.
+        (directory / 'observation.json').write_text(json.dumps(result, sort_keys=True) + '\n')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('identity=' + identity['identity'] + '\n')
+            stream.write('artifact=legend-readiness-observation-' + identity['identity'] + '-a' + os.environ['GITHUB_RUN_ATTEMPT'] + '\n')
+            stream.write('pending=' + str(before['pendingCount'] > 0).lower() + '\n')
+        return {'state': 'executed-success', 'identity': identity['identity'], 'pendingCount': before['pendingCount']}
+
+
+def readiness_finalize(api, number, directory):
+    pr, approved, candidate, targets = readiness_context(api, number)
+    expected = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    observation = json.loads((directory / 'observation.json').read_text())
+    if (any(observation.get(key) != value for key, value in expected.items()) or
+        observation.get('candidate') != candidate or observation.get('executionAuthority') != approved or
+        observation.get('producingRun') != int(os.environ['GITHUB_RUN_ID']) or
+        type(observation.get('producingAttempt')) is not int or
+        not 1 <= observation['producingAttempt'] <= int(os.environ['GITHUB_RUN_ATTEMPT'])):
+        raise RuntimeError('READINESS_OBSERVATION_IDENTITY_CHANGED')
+    if observation['pendingCount']:
+        deadline = time.monotonic() + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
+        while True:
+            with VALIDATION_AUTHORITY.evidence_lookup_budget(deadline):
+                proof = VALIDATION_AUTHORITY.migration_rehearsal_evidence(api.repo, candidate, expected, api.token, baseline=observation)
+            if proof:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('READINESS_REHEARSAL_UNAVAILABLE')
+            time.sleep(min(10, max(0, deadline - time.monotonic())))
+        rehearsal = proof['receipt']
+        if (rehearsal.get('schemaIdentity') != observation['schemaIdentity'] or
+            rehearsal.get('baselineIdentity') != observation['baselineIdentity'] or
+            rehearsal.get('contractDigest') != observation['contractDigest']):
+            raise RuntimeError('READINESS_REHEARSAL_BASELINE_CHANGED')
+        migration = _readiness_module('release-migration')
+        profile = VALIDATION_AUTHORITY.release_runtime_profile(targets or
+            [row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()])
+        os.environ.update(RELEASE_RESOURCE_GROUP=profile['resourceGroup'], DATABASE_AUTHORITY=profile['databaseAuthority'],
+                          APPLICATION_RELEASE_SHA=candidate, RELEASE_SHA=approved)
+        observation['mutationAdmissionProof'] = migration.mutation_admission(observation, rehearsal['bundleDigest'])
+        observation['rehearsal'] = rehearsal
+        observation['rehearsalSource'] = rehearsal['bundleSource']
+    else:
+        observation['mutationAdmissionProof'] = _readiness_module('release-migration').mutation_admission(observation)
+    observation.update(producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']), state='executed-success',
+        reason='readiness_prerequisites_proven', mutationAdmission=observation['mutationAdmissionProof']['state'])
+    VALIDATION_AUTHORITY.validate_readiness_receipt(observation, expected)
+    (directory / 'readiness.json').write_text(json.dumps(observation, sort_keys=True) + '\n')
+    return {'state': 'executed-success', 'identity': expected['identity']}
+
+
+def readiness_failure_classification(exc):
+    if isinstance(exc, VALIDATION_AUTHORITY.EvidenceLookupUnavailable) and (
+            exc.code in {408, 429, 500, 502, 503, 504} or
+            str(exc) == 'Transient artifact evidence read exhausted bounded retries'):
+        return 'transient-provider-read'
+    if type(exc) is RuntimeError and str(exc) in {
+            'Schema probe process deadline exceeded', 'Transient SQL schema read exhausted bounded retries'}:
+        return 'transient-provider-read'
+    return 'unclassified-or-nonrecoverable'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run'])
+    parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run', 'readiness-admit', 'readiness-observe', 'readiness-finalize'])
     parser.add_argument('--pr', type=int)
     parser.add_argument('--run', type=int)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--directory', type=Path)
     args = parser.parse_args()
     api = GitHub()
-    if args.command == 'admit-worker':
+    if args.command == 'readiness-admit':
+        _, approved, candidate, targets = readiness_context(api, args.pr)
+        result = {'state': 'executed-success', 'approved': approved, 'candidate': candidate, 'targets': targets}
+    elif args.command == 'readiness-observe':
+        try:
+            result = readiness_observe(api, args.pr, args.directory)
+        except Exception as exc:
+            event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+            failure = dict(schemaVersion=1, candidate=event['pull_request']['head']['sha'],
+                executionAuthority=git('rev-parse', 'HEAD').stdout.strip(),
+                producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
+                classification=readiness_failure_classification(exc))
+            args.directory.mkdir(parents=True, exist_ok=True)
+            (args.directory / 'failure.json').write_text(json.dumps(failure, sort_keys=True) + '\n')
+            raise RuntimeError('READINESS_BLOCKED:' + failure['classification']) from None
+    elif args.command == 'readiness-finalize':
+        result = readiness_finalize(api, args.pr, args.directory)
+    elif args.command == 'admit-worker':
         result = admit_worker(api)
         with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
             output.write('admitted=' + str(result['admitted']).lower() + '\n')

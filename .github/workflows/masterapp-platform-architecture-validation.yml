@@ -665,7 +665,7 @@ jobs:
       (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
       (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != ''))
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     outputs:
       needed: ${{ steps.packageplan.outputs.needed }}
       revision: ${{ steps.packageplan.outputs.revision }}
@@ -937,5 +937,80 @@ jobs:
         with:
           name: ${{ steps.probe.outputs.artifact }}
           path: ${{ runner.temp }}/migration-probe/
+          retention-days: 90
+          if-no-files-found: error
+
+  migration-rehearsal-prepare:
+    needs: [approved-head-preflight, validated-migration-probe]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact: ${{ steps.rehearsal.outputs.artifact }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - name: Prepare immutable migration component before isolated fixture execution
+        id: rehearsal
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 scripts/migration-probe-package.py prepare-rehearsal \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
+            --directory "$RUNNER_TEMP/migration-rehearsal" --output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.rehearsal.outputs.artifact != ''
+        with:
+          name: ${{ steps.rehearsal.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal/
+          retention-days: 90
+          if-no-files-found: error
+
+  migration-rehearsal:
+    needs: migration-rehearsal-prepare
+    if: needs.migration-rehearsal-prepare.outputs.artifact != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.migration-rehearsal-prepare.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - name: Exercise validated migration bytes and lost-receipt recovery in isolated SQL
+        id: rehearsal
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          PREPARED_MIGRATION_ARTIFACT: ${{ needs.migration-rehearsal-prepare.outputs.artifact }}
+        run: |
+          python3 scripts/migration-probe-package.py rehearse \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
+            --directory "$RUNNER_TEMP/migration-rehearsal" --output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.rehearsal.outputs.artifact != ''
+        with:
+          name: ${{ steps.rehearsal.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal/rehearsal.json
           retention-days: 90
           if-no-files-found: error

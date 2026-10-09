@@ -234,6 +234,47 @@ def source_authority(shared_targets, marketing_targets, editor_targets):
     return values
 
 
+def deployment_readiness(selected_names):
+    """Read publication prerequisites without changing reviewed desired state.
+
+    The same inventory and configuration source own readiness and mutation.
+    Return presence/identity only; provider settings never enter a receipt.
+    """
+    authority = release_authority()
+    keys = authority.selected_release_target_keys(list(selected_names), allow_empty=True)
+    if not keys:
+        return {'state': 'not-required', 'targets': []}
+    profile = authority.release_runtime_profile(list(selected_names))
+    if (os.environ.get('RELEASE_RESOURCE_GROUP') != profile['resourceGroup'] or
+        os.environ.get('DATABASE_AUTHORITY') != profile['databaseAuthority']):
+        raise RuntimeError('Readiness environment differs from canonical inventory')
+    selected = set(selected_names)
+    source_authority(selected & set(profile['sharedAuthTargets']),
+                     selected & set(profile['marketingTargets']),
+                     selected & set(profile['editorTargets']))
+
+    def inspect(key):
+        app = authority.RELEASE_TARGETS[key]['releaseName']
+        value = az_json('webapp', 'show', '-g', profile['resourceGroup'], '-n', app)
+        resource = value.get('id') if isinstance(value, dict) else None
+        if (not isinstance(resource, str) or not resource.lower().endswith('/sites/' + app.lower()) or
+            value.get('state') != 'Running'):
+            raise RuntimeError('Publication target is missing or not running')
+        # The same read used immediately before publication proves management
+        # connectivity now. It does not promise future provider availability.
+        deployments = az_json('webapp', 'log', 'deployment', 'list',
+                              '-g', profile['resourceGroup'], '-n', app)
+        if not isinstance(deployments, list):
+            raise RuntimeError('Publication provider inventory unavailable')
+        app_settings(app)
+        return {'target': app, 'state': 'executed-success',
+                'configurationPresent': True, 'providerReachable': True}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+        rows = list(pool.map(inspect, keys))
+    return {'state': 'executed-success', 'targets': rows}
+
+
 def add_expected(desired, partition_keys, settings, aliases, fallback, expected, partition=None):
     key = existing_key(settings, aliases, fallback)
     previous = desired.get(key)
@@ -493,8 +534,9 @@ def run_migration_lane():
     readiness = os.environ.get("MIGRATION_READINESS_PENDING")
     if readiness not in {"true", "false"}:
         raise RuntimeError("Canonical live migration readiness gate was not completed")
-    if readiness == "false":
-        return {"status": "not-applicable", "changedMigrations": []}
+    # Even a zero-pending early observation needs fresh physical proof at the
+    # publication boundary. The canonical runner preserves completed SQL and
+    # reconciles readiness drift before admitting any new mutation.
     changed = changed_migrations(base, revision)
     # A migration remains pending even if source files match the live baseline.
     # Material/partition journaling is still checked by the canonical runner.
@@ -544,7 +586,8 @@ def _invoke_migration_bundle():
             'Migration stage unresolved: ' + stage
             for stage in ('schema-observation', 'child-history', 'mutation-admission',
                           'bundle-execution', 'schema-verification', 'success-receipt',
-                          'preparation')
+                          'preparation', 'readiness-identity', 'readiness-bundle',
+                          'readiness-drift', 'readiness-missing')
         }
         # Reuse the canonical schema-observation classification authority,
         # never trust free-form error text or URLs from subprocess output.

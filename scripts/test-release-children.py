@@ -76,6 +76,26 @@ class ReleaseChildTests(unittest.TestCase):
             observer=lambda *args: self.schema(True), journal_factory=self.journal,
             execute=lambda *args: self.fail('Repeated migration')), 'preserved')
 
+    def test_ready_twice_records_one_observation_and_no_mutation_intent(self):
+        for _ in range(2):
+            self.assertEqual('preserved', migration.reconcile(self.bundle, self.path, 'opaque',
+                observer=lambda *args: self.schema(True), journal_factory=self.journal,
+                execute=lambda *args: self.fail('Unexpected migration')))
+        self.assertEqual(1, len(self.published))
+        self.assertEqual(['success'], [phase for phase, identity in self.records])
+        self.assertEqual('schema-ready-no-write',
+            next(iter(self.records.values()))['observation']['providerVersion'])
+
+    def test_ready_observation_cannot_authorize_replay_after_pending_drift(self):
+        migration.reconcile(self.bundle, self.path, 'opaque',
+            observer=lambda *args: self.schema(True), journal_factory=self.journal,
+            execute=lambda *args: self.fail('Unexpected migration'))
+        with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+            migration.reconcile(self.bundle, self.path, 'opaque',
+                observer=lambda *args: self.schema(False), journal_factory=self.journal,
+                execute=lambda *args: self.fail('Migration after unproven drift'))
+        self.assertEqual(1, len(self.published))
+
     def test_ambiguous_migration_still_pending_never_blindly_replays(self):
         with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
@@ -83,6 +103,46 @@ class ReleaseChildTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
                 journal_factory=self.journal, execute=lambda *args: self.fail('Repeated migration'))
+
+    def test_changed_database_baseline_or_bundle_blocks_before_new_intent(self):
+        before = dict(self.schema(False), databaseIdentity='d' * 64, baselineIdentity='e' * 64)
+        proof = dict(before, pendingCount=1,
+            rehearsal={'bundleDigest': hashlib.sha256(self.bundle.read_bytes()).hexdigest()})
+        for key in ('databaseIdentity', 'baselineIdentity', 'schemaIdentity', 'bundleDigest'):
+            receipt = json.loads(json.dumps(proof))
+            if key == 'bundleDigest': receipt['rehearsal'][key] = 'f' * 64
+            else: receipt[key] = 'f' * 64
+            with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'readiness-'):
+                migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: before,
+                    journal_factory=self.journal, readiness=lambda before: receipt,
+                    execute=lambda *args: self.fail('Mutation after drift'))
+            self.assertEqual([], self.published)
+
+    def test_rehearsed_migration_lost_receipt_reconciles_changed_baseline_without_replay(self):
+        before = dict(self.schema(False), databaseIdentity='d' * 64, baselineIdentity='e' * 64)
+        after = dict(before, ready=True, baselineIdentity='f' * 64)
+        proof = dict(before, pendingCount=1,
+            rehearsal={'bundleDigest': hashlib.sha256(self.bundle.read_bytes()).hexdigest()})
+        states = iter([before, after])
+        mutations = []
+        def publish(name, record):
+            if record['phase'] == 'success': raise TimeoutError('Injected receipt loss')
+            return self.publish(name, record)
+        def journal(child, material):
+            return journal_module.ChildJournal(child, material, authority=self.authority,
+                publisher=publish, environment=self.env)
+        with self.assertRaisesRegex(RuntimeError, 'success-receipt'):
+            migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: next(states),
+                journal_factory=journal, readiness=lambda before: proof, execute=lambda *args: mutations.append(1))
+        self.assertEqual('preserved', migration.reconcile(self.bundle, self.path, 'opaque',
+            observer=lambda *args: after, journal_factory=self.journal, readiness=lambda before: proof,
+            execute=lambda *args: self.fail('Duplicate mutation')))
+        self.assertEqual(1, len(mutations))
+        self.assertEqual(2, len(self.published))
+
+        self.assertEqual({'intent', 'success'}, {phase for phase, identity in self.records})
+        for record in self.records.values():
+            self.assertNotIn('providerVersion', record['observation'])
 
     def test_migration_stage_errors_never_disclose_provider_details(self):
         for stage in ('schema-observation', 'child-history', 'mutation-admission', 'bundle-execution', 'schema-verification', 'success-receipt'):
@@ -293,6 +353,20 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
                           side_effect=AssertionError('journal must not run')):
             self.assertEqual(migration.preflight(None, self.probe, 'masked'), 'ready')
 
+    def test_rehearsal_mismatched_history_fingerprint_stops_before_bundle_execution(self):
+        from types import SimpleNamespace
+        before = dict(self.schema(False), baselineIdentity='a' * 64)
+        observed = dict(before, baselineIdentity='b' * 64)
+        connection = ('Server=127.0.0.1,14333;Database=LegendRehearsal_' + 'a' * 32 +
+                      ';User Id=sa;Password=synthetic_password_Aa1!;Encrypt=True;TrustServerCertificate=True')
+        with patch.object(migration.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as fixture, \
+             patch.object(migration, 'observe', return_value=observed), \
+             patch.object(migration, 'reconcile') as mutation:
+            with self.assertRaisesRegex(RuntimeError, 'differs from observed schema baseline'):
+                migration.rehearse(self.bundle, self.probe, self.probe, connection, before)
+            self.assertEqual(1, fixture.call_count)
+            mutation.assert_not_called()
+
     def test_pending_sql_authenticates_first_write_without_publishing_intent(self):
         calls = []
         class Authority:
@@ -334,7 +408,7 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
         prepublication = load('release-prepublication')
         env = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
                    EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
-                   DATABASE_AUTHORITY='masterapp-portal')
+                   DATABASE_AUTHORITY='masterapp-portal', GITHUB_REPOSITORY='owner/repo')
         with patch.dict(os.environ, env), \
              patch.object(prepublication, 'git_ok', return_value=True), \
              patch.object(prepublication, 'changed_migrations', return_value=[]), \
@@ -346,8 +420,8 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
             execute.assert_called_once()
             execute.reset_mock()
             os.environ['MIGRATION_READINESS_PENDING'] = 'false'
-            self.assertEqual(prepublication.run_migration_lane()['status'], 'not-applicable')
-            execute.assert_not_called()
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'reconciled')
+            execute.assert_called_once()  # Fresh observer/journal; ready-state tests prove zero bundle executions.
             del os.environ['MIGRATION_READINESS_PENDING']
             with self.assertRaisesRegex(RuntimeError, 'readiness gate'):
                 prepublication.run_migration_lane()
@@ -527,6 +601,34 @@ class ChildHistorySafetyTests(unittest.TestCase):
     def test_repository_history_filters_out_unrelated_workflows(self):
         self.run['path'] = '.github/workflows/unrelated-workflow.yml'
         self.assertTrue(self.check())  # No trusted release child can enter via another workflow.
+
+    def observed_ready(self):
+        name = 'legend-release-child-success-' + self.material
+        self.artifacts.append(dict(name=name, id=12, expired=False))
+        record = dict(schemaVersion=1, child=self.child, dependencyIdentity=self.material,
+            materialIdentity=self.material, partitionIdentity=self.material,
+            executionAuthority='e' * 40, phase='success', producingRun=7, producingAttempt=1,
+            observation=dict(providerVersion='schema-ready-no-write', schemaIdentity='f' * 64))
+        self.records[name] = record
+        return record
+
+    def test_authenticated_ready_observation_is_not_a_prior_mutation(self):
+        self.observed_ready()
+        self.assertTrue(self.check())
+
+    def test_ready_observation_rejects_incompatible_or_incomplete_proof(self):
+        for fault in ('attempt', 'authority', 'phase', 'marker', 'duplicate', 'failure', 'cancelled'):
+            with self.subTest(fault=fault):
+                self.setUp()
+                record = self.observed_ready()
+                if fault == 'attempt': record['producingAttempt'] = 2
+                elif fault == 'authority': record['executionAuthority'] = 'f' * 40
+                elif fault == 'phase': record['phase'] = 'intent'
+                elif fault == 'marker': record['observation'] = {}
+                elif fault == 'duplicate': self.artifacts.append(dict(self.artifacts[0], id=13))
+                else: self.step['conclusion'] = fault
+                with self.assertRaises(RuntimeError):
+                    self.check()
 
     def test_attested_successful_prepublication_noop_is_not_a_sql_write(self):
         import subprocess

@@ -25,6 +25,8 @@ import time
 import urllib.parse
 import urllib.request
 import urllib.error
+import contextlib
+import contextvars
 
 
 TRUSTED_PR_BASE = "legend/approved-changes"
@@ -1524,6 +1526,21 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                                     or completed.get("materialIdentity") != record.get("materialIdentity")):
                                 raise rejection("Release child prior partition operation unresolved; no replay authorized", run_id, attempt)
                 if not generations:
+                    if child == 'migrations' and steps[0].get('conclusion') == 'success':
+                        observed = []
+                        for artifact in inventory:
+                            if not re.fullmatch(r'legend-release-child-success-[a-f0-9]{64}', artifact.get('name', '')):
+                                continue
+                            record = _release_history_json(repository, run_id, artifact, 'operation.json')
+                            if record.get('child') != child or record.get('producingAttempt') != attempt:
+                                continue
+                            _validate_child_generation(repository, run, artifact, record, child, token, 'success')
+                            if record.get('observation', {}).get('providerVersion') == 'schema-ready-no-write':
+                                observed.append(record)
+                        if len(observed) == 1:
+                            # An authenticated desired-state observation is not
+                            # permission to replay a missing historical intent.
+                            continue
                     raise rejection(
                         "Release child failed prepublication but the no-write proof was not authenticated"
                         if child == 'migrations' and steps[0].get('name') == gate['step']
@@ -1848,6 +1865,7 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
 # Application identity excludes release/test/control-only edits. This authority is
 # shared by release baseline resolution and package-canary preservation.
 RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "Docs/releases/branch-lifecycle.md",
     "Docs/releases/recovery-correction-20261008.md",
     "AGENTS.md",
     ".github/CODEOWNERS",
@@ -2657,6 +2675,32 @@ class EvidenceLookupUnavailable(RuntimeError):
         self.rate = dict(rate or {})
 
 
+_EVIDENCE_BUDGET = contextvars.ContextVar('legend_evidence_budget', default=None)
+
+
+@contextlib.contextmanager
+def evidence_lookup_budget(deadline, *, clock=time.monotonic):
+    """One deadline across nested GETs, artifact reads, backoff and polling."""
+    parent = _EVIDENCE_BUDGET.get()
+    if parent is not None:
+        deadline = min(deadline, parent[0])
+    token = _EVIDENCE_BUDGET.set((deadline, clock))
+    try:
+        yield
+    finally:
+        _EVIDENCE_BUDGET.reset(token)
+
+
+def evidence_remaining(maximum):
+    budget = _EVIDENCE_BUDGET.get()
+    if budget is None:
+        return maximum
+    remaining = budget[0] - budget[1]()
+    if remaining <= 0:
+        raise EvidenceLookupUnavailable('Evidence lookup deadline exhausted; preserve completed receipts')
+    return min(maximum, remaining)
+
+
 def api_get(repository: str, path: str, token: str):
     url = f"https://api.github.com/repos/{repository}/{path.lstrip('/')}"
     request = urllib.request.Request(
@@ -2670,7 +2714,7 @@ def api_get(repository: str, path: str, token: str):
     )
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=evidence_remaining(30)) as response:
                 return json.load(response)
         except (TimeoutError, urllib.error.URLError, http.client.RemoteDisconnected) as exc:
             retryable = not isinstance(exc, urllib.error.HTTPError) or exc.code in {408, 429, 500, 502, 503, 504}
@@ -2687,7 +2731,7 @@ def api_get(repository: str, path: str, token: str):
                     endpoint=path.split("?", 1)[0],
                     rate=rate,
                 ) from exc
-            time.sleep(2 ** attempt)
+            time.sleep(evidence_remaining(2 ** attempt))
 
 
 
@@ -3045,7 +3089,7 @@ def merge_content_equivalent_evidence(plan, candidate_plan, run):
     return reused
 
 
-def _trusted_lineage_run(repository, run, workflow_path, revision):
+def _trusted_lineage_run(repository, run, workflow_path, revision, *, require_completed=True):
     """Authenticate an immutable producer already in the current candidate lineage.
 
     This avoids a separate commit->pull API lookup for evidence whose producer
@@ -3056,7 +3100,7 @@ def _trusted_lineage_run(repository, run, workflow_path, revision):
     if (
         run.get("path") != workflow_path
         or run.get("event") != "pull_request"
-        or run.get("status") != "completed"
+        or (require_completed and run.get("status") != "completed")
         or not re.fullmatch(r"[0-9a-f]{40}", head)
         or (run.get("head_repository") or {}).get("full_name") != repository
         or not re.fullmatch(r"[0-9a-f]{40}", revision or "")
@@ -3916,7 +3960,394 @@ def _evidence_retry_delay(exc, attempt):
     return (15, 30, 60, 120)[min(attempt, 3)]
 
 
+# The lifecycle owns the one trusted production-readiness producer. Validation
+# only consumes its bounded data receipts; it never obtains production secrets.
+READINESS_SCHEMA = 1
+READINESS_MAX_AGE_SECONDS = 900
+READINESS_WAIT_SECONDS = 900
+
+
+def readiness_targets(candidate, approved):
+    paths = git_changed(approved, candidate)
+    if 'Docs/releases/direct-release-request.json' not in paths:
+        return list(release_targets_for_paths(paths))
+    request = json.loads(git_show_file(candidate, 'Docs/releases/direct-release-request.json'))
+    if not isinstance(request, dict) or request.get('releaseMode') not in {'approved-only', 'validate-only'}:
+        raise ValueError('READINESS_RELEASE_REQUEST_INVALID')
+    if request['releaseMode'] == 'validate-only':
+        return list(release_targets_for_paths(paths))
+    targets = request.get('targets')
+    selected_release_target_keys(targets)
+    if any(type(request.get(key, False)) is not bool for key in ('cloudflareWebsiteRouting', 'preserveLiveTargets')):
+        raise ValueError('READINESS_RELEASE_REQUEST_INVALID')
+    return targets
+
+
+def readiness_policy_identity(approved):
+    paths = ('scripts/release-migration.py', 'scripts/release-prepublication.py',
+             'scripts/release-lifecycle.py', 'scripts/validation-resume.py', 'scripts/release-operation-evidence.py',
+             'scripts/MigrationReleaseProbe/Program.cs', 'scripts/MigrationReleaseProbe/CandidateContract.cs',
+             '.github/workflows/legend-release-lifecycle.yml', '.github/workflows/approved-release-security-validation.yml')
+    return hashlib.sha256(json.dumps({p: git_show_file(approved, p) for p in paths},
+                                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def readiness_identity(candidate, approved, targets):
+    probe = migration_probe_identity(candidate, candidate)
+    workflow = git_show_file(candidate, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW)
+    build = {path: git_show_file(candidate, path) for path in PACKAGE_AUTHORITY_PATHS
+             if path != PACKAGE_BUILD_WORKFLOW}
+    build['workflow'] = package_builder_workflow_contract(workflow)
+    jobs = _job_blocks(workflow)
+    rehearsal, prepare = jobs.get('migration-rehearsal'), jobs.get('migration-rehearsal-prepare')
+    if not rehearsal or not prepare:
+        raise ValueError('READINESS_REHEARSAL_AUTHORITY_MISSING')
+    payload = {'schemaVersion': READINESS_SCHEMA, 'migrationInputIdentity': probe['runtimeIdentity'],
+               'candidateContractIdentity': probe['toolIdentity'],
+               'probeExecutionIdentity': probe['executionIdentity'],
+               'rehearsalExecutionIdentity': hashlib.sha256((prepare + '\n' + rehearsal).encode()).hexdigest(),
+               'migrationBuildIdentity': hashlib.sha256(json.dumps(build, sort_keys=True).encode()).hexdigest(),
+               'policyIdentity': readiness_policy_identity(approved),
+               'targets': sorted(targets), 'environment': 'Production',
+               'resourceGroup': RELEASE_RESOURCE_GROUP}
+    return dict(payload, identity=hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                                         separators=(',', ':')).encode()).hexdigest())
+
+
+def candidate_migration_contract_proven(candidate, approved, contract, approved_contract):
+    """Candidate metadata cannot declare its own completeness or safety.
+
+    The initial reviewed rule covers unchanged migration/runtime dependencies.
+    Unknown discovery changes (including attributes outside Migrations/) stop
+    before database observation. Add new shapes through reviewed extractor rules.
+    """
+    current = migration_probe_identity(candidate, candidate)
+    trusted = migration_probe_identity(approved, approved)
+    if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
+    if not isinstance(contract, dict) or contract != approved_contract:
+        raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions')
+    return {'state': 'proven', 'rule': 'approved-definitions-exact',
+            'runtimeIdentity': trusted['runtimeIdentity']}
+
+
+def validate_readiness_receipt(receipt, expected, *, now=None, require_fresh=True):
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc) if now is None else now
+    if not isinstance(receipt, dict) or any(receipt.get(k) != v for k, v in expected.items()):
+        raise ValueError('READINESS_INPUTS_CHANGED')
+    if receipt.get('state') not in {'executed-success', 'reused-success'}:
+        raise ValueError('READINESS_NOT_SUCCESSFUL')
+    try:
+        observed = datetime.datetime.fromisoformat(receipt['observedUtc'].replace('Z', '+00:00'))
+        if observed.utcoffset() is None:
+            raise ValueError()
+    except (KeyError, AttributeError, TypeError, ValueError):
+        raise ValueError('READINESS_TIME_UNPROVEN') from None
+    age = (now - observed).total_seconds()
+    if age < -30 or (require_fresh and age > READINESS_MAX_AGE_SECONDS):
+        raise ValueError('READINESS_EXPIRED')
+    for key in ('databaseIdentity', 'baselineIdentity', 'schemaIdentity', 'contractDigest'):
+        if not isinstance(receipt.get(key), str) or not re.fullmatch('[a-f0-9]{64}', receipt[key]):
+            raise ValueError('READINESS_PROOF_INCOMPLETE')
+    if type(receipt.get('pendingCount')) is not int or not 0 <= receipt['pendingCount'] <= 10000:
+        raise ValueError('READINESS_PROOF_INCOMPLETE')
+    if receipt['pendingCount'] > 0:
+        rehearsal = receipt.get('rehearsal')
+        if (not isinstance(rehearsal, dict) or rehearsal.get('proven') is not True or
+            rehearsal.get('contractDigest') != receipt['contractDigest'] or
+            rehearsal.get('schemaIdentity') != receipt['schemaIdentity'] or
+            rehearsal.get('baselineIdentity') != receipt['baselineIdentity'] or
+            not isinstance(rehearsal.get('bundleDigest'), str) or
+            not re.fullmatch('[a-f0-9]{64}', rehearsal['bundleDigest'])):
+            raise ValueError('MIGRATION_REHEARSAL_MISSING')
+    admission = 'proven' if receipt['pendingCount'] else 'not-required'
+    if receipt.get('mutationAdmission') != admission or receipt.get('deploymentReadiness') != 'proven':
+        raise ValueError('READINESS_PREREQUISITES_UNPROVEN')
+    return receipt
+
+
+def trusted_readiness_run(repository, run, approved):
+    """PR-target head is candidate metadata; the base owns executed workflow code."""
+    if ((run.get('head_repository') or {}).get('full_name') != repository or
+        run.get('path') != '.github/workflows/legend-release-lifecycle.yml'):
+        return False
+    if run.get('event') == 'workflow_dispatch':
+        return run.get('head_branch') == TRUSTED_PR_BASE and run.get('head_sha') == approved
+    if run.get('event') != 'pull_request_target':
+        return False
+    prs = run.get('pull_requests')
+    if not isinstance(prs, list) or len(prs) != 1:
+        return False
+    head, base = prs[0].get('head', {}), prs[0].get('base', {})
+    expected_url = 'https://api.github.com/repos/' + repository
+    execution = base.get('sha')
+    if not isinstance(execution, str) or not re.fullmatch('[a-f0-9]{40}', execution):
+        return False
+    if execution != approved and subprocess.run(['git', 'merge-base', '--is-ancestor', execution, approved],
+                                                capture_output=True, check=False).returncode != 0:
+        return False
+    return (base.get('ref') == TRUSTED_PR_BASE and
+            head.get('sha') == run.get('head_sha') and head.get('ref') == run.get('head_branch') and
+            all(part.get('repo', {}).get('url') == expected_url for part in (head, base)))
+
+
+def readiness_execution_revision(run):
+    return run['pull_requests'][0]['base']['sha'] if run['event'] == 'pull_request_target' else run['head_sha']
+
+
+def trusted_rehearsal_run(repository, run, candidate, expected):
+    """Authenticate source/base and recompute inputs, never trust receipt claims."""
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, path, candidate, require_completed=False):
+        return False
+    pulls = run.get('pull_requests')
+    if not isinstance(pulls, list) or len(pulls) != 1:
+        return False
+    head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
+    url = 'https://api.github.com/repos/' + repository
+    approved = base.get('sha', '')
+    if (base.get('ref') != TRUSTED_PR_BASE or head.get('sha') != run.get('head_sha') or
+        not re.fullmatch('[a-f0-9]{40}', approved) or
+        any(part.get('repo', {}).get('url') != url for part in (head, base))):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, run['head_sha']],
+                      capture_output=True, check=False).returncode != 0:
+        return False
+    try:
+        producer = readiness_identity(run['head_sha'], approved, expected['targets'])
+        approved_owner = readiness_identity(approved, approved, expected['targets'])
+    except (ValueError, KeyError):
+        return False
+    # Compatibility alone cannot authenticate a candidate-modified executor
+    # that fabricates counts. Install authority changes through reviewed
+    # bootstrap before that code may certify subsequent candidates.
+    if any(producer.get(key) != approved_owner.get(key) for key in (
+            'candidateContractIdentity', 'probeExecutionIdentity',
+            'rehearsalExecutionIdentity', 'migrationBuildIdentity')):
+        return False
+    return producer == expected
+
+
+def readiness_child_succeeded(repository, run, name, attempt, token):
+    # Parent retries do not invalidate a completed child from an earlier attempt.
+    if type(attempt) is not int or not 1 <= attempt <= run.get('run_attempt', 1):
+        return False
+    jobs = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+    child = [j for j in jobs.get('jobs', []) if j.get('name') == name]
+    return (jobs.get('total_count') == len(jobs.get('jobs', [])) and len(child) == 1 and
+            child[0].get('status') == 'completed' and child[0].get('conclusion') == 'success')
+
+
+def readiness_failure_kind(repository, run, approved, token):
+    if not trusted_readiness_run(repository, run, approved):
+        return 'untrusted'
+    attempt = run.get('run_attempt')
+    if type(attempt) is not int or attempt < 1:
+        return 'untrusted'
+    name = 'legend-readiness-failure-' + run['head_sha'] + '-a' + str(attempt)
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts', [])
+    if inventory.get('total_count') != len(artifacts):
+        raise EvidenceLookupUnavailable('Readiness failure inventory incomplete')
+    rows = [row for row in artifacts if row.get('name') == name and row.get('expired') is False]
+    if len(rows) != 1:
+        return 'unclassified'
+    artifact = rows[0]
+    if type(artifact.get('id')) is not int or artifact['id'] <= 0:
+        return 'untrusted'
+    jobs = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+    producers = [row for row in jobs.get('jobs', []) if row.get('name') == 'readiness-observe']
+    if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(producers) != 1:
+        return 'untrusted'
+    producer = producers[0]
+    uploads = [step for step in producer.get('steps', []) if step.get('name') == 'Preserve classified readiness failure']
+    if (producer.get('status') != 'completed' or producer.get('conclusion') != 'failure' or
+            len(uploads) != 1 or uploads[0].get('status') != 'completed' or uploads[0].get('conclusion') != 'success'):
+        return 'untrusted'
+    failure = _release_history_json(repository, run['id'], rows[0], 'failure.json')
+    if (failure.get('schemaVersion') != 1 or failure.get('candidate') != run['head_sha'] or
+        failure.get('executionAuthority') != readiness_execution_revision(run) or
+        failure.get('producingRun') != run['id'] or failure.get('producingAttempt') != attempt):
+        raise ValueError('Readiness failure producer identity mismatch')
+    return failure.get('classification', 'unclassified')
+
+
+def readiness_refresh_intent(repository, operation, approved, token):
+    """Exact-name provider index, authenticated back to the approved lifecycle."""
+    if not re.fullmatch('[a-f0-9]{64}', operation):
+        raise ValueError('Invalid readiness recovery identity')
+    name = 'legend-readiness-recovery-' + operation
+    data = api_get(repository, 'actions/artifacts?name=' + name + '&per_page=100', token)
+    rows = data.get('artifacts')
+    if not isinstance(rows, list) or data.get('total_count') != len(rows):
+        raise EvidenceLookupUnavailable('Readiness recovery intent inventory incomplete')
+    if not rows:
+        return None
+    if len(rows) != 1 or rows[0].get('expired') is not False or rows[0].get('name') != name:
+        raise ValueError('Readiness recovery intent expired or ambiguous; no request authorized')
+    artifact = rows[0]
+    run_id = artifact.get('workflow_run', {}).get('id')
+    run = api_get(repository, f'actions/runs/{run_id}', token)
+    trusted = trusted_readiness_run(repository, run, approved)
+    if run.get('event') in {'workflow_run', 'schedule', 'push'}:
+        trusted = (run.get('head_repository', {}).get('full_name') == repository and
+            run.get('path') == '.github/workflows/legend-release-lifecycle.yml' and
+            run.get('head_branch') == TRUSTED_PR_BASE and
+            re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) and
+            subprocess.run(['git', 'merge-base', '--is-ancestor', run['head_sha'], approved], capture_output=True).returncode == 0)
+    if not trusted:
+        raise ValueError('Readiness recovery producer untrusted')
+    record = _release_history_json(repository, run_id, artifact, 'operation.json')
+    if (record.get('schemaVersion') != 1 or record.get('phase') != 'intent' or
+        record.get('operationId') != operation or record.get('producingRun') != run_id or
+        type(record.get('producingAttempt')) is not int or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 1)):
+        raise ValueError('Readiness recovery producer identity mismatch')
+    return record
+
+
+def readiness_artifact_candidates(repository, runs, prefix, identity, token, trusted):
+    for run in runs:
+        if not trusted(run):
+            continue
+        stem = prefix + identity + '-a'
+        data = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        rows = data.get('artifacts')
+        if not isinstance(rows, list) or data.get('total_count') != len(rows):
+            raise EvidenceLookupUnavailable('Readiness artifact inventory incomplete')
+        compatible = []
+        for row in rows:
+            name = row.get('name', '')
+            if row.get('expired') is not False or not name.startswith(stem):
+                continue
+            if (type(row.get('id')) is not int or row['id'] < 1 or
+                not name[len(stem):].isdigit() or not 1 <= int(name[len(stem):]) <= run.get('run_attempt', 1)):
+                raise ValueError('READINESS_ARTIFACT_IDENTITY_INVALID')
+            compatible.append(row)
+        if len({row['name'] for row in compatible}) != len(compatible):
+            raise ValueError('READINESS_ARTIFACT_IDENTITY_AMBIGUOUS')
+        for row in sorted(compatible, key=lambda value: int(value['name'][len(stem):]), reverse=True):
+            yield run, row
+
+
+def readiness_evidence(repository, candidate, approved, targets, token, *, require_fresh=True, baseline=None):
+    import tempfile
+    expected = readiness_identity(candidate, approved, targets)
+    workflow = 'legend-release-lifecycle.yml'
+    data = api_get(repository, 'actions/workflows/' + workflow + '/runs?per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-release-readiness-', expected['identity'], token, lambda run: trusted_readiness_run(repository, run, approved)):
+        with tempfile.TemporaryDirectory() as directory:
+            _download_run_artifact(repository, run['id'], artifact['name'], Path(directory), artifact_id=artifact['id'])
+            receipt = json.loads((Path(directory) / 'readiness.json').read_text())
+        try:
+            validate_readiness_receipt(receipt, expected, require_fresh=require_fresh)
+        except ValueError as exc:
+            if str(exc) == 'READINESS_EXPIRED':
+                continue
+            raise
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (receipt.get('producingRun') != run['id'] or
+            receipt.get('executionAuthority') != readiness_execution_revision(run) or receipt.get('candidate') != run.get('head_sha')):
+            raise ValueError('READINESS_PRODUCER_MISMATCH')
+        if not readiness_child_succeeded(repository, run, 'release-readiness', receipt.get('producingAttempt'), token):
+            continue
+        if baseline and any(receipt.get(key) != value for key, value in baseline.items()):
+            continue
+        return {'state': 'reused-success', 'sourceRun': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id'],
+                'compatibilityProof': expected, 'receipt': receipt}
+    return None
+
+
+def readiness_observation_evidence(repository, candidate, approved, targets, token):
+    import tempfile
+    expected = readiness_identity(candidate, approved, targets)
+    data = api_get(repository, 'actions/workflows/legend-release-lifecycle.yml/runs?event=pull_request_target&per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-readiness-observation-', expected['identity'], token, lambda run: trusted_readiness_run(repository, run, approved)):
+        with tempfile.TemporaryDirectory() as directory:
+            _download_run_artifact(repository, run['id'], artifact['name'], Path(directory), artifact_id=artifact['id'])
+            receipt = json.loads((Path(directory) / 'observation.json').read_text())
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (any(receipt.get(k) != v for k, v in expected.items()) or
+            receipt.get('producingRun') != run['id'] or
+            receipt.get('executionAuthority') != readiness_execution_revision(run) or receipt.get('candidate') != run.get('head_sha')):
+            raise ValueError('READINESS_OBSERVATION_IDENTITY_CHANGED')
+        if not readiness_child_succeeded(repository, run, 'readiness-observe', receipt.get('producingAttempt'), token):
+            continue
+        return receipt
+    return None
+
+
+def migration_rehearsal_evidence(repository, candidate, expected, token, *, baseline=None):
+    import tempfile
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    data = api_get(repository, 'actions/workflows/' + PACKAGE_VALIDATION_WORKFLOW + '/runs?event=pull_request&per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-migration-rehearsal-', expected['identity'], token, lambda run: trusted_rehearsal_run(repository, run, candidate, expected)):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _download_run_artifact(repository, run['id'], artifact['name'], root, artifact_id=artifact['id'])
+            receipt = json.loads((root / 'rehearsal.json').read_text())
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (receipt.get('readinessIdentity') != expected['identity'] or receipt.get('proven') is not True or
+            receipt.get('producingRun') != run['id'] or
+            receipt.get('candidate') != run.get('head_sha') or
+            receipt.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}):
+            raise ValueError('READINESS_REHEARSAL_IDENTITY_CHANGED')
+        if not readiness_child_succeeded(repository, run, 'migration-rehearsal', receipt.get('producingAttempt'), token):
+            continue
+        if baseline and any(receipt.get(key) != baseline.get(key) for key in ('schemaIdentity', 'baselineIdentity', 'contractDigest')):
+            print('LEGEND_REHEARSAL:RETAINED_BUT_NOT_REUSED:observed_baseline_changed:source=' + str(run['id']))
+            continue
+        source = receipt.get('bundleSource')
+        if (not isinstance(source, dict) or source.get('runId') != run['id'] or
+            type(source.get('artifactId')) is not int or type(source.get('producingAttempt')) is not int or
+            source.get('artifact') != 'legend-rehearsal-bundle-' + expected['identity'] + '-a' + str(source['producingAttempt']) or
+            not readiness_child_succeeded(repository, run, 'migration-rehearsal-prepare', source['producingAttempt'], token)):
+            raise ValueError('READINESS_REHEARSED_BUNDLE_SOURCE_UNPROVEN')
+        # Read only immutable provider metadata here. The package owner downloads
+        # and hashes the bytes once when promoting this exact prepared bundle.
+        bundle = api_get(repository, f"actions/artifacts/{source['artifactId']}", token)
+        if (bundle.get('id') != source['artifactId'] or bundle.get('name') != source['artifact'] or
+            bundle.get('expired') is not False or bundle.get('workflow_run', {}).get('id') != run['id']):
+            raise ValueError('READINESS_REHEARSED_BUNDLE_SOURCE_UNPROVEN')
+        return {'receipt': receipt, 'runId': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id']}
+    return None
+
+
+def require_readiness(repository, candidate, *, event=None, clock=time.monotonic, sleep=time.sleep):
+    if os.environ.get('GITHUB_ACTIONS') != 'true' or (event or os.environ.get('GITHUB_EVENT_NAME')) != 'pull_request':
+        return {'state': 'not-required', 'reason': 'outside_pr_validation'}
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    preflight = approved_head_preflight(repository, candidate, token)
+    if not preflight['current']:
+        raise ValueError('READINESS_APPROVED_BASE_CHANGED')
+    approved = preflight['approvedHeadSha']
+    # The initial control-plane rollout cannot ask an older approved workflow to
+    # produce a receipt it does not implement. This is explicit bootstrap state,
+    # not readiness success, and disappears once the reviewed owner is approved.
+    approved_source = git_show_file(approved, 'scripts/validation-resume.py')
+    if not re.search(r'^READINESS_SCHEMA = 1$', approved_source, re.M):
+        return {'state': 'not-required', 'reason': 'initial_approved_authority_rollout', 'approved': approved}
+    targets = readiness_targets(candidate, approved)
+    deadline = clock() + READINESS_WAIT_SECONDS
+    while True:
+        with evidence_lookup_budget(deadline, clock=clock):
+            proof = readiness_evidence(repository, candidate, approved, targets, token)
+        if proof:
+            print('LEGEND_READINESS:REUSED:' + str(proof['sourceRun']))
+            return proof
+        if clock() >= deadline:
+            raise RuntimeError('READINESS_BLOCKED: trusted lifecycle readiness receipt unavailable; no expensive work authorized')
+        sleep(min(10, max(0, deadline - clock())))
+
+
 def cmd_plan(args):
+    require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
 
@@ -4396,6 +4827,7 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
 
 
 def cmd_package_canary_plan(args):
+    require_readiness(args.repository, args.current_sha)
     try:
         result = compute_package_canary_plan(
             args.repository,
@@ -4563,22 +4995,71 @@ def migration_probe_identity(tool_revision, application_revision):
     return dict(payload, identity=identity, artifact='legend-migration-probe-' + identity)
 
 
-def migration_probe_evidence(repository, identity):
+def migration_probe_artifact(repository, run, name, token):
+    """Bind a retained probe to its original successful job, not the latest rerun.
+
+    Legacy manifests lack an attempt field. GitHub's immutable artifact creation
+    time and complete job inventory supply that boundary without rewriting them.
+    """
+    import datetime
+    data = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    rows = data.get('artifacts')
+    if not isinstance(rows, list) or data.get('total_count') != len(rows):
+        raise EvidenceLookupUnavailable('Probe artifact inventory incomplete')
+    artifacts = [row for row in rows if row.get('name') == name and row.get('expired') is False]
+    if not artifacts:
+        return None
+    if len(artifacts) != 1 or type(artifacts[0].get('id')) is not int or artifacts[0]['id'] < 1:
+        raise ValueError('Probe immutable artifact identity ambiguous')
+    artifact = artifacts[0]
+    def stamp(value):
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.utcoffset() is None:
+            raise ValueError('Probe provider timestamp lacks timezone')
+        return parsed
+    created = stamp(artifact['created_at'])
+    matches = []
+    seen = 0
+    for page in range(1, 11):
+        data = api_get(repository, f"actions/runs/{run['id']}/jobs?filter=all&per_page=100&page={page}", token)
+        jobs = data.get('jobs')
+        if not isinstance(jobs, list) or type(data.get('total_count')) is not int:
+            raise EvidenceLookupUnavailable('Probe job inventory incomplete')
+        seen += len(jobs)
+        for job in jobs:
+            if (job.get('name') == 'validated-migration-probe' and job.get('status') == 'completed' and
+                job.get('conclusion') == 'success' and type(job.get('run_attempt')) is int and
+                1 <= job['run_attempt'] <= run.get('run_attempt', 1) and
+                stamp(job['started_at']) <= created <= stamp(job['completed_at'])):
+                matches.append(job)
+        if seen >= data['total_count']:
+            break
+        if len(jobs) < 100:
+            raise EvidenceLookupUnavailable('Probe job inventory incomplete')
+    else:
+        raise EvidenceLookupUnavailable('Probe job inventory exceeded bounded lookup')
+    if len(matches) != 1:
+        return None
+    return {'artifactId': artifact['id'], 'producingAttempt': matches[0]['run_attempt'],
+            'producerJobId': matches[0]['id']}
+
+
+def migration_probe_evidence(repository, identity, *, include_active=False, candidate=None):
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
     if not token:
         raise ValueError('Probe evidence authentication unavailable')
     workflow_path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
     workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe='')
     payload = api_get(repository,
-        f'actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100', token)
+        f'actions/workflows/{workflow}/runs?event=pull_request&per_page=100' + ('' if include_active else '&status=completed'), token)
     runs = sorted(payload.get('workflow_runs', []),
         key=lambda row: (row.get('updated_at') or row.get('created_at', ''), int(row.get('id', 0))),
         reverse=True)
     for run in runs:
         run_id = int(run.get('id') or 0)
         current_revision = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], text=True).strip()
-        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision):
+            ['git', 'rev-parse', candidate or 'HEAD'], text=True).strip()
+        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision, require_completed=not include_active):
             continue
         try:
             producer = migration_probe_identity(run['head_sha'], run['head_sha'])
@@ -4588,12 +5069,13 @@ def migration_probe_evidence(repository, identity):
             continue
         if producer != identity:
             continue
-        if identity['artifact'] not in _run_artifact_names(repository, run_id, token):
+        artifact = migration_probe_artifact(repository, run, identity['artifact'], token)
+        if not artifact:
             continue
         # The canonical child uploads only after build + manifest verification.
         # Exact execution/runtime/tool identity plus retained artifact presence is
         # the durable success proof; release re-verifies the manifest after load.
-        return {'reusable': True, 'runId': run_id, 'artifact': identity['artifact'], 'identity': identity['identity']}
+        return dict(artifact, reusable=True, runId=run_id, artifact=identity['artifact'], identity=identity['identity'])
     return {'reusable': False, 'artifact': identity['artifact']}
 
 def package_inputs_compatible(prior: str, current: str) -> bool:
@@ -5148,7 +5630,7 @@ def _release_history_json(repository, run_id, artifact, filename):
     if artifact.get('id') and key in _RELEASE_HISTORY_RECEIPTS:
         return _RELEASE_HISTORY_RECEIPTS[key]
     with tempfile.TemporaryDirectory(prefix="legend-release-history-") as directory:
-        _download_run_artifact(repository, run_id, artifact["name"], Path(directory))
+        _download_run_artifact(repository, run_id, artifact["name"], Path(directory), artifact_id=artifact.get('id'))
         file = Path(directory) / filename
         if not file.is_file() or file.stat().st_size > 131072:
             raise RuntimeError("Malformed historical publication receipt")
@@ -6055,7 +6537,7 @@ def _run_artifact_names(repository: str, run_id: int, token: str):
     }
 
 
-def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path):
+def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path, *, artifact_id=None):
     """Retry only transient GitHub artifact GET failures, never a release mutation.
 
     CLI stderr may contain signed download URLs. Consume it privately; expose
@@ -6072,13 +6554,35 @@ def _download_run_artifact(repository: str, run_id: int, name: str, directory: P
         "--name", name,
         "--dir", str(directory),
     ]
+    if artifact_id is not None:
+        if type(artifact_id) is not int or artifact_id < 1:
+            raise ValueError('Immutable artifact ID required')
+        command = ['gh', 'api', f'repos/{repository}/actions/artifacts/{artifact_id}/zip']
     for attempt in range(3):
         try:
-            result = subprocess.run(
-                command, check=False, env=env, capture_output=True,
-                text=True, timeout=120,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+            if artifact_id is None:
+                result = subprocess.run(command, check=False, env=env, capture_output=True, text=True, timeout=evidence_remaining(120))
+            else:
+                import tempfile
+                import zipfile
+                import stat
+                with tempfile.TemporaryFile() as archive:
+                    result = subprocess.run(command, check=False, env=env, stdout=archive,
+                                            stderr=subprocess.PIPE, text=True, timeout=evidence_remaining(120))
+                    if result.returncode == 0:
+                        archive.seek(0)
+                        with zipfile.ZipFile(archive) as contents:
+                            entries = contents.infolist()
+                            root = directory.resolve()
+                            if (len(entries) > 10000 or sum(row.file_size for row in entries) > 2 * 1024**3 or
+                                len({row.filename for row in entries}) != len(entries) or
+                                any(stat.S_ISLNK(row.external_attr >> 16) or Path(row.filename).is_absolute() or
+                                    not (root / row.filename).resolve().is_relative_to(root) for row in entries)):
+                                raise ValueError('Immutable artifact archive contains unsafe entries')
+                            contents.extractall(directory)
+        except subprocess.TimeoutExpired:
+            raise EvidenceLookupUnavailable("Artifact evidence read unavailable", status=408) from None
+        except OSError:
             raise EvidenceLookupUnavailable("Artifact evidence read unavailable") from None
         if result.returncode == 0:
             return
@@ -6088,7 +6592,7 @@ def _download_run_artifact(repository: str, run_id: int, name: str, directory: P
         messages = result.stderr or ""
         transient = bool(re.search(r"\bHTTP (?:408|429|500|502|503|504)\b", messages))
         if transient and attempt < 2:
-            time.sleep(2 ** attempt)
+            time.sleep(evidence_remaining(2 ** attempt))
             continue
         raise EvidenceLookupUnavailable(
             "Transient artifact evidence read exhausted bounded retries"
@@ -6882,6 +7386,7 @@ def compute_step5_decision(
 
 
 def cmd_step5_decision(args):
+    require_readiness(args.repository, args.current_sha)
     try:
         decision = compute_step5_decision(
             args.repository,

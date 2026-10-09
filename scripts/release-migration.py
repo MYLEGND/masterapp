@@ -19,6 +19,8 @@ PROBE_TERMINAL_REASONS = {
     'MIGRATIONS_MISSING': 'Validated probe reports no known migrations',
     'UNKNOWN_APPLIED_MIGRATION': 'Database contains applied migration history absent from validated bundle',
     'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
+    'MIGRATION_COMPATIBILITY_UNPROVEN': 'Pending migration compatibility and recovery require review',
+    'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN': 'Candidate migration metadata differs from approved definitions',
     'PHYSICAL_SCHEMA_DRIFT': 'Production physical schema disagrees with validated EF history',
     'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
 }
@@ -85,7 +87,7 @@ def journal_type():
 
 def connection_string():
     def az(*args):
-        result = subprocess.run(['az', *args, '-o', 'json'], capture_output=True, text=True, check=False)
+        result = subprocess.run(['az', *args, '-o', 'json'], capture_output=True, text=True, check=False, timeout=120)
         if result.returncode:
             raise RuntimeError('Database configuration observation unavailable')
         return json.loads(result.stdout)
@@ -100,13 +102,13 @@ def connection_string():
     return connection
 
 
-def observe(probe, connection):
+def observe(probe, connection, *, contract=None):
     env = os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection}
     # Retry only an explicitly classified transient SQL read failure.
     # All unknown, credential, invalid-schema and timeout failures remain fail-closed.
     for attempt in range(3):
         try:
-            result = subprocess.run(['dotnet', str(probe)], env=env, capture_output=True, text=True,
+            result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []), env=env, capture_output=True, text=True,
                                     timeout=60, check=False)
         except subprocess.TimeoutExpired:
             raise RuntimeError('Schema probe process deadline exceeded') from None
@@ -186,7 +188,45 @@ def migration_stage(stage, action, *args, **kwargs):
         raise RuntimeError('Migration stage unresolved: ' + stage) from None
 
 
-def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=None, execute=None):
+def bind_readiness(before, bundle_digest, receipt, *, completed_intent=False):
+    """Fresh production observation binds retained expensive proof to this write."""
+    for key in ('databaseIdentity', 'schemaIdentity'):
+        if not re.fullmatch('[a-f0-9]{64}', str(before.get(key, ''))) or before[key] != receipt.get(key):
+            raise RuntimeError('Migration stage unresolved: readiness-identity')
+    rehearsal = receipt.get('rehearsal') or {}
+    if receipt.get('pendingCount', 0) > 0 and rehearsal.get('bundleDigest') != bundle_digest:
+        raise RuntimeError('Migration stage unresolved: readiness-bundle')
+    if before.get('baselineIdentity') != receipt.get('baselineIdentity'):
+        # Only an exact retained intent plus complete current physical proof can
+        # reconcile lost acknowledgement. A changed baseline never grants replay.
+        if not (before['ready'] and completed_intent and rehearsal.get('bundleDigest') == bundle_digest):
+            raise RuntimeError('Migration stage unresolved: readiness-drift')
+        return 'completed-intent-reconciled'
+    if not re.fullmatch('[a-f0-9]{64}', str(before.get('baselineIdentity', ''))):
+        raise RuntimeError('Migration stage unresolved: readiness-identity')
+    return 'current-baseline-proven'
+
+
+def production_readiness(before):
+    authority = release_authority()
+    repository = os.environ['GITHUB_REPOSITORY']
+    candidate = os.environ['RELEASE_CANDIDATE_SHA']
+    approved = os.environ['RELEASE_SHA']
+    targets = json.loads(os.environ['SELECTED_TARGETS'])
+    authority.selected_release_target_keys(targets)
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    # Expensive proof need not expire with a database observation. The caller
+    # performs a new observation and exact database/baseline comparison before
+    # any mutation, preserving compatible builds and rehearsals across queues.
+    with authority.evidence_lookup_budget(time.monotonic() + 120):
+        scope = {key: before[key] for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity')} if not before['ready'] else None
+        proof = authority.readiness_evidence(repository, candidate, approved, targets, token, require_fresh=False, baseline=scope)
+    if not proof:
+        raise RuntimeError('Migration stage unresolved: readiness-missing')
+    return proof['receipt']
+
+
+def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=None, execute=None, readiness=None):
     before = migration_stage('schema-observation', observer, probe, connection)
     material = hashlib.sha256(json.dumps(dict(schemaIdentity=before['schemaIdentity'],
         bundleDigest=hashlib.sha256(bundle.read_bytes()).hexdigest()), sort_keys=True).encode()).hexdigest()
@@ -196,8 +236,18 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
         journal = migration_stage('child-history', journal_type(), 'migrations', material, partition_identity=partition)
     else:
         journal = migration_stage('child-history', journal_factory, 'migrations', material)
+    if readiness is not None:
+        bind_readiness(before, hashlib.sha256(bundle.read_bytes()).hexdigest(), readiness(before),
+                       completed_intent=journal.intent is not None)
     observation = {'schemaIdentity': before['schemaIdentity']}
     if before['ready']:
+        # This receipt proves desired state, never historical execution. The
+        # explicit no-write marker prevents a later release mistaking this
+        # successful observer for an unjournaled SQL mutation.
+        if getattr(journal, 'intent', None) is None and (
+                getattr(journal, 'success', None) is None or
+                journal.success.get('observation', {}).get('providerVersion') == 'schema-ready-no-write'):
+            observation['providerVersion'] = 'schema-ready-no-write'
         migration_stage('success-receipt', journal.record_success, observation)
         return 'preserved'
     # A retained success plus missing history is drift. A retained intent with
@@ -228,44 +278,122 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
     return 'applied'
 
 
-def preflight(bundle, probe, connection):
-    """Early, strictly READ-ONLY release gate. No intent or SQL write occurs here.
+def mutation_admission(before, bundle_digest=None):
+    """One read-only admission policy, shared by PR readiness and release.
 
-    The existing canonical first-write journal is queried using the same
-    material/partition identities as actual bundle execution. Only the
-    immutable validated binary can supply its material digest.
+    Zero pending is absence of a required new write, not historical authorization
+    or a reconstructed success receipt. Retained ambiguity never permits replay.
     """
-    before = migration_stage('schema-observation', observe, probe, connection)
     if before['ready']:
-        print('LEGEND_MIGRATION_READINESS:READY:pending=0', flush=True)
-        return 'ready'
-
-    if bundle is None or not bundle.is_file():
+        return {'state': 'not-required', 'reason': 'fresh_history_and_physical_postconditions_complete'}
+    if not isinstance(bundle_digest, str) or not re.fullmatch('[a-f0-9]{64}', bundle_digest):
         raise RuntimeError('Migration stage unresolved: preparation')
-    material = hashlib.sha256(json.dumps(dict(
-        schemaIdentity=before['schemaIdentity'],
-        bundleDigest=hashlib.sha256(bundle.read_bytes()).hexdigest(),
-    ), sort_keys=True).encode()).hexdigest()
-    partition = hashlib.sha256(json.dumps(dict(
-        resourceGroup=os.environ['RELEASE_RESOURCE_GROUP'],
-        authority=os.environ['DATABASE_AUTHORITY'],
-    ), sort_keys=True).encode()).hexdigest()
-    journal = migration_stage('child-history', journal_type(), 'migrations',
-                              material, partition_identity=partition)
+    material = hashlib.sha256(json.dumps(dict(schemaIdentity=before['schemaIdentity'],
+        bundleDigest=bundle_digest), sort_keys=True).encode()).hexdigest()
+    partition = hashlib.sha256(json.dumps(dict(resourceGroup=os.environ['RELEASE_RESOURCE_GROUP'],
+        authority=os.environ['DATABASE_AUTHORITY']), sort_keys=True).encode()).hexdigest()
+    journal = migration_stage('child-history', journal_type(), 'migrations', material, partition_identity=partition)
     if journal.intent is not None or journal.success is not None:
         raise RuntimeError('Migration stage unresolved: child-history')
     fence = {}
     if 'firstPendingMigrationId' in before and 'lastAppliedMigrationId' in before:
         fence = dict(first_pending_migration_id=before['firstPendingMigrationId'],
                      last_applied_migration_id=before['lastAppliedMigrationId'])
-    migration_stage('mutation-admission',
-        journal.authority.release_child_first_write_proven,
+    migration_stage('mutation-admission', journal.authority.release_child_first_write_proven,
         journal.repository, journal.child, journal.identity, journal.material_identity,
-        journal.run, journal.attempt, journal.token,
-        partition_identity=journal.partition_identity,
+        journal.run, journal.attempt, journal.token, partition_identity=journal.partition_identity,
         current_application_revision=journal.revision, **fence)
+    return {'state': 'proven', 'materialIdentity': material, 'partitionIdentity': partition}
+
+
+def preflight(bundle, probe, connection, *, observation=None):
+    """Early, strictly READ-ONLY release gate. No intent or SQL write occurs here.
+
+    The existing canonical first-write journal is queried using the same
+    material/partition identities as actual bundle execution. Only the
+    immutable validated binary can supply its material digest.
+    """
+    before = observation if observation is not None else migration_stage('schema-observation', observe, probe, connection)
+    mutation_admission(before, hashlib.sha256(bundle.read_bytes()).hexdigest() if bundle and bundle.is_file() else None)
     print('LEGEND_MIGRATION_READINESS:READY:pending=' + str(before['pendingCount']), flush=True)
-    return 'pending'
+    return 'ready' if before['ready'] else 'pending'
+
+
+def rehearse(bundle, probe, fixture, connection, baseline, *, execute=None):
+    """Exercise exact bytes and lost-receipt recovery on a synthetic database.
+
+    The caller owns disposal of the isolated SQL instance. This function cannot
+    consume production credentials or run against arbitrary server identities.
+    Fixture preparation is test code, never part of the production observer.
+    """
+    if (not re.fullmatch(r'Server=127\.0\.0\.1,[1-9][0-9]{3,4};Database=LegendRehearsal_[a-f0-9]{32};'
+                         r'User Id=sa;Password=[A-Za-z0-9_!\-]{20,128};Encrypt=True;TrustServerCertificate=True', connection) or
+        type(baseline.get('pendingCount')) is not int or not 1 <= baseline['pendingCount'] <= 1000 or
+        not re.fullmatch('[a-f0-9]{64}', str(baseline.get('baselineIdentity', '')))):
+        raise RuntimeError('Isolated representative migration fixture unavailable')
+    env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
+    env['LEGEND_ISOLATED_SQL'] = connection
+    env['LEGEND_REHEARSAL_PENDING_COUNT'] = str(baseline['pendingCount'])
+
+    def fixture_command(operation):
+        result = subprocess.run(['dotnet', str(fixture), operation], env=env,
+                                capture_output=True, text=True, timeout=150, check=False)
+        if result.returncode:
+            raise RuntimeError('Isolated representative migration fixture failed')
+
+    fixture_command('initialize')
+    before = observe(probe, connection)
+    if any(before.get(key) != baseline.get(key) for key in
+           ('schemaIdentity', 'baselineIdentity', 'pendingCount', 'firstPendingMigrationId', 'lastAppliedMigrationId')):
+        raise RuntimeError('Isolated fixture differs from observed schema baseline')
+    counts = {'mutations': 0, 'intents': 0, 'successReceipts': 0}
+
+    class FaultJournal:
+        intent = None
+        success = None
+
+        def before_mutation(self, *args, **kwargs):
+            if counts['intents']:
+                raise AssertionError('Duplicate migration intent')
+            counts['intents'] += 1
+            self.intent = {'phase': 'intent'}
+
+        def record_success(self, *args):
+            if args[0].get('providerVersion') == 'schema-ready-no-write':
+                raise AssertionError('Executed migration was mislabeled as a no-write observation')
+            counts['successReceipts'] += 1
+            if counts['successReceipts'] == 1:
+                raise TimeoutError('Injected isolated receipt acknowledgment loss')
+
+    def apply(bundle, connection):
+        counts['mutations'] += 1
+        if execute is not None:
+            execute(bundle, connection)
+        else:
+            result = subprocess.run([str(bundle), '--connection', connection],
+                                    env=env | {'SQLCONNSTR_MasterAppDb': connection},
+                                    capture_output=True, text=True, timeout=180, check=False)
+            if result.returncode:
+                raise RuntimeError('Isolated validated bundle failed')
+
+    started = time.monotonic()
+    journal = FaultJournal()
+    try:
+        reconcile(bundle, probe, connection, journal_factory=lambda *a: journal, execute=apply)
+    except RuntimeError as error:
+        if str(error) != 'Migration stage unresolved: success-receipt':
+            raise
+    else:
+        raise AssertionError('Receipt failure injection was not exercised')
+    outcome = reconcile(bundle, probe, connection, journal_factory=lambda *a: journal, execute=apply)
+    fixture_command('verify')
+    if outcome != 'preserved' or counts != {'mutations': 1, 'intents': 1, 'successReceipts': 2}:
+        raise AssertionError('Isolated migration recovery replayed a completed operation')
+    return dict(proven=True, isolated=True, syntheticDataOnly=True, counts=counts,
+                schemaIdentity=before['schemaIdentity'],
+                baselineIdentity=before['baselineIdentity'],
+                bundleDigest=hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                elapsedSeconds=round(time.monotonic() - started, 3))
 
 
 
@@ -283,12 +411,13 @@ if __name__ == '__main__':
         if is_preflight:
             result = preflight(bundle if bundle.is_file() else None, probe, connection_string())
         else:
-            result = reconcile(bundle, probe, connection_string())
+            result = reconcile(bundle, probe, connection_string(), readiness=production_readiness)
             print('Schema ready; validated migration child ' + result + '.')
     except Exception as exc:
         # Only locally constructed fixed labels may cross this boundary.
         stages = {'schema-observation', 'child-history', 'mutation-admission',
-                  'bundle-execution', 'schema-verification', 'success-receipt'}
+                  'bundle-execution', 'schema-verification', 'success-receipt',
+                  'readiness-identity', 'readiness-bundle', 'readiness-drift', 'readiness-missing'}
         messages = {'Migration stage unresolved: ' + stage for stage in stages}
         messages.update(OBSERVATION_ERRORS)
         detail = str(exc) if type(exc) is RuntimeError and str(exc) in messages else 'Migration stage unresolved: preparation'

@@ -12,6 +12,48 @@ journal = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(journal)
 
 
+class ReadinessRecoveryIntentTests(unittest.TestCase):
+    def setUp(self):
+        self.identity = dict(candidateRevision='a' * 40, executionAuthority='b' * 40,
+                             targetRun=12, targetAttempt=1, targetJob=34)
+        self.env = dict(GITHUB_RUN_ID='56', GITHUB_RUN_ATTEMPT='1')
+        self.records, self.posts = {}, []
+        self.remote = dict(id=12, run_attempt=1, status='completed')
+
+    def invoke(self, publisher=None, execute=None):
+        def publish(name, record):
+            self.records[record['operationId']] = record
+            return {'artifactId': 78}
+        return journal.readiness_refresh_once(self.identity, lookup=self.records.get,
+            observe=lambda: self.remote, execute=execute or (lambda: self.posts.append(34)),
+            publisher=publisher or publish, environment=self.env)
+
+    def test_duplicate_events_and_authority_update_preserve_one_request(self):
+        self.assertEqual('READINESS_REFRESH_REQUESTED', self.invoke()['state'])
+        self.env['GITHUB_RUN_ID'] = '57'
+        self.identity['executionAuthority'] = 'c' * 40
+        self.assertEqual('READINESS_BLOCKED', self.invoke()['state'])
+        self.assertEqual([34], self.posts)
+        self.assertEqual(1, len(self.records))
+
+    def test_lost_rerun_acknowledgment_reconciles_exact_new_attempt(self):
+        def execute():
+            self.posts.append(34)
+            self.remote = dict(id=12, run_attempt=2, status='in_progress')
+            raise TimeoutError('lost acknowledgment')
+        self.assertEqual('READINESS_REFRESH_OBSERVED', self.invoke(execute=execute)['state'])
+        self.assertEqual('READINESS_REFRESH_OBSERVED', self.invoke()['state'])
+        self.assertEqual([34], self.posts)
+
+    def test_worker_dies_after_intent_before_request_never_guesses(self):
+        def crash(name, record):
+            self.records[record['operationId']] = record
+            raise TimeoutError('intent readback lost')
+        with self.assertRaises(TimeoutError): self.invoke(publisher=crash)
+        self.assertEqual('READINESS_BLOCKED', self.invoke()['state'])
+        self.assertEqual([], self.posts)
+
+
 class DurableOperationProtocolTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

@@ -37,6 +37,35 @@ These values are protected by the trusted-base control-plane integrity guard. A 
 
 Production migration and configuration work is part of the same governed release transaction. Only the canonical release child authorities may perform those writes. Developer/local database utilities are not production authorities.
 
+### Early readiness
+
+The lifecycle's `readiness-observe` and `release-readiness` children run approved
+control-plane code for authorized same-repository PRs, including drafts. They
+consume the candidate probe's declarative migration contract as data; candidate
+assemblies never execute with production credentials. Production observation is
+read-only and binds schema history, physical postconditions, database identity,
+candidate inputs, policy, target scope, and observation time.
+
+The architecture workflow builds the minimal Infrastructure probe first. A
+pending migration requires the canonical migration component and an isolated
+representative rehearsal before application validation or package fan-out.
+The rehearsal fixture is a separate executable with synthetic data and a
+disposable loopback SQL database. Its completed bundle is checkpointed before
+rehearsal. Recovery tests require one mutation across lost-receipt recovery.
+The later package component promotes those same bundle bytes.
+
+`validation-resume.py` owns receipt compatibility and the bounded readiness
+wait. Skipped, failed, expired, mismatched, or incomplete proof cannot authorize
+expensive work. Successful children from earlier parent attempts remain usable.
+The initial control-plane installation records an explicit bootstrap exception
+when the approved branch predates this producer; this is not readiness success.
+Once installed, the integrity guard forbids removing readiness to reenter that
+exception. Publication still performs its current-state check before mutation.
+
+The current synthetic fixture covers `20261007134500_AddFounderAssistantRules`.
+Other pending migration shapes require a reviewed representative fixture; they
+fail closed instead of claiming untested compatibility.
+
 ## Diagnostics
 
 Production diagnostic workflows are read-only observers. They may inspect runtime state, logs, metrics, provenance, and provider status, but they may not upload executables, change application files/settings, restart applications, or publish application bytes.
