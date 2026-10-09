@@ -742,6 +742,7 @@ def candidate_control_plane_integrity(api, pr, names):
         "success.get('phase') != 'success'",
         "success.get('producingRun') != run['id']",
         "operation_id != expected_id",
+        'required.issubset(set(observed))',
         "return set(observed) == set(keys)",
     )):
         return 'Candidate weakened durable historical publication proof'
@@ -755,6 +756,7 @@ def candidate_control_plane_integrity(api, pr, names):
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
         'ancestor(old_revision, new_revision)',
+        'required_targets=overlap',
     )):
         return 'Candidate weakened strict descendant target-scoped stale-lease supersession'
     if not all(token in live_settlement_source for token in (
@@ -766,7 +768,7 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened canonical live-provenance stale-lease settlement'
     if not all(token in admission_conflict_source for token in (
         'live_snapshot_loaded = False',
-        '_forward_supersedes_completed_app_lease(record, candidate)',
+        '_forward_supersedes_completed_app_lease(api, run, record, candidate)',
         '_historical_application_publications_completed(api, run, record)',
         'live_revisions()',
         '_admission_covered_by_live_provenance(record, live_snapshot)',
@@ -2846,13 +2848,16 @@ def _app_only_admission_keys(record):
     return tuple(keys)
 
 
-def _historical_application_publications_completed(api, run, record):
-    """Require durable per-target operation-success receipts, never step conclusion."""
+def _historical_application_publications_completed(api, run, record, *, required_targets=None):
+    """Validate all receipts; prove each required app, never infer success from steps."""
     if run.get('status') != 'completed':
         return False
     keys = _app_only_admission_keys(record)
     revision = record.get('applicationRevision')
     if keys is None or not SHA.fullmatch(revision or ''):
+        return False
+    required = set(keys) if required_targets is None else set(required_targets)
+    if not required or not required.issubset(set(keys)):
         return False
     artifacts = api.pages(f"actions/runs/{run['id']}/artifacts", 'artifacts')
     observed = {}
@@ -2901,16 +2906,19 @@ def _historical_application_publications_completed(api, run, record):
         ):
             return False
         observed[target] = operation_id
-    return set(observed) == set(keys)
+    if required_targets is None:
+        return set(observed) == set(keys)
+    return required.issubset(set(observed))
 
 
-def _forward_supersedes_completed_app_lease(record, candidate):
+def _forward_supersedes_completed_app_lease(api, run, record, candidate):
     """Roll forward the overlapping app slice of a completed app-only lease.
 
     Application writes are independently journaled per target. A newer strict
-    descendant therefore replaces the stale lease for app targets it is actually
-    about to publish. The historical lease itself must remain app-only: no schema
-    write or auxiliary write can be discharged here.
+    descendant may supersede only the overlap with independently verified
+    durable success receipts. Unresolved app writes retain their original lease.
+    The historical lease must remain app-only; no schema or auxiliary write
+    can be discharged here.
 
     Preserve the original app-only candidate boundary when it applies. A newer
     candidate that additionally owns schema or auxiliary resources may fall back
@@ -2940,7 +2948,9 @@ def _forward_supersedes_completed_app_lease(record, candidate):
         return False
 
     try:
-        return ancestor(old_revision, new_revision)
+        return (ancestor(old_revision, new_revision) and
+                _historical_application_publications_completed(
+                    api, run, record, required_targets=overlap))
     except Exception:
         return False
 
@@ -3024,7 +3034,7 @@ def admission_conflicts(api, candidate, *, current_run):
             if (
                 not own_run
                 and run.get('status') == 'completed'
-                and _forward_supersedes_completed_app_lease(record, candidate)
+                and _forward_supersedes_completed_app_lease(api, run, record, candidate)
             ):
                 continue
             if (
