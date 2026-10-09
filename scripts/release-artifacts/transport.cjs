@@ -26,14 +26,16 @@ function targetMaterial(target, value) {
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const observation = /^legend-migration-observation-[a-f0-9]{64}$/.test(name);
   const locator = /^validated-component-index-[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(name);
   const admission = /^legend-release-admission-[a-f0-9]{64}$/.test(name);
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
+  if (!observation && !locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
-  const allowed = new Set(locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const observationKeys = ['schemaVersion', 'phase', 'kind', 'observationIdentity', 'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity', 'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources', 'bundleDigest', 'sqlExecutionAuthorized', 'producingRun', 'producingAttempt'];
+  const allowed = new Set(observation ? observationKeys : locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
@@ -41,7 +43,38 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
     'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (locator) {
+  if (observation) {
+    if (Object.keys(record).sort().join(',') !== observationKeys.sort().join(',') ||
+        record.schemaVersion !== 1 || record.phase !== 'observation' || record.kind !== 'current-schema-no-write' ||
+        record.pendingCount !== 0 || record.mutationActivity !== 'settled' || record.sqlExecutionAuthorized !== false ||
+        !['proven-nonentry', 'proven-completion', 'outcome-unknown'].includes(record.historicalExecution) ||
+        ['candidate', 'executionAuthority'].some(key => !/^[a-f0-9]{40}$/.test(record[key])) ||
+        ['observationIdentity', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'historicalEvidenceIdentity', 'bundleDigest'].some(key => !/^[a-f0-9]{64}$/.test(record[key])) ||
+        ['producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1) ||
+        typeof record.observedUtc !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/.test(record.observedUtc) ||
+        !Number.isFinite(Date.parse(record.observedUtc)) ||
+        !Array.isArray(record.historicalReconciliationSources) || record.historicalReconciliationSources.length > 1000)
+      throw new Error('Invalid migration observation');
+    const seen = new Set();
+    for (const source of record.historicalReconciliationSources) {
+      if (!source || Object.keys(source).some(key => !['run', 'attempt', 'code', 'sourceBlob', 'stateArtifactId', 'admissionId'].includes(key)) ||
+          ['run', 'attempt'].some(key => !Number.isSafeInteger(source[key]) || source[key] < 1) ||
+          !/^[a-f0-9]{40}$/.test(source.sourceBlob) ||
+          !['HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION', 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE', 'EF_MIGRATION_EXECUTION_ENTERED'].includes(source.code) ||
+          (source.stateArtifactId !== undefined && (!Number.isSafeInteger(source.stateArtifactId) || source.stateArtifactId < 1)) ||
+          (source.admissionId !== undefined && !/^[a-f0-9]{64}$/.test(source.admissionId)) ||
+          (source.code === 'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION' && (source.stateArtifactId === undefined || source.admissionId === undefined)) ||
+          seen.has(`${source.run}/${source.attempt}`))
+        throw new Error('Invalid migration observation source');
+      seen.add(`${source.run}/${source.attempt}`);
+    }
+    const canonical = value => Array.isArray(value) ? value.map(canonical) :
+      value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+    const body = {...record}; delete body.observationIdentity;
+    if (name !== `legend-migration-observation-${record.observationIdentity}` ||
+        crypto.createHash('sha256').update(JSON.stringify(canonical(body))).digest('hex') !== record.observationIdentity)
+      throw new Error('Invalid migration observation digest');
+  } else if (locator) {
     if (record.schemaVersion !== 1 || !/^[a-z][a-z0-9-]{0,63}$/.test(record.component) ||
         !/^[a-f0-9]{64}$/.test(record.contentIdentity) || !Number.isSafeInteger(record.runId) || record.runId < 1 ||
         name !== `validated-component-index-${record.component}-${record.contentIdentity}`)
@@ -133,7 +166,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
-  if (!locator && !recovery && !plan && !child && !admission) {
+  if (!observation && !locator && !recovery && !plan && !child && !admission) {
     if (record.schemaVersion === 2) {
       componentSource(record.componentSource);
       if (!/^[a-f0-9]{40}$/.test(record.candidateRevision) || record.packageProducerRun !== record.componentSource.runId)

@@ -37,6 +37,37 @@ Package backfill uses explicit job status conditions so intentionally skipped PR
 
 If a merged change needs deployment correction, the approved branch remains the source authority and a new explicit release request or corrected approved descendant is used. No branch promotion, merge-back, parity reconciliation, or second release branch exists.
 
+## Historical migration uncertainty and current-state reconciliation
+
+`release-migration.py:resolve_migration_boundary` distinguishes invalid evidence,
+active execution, proven nonentry, and an unknown historical outcome. An unknown
+outcome is never proof that SQL did not execute and never authorizes replay.
+
+The existing migration-history audit authenticates the exact terminal attempt,
+original workflow, complete artifact inventory, retained execution state, original
+admission, and any child operation records before classifying an otherwise unknown
+modern failure as requiring runtime reconciliation. Missing, expired required, or
+contradictory evidence remains blocked. The original uncertainty stays in the audit.
+
+At the production boundary, the same audit is consumed under the canonical release
+ownership. Other release workers must be terminal; the current worker must match its
+API run attempt. The approved read-only probe checks database activity visibility
+before and after schema observation. Two observations must agree on database,
+migration catalog, applied baseline, and pending state. Insufficient visibility,
+active transactions, or drift stops this boundary without executing a bundle.
+
+When the current desired schema is complete, this new current-policy proof allows
+preservation without SQL, even if a premerge readiness receipt used an older policy.
+It does not relabel old execution as successful or replay an ambiguous operation.
+Before preservation, the existing operation-evidence channel retains a current-state
+observation bound to the run/attempt, candidate, execution authority, bundle, database,
+baseline, activity check, and historical report digest. A missing upload acknowledgment
+stops the boundary; a later attempt may reobserve without executing SQL.
+Pending migrations retain the existing authenticated readiness/rehearsal and strict
+first-write journal requirements. The no-write path is not a policy-transition
+exception for pending SQL. Successful application siblings and immutable packages
+remain under their existing independent authorities.
+
 ## Validation
 
 Run `python3 scripts/test-release-lifecycle.py` for isolated ancestry, receipt, replay, cleanup, and single-authority tests. `python3 scripts/test-validation-resume.py` verifies per-gate preservation/invalidation behavior. Hosted workflow runs provide the external GitHub and live-runtime proof.

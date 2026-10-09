@@ -277,3 +277,25 @@ test('component locator rerun preserves one immutable index without claiming suc
   assert.deepEqual(JSON.parse(stored), locator);
   await assert.rejects(publish({}, locatorName, {...locator, state: 'success'}), /Invalid/);
 });
+
+
+test('Python migration observation survives actual transport and lost acknowledgment without duplicate upload', async () => {
+  const {execFileSync} = require('node:child_process');
+  const python = `import importlib.util,json,os,pathlib
+p=pathlib.Path('scripts/release-migration.py')
+s=importlib.util.spec_from_file_location('migration',p);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+os.environ.update(GITHUB_RUN_ID='8',GITHUB_RUN_ATTEMPT='2')
+r=dict(candidate='a'*40,executionAuthority='b'*40,databaseIdentity='c'*64,schemaIdentity='d'*64,baselineIdentity='e'*64,observedUtc='2026-10-09T12:00:00.1234567+00:00',pendingCount=0,mutationActivity='settled',historicalExecution='outcome-unknown',historicalEvidenceIdentity='f'*64,historicalReconciliationSources=[dict(run=7,attempt=1,code='HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',sourceBlob='a'*40,stateArtifactId=9,admissionId='b'*64)])
+m.retain_current_observation(r,'0'*64,publisher=lambda name,record,**kwargs:print(json.dumps(dict(name=name,record=record))))`;
+  const payload = JSON.parse(execFileSync('python3', ['-c', python], {cwd: path.resolve(__dirname, '../..'), encoding: 'utf8'}));
+  const client = durableClient({lostAck: true});
+  assert.deepEqual(await publish(client, payload.name, payload.record, {sleep: async () => {}}), {artifactId: 45});
+  await publish(client, payload.name, payload.record);
+  assert.equal(client.state.uploads, 1);
+  assert.deepEqual(JSON.parse(client.state.content), payload.record);
+  for (const delta of [{sqlExecutionAuthorized: true}, {phase: 'intent'}, {pendingCount: 1},
+                       {producingAttempt: 0}, {token: 'forbidden'}, {databaseIdentity: '1'.repeat(64)},
+                       {historicalReconciliationSources: [{run: 7,attempt: 1,code:'UNKNOWN',sourceBlob:'a'.repeat(40)}]}]) {
+    await assert.rejects(publish({}, payload.name, {...payload.record, ...delta}), /Invalid/);
+  }
+});

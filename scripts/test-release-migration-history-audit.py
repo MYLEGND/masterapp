@@ -120,6 +120,98 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(report['attempts'], 2)
         self.assertEqual([r['run'] for r in report['records']], [2, 1])
 
+    def test_runtime_excludes_only_authenticated_current_attempt(self):
+        run=dict(id=8,run_attempt=2,status='in_progress',head_sha='a'*40,head_branch='legend/approved-changes',
+                 event='workflow_dispatch',path='.github/workflows/all-intentional-direct-release-20260918.yml')
+        def get(repo,path,token):
+            if path=='actions/runs/8/attempts/1':return dict(run,run_attempt=1,status='completed')
+            return dict(workflow_runs=[run],total_count=1)
+        auth=SimpleNamespace(TRUSTED_PR_BASE='legend/approved-changes',DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml',api_get=get)
+        calls=[]
+        def classify(auth,repo,token,attempt_run,attempt):
+            calls.append((attempt,attempt_run['status']));return dict(run=8,attempt=attempt,code='MODERN_NOOP_PROVEN')
+        with patch.object(audit,'classify_attempt',side_effect=classify):
+            report=audit.audit(auth,'owner/repo','fixture',current_execution=run)
+        self.assertEqual([(1,'completed')],calls)
+        self.assertEqual(1,report['attempts'])
+
+
+
+class ModernUncertainHistoryTests(unittest.TestCase):
+    def classify(self, *, status='completed', source=True, complete=True, evidence=True):
+        step=dict(name=audit.MODERN_STEP,status='completed',conclusion='failure')
+        job=dict(id=22,name='release',status=status,conclusion='failure',steps=[step])
+        auth=SimpleNamespace(_trusted_child_producer=lambda *args: None,
+            api_get=lambda repo,path,token: (dict(total_count=1 if complete else 2,jobs=[job]) if '/jobs?' in path else
+                dict(total_count=1,artifacts=[dict(id=44,name='legend-release-step-state-'+ 'a'*40 + '-11-1', expired=not evidence,workflow_run=dict(id=11))])),
+            _release_attempt_package_revision=lambda *args,**kwargs: 'a'*40,
+            release_attempt_never_entered=lambda *args: False,
+            _attested_retired_unscheduled_release=lambda *args: False,
+            _release_history_source=lambda *args: 'trusted original workflow',
+            _job_blocks=lambda *args: {'release':'original'},
+            named_step_blocks=lambda *args: {audit.MODERN_STEP:'python3 scripts/release-prepublication.py' if source else 'unknown'},
+            _attested_migration_prewrite_failure=lambda *args: False,
+            _historical_migration_prewrite_proven=lambda *args: False,
+            DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml')
+        with patch.object(audit,'authenticated_admission',return_value='f'*64):
+            return audit.classify_attempt(auth,'owner/repo','fixture',dict(id=11,head_sha='a'*40,status=status,conclusion='failure',run_attempt=1),1)
+
+    def test_unknown_terminal_execution_requires_runtime_not_false_nonentry(self):
+        result=self.classify()
+        self.assertEqual('HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',result['code'])
+        self.assertEqual('unresolved',result['historicalAuthorization'])
+        self.assertEqual('outcome-unknown',result['resolution']['historicalExecution'])
+        self.assertFalse(result['resolution']['sqlExecutionAuthorized'])
+        self.assertIsNotNone(result['sourceBlob'])
+
+    def test_active_incomplete_or_unknown_entrypoint_remains_blocked(self):
+        for args in [dict(status='in_progress'),dict(complete=False),dict(source=False),dict(evidence=False)]:
+            with self.subTest(args=args):
+                self.assertIn(self.classify(**args)['code'],audit.BLOCKED_CODES)
+
+
+class UncertainEnvelopeTests(unittest.TestCase):
+    def setUp(self):
+        self.admission=patch.object(audit,'authenticated_admission',return_value='f'*64)
+        self.admission.start();self.addCleanup(self.admission.stop)
+        self.run=dict(id=11,run_attempt=1)
+        self.state=dict(id=44,name='legend-release-step-state-'+ 'a'*40 + '-11-1',expired=False,workflow_run=dict(id=11))
+        self.artifacts=[self.state]
+        self.record=dict(child='migrations',producingAttempt=1,dependencyIdentity='d'*64)
+        self.auth=SimpleNamespace(api_get=lambda *args:dict(total_count=len(self.artifacts),artifacts=self.artifacts),
+            _release_attempt_package_revision=lambda *args,**kwargs:'a'*40,
+            _release_history_json=lambda *args:self.record,
+            _validate_child_generation=lambda *args,**kwargs:'d'*64)
+
+    def check(self):
+        return audit.authenticate_uncertain_attempt(self.auth,'owner/repo','fixture',self.run,1,dict(status='completed'))
+
+    def test_missing_expired_duplicate_or_substituted_state_blocks(self):
+        for artifacts in [[],[dict(self.state,expired=True)],[self.state,self.state],
+                          [dict(self.state,workflow_run=dict(id=12))]]:
+            with self.subTest(artifacts=artifacts):
+                self.artifacts=artifacts
+                with self.assertRaises(RuntimeError): self.check()
+
+    def test_missing_or_invalid_admission_is_blocked(self):
+        with patch.object(audit,'authenticated_admission',side_effect=RuntimeError('admission invalid')):
+            with self.assertRaises(RuntimeError): self.check()
+
+    def test_state_authentication_failure_never_becomes_unknown(self):
+        with patch.object(self.auth,'_release_attempt_package_revision',side_effect=RuntimeError('mismatched steps')):
+            with self.assertRaises(RuntimeError): self.check()
+
+    def test_existing_migration_intent_is_preserved_not_interpreted_as_nonentry(self):
+        self.artifacts.append(dict(id=45,name='legend-release-child-intent-'+'d'*64,expired=False,workflow_run=dict(id=11)))
+        result=self.check()
+        self.assertEqual([dict(artifactId=45,phase='intent',producingAttempt=1,dependencyIdentity='d'*64)],result['migrationRecords'])
+        with patch.object(self.auth,'_validate_child_generation',side_effect=RuntimeError('tampered')):
+            with self.assertRaises(RuntimeError): self.check()
+
+    def test_unrelated_expired_artifact_does_not_invalidate_execution_evidence(self):
+        self.artifacts.append(dict(id=46,name='unrelated-package',expired=True,workflow_run=dict(id=11)))
+        self.assertEqual(44,self.check()['stateArtifactId'])
+
 
 if __name__ == '__main__':
     unittest.main()

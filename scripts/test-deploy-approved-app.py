@@ -1911,6 +1911,21 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             '--', 'Infrastructure/Data', 'Infrastructure/Migrations',
         ], capture=True)
 
+    def test_probe_preparation_preserves_typed_recovery_metadata_and_redacts_message(self):
+        owner = self.owner
+        authority = owner.release_authority()
+        error = authority.EvidenceLookupUnavailable('untrusted provider detail',
+            status=503, endpoint='artifact-read', rate={'remaining': '0'})
+        with patch.object(owner, 'release_authority', return_value=authority), \
+             self.assertRaises(authority.EvidenceLookupUnavailable) as caught:
+            owner.migration_preparation('probe-restoration', lambda: (_ for _ in ()).throw(error))
+        self.assertIs(error, caught.exception)
+        self.assertEqual(503, error.code)
+        self.assertEqual('artifact-read', error.endpoint)
+        self.assertEqual({'remaining': '0'}, error.rate)
+        self.assertEqual('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: probe-restoration', str(error))
+        self.assertNotIn('untrusted', str(error))
+
     def test_delayed_probe_provider_exhausts_one_budget_before_migration(self):
         from types import SimpleNamespace
         owner = self.owner

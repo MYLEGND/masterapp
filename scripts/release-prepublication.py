@@ -14,6 +14,7 @@ release-migration.py.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import importlib.util
 import json
 import os
@@ -29,6 +30,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@functools.lru_cache(maxsize=1)
 def release_authority():
     spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
     module = importlib.util.module_from_spec(spec)
@@ -548,15 +550,15 @@ def run_migration_lane():
         "--directory", "/tmp/diagnostics-packages",
     ], timeout=180)
 
-    plan_raw = run([
+    plan_raw = migration_preparation('probe-resolution', run, [
         sys.executable, "scripts/migration-probe-package.py", "resolve",
         "--tool-revision", run(["git", "rev-parse", "HEAD"], capture=True).strip(),
         "--application-revision", revision,
         "--directory", "/tmp/migration-probe",
     ], capture=True, timeout=180)
     plan = json.loads(plan_raw)
-    restore_migration_probe(plan)
-    run([
+    migration_preparation('probe-restoration', restore_migration_probe, plan)
+    migration_preparation('probe-verification', run, [
         sys.executable, "scripts/migration-probe-package.py", "verify",
         "--tool-revision", run(["git", "rev-parse", "HEAD"], capture=True).strip(),
         "--application-revision", revision,
@@ -588,16 +590,7 @@ def _invoke_migration_bundle():
     if observation.returncode:
         reason = observation.stderr.strip()
         suffix = '; preserve prior evidence and reconcile without replay.'
-        authorized = {
-            'Migration stage unresolved: ' + stage
-            for stage in ('schema-observation', 'child-history', 'mutation-admission',
-                          'bundle-execution', 'schema-verification', 'success-receipt',
-                          'preparation', 'readiness-identity', 'readiness-bundle',
-                          'readiness-drift', 'readiness-missing')
-        }
-        # Reuse the canonical schema-observation classification authority,
-        # never trust free-form error text or URLs from subprocess output.
-        authorized.update(_approved_observation_labels())
+        authorized = _migration_failure_labels()
         if reason.endswith(suffix) and reason[:-len(suffix)] in authorized:
             if reason[:-len(suffix)] == 'Migration stage unresolved: mutation-admission':
                 # The migration runner emits exactly one locally constructed,
@@ -631,24 +624,43 @@ def _invoke_migration_bundle():
         raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE') from None
 
 
+@functools.lru_cache(maxsize=1)
+def migration_owner():
+    spec = importlib.util.spec_from_file_location('release_migration_owner', ROOT / 'scripts/release-migration.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _approved_observation_labels():
-    spec = importlib.util.spec_from_file_location(
-        'release_migration_safe_labels', ROOT / 'scripts/release-migration.py')
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    return migration.OBSERVATION_ERRORS
+    return migration_owner().OBSERVATION_ERRORS
 
 
 def _approved_admission_codes():
-    spec = importlib.util.spec_from_file_location(
-        'release_migration_admission_codes', ROOT / 'scripts/release-migration.py')
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    return set(migration.MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
+    return set(migration_owner().MIGRATION_ADMISSION_DENIAL_CODES.values()) | {'UNCLASSIFIED_DENIAL'}
+
+
+def _migration_failure_labels():
+    return ({'Migration stage unresolved: ' + stage for stage in migration_owner().MIGRATION_STAGES}
+            | _approved_observation_labels() | {'UNKNOWN_FAILURE'})
+
+
+def migration_preparation(stage, action, *args, **kwargs):
+    try:
+        return action(*args, **kwargs)
+    except release_authority().EvidenceLookupUnavailable as error:
+        # Preserve the canonical recovery classification and its exhausted
+        # budget. Only the public message is replaced with an approved label.
+        error.args = ('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: ' + stage,)
+        raise error from None
+    except Exception:
+        raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: ' + stage) from None
 
 
 def main():
     release_authority().assert_protected_release_execution()
+    # Resolve the fixed diagnostic vocabulary before any child can execute.
+    safe_migration_labels = _migration_failure_labels()
     output = Path(os.environ.get("RELEASE_PREPUBLICATION_RESULT", "/tmp/release-prepublication.json"))
     output.parent.mkdir(parents=True, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -672,18 +684,9 @@ def main():
             # Only an exact message created by the local migration owner may
             # be exposed; configuration/provider exceptions remain opaque.
             reason = str(exc)
-            if lane == 'MIGRATION' and type(exc) is RuntimeError and (
-                reason.startswith('LEGEND_PREPUBLICATION_MIGRATION:')
-            ) and len(reason) <= 200 and (
-                reason == 'LEGEND_PREPUBLICATION_MIGRATION:UNKNOWN_FAILURE'
-                or reason.removeprefix('LEGEND_PREPUBLICATION_MIGRATION:') in
-                   {'Migration stage unresolved: ' + s for s in
-                    ('schema-observation', 'child-history', 'mutation-admission',
-                     'bundle-execution', 'schema-verification', 'success-receipt',
-                     'preparation')}
-                or reason.removeprefix('LEGEND_PREPUBLICATION_MIGRATION:') in
-                   _approved_observation_labels()
-            ):
+            if (lane == 'MIGRATION' and type(exc) is RuntimeError and
+                    reason.startswith('LEGEND_PREPUBLICATION_MIGRATION:') and
+                    reason.removeprefix('LEGEND_PREPUBLICATION_MIGRATION:') in safe_migration_labels):
                 print(reason, file=sys.stderr, flush=True)
             else:
                 print('LEGEND_PREPUBLICATION:' + lane + ':FAILED',
