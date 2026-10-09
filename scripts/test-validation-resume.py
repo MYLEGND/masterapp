@@ -104,6 +104,91 @@ class PackageDescriptorIntegrationTests(unittest.TestCase):
             self.assertEqual(old,m.attach_package_descriptor('owner/repo',old,self.run,'placeholder'))
 
 
+class PartialReleaseRollbackTests(unittest.TestCase):
+    def setUp(self):
+        self.revision = 'a' * 40; self.identity = 'b' * 64; self.operation = 'c' * 64
+        self.run = dict(id=88, run_attempt=1, head_sha='d' * 40, event='workflow_dispatch',
+            path='.github/workflows/' + m.DIRECT_RELEASE_WORKFLOW, head_branch=m.TRUSTED_PR_BASE,
+            status='completed', conclusion='failure', head_repository=dict(full_name='owner/repo'))
+        self.state_artifact = dict(id=91, name=f'legend-release-step-state-{self.revision}-88-1')
+        self.success_artifact = dict(id=92, name='legend-release-operation-success-' + self.operation)
+        self.state = dict(schemaVersion=2, applicationReleaseSha=self.revision, runId=88, runAttempt=1,
+            packageIdentity=self.identity, selectedTargets=['masterapp-portal', 'masterapp-protect'])
+        self.record = dict(schemaVersion=1, phase='success', operationId=self.operation, target='portal',
+            applicationRevision=self.revision, producingRun=88, producingAttempt=1,
+            packageDigest='e' * 64, packageProducerRun=77)
+        self.package = dict(reusable=True, revision=self.revision, packageIdentity=self.identity,
+            runId=77, artifact='founder-diagnostics-packages-' + self.identity)
+        self.artifacts = [self.state_artifact, self.success_artifact]
+        self.inventory_count = None
+        self.producer = self.revision
+        self.success = self.record
+
+    def invoke(self, app='portal'):
+        def api(repo, path, token):
+            if '/artifacts?' in path:
+                return dict(artifacts=self.artifacts, total_count=(len(self.artifacts)
+                    if self.inventory_count is None else self.inventory_count))
+            return dict(jobs=[dict(name='release', status='completed', conclusion='failure')], total_count=1)
+        def read(repo, run_id, artifact, filename):
+            return self.state if filename == 'legend-release-step-state.json' else self.record
+        with patch.object(m, '_release_history_runs', return_value=[self.run]), \
+             patch.object(m, '_release_history_api', side_effect=api), \
+             patch.object(m, '_release_history_json', side_effect=read), \
+             patch.object(m, '_release_attempt_package_revision', return_value=self.producer), \
+             patch.object(m, 'release_operation_history', return_value=self.success), \
+             patch.object(m, 'compute_validated_package_evidence', return_value=self.package) as package:
+            result = m._partial_release_rollback_evidence('owner/repo', self.revision, app,
+                dict(revision=self.revision, app=app, reusable=False), 'placeholder')
+            if result is not None:
+                package.assert_called_once_with('owner/repo', self.revision, self.identity, allow_equivalent=False)
+            return result
+
+    def test_failed_parent_preserves_durable_successful_sibling_exact_bytes(self):
+        result = self.invoke()
+        self.assertTrue(result['reusable']); self.assertEqual(77, result['runId'])
+        self.assertEqual(88, result['releaseRunId'])
+        self.assertEqual(self.record['packageDigest'], result['packageDigest'])
+
+    def test_unresolved_sibling_has_no_rollback_success(self):
+        self.assertIsNone(self.invoke('protect'))
+
+    def test_upload_intent_alone_cannot_authorize_rollback(self):
+        self.success_artifact['name'] = 'legend-release-operation-intent-' + self.operation
+        self.assertIsNone(self.invoke())
+
+    def test_untrusted_or_running_release_is_not_evidence(self):
+        for key, value in [('head_branch', 'feature'), ('event', 'pull_request'), ('status', 'in_progress')]:
+            original = self.run[key]; self.run[key] = value
+            self.assertIsNone(self.invoke()); self.run[key] = original
+
+    def test_incomplete_inventory_and_wrong_producer_fail_closed(self):
+        self.inventory_count = 3
+        with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke()
+        self.inventory_count = None; self.producer = 'f' * 40
+        with self.assertRaisesRegex(ValueError, 'producer mismatch'): self.invoke()
+
+    def test_state_and_success_identity_must_bind_exact_attempt(self):
+        self.state['runId'] = 99
+        with self.assertRaisesRegex(ValueError, 'state identity'): self.invoke()
+        self.state['runId'] = 88; self.record['applicationRevision'] = 'f' * 40
+        with self.assertRaisesRegex(ValueError, 'durable success'): self.invoke()
+
+    def test_missing_or_conflicting_durable_success_cannot_authorize_reuse(self):
+        self.success = None
+        with self.assertRaisesRegex(ValueError, 'success authority'): self.invoke()
+
+    def test_equivalent_or_different_package_cannot_replace_live_bytes(self):
+        for key, value in [('revision', 'f' * 40), ('runId', 99), ('packageIdentity', 'f' * 64), ('reusable', False)]:
+            original = self.package[key]; self.package[key] = value
+            with self.assertRaises(m.EvidenceLookupUnavailable): self.invoke()
+            self.package[key] = original
+
+    def test_mixed_producer_state_is_not_reinterpreted_as_legacy(self):
+        self.state['schemaVersion'] = 3
+        self.assertIsNone(self.invoke())
+
+
 class LegacyRollbackReceiptTests(unittest.TestCase):
     def setUp(self):
         self.revision='a'*40; self.identity='b'*64
@@ -129,6 +214,7 @@ class LegacyRollbackReceiptTests(unittest.TestCase):
              patch.object(m,'_release_history_api',return_value=dict(total_count=1,jobs=[self.job])), \
              patch.object(m,'_release_attempt_package_revision',return_value=self.producer) as proof, \
              patch.object(m,'_run_artifact_names',return_value={self.link}), \
+             patch.object(m,'_release_history_runs',return_value=[]), \
              patch.object(m,'compute_validated_package_evidence',return_value=self.validated):
             result=m.compute_rollback_evidence('owner/repo',self.revision,'portal')
             if result['reusable']:

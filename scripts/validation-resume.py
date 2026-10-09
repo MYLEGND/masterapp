@@ -6038,6 +6038,79 @@ def cmd_validated_package(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def _partial_release_rollback_evidence(repository, revision, app, result, token):
+    """Recover legacy exact bytes from a durable successful sibling publication.
+
+    A failed parent has no approved-release receipt. Its retained state, canonical
+    package verifier and durable operation success still bind the successful
+    target. This path never treats upload acceptance or a step label as success.
+    """
+    for run in _release_history_runs(repository, token):
+        if (run.get('path') != '.github/workflows/' + DIRECT_RELEASE_WORKFLOW or
+                run.get('head_branch') != TRUSTED_PR_BASE or run.get('event') != 'workflow_dispatch' or
+                run.get('status') != 'completed' or run.get('conclusion') not in {'failure', 'cancelled'} or
+                (run.get('head_repository') or {}).get('full_name') != repository):
+            continue
+        run_id = run['id']
+        inventory = _release_history_api(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+        artifacts = inventory.get('artifacts')
+        if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+            raise EvidenceLookupUnavailable('Partial release rollback artifact inventory incomplete')
+        states = [row for row in artifacts if re.fullmatch(
+            rf'legend-release-step-state-{revision}-{run_id}-[1-9][0-9]*', row.get('name', ''))]
+        for artifact in states:
+            state = _release_history_json(repository, run_id, artifact, 'legend-release-step-state.json')
+            attempt = state.get('runAttempt')
+            if (type(attempt) is not int or attempt < 1 or
+                    artifact['name'] != f'legend-release-step-state-{revision}-{run_id}-{attempt}' or
+                    state.get('runId') != run_id or state.get('applicationReleaseSha') != revision):
+                raise ValueError('Partial release rollback state identity mismatch')
+            # Mixed-producer schema 3 requires its existing target-material receipt.
+            if state.get('schemaVersion') != 2 or 'targetMaterials' in state:
+                continue
+            if app not in selected_release_target_keys(state.get('selectedTargets', [])):
+                continue
+            identity = state.get('packageIdentity')
+            if not re.fullmatch('[a-f0-9]{64}', identity or ''):
+                raise ValueError('Partial release rollback package identity missing')
+            jobs = _release_history_api(repository,
+                f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+            rows = jobs.get('jobs')
+            if not isinstance(rows, list) or jobs.get('total_count') != len(rows):
+                raise EvidenceLookupUnavailable('Partial release rollback job inventory incomplete')
+            owners = [job for job in rows if job.get('name') == 'release']
+            if len(owners) != 1 or owners[0].get('status') != 'completed':
+                raise EvidenceLookupUnavailable('Partial release rollback publication owner unproven')
+            if _release_attempt_package_revision(repository, run, attempt, owners[0], token, app) != revision:
+                raise ValueError('Partial release rollback producer mismatch')
+            for success in artifacts:
+                match = re.fullmatch('legend-release-operation-success-([a-f0-9]{64})', success.get('name', ''))
+                if not match:
+                    continue
+                record = _release_history_json(repository, run_id, success, 'operation.json')
+                if record.get('target') != app or record.get('producingAttempt') != attempt:
+                    continue
+                if (record.get('schemaVersion') != 1 or record.get('phase') != 'success' or
+                        record.get('operationId') != match.group(1) or record.get('producingRun') != run_id or
+                        record.get('applicationRevision') != revision or
+                        not re.fullmatch('[a-f0-9]{64}', record.get('packageDigest', ''))):
+                    raise ValueError('Partial release rollback durable success mismatch')
+                proven = release_operation_history(repository, match.group(1), revision, app,
+                    run_id, attempt, token, phase='success')
+                if proven != record:
+                    raise ValueError('Partial release rollback success authority mismatch')
+                package = compute_validated_package_evidence(repository, revision, identity, allow_equivalent=False)
+                if (not package.get('reusable') or package.get('revision') != revision or
+                        package.get('packageIdentity') != identity or
+                        package.get('runId') != record.get('packageProducerRun')):
+                    raise EvidenceLookupUnavailable('Exact partial release rollback package unavailable')
+                return dict(result, reusable=True, runId=package['runId'], releaseRunId=run_id,
+                    packageArtifact=package['artifact'], packageIdentity=identity,
+                    packageDigest=record['packageDigest'],
+                    reason='exact_package_from_durable_successful_release_target')
+    return None
+
+
 def compute_rollback_evidence(repository: str, revision: str, app: str):
     if app not in RELEASE_TARGETS:
         raise ValueError(f"Unknown release target: {app}")
@@ -6200,6 +6273,9 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
                     ),
                 })
                 return result
+    partial = _partial_release_rollback_evidence(repository, revision, app, result, token)
+    if partial is not None:
+        return partial
     result["reason"] = "no_exact_successful_release_package"
     return result
 
