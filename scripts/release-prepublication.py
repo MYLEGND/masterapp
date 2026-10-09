@@ -30,6 +30,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@functools.lru_cache(maxsize=1)
 def release_authority():
     spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
     module = importlib.util.module_from_spec(spec)
@@ -647,6 +648,11 @@ def _migration_failure_labels():
 def migration_preparation(stage, action, *args, **kwargs):
     try:
         return action(*args, **kwargs)
+    except release_authority().EvidenceLookupUnavailable as error:
+        # Preserve the canonical recovery classification and its exhausted
+        # budget. Only the public message is replaced with an approved label.
+        error.args = ('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: ' + stage,)
+        raise error from None
     except Exception:
         raise RuntimeError('LEGEND_PREPUBLICATION_MIGRATION:Migration stage unresolved: ' + stage) from None
 
