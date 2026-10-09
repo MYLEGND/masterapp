@@ -79,6 +79,49 @@ class ReadinessRefreshTests(unittest.TestCase):
                             (RuntimeError('private provider payload'), 'unclassified-or-nonrecoverable')):
             self.assertEqual(kind, m.readiness_failure_classification(error))
 
+    def test_readiness_diagnostic_preserves_stage_status_and_retry_classification(self):
+        error = m.VALIDATION_AUTHORITY.EvidenceLookupUnavailable(status=403)
+        def fail():
+            raise error
+        with self.assertRaises(type(error)) as raised:
+            m._readiness_step('candidate-probe-evidence', fail)
+        self.assertIs(error, raised.exception)
+        self.assertEqual({'stage': 'candidate-probe-evidence',
+                          'reasonCode': 'EVIDENCE_LOOKUP_UNAVAILABLE', 'httpStatus': 403},
+                         m.readiness_failure_diagnostic(error))
+        self.assertEqual('unclassified-or-nonrecoverable', m.readiness_failure_classification(error))
+
+    def test_readiness_diagnostic_never_serializes_arbitrary_payloads(self):
+        for error in (RuntimeError('token=PRIVATE_SENTINEL'),
+                      RuntimeError('READINESS_APPROVED_BASE_CHANGED token=PRIVATE_SENTINEL'),
+                      FileNotFoundError('PRIVATE_SENTINEL'),
+                      json.JSONDecodeError('PRIVATE_SENTINEL', 'PRIVATE_SENTINEL', 0)):
+            error.readiness_stage = 'PRIVATE_SENTINEL'
+            encoded = json.dumps(m.readiness_failure_diagnostic(error))
+            self.assertNotIn('PRIVATE_SENTINEL', encoded)
+        self.assertEqual('READINESS_APPROVED_BASE_CHANGED',
+                         m.readiness_failure_diagnostic(RuntimeError('READINESS_APPROVED_BASE_CHANGED'))['reasonCode'])
+
+    def test_failed_readiness_writes_safe_reason_and_still_exits_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            event = root / 'event.json'
+            event.write_text(json.dumps({'pull_request': {'head': {'sha': 'a' * 40}}}))
+            error = RuntimeError('PRIVATE_SENTINEL')
+            error.readiness_stage = 'publication-prerequisites'
+            with patch.dict(os.environ, GITHUB_EVENT_PATH=str(event), GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1'), \
+                 patch.object(m.sys, 'argv', ['release-lifecycle.py', 'readiness-observe', '--pr', '561', '--directory', str(root)]), \
+                 patch.object(m, 'GitHub'), \
+                 patch.object(m, 'git', return_value=SimpleNamespace(stdout='b' * 40)), \
+                 patch.object(m, 'readiness_observe', side_effect=error):
+                with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED:unclassified-or-nonrecoverable:publication-prerequisites:UNCLASSIFIED_ERROR_REDACTED') as raised:
+                    m.main()
+            record = json.loads((root / 'failure.json').read_text())
+            self.assertEqual('publication-prerequisites', record['stage'])
+            self.assertEqual('UNCLASSIFIED_ERROR_REDACTED', record['reasonCode'])
+            self.assertEqual('a' * 40, record['candidate'])
+            self.assertNotIn('PRIVATE_SENTINEL', json.dumps(record) + str(raised.exception))
+
     def test_delayed_new_attempt_visibility_preserves_request_and_waits_for_exact_child(self):
         api = SimpleNamespace(repo='owner/repo', token='token')
         old = dict(id=12, run_attempt=1, status='completed')
