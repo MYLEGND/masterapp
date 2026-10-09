@@ -13,6 +13,7 @@ test('publication returns only after durable content is read back by immutable I
   const calls = [];
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(n, files, root, options) {
       calls.push('upload');
       assert.equal(n, name);
@@ -35,6 +36,7 @@ test('publication returns only after durable content is read back by immutable I
 
 test('readback mismatch fails closed after upload', async () => {
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact() { return {id: 42}; },
     async downloadArtifact(id, options) {
       await fs.mkdir(options.path);
@@ -56,6 +58,7 @@ test('scheduler admission uses the same immutable upload and readback channel', 
     resources: ['app:portal'], authorizationMode: 'automatic', producingRun: 10, producingAttempt: 1, phase: 'admission'};
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(name, files) {
       assert.equal(name, 'legend-release-admission-' + receipt.admissionId);
       stored = await fs.readFile(files[0]);
@@ -80,6 +83,7 @@ test('child proof preserves stable operation and distinct evidence identities wi
   const artifact = 'legend-release-child-success-' + receipt.dependencyIdentity;
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(name, files) {
       assert.equal(name, artifact);
       stored = await fs.readFile(files[0]);
@@ -94,4 +98,78 @@ test('child proof preserves stable operation and distinct evidence identities wi
   assert.deepEqual(await publish(client, artifact, receipt), {artifactId: 44});
   await assert.rejects(publish(client, artifact, {...receipt, observation: {connectionString: 'forbidden'}}), /Invalid/);
   await assert.rejects(publish(client, artifact, {...receipt, materialIdentity: 'bad'}), /Invalid/);
+});
+
+function durableClient({lostAck = false, failReadback = false} = {}) {
+  const state = {uploads: 0, downloads: 0, artifacts: [], content: null};
+  return {state,
+    async listArtifacts(options) {
+      assert.deepEqual(options, {latest: false});
+      return {artifacts: state.artifacts};
+    },
+    async uploadArtifact(name, files) {
+      state.uploads++;
+      state.content = await fs.readFile(files[0], 'utf8');
+      state.artifacts.push({name, id: 45});
+      if (lostAck) throw new Error('Connection reset after commit');
+      return {id: 45};
+    },
+    async downloadArtifact(id, options) {
+      state.downloads++;
+      assert.equal(id, 45);
+      if (failReadback && state.downloads === 1) throw new Error('Temporary read failure');
+      await fs.mkdir(options.path);
+      await fs.writeFile(path.join(options.path, 'operation.json'), state.content);
+    }
+  };
+}
+
+test('lost upload acknowledgment reconciles identical content without duplicate upload', async () => {
+  const client = durableClient({lostAck: true});
+  assert.deepEqual(await publish(client, name, record), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 1);
+});
+
+test('readback failure and worker restart preserve prior upload', async () => {
+  const client = durableClient({failReadback: true});
+  await assert.rejects(publish(client, name, record), /Temporary read failure/);
+  assert.deepEqual(await publish(client, name, record), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 2);
+});
+
+test('duplicate events reuse exact receipt without a second write', async () => {
+  const client = durableClient();
+  await publish(client, name, record);
+  await publish(client, name, record);
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 2);
+});
+
+test('existing artifact with changed producer or tampered bytes fails closed', async () => {
+  const client = durableClient();
+  await publish(client, name, record);
+  await assert.rejects(publish(client, name, {...record, producingAttempt: 2}), /mismatch/);
+  client.state.content = '{}';
+  await assert.rejects(publish(client, name, record), /mismatch/);
+  assert.equal(client.state.uploads, 1);
+});
+
+test('ambiguous identity and unavailable inventory authorize no upload', async () => {
+  const client = durableClient();
+  client.state.artifacts = [{name, id: 45}, {name, id: 46}];
+  await assert.rejects(publish(client, name, record), /Ambiguous/);
+  assert.equal(client.state.uploads, 0);
+  client.listArtifacts = async () => { throw new Error('Inventory unavailable'); };
+  await assert.rejects(publish(client, name, record), /Inventory unavailable/);
+  assert.equal(client.state.uploads, 0);
+});
+
+test('unknown upload outcome cannot authorize a retry or success', async () => {
+  const client = durableClient();
+  client.uploadArtifact = async () => { client.state.uploads++; throw new Error('Unknown'); };
+  await assert.rejects(publish(client, name, record), /outcome unresolved/);
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 0);
 });

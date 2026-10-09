@@ -108,14 +108,37 @@ async function publish(client, name, record) {
     const source = path.join(directory, filename);
     const content = JSON.stringify(record);
     await fs.writeFile(source, content, {mode: 0o600});
-    const result = await client.uploadArtifact(name, [source], directory, {retentionDays: 90});
-    if (!Number.isSafeInteger(result.id) || result.id <= 0)
-      throw new Error('Artifact upload did not return durable identity');
+    // Internal SDK inventory is scoped to this Actions run. Never select the
+    // latest matching name: duplicate identities are an unresolved write.
+    async function existing() {
+      const inventory = await client.listArtifacts({latest: false});
+      if (!Array.isArray(inventory.artifacts)) throw new Error('Artifact inventory unavailable');
+      const matches = inventory.artifacts.filter(item => item.name === name);
+      if (matches.length > 1) throw new Error('Ambiguous release operation artifact identity');
+      if (!matches.length) return null;
+      if (!Number.isSafeInteger(matches[0].id) || matches[0].id <= 0)
+        throw new Error('Invalid durable artifact identity');
+      return matches[0].id;
+    }
+    let artifactId = await existing();
+    if (artifactId === null) {
+      try {
+        const result = await client.uploadArtifact(name, [source], directory, {retentionDays: 90});
+        if (!Number.isSafeInteger(result.id) || result.id <= 0)
+          throw new Error('Artifact upload did not return durable identity');
+        artifactId = result.id;
+      } catch {
+        // The upload may have committed. Reconcile once by exact immutable
+        // name and bytes; absence or uncertainty never permits another upload.
+        artifactId = await existing();
+        if (artifactId === null) throw new Error('Artifact upload outcome unresolved');
+      }
+    }
     const destination = path.join(directory, 'verified');
-    await client.downloadArtifact(result.id, {path: destination});
+    await client.downloadArtifact(artifactId, {path: destination});
     const readback = await fs.readFile(path.join(destination, filename), 'utf8');
     if (readback !== content) throw new Error('Release operation readback mismatch');
-    return {artifactId: result.id};
+    return {artifactId};
   } finally { await fs.rm(directory, {recursive: true, force: true}); }
 }
 

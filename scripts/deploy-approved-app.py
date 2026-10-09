@@ -586,10 +586,15 @@ def finalize_prepared_transaction(plan, package_root, revision, *, sleep=time.sl
         digest = verify_package(package_root / target['package'], revision, target['static'])
         if digest != row['packageDigest']:
             raise ValueError('Prepared immutable package changed')
+        journal = operation_journal(row['app'], revision, digest, row['revision'])
+        if journal is None:
+            raise ValueError('Finalization requires the durable deployment journal')
         reconcile(
             target_azure(row['app'], package_root / target['package'], revision),
             baseline=row['revision'],
             reconcile_only=True,
+            journal=journal,
+            require_receipt=True,
             timeout=FINALIZE_RECONCILE_TIMEOUT_SECONDS,
             max_status_failures=1,
         )

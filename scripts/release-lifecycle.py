@@ -46,6 +46,15 @@ def _release_package_module():
     return module
 
 
+def _operation_evidence_module():
+    path = Path(__file__).with_name("release-operation-evidence.py")
+    spec = importlib.util.spec_from_file_location("release_operation_evidence", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+OPERATION_EVIDENCE = _operation_evidence_module()
 PACKAGE_AUTHORITY = _release_package_module()
 APPROVED = VALIDATION_AUTHORITY.TRUSTED_PR_BASE
 DIRECT = VALIDATION_AUTHORITY.DIRECT_RELEASE_WORKFLOW
@@ -2974,12 +2983,7 @@ def admit_worker(api):
     conflicts = admission_conflicts(api, record, current_run=run_id)
     if conflicts:
         return {'state': 'WAITING_FOR_CONFLICTING_RELEASE', 'admitted': False, 'blockers': conflicts}
-    transport = Path(__file__).with_name('release-artifacts') / 'transport.cjs'
-    result = subprocess.run(['node', str(transport)], input=json.dumps({
-        'name': 'legend-release-admission-' + record['admissionId'], 'record': record}),
-        text=True, capture_output=True)
-    if result.returncode or 'LEGEND_OPERATION_RESULT=' not in result.stdout:
-        raise RuntimeError('Durable release admission readback failed; no mutation authorized')
+    OPERATION_EVIDENCE.publish_record('legend-release-admission-' + record['admissionId'], record)
     return {'state': 'RELEASE_READY', 'admitted': True, 'admission': record}
 
 

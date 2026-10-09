@@ -2820,6 +2820,7 @@ class WorkerAdmissionPackageIdentity(unittest.TestCase):
         self.assertEqual(result['admission']['admissionId'], m._admission_identity(result['admission']))
         published = json.loads(publish.call_args.kwargs['input'])
         self.assertEqual(result['admission'], published['record'])
+        self.assertEqual(180, publish.call_args.kwargs['timeout'])
 
 
 class HistoricalReleaseRecovery(unittest.TestCase):

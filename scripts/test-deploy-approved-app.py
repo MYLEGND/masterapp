@@ -687,10 +687,44 @@ class PreparedTransactionTests(unittest.TestCase):
         plan['planId'] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         return plan
 
+    def test_finalizer_reconstructs_missing_receipt_without_upload_or_sibling_replay(self):
+        plan = self.plan()
+        journals, providers = {}, {}
+        for index, target in enumerate(plan['targets']):
+            key = target['app']
+            class Journal:
+                baseline = 'b' * 40
+                intent = {'baselineDeploymentIds': ['old']}
+                def __init__(self, fail_first):
+                    self.fail_first, self.receipt_attempts = fail_first, 0
+                def record_success(self, ids):
+                    self.receipt_attempts += 1
+                    if self.fail_first and self.receipt_attempts == 1:
+                        raise RuntimeError('lost receipt acknowledgment')
+                    return {'phase': 'success'}
+            journals[key] = Journal(index == 1)
+            provider = FakeAzure([[row('old', 4), row('new', 4)]], [True])
+            provider.revision = 'a' * 40
+            provider.observed_revision = lambda: 'a' * 40
+            providers[key] = provider
+        original_reconcile = deploy.reconcile
+        def bounded(provider, **kwargs):
+            self.assertIsNotNone(kwargs.get('journal'))
+            return original_reconcile(provider, clock=lambda: provider.now,
+                                      sleep=provider.sleep, interval=1, **kwargs)
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', side_effect=lambda key, *_: journals[key]), \
+             patch.object(deploy, 'target_azure', side_effect=lambda key, *_: providers[key]), \
+             patch.object(deploy, 'reconcile', side_effect=bounded):
+            deploy.finalize_prepared_transaction(plan, Path('/packages'), 'a' * 40, sleep=lambda _: None)
+        self.assertEqual([1, 2], [j.receipt_attempts for j in journals.values()])
+        self.assertEqual([0, 0], [p.uploads for p in providers.values()])
+
     def test_finalization_is_read_only_and_retries_only_unresolved_targets(self):
         plan = self.plan()
         calls = {}
         sleeps = []
+        journal = object()
 
         class FinalizeAzure:
             def __init__(self, key):
@@ -704,11 +738,14 @@ class PreparedTransactionTests(unittest.TestCase):
             self.assertTrue(kwargs['reconcile_only'])
             self.assertEqual(deploy.FINALIZE_RECONCILE_TIMEOUT_SECONDS, kwargs['timeout'])
             self.assertEqual(1, kwargs['max_status_failures'])
+            self.assertIs(journal, kwargs['journal'])
+            self.assertTrue(kwargs['require_receipt'])
             if azure.key == plan['targets'][1]['app'] and calls[azure.key] < 3:
                 raise deploy.DeploymentReconciliationRequired('receipt pending')
             return 'preserved'
 
-        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=journal):
             with patch.object(deploy, 'target_azure', side_effect=target_azure):
                 with patch.object(deploy, 'reconcile', side_effect=reconcile):
                     deploy.finalize_prepared_transaction(
@@ -720,12 +757,22 @@ class PreparedTransactionTests(unittest.TestCase):
 
     def test_finalization_drift_fails_without_retry(self):
         plan = self.plan([list(deploy.TARGETS)[0]])
-        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=object()):
             with patch.object(deploy, 'reconcile', side_effect=deploy.DeploymentDrift('drift')) as reconcile:
                 with self.assertRaisesRegex(deploy.DeploymentDrift, 'drift'):
                     deploy.finalize_prepared_transaction(
                         plan, Path('/packages'), 'a' * 40, sleep=lambda _: None)
         self.assertEqual(1, reconcile.call_count)
+
+    def test_finalization_cannot_commit_without_a_durable_journal(self):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=None), \
+             patch.object(deploy, 'reconcile') as reconcile:
+            with self.assertRaisesRegex(ValueError, 'durable deployment journal'):
+                deploy.finalize_prepared_transaction(
+                    self.plan(), Path('/packages'), 'a' * 40, sleep=lambda _: None)
+        reconcile.assert_not_called()
 
     def test_target_cannot_publish_modified_package_after_preflight(self):
         plan = self.plan()

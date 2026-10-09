@@ -1605,6 +1605,22 @@ jobs:
         self.assertTrue(plan['needed'])
         self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
 
+    def test_migration_history_control_changes_do_not_build_or_publish_applications(self):
+        paths = ['scripts/release-migration-history-audit.py',
+                 'scripts/test-release-migration-history-audit.py',
+                 'scripts/test-release-retired-original-evidence.py',
+                 'scripts/test-release-migration-probe-retry.py']
+        with patch.object(m, 'git_changed', return_value=paths), \
+             patch.object(m, 'compatible_package_producer') as lookup:
+            plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, 'a' * 40, 100, 'fix')
+        self.assertFalse(plan['needed'])
+        self.assertEqual((), m.release_targets_for_paths(paths))
+        self.assertEqual('no_package_producing_inputs_changed', plan['reason'])
+        lookup.assert_not_called()
+        self.assertTrue(all(m.release_control_authority_path(path) for path in paths))
+        self.assertIn('.github/workflows/approved-release-security-validation.yml',
+                      m.required_validation_topology(paths)['required'])
+
     def test_live_state_probes_selected_targets_concurrently_and_keeps_inventory_order(self):
         selected = ['masterapp-portal', 'masterapp-client']
         calls = []
