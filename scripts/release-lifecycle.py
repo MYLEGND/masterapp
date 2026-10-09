@@ -1178,6 +1178,8 @@ def _ensure_readiness_progress(api, pr):
     candidate, approved = pr['head']['sha'], api.ref(APPROVED)
     if not re.search(r'^READINESS_SCHEMA = 1$', VALIDATION_AUTHORITY.git_show_file(approved, 'scripts/validation-resume.py'), re.M):
         return None
+    if VALIDATION_AUTHORITY.readiness_scope(candidate, approved)['state'] == 'not-required':
+        return None
     targets = VALIDATION_AUTHORITY.readiness_targets(candidate, approved)
     with VALIDATION_AUTHORITY.evidence_lookup_budget(time.monotonic() + 90):
         proof = VALIDATION_AUTHORITY.readiness_evidence(api.repo, candidate, approved, targets, api.token)
@@ -3486,8 +3488,16 @@ def _readiness_probe(api, revision, directory, *, deadline):
 def readiness_observe(api, number, directory):
     started = time.monotonic()
     pr, approved, candidate, targets = readiness_context(api, number)
-    identity = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
     directory.mkdir(parents=True, exist_ok=True)
+    if scope['state'] == 'not-required':
+        (directory / 'observation.json').write_text(json.dumps(scope, sort_keys=True) + '\n')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('identity=' + scope['identity'] + '\n')
+            stream.write('artifact=legend-readiness-observation-' + scope['identity'] + '-a' + os.environ['GITHUB_RUN_ATTEMPT'] + '\n')
+            stream.write('pending=false\n')
+        return scope
+    identity = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
     deadline = started + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
@@ -3526,8 +3536,14 @@ def readiness_observe(api, number, directory):
 
 def readiness_finalize(api, number, directory):
     pr, approved, candidate, targets = readiness_context(api, number)
-    expected = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
+    scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
     observation = json.loads((directory / 'observation.json').read_text())
+    if scope['state'] == 'not-required':
+        if observation != scope:
+            raise RuntimeError('READINESS_SCOPE_CHANGED')
+        (directory / 'readiness.json').write_text(json.dumps(scope, sort_keys=True) + '\n')
+        return scope
+    expected = VALIDATION_AUTHORITY.readiness_identity(candidate, approved, targets)
     if (any(observation.get(key) != value for key, value in expected.items()) or
         observation.get('candidate') != candidate or observation.get('executionAuthority') != approved or
         observation.get('producingRun') != int(os.environ['GITHUB_RUN_ID']) or
@@ -3589,7 +3605,12 @@ def main():
     api = GitHub()
     if args.command == 'readiness-admit':
         _, approved, candidate, targets = readiness_context(api, args.pr)
-        result = {'state': 'executed-success', 'approved': approved, 'candidate': candidate, 'targets': targets}
+        scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+                stream.write('required=' + str(scope['state'] != 'not-required').lower() + '\n')
+        result = {'state': 'executed-success', 'approved': approved, 'candidate': candidate,
+                  'targets': targets, 'readinessScope': scope}
     elif args.command == 'readiness-observe':
         try:
             result = readiness_observe(api, args.pr, args.directory)

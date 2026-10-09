@@ -64,6 +64,19 @@ Production migration and configuration work is part of the same governed release
 
 ### Early readiness
 
+Nonpublishing control repairs use the approved impact classifier and the complete
+candidate diff. They retain exact-head integrity, security, and validation gates,
+but record production readiness as `not-required`. A release-request change,
+application/migration change, unknown impact, or unproven baseline still requires
+production readiness. The observer and rehearsal planner share this decision;
+control-only observation does not log into Azure or run the database probe.
+The observer job still uses the existing Production environment provisioning.
+
+This scope correction does not retroactively authorize its own installation.
+If the installed approved owner blocks the repair, preserve its evidence and
+resolve installation through repository governance; never manufacture readiness,
+clear a lease, or apply production SQL from a workstation.
+
 The lifecycle's `readiness-observe` and `release-readiness` children run approved
 control-plane code for authorized same-repository PRs, including drafts. They
 consume the candidate probe's declarative migration contract as data; candidate
