@@ -366,7 +366,8 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("grid-template-rows: 80px minmax(0, 1fr)", css, StringComparison.Ordinal);
         Assert.Equal(
             1,
-            css.Split("@media (max-width: 820px)", StringSplitOptions.None).Length - 1);
+            css.Split("@media (max-width: 900px)", StringSplitOptions.None).Length - 1);
+        Assert.Contains("const MOBILE_QUERY = '(max-width: 900px)'", script, StringComparison.Ordinal);
         Assert.Contains("--legend-ai-blue: var(--legend-design-aiResponseRoyal, #315FD1)", css, StringComparison.Ordinal);
         Assert.Contains("--legend-ai-blue-bright: var(--legend-design-verified, #1F7AEB)", css, StringComparison.Ordinal);
         Assert.DoesNotContain("--legend-ai-response", css, StringComparison.Ordinal);
