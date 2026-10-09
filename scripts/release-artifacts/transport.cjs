@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {DefaultArtifactClient} = require('@actions/artifact');
+const {DefaultArtifactClient, ArtifactNotFoundError} = require('@actions/artifact');
 
 function componentSource(source) {
   const keys = ['runId', 'runAttempt', 'artifactId', 'artifactDigest', 'artifactName', 'receiptArtifactId', 'producingJobId'];
@@ -225,7 +225,8 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         await client.downloadArtifact(artifactId, {path: destination});
       } catch (error) {
         const status = error.statusCode ?? error.status ?? error.response?.status;
-        const transient = [404, 408, 429, 500, 502, 503, 504].includes(status) ||
+        const transient = error instanceof ArtifactNotFoundError ||
+          [404, 408, 429, 500, 502, 503, 504].includes(status) ||
           ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'].includes(error.code);
         if (!transient || attempt === 2) throw error;
         await sleep((attempt + 1) * 1000);

@@ -3466,10 +3466,19 @@ def _readiness_probe(api, revision, directory, *, deadline):
         time.sleep(min(10, max(0, deadline - time.monotonic())))
 
 
+def _readiness_step(stage, operation, *args, **kwargs):
+    # Retain location only; never retain provider payloads or operation arguments.
+    try:
+        return operation(*args, **kwargs)
+    except Exception as exc:
+        exc.readiness_stage = stage
+        raise
+
+
 def readiness_observe(api, number, directory):
     started = time.monotonic()
-    pr, approved, candidate, targets = readiness_context(api, number)
-    scope = VALIDATION_AUTHORITY.readiness_scope(candidate, approved)
+    pr, approved, candidate, targets = _readiness_step('candidate-admission', readiness_context, api, number)
+    scope = _readiness_step('scope-resolution', VALIDATION_AUTHORITY.readiness_scope, candidate, approved)
     directory.mkdir(parents=True, exist_ok=True)
     if scope['state'] == 'not-required':
         (directory / 'observation.json').write_text(json.dumps(scope, sort_keys=True) + '\n')
@@ -3482,22 +3491,24 @@ def readiness_observe(api, number, directory):
     deadline = started + VALIDATION_AUTHORITY.READINESS_WAIT_SECONDS
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
-        trusted = _readiness_probe(api, approved, root / 'approved', deadline=deadline)
-        candidate_proof = _readiness_probe(api, candidate, root / 'candidate', deadline=deadline)
+        trusted = _readiness_step('approved-probe-evidence', _readiness_probe, api, approved, root / 'approved', deadline=deadline)
+        candidate_proof = _readiness_step('candidate-probe-evidence', _readiness_probe, api, candidate, root / 'candidate', deadline=deadline)
         contract = root / 'candidate/migration-contract.json'
         if not contract.is_file():
             raise RuntimeError('READINESS_CANDIDATE_CONTRACT_UNAVAILABLE')
         approved_contract = root / 'approved/migration-contract.json'
         if not approved_contract.is_file() or max(contract.stat().st_size, approved_contract.stat().st_size) > 4 * 1024 * 1024:
             raise RuntimeError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN')
-        contract_proof = VALIDATION_AUTHORITY.candidate_migration_contract_proven(candidate, approved,
+        contract_proof = _readiness_step('migration-contract', VALIDATION_AUTHORITY.candidate_migration_contract_proven, candidate, approved,
             json.loads(contract.read_text()), json.loads(approved_contract.read_text()))
         profile = VALIDATION_AUTHORITY.release_runtime_profile(targets or
             [row['releaseName'] for row in VALIDATION_AUTHORITY.RELEASE_TARGETS.values()])
         os.environ.update(RELEASE_RESOURCE_GROUP=profile['resourceGroup'], DATABASE_AUTHORITY=profile['databaseAuthority'])
-        publication = _readiness_module('release-prepublication').deployment_readiness(targets)
+        publication = _readiness_step('publication-prerequisites', _readiness_module('release-prepublication').deployment_readiness, targets)
         migration = _readiness_module('release-migration')
-        before = migration.observe(root / 'approved/MigrationReleaseProbe.dll', migration.connection_string(), contract=contract)
+        connection = _readiness_step('database-configuration', migration.connection_string)
+        before = _readiness_step('database-schema-observation', migration.observe,
+            root / 'approved/MigrationReleaseProbe.dll', connection, contract=contract)
         result = dict(identity, **before, candidate=candidate, executionAuthority=approved,
                       contractDigest=hashlib.sha256(contract.read_bytes()).hexdigest(),
                       producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
@@ -3574,6 +3585,46 @@ def readiness_failure_classification(exc):
     return 'unclassified-or-nonrecoverable'
 
 
+
+READINESS_DIAGNOSTIC_STAGES = frozenset({
+    'candidate-admission', 'scope-resolution', 'approved-probe-evidence',
+    'candidate-probe-evidence', 'migration-contract', 'publication-prerequisites',
+    'database-configuration', 'database-schema-observation',
+})
+READINESS_DIAGNOSTIC_REASONS = frozenset({
+    'READINESS_ADMISSION_DENIED', 'READINESS_CANDIDATE_INVALID',
+    'READINESS_TRUSTED_EVENT_REQUIRED', 'READINESS_CANDIDATE_SUPERSEDED',
+    'READINESS_CANDIDATE_OBJECTS_UNAVAILABLE', 'READINESS_APPROVED_BASE_CHANGED',
+    'READINESS_MINIMAL_ARTIFACT_UNAVAILABLE', 'READINESS_CANDIDATE_CONTRACT_UNAVAILABLE',
+    'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN', 'PHYSICAL_SCHEMA_DRIFT',
+})
+
+
+def readiness_failure_diagnostic(exc):
+    # Exact allowlists, not regex redaction: arbitrary errors can contain secrets.
+    stage = getattr(exc, 'readiness_stage', None)
+    result = {'stage': stage if stage in READINESS_DIAGNOSTIC_STAGES else 'readiness-observation',
+              'reasonCode': 'UNCLASSIFIED_ERROR_REDACTED'}
+    if isinstance(exc, VALIDATION_AUTHORITY.EvidenceLookupUnavailable):
+        result['reasonCode'] = 'EVIDENCE_LOOKUP_UNAVAILABLE'
+        if type(exc.code) is int and 100 <= exc.code <= 599:
+            result['httpStatus'] = exc.code
+    elif type(exc) is RuntimeError:
+        message = str(exc)
+        if message in READINESS_DIAGNOSTIC_REASONS:
+            result['reasonCode'] = message
+        elif message == 'Schema probe process deadline exceeded':
+            result['reasonCode'] = 'SCHEMA_PROBE_DEADLINE_EXCEEDED'
+        elif message == 'Transient SQL schema read exhausted bounded retries':
+            result['reasonCode'] = 'SCHEMA_READ_RETRIES_EXHAUSTED'
+    elif type(exc) is TimeoutError:
+        result['reasonCode'] = 'OPERATION_TIMEOUT'
+    elif type(exc) is json.JSONDecodeError:
+        result['reasonCode'] = 'INVALID_JSON_EVIDENCE'
+    elif type(exc) is FileNotFoundError:
+        result['reasonCode'] = 'REQUIRED_FILE_UNAVAILABLE'
+    return result
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['integrate', 'pending-updates', 'reconcile', 'cleanup', 'admit-worker', 'diagnose-run', 'readiness-admit', 'readiness-observe', 'readiness-finalize'])
@@ -3600,10 +3651,15 @@ def main():
             failure = dict(schemaVersion=1, candidate=event['pull_request']['head']['sha'],
                 executionAuthority=git('rev-parse', 'HEAD').stdout.strip(),
                 producingRun=int(os.environ['GITHUB_RUN_ID']), producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),
-                classification=readiness_failure_classification(exc))
+                classification=readiness_failure_classification(exc),
+                **readiness_failure_diagnostic(exc))
             args.directory.mkdir(parents=True, exist_ok=True)
             (args.directory / 'failure.json').write_text(json.dumps(failure, sort_keys=True) + '\n')
-            raise RuntimeError('READINESS_BLOCKED:' + failure['classification']) from None
+            diagnostic = 'READINESS_BLOCKED:' + failure['classification'] + ':' + failure['stage'] + ':' + failure['reasonCode']
+            if 'httpStatus' in failure:
+                diagnostic += ':HTTP_' + str(failure['httpStatus'])
+            print(diagnostic, file=sys.stderr)
+            raise RuntimeError(diagnostic) from None
     elif args.command == 'readiness-finalize':
         result = readiness_finalize(api, args.pr, args.directory)
     elif args.command == 'admit-worker':
