@@ -21,6 +21,31 @@ No local shell script, developer workstation command, diagnostic workflow, manua
 9. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
 10. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
 
+## Immutable component recovery
+
+The package owner records each application's actual producer revision, dependency
+and execution identities, successful producing job/attempt, immutable artifact ID,
+and digest. Assembly authenticates children independently; a failed sibling or
+later attempt does not erase a completed component. Release candidate authorization
+remains separate from the producer of reused bytes. Baseline planning, transaction
+intents, publication, receipts, live verification, and rollback consume that same
+per-target material. Publication never restamps or rebuilds those bytes.
+
+Attempt-qualified aggregate descriptors bind the downloaded manifest and target
+map to the exact uploaded artifact. Confirmed terminal failed attempts permit lookup
+of earlier successful aggregates; unavailable evidence or tampering blocks lookup
+without authorizing a rebuild. Rollback restores verified retained component bytes
+or identical bytes from an authenticated aggregate through the package owner.
+Legacy single-producer packages retain their strict original interpretation.
+
+Candidate compilation uses pinned tools, verified restore content and generated
+imports, read-only source, controlled writable output, and a network-disabled
+container. Candidate builds receive no production or evidence-service credentials.
+Static Website and Protect cross-revision component reuse remains conservatively
+invalidated where the executable dependency scope cannot yet be proven; same-candidate
+recovery remains available. The new component protocol activates only after its
+trusted approved owner is installed. Bootstrap validation is not activation proof.
+
 ## Timing invariants
 
 The release control plane owns these bounds:

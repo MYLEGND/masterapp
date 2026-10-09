@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,125 @@ spec = importlib.util.spec_from_file_location("validation_resume", ROOT / "scrip
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
+
+
+class PackageDescriptorIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.identity='a'*64;self.revision='b'*40
+        self.name='founder-diagnostics-packages-'+self.identity+'-71-a2'
+        self.result=dict(artifact=self.name,packageIdentity=self.identity,runId=71,revision=self.revision,reusable=True)
+        self.run=dict(id=71,run_attempt=2)
+        self.payload=dict(id=101,name=self.name,digest='sha256:'+'c'*64,expired=False)
+        self.descriptor=dict(id=102,name='validated-package-source-'+self.identity+'-71-a2',expired=False)
+        steps=['Build immutable validated release package','Verify immutable validated release package','Record immutable package source']
+        self.job=dict(id=501,name='validated-release-package',status='completed',conclusion='success',
+            steps=[dict(name=name,conclusion='success') for name in steps])
+        self.material={}
+        for key in m.RELEASE_TARGETS:
+            self.material[key]=dict(producerRevision='d'*40,packageDigest='e'*64,contentIdentity='f'*64,executionIdentity='1'*64,
+                source=dict(runId=61,runAttempt=1,artifactId=91,artifactDigest='sha256:'+'2'*64,
+                    artifactName=m.component_attempt_name(key,'f'*64,61,1),receiptArtifactId=92,producingJobId=401))
+        self.source=dict(schemaVersion=1,packageSchema='legend-validated-release-package.v2',revision=self.revision,
+            packageIdentity=self.identity,runId=71,runAttempt=2,manifestSha256='3'*64,targets=self.material,
+            artifact={key:self.payload[key] for key in ('id','name','digest')})
+    def invoke(self):
+        def api(repo,path,token):
+            if '/artifacts?' in path:return dict(artifacts=[self.payload,self.descriptor],total_count=2)
+            return dict(jobs=[self.job],total_count=1)
+        with patch.object(m,'trusted_component_run',return_value=True),patch.object(m,'api_get',side_effect=api), \
+             patch.object(m,'_release_job_log',return_value='authenticated upload log'), \
+             patch.object(m,'component_upload_proven') as proof, \
+             patch.object(m,'_release_history_json',return_value=self.source):
+            result=m.attach_package_descriptor('owner/repo',self.result,self.run,'placeholder')
+            self.assertEqual(2,proof.call_count)
+            return result
+    def test_descriptor_supplies_actual_producers_without_downloading_packages(self):
+        result=self.invoke()
+        self.assertEqual(self.material,result['targetMaterials'])
+        self.assertEqual(101,result['artifactId']);self.assertEqual(102,result['descriptorArtifactId'])
+    def test_substituted_artifact_cannot_be_admitted(self):
+        self.source['artifact']['id']=999
+        with self.assertRaisesRegex(ValueError,'descriptor producer/material mismatch'):self.invoke()
+    def test_failed_producer_is_not_a_valid_descriptor(self):
+        self.job['conclusion']='failure'
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
+    def test_expired_component_restores_identical_aggregate_without_rebuild(self):
+        material=self.material['portal'];producer=material['producerRevision'];release=m.RELEASE_TARGETS['portal']['releaseName']
+        receipt=dict(schemaVersion=3,applicationReleaseSha=self.revision,packageIdentity=self.identity,
+            target=release,transaction='committed-or-preserved',liveProven=True,authority='post-live-verification',targetMaterial=material)
+        run=dict(id=99,path='.github/workflows/'+m.DIRECT_RELEASE_WORKFLOW,head_branch=m.TRUSTED_PR_BASE,
+            status='completed',conclusion='success',head_repository=dict(full_name='owner/repo'))
+        aggregate=dict(self.result,artifactId=101,targetMaterials=self.material)
+        with patch.dict(m.os.environ,GITHUB_TOKEN='placeholder'), \
+             patch.object(m,'_artifact_rows',return_value=[dict(id=901,workflow_run=dict(id=99))]), \
+             patch.object(m,'api_get',return_value=run),patch.object(m,'_release_history_json',return_value=receipt), \
+             patch.object(m,'compatible_component_evidence',return_value=dict(state='required')), \
+             patch.object(m,'compute_validated_package_evidence',return_value=aggregate) as lookup:
+            result=m.compute_rollback_evidence('owner/repo',producer,'portal')
+            self.assertEqual(101,result['artifactId']);self.assertEqual(material['packageDigest'],result['packageDigest'])
+            self.assertEqual('identical_target_bytes_restored_from_authenticated_aggregate',result['reason'])
+            lookup.assert_called_once_with('owner/repo',self.revision,self.identity,allow_equivalent=False)
+            aggregate['targetMaterials']=dict(self.material,portal=dict(material,packageDigest='0'*64))
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.compute_rollback_evidence('owner/repo',producer,'portal')
+
+    def test_failed_later_aggregate_preserves_successful_prior_attempt(self):
+        prior=self.name.replace('-a2','-a1')
+        run=dict(self.run,head_sha=self.revision)
+        def attach(repo,result,actual_run,token):
+            if result['artifact']==self.name:
+                raise m.IncompletePackageAttempt('terminal failed descriptor writer')
+            return dict(result,artifactId=77)
+        with patch.object(m,'api_get',return_value=dict(workflow_runs=[run])), \
+             patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m,'git_changed',return_value=[]), \
+             patch.object(m,'_run_artifact_names',return_value=[prior,self.name]), \
+             patch.object(m,'_successful_package_child',side_effect=AssertionError('Latest attempt is not child evidence')), \
+             patch.object(m,'attach_package_descriptor',side_effect=attach) as verify:
+            result=m.compatible_package_producer('owner/repo',self.revision,'placeholder')
+            self.assertEqual(prior,result['artifact']);self.assertEqual(77,result['artifactId'])
+            self.assertEqual(2,verify.call_count)
+            for error in (m.EvidenceLookupUnavailable('provider outage'),ValueError('tampered descriptor')):
+                verify.side_effect=error;verify.reset_mock()
+                with self.assertRaises(type(error)):
+                    m.compatible_package_producer('owner/repo',self.revision,'placeholder')
+                self.assertEqual(1,verify.call_count)
+
+    def test_legacy_name_retains_original_strict_contract(self):
+        old=dict(self.result,artifact='founder-diagnostics-packages-'+self.identity)
+        with patch.object(m,'api_get',side_effect=AssertionError('Legacy evidence reinterpreted')):
+            self.assertEqual(old,m.attach_package_descriptor('owner/repo',old,self.run,'placeholder'))
+
+
+class ComponentPlanIntegrationTests(unittest.TestCase):
+    def test_missing_matrix_preserves_successful_children(self):
+        def select(repo,revision,key,token,**kwargs):
+            return dict(state='required' if key=='portal' else 'reused-success',reason='fixture')
+        with patch.object(m,'compatible_component_evidence',side_effect=select) as selector:
+            result=m.plan_component_children('owner/repo','a'*40,12,'placeholder')
+        self.assertEqual(['portal'],result['requiredComponents'])
+        self.assertEqual(set(m.RELEASE_TARGETS)-{'portal'},set(result['reusedComponents']))
+        self.assertEqual(len(m.RELEASE_TARGETS),selector.call_count)
+
+    def test_evidence_outage_has_no_fallback_build_decision(self):
+        with patch.object(m,'compatible_component_evidence',side_effect=m.EvidenceLookupUnavailable('outage')):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.plan_component_children('owner/repo','a'*40,12,'placeholder')
+
+    def test_bootstrap_owner_mismatch_does_not_activate_component_protocol(self):
+        with patch.object(m,'git_show_file',side_effect=lambda revision,path:revision):
+            self.assertFalse(m.component_protocol_ready('a'*40,'b'*40))
+        with patch.object(m,'git_show_file',return_value='CONTENT_PACKAGE_SCHEMA approved owner'):
+            self.assertTrue(m.component_protocol_ready('a'*40,'b'*40))
+
+    def test_assembly_requires_all_authenticated_children_without_building(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'sources.json'
+            args=SimpleNamespace(repository='owner/repo',revision='a'*40,current_run_id=12,output=path)
+            with patch.object(m,'plan_component_children',return_value=dict(requiredComponents=['portal'])):
+                with self.assertRaisesRegex(RuntimeError,'COMPONENT_ASSEMBLY_BLOCKED'):
+                    m.cmd_component_sources(args)
+            self.assertFalse(path.exists())
 
 
 class PackageComponentDependencyTests(unittest.TestCase):
@@ -135,6 +255,158 @@ class PackageComponentDependencyTests(unittest.TestCase):
         before = self.manifests()
         self.files['Portal/private.cs'] += 'changed'
         self.assertNotIn('website', self.changed(before, self.manifests()))
+
+
+class ComponentEvidenceIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.component, self.identity = 'portal', 'c' * 64
+        self.producer, self.candidate = 'a' * 40, 'b' * 40
+        self.index = dict(id=1, name=m.component_index_name(self.component, self.identity),
+                          expired=False, workflow_run=dict(id=91))
+        self.payload = dict(id=10, name=m.component_attempt_name(self.component,self.identity,91,2),
+                            digest='sha256:'+'d'*64,expired=False)
+        self.receipt_artifact = dict(id=11,name=m.component_attempt_name(self.component,self.identity,91,2,receipt=True),expired=False)
+        self.receipt = dict(schemaVersion=1,component=self.component,contentIdentity=self.identity,
+            producerRevision=self.producer,runId=91,runAttempt=2,sha256='e'*64,
+            executionIdentity='f'*64,artifact={key:self.payload[key] for key in ('id','name','digest')})
+        self.run = dict(id=91, head_sha=self.producer, run_attempt=2, status='completed', conclusion='failure',
+            pull_requests=[dict(base=dict(ref=m.TRUSTED_PR_BASE),head=dict(repo=dict(full_name='owner/repo')))])
+        names = ('Build immutable validated release package component','Preserve immutable validated release package component',
+                 'Record immutable component source','Preserve immutable component source')
+        self.job=dict(id=100,status='completed',conclusion='success',name='validated-release-package-components (portal)',
+                      steps=[dict(name=name,conclusion='success') for name in names])
+        self.artifacts=[self.index,self.payload,self.receipt_artifact]
+        spec = importlib.util.spec_from_file_location('component_proof_test', ROOT / 'scripts/release-package.py')
+        package = importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        paths = ('release-package.py','validation-resume.py','PackageRestoreProbe/PackageRestoreProbe.csproj','PackageRestoreProbe/Program.cs')
+        tool_rows = {key:dict(image=image,imageId='sha256:'+'1'*64) for key,image in package.PACKAGE_TOOL_IMAGES.items()}
+        for key in ('node','python'):
+            tool_rows[key].update(paths=list(package.PACKAGE_TOOL_PATHS[key]),tree=dict(identity='2'*64))
+        proof=dict(schema='legend-package-component-execution.v1',state='executed-success',component=self.component,
+            candidateRevision=self.producer,source=dict(revision=self.producer),
+            authorityInputs={path:hashlib.sha256(b'approved source').hexdigest() for path in paths},
+            tools=dict(schemaVersion=1,platform='linux/amd64',tools=tool_rows),
+            dependencyMaterial=dict(dotnet=dict(schemaVersion=1,identity='3'*64)),
+            file=package.component_file(self.component),sha256=self.receipt['sha256'])
+        with patch.object(package.subprocess,'check_output',return_value=b'approved source'):
+            self.receipt['executionIdentity']=package.component_execution_identity(proof,self.producer,self.component)
+        self.receipt['execution']=proof
+        self.log=''
+        for artifact,step_name in ((self.payload,'Preserve immutable validated release package component'),
+                                  (self.receipt_artifact,'Preserve immutable component source')):
+            step=next(row for row in self.job['steps'] if row['name']==step_name)
+            step.update(started_at='2026-10-09T00:00:00Z',completed_at='2026-10-09T00:00:02Z')
+            artifact['created_at']='2026-10-09T00:00:01Z'
+            self.log+=f"2026-10-09T00:00:01Z Artifact {artifact['name']} has been successfully uploaded! Final size is 100 bytes. Artifact ID is {artifact['id']}\n"
+        self.calls=[]
+        self.outage=False
+    def api(self, repository, endpoint, token):
+        self.calls.append(endpoint)
+        if self.outage: raise m.EvidenceLookupUnavailable('provider unavailable')
+        if endpoint.startswith('actions/artifacts?'): return dict(total_count=1,artifacts=[self.index])
+        if endpoint=='actions/runs/91':return self.run
+        if endpoint=='actions/runs/91/artifacts?per_page=100':return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+        if '/attempts/2/jobs?' in endpoint:return dict(total_count=1,jobs=[self.job])
+        if '/attempts/1/jobs?' in endpoint:return dict(total_count=1,jobs=[dict(self.job,conclusion='failure')])
+        raise AssertionError(endpoint)
+    def select(self, **kwargs):
+        with patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'package_component_manifest',return_value=dict(contentIdentity=self.identity,reusable=True)), \
+             patch.object(m,'trusted_component_run',return_value=True), \
+             patch.object(m,'_release_job_log',return_value=self.log), \
+             patch.object(m.subprocess,'check_output',return_value=b'approved source'), \
+             patch.object(m,'_release_history_json',return_value=self.receipt):
+            return m.compatible_component_evidence('owner/repo',self.candidate,self.component,'token',**kwargs)
+    def test_exact_source_bypasses_locator_outage_without_relaxing_artifact_proof(self):
+        original=self.api
+        def no_index(repo,path,token):
+            if path.startswith('actions/artifacts?'):
+                raise m.EvidenceLookupUnavailable('index unavailable')
+            return original(repo,path,token)
+        self.api=no_index
+        source=dict(runId=91,runAttempt=2,artifactId=10,artifactDigest=self.payload['digest'],
+            artifactName=self.payload['name'],receiptArtifactId=11,producingJobId=100)
+        self.assertEqual('reused-success',self.select(expected_source=source)['state'])
+        self.assertFalse(any(path.startswith('actions/artifacts?') for path in self.calls))
+        with self.assertRaisesRegex(ValueError,'immutable identity mismatch'):
+            self.select(expected_source=dict(source,artifactId=999))
+
+    def test_successful_child_survives_failed_parent_and_index_from_failed_attempt(self):
+        self.artifacts.append(dict(id=8,name=m.component_attempt_name(self.component,self.identity,91,1,receipt=True),expired=False))
+        result=self.select()
+        self.assertEqual('reused-success',result['state'])
+        self.assertEqual(2,result['sourceReceipt']['runAttempt'])
+        self.assertEqual(10,result['sourceReceipt']['artifact']['id'])
+        self.assertEqual(self.producer,result['compatibilityProof']['producerRevision'])
+        self.assertEqual(self.candidate,result['compatibilityProof']['candidateRevision'])
+        self.assertEqual(4,len(self.calls))
+        self.assertEqual(1,self.index['id'])
+    def test_failed_or_skipped_producer_never_establishes_success(self):
+        for state in ('failure','skipped','cancelled'):
+            with self.subTest(state=state):
+                self.job['conclusion']=state
+                self.assertEqual('required',self.select()['state'])
+        self.job['conclusion']='success';self.job['steps'][0]['conclusion']='skipped'
+        self.assertEqual('required',self.select()['state'])
+    def test_substitution_and_receipt_attempt_mismatch_fail_closed(self):
+        self.payload['digest']='sha256:'+'0'*64
+        with self.assertRaisesRegex(ValueError,'substitution'):self.select()
+        self.payload['digest']=self.receipt['artifact']['digest']
+        self.receipt['runAttempt']=1
+        with self.assertRaisesRegex(ValueError,'producer mismatch'):self.select()
+    def test_missing_expired_payload_is_scoped_but_evidence_outage_cannot_select_build(self):
+        self.payload['expired']=True
+        self.assertEqual('required',self.select()['state'])
+        self.outage=True
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.select()
+    def test_changed_dependency_does_not_reuse_unrelated_identity(self):
+        with patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'package_component_manifest',side_effect=[dict(contentIdentity=self.identity,reusable=True),dict(contentIdentity='0'*64,reusable=True)]), \
+             patch.object(m,'trusted_component_run',return_value=True):
+            result=m.compatible_component_evidence('owner/repo',self.candidate,self.component,'token')
+        self.assertEqual('required',result['state'])
+        self.assertEqual(2,len(self.calls))
+
+
+    def test_producer_uses_actual_approved_base_and_unmodified_authority(self):
+        url='https://api.github.com/repos/owner/repo'
+        self.run['pull_requests']=[dict(base=dict(ref=m.TRUSTED_PR_BASE,sha='0'*40,repo=dict(url=url)),
+            head=dict(sha=self.producer,repo=dict(url=url)))]
+        with patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m,'git_show_file',return_value='approved executor') as source:
+            self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            source.side_effect=lambda revision,path: 'candidate executor' if revision==self.producer else 'approved executor'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            source.side_effect=None
+            self.run['pull_requests'][0]['head']['sha']='9'*40
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            self.run['pull_requests'][0]['head']['sha']=self.producer
+            self.run['pull_requests'][0]['base']['ref']='unapproved'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+
+    def test_arbitrary_execution_hash_and_later_upload_are_rejected(self):
+        original=self.receipt['executionIdentity']
+        self.receipt['executionIdentity']='9'*64
+        with self.assertRaisesRegex(ValueError,'execution identity mismatch'):self.select()
+        self.receipt['executionIdentity']=original
+        self.payload['created_at']='2026-10-09T00:01:00Z'
+        with self.assertRaisesRegex(ValueError,'outside producing upload'):self.select()
+
+    def test_fractional_upload_in_completion_second_is_valid_but_next_second_is_not(self):
+        self.log=self.log.replace('T00:00:01Z','T00:00:02.999Z')
+        self.assertEqual('reused-success',self.select()['state'])
+        self.log=self.log.replace('T00:00:02.999Z','T00:00:03Z')
+        with self.assertRaisesRegex(ValueError,'producing upload log'):self.select()
+
+    def test_other_job_substitution_cannot_claim_original_upload(self):
+        self.payload['id']=99
+        self.receipt['artifact']['id']=99
+        with self.assertRaisesRegex(ValueError,'producing upload log'):self.select()
+
+    def test_dependency_and_pinned_tool_proof_cannot_be_fabricated(self):
+        self.receipt['execution']['tools']['tools']['sdk']['image']='unapproved:latest'
+        with self.assertRaisesRegex(ValueError,'pinned tool identity'):self.select()
 
 
 class EarlyReadinessEvidenceTests(unittest.TestCase):
@@ -1675,10 +1947,12 @@ jobs:
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
         rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
-        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', validated)
-        self.assertIn('python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package', validated)
+        self.assertIn('Checkout current approved evidence authority', release)
+        self.assertIn('python3 .legend-evidence-authority/scripts/validation-resume.py validated-package', validated)
         self.assertIn("rollback-evidence", rollback)
-        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
+        self.assertIn('Checkout canonical rollback package authority', release)
+        self.assertIn('scripts/release-package.py restore-rollback', rollback)
+        self.assertNotIn('source-equivalent rollback', release)
         self.assertNotIn("gh api", validated)
         self.assertNotIn("gh api", rollback)
 
@@ -2195,7 +2469,8 @@ jobs:
                 return validation_run
             raise AssertionError(path)
 
-        with patch.object(m, "_successful_package_child", return_value=True), \
+        with patch.object(m, "_release_history_json", return_value={'schemaVersion':2}), \
+             patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "_trusted_pr_run", return_value=True), \
              patch.object(m, "_artifact_rows", side_effect=artifacts), \
              patch.object(m, "api_get", side_effect=api_get), \
@@ -3345,6 +3620,19 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
                      'name': 'Post Checkout protected lifecycle wake authority',
                      'status': 'completed'},
                     {'conclusion': 'success', 'name': 'Complete job', 'status': 'completed'}]}]
+
+    def test_current_nonentry_preserves_reviewed_observers_and_rejects_mutation(self):
+        source=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
+        jobs=self.observer_jobs()+[dict(name='migration-readiness',status='completed',conclusion='skipped',steps=[])]
+        self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        self.assertFalse(m.release_attempt_never_entered(jobs[:-1],source))
+        for before,after in (
+            ('run: python3 scripts/wake-release-lifecycle.py','run: python3 scripts/deploy-approved-app.py'),
+            ('      actions: write','      actions: write\n      id-token: write'),
+            ('      contents: read\n      actions: write','      contents: write\n      actions: write')):
+            self.assertFalse(m.release_attempt_never_entered(jobs,source.replace(before,after)))
+        jobs[-1]['conclusion']='success'
+        self.assertFalse(m.release_attempt_never_entered(jobs,source))
 
     def test_actual_nonentry_with_authenticated_terminal_observers(self):
         jobs = self.observer_jobs()

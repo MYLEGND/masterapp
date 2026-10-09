@@ -108,6 +108,7 @@ jobs:
       preserve_live_targets: ${{ steps.live.outputs.preserve_live_targets }}
       exact_live: ${{ steps.live.outputs.exact_live }}
       rollback_required: ${{ steps.live.outputs.rollback_required }}
+      target_materials: ${{ steps.live.outputs.target_materials }}
       application_release_sha: ${{ steps.live.outputs.application_release_sha }}
       package_identity: ${{ steps.live.outputs.package_identity }}
       resource_group: ${{ steps.live.outputs.resource_group }}
@@ -175,6 +176,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      TARGET_MATERIALS: ${{ needs.discover-live.outputs.target_materials }}
       RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
       DATABASE_AUTHORITY: ${{ needs.discover-live.outputs.database_authority }}
       EXPECTED_DB_BASE_SHA: ${{ needs.discover-live.outputs.database_baseline }}
@@ -335,25 +337,19 @@ jobs:
       matrix: ${{ fromJSON(needs.discover-live.outputs.matrix) }}
     steps:
       - name: Record rollback not required for matching application revision
-        if: matrix.revision == needs.discover-live.outputs.application_release_sha
+        if: matrix.revision == matrix.desiredProducerRevision
         run: echo 'Rollback package not required; canonical artifact reconciliation still applies.'
-      - uses: actions/checkout@v4
-        if: matrix.revision != needs.discover-live.outputs.application_release_sha
+      - name: Checkout canonical rollback package authority
+        if: matrix.revision != matrix.desiredProducerRevision
+        uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.revision }}
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
-
-      - name: Load current canonical release authority without changing rollback source
-        if: matrix.revision != needs.discover-live.outputs.application_release_sha
-        shell: bash
-        run: |
-          set -euo pipefail
-          git show "${RELEASE_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/validation-resume.py"
-          python3 "$RUNNER_TEMP/validation-resume.py" --help >/dev/null
+          persist-credentials: false
 
       - name: Reuse exact retained live package when available
         id: retained
-        if: matrix.revision != needs.discover-live.outputs.application_release_sha
+        if: matrix.revision != matrix.desiredProducerRevision
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -364,97 +360,22 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/rollback-evidence.json"
-          python3 "$RUNNER_TEMP/validation-resume.py" rollback-evidence \
+          python3 scripts/validation-resume.py rollback-evidence \
             --repository "${{ github.repository }}" \
             --revision "$REVISION" \
             --app "$APP" \
             --output "$evidence"
 
-          read -r reusable run_id package_artifact package_name < <(
-            python3 - "$evidence" <<'PYROLLBACKDECISION'
-          import json,sys
-          data=json.load(open(sys.argv[1]))
-          print(
-              str(bool(data.get('reusable'))).lower(),
-              data.get('runId') or '',
-              data.get('packageArtifact') or '',
-              data.get('packageName') or '',
-          )
-          PYROLLBACKDECISION
-          )
-          echo "reused=false" >> "$GITHUB_OUTPUT"
-          if [ "$reusable" != true ]; then
-            echo "No retained canonical package covers $APP at $REVISION; source-equivalent rollback rebuild remains required."
-            exit 0
-          fi
-
-          rm -rf /tmp/retained-package
-          mkdir -p /tmp/retained-package
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$package_artifact" --dir /tmp/retained-package
-          candidate="$(find /tmp/retained-package -type f -name "$package_name" -print -quit)"
-          [ -n "$candidate" ]
-          sums="$(find "$(dirname "$candidate")" -maxdepth 1 -type f -name SHA256SUMS -print -quit)"
-          [ -n "$sums" ]
-          python3 - "$candidate" "$sums" "$REVISION" "$STATIC_TARGET" <<'PYROLLBACK'
-          import hashlib,json,pathlib,sys,zipfile
-          package=pathlib.Path(sys.argv[1])
-          sums=pathlib.Path(sys.argv[2])
-          revision=sys.argv[3]
-          static=sys.argv[4].lower()=='true'
-          rows=[line.split() for line in sums.read_text().splitlines()]
-          expected=[row[0] for row in rows if len(row)==2 and pathlib.Path(row[1]).name==package.name]
-          with package.open('rb') as stream:
-              actual=hashlib.file_digest(stream,'sha256').hexdigest()
-          if expected != [actual]:
-              raise SystemExit('Retained rollback package digest mismatch')
-          with zipfile.ZipFile(package) as archive:
-              if archive.testzip() is not None:
-                  raise SystemExit('Retained rollback package is corrupt')
-              entry='_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json'
-              raw=archive.read(entry).decode().strip()
-              embedded=raw if static else json.loads(raw)['releaseSha']
-          if embedded != revision:
-              raise SystemExit('Retained rollback package revision mismatch')
-          PYROLLBACK
-
-          mkdir -p /tmp/rollback
-          cp "$candidate" /tmp/rollback/package.zip
-          printf '%s %s retained canonical package from release run %s\n' "$APP" "$REVISION" "$run_id" > /tmp/rollback/manifest.txt
-          sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
+          python3 scripts/release-package.py restore-rollback \
+            --repository "$GITHUB_REPOSITORY" \
+            --revision "$REVISION" \
+            --component "$APP" \
+            --evidence "$evidence" \
+            --output /tmp/rollback
           echo "reused=true" >> "$GITHUB_OUTPUT"
-          echo "Reused exact verified rollback package for $APP at $REVISION from direct release run $run_id."
 
-      - uses: actions/setup-dotnet@v4
-        if: matrix.static != true && steps.retained.outputs.reused != 'true' && matrix.revision != needs.discover-live.outputs.application_release_sha
-        with:
-          dotnet-version: '10.x'
-      - name: Preserve source-equivalent rollback without production data
-        if: steps.retained.outputs.reused != 'true' && matrix.revision != needs.discover-live.outputs.application_release_sha
-        env:
-          PROJECT: ${{ matrix.project }}
-          SOURCE_ROOT: ${{ matrix.sourceRoot }}
-          PACKAGE_NAME: ${{ matrix.package }}
-          STATIC_TARGET: ${{ matrix.static }}
-          REVISION: ${{ matrix.revision }}
-          APP: ${{ matrix.app }}
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/rollback
-          if [ "$STATIC_TARGET" = true ]; then
-            npm ci --prefix "$SOURCE_ROOT" --ignore-scripts --no-audit --no-fund
-            npm --prefix "$SOURCE_ROOT" run build
-            cp "$SOURCE_ROOT/public/web.config" "$SOURCE_ROOT/dist/web.config"
-            printf '%s\n' "$REVISION" > "$SOURCE_ROOT/dist/_deployment-provenance.txt"
-            (cd "$SOURCE_ROOT/dist" && zip -qr /tmp/rollback/package.zip .)
-          else
-            dotnet publish "$PROJECT" -c Release -o /tmp/rollback-publish -p:SourceRevisionId="$REVISION" --nologo
-            printf '{"releaseSha":"%s"}\n' "$REVISION" > /tmp/rollback-publish/wwwroot/_deployment-provenance.json
-            (cd /tmp/rollback-publish && zip -qr /tmp/rollback/package.zip .)
-          fi
-          printf '%s %s source-equivalent rebuild\n' "$APP" "$REVISION" > /tmp/rollback/manifest.txt
-          sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
       - uses: actions/upload-artifact@v4
-        if: matrix.revision != needs.discover-live.outputs.application_release_sha
+        if: matrix.revision != matrix.desiredProducerRevision
         with:
           name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}
           path: /tmp/rollback/
@@ -484,6 +405,7 @@ jobs:
       FOUNDER_CLOUDFLARE: ${{ needs.discover-live.outputs.founder_cloudflare }}
       PRESERVE_LIVE_TARGETS: ${{ needs.discover-live.outputs.preserve_live_targets }}
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      TARGET_MATERIALS: ${{ needs.discover-live.outputs.target_materials }}
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
       RELEASE_RESOURCE_GROUP: ${{ needs.discover-live.outputs.resource_group }}
       MIGRATION_BUNDLE: ${{ needs.discover-live.outputs.migration_bundle }}
@@ -520,6 +442,14 @@ jobs:
           cache: npm
           cache-dependency-path: Legend-Cloudflare/package-lock.json
 
+      - name: Checkout current approved evidence authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .legend-evidence-authority
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Reuse exact successful validation package when available
         id: reusevalidated
         shell: bash
@@ -533,9 +463,8 @@ jobs:
           # Deployment remains bound to RELEASE_SHA, but durable evidence
           # recognition must use the current approved control-plane contract so
           # later canonical receipt formats can validate older authorized bytes.
-          git show "${GITHUB_SHA}:scripts/validation-resume.py" > "$RUNNER_TEMP/current-validation-resume.py"
           evidence="$RUNNER_TEMP/validated-package-evidence.json"
-          python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package \
+          python3 .legend-evidence-authority/scripts/validation-resume.py validated-package \
             --repository "${{ github.repository }}" \
             --revision "$APPLICATION_RELEASE_SHA" \
             --package-identity "$PACKAGE_IDENTITY" \
@@ -551,6 +480,7 @@ jobs:
           with open(sys.argv[2],'a') as output:
               output.write(f"run_id={data['runId']}\n")
               output.write(f"artifact={data['artifact']}\n")
+              output.write(f"artifact_id={data.get('artifactId') or ''}\n")
           with open(sys.argv[3],'a') as env:
               env.write("REUSE_VALIDATED_PACKAGE=true\n")
           print(f"Exact immutable package preserved from successful architecture validation run {data['runId']}.")
@@ -559,7 +489,9 @@ jobs:
         if: steps.reusevalidated.outputs.run_id != ''
         uses: actions/download-artifact@v4
         with:
-          name: ${{ steps.reusevalidated.outputs.artifact }}
+          name: ${{ steps.reusevalidated.outputs.artifact_id == '' && steps.reusevalidated.outputs.artifact || '' }}
+          artifact-ids: ${{ steps.reusevalidated.outputs.artifact_id }}
+          merge-multiple: true
           path: /tmp/diagnostics-packages
           run-id: ${{ steps.reusevalidated.outputs.run_id }}
           github-token: ${{ github.token }}
@@ -569,7 +501,8 @@ jobs:
         run: |
           python3 scripts/release-package.py verify \
             --revision "$APPLICATION_RELEASE_SHA" \
-            --directory /tmp/diagnostics-packages
+            --directory /tmp/diagnostics-packages \
+            --source-evidence "$RUNNER_TEMP/validated-package-evidence.json"
       - name: Verify current live base before publication
         id: base
         run: |
@@ -593,7 +526,7 @@ jobs:
                           raise
                       time.sleep(2 ** attempt)
               print(host,actual)
-              candidate=os.environ['APPLICATION_RELEASE_SHA']
+              candidate=row['desiredProducerRevision']
               if actual not in {row['revision'], candidate}:
                   raise AssertionError(
                       f"Live revision drifted outside preserved baseline/candidate: {host} actual={actual} "
@@ -828,17 +761,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/portal.json portal <<'PYTARGET'
-          import json, os, pathlib, sys
+          import importlib.util, json, os, pathlib, sys
+          spec=importlib.util.spec_from_file_location('deployment_owner','scripts/deploy-approved-app.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          plan=owner.read_transaction_plan(pathlib.Path('/tmp/release-transaction.json'),os.environ['APPLICATION_RELEASE_SHA'])
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
+          row=next(row for row in plan['targets'] if row['app']==key)
+          material=owner.transaction_target_material(plan,row,os.environ['APPLICATION_RELEASE_SHA'])
           if (
               result.get('schemaVersion') != 2
               or result.get('phase') != 'publication'
               or result.get('target') != key
               or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('targetMaterial') != material
               or result.get('liveProven') is not True
               or result.get('durableReceiptProven') is not True
           ):
@@ -857,17 +796,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/client.json client <<'PYTARGET'
-          import json, os, pathlib, sys
+          import importlib.util, json, os, pathlib, sys
+          spec=importlib.util.spec_from_file_location('deployment_owner','scripts/deploy-approved-app.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          plan=owner.read_transaction_plan(pathlib.Path('/tmp/release-transaction.json'),os.environ['APPLICATION_RELEASE_SHA'])
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
+          row=next(row for row in plan['targets'] if row['app']==key)
+          material=owner.transaction_target_material(plan,row,os.environ['APPLICATION_RELEASE_SHA'])
           if (
               result.get('schemaVersion') != 2
               or result.get('phase') != 'publication'
               or result.get('target') != key
               or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('targetMaterial') != material
               or result.get('liveProven') is not True
               or result.get('durableReceiptProven') is not True
           ):
@@ -886,17 +831,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/protect.json protect <<'PYTARGET'
-          import json, os, pathlib, sys
+          import importlib.util, json, os, pathlib, sys
+          spec=importlib.util.spec_from_file_location('deployment_owner','scripts/deploy-approved-app.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          plan=owner.read_transaction_plan(pathlib.Path('/tmp/release-transaction.json'),os.environ['APPLICATION_RELEASE_SHA'])
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
+          row=next(row for row in plan['targets'] if row['app']==key)
+          material=owner.transaction_target_material(plan,row,os.environ['APPLICATION_RELEASE_SHA'])
           if (
               result.get('schemaVersion') != 2
               or result.get('phase') != 'publication'
               or result.get('target') != key
               or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('targetMaterial') != material
               or result.get('liveProven') is not True
               or result.get('durableReceiptProven') is not True
           ):
@@ -915,17 +866,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/parfait.json parfait <<'PYTARGET'
-          import json, os, pathlib, sys
+          import importlib.util, json, os, pathlib, sys
+          spec=importlib.util.spec_from_file_location('deployment_owner','scripts/deploy-approved-app.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          plan=owner.read_transaction_plan(pathlib.Path('/tmp/release-transaction.json'),os.environ['APPLICATION_RELEASE_SHA'])
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
+          row=next(row for row in plan['targets'] if row['app']==key)
+          material=owner.transaction_target_material(plan,row,os.environ['APPLICATION_RELEASE_SHA'])
           if (
               result.get('schemaVersion') != 2
               or result.get('phase') != 'publication'
               or result.get('target') != key
               or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('targetMaterial') != material
               or result.get('liveProven') is not True
               or result.get('durableReceiptProven') is not True
           ):
@@ -944,17 +901,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 - /tmp/release-target-results/website.json website <<'PYTARGET'
-          import json, os, pathlib, sys
+          import importlib.util, json, os, pathlib, sys
+          spec=importlib.util.spec_from_file_location('deployment_owner','scripts/deploy-approved-app.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          plan=owner.read_transaction_plan(pathlib.Path('/tmp/release-transaction.json'),os.environ['APPLICATION_RELEASE_SHA'])
           path=pathlib.Path(sys.argv[1])
           key=sys.argv[2]
           if not path.is_file():
               raise SystemExit(f'Missing parallel publication result for {key}')
           result=json.loads(path.read_text())
+          row=next(row for row in plan['targets'] if row['app']==key)
+          material=owner.transaction_target_material(plan,row,os.environ['APPLICATION_RELEASE_SHA'])
           if (
               result.get('schemaVersion') != 2
               or result.get('phase') != 'publication'
               or result.get('target') != key
               or result.get('candidateRevision') != os.environ['APPLICATION_RELEASE_SHA']
+              or result.get('targetMaterial') != material
               or result.get('liveProven') is not True
               or result.get('durableReceiptProven') is not True
           ):
@@ -1191,7 +1154,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/translation-results
-          python3 scripts/validation-resume.py verify-live \
+          plan=()
+          if [ "$PRESERVE_LIVE_TARGETS" != "true" ]; then
+            plan=(--transaction-plan /tmp/release-transaction.json)
+          fi
+          python3 scripts/validation-resume.py verify-live "${plan[@]}" \
             --revision "$APPLICATION_RELEASE_SHA" \
             --selected-targets "$SELECTED_TARGETS" \
             --output /tmp/translation-results/live.json
@@ -1266,6 +1233,9 @@ jobs:
               'founderCloudflare':founder_cloudflare,
               'transaction':'committed' if effective_transaction=='success' else 'preserved',
           }
+          materials=json.loads(os.environ.get('TARGET_MATERIALS') or '{}')
+          if materials:
+              receipt.update(schemaVersion=3,targetMaterials=materials)
           with open('/tmp/approved-release-receipt.json','w') as output:
               json.dump(receipt,output,sort_keys=True,indent=2)
           print(json.dumps(receipt,sort_keys=True))
@@ -1330,8 +1300,11 @@ jobs:
         shell: bash
         env:
           APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+          TARGET_MATERIALS: ${{ needs.discover-live.outputs.target_materials }}
           SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
           TARGET_NAME: ${{ matrix.releaseName }}
+          TARGET_KEY: ${{ matrix.app }}
+          PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
         run: |
           set -euo pipefail
           python3 - <<'PYTARGETRECEIPT'
@@ -1348,12 +1321,15 @@ jobs:
               'liveProven':True,
               'authority':'post-live-verification',
           }
+          materials=json.loads(os.environ.get('TARGET_MATERIALS') or '{}')
+          if materials:
+              payload.update(schemaVersion=3,targetMaterial=materials[os.environ['TARGET_KEY']],packageIdentity=os.environ['PACKAGE_IDENTITY'])
           pathlib.Path('/tmp/target-release-receipt.json').write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
           PYTARGETRECEIPT
       - name: Preserve target-specific live-proven deployment receipt
         uses: actions/upload-artifact@v4
         with:
-          name: legend-approved-release-${{ needs.discover-live.outputs.application_release_sha }}-${{ matrix.releaseName }}
+          name: legend-approved-release-${{ matrix.desiredProducerRevision }}-${{ matrix.releaseName }}
           path: /tmp/target-release-receipt.json
           retention-days: 90
           if-no-files-found: error
@@ -1368,6 +1344,7 @@ jobs:
       contents: read
     env:
       APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}
+      TARGET_MATERIALS: ${{ needs.discover-live.outputs.target_materials }}
       PACKAGE_IDENTITY: ${{ needs.discover-live.outputs.package_identity }}
       SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
     steps:
@@ -1380,7 +1357,7 @@ jobs:
           jobs="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100")"
           printf '%s' "$jobs" > "$RUNNER_TEMP/release-jobs.json"
           python3 - "$RUNNER_TEMP/release-jobs.json" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$APPLICATION_RELEASE_SHA" "$PACKAGE_IDENTITY" "$SELECTED_TARGETS" <<'PYSTATE'
-          import json,sys
+          import json,sys,os
           jobs_path,run_id,attempt,release_sha,application_sha,package_identity,targets=sys.argv[1:]
           with open(jobs_path) as source:
               payload=json.load(source)
@@ -1414,6 +1391,9 @@ jobs:
               'releaseJobConclusion':job.get('conclusion'),
               'steps':steps,
           }
+          materials=json.loads(os.environ.get('TARGET_MATERIALS') or '{}')
+          if materials:
+              state.update(schemaVersion=3,targetMaterials=materials)
           with open('/tmp/legend-release-step-state.json','w') as output:
               json.dump(state,output,sort_keys=True,indent=2)
           print(json.dumps({
@@ -1454,6 +1434,9 @@ jobs:
               'packageIdentity':identity,
               'source':'canonical-validated-package',
           }
+          materials=json.loads(os.environ.get('TARGET_MATERIALS') or '{}')
+          if materials:
+              payload.update(schemaVersion=2,targetMaterials=materials)
           pathlib.Path('/tmp/legend-approved-package-link.json').write_text(
               json.dumps(payload,sort_keys=True,indent=2)+'\n'
           )

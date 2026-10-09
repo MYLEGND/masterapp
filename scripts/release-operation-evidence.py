@@ -82,7 +82,7 @@ def readiness_refresh_once(identity, *, lookup, observe, execute, publisher=publ
 class OperationJournal:
     _publish = staticmethod(publish_record)
     def __init__(self, *, target, application_revision, package_digest, baseline,
-                 authority=None, publisher=None, environment=None):
+                 authority=None, publisher=None, environment=None, candidate_revision=None, component_source=None):
         env = os.environ if environment is None else environment
         self.authority = authority or _authority()
         if target not in self.authority.RELEASE_TARGETS:
@@ -94,7 +94,11 @@ class OperationJournal:
         self.operation_id = hashlib.sha256(json.dumps(self.identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         self.run = int(env['GITHUB_RUN_ID'])
         self.attempt = int(env['GITHUB_RUN_ATTEMPT'])
-        self.producer = int(env.get('VALIDATED_PACKAGE_RUN_ID') or env['PACKAGE_PRODUCER_RUN'])
+        self.authorization = None
+        if candidate_revision is not None or component_source is not None:
+            self.authorization = self._authorization(candidate_revision, component_source)
+        self.producer = (component_source['runId'] if self.authorization else
+                         int(env.get('VALIDATED_PACKAGE_RUN_ID') or env['PACKAGE_PRODUCER_RUN']))
         if min(self.run, self.attempt, self.producer) < 1:
             raise ValueError("Missing immutable evidence producer")
         self.publisher = publisher or self._publish
@@ -114,11 +118,32 @@ class OperationJournal:
         if self.intent is not None:
             if (any(self.intent.get(key) != value for key, value in self.identity.items()) or
                     self.intent.get('operationId') != self.operation_id or
-                    self.intent.get('schemaVersion') != 1 or self.intent.get('phase') != 'intent' or
+                    self.intent.get('schemaVersion') not in (1, 2) or self.intent.get('phase') != 'intent' or
                     not re.fullmatch('[a-f0-9]{40}', self.intent.get('baseline', ''))):
                 raise ValueError("Prior deployment intent is not compatible")
+            if self.intent['schemaVersion'] == 2:
+                self._authorization(self.intent.get('candidateRevision'), self.intent.get('componentSource'))
+                if self.intent.get('packageProducerRun') != self.intent['componentSource']['runId']:
+                    raise ValueError('Prior deployment component producer mismatch')
+            elif any(key in self.intent for key in ('candidateRevision', 'componentSource')):
+                raise ValueError('Legacy deployment intent contains unversioned component provenance')
             self._ids(self.intent.get('baselineDeploymentIds'))
             self.baseline = self.intent['baseline']
+
+    @staticmethod
+    def _authorization(candidate, source):
+        if not isinstance(candidate, str) or not re.fullmatch('[a-f0-9]{40}', candidate):
+            raise ValueError('Exact release authorization candidate required')
+        if not isinstance(source, dict) or set(source) != {
+                'runId', 'runAttempt', 'artifactId', 'artifactDigest', 'artifactName',
+                'receiptArtifactId', 'producingJobId'}:
+            raise ValueError('Complete immutable component source required')
+        if (any(type(source[key]) is not int or source[key] < 1 for key in
+                ('runId', 'runAttempt', 'artifactId', 'receiptArtifactId', 'producingJobId')) or
+                not re.fullmatch('sha256:[a-f0-9]{64}', source.get('artifactDigest', '')) or
+                not re.fullmatch('[a-zA-Z0-9_.-]{1,256}', source.get('artifactName', ''))):
+            raise ValueError('Invalid immutable component source')
+        return dict(candidateRevision=candidate, componentSource=dict(source))
 
     @staticmethod
     def _ids(values):
@@ -136,6 +161,8 @@ class OperationJournal:
                       baseline=self.baseline, packageProducerRun=self.producer,
                       producingRun=self.run, producingAttempt=self.attempt,
                       baselineDeploymentIds=self._ids(baseline_ids), phase='intent')
+        if self.authorization is not None:
+            record.update(self.authorization, schemaVersion=2)
         self.publisher('legend-release-operation-intent-' + self.operation_id, record)
         self.intent = record
         if allow_recovered_baseline:
@@ -154,16 +181,20 @@ class OperationJournal:
             self.identity['target'], self.run, self.attempt, self.token, phase='success')
         if existing is not None:
             if (any(existing.get(key) != value for key, value in self.identity.items()) or
-                    existing.get('baseline') != self.baseline or existing.get('phase') != 'success'):
+                    existing.get('baseline') != self.baseline or existing.get('phase') != 'success' or
+                    any(existing.get(key) != self.intent.get(key) for key in
+                        ('schemaVersion', 'packageProducerRun', 'candidateRevision', 'componentSource'))):
                 raise RuntimeError("Prior deployment success receipt identity mismatch")
             retained = set(self._ids(existing.get('deploymentIds')))
             if (self._ids(existing.get('baselineDeploymentIds')) != sorted(baseline_ids) or
                     retained - baseline_ids != set(observed)):
                 raise RuntimeError('Prior artifact receipt lacks matching provider deployment proof')
             return existing
-        record = dict(self.intent, schemaVersion=1,
+        # Reconciliation preserves the original upload authority and byte producer,
+        # even when a later authorized candidate reuses the same operation.
+        record = dict(self.intent,
                       operationId=self.operation_id, baseline=self.baseline,
-                      packageProducerRun=self.producer, producingRun=self.run,
+                      producingRun=self.run,
                       producingAttempt=self.attempt, phase='success',
                       deploymentIds=observed)
         return self.publisher('legend-release-operation-success-' + self.operation_id, record)

@@ -674,6 +674,9 @@ jobs:
       evidence_head_sha: ${{ steps.packageplan.outputs.evidence_head_sha }}
       migration_reused: ${{ steps.packageplan.outputs.migration_reused }}
       migration_artifact: ${{ steps.packageplan.outputs.migration_artifact }}
+      component_protocol: ${{ steps.packageplan.outputs.component_protocol }}
+      component_matrix: ${{ steps.packageplan.outputs.component_matrix }}
+      components_needed: ${{ steps.packageplan.outputs.components_needed }}
     steps:
       - name: Checkout exact package planning authority
         uses: actions/checkout@v4
@@ -705,6 +708,8 @@ jobs:
               raise SystemExit('Package backfill refused: '+str(data.get('reason') or 'unknown'))
           with open(sys.argv[2],'a') as output:
               output.write('needed=true\n')
+              output.write('component_protocol=false\ncomponents_needed=true\n')
+              output.write('component_matrix='+json.dumps(data['requiredComponents'],separators=(',',':'))+'\n')
               output.write(f"revision={data['revision']}\n")
               output.write(f"validation_run_id={data.get('validationRunId') or ''}\n")
           print(json.dumps(data,sort_keys=True))
@@ -726,10 +731,29 @@ jobs:
               output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
               output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
               output.write('migration_reused='+str(bool(data.get('migrationReused'))).lower()+'\n')
+              output.write('component_protocol='+str(bool(data.get('componentProtocol'))).lower()+'\n')
+              output.write('components_needed='+str(bool(data.get('needed') and data.get('requiredComponents'))).lower()+'\n')
+              output.write('component_matrix='+json.dumps(data.get('requiredComponents',[]),separators=(',',':'))+'\n')
               output.write(f"migration_artifact={data.get('migrationArtifact') or ''}\n")
           print(json.dumps(data,sort_keys=True))
           PYPACKAGEPLAN
           fi
+
+      - name: Prepare canonical component locator transport
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+
+      - name: Bind canonical component locator runtime
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        uses: ./scripts/release-artifacts
+
+      - name: Preserve component run locators
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        run: >-
+          python3 scripts/release-package.py component-indexes
+          --revision "${{ steps.packageplan.outputs.revision }}"
+          --plan "$RUNNER_TEMP/package-canary-plan.json"
+          --run-id "${{ github.run_id }}"
 
       - name: Preserve blocked package planning evidence
         if: failure() && steps.packageplan.outcome == 'failure'
@@ -752,13 +776,13 @@ jobs:
   validated-release-package-components:
     needs: validated-release-package-plan
     name: validated-release-package-components (${{ matrix.component }})
-    if: needs.validated-release-package-plan.outputs.needed == 'true'
+    if: needs.validated-release-package-plan.outputs.components_needed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        component: [portal, client, protect, parfait, website, migration]
+        component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
@@ -785,21 +809,57 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/release-package.py build-component \
+          content=()
+          if [ "${{ needs.validated-release-package-plan.outputs.component_protocol }}" = "true" ] && [ "${{ matrix.component }}" != "migration" ]; then
+            content=(--content-receipt)
+          fi
+          python3 scripts/release-package.py build-component "${content[@]}" \
             --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --component "${{ matrix.component }}" \
             --directory "$RUNNER_TEMP/validated-release-component" \
             --output "$GITHUB_OUTPUT"
 
       - name: Preserve immutable validated release package component
+        id: componentartifact
         if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-${{ matrix.component }}
+          name: ${{ needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration' && format('validated-component-bytes-{0}-{1}-{2}-a{3}', matrix.component, steps.component.outputs.identity, github.run_id, github.run_attempt) || format('validated-release-package-component-{0}-{1}', needs.validated-release-package-plan.outputs.revision, matrix.component) }}
           path: ${{ runner.temp }}/validated-release-component/
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
-          overwrite: true
+          overwrite: ${{ needs.validated-release-package-plan.outputs.component_protocol != 'true' || matrix.component == 'migration' }}
+
+      - name: Record immutable component source
+        if: needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration'
+        run: >-
+          python3 scripts/release-package.py record-component-source
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --component "${{ matrix.component }}"
+          --directory "$RUNNER_TEMP/validated-release-component"
+          --output "$RUNNER_TEMP/component-source"
+          --run-id "${{ github.run_id }}"
+          --attempt "${{ github.run_attempt }}"
+          --artifact-id "${{ steps.componentartifact.outputs.artifact-id }}"
+          --artifact-digest "sha256:${{ steps.componentartifact.outputs.artifact-digest }}"
+
+      - name: Preserve immutable component source
+        if: needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-component-receipt-${{ matrix.component }}-${{ steps.component.outputs.identity }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/component-source/component-source.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Preserve blocked component boundary
+        if: failure() && steps.component.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-component-blocked-${{ github.run_id }}-a${{ github.run_attempt }}-${{ matrix.component }}
+          path: ${{ runner.temp }}/validated-release-component/*.blocked.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Retain authenticated rehearsed migration success
         if: matrix.component == 'migration' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
@@ -827,12 +887,84 @@ jobs:
           persist-credentials: false
 
       - name: Load immutable package components
-        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol != 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-*
           path: ${{ runner.temp }}/validated-release-package
           merge-multiple: true
+
+      - name: Resolve authenticated successful component children
+        id: componentsources
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/validation-resume.py component-sources
+          --repository "${{ github.repository }}"
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --current-run-id "${{ github.run_id }}"
+          --output "$RUNNER_TEMP/component-sources.json"
+          --github-output "$GITHUB_OUTPUT"
+
+      # BEGIN GENERATED CANONICAL COMPONENT DOWNLOADS
+      - name: Load authenticated portal component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.portal_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated client component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.client_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.client_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated protect component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.protect_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.protect_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated parfait component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.parfait_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.parfait_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated website component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.website_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.website_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      # END GENERATED CANONICAL COMPONENT DOWNLOADS
+      - name: Load unrehearsed bootstrap migration component
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true' && needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-migration
+          path: ${{ runner.temp }}/validated-release-package
 
       - name: Load exact promoted migration attempt
         if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
@@ -847,7 +979,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/release-package.py assemble \
+          sources=()
+          if [ "${{ needs.validated-release-package-plan.outputs.component_protocol }}" = "true" ]; then
+            sources=(--component-sources "$RUNNER_TEMP/component-sources.json")
+          fi
+          python3 scripts/release-package.py assemble "${sources[@]}" \
             --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
             --directory "$RUNNER_TEMP/validated-release-package" \
             --output "$GITHUB_OUTPUT"
@@ -861,6 +997,7 @@ jobs:
             --directory "$RUNNER_TEMP/validated-release-package"
 
       - name: Preserve immutable validated release package
+        id: packageartifact
         if: needs.validated-release-package-plan.outputs.needed == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -868,7 +1005,28 @@ jobs:
           path: ${{ runner.temp }}/validated-release-package/
           retention-days: 90
           if-no-files-found: error
-          overwrite: true
+          overwrite: ${{ needs.validated-release-package-plan.outputs.component_protocol != 'true' }}
+
+      - name: Record immutable package source
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        run: >-
+          python3 scripts/release-package.py record-package-source
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --directory "$RUNNER_TEMP/validated-release-package"
+          --output "$RUNNER_TEMP/package-source"
+          --run-id "${{ github.run_id }}"
+          --attempt "${{ github.run_attempt }}"
+          --artifact-id "${{ steps.packageartifact.outputs.artifact-id }}"
+          --artifact-digest "sha256:${{ steps.packageartifact.outputs.artifact-digest }}"
+
+      - name: Preserve immutable package source
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-source-${{ steps.package.outputs.identity }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-source/package-source.json
+          retention-days: 90
+          if-no-files-found: error
 
       - name: Retain exact validated package backfill receipt
         if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'

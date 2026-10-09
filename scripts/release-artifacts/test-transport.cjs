@@ -210,3 +210,70 @@ test('overlapping publishers converge through provider immutable-name conflict',
   assert.equal(accepted, 1);
   assert.equal(client.state.uploads, 1);
 });
+
+
+test('component operation retains actual producer and separate authorization through durable transport', async () => {
+  const component = {...record, schemaVersion: 2, candidateRevision: 'e'.repeat(40),
+    componentSource: {runId: 8, runAttempt: 2, artifactId: 9, artifactDigest: 'sha256:'+'f'.repeat(64),
+      artifactName: 'validated-component-bytes-test', receiptArtifactId: 10, producingJobId: 11}};
+  let stored; let uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored);
+    }
+  };
+  assert.deepEqual(await publish(client, name, component), {artifactId: 42});
+  assert.deepEqual(JSON.parse(stored), component);
+  assert.equal(uploads, 1);
+  await assert.rejects(publish({}, name, {...component, packageProducerRun: 99}), /authorization\/producer/);
+  await assert.rejects(publish({}, name, {...component, schemaVersion: 1}), /unversioned/);
+});
+
+test('mixed producer plan compares rollback with producer, not authorization candidate', async () => {
+  const crypto = require('node:crypto');
+  const candidate = 'a'.repeat(40), producer = 'b'.repeat(40), content = 'c'.repeat(64);
+  const source = {runId: 8, runAttempt: 2, artifactId: 9, artifactDigest: 'sha256:'+'f'.repeat(64),
+    artifactName: `validated-component-bytes-portal-${content}-8-a2`, receiptArtifactId: 10, producingJobId: 11};
+  const snapshot = {candidateRevision: candidate, entries: [], schemaVersion: 1};
+  snapshot.digest = crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+  const row = {app: 'portal', revision: producer, packageDigest: 'd'.repeat(64), rollbackEvidence: null,
+    targetMaterial: {producerRevision: producer, packageDigest: 'd'.repeat(64), contentIdentity: content,
+      executionIdentity: 'e'.repeat(64), source}};
+  const plan = {schemaVersion: 2, planId: '1'.repeat(64), candidateRevision: candidate,
+    producingRun: 12, producingAttempt: 1, targets: [row], historySnapshot: snapshot};
+  let stored, uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'release-transaction.json'), stored);
+    }
+  };
+  const planName = 'legend-release-transaction-plan-' + plan.planId;
+  assert.deepEqual(await publish(client, planName, plan), {artifactId: 42});
+  assert.equal(uploads, 1);
+  const wrong = structuredClone(plan); wrong.targets[0].targetMaterial.source.artifactName = 'wrong';
+  await assert.rejects(publish({}, planName, wrong), /artifact name/);
+  const old = structuredClone(plan); old.schemaVersion = 1;
+  await assert.rejects(publish({}, planName, old), /transaction target/);
+});
+
+test('component locator rerun preserves one immutable index without claiming success', async () => {
+  const locator = {schemaVersion: 1, component: 'portal', contentIdentity: 'f'.repeat(64), runId: 17};
+  const locatorName = 'validated-component-index-portal-' + locator.contentIdentity;
+  let stored, uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: uploads ? [{name: locatorName, id: 42}] : []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored);
+    }
+  };
+  await publish(client, locatorName, locator);
+  await publish(client, locatorName, locator);
+  assert.equal(uploads, 1);
+  assert.deepEqual(JSON.parse(stored), locator);
+  await assert.rejects(publish({}, locatorName, {...locator, state: 'success'}), /Invalid/);
+});

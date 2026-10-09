@@ -316,13 +316,23 @@ def main():
         website_routing,
         website_routing_canary,
     )
+    target_materials = {}
     if github_release_context and release_mode == 'approved-only':
         preserved_package = _validation_authority.compute_validated_package_evidence(
             os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
         if preserved_package.get('reusable'):
             application_release_sha = validate_revision(preserved_package['revision'])
             package_identity = preserved_package['packageIdentity']
+            target_materials = preserved_package.get('targetMaterials', {})
             print('Preserving immutable package producer provenance:', application_release_sha)
+    for row in rows:
+        material = target_materials.get(row['app'])
+        row['desiredProducerRevision'] = material['producerRevision'] if material else application_release_sha
+        if material is not None:
+            row['targetMaterial'] = material
+    selected_materials = {row['app']: target_materials[row['app']] for row in rows if row['app'] in target_materials}
+    if selected_materials and len(selected_materials) != len(rows):
+        raise ValueError('Authenticated target descriptor does not cover release scope')
     # Source provenance alone cannot certify the requested immutable bytes.
     # Matching targets use canonical transaction preflight and retained intent /
     # provider evidence for zero-upload preservation, including fresh readiness.
@@ -331,6 +341,7 @@ def main():
     if args.output:
         with args.output.open('a') as out:
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
+            out.write('target_materials=' + json.dumps(selected_materials,separators=(',', ':')) + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + (database_baseline or rows[0]['revision']) + '\n')
             out.write('database_baseline=' + database_baseline + '\n')
@@ -363,7 +374,7 @@ def main():
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('exact_live=' + str(exact_live).lower() + '\n')
-            out.write('rollback_required=' + str(any(row['revision'] != application_release_sha for row in rows)).lower() + '\n')
+            out.write('rollback_required=' + str(any(row['revision'] != row['desiredProducerRevision'] for row in rows)).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
             out.write('package_identity=' + package_identity + '\n')
 

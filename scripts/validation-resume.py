@@ -566,7 +566,7 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
                 stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
         if len(stamps) != 1 or not start <= stamps[0] <= end + datetime.timedelta(seconds=2):
             return False
-        prior = _release_attempt_package_revision(repository, run, attempt, job, token, 'portal')
+        prior = _release_attempt_package_revision(repository, run, attempt, job, token, 'portal', aggregate=True)
         if not isinstance(prior, str) or not valid_sha.fullmatch(prior) or prior == current_application_revision:
             return False
         approved_receipt = 'legend-approved-release-' + prior + '-masterapp-portal'
@@ -4824,6 +4824,15 @@ def cmd_live_state(args):
 
 def cmd_verify_live(args):
     keys = _selected_release_targets(args.selected_targets)
+    desired = {key: dict(producerRevision=args.revision) for key in keys}
+    if getattr(args, 'transaction_plan', None):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('live_deployment_owner', Path(__file__).with_name('deploy-approved-app.py'))
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        plan = owner.read_transaction_plan(Path(args.transaction_plan), args.revision)
+        if set(keys) != {row['app'] for row in plan['targets']}:
+            raise ValueError('Live proof scope differs from prepared transaction')
+        desired = {row['app']: owner.transaction_target_material(plan, row, args.revision) for row in plan['targets']}
     work = [
         (key, host)
         for key in keys
@@ -4833,17 +4842,20 @@ def cmd_verify_live(args):
     def verify(item):
         key, host = item
         target = RELEASE_TARGETS[key]
+        producer = desired[key]['producerRevision']
         end = time.monotonic() + args.timeout_seconds
         actual = None
         while time.monotonic() < end:
             try:
-                actual = _read_provenance(host, target, args.revision)
-                if actual == args.revision:
+                actual = _read_provenance(host, target, producer)
+                if actual == producer:
                     return {
                         "target": target["releaseName"],
                         "host": host,
                         "passed": True,
                         "actual": actual,
+                        "candidateRevision": args.revision,
+                        "targetMaterial": desired[key],
                     }
             except Exception as exc:
                 actual = type(exc).__name__
@@ -4981,6 +4993,198 @@ def package_identity_for_revision(revision: str) -> str:
     return identity
 
 
+def component_index_name(component, content_identity):
+    if component not in RELEASE_TARGETS or not re.fullmatch('[a-f0-9]{64}', content_identity or ''):
+        raise ValueError('Invalid component evidence identity')
+    return 'validated-component-index-' + component + '-' + content_identity
+
+
+def component_attempt_name(component, content_identity, run_id, attempt, *, receipt=False):
+    component_index_name(component, content_identity)
+    if type(run_id) is not int or run_id < 1 or type(attempt) is not int or attempt < 1:
+        raise ValueError('Invalid component producer attempt')
+    return ('validated-component-receipt-' if receipt else 'validated-component-bytes-') + \
+        f'{component}-{content_identity}-{run_id}-a{attempt}'
+
+
+def trusted_component_run(repository, run, candidate):
+    """Use the real PR base as authority; candidate names never grant trust."""
+    workflow = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, workflow, candidate, require_completed=False):
+        return False
+    pulls = run.get('pull_requests')
+    if not isinstance(pulls, list) or len(pulls) != 1:
+        return False
+    head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
+    url = 'https://api.github.com/repos/' + repository
+    approved, producer = base.get('sha', ''), run['head_sha']
+    if (base.get('ref') != TRUSTED_PR_BASE or head.get('sha') != producer or
+            not re.fullmatch('[a-f0-9]{40}', approved) or
+            any(row.get('repo', {}).get('url') != url for row in (head, base))):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, producer],
+                      capture_output=True, check=False).returncode:
+        return False
+    # Includes the entire approved workflow so another candidate-controlled job
+    # cannot become an artifact writer. Authority changes use governed bootstrap.
+    paths = PACKAGE_AUTHORITY_PATHS | {'scripts/validation-resume.py'}
+    try:
+        return all(git_show_file(producer, path) == git_show_file(approved, path) for path in paths)
+    except (ValueError, RuntimeError):
+        return False
+
+
+def component_upload_proven(artifact, job, step_name, log):
+    """The exact producer log binds immutable IDs, even after artifact substitution."""
+    import datetime
+    def stamp(value):
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.utcoffset() is None:
+            raise ValueError('Component upload timestamp lacks timezone')
+        return parsed
+    steps = [step for step in job.get('steps', []) if step.get('name') == step_name]
+    if len(steps) != 1 or steps[0].get('conclusion') != 'success':
+        raise ValueError('Component upload step unproven')
+    start, end = stamp(steps[0]['started_at']), stamp(steps[0]['completed_at'])
+    # GitHub job step timestamps have second precision; logs retain fractions.
+    # Interpret that represented final second as a half-open interval.
+    if '.' not in steps[0]['completed_at']:
+        end += datetime.timedelta(seconds=1)
+    if not start <= stamp(artifact['created_at']) < end:
+        raise ValueError('Component artifact outside producing upload step')
+    expected = re.compile(r'Artifact ' + re.escape(artifact['name']) +
+        r' has been successfully uploaded! Final size is [0-9]+ bytes\. Artifact ID is ' + str(artifact['id']) + r'$')
+    matches = []
+    for line in log.splitlines():
+        parts = line.split(' ', 1)
+        if len(parts) != 2 or not expected.fullmatch(parts[1]):
+            continue
+        if start <= stamp(parts[0]) < end:
+            matches.append(line)
+    if len(matches) != 1:
+        raise ValueError('Component artifact not attested by its producing upload log')
+
+
+def compatible_component_evidence(repository, revision, component, token, *, current_run_id=None, expected_source=None):
+    """Indexed child recovery; parent failure never erases a successful producer.
+
+    Stable index artifacts locate runs only. They confer no success or authority.
+    Immutable attempt receipts and the actual successful child establish reuse.
+    Provider failure escapes to the existing planner's blocked boundary.
+    """
+    with evidence_lookup_budget(time.monotonic() + 180):
+        import importlib.util
+        desired = package_component_manifest(revision, component)
+        identity = desired['contentIdentity']
+        if expected_source is not None:
+            if not isinstance(expected_source, dict) or type(expected_source.get('runId')) is not int or expected_source['runId'] < 1:
+                raise ValueError('Exact historical component source required')
+            runs = {expected_source['runId']}
+        else:
+            name = component_index_name(component, identity)
+            data = api_get(repository, 'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token)
+            rows = data.get('artifacts')
+            if not isinstance(rows, list) or data.get('total_count') != len(rows):
+                raise EvidenceLookupUnavailable('Component evidence index incomplete')
+            runs = set()
+            for row in rows:
+                if row.get('name') != name:
+                    raise ValueError('Component index query identity mismatch')
+                run_id = row.get('workflow_run', {}).get('id')
+                if type(run_id) is int and run_id > 0 and row.get('expired') is False:
+                    runs.add(run_id)
+            if current_run_id is not None:
+                if type(current_run_id) is not int or current_run_id < 1:
+                    raise ValueError('Invalid current component run')
+                runs.add(current_run_id)  # Also recover a child whose locator acknowledgment was lost.
+            if len(runs) > 100:
+                raise EvidenceLookupUnavailable('Component evidence index exceeds reconciliation budget')
+        for run_id in sorted(runs, reverse=True):
+            run = api_get(repository, f'actions/runs/{run_id}', token)
+            if not trusted_component_run(repository, run, revision):
+                continue
+            if run.get('id') != run_id:
+                raise ValueError('Component producer run identity mismatch')
+            producer = run['head_sha']
+            original = package_component_manifest(producer, component)
+            if (original['contentIdentity'] != identity or
+                    (producer != revision and (not original['reusable'] or not desired['reusable']))):
+                continue
+            inventory = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+            artifacts = inventory.get('artifacts')
+            if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+                raise EvidenceLookupUnavailable('Component attempt inventory incomplete')
+            if (any(type(row.get('id')) is not int or row['id'] < 1 for row in artifacts) or
+                    len({row['id'] for row in artifacts}) != len(artifacts) or
+                    len({row.get('name') for row in artifacts}) != len(artifacts)):
+                raise ValueError('Component artifact inventory ambiguous')
+            pattern = re.compile(re.escape(f'validated-component-receipt-{component}-{identity}-{run_id}-a') + r'([1-9][0-9]*)$')
+            receipts = []
+            for artifact in artifacts:
+                match = pattern.fullmatch(artifact.get('name', ''))
+                if match and artifact.get('expired') is False:
+                    receipts.append((int(match.group(1)), artifact))
+            for attempt, artifact in sorted(receipts, key=lambda row: row[0], reverse=True):
+                if expected_source is not None and (attempt != expected_source.get('runAttempt') or artifact['id'] != expected_source.get('receiptArtifactId')):
+                    continue
+                if attempt > int(run.get('run_attempt') or 0):
+                    raise ValueError('Component receipt claims an unobserved attempt')
+                jobs = api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+                if not isinstance(jobs.get('jobs'), list) or jobs.get('total_count') != len(jobs['jobs']):
+                    raise EvidenceLookupUnavailable('Component producing jobs incomplete')
+                matches = [job for job in jobs['jobs'] if job.get('name') == f'validated-release-package-components ({component})']
+                if len(matches) != 1:
+                    continue
+                job = matches[0]
+                if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+                    continue
+                steps = {step.get('name'): step.get('conclusion') for step in job.get('steps', [])}
+                if not all(steps.get(step) == 'success' for step in (
+                        'Build immutable validated release package component',
+                        'Preserve immutable validated release package component',
+                        'Record immutable component source', 'Preserve immutable component source')):
+                    continue
+                receipt = _release_history_json(repository, run_id, artifact, 'component-source.json')
+                expected = dict(schemaVersion=1, component=component, contentIdentity=identity,
+                                producerRevision=producer, runId=run_id, runAttempt=attempt)
+                if any(receipt.get(key) != value for key, value in expected.items()):
+                    raise ValueError('Component source receipt producer mismatch')
+                source = receipt.get('artifact')
+                if (not isinstance(source, dict) or type(source.get('id')) is not int or source['id'] < 1 or
+                        source.get('name') != component_attempt_name(component, identity, run_id, attempt) or
+                        not re.fullmatch('sha256:[a-f0-9]{64}', source.get('digest', '')) or
+                        not re.fullmatch('[a-f0-9]{64}', receipt.get('sha256', '')) or
+                        not re.fullmatch('[a-f0-9]{64}', receipt.get('executionIdentity', ''))):
+                    raise ValueError('Component source artifact identity malformed')
+                payloads = [row for row in artifacts if row.get('id') == source['id']]
+                if len(payloads) != 1:
+                    continue  # Confirmed missing bytes invalidate only this component.
+                payload = payloads[0]
+                if expected_source is not None and (payload['id'] != expected_source.get('artifactId') or job['id'] != expected_source.get('producingJobId') or
+                        payload.get('name') != expected_source.get('artifactName') or payload.get('digest') != expected_source.get('artifactDigest')):
+                    raise ValueError('Historical component immutable identity mismatch')
+                if payload.get('expired') is True:
+                    continue
+                if (payload.get('expired') is not False or payload.get('name') != source['name'] or
+                        payload.get('digest') != source['digest']):
+                    raise ValueError('Component artifact substitution detected')
+                log = _release_job_log(repository, job['id'], token)
+                component_upload_proven(payload, job, 'Preserve immutable validated release package component', log)
+                component_upload_proven(artifact, job, 'Preserve immutable component source', log)
+                spec = importlib.util.spec_from_file_location('component_package_evidence', Path(__file__).with_name('release-package.py'))
+                package = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(package)
+                if (package.component_execution_identity(receipt.get('execution'), producer, component) != receipt['executionIdentity'] or
+                        receipt['execution']['sha256'] != receipt['sha256']):
+                    raise ValueError('Component execution identity mismatch')
+                return dict(state='reused-success', sourceReceipt=receipt,
+                            receiptArtifactId=artifact['id'], producingJobId=job['id'],
+                            compatibilityProof=dict(contentIdentity=identity, candidateRevision=revision,
+                                producerRevision=producer, executionIdentity=receipt['executionIdentity']),
+                            reason='authenticated_compatible_component_child')
+        return dict(state='required', reason='compatible_component_child_missing', contentIdentity=identity)
+
+
 def compute_package_canary_plan(repository, current_sha, base_sha, current_run_id, head_branch):
     result = {"schemaVersion": 1, "needed": True, "currentSha": current_sha,
               "evidenceRunId": None, "evidenceHeadSha": None, "changedInputs": [],
@@ -5014,6 +5218,39 @@ def compute_package_canary_plan(repository, current_sha, base_sha, current_run_i
     return result
 
 
+def component_protocol_ready(base, candidate):
+    """Activation requires the installed approved owner, never a rollout exemption."""
+    if 'CONTENT_PACKAGE_SCHEMA' not in git_show_file(base, 'scripts/release-package.py'):
+        return False
+    paths = PACKAGE_AUTHORITY_PATHS | {'scripts/validation-resume.py'}
+    return all(git_show_file(base, path) == git_show_file(candidate, path) for path in paths)
+
+
+def plan_component_children(repository, revision, run_id, token):
+    if not token:
+        raise EvidenceLookupUnavailable('Component evidence credential unavailable')
+    with evidence_lookup_budget(time.monotonic() + 180):
+        children = {key: compatible_component_evidence(repository, revision, key, token,
+                    current_run_id=run_id) for key in RELEASE_TARGETS}
+    return dict(componentProtocol=True, componentSources=children,
+                requiredComponents=[key for key, row in children.items() if row['state'] == 'required'],
+                reusedComponents=[key for key, row in children.items() if row['state'] == 'reused-success'])
+
+
+def cmd_component_sources(args):
+    """Reconstruct aggregate completion from authenticated successful children."""
+    result = plan_component_children(args.repository, args.revision, args.current_run_id,
+        os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
+    if result['requiredComponents']:
+        raise RuntimeError('COMPONENT_ASSEMBLY_BLOCKED:successful_children_missing:' + ','.join(result['requiredComponents']))
+    Path(args.output).write_text(json.dumps(result['componentSources'], sort_keys=True, indent=2) + '\n')
+    if getattr(args, 'github_output', None):
+        with open(args.github_output, 'a') as stream:
+            for key, selected in result['componentSources'].items():
+                source = selected['sourceReceipt']
+                stream.write(f"{key}_run_id={source['runId']}\n{key}_artifact_id={source['artifact']['id']}\n")
+
+
 def cmd_package_canary_plan(args):
     readiness = require_readiness(args.repository, args.current_sha)
     try:
@@ -5024,6 +5261,11 @@ def cmd_package_canary_plan(args):
             args.current_run_id,
             args.head_branch,
         )
+        result.update(componentProtocol=False, requiredComponents=list(RELEASE_TARGETS) + ['migration'])
+        if result['needed'] and component_protocol_ready(args.base_sha, args.current_sha):
+            result.update(plan_component_children(args.repository, args.current_sha, args.current_run_id,
+                os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''))
+            result['requiredComponents'].append('migration')
     except Exception as exc:
         # Unavailable or untrusted evidence is not evidence that all children are
         # missing. Preserve any existing plan/receipts and stop this boundary.
@@ -5054,6 +5296,8 @@ def cmd_package_canary_plan(args):
         result['migrationSourceReceipt'] = readiness['receipt']['rehearsalSource']
         result['migrationArtifact'] = package.promoted_migration_artifact(args.current_sha,
             int(os.environ['GITHUB_RUN_ATTEMPT']))
+    if result['migrationReused'] and result['componentProtocol']:
+        result['requiredComponents'].remove('migration')
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, indent=2, sort_keys=True))
 
@@ -5075,6 +5319,7 @@ def compute_package_backfill_plan(repository: str, revision: str, current_sha: s
         "revision": revision,
         "currentSha": current_sha,
         "allowed": False,
+        "requiredComponents": list(RELEASE_TARGETS) + ['migration'],
         "validationRunId": None,
         "changedApplicationInputs": [],
     }
@@ -5394,7 +5639,71 @@ def _successful_package_child(repository, run_id, token):
     ))
 
 
-def compatible_package_producer(repository, revision, token):
+def package_artifact_match(name):
+    return re.fullmatch(r'founder-diagnostics-packages-([a-f0-9]{64})(?:-([1-9][0-9]*)-a([1-9][0-9]*))?', name)
+
+
+class IncompletePackageAttempt(EvidenceLookupUnavailable):
+    """Authenticated terminal assembly failure; earlier children remain eligible."""
+
+
+def attach_package_descriptor(repository, result, run, token):
+    """Authenticate small aggregate metadata; never download application bytes here."""
+    match = package_artifact_match(result['artifact'])
+    if not match or match.group(1) != result['packageIdentity']:
+        raise ValueError('Package artifact identity malformed')
+    if match.group(2) is None:
+        return result  # Strict historical single-producer contract.
+    run_id, attempt = int(match.group(2)), int(match.group(3))
+    if (run_id != result['runId'] or run_id != run.get('id') or attempt > run.get('run_attempt', 0) or
+            not trusted_component_run(repository, run, result['revision'])):
+        raise ValueError('Package descriptor authority unproven')
+    with evidence_lookup_budget(time.monotonic() + 180):
+        inventory = api_get(repository,f'actions/runs/{run_id}/artifacts?per_page=100',token)
+        artifacts = inventory.get('artifacts')
+        if not isinstance(artifacts,list) or inventory.get('total_count') != len(artifacts):
+            raise EvidenceLookupUnavailable('Package descriptor inventory incomplete')
+        name=f"validated-package-source-{result['packageIdentity']}-{run_id}-a{attempt}"
+        descriptors=[row for row in artifacts if row.get('name')==name and row.get('expired') is False]
+        payloads=[row for row in artifacts if row.get('name')==result['artifact'] and row.get('expired') is False]
+        jobs=api_get(repository,f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100',token)
+        if not isinstance(jobs.get('jobs'),list) or jobs.get('total_count')!=len(jobs['jobs']):
+            raise EvidenceLookupUnavailable('Package descriptor job inventory incomplete')
+        owners=[row for row in jobs['jobs'] if row.get('name')=='validated-release-package']
+        if (len(owners)==1 and owners[0].get('status')=='completed' and
+                owners[0].get('conclusion') in {'failure','cancelled','skipped','timed_out'}):
+            raise IncompletePackageAttempt('Terminal assembly attempt did not produce successful evidence')
+        if len(owners)!=1 or owners[0].get('conclusion')!='success' or owners[0].get('status')!='completed':
+            raise EvidenceLookupUnavailable('Successful package descriptor owner unavailable')
+        if len(descriptors)!=1 or len(payloads)!=1:
+            raise EvidenceLookupUnavailable('Immutable package descriptor or bytes unavailable')
+        descriptor,payload=descriptors[0],payloads[0]
+        owner=owners[0]
+        steps={row.get('name'):row.get('conclusion') for row in owner.get('steps',[])}
+        if any(steps.get(name)!='success' for name in ('Build immutable validated release package',
+                'Verify immutable validated release package','Record immutable package source')):
+            raise ValueError('Package descriptor verification steps unproven')
+        log=_release_job_log(repository,owner['id'],token)
+        component_upload_proven(payload,owner,'Preserve immutable validated release package',log)
+        component_upload_proven(descriptor,owner,'Preserve immutable package source',log)
+        source=_release_history_json(repository,run_id,descriptor,'package-source.json')
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('descriptor_package_owner',Path(__file__).with_name('release-package.py'))
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        if (source.get('schemaVersion')!=1 or source.get('packageSchema')!=package.CONTENT_PACKAGE_SCHEMA or
+                source.get('revision')!=result['revision'] or source.get('packageIdentity')!=result['packageIdentity'] or
+                source.get('runId')!=run_id or source.get('runAttempt')!=attempt or
+                source.get('artifact')!={key:payload[key] for key in ('id','name','digest')} or
+                not re.fullmatch('sha256:[a-f0-9]{64}',payload.get('digest','')) or
+                not re.fullmatch('[a-f0-9]{64}',source.get('manifestSha256','')) or
+                set(source.get('targets',{}))!=set(RELEASE_TARGETS)):
+            raise ValueError('Package descriptor producer/material mismatch')
+        materials={key:package.validate_target_material(key,row) for key,row in source['targets'].items()}
+        return dict(result,artifactId=payload['id'],artifactDigest=payload['digest'],
+                    descriptorArtifactId=descriptor['id'],manifestSha256=source['manifestSha256'],targetMaterials=materials)
+
+
+def compatible_package_producer(repository, revision, token, *, exact_revision_only=False):
     """Locate authenticated immutable bytes from a content-equivalent producer.
 
     Enumerate trusted completed producer runs first, then inspect each run's own
@@ -5412,24 +5721,31 @@ def compatible_package_producer(repository, revision, token):
         run_id = int(run.get('id') or 0)
         if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
             continue
-        if not _successful_package_child(repository, run_id, token):
-            continue
         producer = run['head_sha']
+        if exact_revision_only and producer != revision:
+            continue
         package_input_changes = [
             path for path in git_changed(producer, revision)
             if package_canary_input_path(path)
         ]
         if package_input_changes and not package_inputs_compatible(producer, revision):
             continue
-        names = sorted(name for name in _run_artifact_names(repository, run_id, token)
-                       if re.fullmatch(r'founder-diagnostics-packages-[0-9a-f]{64}', name))
+        names = sorted((name for name in _run_artifact_names(repository, run_id, token)
+                       if package_artifact_match(name)), key=lambda name: int(package_artifact_match(name).group(3) or 0))
         if not names:
             continue
-        name = names[-1]
-        return {'schemaVersion': 1, 'revision': producer, 'requestedRevision': revision,
-                'packageIdentity': name.removeprefix('founder-diagnostics-packages-'),
-                'artifact': name, 'runId': run_id, 'reusable': True,
-                'reason': 'dependency_equivalent_immutable_package_producer'}
+        for name in reversed(names):
+            match = package_artifact_match(name)
+            if match.group(2) is None and not _successful_package_child(repository, run_id, token):
+                continue  # Preserve strict legacy evidence interpretation.
+            result = {'schemaVersion': 1, 'revision': producer, 'requestedRevision': revision,
+                    'packageIdentity': match.group(1),
+                    'artifact': name, 'runId': run_id, 'reusable': True,
+                    'reason': 'dependency_equivalent_immutable_package_producer'}
+            try:
+                return attach_package_descriptor(repository,result,run,token)
+            except IncompletePackageAttempt:
+                continue  # Only proven terminal failure permits earlier-attempt lookup.
     return None
 
 def compute_validated_package_evidence(repository: str, revision: str, package_identity: str, *, allow_equivalent=True):
@@ -5481,7 +5797,8 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
                 ),
             })
             return result
-    compatible = compatible_package_producer(repository, revision, token) if allow_equivalent else None
+    compatible = (compatible_package_producer(repository, revision, token) if allow_equivalent
+                  else compatible_package_producer(repository, revision, token, exact_revision_only=True))
     if compatible:
         return compatible
     result["reason"] = "exact_validated_package_missing"
@@ -5550,6 +5867,41 @@ def compute_rollback_evidence(repository: str, revision: str, app: str):
                 and (run.get("head_repository") or {}).get("full_name") == repository
             ):
                 continue
+            if receipt_name.endswith('-' + release_name):
+                receipt = _release_history_json(repository, run_id, artifact, 'target-release-receipt.json')
+                if receipt.get('schemaVersion') == 3:
+                    import importlib.util
+                    spec=importlib.util.spec_from_file_location('rollback_package_owner',Path(__file__).with_name('release-package.py'))
+                    package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+                    material=package.validate_target_material(app,receipt.get('targetMaterial'))
+                    if (material['producerRevision']!=revision or receipt.get('target')!=release_name or
+                            receipt.get('transaction')!='committed-or-preserved' or receipt.get('liveProven') is not True or
+                            receipt.get('authority')!='post-live-verification'):
+                        raise ValueError('Historical target receipt does not bind live-proven bytes')
+                    component=compatible_component_evidence(repository,revision,app,token,expected_source=material['source'])
+                    source=component.get('sourceReceipt',{})
+                    if component.get('state') == 'required':
+                        aggregate_revision=receipt.get('applicationReleaseSha')
+                        aggregate_identity=receipt.get('packageIdentity')
+                        if (not re.fullmatch('[a-f0-9]{40}',aggregate_revision or '') or
+                                not re.fullmatch('[a-f0-9]{64}',aggregate_identity or '')):
+                            raise EvidenceLookupUnavailable('Historical rollback aggregate binding unavailable')
+                        aggregate=compute_validated_package_evidence(repository,aggregate_revision,aggregate_identity,allow_equivalent=False)
+                        if (not aggregate.get('reusable') or aggregate.get('targetMaterials',{}).get(app)!=material or
+                                type(aggregate.get('artifactId')) is not int or aggregate['artifactId']<1):
+                            raise EvidenceLookupUnavailable('Identical retained rollback aggregate unavailable')
+                        return dict(result,reusable=True,runId=aggregate['runId'],releaseRunId=run_id,
+                            packageArtifact=aggregate['artifact'],artifactId=aggregate['artifactId'],
+                            packageDigest=material['packageDigest'],componentSource=True,
+                            reason='identical_target_bytes_restored_from_authenticated_aggregate')
+                    if (component.get('state')!='reused-success' or source.get('sha256')!=material['packageDigest'] or
+                            source.get('executionIdentity')!=material['executionIdentity'] or source.get('contentIdentity')!=material['contentIdentity']):
+                        raise EvidenceLookupUnavailable('Exact historical rollback component unavailable')
+                    return dict(result,reusable=True,runId=source['runId'],releaseRunId=run_id,
+                        packageArtifact=source['artifact']['name'],artifactId=source['artifact']['id'],
+                        packageDigest=source['sha256'],componentSource=True,reason='exact_live_target_component_receipt')
+                if receipt.get('schemaVersion') != 2 or 'targetMaterial' in receipt:
+                    raise ValueError('Historical target receipt schema unsupported')
             artifact_names = _run_artifact_names(repository, run_id, token)
             link_prefix = f"legend-approved-package-link-{revision}-"
             package_links = sorted(
@@ -5925,7 +6277,7 @@ def _release_job_log(repository, job_id, token):
     limit = 32 * 1024 * 1024
     for attempt in range(3):
         try:
-            with opener.open(request, timeout=30) as response:
+            with opener.open(request, timeout=evidence_remaining(30)) as response:
                 body = response.read(limit + 1)
             if len(body) > limit:
                 raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
@@ -5937,7 +6289,7 @@ def _release_job_log(repository, job_id, token):
                 reason = f'HTTP {status}' if isinstance(status, int) else type(exc).__name__
                 raise ReleaseOperationHistoryUnproven(
                     f'Historical checkout log unavailable (job {job_id}; {reason})') from None
-            time.sleep(2 ** attempt)
+            time.sleep(evidence_remaining(2 ** attempt))
 
 
 def _release_checkout_from_job_log(repository, release_job, application, token):
@@ -6008,10 +6360,20 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
     prior_reconcile = (historical_reconcile is not None and hashlib.sha256(
         ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() ==
         'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502')
+    historical_journal = next((node for node in ast.parse(historical_evidence).body
+                               if isinstance(node, ast.ClassDef) and node.name == 'OperationJournal'), None)
+    historical_intent = next((node for node in historical_journal.body
+                              if isinstance(node, ast.FunctionDef) and node.name == 'before_submit'), None) if historical_journal else None
+    # Schema-2 adds provenance fields to the same intent-before-write protocol.
+    # Retain the exact approved schema-1 method for negative execution evidence;
+    # this never reconstructs a successful operation or permits ambiguous replay.
+    prior_intent = historical_intent is not None and hashlib.sha256(
+        ast.get_source_segment(historical_evidence, historical_intent).encode()).hexdigest() == \
+        '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26'
     if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
          and not prior_reconcile) or
-            method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
-            method_dump(current_evidence, 'OperationJournal', 'before_submit')):
+            (method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
+             method_dump(current_evidence, 'OperationJournal', 'before_submit') and not prior_intent)):
         return False
 
     # Authenticated retained logs are only execution evidence after source
@@ -6041,32 +6403,26 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
 
 
 def _historical_parallel_verifier_compatible(functions, current_functions):
-    """Recognize reviewed publication generations without restoring old success semantics."""
+    """Recognize bounded reviewed verifier generations, never historical success."""
     import ast
-    for name in ('publish_prepared_target', 'publish_prepared_targets_parallel'):
-        if name not in functions or name not in current_functions:
-            return False
-        historical = ast.dump(functions[name])
-        current = ast.dump(current_functions[name])
-        if historical == current:
-            continue
-        # 417f278 changed only the parallel result-reporting contract from a
-        # first-pass success flag to explicit nonterminal live/receipt evidence.
-        # Both reviewed generations call the identical immutable target verifier.
-        # This proves package identity only; old success flags never prove live
-        # deployment, settle an intent, or authorize replay.
-        if name != 'publish_prepared_targets_parallel' or (
-            hashlib.sha256(historical.encode()).hexdigest(),
-            hashlib.sha256(current.encode()).hexdigest(),
-        ) != (
-            'cb3f333f35a82e47bb8e6e2bf178399022451de69550923348d77252a1c35392',
-            '9c63956c377037597ee1c5480d8066090fce4ded791f7138dc3c05932129b22a',
-        ):
-            return False
-    return True
+    names = ('publish_prepared_target', 'publish_prepared_targets_parallel')
+    if any(name not in functions or name not in current_functions for name in names):
+        return False
+    if all(ast.dump(functions[name]) == ast.dump(current_functions[name]) for name in names):
+        return True
+    fingerprints = tuple(hashlib.sha256(ast.dump(functions[name]).encode()).hexdigest() for name in names)
+    # Canonical Python 3.12 AST identities: the approved single-producer verifier
+    # and its two reviewed first-pass reporting generations. Neither certifies
+    # current live success or permits a mutation without durable intent.
+    return fingerprints in {
+        ('07f76c62c85f378b0db1627dac88be26a0438bb24e4181f455a2ab1b69b506b6',
+         'cb3f333f35a82e47bb8e6e2bf178399022451de69550923348d77252a1c35392'),
+        ('07f76c62c85f378b0db1627dac88be26a0438bb24e4181f455a2ab1b69b506b6',
+         '9c63956c377037597ee1c5480d8066090fce4ded791f7138dc3c05932129b22a'),
+    }
 
 
-def _release_attempt_package_revision(repository, run, attempt, release_job, token, target):
+def _release_attempt_package_revision(repository, run, attempt, release_job, token, target, *, aggregate=False):
     """Bind legacy publication to the package's verified embedded revision.
 
     Workflow event SHA is never substituted for checkout/package authority.
@@ -6074,7 +6430,7 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     """
     import ast
     run_id = run['id']
-    cache_key = (repository, run_id, attempt, run['head_sha'], target, json.dumps(release_job, sort_keys=True))
+    cache_key = (repository, run_id, attempt, run['head_sha'], target, aggregate, json.dumps(release_job, sort_keys=True))
     if cache_key in _RELEASE_HISTORY_VERIFIED_PACKAGES:
         return _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key]
     inventory = _release_history_api(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
@@ -6088,7 +6444,7 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     receipt = None
     if len(states) == 1:
         state = _release_history_json(repository, run_id, states[0], 'legend-release-step-state.json')
-        if state.get('schemaVersion') != 2 or state.get('runId') != run_id or state.get('runAttempt') != attempt:
+        if state.get('schemaVersion') not in (2, 3) or state.get('runId') != run_id or state.get('runAttempt') != attempt:
             raise RuntimeError('Historical release state producer identity mismatch')
         # This state file's releaseHeadSha is the workflow event SHA, not checkout.
         # Corroborate its step proof against independently retained Actions data.
@@ -6101,7 +6457,7 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
         approved = [row for row in artifacts if re.fullmatch(r'legend-approved-release-[a-f0-9]{40}', row.get('name', ''))]
         if len(approved) == 1 and release_job.get('conclusion') == 'success':
             receipt = _release_history_json(repository, run_id, approved[0], 'approved-release-receipt.json')
-            if receipt.get('schemaVersion') != 2:
+            if receipt.get('schemaVersion') not in (2, 3):
                 # Older receipts are not interpreted as current proof. The
                 # independently verified RELEASE_SHA package contract below
                 # may still prove which bytes that legacy run published.
@@ -6111,6 +6467,16 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     if receipt is not None and not re.fullmatch('[a-f0-9]{40}', receipt.get('applicationReleaseSha', '')):
         raise RuntimeError('Historical receipt package revision is malformed')
     application = receipt['applicationReleaseSha'] if receipt else None
+    target_application = application
+    if receipt is not None and receipt.get('schemaVersion') == 3:
+        materials = receipt.get('targetMaterials')
+        keys = set(selected_release_target_keys(receipt.get('selectedTargets', [])))
+        if not isinstance(materials, dict) or set(materials) != keys or (not aggregate and target not in materials):
+            raise RuntimeError('Historical target material scope is incomplete')
+        release_transaction_identity(application, {key: row.get('packageDigest') for key,row in materials.items()}, materials)
+        target_application = application if aggregate else materials[target]['producerRevision']
+    elif receipt is not None and 'targetMaterials' in receipt:
+        raise RuntimeError('Legacy receipt has unversioned target material')
     translations = {row['name'].removeprefix('translation-direct-release-') for row in artifacts
                     if not row.get('expired') and re.fullmatch('translation-direct-release-[a-f0-9]{40}', row.get('name', ''))}
     rollbacks = set()
@@ -6246,6 +6612,10 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     current_verify = current_functions['verify_package']
     if parallel_mode and not _historical_parallel_verifier_compatible(functions, current_functions):
         raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
+    if receipt is not None and receipt.get('schemaVersion') == 3:
+        for name in ('prepare_transaction', 'read_transaction_plan', 'transaction_target_material', 'publish_prepared_target'):
+            if name not in functions or ast.dump(functions[name]) != ast.dump(current_functions[name]):
+                raise ReleaseOperationHistoryUnproven('Historical mixed-producer verifier contract is incompatible')
     expected = [ast.parse("revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')").body[0]]
     if revision_variable == 'RELEASE_SHA':
         expected.extend(ast.parse(text).body[0] for text in ("revision = os.environ['RELEASE_SHA']", "revision = os.environ.get('RELEASE_SHA')"))
@@ -6258,9 +6628,10 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
                              isinstance(node.value.func, ast.Name) and node.value.func.id == 'verify_package'
                              for node in one.body):
         raise ReleaseOperationHistoryUnproven('Historical publication does not reverify immutable bytes')
+    resolved = target_application if receipt is not None and receipt.get('schemaVersion') == 3 and not aggregate else application
     if release_job.get('status') == 'completed':
-        _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key] = application
-    return application
+        _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key] = resolved
+    return resolved
 
 
 def _release_history_runs(repository, token):
@@ -6299,9 +6670,10 @@ def _release_nonentry_observers(jobs, source):
         or len(present) != len(names)):
         return None
     blocks = _job_blocks(source)
-    if (set(blocks) != {'admission', 'discover-live', 'preserve-rollback', 'release',
-                        'release-state-receipt', 'target-release-receipts',
-                        'wake-release-lifecycle-after-terminal-release'}
+    legacy_jobs = {'admission', 'discover-live', 'preserve-rollback', 'release',
+                   'release-state-receipt', 'target-release-receipts',
+                   'wake-release-lifecycle-after-terminal-release'}
+    if (set(blocks) not in (legacy_jobs, legacy_jobs | {'migration-readiness'})
         or any(job.get('status') != 'completed' for job in jobs)):
         return None
     contract = {name: blocks.get(name) for name in (
@@ -6316,7 +6688,12 @@ def _release_nonentry_observers(jobs, source):
     # that separate run remains in complete release history and admission.
     # Unknown permissions, commands or ambient env fail closed. A job name
     # alone never grants this non-publication classification.
-    if hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest() != 'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7':
+    # Both reviewed generations retain receipt-only observer capabilities.
+    contracts = {
+        'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7': legacy_jobs,
+        'f49cf05a452c901b015e69a58697b108b24694cee0763448d3a3a3672e4d04c2': legacy_jobs | {'migration-readiness'},
+    }
+    if contracts.get(hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()) != set(blocks):
         return None
     for job in present:
         if job.get('status') != 'completed' or job.get('conclusion') not in {'success', 'failure', 'cancelled', 'skipped'}:
@@ -6357,6 +6734,19 @@ def release_attempt_never_entered(jobs, source=None):
     if jobs is None:
         return False
     names = [job.get('name') for job in jobs]
+    if ('migration-readiness' in names or
+            (isinstance(source, str) and 'migration-readiness' in _job_blocks(source))):
+        # This generation requires an explicit complete skipped downstream DAG;
+        # never infer omission or classify an entered credentialed observer safe.
+        expected = {'admission', 'discover-live', 'migration-readiness', 'release', 'preserve-rollback'}
+        if set(names) != expected or len(names) != len(expected):
+            return False
+        readiness = next(job for job in jobs if job.get('name') == 'migration-readiness')
+        if (readiness.get('status') != 'completed' or readiness.get('conclusion') != 'skipped'
+                or readiness.get('steps') != []):
+            return False
+        jobs = [job for job in jobs if job is not readiness]
+        names = [job.get('name') for job in jobs]
     allowed = {'admission', 'discover-live', 'release', 'preserve-rollback'}
     if (any(name not in allowed for name in names) or
             len(names) != len(set(names)) or names.count('admission') != 1):
@@ -6604,14 +6994,34 @@ def _failed_transaction_preparation_without_writes(source, owner):
     return True
 
 
-def release_transaction_plan_history(repository, plan_id, revision, target_digests, run, attempt, token):
+def release_transaction_identity(revision, target_digests, target_materials=None):
+    """Canonical plan identity: authorization candidate plus exact target material."""
+    if (not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{40}', revision) or
+            not isinstance(target_digests, dict) or not target_digests or
+            any(key not in RELEASE_TARGETS or not re.fullmatch('[a-f0-9]{64}', digest)
+                for key, digest in target_digests.items())):
+        raise ValueError('Transaction plan scope/content identity mismatch')
+    identity = dict(candidateRevision=revision, packageDigests=dict(sorted(target_digests.items())))
+    if target_materials is not None:
+        import importlib.util
+        if not isinstance(target_materials, dict) or set(target_materials) != set(target_digests):
+            raise ValueError('Complete transaction target material required')
+        spec = importlib.util.spec_from_file_location('transaction_package_owner', Path(__file__).with_name('release-package.py'))
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        material = {key: owner.validate_target_material(key, row) for key, row in target_materials.items()}
+        if any(row['packageDigest'] != target_digests[key] for key, row in material.items()):
+            raise ValueError('Transaction target material digest mismatch')
+        identity = dict(candidateRevision=revision, targetMaterials=material)
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def release_transaction_plan_history(repository, plan_id, revision, target_digests, run, attempt, token, *, target_materials=None):
     """Restore the complete original transaction, including untouched targets.
 
     None only means this exact plan artifact is absent. It is never first-write
     authorization; per-target history and canonical admission still must pass.
     """
-    identity = {'candidateRevision': revision, 'packageDigests': dict(sorted(target_digests.items()))}
-    expected = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    expected = release_transaction_identity(revision, target_digests, target_materials)
     if plan_id != expected or not target_digests or any(key not in RELEASE_TARGETS for key in target_digests):
         raise ValueError('Transaction plan scope/content identity mismatch')
     name = 'legend-release-transaction-plan-' + plan_id
@@ -6632,7 +7042,7 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
                 producing_run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
             raise RuntimeError('Transaction plan producer is untrusted')
         plan = _release_history_json(repository, producer, artifact, 'release-transaction.json')
-        if (plan.get('schemaVersion') != 1 or plan.get('planId') != plan_id or
+        if (plan.get('schemaVersion') != (2 if target_materials is not None else 1) or plan.get('planId') != plan_id or
                 plan.get('candidateRevision') != revision or plan.get('producingRun') != producer or
                 type(plan.get('producingAttempt')) is not int or plan['producingAttempt'] < 1 or
                 plan['producingAttempt'] > producing_run.get('run_attempt', 1)):
@@ -6647,11 +7057,15 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
                     not re.fullmatch('[a-f0-9]{40}', row.get('revision', ''))):
                 raise RuntimeError('Transaction original baseline/package binding is invalid')
             seen.add(key)
+            if target_materials is not None and row.get('targetMaterial') != target_materials[key]:
+                raise RuntimeError('Transaction target producer/material binding is invalid')
             rollback = row.get('rollbackEvidence')
-            if row['revision'] == revision:
+            desired = target_materials[key]['producerRevision'] if target_materials is not None else revision
+            if row['revision'] == desired:
                 if rollback is not None:
                     raise RuntimeError('Candidate target has unexpected rollback evidence')
-            elif (not isinstance(rollback, dict) or set(rollback) != {'artifact', 'runId', 'revision', 'packageDigest'} or
+            elif (not isinstance(rollback, dict) or set(rollback) not in ({'artifact', 'runId', 'revision', 'packageDigest'}, {'artifact', 'runId', 'revision', 'packageDigest', 'artifactId'}) or
+                  ('artifactId' in rollback and (type(rollback['artifactId']) is not int or rollback['artifactId'] < 1)) or
                   rollback.get('revision') != row['revision'] or type(rollback.get('runId')) is not int or rollback['runId'] < 1 or
                   not re.fullmatch('[a-zA-Z0-9_.-]{1,256}', rollback.get('artifact', '')) or
                   not re.fullmatch('[a-f0-9]{64}', rollback.get('packageDigest', ''))):
@@ -6703,7 +7117,7 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
                 raise ReleaseOperationHistoryUnproven('Original transaction preparation history is missing')
             if prepared[0].get('conclusion') == 'skipped' or prepared[0].get('status') == 'queued':
                 continue
-            prior_revision = _release_attempt_package_revision(repository, prior, previous_attempt, owner, token, next(iter(target_digests)))
+            prior_revision = _release_attempt_package_revision(repository, prior, previous_attempt, owner, token, next(iter(target_digests)), aggregate=True)
             if prior_revision != revision:
                 continue
             artifacts = _release_history_api(repository, f"actions/runs/{prior['id']}/artifacts?per_page=100", token)
@@ -7862,6 +8276,7 @@ def build_parser():
     verify_live.add_argument("--revision", required=True)
     verify_live.add_argument("--selected-targets", required=True)
     verify_live.add_argument("--output", required=True)
+    verify_live.add_argument("--transaction-plan", type=Path)
     verify_live.add_argument("--timeout-seconds", type=int, default=480)
     verify_live.add_argument("--poll-seconds", type=int, default=5)
     verify_live.set_defaults(func=cmd_verify_live)
@@ -7879,6 +8294,14 @@ def build_parser():
     package_canary.add_argument("--head-branch", required=True)
     package_canary.add_argument("--output", required=True)
     package_canary.set_defaults(func=cmd_package_canary_plan)
+
+    component_sources = sub.add_parser('component-sources')
+    component_sources.add_argument('--repository', required=True)
+    component_sources.add_argument('--revision', required=True)
+    component_sources.add_argument('--current-run-id', type=int, required=True)
+    component_sources.add_argument('--output', required=True)
+    component_sources.add_argument('--github-output')
+    component_sources.set_defaults(func=cmd_component_sources)
 
     package_backfill = sub.add_parser("package-backfill-plan")
     package_backfill.add_argument("--repository", required=True)

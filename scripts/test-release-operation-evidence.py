@@ -152,6 +152,39 @@ class DurableOperationProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'matching provider'):
             self.make().record_success(['unrelated'])
 
+    def test_new_candidate_reconciles_same_bytes_without_rewriting_original_authority(self):
+        source=dict(runId=71,runAttempt=2,artifactId=81,artifactDigest='sha256:'+'d'*64,
+                    artifactName='validated-component-bytes-test',receiptArtifactId=82,producingJobId=91)
+        first=self.make(candidate_revision='d'*40,component_source=source)
+        self.assertTrue(first.before_submit(['baseline']))
+        writes=1
+        self.env['GITHUB_RUN_ID']='11'
+        later_source=dict(source,runId=72,artifactId=83)
+        resumed=self.make(candidate_revision='e'*40,component_source=later_source)
+        self.assertEqual(first.operation_id,resumed.operation_id)
+        if resumed.before_submit([]): writes+=1
+        resumed.record_success(['committed'])
+        receipt=json.loads((self.path/('success'+resumed.operation_id)).read_text())
+        self.assertEqual(1,writes)
+        self.assertEqual(2,receipt['schemaVersion'])
+        self.assertEqual('d'*40,receipt['candidateRevision'])
+        self.assertEqual(source,receipt['componentSource'])
+        self.assertEqual(71,receipt['packageProducerRun'])
+        self.assertEqual(11,receipt['producingRun'])
+
+    def test_legacy_reconciliation_preserves_original_package_producer(self):
+        first=self.make(); first.before_submit([])
+        self.env['PACKAGE_PRODUCER_RUN']='99'
+        self.make().record_success(['committed'])
+        receipt=json.loads((self.path/('success'+first.operation_id)).read_text())
+        self.assertEqual(1,receipt['schemaVersion'])
+        self.assertEqual(8,receipt['packageProducerRun'])
+
+    def test_incomplete_component_source_cannot_create_intent(self):
+        with self.assertRaisesRegex(ValueError,'Complete immutable component source'):
+            self.make(candidate_revision='d'*40,component_source={'runId':71})
+        self.assertEqual([],list(self.path.iterdir()))
+
     def test_sdk_error_payload_not_exposed(self):
         result = type('Result', (), dict(returncode=1, stdout='secret signed URL', stderr='secret token'))()
         with patch.object(journal.subprocess, 'run', return_value=result):
@@ -264,7 +297,7 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.old_evidence = subprocess.run(['git', 'show', 'HEAD:scripts/release-operation-evidence.py'],
                                            text=True, capture_output=True, check=True).stdout
 
-    def legacy_history(self):
+    def legacy_history(self, reader=None):
         original = self.api
         def api(repo, path, token):
             if path == 'actions/runs/9/artifacts?per_page=100':
@@ -279,7 +312,38 @@ class CanonicalHistoryTests(unittest.TestCase):
         with patch.object(self.authority, 'api_get', side_effect=api), \
                 patch.object(self.authority, '_release_history_json', return_value=self.state), \
                 patch.object(self.authority, '_release_history_source', side_effect=source):
+            if reader is not None:
+                return reader()
             return self.authority.release_operation_history('owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder')
+
+    def test_mixed_producer_history_blocks_replay_of_reused_bytes(self):
+        self.legacy_fixture('f'*40)
+        self.old_workflow=Path('.github/workflows/'+self.authority.DIRECT_RELEASE_WORKFLOW).read_text()
+        self.old_deployer=Path('scripts/deploy-approved-app.py').read_text()
+        self.job['steps']=[
+            dict(name='Verify restored immutable validation package',status='completed',conclusion='success'),
+            dict(name='Submit canonical selected targets in parallel',status='completed',conclusion='failure'),
+            dict(name='Confirm first-pass durable publication receipt (portal)',status='completed',conclusion='failure')]
+        source=dict(runId=71,runAttempt=2,artifactId=81,artifactDigest='sha256:'+'d'*64,
+            artifactName=self.authority.component_attempt_name('portal','1'*64,71,2),
+            receiptArtifactId=82,producingJobId=91)
+        material=dict(producerRevision='a'*40,packageDigest='b'*64,contentIdentity='1'*64,executionIdentity='2'*64,source=source)
+        self.state.update(schemaVersion=3,steps=self.job['steps'],selectedTargets=['masterapp-portal'],
+                          targetMaterials={'portal':material})
+        with self.assertRaisesRegex(RuntimeError,'may have written'):
+            self.legacy_history()
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        material['producerRevision']='c'*40
+        self.assertIsNone(self.legacy_history())
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        source['artifactName']=self.authority.component_attempt_name('website','1'*64,71,2)
+        self.state.update(selectedTargets=[self.authority.RELEASE_TARGETS['website']['releaseName']],targetMaterials={'website':material})
+        def read(aggregate):
+            return self.authority._release_attempt_package_revision('owner/repo',self.run,1,self.job,'placeholder','portal',aggregate=aggregate)
+        self.assertEqual('f'*40,self.legacy_history(reader=lambda:read(True)))
+        with self.assertRaisesRegex(RuntimeError,'scope is incomplete'):
+            self.legacy_history(reader=lambda:read(False))
+
 
     def test_authenticated_legacy_different_verified_package_does_not_block_new_operation(self):
         self.legacy_fixture()

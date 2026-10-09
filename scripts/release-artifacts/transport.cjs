@@ -5,46 +5,75 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {DefaultArtifactClient} = require('@actions/artifact');
 
+function componentSource(source) {
+  const keys = ['runId', 'runAttempt', 'artifactId', 'artifactDigest', 'artifactName', 'receiptArtifactId', 'producingJobId'];
+  if (!source || typeof source !== 'object' || Object.keys(source).sort().join(',') !== keys.sort().join(',') ||
+      ['runId', 'runAttempt', 'artifactId', 'receiptArtifactId', 'producingJobId'].some(key => !Number.isSafeInteger(source[key]) || source[key] < 1) ||
+      !/^sha256:[a-f0-9]{64}$/.test(source.artifactDigest) || !/^[a-zA-Z0-9_.-]{1,256}$/.test(source.artifactName))
+    throw new Error('Invalid immutable component source');
+}
+
+function targetMaterial(target, value) {
+  if (!value || Object.keys(value).sort().join(',') !== 'contentIdentity,executionIdentity,packageDigest,producerRevision,source' ||
+      !/^[a-f0-9]{40}$/.test(value.producerRevision) ||
+      ['packageDigest', 'contentIdentity', 'executionIdentity'].some(key => !/^[a-f0-9]{64}$/.test(value[key])))
+    throw new Error('Invalid target material');
+  componentSource(value.source);
+  if (value.source.artifactName !== `validated-component-bytes-${target}-${value.contentIdentity}-${value.source.runId}-a${value.source.runAttempt}`)
+    throw new Error('Invalid target artifact name');
+}
+
 // JSON arrives on stdin, never as an arbitrary upload path. Only the bounded
 // release operation record can be persisted; credentials cannot enter it.
 async function publish(client, name, record, {sleep = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  const locator = /^validated-component-index-[a-z][a-z0-9-]{0,63}-[a-f0-9]{64}$/.test(name);
   const admission = /^legend-release-admission-[a-f0-9]{64}$/.test(name);
   const child = /^legend-release-child-(intent|success)-[a-f0-9]{64}$/.test(name);
   const plan = /^legend-release-transaction-plan-[a-f0-9]{64}$/.test(name);
   const recovery = /^legend-readiness-recovery-[a-f0-9]{64}$/.test(name);
-  if (!admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
+  if (!locator && !admission && !child && !plan && !recovery && !/^legend-release-operation-(intent|success)-[a-f0-9]{64}$/.test(name))
     throw new Error('Invalid release operation artifact identity');
-  const allowed = new Set(recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
+  const allowed = new Set(locator ? ['schemaVersion', 'component', 'contentIdentity', 'runId'] : recovery ? ['schemaVersion', 'operationId', 'candidateRevision', 'executionAuthority', 'targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt', 'phase'] : plan ? ['schemaVersion', 'planId', 'candidateRevision', 'producingRun', 'producingAttempt', 'targets', 'historySnapshot'] : child ? ['schemaVersion', 'child', 'dependencyIdentity', 'materialIdentity', 'evidenceIdentity', 'partitionIdentity',
     'applicationRevision', 'executionAuthority', 'producingRun', 'producingAttempt', 'phase', 'observation'] : admission ? ['schemaVersion', 'admissionId', 'sourcePr',
     'applicationRevision', 'authorizedSourceRevision', 'packageIdentity', 'executionAuthority', 'sourceMergeSha', 'selectedTargets',
     'resources', 'authorizationMode', 'producingRun', 'producingAttempt', 'phase'] : ['schemaVersion', 'operationId', 'target', 'applicationRevision',
     'packageDigest', 'baseline', 'packageProducerRun', 'producingRun', 'producingAttempt',
-    'baselineDeploymentIds', 'phase', 'deploymentIds']);
+    'baselineDeploymentIds', 'phase', 'deploymentIds', 'candidateRevision', 'componentSource']);
   if (!record || Object.keys(record).some(key => !allowed.has(key)) ||
       JSON.stringify(record).length > (plan ? 524288 : 32768)) throw new Error('Invalid release operation record');
-  if (recovery) {
+  if (locator) {
+    if (record.schemaVersion !== 1 || !/^[a-z][a-z0-9-]{0,63}$/.test(record.component) ||
+        !/^[a-f0-9]{64}$/.test(record.contentIdentity) || !Number.isSafeInteger(record.runId) || record.runId < 1 ||
+        name !== `validated-component-index-${record.component}-${record.contentIdentity}`)
+      throw new Error('Invalid component run locator');
+  } else if (recovery) {
     if (record.schemaVersion !== 1 || record.phase !== 'intent' || name !== `legend-readiness-recovery-${record.operationId}` ||
         !/^[a-f0-9]{64}$/.test(record.operationId) ||
         ['candidateRevision', 'executionAuthority'].some(key => !/^[a-f0-9]{40}$/.test(record[key])) ||
         ['targetRun', 'targetAttempt', 'targetJob', 'producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1))
       throw new Error('Invalid readiness recovery intent');
   } else if (plan) {
-    if (record.schemaVersion !== 1 || name !== `legend-release-transaction-plan-${record.planId}` ||
+    if (![1, 2].includes(record.schemaVersion) || name !== `legend-release-transaction-plan-${record.planId}` ||
         !/^[a-f0-9]{64}$/.test(record.planId) || !/^[a-f0-9]{40}$/.test(record.candidateRevision) ||
         ['producingRun', 'producingAttempt'].some(key => !Number.isSafeInteger(record[key]) || record[key] < 1) ||
         !Array.isArray(record.targets) || !record.targets.length || record.targets.length > 100)
       throw new Error('Invalid transaction plan identity');
     const seen = new Set();
     for (const row of record.targets) {
-      if (!row || Object.keys(row).some(key => !['app', 'revision', 'packageDigest', 'rollbackEvidence'].includes(key)) ||
+      if (!row || Object.keys(row).some(key => !(record.schemaVersion === 2 ? ['app', 'revision', 'packageDigest', 'rollbackEvidence', 'targetMaterial'] : ['app', 'revision', 'packageDigest', 'rollbackEvidence']).includes(key)) ||
           !/^[a-z][a-z0-9-]{0,63}$/.test(row.app) || seen.has(row.app) ||
           !/^[a-f0-9]{40}$/.test(row.revision) || !/^[a-f0-9]{64}$/.test(row.packageDigest))
         throw new Error('Invalid transaction target');
       seen.add(row.app);
+      if (record.schemaVersion === 2) {
+        targetMaterial(row.app, row.targetMaterial);
+        if (row.targetMaterial.packageDigest !== row.packageDigest) throw new Error('Transaction material digest mismatch');
+      }
       const rollback = row.rollbackEvidence;
-      if (row.revision === record.candidateRevision) {
+      if (row.revision === (record.schemaVersion === 2 ? row.targetMaterial.producerRevision : record.candidateRevision)) {
         if (rollback !== null) throw new Error('Unexpected candidate rollback evidence');
-      } else if (!rollback || Object.keys(rollback).some(key => !['artifact', 'runId', 'revision', 'packageDigest'].includes(key)) ||
+      } else if (!rollback || Object.keys(rollback).some(key => !['artifact', 'runId', 'revision', 'packageDigest', 'artifactId'].includes(key)) ||
+                 (rollback.artifactId !== undefined && (!Number.isSafeInteger(rollback.artifactId) || rollback.artifactId < 1)) ||
                  rollback.revision !== row.revision || !Number.isSafeInteger(rollback.runId) || rollback.runId < 1 ||
                  !/^[a-zA-Z0-9_.-]{1,256}$/.test(rollback.artifact) || !/^[a-f0-9]{64}$/.test(rollback.packageDigest))
         throw new Error('Invalid preserved rollback package proof');
@@ -94,7 +123,7 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         ['selectedTargets', 'resources'].some(key => !Array.isArray(record[key]) || !record[key].length || record[key].length > 100 ||
           record[key].some(value => typeof value !== 'string' || !/^[a-zA-Z0-9:/_.-]{1,128}$/.test(value))))
       throw new Error('Invalid release admission identity');
-  } else if (record.schemaVersion !== 1 || !['intent', 'success'].includes(record.phase) ||
+  } else if (![1, 2].includes(record.schemaVersion) || !['intent', 'success'].includes(record.phase) ||
       name !== `legend-release-operation-${record.phase}-${record.operationId}` ||
       !/^[a-f0-9]{64}$/.test(record.operationId) ||
       !/^[a-f0-9]{64}$/.test(record.packageDigest) ||
@@ -104,6 +133,15 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
       ['producingRun', 'producingAttempt', 'packageProducerRun'].some(key =>
         !Number.isSafeInteger(record[key]) || record[key] < 1))
     throw new Error('Invalid release operation identity');
+  if (!locator && !recovery && !plan && !child && !admission) {
+    if (record.schemaVersion === 2) {
+      componentSource(record.componentSource);
+      if (!/^[a-f0-9]{40}$/.test(record.candidateRevision) || record.packageProducerRun !== record.componentSource.runId)
+        throw new Error('Invalid operation authorization/producer');
+    } else if (record.candidateRevision !== undefined || record.componentSource !== undefined) {
+      throw new Error('Legacy operation has unversioned component provenance');
+    }
+  }
   for (const key of ['baselineDeploymentIds', 'deploymentIds']) {
     if (record[key] !== undefined && (!Array.isArray(record[key]) || record[key].length > 1000 ||
         record[key].some(value => typeof value !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(value))))

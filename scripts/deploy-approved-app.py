@@ -277,7 +277,7 @@ def _baseline_map(raw: str):
     return result
 
 
-def operation_journal(key, revision, digest, baseline):
+def operation_journal(key, revision, digest, baseline, *, candidate_revision=None, component_source=None):
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         return None
     if baseline is None:
@@ -285,7 +285,8 @@ def operation_journal(key, revision, digest, baseline):
     spec = importlib.util.spec_from_file_location('release_operation_evidence', Path(__file__).with_name('release-operation-evidence.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY)
+    return module.OperationJournal(target=key, application_revision=revision, package_digest=digest, baseline=baseline, authority=_RELEASE_AUTHORITY,
+                                   candidate_revision=candidate_revision, component_source=component_source)
 
 
 def deploy_one(key: str, revision: str, package_root: Path, *, baseline=None, reconcile_only=False, journal=None):
@@ -337,7 +338,8 @@ def retained_rollback_package(root, key, revision, retained=None):
     repository = os.environ.get('GITHUB_REPOSITORY')
     if not repository:
         raise ValueError('Original immutable rollback package unavailable')
-    evidence = ({'reusable': True, 'runId': retained['runId'], 'packageArtifact': retained['artifact']}
+    evidence = ({'reusable': True, 'runId': retained['runId'], 'packageArtifact': retained['artifact'],
+                 **({'artifactId': retained['artifactId']} if 'artifactId' in retained else {})}
                 if retained is not None else _RELEASE_AUTHORITY.compute_rollback_evidence(repository, revision, key))
     if not evidence.get('reusable'):
         raise DeploymentReconciliationRequired('Original preserved rollback package evidence unavailable')
@@ -345,8 +347,14 @@ def retained_rollback_package(root, key, revision, retained=None):
     import tempfile
     with tempfile.TemporaryDirectory(prefix='legend-rollback-') as temporary:
         folder = Path(temporary)
-        _RELEASE_AUTHORITY._download_run_artifact(repository, evidence['runId'], evidence['packageArtifact'], folder)
+        args = dict(artifact_id=evidence['artifactId']) if evidence.get('artifactId') is not None else {}
+        _RELEASE_AUTHORITY._download_run_artifact(repository, evidence['runId'], evidence['packageArtifact'], folder, **args)
         candidate = folder / ('package.zip' if (folder / 'package.zip').exists() else target['package'])
+        if evidence.get('artifactId') is not None:
+            expected = retained['packageDigest'] if retained is not None else evidence.get('packageDigest')
+            if not re.fullmatch('[a-f0-9]{64}', expected or ''):
+                raise ValueError('Rollback component digest missing')
+            (candidate.parent/'SHA256SUMS').write_text(expected+'  '+candidate.name+'\n')
         digest = verify_package(candidate, revision, target['static'])
         if retained is not None and digest != retained['packageDigest']:
             raise ValueError('Preserved rollback artifact digest changed')
@@ -356,6 +364,8 @@ def retained_rollback_package(root, key, revision, retained=None):
         (destination / 'SHA256SUMS').write_text(digest + '  package.zip\n')
         receipt = {'artifact': evidence['packageArtifact'], 'runId': evidence['runId'],
                    'revision': revision, 'packageDigest': digest}
+        if evidence.get('artifactId') is not None:
+            receipt['artifactId'] = evidence['artifactId']
         (destination / 'receipt.json').write_text(json.dumps(receipt, sort_keys=True))
         return receipt
 
@@ -391,18 +401,54 @@ def preflight_target(key, package, revision, baseline, journal):
         )
 
 
+def transaction_target_material(plan, row, revision):
+    """Consume a validated plan without conflating authorization and byte producer."""
+    if plan.get('schemaVersion') == 1:
+        if 'targetMaterial' in row:
+            raise ValueError('Legacy transaction contains unversioned target material')
+        return dict(producerRevision=revision, packageDigest=row['packageDigest'])
+    if plan.get('schemaVersion') != 2:
+        raise ValueError('Unsupported transaction schema')
+    spec = importlib.util.spec_from_file_location('transaction_package_owner', Path(__file__).with_name('release-package.py'))
+    owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+    material = owner.validate_target_material(row['app'], row.get('targetMaterial'))
+    if material['packageDigest'] != row['packageDigest']:
+        raise ValueError('Transaction target material digest mismatch')
+    return material
+
+
+def transaction_target_journal(plan, row, revision, material):
+    args = {}
+    if plan['schemaVersion'] == 2:
+        args = dict(candidate_revision=revision, component_source=material['source'])
+    return operation_journal(row['app'], material['producerRevision'], material['packageDigest'], row['revision'], **args)
+
+
 def prepare_transaction(target_names, baselines_raw, package_root, rollback_root, revision, output):
     keys = _RELEASE_AUTHORITY.selected_release_target_keys(target_names)
     baselines = _baseline_map(baselines_raw)
-    digests = {key: verify_package(package_root / TARGETS[key]['package'], revision, TARGETS[key]['static']) for key in keys}
-    identity = {'candidateRevision': revision, 'packageDigests': digests}
-    plan_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    materials = None
+    manifest_path = package_root / 'manifest.json'
+    if manifest_path.exists():
+        spec = importlib.util.spec_from_file_location('transaction_package_owner', Path(__file__).with_name('release-package.py'))
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        manifest = owner.verify_all(revision, package_root)
+        if manifest['schema'] == owner.CONTENT_PACKAGE_SCHEMA:
+            materials = {key: {name: value for name, value in owner.package_target_material(manifest, key).items()
+                               if name != 'legacy'} for key in keys}
+            observed_rows = {row['app']: row for row in json.loads(baselines_raw)}
+            if any(observed_rows.get(key, {}).get('targetMaterial') != material for key, material in materials.items()):
+                raise ValueError('Package target material differs from authenticated baseline descriptor')
+    digests = {key: verify_package(package_root / TARGETS[key]['package'],
+        materials[key]['producerRevision'] if materials is not None else revision, TARGETS[key]['static']) for key in keys}
+    plan_id = _RELEASE_AUTHORITY.release_transaction_identity(revision, digests, materials)
     prior = None
     if os.environ.get('GITHUB_ACTIONS') == 'true':
+        material_args = dict(target_materials=materials) if materials is not None else {}
         prior = _RELEASE_AUTHORITY.release_transaction_plan_history(
             os.environ['GITHUB_REPOSITORY'], plan_id, revision, digests,
             int(os.environ['GITHUB_RUN_ID']), int(os.environ['GITHUB_RUN_ATTEMPT']),
-            os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
+            os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'], **material_args)
         if prior is not None:
             baselines = _baseline_map(json.dumps(prior['targets']))
             if prior.get('historySnapshot') is not None:
@@ -414,14 +460,19 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
             raise ValueError('Missing preserved transaction baseline')
         target = TARGETS[key]
         digest = digests[key]
-        journal = operation_journal(key, revision, digest, baselines[key])
+        desired = materials[key]['producerRevision'] if materials is not None else revision
+        journal_args = dict(candidate_revision=revision, component_source=materials[key]['source']) if materials is not None else {}
+        journal = operation_journal(key, desired, digest, baselines[key], **journal_args)
         baseline = journal.baseline if journal is not None else baselines[key]
         if baseline != baselines[key]:
             raise DeploymentDrift('Target operation disagrees with original transaction baseline')
         preserved = prior_targets.get(key, {}).get('rollbackEvidence')
-        rollback = retained_rollback_package(rollback_root, key, baseline, preserved) if baseline != revision else None
-        preflight_target(key, package_root / target['package'], revision, baseline, journal)
-        return {'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback}
+        rollback = retained_rollback_package(rollback_root, key, baseline, preserved) if baseline != desired else None
+        preflight_target(key, package_root / target['package'], desired, baseline, journal)
+        row = {'app': key, 'revision': baseline, 'packageDigest': digest, 'rollbackEvidence': rollback}
+        if materials is not None:
+            row['targetMaterial'] = materials[key]
+        return row
 
     prepared = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(keys))) as executor:
@@ -430,7 +481,7 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
             key = futures[future]
             prepared[key] = future.result()
     entries = [prepared[key] for key in keys]
-    plan = {'schemaVersion': 1, 'planId': plan_id, 'candidateRevision': revision, 'targets': entries,
+    plan = {'schemaVersion': 2 if materials is not None else 1, 'planId': plan_id, 'candidateRevision': revision, 'targets': entries,
             'producingRun': int(os.environ.get('GITHUB_RUN_ID', '0')),
             'producingAttempt': int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
             'historySnapshot': _RELEASE_AUTHORITY.export_release_history_snapshot(revision)}
@@ -452,7 +503,7 @@ def prepare_transaction(target_names, baselines_raw, package_root, rollback_root
 
 def read_transaction_plan(path, revision, key=None):
     plan = json.loads(path.read_text())
-    if plan.get('schemaVersion') != 1 or plan.get('candidateRevision') != revision:
+    if plan.get('schemaVersion') not in (1, 2) or plan.get('candidateRevision') != revision:
         raise ValueError('Transaction plan does not bind immutable candidate')
     baselines = _baseline_map(json.dumps(plan.get('targets')))
     if not baselines or (key is not None and key not in baselines):
@@ -460,8 +511,9 @@ def read_transaction_plan(path, revision, key=None):
     for row in plan['targets']:
         if not re.fullmatch(r'[0-9a-f]{64}', row.get('packageDigest', '')):
             raise ValueError('Transaction package identity missing')
-    identity = {'candidateRevision': revision, 'packageDigests': {row['app']: row['packageDigest'] for row in plan['targets']}}
-    expected_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    material = {row['app']: transaction_target_material(plan, row, revision) for row in plan['targets']}
+    expected_id = _RELEASE_AUTHORITY.release_transaction_identity(revision,
+        {row['app']: row['packageDigest'] for row in plan['targets']}, material if plan['schemaVersion'] == 2 else None)
     if plan.get('planId') != expected_id:
         raise ValueError('Transaction plan content identity mismatch')
     if plan.get('historySnapshot') is not None:
@@ -472,10 +524,13 @@ def read_transaction_plan(path, revision, key=None):
 def publish_prepared_target(key, revision, package_root, plan, *, reconcile_only=False):
     row = next(row for row in plan['targets'] if row['app'] == key)
     target = TARGETS[key]
-    digest = verify_package(package_root / target['package'], revision, target['static'])
+    material = transaction_target_material(plan, row, revision)
+    desired = material['producerRevision']
+    digest = verify_package(package_root / target['package'], desired, target['static'])
     if digest != row['packageDigest']:
         raise ValueError('Prepared immutable package changed')
-    return deploy_one(key, revision, package_root, baseline=row['revision'], reconcile_only=reconcile_only)
+    args = dict(journal=transaction_target_journal(plan, row, revision, material)) if plan['schemaVersion'] == 2 else {}
+    return deploy_one(key, desired, package_root, baseline=row['revision'], reconcile_only=reconcile_only, **args)
 
 
 def publish_prepared_targets_parallel(target_names, revision, package_root, plan, results_root):
@@ -507,6 +562,8 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
         temporary.replace(path)
 
     def worker(key):
+        row = next(row for row in plan['targets'] if row['app'] == key)
+        material = transaction_target_material(plan, row, revision)
         try:
             outcome = publish_prepared_target(key, revision, package_root, plan)
             if outcome not in live_outcomes:
@@ -517,6 +574,7 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
                 'phase': 'publication',
                 'target': key,
                 'candidateRevision': revision,
+                'targetMaterial': material,
                 'liveProven': True,
                 'durableReceiptProven': durable,
                 'outcome': outcome,
@@ -529,6 +587,7 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
                 'phase': 'publication',
                 'target': key,
                 'candidateRevision': revision,
+                'targetMaterial': material,
                 'liveProven': False,
                 'durableReceiptProven': False,
                 'errorType': type(exc).__name__,
@@ -555,14 +614,16 @@ def finalize_prepared_transaction(plan, package_root, revision, *, sleep=time.sl
 
     def finalize(row):
         target = TARGETS[row['app']]
-        digest = verify_package(package_root / target['package'], revision, target['static'])
+        material = transaction_target_material(plan, row, revision)
+        desired = material['producerRevision']
+        digest = verify_package(package_root / target['package'], desired, target['static'])
         if digest != row['packageDigest']:
             raise ValueError('Prepared immutable package changed')
-        journal = operation_journal(row['app'], revision, digest, row['revision'])
+        journal = transaction_target_journal(plan, row, revision, material)
         if journal is None:
             raise ValueError('Finalization requires the durable deployment journal')
         reconcile(
-            target_azure(row['app'], package_root / target['package'], revision),
+            target_azure(row['app'], package_root / target['package'], desired),
             baseline=row['revision'],
             reconcile_only=True,
             journal=journal,
@@ -622,26 +683,31 @@ def transaction_disposition(plan, package_root, revision):
     def observe(row):
         key = row['app']
         target = TARGETS[key]
-        digest = verify_package(package_root / target['package'], revision, target['static'])
+        material = transaction_target_material(plan, row, revision)
+        desired = material['producerRevision']
+        digest = verify_package(package_root / target['package'], desired, target['static'])
         if digest != row['packageDigest']:
             raise ValueError('Disposition package differs from prepared transaction')
-        journal = operation_journal(key, revision, digest, row['revision'])
+        journal = transaction_target_journal(plan, row, revision, material)
         if journal is not None and getattr(journal, 'history_error', None) is not None:
             raise DeploymentReconciliationRequired('Deployment history incomplete; lease must remain held')
-        azure = target_azure(key, package_root / target['package'], revision)
+        azure = target_azure(key, package_root / target['package'], desired)
         rows = read_deployments_bounded(
             azure,
             phase='terminal disposition after committed transaction',
         )
         observed = azure.observed_revision()
-        if any(item['status'] in (0, 1, 2) for item in rows) or observed not in {row['revision'], revision}:
+        if any(item['status'] in (0, 1, 2) for item in rows) or observed not in {row['revision'], desired}:
             raise DeploymentReconciliationRequired('Provider target not terminal at preserved baseline/candidate')
         if journal is not None and journal.intent is not None:
             original = set(journal.intent['baselineDeploymentIds'])
             published = [item for item in rows if item['id'] not in original]
             if len(published) != 1 or published[0]['status'] not in (3, 4):
                 raise DeploymentReconciliationRequired('Original upload outcome remains ambiguous; lease must remain held')
-        return {'target': key, 'revision': observed, 'idle': True}
+        result = {'target': key, 'revision': observed, 'idle': True}
+        if plan['schemaVersion'] == 2:
+            result['targetMaterial'] = material
+        return result
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(plan['targets']))) as executor:
         futures = {executor.submit(observe, row): row['app'] for row in plan['targets']}

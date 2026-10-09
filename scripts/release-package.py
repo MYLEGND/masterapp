@@ -18,6 +18,7 @@ import subprocess
 import zipfile
 
 SCHEMA = "legend-validated-release-package.v1"
+CONTENT_PACKAGE_SCHEMA = "legend-validated-release-package.v2"
 ROOT = Path(__file__).resolve().parents[1]
 def _release_authority_module():
     path = Path(__file__).with_name("validation-resume.py")
@@ -90,6 +91,80 @@ def package_identity(revision: str) -> str:
 
 def artifact_name(revision: str) -> str:
     return "founder-diagnostics-packages-" + package_identity(revision)
+
+
+def assembled_artifact_name(manifest, run_id=None, attempt=None):
+    name = 'founder-diagnostics-packages-' + manifest['packageIdentity']
+    if manifest['schema'] == CONTENT_PACKAGE_SCHEMA:
+        run_id = int(run_id or os.environ['GITHUB_RUN_ID'])
+        attempt = int(attempt or os.environ['GITHUB_RUN_ATTEMPT'])
+        if min(run_id, attempt) < 1:
+            raise ValueError('Exact package producing attempt required')
+        name += f'-{run_id}-a{attempt}'
+    return name
+
+
+def restore_rollback_component(repository, revision, component, evidence, output):
+    """Restore exact retained rollback bytes; absence is never a build request."""
+    import tempfile
+    revision = normalize_revision(revision)
+    if (component not in APPS or evidence.get('reusable') is not True or evidence.get('revision') != revision or
+            evidence.get('app') != component or type(evidence.get('runId')) is not int or evidence['runId'] < 1 or
+            not re.fullmatch('[a-zA-Z0-9_.-]{1,256}',evidence.get('packageArtifact',''))):
+        raise ValueError('Exact rollback component evidence unavailable')
+    artifact_id = evidence.get('artifactId')
+    if evidence.get('componentSource') and (type(artifact_id) is not int or artifact_id < 1 or
+            not re.fullmatch('[a-f0-9]{64}',evidence.get('packageDigest',''))):
+        raise ValueError('Rollback component immutable identity missing')
+    with tempfile.TemporaryDirectory(prefix='legend-rollback-restore-') as temporary:
+        root=Path(temporary)
+        args=dict(artifact_id=artifact_id) if artifact_id is not None else {}
+        _RELEASE_AUTHORITY._download_run_artifact(repository,evidence['runId'],evidence['packageArtifact'],root,**args)
+        candidate=root/component_file(component)
+        if not candidate.is_file() or candidate.is_symlink():
+            raise ValueError('Retained rollback package missing')
+        digest=sha256_file(candidate)
+        expected=evidence.get('packageDigest')
+        if expected is None:
+            rows=[line.split() for line in (root/'SHA256SUMS').read_text().splitlines()]
+            values=[row[0] for row in rows if len(row)==2 and Path(row[1]).name==candidate.name]
+            if values!=[digest]:
+                raise ValueError('Legacy rollback checksum mismatch')
+        elif digest!=expected:
+            raise ValueError('Retained rollback content digest mismatch')
+        if embedded_revision(candidate,APPS[component][2])!=revision:
+            raise ValueError('Retained rollback producer mismatch')
+        output=Path(output);output.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(candidate,output/'package.zip')
+        (output/'SHA256SUMS').write_text(digest+'  package.zip\n')
+        receipt=dict(artifact=evidence['packageArtifact'],runId=evidence['runId'],revision=revision,packageDigest=digest)
+        if artifact_id is not None:
+            receipt['artifactId']=artifact_id
+        (output/'receipt.json').write_text(json.dumps(receipt,sort_keys=True)+'\n')
+        return receipt
+
+
+def record_package_source(revision, directory, output, *, run_id, attempt, artifact_id, artifact_digest):
+    """Export small target metadata after exact aggregate verification and upload."""
+    revision = validate_revision(revision)
+    manifest_path = Path(directory) / 'manifest.json'
+    if manifest_path.stat().st_size > 131072:
+        raise ValueError('Package descriptor exceeds metadata bound')
+    manifest = json.loads(manifest_path.read_text())
+    if (manifest.get('schema') != CONTENT_PACKAGE_SCHEMA or manifest.get('applicationReleaseSha') != revision or
+            manifest.get('packageIdentity') != package_identity(revision) or
+            any(type(value) is not int or value < 1 for value in (run_id, attempt, artifact_id)) or
+            not re.fullmatch('sha256:[a-f0-9]{64}', artifact_digest or '')):
+        raise ValueError('Invalid immutable package descriptor source')
+    targets = {key: {name: value for name, value in package_target_material(manifest,key).items() if name != 'legacy'} for key in APPS}
+    descriptor = dict(schemaVersion=1, packageSchema=CONTENT_PACKAGE_SCHEMA, revision=revision,
+        packageIdentity=manifest['packageIdentity'], targets=targets, manifestSha256=sha256_file(manifest_path),
+        runId=run_id, runAttempt=attempt,
+        artifact=dict(id=artifact_id, name=assembled_artifact_name(manifest,run_id,attempt),digest=artifact_digest))
+    Path(output).mkdir(parents=True,exist_ok=True)
+    with (Path(output)/'package-source.json').open('x') as stream:
+        json.dump(descriptor,stream,sort_keys=True);stream.write('\n')
+    return descriptor
 
 
 def run(*args, env=None):
@@ -367,7 +442,7 @@ def isolated_component_command(component, stage, argv, *, phase):
               ('authority', '/authority', False), ('probe', '/probe', phase == 'bootstrap'),
               ('nuget', '/deps/nuget', phase == 'restore'),
               ('artifacts', '/tmp/masterapp', phase in {'restore', 'publish'})]
-    if component in {'protect', 'website'}:
+    if component in {'protect', 'website'} and phase != 'bootstrap':
         mounts.extend([('npm', '/deps/npm', phase == 'restore'),
                        ('website-workspace', '/src/Legend-Website', phase in {'restore', 'publish'})])
         # The compiler deletes/recreates dist and npm ci recreates node_modules.
@@ -425,6 +500,33 @@ def prepare_website_workspace(component, stage, *, phase):
             destination.touch()
 
 
+def isolated_failure_diagnostic(log, phase, error):
+    """Export only fixed authority messages and compiler codes, never raw output."""
+    import ast
+    messages = set()
+    for node in ast.walk(ast.parse(Path(__file__).read_text())):
+        if (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and node.exc.args and
+                isinstance(node.exc.func, ast.Name) and node.exc.func.id == 'ValueError' and
+                isinstance(node.exc.args[0], ast.Constant) and isinstance(node.exc.args[0].value, str)):
+            messages.add(node.exc.args[0].value)
+    text = ''
+    if log.is_file():
+        with log.open('rb') as stream:
+            stream.seek(max(0, log.stat().st_size - 128 * 1024))
+            text = stream.read(128 * 1024).decode('utf-8', errors='replace')
+    reasons = [line.removeprefix('ValueError: ') for line in text.splitlines()
+               if line.startswith('ValueError: ') and line.removeprefix('ValueError: ') in messages]
+    if reasons:
+        reason = reasons[-1]
+    elif 'error mounting' in text or 'read-only file system' in text:
+        reason = 'isolated_mount_or_write_boundary_failed'
+    else:
+        reason = 'unclassified_isolated_failure_preserve_boundary'
+    return dict(phase=phase, failureType=type(error).__name__,
+        exitCode=getattr(error, 'returncode', None), reason=reason,
+        compilerCodes=sorted(set(re.findall(r'\berror ((?:CS|MSB|NU)[0-9]{3,6})\b', text)))[:32])
+
+
 def run_isolated_component(component, stage, argv, *, phase, timeout):
     """Bound one candidate process and reclaim only its own disposable container.
 
@@ -455,8 +557,13 @@ def run_isolated_component(component, stage, argv, *, phase, timeout):
         with log.open('x') as output:
             subprocess.run(command, stdout=output, stderr=subprocess.STDOUT,
                            check=True, timeout=timeout)
-    except BaseException:
+    except BaseException as exc:
         failed = True
+        try:
+            diagnostic = isolated_failure_diagnostic(log, phase, exc)
+            (stage / 'last-phase-failure.json').write_text(json.dumps(diagnostic, sort_keys=True) + '\n')
+        except Exception:
+            pass  # Diagnostic failure must not erase the original execution outcome.
         raise
     finally:
         if previous is not None:
@@ -613,7 +720,9 @@ def resolved_restore_identity(component, artifacts_root, package_roots, sdk_root
                     raise ValueError('Restore material file budget exceeded')
                 if info.is_dir():
                     continue
-                key = info.filename.casefold()
+                # NuGet extraction normalizes redundant path separators. Use
+                # the same contained path identity, rejecting colliding aliases.
+                key = str(PurePosixPath(info.filename)).casefold()
                 if key in entries:
                     raise ValueError('Restored archive file identity ambiguous')
                 entries[key] = info.filename
@@ -621,7 +730,7 @@ def resolved_restore_identity(component, artifacts_root, package_roots, sdk_root
                 path = bounded_path(directory, name)
                 if name in {'.nupkg.metadata', archive_path.name + '.sha512'}:
                     continue  # NuGet generated metadata; archive bytes checked above.
-                entry = entries.get(name.casefold())
+                entry = entries.get(str(PurePosixPath(name)).casefold())
                 if entry is None:
                     raise ValueError('Restored package file absent from verified archive')
                 with archive.open(entry) as stream:
@@ -1031,6 +1140,48 @@ COMPONENT_SCHEMA = "legend-validated-release-package-component.v1"
 CONTENT_COMPONENT_SCHEMA = "legend-validated-release-package-component.v2"
 
 
+def component_execution_identity(proof, producer, component):
+    """Recompute the authenticated producer envelope, not a claimed digest."""
+    if (not isinstance(proof, dict) or proof.get('schema') != 'legend-package-component-execution.v1' or
+            proof.get('state') != 'executed-success' or proof.get('component') != component or
+            proof.get('candidateRevision') != producer or proof.get('source', {}).get('revision') != producer or
+            proof.get('file') != component_file(component) or
+            not re.fullmatch('[a-f0-9]{64}', proof.get('sha256', ''))):
+        raise ValueError('Component execution proof malformed')
+    expected_authority = {}
+    for relative in ('release-package.py', 'validation-resume.py',
+                     'PackageRestoreProbe/PackageRestoreProbe.csproj', 'PackageRestoreProbe/Program.cs'):
+        source = subprocess.check_output(['git', 'show', producer + ':scripts/' + relative], cwd=ROOT)
+        expected_authority[relative] = hashlib.sha256(source).hexdigest()
+    if proof.get('authorityInputs') != expected_authority:
+        raise ValueError('Component execution authority mismatch')
+    tools = proof.get('tools')
+    if (not isinstance(tools, dict) or tools.get('schemaVersion') != 1 or tools.get('platform') != 'linux/amd64' or
+            set(tools.get('tools', {})) != set(PACKAGE_TOOL_IMAGES)):
+        raise ValueError('Component pinned tool proof missing')
+    for key, image in PACKAGE_TOOL_IMAGES.items():
+        row = tools['tools'][key]
+        if row.get('image') != image or not re.fullmatch('sha256:[a-f0-9]{64}', row.get('imageId', '')):
+            raise ValueError('Component pinned tool identity mismatch')
+        if key != 'sdk':
+            tree = row.get('tree', {})
+            if (row.get('paths') != list(PACKAGE_TOOL_PATHS[key]) or
+                    not re.fullmatch('[a-f0-9]{64}', tree.get('identity', ''))):
+                raise ValueError('Component measured tool content missing')
+    dependency = proof.get('dependencyMaterial')
+    expected = ({'npm'} if APPS[component][2] else {'dotnet'}) | ({'npm'} if component == 'protect' else set())
+    if not isinstance(dependency, dict) or set(dependency) != expected:
+        raise ValueError('Component dependency evidence missing')
+    for row in dependency.values():
+        if row.get('schemaVersion') != 1 or not re.fullmatch('[a-f0-9]{64}', row.get('identity', '')):
+            raise ValueError('Component dependency content identity malformed')
+    # Timing, queue and diagnostic fields do not change byte-production inputs.
+    keys = ('schema', 'component', 'candidateRevision', 'authorityInputs', 'source',
+            'tools', 'dependencyMaterial', 'file', 'sha256')
+    material = {key: proof[key] for key in keys}
+    return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def verify_component(revision, component, directory, *, execution_identity=None):
     """Read both receipt generations without changing retained bytes/provenance.
 
@@ -1150,6 +1301,24 @@ def promote_rehearsed_migration(revision, output, evidence):
     return None
 
 
+def isolated_component_archive(stage, component):
+    """Admit one regular compiler output without following candidate host links."""
+    import stat
+    stage = Path(stage).resolve()
+    path = stage / 'artifacts/component' / component_file(component)
+    for current in (stage / 'artifacts', path.parent, path):
+        if current.is_symlink() or not current.resolve().is_relative_to(stage):
+            raise ValueError('Isolated compiler output escapes owned stage')
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 2 * 1024 ** 3:
+        raise ValueError('Isolated compiler output is not a bounded regular file')
+    with zipfile.ZipFile(path) as archive:
+        entries = archive.infolist()
+        if len(entries) > 100000 or sum(entry.file_size for entry in entries) > 2 * 1024 ** 3:
+            raise ValueError('Isolated compiler archive expands beyond verification budget')
+    return path
+
+
 def build_isolated_component(revision, component, output):
     """Canonical component build with declared inputs and no production access."""
     import tempfile
@@ -1210,7 +1379,7 @@ def build_isolated_component(revision, component, output):
         after = operation('postBuildInputVerification', material)
         if before != after:
             raise ValueError('Component build changed verified dependency material')
-        archive = stage / 'artifacts/component' / component_file(component)
+        archive = isolated_component_archive(stage, component)
         if embedded_revision(archive, APPS[component][2]) != revision:
             raise ValueError('Isolated component runtime provenance mismatch')
         digest = sha256_file(archive)
@@ -1227,12 +1396,16 @@ def build_isolated_component(revision, component, output):
         blocked = dict(schema='legend-package-component-execution.v1', state='blocked',
             component=component, candidateRevision=revision, failureType=type(exc).__name__,
             completedStages=list(timings), timings=timings, resumeBoundary='package-component:' + component)
+        diagnostic = stage / 'last-phase-failure.json'
+        if diagnostic.is_file() and diagnostic.stat().st_size <= 16384:
+            blocked['diagnostic'] = json.loads(diagnostic.read_text())
+        (output / (component + '.blocked.json')).write_text(json.dumps(blocked, sort_keys=True, indent=2) + '\n')
         (stage / 'blocked.json').write_text(json.dumps(blocked, sort_keys=True, indent=2) + '\n')
         print('LEGEND_PACKAGE:BLOCKED:' + component + ':evidence=' + str(stage / 'blocked.json'))
         raise
 
 
-def build_component(revision: str, component: str, output: Path):
+def build_component(revision: str, component: str, output: Path, *, content_receipt=False):
     revision = validate_revision(revision)
     output.mkdir(parents=True, exist_ok=True)
     print('LEGEND_PACKAGE:EXECUTE:' + component + ':compatible_component_receipt_unavailable')
@@ -1243,7 +1416,15 @@ def build_component(revision: str, component: str, output: Path):
     if component == "migration":
         build_migration_bundle(output)
     else:
-        build_isolated_component(revision, component, output)
+        execution = build_isolated_component(revision, component, output)
+        if content_receipt:
+            manifest = _RELEASE_AUTHORITY.package_component_manifest(revision, component)
+            receipt = dict(schema=CONTENT_COMPONENT_SCHEMA, producerRevision=revision,
+                contentIdentity=manifest['contentIdentity'],
+                executionIdentity=component_execution_identity(execution, revision, component),
+                component=component, file=destination.name, sha256=sha256_file(destination))
+            (output / f'{component}.component.json').write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
+            return receipt
 
     receipt = {
         "schema": COMPONENT_SCHEMA,
@@ -1260,18 +1441,143 @@ def build_component(revision: str, component: str, output: Path):
     return receipt
 
 
-def assemble_components(revision: str, output: Path):
+def publish_component_indexes(revision, plan, run_id):
+    """Persist bounded run locators through the existing immutable evidence channel.
+
+    A locator conveys neither success nor authority; the selector authenticates
+    the actual job, attempt, upload and measured bytes independently.
+    """
+    revision = validate_revision(revision)
+    if (type(run_id) is not int or run_id < 1 or plan.get('currentSha') != revision or
+            plan.get('componentProtocol') is not True or set(plan.get('componentSources', {})) != set(APPS)):
+        raise ValueError('Component locator plan identity invalid')
+    spec = importlib.util.spec_from_file_location('component_evidence_transport', Path(__file__).with_name('release-operation-evidence.py'))
+    evidence = importlib.util.module_from_spec(spec); spec.loader.exec_module(evidence)
+    import time
+    with _RELEASE_AUTHORITY.evidence_lookup_budget(time.monotonic() + 180):
+        for component in APPS:
+            identity = _RELEASE_AUTHORITY.package_component_manifest(revision, component)['contentIdentity']
+            evidence.publish_record(_RELEASE_AUTHORITY.component_index_name(component, identity),
+                dict(schemaVersion=1, component=component, contentIdentity=identity, runId=run_id),
+                timeout=_RELEASE_AUTHORITY.evidence_remaining(90))
+
+
+def record_component_source(revision, component, directory, output, *, run_id, attempt, artifact_id, artifact_digest):
+    """Bind the official upload result; no evidence credentials enter this writer."""
+    revision = validate_revision(revision)
+    if component not in APPS or type(artifact_id) is not int or artifact_id < 1:
+        raise ValueError('Invalid component artifact source')
+    if not re.fullmatch('sha256:[a-f0-9]{64}', artifact_digest or ''):
+        raise ValueError('Component provider digest missing')
+    directory, output = Path(directory), Path(output)
+    proof = json.loads((directory / (component + '.execution.json')).read_text())
+    execution_identity = component_execution_identity(proof, revision, component)
+    receipt = verify_component(revision, component, directory, execution_identity=execution_identity)
+    if receipt.get('schema') != CONTENT_COMPONENT_SCHEMA or proof['sha256'] != receipt['sha256']:
+        raise ValueError('Component execution does not attest these bytes')
+    name = _RELEASE_AUTHORITY.component_attempt_name(component, receipt['contentIdentity'], run_id, attempt)
+    source = dict(schemaVersion=1, component=component, contentIdentity=receipt['contentIdentity'],
+        producerRevision=revision, runId=run_id, runAttempt=attempt,
+        executionIdentity=execution_identity, execution=proof, sha256=receipt['sha256'],
+        artifact=dict(id=artifact_id, name=name, digest=artifact_digest))
+    output.mkdir(parents=True, exist_ok=True)
+    destination = output / 'component-source.json'
+    # Preserve the first immutable observation; an ambiguous rerun must reconcile.
+    with destination.open('x') as stream:
+        json.dump(source, stream, sort_keys=True, indent=2)
+        stream.write('\n')
+    return source
+
+
+def verified_component_target(revision, component, directory, selection):
+    """Validate downloaded child bytes against the planner's authenticated source."""
+    if not isinstance(selection, dict) or selection.get('state') not in {'executed-success', 'reused-success'}:
+        raise ValueError('Successful component source required')
+    source = selection.get('sourceReceipt', {})
+    producer = normalize_revision(source.get('producerRevision'))
+    proof = json.loads((directory / (component + '.execution.json')).read_text())
+    execution = component_execution_identity(proof, producer, component)
+    if proof != source.get('execution') or execution != source.get('executionIdentity'):
+        raise ValueError('Downloaded component execution differs from source receipt')
+    receipt = verify_component(revision, component, directory, execution_identity=execution)
+    if (receipt.get('schema') != CONTENT_COMPONENT_SCHEMA or receipt['producerRevision'] != producer or
+            receipt['sha256'] != source.get('sha256') or proof.get('sha256') != receipt['sha256'] or receipt['contentIdentity'] != source.get('contentIdentity') or
+            source.get('component') != component):
+        raise ValueError('Downloaded component source mismatch')
+    artifact = source.get('artifact', {})
+    if (any(type(value) is not int or value < 1 for value in (
+            source.get('runId'), source.get('runAttempt'), artifact.get('id'),
+            selection.get('producingJobId'), selection.get('receiptArtifactId'))) or
+            not re.fullmatch('sha256:[a-f0-9]{64}', artifact.get('digest', '')) or
+            artifact.get('name') != _RELEASE_AUTHORITY.component_attempt_name(component,
+                receipt['contentIdentity'], source['runId'], source['runAttempt'])):
+        raise ValueError('Component immutable source identity malformed')
+    return dict(producerRevision=producer, packageDigest=receipt['sha256'],
+        contentIdentity=receipt['contentIdentity'], executionIdentity=execution,
+        source=dict(runId=source['runId'], runAttempt=source['runAttempt'],
+            artifactId=artifact['id'], artifactDigest=artifact['digest'], artifactName=artifact['name'],
+            receiptArtifactId=selection['receiptArtifactId'], producingJobId=selection['producingJobId']))
+
+
+def validate_target_material(target, row):
+    """Strict portable identity used by package and downstream transaction readers."""
+    if target not in APPS or not isinstance(row, dict) or set(row) != {
+            'producerRevision', 'packageDigest', 'contentIdentity', 'executionIdentity', 'source'}:
+        raise ValueError('Target provenance identity malformed')
+    normalize_revision(row.get('producerRevision'))
+    for key in ('packageDigest', 'contentIdentity', 'executionIdentity'):
+        if not re.fullmatch('[a-f0-9]{64}', row.get(key, '')):
+            raise ValueError('Target provenance identity malformed')
+    source = row.get('source')
+    if not isinstance(source, dict) or set(source) != {
+            'runId', 'runAttempt', 'artifactId', 'artifactDigest', 'artifactName',
+            'receiptArtifactId', 'producingJobId'}:
+        raise ValueError('Target immutable component source malformed')
+    if (any(type(source[key]) is not int or source[key] < 1 for key in
+            ('runId', 'runAttempt', 'artifactId', 'receiptArtifactId', 'producingJobId')) or
+            not re.fullmatch('sha256:[a-f0-9]{64}', source.get('artifactDigest', '')) or
+            source.get('artifactName') != _RELEASE_AUTHORITY.component_attempt_name(
+                target, row['contentIdentity'], source['runId'], source['runAttempt'])):
+        raise ValueError('Target immutable component source malformed')
+    return json.loads(json.dumps(row))
+
+
+def package_target_material(manifest, target):
+    """One normalized consumer map; malformed new evidence never falls back to v1."""
+    if target not in APPS:
+        raise ValueError('Unknown package target')
+    if manifest.get('schema') == SCHEMA:
+        producer = normalize_revision(manifest.get('applicationReleaseSha'))
+        digest = manifest.get('files', {}).get(component_file(target), '')
+        if not re.fullmatch('[a-f0-9]{64}', digest):
+            raise ValueError('Legacy target digest malformed')
+        return dict(producerRevision=producer, packageDigest=digest, legacy=True)
+    if manifest.get('schema') != CONTENT_PACKAGE_SCHEMA or set(manifest.get('targets', {})) != set(APPS):
+        raise ValueError('Unsupported target provenance map')
+    row = validate_target_material(target, manifest['targets'][target])
+    if row['packageDigest'] != manifest.get('files', {}).get(component_file(target)):
+        raise ValueError('Target package digest disagrees with manifest')
+    return dict(row, legacy=False)
+
+
+def assemble_components(revision: str, output: Path, *, component_sources=None):
     revision = validate_revision(revision)
     expected_contract = contract_hash()
     expected_identity = package_identity(revision)
     components = list(APPS) + ["migration"]
-    files = []
+    files, targets = [], {}
+    if component_sources is not None and (not isinstance(component_sources, dict) or set(component_sources) != set(APPS)):
+        raise ValueError('Complete authenticated application component sources required')
 
     for component in components:
         path = output / component_file(component)
         receipt_path = output / f"{component}.component.json"
         if not path.is_file() or not receipt_path.is_file():
             raise ValueError("Validated package component missing: " + component)
+        if component_sources is not None and component in APPS:
+            targets[component] = verified_component_target(revision, component, output, component_sources[component])
+            files.append(path)
+            continue
         receipt = json.loads(receipt_path.read_text())
         expected = {
             "schema": COMPONENT_SCHEMA,
@@ -1300,6 +1606,8 @@ def assemble_components(revision: str, output: Path):
         "packageIdentity": expected_identity,
         "files": {path.name: sha256_file(path) for path in files},
     }
+    if component_sources is not None:
+        manifest.update(schema=CONTENT_PACKAGE_SCHEMA, targets=targets, componentEvidence=component_sources)
     (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
     verify_all(revision, output)
     return manifest
@@ -1321,6 +1629,22 @@ def embedded_revision(package: Path, static: bool):
         entry = "_deployment-provenance.txt" if static else "wwwroot/_deployment-provenance.json"
         raw = archive.read(entry).decode().strip()
         return raw if static else json.loads(raw)["releaseSha"]
+
+
+def verify_descriptor_binding(directory, manifest, evidence):
+    """Bind downloaded aggregate metadata to the authenticated small descriptor."""
+    if manifest.get('schema') == SCHEMA:
+        if evidence.get('targetMaterials'):
+            raise ValueError('Legacy package contradicts component descriptor')
+        return
+    if (manifest.get('schema') != CONTENT_PACKAGE_SCHEMA or
+            evidence.get('revision') != manifest.get('applicationReleaseSha') or
+            evidence.get('packageIdentity') != manifest.get('packageIdentity') or
+            evidence.get('manifestSha256') != sha256_file(Path(directory)/'manifest.json') or
+            evidence.get('targetMaterials') != manifest.get('targets') or
+            type(evidence.get('artifactId')) is not int or evidence['artifactId'] < 1 or
+            not re.fullmatch('sha256:[a-f0-9]{64}',evidence.get('artifactDigest',''))):
+        raise ValueError('Downloaded package contradicts authenticated descriptor')
 
 
 def verify_all(revision: str, directory: Path):
@@ -1347,8 +1671,10 @@ def verify_all(revision: str, directory: Path):
         "applicationReleaseSha": revision,
         "packageContractSha256": declared_contract,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if manifest.get('schema') not in {SCHEMA, CONTENT_PACKAGE_SCHEMA}:
+        raise ValueError('Validated package schema unsupported')
     expected = {
-        "schema": SCHEMA,
+        "schema": manifest['schema'],
         "applicationReleaseSha": revision,
         "applicationTreeSha": expected_tree,
         "packageIdentity": declared_identity,
@@ -1371,12 +1697,20 @@ def verify_all(revision: str, directory: Path):
     if not isinstance(manifest_files, dict) or set(manifest_files) != set(expected_files):
         raise ValueError("Validated package manifest inventory mismatch")
 
+    if manifest['schema'] == CONTENT_PACKAGE_SCHEMA:
+        evidence = manifest.get('componentEvidence')
+        if not isinstance(evidence, dict) or set(evidence) != set(APPS):
+            raise ValueError('Validated component source inventory missing')
+        for app in APPS:
+            actual = verified_component_target(revision, app, directory, evidence[app])
+            if actual != manifest.get('targets', {}).get(app):
+                raise ValueError('Validated component target map mismatch')
     for app, (_, archive_name, static) in APPS.items():
         path = directory / archive_name
         digest = sha256_file(path)
         if rows.get(archive_name) != digest or manifest_files.get(archive_name) != digest:
             raise ValueError("Validated package digest mismatch: " + archive_name)
-        if embedded_revision(path, static) != revision:
+        if embedded_revision(path, static) != package_target_material(manifest, app)['producerRevision']:
             raise ValueError("Validated package provenance mismatch: " + app)
 
     bundle = directory / MIGRATION_BUNDLE
@@ -1406,6 +1740,38 @@ def main():
     component.add_argument("--component", required=True, choices=[*APPS.keys(), "migration"])
     component.add_argument("--directory", required=True)
     component.add_argument("--output")
+    component.add_argument("--content-receipt", action="store_true")
+
+    rollback = sub.add_parser('restore-rollback')
+    rollback.add_argument('--repository', required=True)
+    rollback.add_argument('--revision', required=True)
+    rollback.add_argument('--component', choices=list(APPS), required=True)
+    rollback.add_argument('--evidence', type=Path, required=True)
+    rollback.add_argument('--output', type=Path, required=True)
+
+    descriptor = sub.add_parser('record-package-source')
+    descriptor.add_argument('--revision', required=True)
+    descriptor.add_argument('--directory', required=True)
+    descriptor.add_argument('--output', required=True)
+    descriptor.add_argument('--run-id', type=int, required=True)
+    descriptor.add_argument('--attempt', type=int, required=True)
+    descriptor.add_argument('--artifact-id', type=int, required=True)
+    descriptor.add_argument('--artifact-digest', required=True)
+
+    indexes = sub.add_parser('component-indexes')
+    indexes.add_argument('--revision', required=True)
+    indexes.add_argument('--plan', type=Path, required=True)
+    indexes.add_argument('--run-id', type=int, required=True)
+
+    source = sub.add_parser('record-component-source')
+    source.add_argument('--revision', required=True)
+    source.add_argument('--component', required=True, choices=list(APPS))
+    source.add_argument('--directory', required=True)
+    source.add_argument('--output', required=True)
+    source.add_argument('--run-id', required=True, type=int)
+    source.add_argument('--attempt', required=True, type=int)
+    source.add_argument('--artifact-id', required=True, type=int)
+    source.add_argument('--artifact-digest', required=True)
 
     isolated = sub.add_parser("isolated-component-stage")
     isolated.add_argument("--revision", required=True)
@@ -1416,12 +1782,28 @@ def main():
     assemble.add_argument("--revision", required=True)
     assemble.add_argument("--directory", required=True)
     assemble.add_argument("--output")
+    assemble.add_argument("--component-sources")
 
     verify = sub.add_parser("verify")
     verify.add_argument("--revision", required=True)
     verify.add_argument("--directory", required=True)
+    verify.add_argument("--source-evidence", type=Path)
 
     args = parser.parse_args()
+    if args.command == 'restore-rollback':
+        restore_rollback_component(args.repository,args.revision,args.component,json.loads(args.evidence.read_text()),args.output)
+        return
+    if args.command == 'record-package-source':
+        record_package_source(args.revision,args.directory,args.output,run_id=args.run_id,
+            attempt=args.attempt,artifact_id=args.artifact_id,artifact_digest=args.artifact_digest)
+        return
+    if args.command == 'component-indexes':
+        publish_component_indexes(args.revision, json.loads(args.plan.read_text()), args.run_id)
+        return
+    if args.command == 'record-component-source':
+        record_component_source(args.revision, args.component, args.directory, args.output,
+            run_id=args.run_id, attempt=args.attempt, artifact_id=args.artifact_id, artifact_digest=args.artifact_digest)
+        return
     if args.command == 'isolated-component-stage':
         print(json.dumps(isolated_component_stage(args.revision, args.component, args.phase), sort_keys=True))
         return
@@ -1439,22 +1821,25 @@ def main():
             "contract": manifest["packageContractSha256"],
         }
     elif args.command == "build-component":
-        receipt = build_component(args.revision, args.component, Path(args.directory))
+        receipt = build_component(args.revision, args.component, Path(args.directory), content_receipt=args.content_receipt)
         data = {
             "component": receipt["component"],
             "file": receipt["file"],
-            "identity": receipt["packageIdentity"],
-            "contract": receipt["packageContractSha256"],
+            "identity": receipt.get("contentIdentity") or receipt["packageIdentity"],
+            "contract": receipt.get("executionIdentity") or receipt["packageContractSha256"],
         }
     elif args.command == "assemble":
-        manifest = assemble_components(args.revision, Path(args.directory))
+        sources = json.loads(Path(args.component_sources).read_text()) if args.component_sources else None
+        manifest = assemble_components(args.revision, Path(args.directory), component_sources=sources)
         data = {
-            "artifact": artifact_name(args.revision),
+            "artifact": assembled_artifact_name(manifest),
             "identity": manifest["packageIdentity"],
             "contract": manifest["packageContractSha256"],
         }
     else:
-        verify_all(args.revision, Path(args.directory))
+        manifest = verify_all(args.revision, Path(args.directory))
+        if args.source_evidence:
+            verify_descriptor_binding(Path(args.directory),manifest,json.loads(args.source_evidence.read_text()))
         print("Validated immutable release package verified.")
         return
 
