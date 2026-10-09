@@ -3018,6 +3018,40 @@ def _admission_covered_by_live_provenance(record, rows):
         return False
 
 
+def _completed_pre_admission_direct_workflow(api, run, approved_revision):
+    """Exclude only completed legacy workflows from a lease they never issued.
+
+    Source-verified pre-admission releases have no resource admission record.
+    Their original Azure upload intents remain governed by the independent
+    deployment operation journal. A running legacy release, unknown source,
+    unapproved revision, or modern workflow is never excluded.
+    Avoid exhausting the GitHub Actions artifact API by reading every old run.
+    """
+    revision = run.get('head_sha')
+    if (
+        run.get('status') != 'completed'
+        or run.get('event') != 'workflow_dispatch'
+        or run.get('head_branch') != APPROVED
+        or run.get('path', '').split('@')[0] != '.github/workflows/' + DIRECT
+        or (run.get('head_repository') or {}).get('full_name', '').lower() != api.repo.lower()
+        or not SHA.fullmatch(revision or '')
+        or not SHA.fullmatch(approved_revision or '')
+    ):
+        return False
+    if not ancestor(revision, approved_revision):
+        return False
+    source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
+    if source.returncode:
+        return False
+    jobs = VALIDATION_AUTHORITY._job_blocks(source.stdout)
+    return (
+        'release' in jobs
+        and 'discover-live' in jobs
+        and 'admission' not in jobs
+        and 'Admit canonical release resource ownership' not in source.stdout
+    )
+
+
 def admission_conflicts(api, candidate, *, current_run):
     """Called only while holding the shared scheduler/admission workflow mutex."""
     conflicts = []
@@ -3026,6 +3060,10 @@ def admission_conflicts(api, candidate, *, current_run):
     live_snapshot = None
     for run in runs:
         own_run = run['id'] == current_run
+        if not own_run and _completed_pre_admission_direct_workflow(
+            api, run, candidate.get('executionAuthority')
+        ):
+            continue  # No admission lease existed; the operation journal still governs uploads.
         if run.get('status') == 'completed' and successful_release(api, run):
             continue  # exact terminal live proof discharges this publication lease
         # A completed run that provably never entered any mutation phase owns no
