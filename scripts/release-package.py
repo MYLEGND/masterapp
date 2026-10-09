@@ -1222,6 +1222,77 @@ def verify_component(revision, component, directory, *, execution_identity=None)
     return receipt
 
 
+def restore_aggregate_migration(revision, output):
+    """Select exact retained release bytes before rehearsal, preserving producer."""
+    import tempfile
+    import time
+    revision = validate_revision(revision)
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    authority = _RELEASE_AUTHORITY
+    with authority.evidence_lookup_budget(time.monotonic() + 180):
+        selected = authority.compute_validated_package_evidence(repository, revision, package_identity(revision))
+        if not selected.get('reusable'):
+            if selected.get('reason') != 'exact_validated_package_missing':
+                raise ValueError('Retained migration package lookup unproven')
+            return None
+        producer = normalize_revision(selected['revision'])
+        if producer != revision and not authority.package_inputs_compatible(producer, revision):
+            raise ValueError('Retained migration package dependency mismatch')
+        inventory = authority.api_get(repository, f"actions/runs/{selected['runId']}/artifacts?per_page=100", token)
+        rows = inventory.get('artifacts')
+        if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+            raise ValueError('Retained migration package inventory incomplete')
+        matches = [row for row in rows if row.get('name') == selected['artifact'] and row.get('expired') is False]
+        if len(matches) != 1:
+            raise ValueError('Retained migration package artifact unavailable')
+        artifact = matches[0]
+        if (type(artifact.get('id')) is not int or artifact['id'] < 1 or
+                not re.fullmatch('sha256:[a-f0-9]{64}', artifact.get('digest', '')) or
+                (selected.get('artifactId') is not None and selected['artifactId'] != artifact['id'])):
+            raise ValueError('Retained migration package immutable identity mismatch')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            authority._download_run_artifact(repository, selected['runId'], selected['artifact'], root, artifact_id=artifact['id'])
+            manifest = verify_all(producer, root)
+            verify_descriptor_binding(root, manifest, selected)
+            receipt = verify_component(producer, 'migration', root)
+            if receipt['sha256'] != manifest['files'][MIGRATION_BUNDLE]:
+                raise ValueError('Retained migration bundle differs from aggregate')
+            binding = dict(schemaVersion=1, candidateRevision=revision, producerRevision=producer,
+                packageIdentity=selected['packageIdentity'], runId=selected['runId'], artifact=selected['artifact'],
+                artifactId=artifact['id'], artifactDigest=artifact['digest'], bundleDigest=receipt['sha256'])
+            output.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root / MIGRATION_BUNDLE, output / MIGRATION_BUNDLE)
+            shutil.copy2(root / 'migration.component.json', output / 'migration.component.json')
+            (output / 'migration.aggregate.json').write_text(json.dumps(binding, sort_keys=True) + '\n')
+            return binding
+
+
+def verify_prepared_migration(revision, directory):
+    """Validate prepared bytes without rewriting a retained producer receipt."""
+    receipt = json.loads((directory / 'migration.component.json').read_text())
+    producer = normalize_revision(receipt.get('applicationReleaseSha'))
+    binding_path = directory / 'migration.aggregate.json'
+    binding = json.loads(binding_path.read_text()) if binding_path.exists() else None
+    if producer != revision and binding is None:
+        raise ValueError('Retained migration producer has no aggregate binding')
+    if binding is not None:
+        expected_keys = {'schemaVersion', 'candidateRevision', 'producerRevision', 'packageIdentity',
+                         'runId', 'artifact', 'artifactId', 'artifactDigest', 'bundleDigest'}
+        if (set(binding) != expected_keys or binding['schemaVersion'] != 1 or
+                not re.fullmatch('[a-f0-9]{40}', binding['candidateRevision']) or binding['producerRevision'] != producer or
+                binding['packageIdentity'] != receipt.get('packageIdentity') or
+                binding['bundleDigest'] != receipt.get('sha256') or
+                any(type(binding[key]) is not int or binding[key] < 1 for key in ('runId','artifactId')) or
+                not re.fullmatch('sha256:[a-f0-9]{64}', binding['artifactDigest']) or
+                not _RELEASE_AUTHORITY.package_artifact_match(binding['artifact']) or
+                (producer != revision and not _RELEASE_AUTHORITY.package_inputs_compatible(producer, revision))):
+            raise ValueError('Retained migration aggregate binding invalid')
+    verify_component(producer, 'migration', directory)
+    return binding
+
+
 def restore_prepared_migration(revision, output, readiness_identity):
     """Recover a completed bundle child even if its rehearsal/parent failed."""
     import tempfile
@@ -1242,15 +1313,18 @@ def restore_prepared_migration(revision, output, readiness_identity):
             authority._download_run_artifact(repository, run['id'], artifact['name'], root, artifact_id=artifact['id'])
             bundle = root / 'migration' / MIGRATION_BUNDLE
             receipt = json.loads((root / 'migration/migration.component.json').read_text())
-            expected = dict(schema=COMPONENT_SCHEMA, applicationReleaseSha=revision,
-                packageContractSha256=contract_hash(), packageIdentity=package_identity(revision),
-                component='migration', file=MIGRATION_BUNDLE, sha256=sha256_file(bundle))
-            if receipt != expected:
+            try:
+                verify_prepared_migration(revision, root / 'migration')
+            except ValueError:
                 continue
             output.mkdir(parents=True, exist_ok=True)
             shutil.copy2(bundle, output / MIGRATION_BUNDLE)
             (output / MIGRATION_BUNDLE).chmod(0o755)
             shutil.copy2(root / 'migration/migration.component.json', output / 'migration.component.json')
+            binding = root / 'migration/migration.aggregate.json'
+            if binding.exists():
+                shutil.copy2(binding, output / binding.name)
+            expected = receipt
             proof = dict(state='reused-success', sourceReceipt={'runId': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id']},
                          compatibilityProof=expected)
             (output / 'migration.reuse.json').write_text(json.dumps(proof, sort_keys=True) + '\n')

@@ -5251,6 +5251,61 @@ def cmd_component_sources(args):
                 stream.write(f"{key}_run_id={source['runId']}\n{key}_artifact_id={source['artifact']['id']}\n")
 
 
+def pinned_package_evidence(repository, candidate, selected, token):
+    """Authenticate one rehearsed immutable aggregate; never replace it with newer bytes."""
+    producer = selected.get('producerRevision')
+    if (not re.fullmatch('[a-f0-9]{40}', producer or '') or
+            not re.fullmatch('[a-f0-9]{64}', selected.get('packageIdentity', '')) or
+            not re.fullmatch('sha256:[a-f0-9]{64}', selected.get('artifactDigest', '')) or
+            any(type(selected.get(key)) is not int or selected[key] < 1 for key in ('runId','artifactId')) or
+            (producer != candidate and not package_inputs_compatible(producer, candidate))):
+        raise ValueError('Pinned package dependency or source identity invalid')
+    match = package_artifact_match(selected.get('artifact',''))
+    if not match or match.group(1) != selected['packageIdentity']:
+        raise ValueError('Pinned package artifact name disagrees with identity')
+    run = api_get(repository, f"actions/runs/{selected['runId']}", token)
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, path, candidate) or run.get('head_sha') != producer:
+        raise ValueError('Pinned package producing authority unproven')
+    if match.group(2) is None and not _successful_package_child(repository, selected['runId'], token):
+        raise EvidenceLookupUnavailable('Pinned legacy package producing job unavailable')
+    artifact = api_get(repository, f"actions/artifacts/{selected['artifactId']}", token)
+    if (artifact.get('id') != selected['artifactId'] or artifact.get('expired') is not False or
+            artifact.get('name') != selected['artifact'] or artifact.get('digest') != selected['artifactDigest'] or
+            artifact.get('workflow_run', {}).get('id') != selected['runId']):
+        raise EvidenceLookupUnavailable('Pinned package immutable artifact unavailable or changed')
+    result = dict(schemaVersion=1, revision=producer, requestedRevision=candidate,
+        runId=selected['runId'], artifact=selected['artifact'], artifactId=selected['artifactId'],
+        artifactDigest=selected['artifactDigest'], packageIdentity=selected['packageIdentity'],
+        reusable=True, reason='exact_rehearsed_aggregate_preserved')
+    return attach_package_descriptor(repository, result, run, token)
+
+
+def bind_rehearsed_package_plan(repository, candidate, result, readiness, token):
+    """A pending migration's retained aggregate is the one actually rehearsed."""
+    receipt = readiness.get('receipt', {})
+    if not receipt.get('pendingCount'):
+        return result
+    rehearsal = receipt.get('rehearsal') or {}
+    selected = rehearsal.get('selectedPackage')
+    if selected is None:
+        if not result['needed']:
+            raise ValueError('Reused aggregate has no exact rehearsed migration binding')
+        return result  # Fresh assembly must promote the exact rehearsal child.
+    if (selected.get('schemaVersion') != 1 or not re.fullmatch('[a-f0-9]{40}', selected.get('candidateRevision', '')) or
+            selected.get('bundleDigest') != rehearsal.get('bundleDigest') or
+            not re.fullmatch('[a-f0-9]{64}', selected.get('bundleDigest', ''))):
+        raise ValueError('Rehearsed aggregate migration digest mismatch')
+    producer = selected.get('producerRevision')
+    if (not re.fullmatch('[a-f0-9]{40}', producer or '') or
+            (producer != candidate and not package_inputs_compatible(producer, candidate))):
+        raise ValueError('Rehearsed aggregate inputs changed')
+    pinned_package_evidence(repository, candidate, selected, token)
+    return dict(result, needed=False, reason='exact_rehearsed_aggregate_preserved',
+        evidenceRunId=selected['runId'], evidenceHeadSha=producer, packageIdentity=selected['packageIdentity'],
+        exactPackageRunId=selected['runId'], exactPackageArtifact=selected['artifact'])
+
+
 def cmd_package_canary_plan(args):
     readiness = require_readiness(args.repository, args.current_sha)
     try:
@@ -5261,6 +5316,8 @@ def cmd_package_canary_plan(args):
             args.current_run_id,
             args.head_branch,
         )
+        result = bind_rehearsed_package_plan(args.repository, args.current_sha, result, readiness,
+            os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
         result.update(componentProtocol=False, requiredComponents=list(RELEASE_TARGETS) + ['migration'])
         if result['needed'] and component_protocol_ready(args.base_sha, args.current_sha):
             result.update(plan_component_children(args.repository, args.current_sha, args.current_run_id,
@@ -5807,11 +5864,15 @@ def compute_validated_package_evidence(repository: str, revision: str, package_i
 
 def cmd_validated_package(args):
     try:
-        result = compute_validated_package_evidence(
-            args.repository,
-            args.revision,
-            args.package_identity,
-        )
+        if getattr(args, 'pinned_source_json', None):
+            result = pinned_package_evidence(args.repository, args.revision, json.loads(args.pinned_source_json),
+                os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
+        else:
+            result = compute_validated_package_evidence(
+                args.repository,
+                args.revision,
+                args.package_identity,
+            )
     except Exception as exc:
         result = {
             "schemaVersion": 1,
@@ -8315,6 +8376,7 @@ def build_parser():
     validated_package.add_argument("--revision", required=True)
     validated_package.add_argument("--package-identity", required=True)
     validated_package.add_argument("--output", required=True)
+    validated_package.add_argument("--pinned-source-json")
     validated_package.set_defaults(func=cmd_validated_package)
 
     rollback_evidence = sub.add_parser("rollback-evidence")

@@ -23,6 +23,47 @@ cloud = load('deploy-founder-cloudflare')
 router = load('release-router')
 
 
+class RehearsalReceiptReuseTests(unittest.TestCase):
+    def test_binding_an_existing_exact_rehearsal_executes_zero_new_sql(self):
+        import os
+        probe=load('migration-probe-package')
+        package=load('release-package')
+        candidate='a'*40;bundle=b'already rehearsed exact bundle'
+        digest=hashlib.sha256(bundle).hexdigest();expected=dict(identity='b'*64)
+        baseline=dict(candidate=candidate,identity='b'*64,contractDigest='c'*64)
+        prior=dict(runId=71,artifactId=81,artifact='prior-rehearsal',receipt=dict(
+            bundleDigest=digest,counts=dict(mutations=1,intents=1,successReceipts=2),proven=True))
+        selected=dict(producerRevision='d'*40,bundleDigest=digest)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'migration').mkdir()
+            (root/'observation.json').write_text(json.dumps(baseline))
+            (root/'rehearsal.reuse.json').write_text(json.dumps(prior))
+            (root/'migration/migration.component.json').write_text('{}')
+            (root/'migration'/package.MIGRATION_BUNDLE).write_bytes(bundle)
+            # Only the package module is loaded before the proven reuse return;
+            # no migration executor, compiler, SQL container, or fixture runs.
+            class Loader:
+                def exec_module(self,module):pass
+            class Spec:
+                loader=Loader()
+            with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder',
+                    GITHUB_RUN_ID='91',GITHUB_RUN_ATTEMPT='2',PREPARED_MIGRATION_ARTIFACT='prepared-a2'), \
+                 patch.object(probe.AUTHORITY,'approved_head_preflight',return_value=dict(current=True,approvedHeadSha='e'*40)), \
+                 patch.object(probe.AUTHORITY,'readiness_targets',return_value=[]), \
+                 patch.object(probe.AUTHORITY,'readiness_identity',return_value=expected), \
+                 patch.object(probe.AUTHORITY,'api_get',return_value=dict(total_count=1,artifacts=[dict(id=101,name='prepared-a2',expired=False)])), \
+                 patch.object(probe.AUTHORITY,'migration_rehearsal_evidence',return_value=prior), \
+                 patch.object(probe.importlib.util,'spec_from_file_location',return_value=Spec()), \
+                 patch.object(probe.importlib.util,'module_from_spec',return_value=package), \
+                 patch.object(package,'verify_prepared_migration',return_value=selected), \
+                 patch.object(probe.subprocess,'run',side_effect=AssertionError('No new SQL/compiler/provider mutation')):
+                probe.rehearse_candidate(candidate,root,None)
+            result=json.loads((root/'rehearsal.json').read_text())
+            self.assertEqual('reused-success',result['state']);self.assertEqual(0,result['executedMutations'])
+            self.assertEqual(1,result['counts']['mutations']);self.assertEqual(81,result['executionSource']['artifactId'])
+            self.assertEqual(selected,result['selectedPackage'])
+
+
 class ReleaseChildTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

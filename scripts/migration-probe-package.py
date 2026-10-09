@@ -78,7 +78,8 @@ def prepare_rehearsal_candidate(revision, directory, output):
         return
     with AUTHORITY.evidence_lookup_budget(deadline):
         retained = AUTHORITY.migration_rehearsal_evidence(repository, revision, expected, token, baseline=baseline)
-    if retained:
+    if retained and retained['receipt'].get('selectedPackage'):
+        AUTHORITY.pinned_package_evidence(repository, revision, retained['receipt']['selectedPackage'], token)
         print('LEGEND_REHEARSAL:REUSED:source=' + str(retained['runId']) + ':compatible_content_and_observed_baseline')
         return
     def module(name):
@@ -91,8 +92,21 @@ def prepare_rehearsal_candidate(revision, directory, output):
     component = directory / 'migration'
     component.mkdir()
     # Canonical package owner produces the exact bundle once, before app fanout.
-    if not package.restore_prepared_migration(revision, component, expected['identity']):
-        package.build_component(revision, 'migration', component)
+    recovered = package.restore_prepared_migration(revision, component, expected['identity'])
+    if not (component / 'migration.aggregate.json').exists():
+        aggregate = package.restore_aggregate_migration(revision, component)
+        if not aggregate and not recovered:
+            package.build_component(revision, 'migration', component)
+    binding = package.verify_prepared_migration(revision, component)
+    if binding:
+        AUTHORITY.pinned_package_evidence(repository, revision, binding, token)
+    if retained and retained['receipt']['bundleDigest'] == digest(component / package.MIGRATION_BUNDLE):
+        if binding is None:
+            print('LEGEND_REHEARSAL:REUSED:compatible_prepared_bundle')
+            return
+        # New aggregate attribution needs no repeat SQL when the already proven
+        # exact bytes and representative baseline remain compatible.
+        (directory / 'rehearsal.reuse.json').write_text(json.dumps(retained, sort_keys=True) + '\n')
     (directory / 'observation.json').write_text(json.dumps(baseline, sort_keys=True) + '\n')
     if output:
         with open(output, 'a') as stream:
@@ -124,11 +138,7 @@ def rehearse_candidate(revision, directory, output):
     component = directory / 'migration'
     receipt = json.loads((component / 'migration.component.json').read_text())
     bundle = component / package.MIGRATION_BUNDLE
-    expected_component = dict(schema=package.COMPONENT_SCHEMA, applicationReleaseSha=revision,
-        packageContractSha256=package.contract_hash(), packageIdentity=package.package_identity(revision),
-        component='migration', file=package.MIGRATION_BUNDLE, sha256=digest(bundle))
-    if receipt != expected_component:
-        raise ValueError('READINESS_PREPARED_COMPONENT_CORRUPT')
+    selected_package = package.verify_prepared_migration(revision, component)
     run_id = int(os.environ['GITHUB_RUN_ID'])
     prepared_name = os.environ['PREPARED_MIGRATION_ARTIFACT']
     inventory = AUTHORITY.api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
@@ -139,6 +149,17 @@ def rehearse_candidate(revision, directory, output):
     bundle_source = dict(runId=run_id, artifact=prepared_name, artifactId=prepared[0]['id'],
                          producingAttempt=int(prepared_name.rsplit('-a', 1)[1]))
     bundle.chmod(0o755)
+    reuse_path = directory / 'rehearsal.reuse.json'
+    if reuse_path.exists():
+        prior = json.loads(reuse_path.read_text())
+        proven = AUTHORITY.migration_rehearsal_evidence(repository, revision, expected, token, baseline=baseline)
+        if (not proven or proven['artifactId'] != prior['artifactId'] or
+                proven['runId'] != prior['runId'] or proven['receipt']['bundleDigest'] != digest(bundle)):
+            raise ValueError('READINESS_REHEARSAL_REUSE_UNPROVEN')
+        result = dict(proven['receipt'], state='reused-success', executedMutations=0,
+            executionSource=dict(runId=proven['runId'], artifactId=proven['artifactId'], artifact=proven['artifact']))
+        record_rehearsal_result(result, selected_package, baseline, bundle_source, expected, revision, directory, output)
+        return
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         proof = baseline['candidateProbe']
@@ -190,6 +211,13 @@ def rehearse_candidate(revision, directory, output):
         finally:
             if started:
                 docker('rm', '--force', name, timeout=30)
+    result.update(state='executed-success', executedMutations=result['counts']['mutations'])
+    record_rehearsal_result(result, selected_package, baseline, bundle_source, expected, revision, directory, output)
+
+
+def record_rehearsal_result(result, selected_package, baseline, bundle_source, expected, revision, directory, output):
+    if selected_package is not None:
+        result['selectedPackage'] = selected_package
     result.update(contractDigest=baseline['contractDigest'],
                   bundleSource=bundle_source, readinessIdentity=expected['identity'],
                   candidate=revision, producingRun=int(os.environ['GITHUB_RUN_ID']),

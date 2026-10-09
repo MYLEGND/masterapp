@@ -680,6 +680,12 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('python3 .legend-evidence-authority/scripts/validation-resume.py validated-package', workflow)
         self.assertIn('artifact-ids: ${{ steps.reusevalidated.outputs.artifact_id }}', workflow)
         self.assertIn('--source-evidence "$RUNNER_TEMP/validated-package-evidence.json"', workflow)
+        pending_sql=workflow.split('  migration-readiness:',1)[1].split('  preserve-rollback:',1)[0]
+        self.assertIn('--pinned-source-json "$PINNED_PACKAGE"', pending_sql)
+        self.assertIn('artifact-ids: ${{ steps.package.outputs.artifactId }}', pending_sql)
+        self.assertIn('--source-evidence "$RUNNER_TEMP/migration-package-evidence.json"', pending_sql)
+        self.assertIn('RELEASE_CANDIDATE_SHA: ${{ needs.discover-live.outputs.readiness_candidate }}', pending_sql)
+
         self.assertIn('rollback-evidence', workflow)
         self.assertIn('scripts/validation-resume.py live-state', workflow)
         self.assertIn('scripts/validation-resume.py verify-live', workflow)

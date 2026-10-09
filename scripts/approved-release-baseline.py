@@ -317,9 +317,19 @@ def main():
         website_routing_canary,
     )
     target_materials = {}
+    pinned_package = {}
     if github_release_context and release_mode == 'approved-only':
-        preserved_package = _validation_authority.compute_validated_package_evidence(
-            os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        readiness = _validation_authority.readiness_evidence(os.environ['GITHUB_REPOSITORY'],
+            validated_source_sha, head, selected_names, token, require_fresh=False)
+        if readiness and readiness['receipt'].get('pendingCount'):
+            pinned_package = readiness['receipt'].get('rehearsal', {}).get('selectedPackage') or {}
+        if pinned_package:
+            preserved_package = _validation_authority.pinned_package_evidence(
+                os.environ['GITHUB_REPOSITORY'], validated_source_sha, pinned_package, token)
+        else:
+            preserved_package = _validation_authority.compute_validated_package_evidence(
+                os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
         if preserved_package.get('reusable'):
             application_release_sha = validate_revision(preserved_package['revision'])
             package_identity = preserved_package['packageIdentity']
@@ -342,6 +352,8 @@ def main():
         with args.output.open('a') as out:
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
             out.write('target_materials=' + json.dumps(selected_materials,separators=(',', ':')) + '\n')
+            out.write('pinned_package=' + json.dumps(pinned_package,separators=(',', ':')) + '\n')
+            out.write('readiness_candidate=' + validated_source_sha + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + (database_baseline or rows[0]['revision']) + '\n')
             out.write('database_baseline=' + database_baseline + '\n')

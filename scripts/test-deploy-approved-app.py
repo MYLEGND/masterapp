@@ -1038,6 +1038,69 @@ class ComponentAssemblyIntegrationTests(unittest.TestCase):
                          self.package.package_target_material(legacy,'client'))
 
 
+class RehearsalAggregateBindingTests(unittest.TestCase):
+    def test_rehearsal_restores_exact_aggregate_bundle_without_restamping_or_build(self):
+        spec=importlib.util.spec_from_file_location('rehearsal_package',ROOT/'release-package.py')
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        candidate,producer='a'*40,'b'*40
+        body=b'original retained migration bundle A';digest=hashlib.sha256(body).hexdigest()
+        selected=dict(reusable=True,revision=producer,runId=71,artifact='founder-diagnostics-packages-'+'c'*64,packageIdentity='c'*64)
+        artifact=dict(id=81,name=selected['artifact'],digest='sha256:'+'d'*64,expired=False)
+        receipt=dict(schema=package.COMPONENT_SCHEMA,applicationReleaseSha=producer,packageContractSha256='e'*64,
+            packageIdentity='c'*64,component='migration',file=package.MIGRATION_BUNDLE,sha256=digest)
+        def download(repo,run,name,root,*,artifact_id):
+            self.assertEqual(81,artifact_id)
+            (root/package.MIGRATION_BUNDLE).write_bytes(body)
+            (root/'migration.component.json').write_text(json.dumps(receipt))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder'), \
+             patch.object(package,'validate_revision',side_effect=lambda value:value), \
+             patch.object(package,'contract_hash',return_value='e'*64), \
+             patch.object(package,'package_identity',return_value='c'*64), \
+             patch.object(package._RELEASE_AUTHORITY,'compute_validated_package_evidence',return_value=selected), \
+             patch.object(package._RELEASE_AUTHORITY,'package_inputs_compatible',return_value=True), \
+             patch.object(package._RELEASE_AUTHORITY,'api_get',return_value=dict(artifacts=[artifact],total_count=1)), \
+             patch.object(package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download) as transfers, \
+             patch.object(package,'verify_all',return_value=dict(files={package.MIGRATION_BUNDLE:digest})) as verify, \
+             patch.object(package,'verify_descriptor_binding') as descriptor, \
+             patch.object(package,'build_migration_bundle') as build:
+            output=Path(temporary)
+            binding=package.restore_aggregate_migration(candidate,output)
+            self.assertEqual(body,(output/package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual(receipt,json.loads((output/'migration.component.json').read_text()))
+            self.assertEqual(binding,package.verify_prepared_migration(candidate,output))
+            self.assertEqual(producer,binding['producerRevision']);self.assertEqual(1,transfers.call_count)
+            verify.assert_called_once();descriptor.assert_called_once();build.assert_not_called()
+            (output/package.MIGRATION_BUNDLE).write_bytes(b'different bundle B')
+            with self.assertRaises(ValueError):package.verify_prepared_migration(candidate,output)
+            build.assert_not_called()
+
+
+    def test_prepared_aggregate_child_survives_worker_loss_without_transfer_rebuild(self):
+        spec=importlib.util.spec_from_file_location('prepared_package',ROOT/'release-package.py')
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        binding=dict(producerRevision='b'*40,artifactId=81)
+        def download(repo,run,name,root,*,artifact_id):
+            (root/'migration').mkdir()
+            (root/'migration'/package.MIGRATION_BUNDLE).write_bytes(b'preserved A')
+            (root/'migration/migration.component.json').write_text(json.dumps({'applicationReleaseSha':'b'*40}))
+            (root/'migration/migration.aggregate.json').write_text(json.dumps(binding))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder'), \
+             patch.object(package._RELEASE_AUTHORITY,'api_get',return_value=dict(workflow_runs=[])), \
+             patch.object(package._RELEASE_AUTHORITY,'readiness_artifact_candidates',return_value=[(dict(id=71),dict(id=91,name='legend-rehearsal-bundle-x-a1'))]), \
+             patch.object(package._RELEASE_AUTHORITY,'readiness_child_succeeded',return_value=True), \
+             patch.object(package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download) as transfer, \
+             patch.object(package,'verify_prepared_migration',return_value=binding) as verify, \
+             patch.object(package,'build_migration_bundle') as build:
+            output=Path(temporary)
+            proof=package.restore_prepared_migration('a'*40,output,'x')
+            self.assertEqual('reused-success',proof['state'])
+            self.assertEqual(binding,json.loads((output/'migration.aggregate.json').read_text()))
+            self.assertEqual(b'preserved A',(output/package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual(1,transfer.call_count);verify.assert_called_once();build.assert_not_called()
+
+
 class PackageContractTests(unittest.TestCase):
     def test_candidate_component_build_requires_no_evidence_credential(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')

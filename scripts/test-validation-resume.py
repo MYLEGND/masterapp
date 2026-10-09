@@ -104,6 +104,44 @@ class PackageDescriptorIntegrationTests(unittest.TestCase):
             self.assertEqual(old,m.attach_package_descriptor('owner/repo',old,self.run,'placeholder'))
 
 
+class RehearsedPackagePlanTests(unittest.TestCase):
+    def test_reused_bundle_must_match_exact_rehearsal_before_any_build(self):
+        candidate,producer='a'*40,'b'*40
+        source=dict(schemaVersion=1,candidateRevision=candidate,producerRevision=producer,packageIdentity='c'*64,
+            runId=71,artifact='founder-diagnostics-packages-'+'c'*64,artifactId=81,
+            artifactDigest='sha256:'+'d'*64,bundleDigest='e'*64)
+        plan=dict(needed=False,reason='dependency_equivalent_immutable_package_producer')
+        readiness=dict(receipt=dict(pendingCount=1,rehearsal=dict(bundleDigest='f'*64,selectedPackage=source)))
+        with patch.object(m,'compute_validated_package_evidence') as lookup:
+            with self.assertRaisesRegex(ValueError,'digest mismatch'):
+                m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+            lookup.assert_not_called()
+        readiness['receipt']['rehearsal']['bundleDigest']='e'*64
+        preserved=dict(reusable=True,revision=producer,runId=71,artifact=source['artifact'],packageIdentity='c'*64)
+        artifact=dict(id=81,name=source['artifact'],digest=source['artifactDigest'],expired=False,workflow_run=dict(id=71))
+        def exact_api(repo,path,token):
+            if path == 'actions/runs/71':return dict(id=71,head_sha=producer)
+            if path == 'actions/artifacts/81':return artifact
+            raise AssertionError('Unexpected unpinned lookup: '+path)
+        with patch.object(m,'package_inputs_compatible',return_value=True), \
+             patch.object(m,'compute_validated_package_evidence',side_effect=AssertionError('A newer aggregate B must not replace rehearsed A')), \
+             patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m,'_successful_package_child',return_value=True), \
+             patch.object(m,'api_get',side_effect=exact_api):
+            result=m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+            self.assertFalse(result['needed']);self.assertEqual(producer,result['evidenceHeadSha'])
+            self.assertEqual(71,result['exactPackageRunId'])
+            artifact['digest']='sha256:'+'0'*64
+            with self.assertRaisesRegex(m.EvidenceLookupUnavailable,'unavailable or changed'):
+                m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+        readiness['receipt']['rehearsal'].pop('selectedPackage')
+        with self.assertRaisesRegex(ValueError,'no exact rehearsed'):
+            m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+        fresh=dict(needed=True)
+        self.assertIs(fresh,m.bind_rehearsed_package_plan('owner/repo',candidate,fresh,readiness,'placeholder'))
+        self.assertIs(plan,m.bind_rehearsed_package_plan('owner/repo',candidate,plan,dict(receipt=dict(pendingCount=0)),'placeholder'))
+
+
 class ComponentPlanIntegrationTests(unittest.TestCase):
     def test_missing_matrix_preserves_successful_children(self):
         def select(repo,revision,key,token,**kwargs):
