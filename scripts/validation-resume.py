@@ -7433,11 +7433,17 @@ def release_transaction_plan_history(repository, plan_id, revision, target_diges
             count = jobs.get('total_count')
             if (not isinstance(rows, list) or type(count) is not int or count != len(rows)):
                 raise ReleaseOperationHistoryUnproven('Original transaction execution history is incomplete')
+            if (not rows and count == 0 and
+                    (prior.get('status') == 'completed' or previous_attempt < attempts)):
+                # Complete Actions enumeration proves this attempt started no jobs.
+                # Preserve the same proof used by release_operation_history.
+                continue
             if release_attempt_never_entered(rows, source):
                 continue
             owners = [row for row in rows if row.get('name') == 'release']
             if len(owners) != 1:
-                raise ReleaseOperationHistoryUnproven('Original transaction publication owner is missing')
+                raise ReleaseOperationHistoryUnproven(
+                    f"Original transaction publication owner is missing: run={prior['id']} attempt={previous_attempt}")
             owner = owners[0]
             if owner.get('conclusion') == 'skipped' or owner.get('status') == 'queued':
                 continue
