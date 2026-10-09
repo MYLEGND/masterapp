@@ -1573,6 +1573,72 @@ class ChildHistorySafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
             self.check()
 
+    def test_original_cli_noop_requires_exact_source_checkout_and_both_bounded_outputs(self):
+        import subprocess
+        source = subprocess.check_output(['git', 'cat-file', 'blob',
+            '517c091a12aff011e7b1950b791ac9ebd6b76798'], text=True)
+        run = dict(self.run, status='completed', conclusion='failure', run_attempt=2)
+        job = dict(id=123, name='release', status='completed', conclusion='failure', run_attempt=2)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-09-30T06:19:00Z', completed_at='2026-09-30T06:19:28Z')
+        log = ('2026-09-30T06:14:19.0000000Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-09-30T06:14:19.1000000Z ' + run['head_sha'] + '\n'
+               '2026-09-30T06:19:23.4355156Z No migrations were applied. The database is already up to date.\n'
+               '2026-09-30T06:19:27.2460295Z Schema ready. Applied candidate migrations only; no down migrations.\n'
+               '2026-09-30T06:30:00.0000000Z Post job cleanup.\n')
+        def prove(text=log, original=source):
+            with patch.object(self.authority, '_release_job_log', return_value=text):
+                return self.authority._legacy_migration_noop('owner/repo', run, job, step, original, 'fixture')
+        self.assertTrue(prove())
+        self.assertTrue(self.authority.legacy_migration_step_recognized(source, step))
+        self.assertFalse(prove(original=source + '\n# unknown generation\n'))
+        for removed in ('No migrations were applied.', 'Schema ready.', 'Post job cleanup.'):
+            self.assertFalse(prove(text=log.replace(removed, 'Unproven.')))
+        self.assertFalse(prove(text=log.replace(run['head_sha'], 'f' * 40)))
+        self.assertFalse(prove(text=log.replace('06:19:23.', '06:18:23.')))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z Applying migration \'20260930000000_Example\'.\n'))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z Reverting migration \'20260930000000_Example\'.\n'))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z No migrations were applied. The database is already up to date.\n'))
+        step['conclusion'] = 'failure'
+        self.assertFalse(prove())
+        self.assertFalse(self.authority.legacy_migration_step_recognized(source, step))
+        step['conclusion'] = 'success'
+        run['head_repository'] = {'full_name': 'untrusted/fork'}
+        self.assertFalse(prove())
+
+    def test_original_skipped_legacy_bundle_is_recognized_without_execution_grant(self):
+        import subprocess
+        head = '5bc6d5392be6471318dc7f8ff59ed6fdac15e761'
+        source = subprocess.check_output(['git', 'show', head +
+            ':.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        self.run.update(id=36979837740, head_sha=head, conclusion='failure')
+        self.run.pop('display_title')
+        self.step.update(name='Apply additive diagnostics migrations before restarting apps',
+                         status='completed', conclusion='skipped')
+        with patch.object(self.authority, '_release_history_source', return_value=source):
+            self.assertTrue(self.check())
+            original_api = self.api
+            def duplicate_step(repo, path, token):
+                result = original_api(repo, path, token)
+                if '/jobs?' in path:
+                    result['jobs'][0]['steps'].append(dict(self.step, conclusion='success'))
+                return result
+            with patch.object(self, 'api', side_effect=duplicate_step):
+                with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                    self.check()
+            for outcome in ('success', 'failure', 'cancelled', None):
+                self.step['conclusion'] = outcome
+                with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                    self.check()
+            self.step.update(conclusion='skipped', status='in_progress')
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
+        self.step['status'] = 'completed'
+        with patch.object(self.authority, '_release_history_source', return_value=source + '\n# unknown generation\n'):
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
+
     def test_named_child_never_started_is_positive_proof_even_on_legacy_run(self):
         self.run.pop('display_title')
         self.step.update(conclusion='skipped')

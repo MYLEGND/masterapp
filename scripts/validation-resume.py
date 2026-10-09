@@ -248,10 +248,68 @@ def _audited_legacy_migration_noop_source(source):
     return _audited_legacy_migration_noop_marker(source) is not None
 
 
+# Retired EF CLI workflows, observed across the complete original history.
+# Every successful step below reported BOTH EF's no-migrations-applied output
+# and the original post-update schema-ready marker, within its own timestamps.
+# These source identities never establish nonentry or success on their own.
+AUDITED_LEGACY_CLI_NOOP_SOURCES = frozenset({
+    '517c091a12aff011e7b1950b791ac9ebd6b76798',
+    '6623819e2ad64017a3c9f5b86f79ded7a98ffa05',
+    'db90757c5f68df5e0117abb7488a38e41b134ac2',
+    '8dfce1bde2e261653640203d4c4a8bf24b99a95d',
+    '0a6c6363cbc4c8d8507cd08ed4f78eee1d161de0',
+    '1a2c68f5964ac0b7d304127937b5c06344a0469f',
+    'b7da53d2750d8a5e939683b14439a39bb0c705c6',
+    '2c8cea120b80d38e3b02b1c650d960ab520b8b96',
+    '2ac40602ed4330a6df1cce78002e4b21ba571064',
+})
+
+
 def _legacy_migration_noop(repository, run, job, step, source, token):
     """Prove the exact retired migration step exited before any schema operation."""
     import datetime
     legacy = 'Apply additive diagnostics migrations before restarting apps'
+    raw_source = source.encode('utf-8')
+    source_blob = hashlib.sha1(b'blob ' + str(len(raw_source)).encode()
+                              + b'\0' + raw_source).hexdigest()
+    if source_blob in AUDITED_LEGACY_CLI_NOOP_SOURCES:
+        # The CLI was invoked, so a skipped step or successful parent is not
+        # sufficient. Prove the original EF command applied zero migrations.
+        if (run.get('status') != 'completed'
+            or job.get('status') != 'completed'
+            or job.get('conclusion') not in {'success', 'failure'}
+            or type(job.get('id')) is not int or job['id'] < 1
+            or step.get('name') != legacy or step.get('status') != 'completed'
+            or step.get('conclusion') != 'success'):
+            return False
+        try:
+            _trusted_child_producer(repository, run)
+            start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+            end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+            if start.tzinfo is None or end.tzinfo is None or end < start:
+                return False
+            raw = _release_job_log(repository, job['id'], token)
+            clean = '\n'.join(re.sub(r'^\d{4}-\d\d-\d\dT[0-9:.]+Z ', '', line)
+                              for line in raw.splitlines())
+            heads = set(re.findall(
+                r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+            if heads != {run['head_sha']} or 'Post job cleanup.' not in clean:
+                return False
+            outputs = []
+            for line in raw.splitlines():
+                stamp, sep, message = line.partition('Z ')
+                if not sep or not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:[0-9.]+', stamp):
+                    continue
+                observed = datetime.datetime.fromisoformat(stamp + '+00:00')
+                if start <= observed <= end + datetime.timedelta(seconds=2):
+                    outputs.append(message)
+            return (outputs.count('No migrations were applied. The database is already up to date.') == 1
+                    and outputs.count('Schema ready. Applied candidate migrations only; no down migrations.') == 1
+                    and not any('Applying migration' in value or 'Reverting migration' in value
+                                for value in outputs))
+        except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+                OSError, UnicodeError, subprocess.SubprocessError):
+            return False
     if step.get('conclusion') == 'failure':
         # Existing first-SQL-write proof, not another authority. This exact
         # retired workflow checks a signed baseline BEFORE calling PYMIGRATE.
@@ -1279,6 +1337,38 @@ def _attested_retired_unscheduled_release(repository, run, job, jobs, attempt, t
         return False
 
 
+def legacy_migration_step_recognized(source, step):
+    """Bind a historical step to original source before interpreting its outcome.
+
+    Shared by admission and its read-only audit. Recognition is not execution
+    proof: entered steps still require their existing journal/no-write checks.
+    """
+    legacy = 'Apply additive diagnostics migrations before restarting apps'
+    if step.get('name') != legacy:
+        return False
+    block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
+    raw = source.encode('utf-8')
+    blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+    # Original approved 5bc6d539 workflow: bundle preparation failed and GitHub
+    # positively reports the SQL step as completed/skipped. This fingerprint
+    # grants recognition ONLY for nonentry, never for an executed bundle.
+    if (blob in {'f334180a66c08f94e38861ec0877c9580be505bb',
+                 'e2d20bcfc6943d4af117553ab565907b2a6e69ac',
+                 'e429a7bde047a9bd88c1a80079c9a2555f19cee8'}
+            and step.get('status') == 'completed'
+            and step.get('conclusion') == 'skipped'):
+        return True
+    if (blob in AUDITED_LEGACY_CLI_NOOP_SOURCES
+            and step.get('status') == 'completed'
+            and step.get('conclusion') in {'skipped', 'success'}):
+        return True
+    return (hashlib.sha256(block.encode()).hexdigest()
+            == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
+            or _audited_legacy_migration_noop_source(source)
+            or (blob in (_RETIRED_PRE_BUNDLE.keys() | _RETIRED_ENTERED_BUNDLE.keys())
+                and "python3 - <<'PYMIGRATE'" in block))
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
@@ -1366,19 +1456,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     source = _release_history_source(repository, run['head_sha'],
                         '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
                     legacy = 'Apply additive diagnostics migrations before restarting apps'
-                    block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
                     # Recognize the exact historical step, but never authorize
                     # a write from its conclusion alone; _legacy_migration_noop
                     # validates the current run's checkout and no-write marker.
-                    if (hashlib.sha256(block.encode()).hexdigest()
-                            == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-                            or _audited_legacy_migration_noop_source(source)
-                            or (hashlib.sha1(
-                                    b'blob ' + str(len(source.encode('utf-8'))).encode()
-                                    + b'\0' + source.encode('utf-8')).hexdigest()
-                                in (_RETIRED_PRE_BUNDLE.keys() | _RETIRED_ENTERED_BUNDLE.keys())
-                                and "python3 - <<'PYMIGRATE'" in block)):
-                        steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
+                    steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
+                    if len(steps) != 1 or not legacy_migration_step_recognized(source, steps[0]):
+                        steps = []
                 if len(steps) != 1:
                     raise rejection("Release child execution detail unavailable", run_id, attempt)
                 if steps[0].get("status") == "queued" or steps[0].get("conclusion") == "skipped":
