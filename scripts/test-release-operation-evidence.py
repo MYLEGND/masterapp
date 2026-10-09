@@ -12,6 +12,48 @@ journal = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(journal)
 
 
+class ReadinessRecoveryIntentTests(unittest.TestCase):
+    def setUp(self):
+        self.identity = dict(candidateRevision='a' * 40, executionAuthority='b' * 40,
+                             targetRun=12, targetAttempt=1, targetJob=34)
+        self.env = dict(GITHUB_RUN_ID='56', GITHUB_RUN_ATTEMPT='1')
+        self.records, self.posts = {}, []
+        self.remote = dict(id=12, run_attempt=1, status='completed')
+
+    def invoke(self, publisher=None, execute=None):
+        def publish(name, record):
+            self.records[record['operationId']] = record
+            return {'artifactId': 78}
+        return journal.readiness_refresh_once(self.identity, lookup=self.records.get,
+            observe=lambda: self.remote, execute=execute or (lambda: self.posts.append(34)),
+            publisher=publisher or publish, environment=self.env)
+
+    def test_duplicate_events_and_authority_update_preserve_one_request(self):
+        self.assertEqual('READINESS_REFRESH_REQUESTED', self.invoke()['state'])
+        self.env['GITHUB_RUN_ID'] = '57'
+        self.identity['executionAuthority'] = 'c' * 40
+        self.assertEqual('READINESS_BLOCKED', self.invoke()['state'])
+        self.assertEqual([34], self.posts)
+        self.assertEqual(1, len(self.records))
+
+    def test_lost_rerun_acknowledgment_reconciles_exact_new_attempt(self):
+        def execute():
+            self.posts.append(34)
+            self.remote = dict(id=12, run_attempt=2, status='in_progress')
+            raise TimeoutError('lost acknowledgment')
+        self.assertEqual('READINESS_REFRESH_OBSERVED', self.invoke(execute=execute)['state'])
+        self.assertEqual('READINESS_REFRESH_OBSERVED', self.invoke()['state'])
+        self.assertEqual([34], self.posts)
+
+    def test_worker_dies_after_intent_before_request_never_guesses(self):
+        def crash(name, record):
+            self.records[record['operationId']] = record
+            raise TimeoutError('intent readback lost')
+        with self.assertRaises(TimeoutError): self.invoke(publisher=crash)
+        self.assertEqual('READINESS_BLOCKED', self.invoke()['state'])
+        self.assertEqual([], self.posts)
+
+
 class DurableOperationProtocolTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -84,6 +126,64 @@ class DurableOperationProtocolTests(unittest.TestCase):
         self.env['GITHUB_RUN_ID'] = '11'
         preserved = self.make(publisher=forbidden).record_success(['successful-operation'])
         self.assertEqual(preserved['producingRun'], 10)
+
+    def test_source_only_or_failed_provider_cannot_create_artifact_receipt(self):
+        operation = self.make()
+        with self.assertRaisesRegex(RuntimeError, 'Exact deployment intent'):
+            operation.record_success(['old-artifact-at-same-source'])
+        self.assertEqual([], list(self.path.iterdir()))
+        operation.before_submit(['old-artifact-at-same-source'])
+        for ids in ([], ['old-artifact-at-same-source'], ['first', 'second']):
+            with self.subTest(ids=ids), self.assertRaisesRegex(RuntimeError, 'Unique successful'):
+                operation.record_success(ids)
+        self.assertEqual(1, len(list(self.path.iterdir())))  # Intent only.
+
+    def test_legacy_success_keeps_valid_post_intent_proof_without_rewriting(self):
+        operation = self.make()
+        operation.before_submit(['baseline'])
+        operation.record_success(['deployed'])
+        path = self.path / ('success' + operation.operation_id)
+        receipt = json.loads(path.read_text())
+        receipt['deploymentIds'] = ['baseline', 'deployed']
+        path.write_text(json.dumps(receipt))
+        original = path.read_bytes()
+        self.assertEqual(receipt, self.make().record_success(['deployed']))
+        self.assertEqual(original, path.read_bytes())
+        with self.assertRaisesRegex(RuntimeError, 'matching provider'):
+            self.make().record_success(['unrelated'])
+
+    def test_new_candidate_reconciles_same_bytes_without_rewriting_original_authority(self):
+        source=dict(runId=71,runAttempt=2,artifactId=81,artifactDigest='sha256:'+'d'*64,
+                    artifactName='validated-component-bytes-test',receiptArtifactId=82,producingJobId=91)
+        first=self.make(candidate_revision='d'*40,component_source=source)
+        self.assertTrue(first.before_submit(['baseline']))
+        writes=1
+        self.env['GITHUB_RUN_ID']='11'
+        later_source=dict(source,runId=72,artifactId=83)
+        resumed=self.make(candidate_revision='e'*40,component_source=later_source)
+        self.assertEqual(first.operation_id,resumed.operation_id)
+        if resumed.before_submit([]): writes+=1
+        resumed.record_success(['committed'])
+        receipt=json.loads((self.path/('success'+resumed.operation_id)).read_text())
+        self.assertEqual(1,writes)
+        self.assertEqual(2,receipt['schemaVersion'])
+        self.assertEqual('d'*40,receipt['candidateRevision'])
+        self.assertEqual(source,receipt['componentSource'])
+        self.assertEqual(71,receipt['packageProducerRun'])
+        self.assertEqual(11,receipt['producingRun'])
+
+    def test_legacy_reconciliation_preserves_original_package_producer(self):
+        first=self.make(); first.before_submit([])
+        self.env['PACKAGE_PRODUCER_RUN']='99'
+        self.make().record_success(['committed'])
+        receipt=json.loads((self.path/('success'+first.operation_id)).read_text())
+        self.assertEqual(1,receipt['schemaVersion'])
+        self.assertEqual(8,receipt['packageProducerRun'])
+
+    def test_incomplete_component_source_cannot_create_intent(self):
+        with self.assertRaisesRegex(ValueError,'Complete immutable component source'):
+            self.make(candidate_revision='d'*40,component_source={'runId':71})
+        self.assertEqual([],list(self.path.iterdir()))
 
     def test_sdk_error_payload_not_exposed(self):
         result = type('Result', (), dict(returncode=1, stdout='secret signed URL', stderr='secret token'))()
@@ -197,7 +297,7 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.old_evidence = subprocess.run(['git', 'show', 'HEAD:scripts/release-operation-evidence.py'],
                                            text=True, capture_output=True, check=True).stdout
 
-    def legacy_history(self):
+    def legacy_history(self, reader=None):
         original = self.api
         def api(repo, path, token):
             if path == 'actions/runs/9/artifacts?per_page=100':
@@ -212,7 +312,38 @@ class CanonicalHistoryTests(unittest.TestCase):
         with patch.object(self.authority, 'api_get', side_effect=api), \
                 patch.object(self.authority, '_release_history_json', return_value=self.state), \
                 patch.object(self.authority, '_release_history_source', side_effect=source):
+            if reader is not None:
+                return reader()
             return self.authority.release_operation_history('owner/repo', 'b' * 64, 'a' * 40, 'portal', 10, 1, 'placeholder')
+
+    def test_mixed_producer_history_blocks_replay_of_reused_bytes(self):
+        self.legacy_fixture('f'*40)
+        self.old_workflow=Path('.github/workflows/'+self.authority.DIRECT_RELEASE_WORKFLOW).read_text()
+        self.old_deployer=Path('scripts/deploy-approved-app.py').read_text()
+        self.job['steps']=[
+            dict(name='Verify restored immutable validation package',status='completed',conclusion='success'),
+            dict(name='Submit canonical selected targets in parallel',status='completed',conclusion='failure'),
+            dict(name='Confirm first-pass durable publication receipt (portal)',status='completed',conclusion='failure')]
+        source=dict(runId=71,runAttempt=2,artifactId=81,artifactDigest='sha256:'+'d'*64,
+            artifactName=self.authority.component_attempt_name('portal','1'*64,71,2),
+            receiptArtifactId=82,producingJobId=91)
+        material=dict(producerRevision='a'*40,packageDigest='b'*64,contentIdentity='1'*64,executionIdentity='2'*64,source=source)
+        self.state.update(schemaVersion=3,steps=self.job['steps'],selectedTargets=['masterapp-portal'],
+                          targetMaterials={'portal':material})
+        with self.assertRaisesRegex(RuntimeError,'may have written'):
+            self.legacy_history()
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        material['producerRevision']='c'*40
+        self.assertIsNone(self.legacy_history())
+        self.authority._RELEASE_HISTORY_VERIFIED_PACKAGES.clear()
+        source['artifactName']=self.authority.component_attempt_name('website','1'*64,71,2)
+        self.state.update(selectedTargets=[self.authority.RELEASE_TARGETS['website']['releaseName']],targetMaterials={'website':material})
+        def read(aggregate):
+            return self.authority._release_attempt_package_revision('owner/repo',self.run,1,self.job,'placeholder','portal',aggregate=aggregate)
+        self.assertEqual('f'*40,self.legacy_history(reader=lambda:read(True)))
+        with self.assertRaisesRegex(RuntimeError,'scope is incomplete'):
+            self.legacy_history(reader=lambda:read(False))
+
 
     def test_authenticated_legacy_different_verified_package_does_not_block_new_operation(self):
         self.legacy_fixture()
@@ -321,6 +452,16 @@ class CanonicalHistoryTests(unittest.TestCase):
         )
         with patch.object(self.authority, '_release_job_log', return_value=log):
             self.assertIsNone(self.legacy_history())
+            original = self.old_deployer
+            self.old_deployer = original.replace('def reconcile(', 'def unrecognized_reconcile(', 1)
+            self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+            with self.assertRaisesRegex(RuntimeError, 'may have written'):
+                self.legacy_history()
+            self.old_deployer = original
+            self.old_evidence = self.old_evidence.replace('def before_submit(', 'def changed_before_submit(', 1)
+            self.authority._RELEASE_HISTORY_EXCLUSIONS.clear()
+            with self.assertRaisesRegex(RuntimeError, 'may have written'):
+                self.legacy_history()
 
     def test_preupload_failure_proof_rejects_any_submit_marker(self):
         self.legacy_fixture('a' * 40)

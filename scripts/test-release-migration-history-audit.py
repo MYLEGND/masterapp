@@ -14,10 +14,10 @@ spec.loader.exec_module(audit)
 
 
 class AuditTests(unittest.TestCase):
-    def legacy(self, *, proven=False, marker=True):
+    def legacy(self, *, proven=False, marker=True, recognized=True, outcome='success'):
         run = dict(id=37039060321, head_sha='a'*40, conclusion='failure')
         step = dict(name=audit.LEGACY_STEP, status='completed',
-                    conclusion='success')
+                    conclusion=outcome)
         job = dict(name='release', id=123, status='completed',
                    conclusion='failure', steps=[step])
         def get(repo, path, token):
@@ -29,6 +29,7 @@ class AuditTests(unittest.TestCase):
             api_get=get,
             release_attempt_never_entered=lambda jobs: False,
             _release_history_source=lambda *args: 'immutable source',
+            legacy_migration_step_recognized=lambda *args: recognized,
             _legacy_migration_noop=lambda *args: proven,
             _release_job_log=lambda *args: (
                 '2026-10-02T17:16:09.9144337Z ' +
@@ -44,6 +45,13 @@ class AuditTests(unittest.TestCase):
 
     def test_authenticated_original_noop_is_proven(self):
         self.assertEqual(self.legacy(proven=True)['code'], 'LEGACY_NOOP_PROVEN')
+
+    def test_skipped_legacy_step_requires_same_source_recognition_as_admission(self):
+        self.assertEqual(self.legacy(outcome='skipped')['code'],
+                         'NO_MIGRATION_STEP_ENTERED')
+        row = self.legacy(outcome='skipped', recognized=False)
+        self.assertEqual(row['code'], 'MIGRATION_STEP_MISSING')
+        self.assertIn(row['code'], audit.BLOCKED_CODES)
 
     def test_original_marker_without_authentication_is_blocked(self):
         result = self.legacy(proven=False)

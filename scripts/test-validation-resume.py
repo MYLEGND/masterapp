@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import importlib.util
+import hashlib
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -11,6 +14,760 @@ spec = importlib.util.spec_from_file_location("validation_resume", ROOT / "scrip
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
+
+
+class PackageDescriptorIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.identity='a'*64;self.revision='b'*40
+        self.name='founder-diagnostics-packages-'+self.identity+'-71-a2'
+        self.result=dict(artifact=self.name,packageIdentity=self.identity,runId=71,revision=self.revision,reusable=True)
+        self.run=dict(id=71,run_attempt=2)
+        self.payload=dict(id=101,name=self.name,digest='sha256:'+'c'*64,expired=False)
+        self.descriptor=dict(id=102,name='validated-package-source-'+self.identity+'-71-a2',expired=False)
+        steps=['Build immutable validated release package','Verify immutable validated release package','Record immutable package source']
+        self.job=dict(id=501,name='validated-release-package',status='completed',conclusion='success',
+            steps=[dict(name=name,conclusion='success') for name in steps])
+        self.material={}
+        for key in m.RELEASE_TARGETS:
+            self.material[key]=dict(producerRevision='d'*40,packageDigest='e'*64,contentIdentity='f'*64,executionIdentity='1'*64,
+                source=dict(runId=61,runAttempt=1,artifactId=91,artifactDigest='sha256:'+'2'*64,
+                    artifactName=m.component_attempt_name(key,'f'*64,61,1),receiptArtifactId=92,producingJobId=401))
+        self.source=dict(schemaVersion=1,packageSchema='legend-validated-release-package.v2',revision=self.revision,
+            packageIdentity=self.identity,runId=71,runAttempt=2,manifestSha256='3'*64,targets=self.material,
+            artifact={key:self.payload[key] for key in ('id','name','digest')})
+    def invoke(self):
+        def api(repo,path,token):
+            if '/artifacts?' in path:return dict(artifacts=[self.payload,self.descriptor],total_count=2)
+            return dict(jobs=[self.job],total_count=1)
+        with patch.object(m,'trusted_component_run',return_value=True),patch.object(m,'api_get',side_effect=api), \
+             patch.object(m,'_release_job_log',return_value='authenticated upload log'), \
+             patch.object(m,'component_upload_proven') as proof, \
+             patch.object(m,'_release_history_json',return_value=self.source):
+            result=m.attach_package_descriptor('owner/repo',self.result,self.run,'placeholder')
+            self.assertEqual(2,proof.call_count)
+            return result
+    def test_descriptor_supplies_actual_producers_without_downloading_packages(self):
+        result=self.invoke()
+        self.assertEqual(self.material,result['targetMaterials'])
+        self.assertEqual(101,result['artifactId']);self.assertEqual(102,result['descriptorArtifactId'])
+    def test_substituted_artifact_cannot_be_admitted(self):
+        self.source['artifact']['id']=999
+        with self.assertRaisesRegex(ValueError,'descriptor producer/material mismatch'):self.invoke()
+    def test_failed_producer_is_not_a_valid_descriptor(self):
+        self.job['conclusion']='failure'
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.invoke()
+    def test_expired_component_restores_identical_aggregate_without_rebuild(self):
+        material=self.material['portal'];producer=material['producerRevision'];release=m.RELEASE_TARGETS['portal']['releaseName']
+        receipt=dict(schemaVersion=3,applicationReleaseSha=self.revision,packageIdentity=self.identity,
+            target=release,transaction='committed-or-preserved',liveProven=True,authority='post-live-verification',targetMaterial=material)
+        run=dict(id=99,path='.github/workflows/'+m.DIRECT_RELEASE_WORKFLOW,head_branch=m.TRUSTED_PR_BASE,
+            status='completed',conclusion='success',head_repository=dict(full_name='owner/repo'))
+        aggregate=dict(self.result,artifactId=101,targetMaterials=self.material)
+        with patch.dict(m.os.environ,GITHUB_TOKEN='placeholder'), \
+             patch.object(m,'_artifact_rows',return_value=[dict(id=901,workflow_run=dict(id=99))]), \
+             patch.object(m,'api_get',return_value=run),patch.object(m,'_release_history_json',return_value=receipt), \
+             patch.object(m,'compatible_component_evidence',return_value=dict(state='required')), \
+             patch.object(m,'compute_validated_package_evidence',return_value=aggregate) as lookup:
+            result=m.compute_rollback_evidence('owner/repo',producer,'portal')
+            self.assertEqual(101,result['artifactId']);self.assertEqual(material['packageDigest'],result['packageDigest'])
+            self.assertEqual('identical_target_bytes_restored_from_authenticated_aggregate',result['reason'])
+            lookup.assert_called_once_with('owner/repo',self.revision,self.identity,allow_equivalent=False)
+            aggregate['targetMaterials']=dict(self.material,portal=dict(material,packageDigest='0'*64))
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.compute_rollback_evidence('owner/repo',producer,'portal')
+
+    def test_failed_later_aggregate_preserves_successful_prior_attempt(self):
+        prior=self.name.replace('-a2','-a1')
+        run=dict(self.run,head_sha=self.revision)
+        def attach(repo,result,actual_run,token):
+            if result['artifact']==self.name:
+                raise m.IncompletePackageAttempt('terminal failed descriptor writer')
+            return dict(result,artifactId=77)
+        with patch.object(m,'api_get',return_value=dict(workflow_runs=[run])), \
+             patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m,'git_changed',return_value=[]), \
+             patch.object(m,'_run_artifact_names',return_value=[prior,self.name]), \
+             patch.object(m,'_successful_package_child',side_effect=AssertionError('Latest attempt is not child evidence')), \
+             patch.object(m,'attach_package_descriptor',side_effect=attach) as verify:
+            result=m.compatible_package_producer('owner/repo',self.revision,'placeholder')
+            self.assertEqual(prior,result['artifact']);self.assertEqual(77,result['artifactId'])
+            self.assertEqual(2,verify.call_count)
+            for error in (m.EvidenceLookupUnavailable('provider outage'),ValueError('tampered descriptor')):
+                verify.side_effect=error;verify.reset_mock()
+                with self.assertRaises(type(error)):
+                    m.compatible_package_producer('owner/repo',self.revision,'placeholder')
+                self.assertEqual(1,verify.call_count)
+
+    def test_legacy_name_retains_original_strict_contract(self):
+        old=dict(self.result,artifact='founder-diagnostics-packages-'+self.identity)
+        with patch.object(m,'api_get',side_effect=AssertionError('Legacy evidence reinterpreted')):
+            self.assertEqual(old,m.attach_package_descriptor('owner/repo',old,self.run,'placeholder'))
+
+
+class RehearsedPackagePlanTests(unittest.TestCase):
+    def test_reused_bundle_must_match_exact_rehearsal_before_any_build(self):
+        candidate,producer='a'*40,'b'*40
+        source=dict(schemaVersion=1,candidateRevision=candidate,producerRevision=producer,packageIdentity='c'*64,
+            runId=71,artifact='founder-diagnostics-packages-'+'c'*64,artifactId=81,
+            artifactDigest='sha256:'+'d'*64,bundleDigest='e'*64)
+        plan=dict(needed=False,reason='dependency_equivalent_immutable_package_producer')
+        readiness=dict(receipt=dict(pendingCount=1,rehearsal=dict(bundleDigest='f'*64,selectedPackage=source)))
+        with patch.object(m,'compute_validated_package_evidence') as lookup:
+            with self.assertRaisesRegex(ValueError,'digest mismatch'):
+                m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+            lookup.assert_not_called()
+        readiness['receipt']['rehearsal']['bundleDigest']='e'*64
+        preserved=dict(reusable=True,revision=producer,runId=71,artifact=source['artifact'],packageIdentity='c'*64)
+        artifact=dict(id=81,name=source['artifact'],digest=source['artifactDigest'],expired=False,workflow_run=dict(id=71))
+        def exact_api(repo,path,token):
+            if path == 'actions/runs/71':return dict(id=71,head_sha=producer)
+            if path == 'actions/artifacts/81':return artifact
+            raise AssertionError('Unexpected unpinned lookup: '+path)
+        with patch.object(m,'package_inputs_compatible',return_value=True), \
+             patch.object(m,'compute_validated_package_evidence',side_effect=AssertionError('A newer aggregate B must not replace rehearsed A')), \
+             patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m,'_successful_package_child',return_value=True), \
+             patch.object(m,'api_get',side_effect=exact_api):
+            result=m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+            self.assertFalse(result['needed']);self.assertEqual(producer,result['evidenceHeadSha'])
+            self.assertEqual(71,result['exactPackageRunId'])
+            artifact['digest']='sha256:'+'0'*64
+            with self.assertRaisesRegex(m.EvidenceLookupUnavailable,'unavailable or changed'):
+                m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+        readiness['receipt']['rehearsal'].pop('selectedPackage')
+        with self.assertRaisesRegex(ValueError,'no exact rehearsed'):
+            m.bind_rehearsed_package_plan('owner/repo',candidate,plan,readiness,'placeholder')
+        fresh=dict(needed=True)
+        self.assertIs(fresh,m.bind_rehearsed_package_plan('owner/repo',candidate,fresh,readiness,'placeholder'))
+        self.assertIs(plan,m.bind_rehearsed_package_plan('owner/repo',candidate,plan,dict(receipt=dict(pendingCount=0)),'placeholder'))
+
+
+class ComponentPlanIntegrationTests(unittest.TestCase):
+    def test_missing_matrix_preserves_successful_children(self):
+        def select(repo,revision,key,token,**kwargs):
+            return dict(state='required' if key=='portal' else 'reused-success',reason='fixture')
+        with patch.object(m,'compatible_component_evidence',side_effect=select) as selector:
+            result=m.plan_component_children('owner/repo','a'*40,12,'placeholder')
+        self.assertEqual(['portal'],result['requiredComponents'])
+        self.assertEqual(set(m.RELEASE_TARGETS)-{'portal'},set(result['reusedComponents']))
+        self.assertEqual(len(m.RELEASE_TARGETS),selector.call_count)
+
+    def test_evidence_outage_has_no_fallback_build_decision(self):
+        with patch.object(m,'compatible_component_evidence',side_effect=m.EvidenceLookupUnavailable('outage')):
+            with self.assertRaises(m.EvidenceLookupUnavailable):
+                m.plan_component_children('owner/repo','a'*40,12,'placeholder')
+
+    def test_bootstrap_owner_mismatch_does_not_activate_component_protocol(self):
+        with patch.object(m,'git_show_file',side_effect=lambda revision,path:revision):
+            self.assertFalse(m.component_protocol_ready('a'*40,'b'*40))
+        with patch.object(m,'git_show_file',return_value='CONTENT_PACKAGE_SCHEMA approved owner'):
+            self.assertTrue(m.component_protocol_ready('a'*40,'b'*40))
+
+    def test_assembly_requires_all_authenticated_children_without_building(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'sources.json'
+            args=SimpleNamespace(repository='owner/repo',revision='a'*40,current_run_id=12,output=path)
+            with patch.object(m,'plan_component_children',return_value=dict(requiredComponents=['portal'])):
+                with self.assertRaisesRegex(RuntimeError,'COMPONENT_ASSEMBLY_BLOCKED'):
+                    m.cmd_component_sources(args)
+            self.assertFalse(path.exists())
+
+
+class PackageComponentDependencyTests(unittest.TestCase):
+    def setUp(self):
+        self.files = {
+            'Portal/Portal.csproj': '<Project><ItemGroup><ProjectReference Include="../Shared/Shared.csproj" /></ItemGroup></Project>',
+            'Portal/page.cshtml': 'original view',
+            'Portal/private.cs': 'original portal',
+            'Client/Client.csproj': '<Project><ItemGroup><ProjectReference Include="../Shared/Shared.csproj" /><Content Include="../Portal/*.cshtml" /></ItemGroup></Project>',
+            'Client/client.cs': 'original client',
+            'Shared/Shared.csproj': '<Project />', 'Shared/shared.cs': 'original shared',
+            'Website/package-lock.json': 'locked', 'Website/index.js': 'original static',
+            'Directory.Build.props': '<Project />', 'global.json': '{"sdk":"pinned"}',
+            'scripts/release-package.py': 'SCHEMA = "v1"\ndef build_component(): return 1\ndef assemble_components(): return 1\n',
+            'scripts/validation-resume.py': 'PACKAGE_AUTHORITY_PATHS = ()\ndef package_component_manifest(): return 1\n',
+            m.PACKAGE_BUILD_WORKFLOW: 'name: Build\njobs:\n  validated-release-package-components:\n    runs-on: pinned\n    steps:\n      - run: build-component\n  validated-release-package:\n    steps:\n      - run: aggregate\n',
+        }
+        self.targets = {key: dict(project=project, sourceRoot=root, static=static) for key, project, root, static in (
+            ('portal','Portal/Portal.csproj','Portal',False), ('client','Client/Client.csproj','Client',False),
+            ('website','static','Website',True))}
+
+    def manifests(self, revision='a' * 40):
+        import hashlib
+        raw = ''.join('100644 blob ' + hashlib.sha1(content.encode()).hexdigest() + '\t' + path + '\0'
+                      for path, content in sorted(self.files.items())).encode()
+        with patch.object(m, 'RELEASE_TARGETS', self.targets), \
+             patch.object(m.subprocess, 'check_output', return_value=raw), \
+             patch.object(m, 'git_show_file', side_effect=lambda revision, path: self.files[path]):
+            return {key: m.package_component_manifest(revision, key) for key in self.targets}
+
+    def changed(self, before, after):
+        return {key for key in before if before[key]['contentIdentity'] != after[key]['contentIdentity']}
+
+    def test_new_revision_and_parent_aggregation_preserve_children(self):
+        before = self.manifests()
+        self.files[m.PACKAGE_BUILD_WORKFLOW] = self.files[m.PACKAGE_BUILD_WORKFLOW].replace('run: aggregate','run: revised-aggregate')
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace('assemble_components(): return 1','assemble_components(): return 2')
+        after = self.manifests('b' * 40)
+        self.assertEqual(set(), self.changed(before, after))
+        self.assertTrue(all(row['reusable'] for row in after.values()))
+
+    def test_linked_discovery_and_shared_dependency_close_real_consumers(self):
+        before = self.manifests()
+        self.files['Portal/new.cshtml'] = 'new linked view'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Shared/shared.cs'] = 'changed shared'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Portal/private.cs'] = 'changed portal only'
+        self.assertEqual({'portal'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        del self.files['Portal/new.cshtml']
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+
+    def test_toolchain_and_authority_change_reject_affected_old_identity(self):
+        before = self.manifests()
+        self.files['global.json'] = '{"sdk":"changed"}'
+        self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace('build_component(): return 1','build_component(): return 2')
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+
+    def test_unknown_input_blocks_only_its_consumer_reuse(self):
+        self.files['Client/Client.csproj'] = '<Project><Import Project="$(Unproven)/input.props" /></Project>'
+        rows = self.manifests()
+        self.assertFalse(rows['client']['reusable'])
+        self.assertEqual(['unresolved_msbuild_input:Client/Client.csproj'], rows['client']['invalidationReasons'])
+        self.assertTrue(rows['portal']['reusable'])
+        self.assertTrue(rows['website']['reusable'])
+
+    def test_cli_semantics_are_component_inputs(self):
+        self.files['scripts/release-package.py'] += 'def main(): return build_component()\n'
+        before = self.manifests()
+        self.files['scripts/release-package.py'] = self.files['scripts/release-package.py'].replace(
+            'def main(): return build_component()', 'def main():\n import os\n os.environ["BUILD_SETTING"] = "changed"\n return build_component()')
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+
+    def test_unknown_sdk_property_and_custom_task_cannot_hide_external_input(self):
+        for xml in ('<PropertyGroup><ApplicationManifest>../external.manifest</ApplicationManifest></PropertyGroup>',
+                    '<Target Name="Custom"><CustomTask Input="../external.txt" /></Target>'):
+            with self.subTest(xml=xml):
+                self.files['Client/Client.csproj'] = '<Project>' + xml + '</Project>'
+                rows = self.manifests()
+                self.assertFalse(rows['client']['reusable'])
+                self.assertTrue(rows['portal']['reusable'])
+                self.assertTrue(rows['website']['reusable'])
+
+    def test_checkout_and_compiler_config_discovery_invalidate_real_consumers(self):
+        before = self.manifests()
+        self.files['.gitattributes'] = '*.cs text eol=lf'
+        self.assertEqual(set(self.targets), self.changed(before, self.manifests()))
+        for path in ('.editorconfig', 'new.globalconfig', 'NuGet.config'):
+            before = self.manifests()
+            self.files[path] = 'new configuration'
+            self.assertEqual({'portal','client'}, self.changed(before, self.manifests()))
+
+    def test_nested_import_directory_and_new_project_ancestors_are_closed(self):
+        self.files['Client/Client.csproj'] = '<Project><Import Project="build/input.props" /></Project>'
+        self.files['Client/build/input.props'] = '<Project><Import Project="$(MSBuildThisFileDirectory)next.props" /></Project>'
+        self.files['Client/build/next.props'] = '<Project><ItemGroup><ProjectReference Include="../../Extra/App.csproj" /></ItemGroup></Project>'
+        self.files['Extra/App.csproj'] = '<Project />'
+        self.files['Extra/Directory.Build.props'] = '<Project><ItemGroup><Content Include="../external.txt" /></ItemGroup></Project>'
+        self.files['external.txt'] = 'original'
+        before = self.manifests()
+        self.assertTrue(before['client']['reusable'])
+        self.assertIn('external.txt', before['client']['inputs'])
+        self.files['external.txt'] = 'changed'
+        self.assertEqual({'client'}, self.changed(before, self.manifests()))
+
+    def test_static_external_inputs_are_recorded_without_claiming_executable_closure(self):
+        self.files['Website/scripts/build.mjs'] = "import x from '../../Shared/external.mjs'; const x=resolve(repoRoot,'Design/tokens.json');"
+        self.files['Shared/external.mjs'] = 'export default 1'
+        self.files['Design/tokens.json'] = '{}'
+        before = self.manifests()
+        self.assertFalse(before['website']['reusable'])
+        for path in ('Shared/external.mjs', 'Design/tokens.json'):
+            self.files[path] += 'changed'
+            self.assertIn('website', self.changed(before, self.manifests()))
+        before = self.manifests()
+        self.files['Portal/private.cs'] += 'changed'
+        self.assertNotIn('website', self.changed(before, self.manifests()))
+
+
+class ComponentEvidenceIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.component, self.identity = 'portal', 'c' * 64
+        self.producer, self.candidate = 'a' * 40, 'b' * 40
+        self.index = dict(id=1, name=m.component_index_name(self.component, self.identity),
+                          expired=False, workflow_run=dict(id=91))
+        self.payload = dict(id=10, name=m.component_attempt_name(self.component,self.identity,91,2),
+                            digest='sha256:'+'d'*64,expired=False)
+        self.receipt_artifact = dict(id=11,name=m.component_attempt_name(self.component,self.identity,91,2,receipt=True),expired=False)
+        self.receipt = dict(schemaVersion=1,component=self.component,contentIdentity=self.identity,
+            producerRevision=self.producer,runId=91,runAttempt=2,sha256='e'*64,
+            executionIdentity='f'*64,artifact={key:self.payload[key] for key in ('id','name','digest')})
+        self.run = dict(id=91, head_sha=self.producer, run_attempt=2, status='completed', conclusion='failure',
+            pull_requests=[dict(base=dict(ref=m.TRUSTED_PR_BASE),head=dict(repo=dict(full_name='owner/repo')))])
+        names = ('Build immutable validated release package component','Preserve immutable validated release package component',
+                 'Record immutable component source','Preserve immutable component source')
+        self.job=dict(id=100,status='completed',conclusion='success',name='validated-release-package-components (portal)',
+                      steps=[dict(name=name,conclusion='success') for name in names])
+        self.artifacts=[self.index,self.payload,self.receipt_artifact]
+        spec = importlib.util.spec_from_file_location('component_proof_test', ROOT / 'scripts/release-package.py')
+        package = importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        paths = ('release-package.py','validation-resume.py','PackageRestoreProbe/PackageRestoreProbe.csproj','PackageRestoreProbe/Program.cs')
+        tool_rows = {key:dict(image=image,imageId='sha256:'+'1'*64) for key,image in package.PACKAGE_TOOL_IMAGES.items()}
+        for key in ('node','python'):
+            tool_rows[key].update(paths=list(package.PACKAGE_TOOL_PATHS[key]),tree=dict(identity='2'*64))
+        proof=dict(schema='legend-package-component-execution.v1',state='executed-success',component=self.component,
+            candidateRevision=self.producer,source=dict(revision=self.producer),
+            authorityInputs={path:hashlib.sha256(b'approved source').hexdigest() for path in paths},
+            tools=dict(schemaVersion=1,platform='linux/amd64',tools=tool_rows),
+            dependencyMaterial=dict(dotnet=dict(schemaVersion=1,identity='3'*64)),
+            file=package.component_file(self.component),sha256=self.receipt['sha256'])
+        with patch.object(package.subprocess,'check_output',return_value=b'approved source'):
+            self.receipt['executionIdentity']=package.component_execution_identity(proof,self.producer,self.component)
+        self.receipt['execution']=proof
+        self.log=''
+        for artifact,step_name in ((self.payload,'Preserve immutable validated release package component'),
+                                  (self.receipt_artifact,'Preserve immutable component source')):
+            step=next(row for row in self.job['steps'] if row['name']==step_name)
+            step.update(started_at='2026-10-09T00:00:00Z',completed_at='2026-10-09T00:00:02Z')
+            artifact['created_at']='2026-10-09T00:00:01Z'
+            self.log+=f"2026-10-09T00:00:01Z Artifact {artifact['name']} has been successfully uploaded! Final size is 100 bytes. Artifact ID is {artifact['id']}\n"
+        self.calls=[]
+        self.outage=False
+    def api(self, repository, endpoint, token):
+        self.calls.append(endpoint)
+        if self.outage: raise m.EvidenceLookupUnavailable('provider unavailable')
+        if endpoint.startswith('actions/artifacts?'): return dict(total_count=1,artifacts=[self.index])
+        if endpoint=='actions/runs/91':return self.run
+        if endpoint=='actions/runs/91/artifacts?per_page=100':return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+        if '/attempts/2/jobs?' in endpoint:return dict(total_count=1,jobs=[self.job])
+        if '/attempts/1/jobs?' in endpoint:return dict(total_count=1,jobs=[dict(self.job,conclusion='failure')])
+        raise AssertionError(endpoint)
+    def select(self, **kwargs):
+        with patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'package_component_manifest',return_value=dict(contentIdentity=self.identity,reusable=True)), \
+             patch.object(m,'trusted_component_run',return_value=True), \
+             patch.object(m,'_release_job_log',return_value=self.log), \
+             patch.object(m.subprocess,'check_output',return_value=b'approved source'), \
+             patch.object(m,'_release_history_json',return_value=self.receipt):
+            return m.compatible_component_evidence('owner/repo',self.candidate,self.component,'token',**kwargs)
+    def test_exact_source_bypasses_locator_outage_without_relaxing_artifact_proof(self):
+        original=self.api
+        def no_index(repo,path,token):
+            if path.startswith('actions/artifacts?'):
+                raise m.EvidenceLookupUnavailable('index unavailable')
+            return original(repo,path,token)
+        self.api=no_index
+        source=dict(runId=91,runAttempt=2,artifactId=10,artifactDigest=self.payload['digest'],
+            artifactName=self.payload['name'],receiptArtifactId=11,producingJobId=100)
+        self.assertEqual('reused-success',self.select(expected_source=source)['state'])
+        self.assertFalse(any(path.startswith('actions/artifacts?') for path in self.calls))
+        with self.assertRaisesRegex(ValueError,'immutable identity mismatch'):
+            self.select(expected_source=dict(source,artifactId=999))
+
+    def test_successful_child_survives_failed_parent_and_index_from_failed_attempt(self):
+        self.artifacts.append(dict(id=8,name=m.component_attempt_name(self.component,self.identity,91,1,receipt=True),expired=False))
+        result=self.select()
+        self.assertEqual('reused-success',result['state'])
+        self.assertEqual(2,result['sourceReceipt']['runAttempt'])
+        self.assertEqual(10,result['sourceReceipt']['artifact']['id'])
+        self.assertEqual(self.producer,result['compatibilityProof']['producerRevision'])
+        self.assertEqual(self.candidate,result['compatibilityProof']['candidateRevision'])
+        self.assertEqual(4,len(self.calls))
+        self.assertEqual(1,self.index['id'])
+    def test_failed_or_skipped_producer_never_establishes_success(self):
+        for state in ('failure','skipped','cancelled'):
+            with self.subTest(state=state):
+                self.job['conclusion']=state
+                self.assertEqual('required',self.select()['state'])
+        self.job['conclusion']='success';self.job['steps'][0]['conclusion']='skipped'
+        self.assertEqual('required',self.select()['state'])
+    def test_substitution_and_receipt_attempt_mismatch_fail_closed(self):
+        self.payload['digest']='sha256:'+'0'*64
+        with self.assertRaisesRegex(ValueError,'substitution'):self.select()
+        self.payload['digest']=self.receipt['artifact']['digest']
+        self.receipt['runAttempt']=1
+        with self.assertRaisesRegex(ValueError,'producer mismatch'):self.select()
+    def test_missing_expired_payload_is_scoped_but_evidence_outage_cannot_select_build(self):
+        self.payload['expired']=True
+        self.assertEqual('required',self.select()['state'])
+        self.outage=True
+        with self.assertRaises(m.EvidenceLookupUnavailable):self.select()
+    def test_changed_dependency_does_not_reuse_unrelated_identity(self):
+        with patch.object(m,'api_get',side_effect=self.api), \
+             patch.object(m,'package_component_manifest',side_effect=[dict(contentIdentity=self.identity,reusable=True),dict(contentIdentity='0'*64,reusable=True)]), \
+             patch.object(m,'trusted_component_run',return_value=True):
+            result=m.compatible_component_evidence('owner/repo',self.candidate,self.component,'token')
+        self.assertEqual('required',result['state'])
+        self.assertEqual(2,len(self.calls))
+
+
+    def test_producer_uses_actual_approved_base_and_unmodified_authority(self):
+        url='https://api.github.com/repos/owner/repo'
+        self.run['pull_requests']=[dict(base=dict(ref=m.TRUSTED_PR_BASE,sha='0'*40,repo=dict(url=url)),
+            head=dict(sha=self.producer,repo=dict(url=url)))]
+        with patch.object(m,'_trusted_lineage_run',return_value=True), \
+             patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m,'git_show_file',return_value='approved executor') as source:
+            self.assertTrue(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            source.side_effect=lambda revision,path: 'candidate executor' if revision==self.producer else 'approved executor'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            source.side_effect=None
+            self.run['pull_requests'][0]['head']['sha']='9'*40
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+            self.run['pull_requests'][0]['head']['sha']=self.producer
+            self.run['pull_requests'][0]['base']['ref']='unapproved'
+            self.assertFalse(m.trusted_component_run('owner/repo',self.run,self.candidate))
+
+    def test_arbitrary_execution_hash_and_later_upload_are_rejected(self):
+        original=self.receipt['executionIdentity']
+        self.receipt['executionIdentity']='9'*64
+        with self.assertRaisesRegex(ValueError,'execution identity mismatch'):self.select()
+        self.receipt['executionIdentity']=original
+        self.payload['created_at']='2026-10-09T00:01:00Z'
+        with self.assertRaisesRegex(ValueError,'outside producing upload'):self.select()
+
+    def test_fractional_upload_in_completion_second_is_valid_but_next_second_is_not(self):
+        self.log=self.log.replace('T00:00:01Z','T00:00:02.999Z')
+        self.assertEqual('reused-success',self.select()['state'])
+        self.log=self.log.replace('T00:00:02.999Z','T00:00:03Z')
+        with self.assertRaisesRegex(ValueError,'producing upload log'):self.select()
+
+    def test_other_job_substitution_cannot_claim_original_upload(self):
+        self.payload['id']=99
+        self.receipt['artifact']['id']=99
+        with self.assertRaisesRegex(ValueError,'producing upload log'):self.select()
+
+    def test_dependency_and_pinned_tool_proof_cannot_be_fabricated(self):
+        self.receipt['execution']['tools']['tools']['sdk']['image']='unapproved:latest'
+        with self.assertRaisesRegex(ValueError,'pinned tool identity'):self.select()
+
+
+class EarlyReadinessEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.now = datetime.datetime(2026, 10, 9, tzinfo=datetime.timezone.utc)
+        self.expected = {'schemaVersion': 1, 'identity': 'a' * 64}
+        self.receipt = dict(self.expected, state='executed-success',
+            observedUtc=self.now.isoformat(), databaseIdentity='b' * 64,
+            baselineIdentity='f' * 64,
+            schemaIdentity='c' * 64, contractDigest='d' * 64, pendingCount=0,
+            mutationAdmission='not-required', deploymentReadiness='proven')
+        self.repo = 'MYLEGND/masterapp'
+        self.approved = '1' * 40
+        self.candidate = '2' * 40
+        repo = {'url': 'https://api.github.com/repos/' + self.repo}
+        self.run = dict(id=42, event='pull_request_target', head_branch='repair/example',
+            head_sha=self.candidate, head_repository={'full_name': self.repo},
+            path='.github/workflows/legend-release-lifecycle.yml',
+            pull_requests=[dict(head=dict(ref='repair/example', sha=self.candidate, repo=repo),
+                                base=dict(ref=m.TRUSTED_PR_BASE, sha=self.approved, repo=repo))])
+
+    def validate(self):
+        return m.validate_readiness_receipt(self.receipt, self.expected, now=self.now)
+
+    def test_failure_classification_requires_successful_exact_attempt_preservation(self):
+        self.run['run_attempt'] = 2
+        name = 'legend-readiness-failure-' + self.candidate + '-a2'
+        artifact = dict(id=19, name=name, expired=False)
+        upload = dict(name='Preserve classified readiness failure', status='completed', conclusion='success')
+        producer = dict(name='readiness-observe', status='completed', conclusion='failure', steps=[upload])
+        failure = dict(schemaVersion=1, candidate=self.candidate, executionAuthority=self.approved,
+            producingRun=42, producingAttempt=2, classification='transient-provider-read')
+        for fault in ('none', 'skipped-upload', 'failed-upload', 'wrong-job', 'successful-job', 'wrong-attempt', 'wrong-authority', 'missing-id'):
+            import copy
+            a, p, f = copy.deepcopy(artifact), copy.deepcopy(producer), dict(failure)
+            if fault == 'skipped-upload': p['steps'][0]['conclusion'] = 'skipped'
+            elif fault == 'failed-upload': p['steps'][0]['conclusion'] = 'failure'
+            elif fault == 'wrong-job': p['name'] = 'candidate-controlled-name'
+            elif fault == 'successful-job': p['conclusion'] = 'success'
+            elif fault == 'wrong-attempt': f['producingAttempt'] = 1
+            elif fault == 'wrong-authority': f['executionAuthority'] = 'f' * 40
+            elif fault == 'missing-id': a.pop('id')
+            with self.subTest(fault=fault), patch.object(m, 'trusted_readiness_run', return_value=True), \
+                 patch.object(m, 'api_get', side_effect=[dict(total_count=1, artifacts=[a]), dict(total_count=1, jobs=[p])]), \
+                 patch.object(m, '_release_history_json', return_value=f):
+                if fault in ('wrong-attempt', 'wrong-authority'):
+                    with self.assertRaisesRegex(ValueError, 'producer identity mismatch'):
+                        m.readiness_failure_kind(self.repo, self.run, self.approved, 'token')
+                else:
+                    result = m.readiness_failure_kind(self.repo, self.run, self.approved, 'token')
+                    self.assertEqual('transient-provider-read' if fault == 'none' else 'untrusted', result)
+
+    def test_compatible_current_receipt_reused_without_execution(self):
+        self.assertIs(self.receipt, self.validate())
+
+    def test_skipped_failed_cancelled_blocked_do_not_prove_readiness(self):
+        for state in ('skipped', 'failed', 'cancelled', 'blocked', 'not-required'):
+            with self.subTest(state=state):
+                self.receipt['state'] = state
+                with self.assertRaisesRegex(ValueError, 'READINESS_NOT_SUCCESSFUL'):
+                    self.validate()
+
+    def test_expired_future_or_naive_time_rejected(self):
+        for stamp, code in [('2026-10-08T23:44:59Z', 'EXPIRED'),
+                            ('2026-10-09T00:00:31Z', 'EXPIRED'),
+                            ('2026-10-09T00:00:00', 'TIME_UNPROVEN'), (None, 'TIME_UNPROVEN')]:
+            with self.subTest(stamp=stamp):
+                self.receipt['observedUtc'] = stamp
+                with self.assertRaisesRegex(ValueError, code): self.validate()
+
+    def test_missing_or_tampered_scope_rejected(self):
+        self.receipt['identity'] = 'e' * 64
+        with self.assertRaisesRegex(ValueError, 'INPUTS_CHANGED'): self.validate()
+
+    def test_missing_count_cannot_hide_pending_migrations(self):
+        for count in (None, -1, True, '0', 10001):
+            with self.subTest(count=count):
+                self.receipt['pendingCount'] = count
+                with self.assertRaisesRegex(ValueError, 'PROOF_INCOMPLETE'): self.validate()
+
+    def test_candidate_contract_cannot_omit_or_reclassify_approved_operations(self):
+        import copy
+        approved = {'schemaVersion': 1, 'migrations': [dict(id='20261007134500_AddFounderAssistantRules',
+            supported=True, columns=[dict(name='Rules', type='nvarchar(max)', nullable=False, default='[]')])]}
+        for kind in ('omit', 'invent', 'supported', 'type', 'nullable', 'default'):
+            contract = copy.deepcopy(approved)
+            if kind == 'omit': contract['migrations'] = []
+            elif kind == 'invent': contract['migrations'][0]['id'] = '20261008134500_Fabricated'
+            elif kind == 'supported': contract['migrations'][0]['supported'] = False
+            else: contract['migrations'][0]['columns'][0][kind] = 'altered'
+            with self.subTest(kind=kind), patch.object(m, 'migration_probe_identity', return_value={'runtimeIdentity': 'a'}):
+                with self.assertRaisesRegex(ValueError, 'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN'):
+                    m.candidate_migration_contract_proven(self.candidate, self.approved, contract, approved)
+
+    def test_changed_discovery_or_runtime_requires_reviewed_extraction_rule(self):
+        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]):
+            with self.assertRaisesRegex(ValueError, 'dependency content changed'):
+                m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
+
+    def test_unchanged_migration_definitions_allow_new_candidate_without_metadata_trust(self):
+        contract = {'schemaVersion': 1, 'migrations': []}
+        with patch.object(m, 'migration_probe_identity', return_value={'runtimeIdentity': 'same'}):
+            self.assertEqual('proven', m.candidate_migration_contract_proven(self.candidate, self.approved, contract, contract)['state'])
+
+    def test_rehearsal_producer_inputs_are_independently_recomputed(self):
+        import copy
+        run = dict(self.run, event='pull_request', path='.github/workflows/' + m.PACKAGE_VALIDATION_WORKFLOW)
+        expected = dict(self.expected, targets=['portal'])
+        with patch.object(m, '_trusted_lineage_run', return_value=True), \
+             patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+             patch.object(m, 'readiness_identity', return_value=expected) as compute:
+            self.assertTrue(m.trusted_rehearsal_run(self.repo, run, self.candidate, expected))
+            self.assertEqual([(self.candidate, self.approved, ['portal']),
+                              (self.approved, self.approved, ['portal'])], [call.args for call in compute.call_args_list])
+            compute.return_value = dict(expected, identity='changed-semantics')
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, run, self.candidate, expected))
+            compute.side_effect = [dict(expected, rehearsalExecutionIdentity='candidate-fabricated'),
+                                   dict(expected, rehearsalExecutionIdentity='approved')]
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, run, self.candidate,
+                dict(expected, rehearsalExecutionIdentity='candidate-fabricated')))
+            compute.side_effect = None
+            wrong = copy.deepcopy(run)
+            wrong['pull_requests'][0]['base']['ref'] = 'unapproved'
+            compute.reset_mock()
+            self.assertFalse(m.trusted_rehearsal_run(self.repo, wrong, self.candidate, expected))
+            compute.assert_not_called()
+
+    def test_pending_requires_exact_rehearsal_inputs(self):
+        self.receipt['pendingCount'] = 1
+        self.receipt['mutationAdmission'] = 'proven'
+        with self.assertRaisesRegex(ValueError, 'REHEARSAL_MISSING'): self.validate()
+        self.receipt['rehearsal'] = dict(proven=True, contractDigest='d' * 64,
+            schemaIdentity='c' * 64, baselineIdentity='f' * 64, bundleDigest='e' * 64)
+        self.validate()
+        self.receipt['rehearsal']['schemaIdentity'] = 'f' * 64
+        with self.assertRaisesRegex(ValueError, 'REHEARSAL_MISSING'): self.validate()
+
+    def test_actual_pr_target_metadata_authenticates_base_not_head(self):
+        self.assertTrue(m.trusted_readiness_run(self.repo, self.run, self.approved))
+        self.assertNotEqual(self.approved, self.run['head_sha'])
+
+    def test_fork_wrong_base_and_non_target_event_rejected(self):
+        import copy
+        for kind in ('fork', 'base', 'event', 'head', 'workflow'):
+            run = copy.deepcopy(self.run)
+            if kind == 'fork': run['pull_requests'][0]['head']['repo']['url'] += '-fork'
+            if kind == 'base': run['pull_requests'][0]['base']['sha'] = '3' * 40
+            if kind == 'event': run['event'] = 'pull_request'
+            if kind == 'head': run['head_sha'] = '4' * 40
+            if kind == 'workflow': run['path'] = '.github/workflows/other.yml'
+            with self.subTest(kind=kind):
+                self.assertFalse(m.trusted_readiness_run(self.repo, run, self.approved))
+
+    def test_blocker_stops_planning_before_expensive_work(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate, event='pull_request')
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')), \
+             patch.object(m, '_compute_validation_plan_once') as plan:
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_plan(args)
+            plan.assert_not_called()
+
+    def test_package_blocker_is_not_converted_into_build_fallback(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate)
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')), \
+             patch.object(m, 'package_inputs_compatible') as package:
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_package_canary_plan(args)
+            package.assert_not_called()
+
+    def test_package_lookup_failure_preserves_prior_plan_and_selects_zero_builds(self):
+        for failure in (m.EvidenceLookupUnavailable('provider read unavailable'),
+                        ValueError('untrusted receipt payload')):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'plan.json'
+                prior = dict(needed=False, evidenceRunId=123, reason='prior compatible evidence')
+                output.write_text(json.dumps(prior))
+                args = SimpleNamespace(repository=self.repo, current_sha=self.candidate,
+                    base_sha=self.approved, current_run_id=456, head_branch='repair', output=str(output))
+                with patch.object(m, 'require_readiness', return_value={'receipt': self.receipt}), \
+                     patch.object(m, 'compute_package_canary_plan', side_effect=failure) as plan:
+                    with self.assertRaisesRegex(RuntimeError, 'PACKAGE_PLANNING_BLOCKED'):
+                        m.cmd_package_canary_plan(args)
+                    self.assertEqual(1, plan.call_count)
+                self.assertEqual(prior, json.loads(output.read_text()))
+                blocked = json.loads(Path(str(output) + '.blocked.json').read_text())
+                self.assertEqual('blocked', blocked['state'])
+                self.assertFalse(blocked['needed'])
+                self.assertEqual('validated-release-package-plan', blocked['resumeBoundary'])
+                self.assertNotIn('untrusted receipt payload', json.dumps(blocked))
+
+    def test_blocked_package_plan_is_retained_by_its_exact_attempt(self):
+        text = (ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        block = m.named_step_blocks(text)['Preserve blocked package planning evidence']
+        self.assertIn("if: failure() && steps.packageplan.outcome == 'failure'", block)
+        self.assertIn('validated-release-package-plan-blocked-${{ github.run_id }}-a${{ github.run_attempt }}', block)
+        self.assertIn('package-canary-plan.json.blocked.json', block)
+        self.assertNotIn('overwrite: true', block)
+
+    def test_successful_child_survives_failed_parent_and_new_attempt(self):
+        run = dict(self.run, run_attempt=3, status='completed', conclusion='failure')
+        jobs = {'total_count': 1, 'jobs': [{'name': 'release-readiness', 'status': 'completed', 'conclusion': 'success'}]}
+        with patch.object(m, 'api_get', return_value=jobs) as api:
+            self.assertTrue(m.readiness_child_succeeded(self.repo, run, 'release-readiness', 1, 'token'))
+            self.assertIn('/attempts/1/jobs', api.call_args.args[1])
+            self.assertFalse(m.readiness_child_succeeded(self.repo, run, 'release-readiness', 4, 'token'))
+            self.assertEqual(1, api.call_count)
+
+    def test_skipped_or_incomplete_producer_job_never_counts_as_success(self):
+        for conclusion, total in [('skipped', 1), ('success', 2), ('cancelled', 1), ('failure', 1)]:
+            jobs = {'total_count': total, 'jobs': [{'name': 'release-readiness', 'status': 'completed', 'conclusion': conclusion}]}
+            with patch.object(m, 'api_get', return_value=jobs):
+                self.assertFalse(m.readiness_child_succeeded(self.repo, self.run, 'release-readiness', 1, 'token'))
+
+    def test_immutable_attempt_artifacts_preserve_older_children(self):
+        run = dict(self.run, run_attempt=3)
+        names = {'proof-' + 'a' * 64 + '-a1', 'proof-' + 'a' * 64 + '-a3',
+                 'proof-' + 'b' * 64 + '-a2'}
+        artifacts = [dict(id=i + 1, name=name, expired=False) for i, name in enumerate(sorted(names))]
+        with patch.object(m, 'api_get', return_value={'total_count': len(artifacts), 'artifacts': artifacts}):
+            rows = list(m.readiness_artifact_candidates(self.repo, [run], 'proof-', 'a' * 64, 'token', lambda r: True))
+        self.assertEqual(['-a3', '-a1'], [artifact['name'][-3:] for _, artifact in rows])
+
+    def test_attempt_substitution_rejected_before_successful_child_can_authorize(self):
+        import json
+        import hashlib
+        body = b'validated-bundle'
+        for reader, filename in ((m.readiness_evidence, 'readiness.json'),
+                                  (m.readiness_observation_evidence, 'observation.json'),
+                                  (m.migration_rehearsal_evidence, 'rehearsal.json')):
+            receipt = dict(self.receipt, producingRun=42, producingAttempt=1,
+                executionAuthority=self.approved, candidate=self.candidate,
+                readinessIdentity=self.expected['identity'], proven=True,
+                bundleDigest=hashlib.sha256(body).hexdigest(),
+                counts={'mutations': 1, 'intents': 1, 'successReceipts': 2})
+            artifact = dict(id=123, name='proof-' + self.expected['identity'] + '-a2')
+            def download(repo, run, name, root, *, artifact_id):
+                self.assertEqual(123, artifact_id)
+                (root / filename).write_text(json.dumps(receipt))
+                (root / 'migration').mkdir()
+                (root / 'migration' / m.MIGRATION_BUNDLE_NAME).write_bytes(body)
+            with self.subTest(reader=reader.__name__), \
+                 patch.object(m, 'readiness_identity', return_value=self.expected), \
+                 patch.object(m, 'api_get', return_value={}), \
+                 patch.object(m, 'readiness_artifact_candidates', return_value=[(dict(self.run, run_attempt=2), artifact)]), \
+                 patch.object(m, '_download_run_artifact', side_effect=download), \
+                 patch.object(m, 'validate_readiness_receipt'), \
+                 patch.object(m, 'readiness_child_succeeded', return_value=True) as child:
+                args = (self.repo, self.candidate, self.expected, 'token') if reader == m.migration_rehearsal_evidence else (self.repo, self.candidate, self.approved, [], 'token')
+                with self.assertRaisesRegex(ValueError, 'ARTIFACT_ATTEMPT_MISMATCH'):
+                    reader(*args)
+                child.assert_not_called()
+
+    def test_duplicate_or_incomplete_artifact_inventory_is_not_reuse(self):
+        row = dict(id=1, name='proof-' + self.expected['identity'] + '-a1', expired=False)
+        for data, error in (({'total_count': 2, 'artifacts': [row]}, m.EvidenceLookupUnavailable),
+                            ({'total_count': 2, 'artifacts': [row, dict(row, id=2)]}, ValueError)):
+            with patch.object(m, 'api_get', return_value=data), self.assertRaises(error):
+                list(m.readiness_artifact_candidates(self.repo, [self.run], 'proof-', self.expected['identity'], 'token', lambda r: True))
+
+    def test_readiness_deadline_preserves_blocked_state_without_fresh_plan(self):
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request'}), \
+             patch.object(m, 'approved_head_preflight', return_value={'current': True, 'approvedHeadSha': self.approved}), \
+             patch.object(m, 'git_show_file', return_value='READINESS_SCHEMA = 1'), \
+             patch.object(m, 'git_changed', return_value=[]), \
+             patch.object(m, 'readiness_evidence', return_value=None) as lookup, \
+             patch.object(m, 'READINESS_WAIT_SECONDS', 1):
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'):
+                m.require_readiness(self.repo, self.candidate, clock=iter([0, 1]).__next__, sleep=lambda _: None)
+            self.assertEqual(1, lookup.call_count)
+
+    def test_step5_blocker_stops_partition_execution(self):
+        args = SimpleNamespace(repository=self.repo, current_sha=self.candidate)
+        with patch.object(m, 'require_readiness', side_effect=RuntimeError('READINESS_BLOCKED')):
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_step5_decision(args)
+
+
+class ProbeAttemptAndBudgetTests(unittest.TestCase):
+    def test_probe_retains_original_success_after_parent_rerun_failure(self):
+        artifact = dict(id=8, name='probe', expired=False, created_at='2026-10-09T00:01:00Z')
+        first = dict(id=10, name='validated-migration-probe', status='completed', conclusion='success',
+            run_attempt=1, started_at='2026-10-09T00:00:00Z', completed_at='2026-10-09T00:02:00Z')
+        later = dict(first, id=20, run_attempt=2, conclusion='failure',
+            started_at='2026-10-09T01:00:00Z', completed_at='2026-10-09T01:02:00Z')
+        run = dict(id=42, run_attempt=2, conclusion='failure')
+        for outcome, expected in (('success', {'artifactId': 8, 'producingAttempt': 1, 'producerJobId': 10}),
+                                  ('skipped', None), ('cancelled', None), ('failure', None)):
+            with self.subTest(outcome=outcome), patch.object(m, 'api_get', side_effect=[
+                {'total_count': 1, 'artifacts': [artifact]},
+                {'total_count': 2, 'jobs': [later, dict(first, conclusion=outcome)]}]):
+                self.assertEqual(expected, m.migration_probe_artifact('owner/repo', run, 'probe', 'token'))
+
+    def test_nested_lookup_cannot_extend_outer_deadline(self):
+        with m.evidence_lookup_budget(10, clock=lambda: 7):
+            self.assertEqual(3, m.evidence_remaining(30))
+            with m.evidence_lookup_budget(100, clock=lambda: 9):
+                self.assertEqual(1, m.evidence_remaining(120))
+            self.assertEqual(3, m.evidence_remaining(120))
+        self.assertEqual(120, m.evidence_remaining(120))
+
+    def test_expired_budget_prevents_provider_read(self):
+        with m.evidence_lookup_budget(10, clock=lambda: 10), \
+             patch.object(m.urllib.request, 'urlopen') as remote:
+            with self.assertRaisesRegex(m.EvidenceLookupUnavailable, 'deadline exhausted'):
+                m.api_get('owner/repo', 'actions/runs', 'token')
+            remote.assert_not_called()
+
+    def test_immutable_artifact_get_extracts_bytes_and_rejects_traversal(self):
+        import zipfile
+        for path, valid in (('proof.json', True), ('../escape', False)):
+            def read(command, **kwargs):
+                self.assertEqual(['gh', 'api', 'repos/owner/repo/actions/artifacts/123/zip'], command)
+                with zipfile.ZipFile(kwargs['stdout'], 'w') as archive:
+                    archive.writestr(path, 'evidence')
+                return SimpleNamespace(returncode=0, stderr='')
+            with tempfile.TemporaryDirectory() as directory, patch.object(m.subprocess, 'run', side_effect=read) as get:
+                root = Path(directory) / 'artifact'
+                if valid:
+                    m._download_run_artifact('owner/repo', 42, 'name-is-not-identity', root, artifact_id=123)
+                    self.assertEqual('evidence', (root / path).read_text())
+                else:
+                    with self.assertRaisesRegex(ValueError, 'unsafe entries'):
+                        m._download_run_artifact('owner/repo', 42, 'name-is-not-identity', root, artifact_id=123)
+                    self.assertFalse((Path(directory) / 'escape').exists())
+                self.assertEqual(1, get.call_count)
 
 
 class ArtifactEvidenceReadRetryTests(unittest.TestCase):
@@ -48,6 +805,46 @@ class ArtifactEvidenceReadRetryTests(unittest.TestCase):
     def test_process_timeout_does_not_restart_unknown_artifact_operation(self):
         count, sleeps, error = self.get([m.subprocess.TimeoutExpired('gh', 120)])
         self.assertEqual((1, 0, 'Artifact evidence read unavailable'), (count, sleeps, error))
+
+
+class PackageJobSchedulingTests(unittest.TestCase):
+    def test_backfill_skipped_ancestors_do_not_skip_required_components(self):
+        import re
+        blocks = m._job_blocks((ROOT / m.PACKAGE_BUILD_WORKFLOW).read_text())
+        def admitted(job, required='true', components='success', plan='success', cancelled=False):
+            expression = re.search(r"    if: (.*?)\n    runs-on:", blocks[job], re.S).group(1).removeprefix('>-').strip()
+            # Model GitHub's implicit success() across the skipped backfill
+            # probe/rehearsal ancestors. Removing explicit status handling fails.
+            if not re.search(r'\b(always|cancelled|success|failure)\(', expression):
+                return False
+            fields = {
+                'needs.validated-release-package-plan.result': plan,
+                'needs.validated-release-package-plan.outputs.components_needed': required,
+                'needs.validated-release-package-components.result': components,
+                'github.event_name': 'workflow_dispatch',
+                'inputs.package_revision': 'a' * 40,
+            }
+            for key in sorted(fields, key=len, reverse=True):
+                expression = expression.replace(key, repr(fields[key]))
+            expression = expression.replace('always()', 'True').replace('cancelled()', repr(cancelled))
+            expression = expression.replace('&&', ' and ').replace('||', ' or ')
+            expression = re.sub(r'!(?!=)', ' not ', expression)
+            return bool(eval(' '.join(expression.split()), {'__builtins__': {}}, {}))
+        component = 'validated-release-package-components'
+        assembly = 'validated-release-package'
+        self.assertTrue(admitted(component))
+        self.assertTrue(admitted(assembly))
+        self.assertFalse(admitted(assembly, components='skipped'))
+        self.assertFalse(admitted(component, required='false'))
+        self.assertTrue(admitted(assembly, required='false', components='skipped'))
+        for job in (component, assembly):
+            for required in ('', 'unknown'):
+                self.assertFalse(admitted(job, required=required))
+            for plan in ('failed', 'skipped', 'cancelled'):
+                self.assertFalse(admitted(job, plan=plan))
+            self.assertFalse(admitted(job, cancelled=True))
+        for result in ('failure', 'cancelled', ''):
+            self.assertFalse(admitted(assembly, components=result))
 
 
 class Step5JobSchedulingTests(unittest.TestCase):
@@ -1228,10 +2025,12 @@ jobs:
         release = (ROOT / ".github" / "workflows" / "all-intentional-direct-release-20260918.yml").read_text()
         validated = release.split("      - name: Reuse exact successful validation package when available\n", 1)[1].split("      - name:", 1)[0]
         rollback = release.split("      - name: Reuse exact retained live package when available\n", 1)[1].split("      - uses:", 1)[0]
-        self.assertIn('git show "${GITHUB_SHA}:scripts/validation-resume.py"', validated)
-        self.assertIn('python3 "$RUNNER_TEMP/current-validation-resume.py" validated-package', validated)
+        self.assertIn('Checkout current approved evidence authority', release)
+        self.assertIn('python3 .legend-evidence-authority/scripts/validation-resume.py validated-package', validated)
         self.assertIn("rollback-evidence", rollback)
-        self.assertIn('git show "${RELEASE_SHA}:scripts/validation-resume.py"', release)
+        self.assertIn('Checkout canonical rollback package authority', release)
+        self.assertIn('scripts/release-package.py restore-rollback', rollback)
+        self.assertNotIn('source-equivalent rollback', release)
         self.assertNotIn("gh api", validated)
         self.assertNotIn("gh api", rollback)
 
@@ -1377,10 +2176,13 @@ jobs:
                 self.assertTrue(topology["releaseControlAuthorityChange"])
                 self.assertIn(".github/workflows/masterapp-platform-architecture-validation.yml", topology["required"])
                 self.assertIn(".github/workflows/approved-release-security-validation.yml", topology["required"])
-        # Byte-production inputs enter PACKAGE_AUTHORITY_PATHS with the adapter
-        # implementation in PR551; the prerequisite must not hash absent files.
+        for path in adapter:
+            self.assertIn(path, m.PACKAGE_AUTHORITY_PATHS)
+            self.assertTrue(m.package_canary_input_path(path))
         for path in m.PACKAGE_AUTHORITY_PATHS:
             self.assertTrue((ROOT / path).is_file())
+        self.assertEqual(len(m.RELEASE_EXECUTION_CONTROL_INPUTS),
+                         len(set(m.RELEASE_EXECUTION_CONTROL_INPUTS)))
         for path in (
             "scripts/PackageRestoreProbe/Unexpected.cs",
             "scripts/release-migration-history-audit-new.py",
@@ -1533,7 +2335,7 @@ jobs:
         with patch.object(m, "api_get", side_effect=api_get), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "migration_probe_identity", return_value=identity), \
-             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}), \
+             patch.object(m, "migration_probe_artifact", return_value={'artifactId': 123, 'producingAttempt': 1, 'producerJobId': 7}), \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
             result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
         self.assertTrue(result["reusable"])
@@ -1554,12 +2356,12 @@ jobs:
         with patch.object(m, "api_get", return_value={"workflow_runs": [old, valid]}), \
              patch.object(m, "_trusted_lineage_run", return_value=True), \
              patch.object(m, "migration_probe_identity", side_effect=[m.MigrationProbeAuthorityMissing("missing"), identity]), \
-             patch.object(m, "_run_artifact_names", return_value={identity["artifact"]}) as artifacts, \
+             patch.object(m, "migration_probe_artifact", return_value={'artifactId': 123}) as artifacts, \
              patch.dict(m.os.environ, {"GITHUB_TOKEN": "token"}):
             result = m.migration_probe_evidence("MYLEGND/masterapp", identity)
         self.assertTrue(result["reusable"])
         self.assertEqual(77, result["runId"])
-        artifacts.assert_called_once_with("MYLEGND/masterapp", 77, "token")
+        artifacts.assert_called_once_with("MYLEGND/masterapp", valid, identity['artifact'], "token")
 
     def test_probe_history_without_child_requires_fresh_build(self):
         identity = {"identity": "d" * 64, "artifact": "legend-migration-probe-" + "d" * 64}
@@ -1639,6 +2441,22 @@ jobs:
             plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, '0' * 40, 100, 'fix')
         self.assertTrue(plan['needed'])
         self.assertEqual(['AgentPortal/Program.cs'], plan['changedInputs'])
+
+    def test_migration_history_control_changes_do_not_build_or_publish_applications(self):
+        paths = ['scripts/release-migration-history-audit.py',
+                 'scripts/test-release-migration-history-audit.py',
+                 'scripts/test-release-retired-original-evidence.py',
+                 'scripts/test-release-migration-probe-retry.py']
+        with patch.object(m, 'git_changed', return_value=paths), \
+             patch.object(m, 'compatible_package_producer') as lookup:
+            plan = m.compute_package_canary_plan('MYLEGND/masterapp', 'b' * 40, 'a' * 40, 100, 'fix')
+        self.assertFalse(plan['needed'])
+        self.assertEqual((), m.release_targets_for_paths(paths))
+        self.assertEqual('no_package_producing_inputs_changed', plan['reason'])
+        lookup.assert_not_called()
+        self.assertTrue(all(m.release_control_authority_path(path) for path in paths))
+        self.assertIn('.github/workflows/approved-release-security-validation.yml',
+                      m.required_validation_topology(paths)['required'])
 
     def test_live_state_probes_selected_targets_concurrently_and_keeps_inventory_order(self):
         selected = ['masterapp-portal', 'masterapp-client']
@@ -1767,7 +2585,8 @@ jobs:
                 return validation_run
             raise AssertionError(path)
 
-        with patch.object(m, "_successful_package_child", return_value=True), \
+        with patch.object(m, "_release_history_json", return_value={'schemaVersion':2}), \
+             patch.object(m, "_successful_package_child", return_value=True), \
              patch.object(m, "_trusted_pr_run", return_value=True), \
              patch.object(m, "_artifact_rows", side_effect=artifacts), \
              patch.object(m, "api_get", side_effect=api_get), \
@@ -2918,6 +3737,19 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
                      'status': 'completed'},
                     {'conclusion': 'success', 'name': 'Complete job', 'status': 'completed'}]}]
 
+    def test_current_nonentry_preserves_reviewed_observers_and_rejects_mutation(self):
+        source=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
+        jobs=self.observer_jobs()+[dict(name='migration-readiness',status='completed',conclusion='skipped',steps=[])]
+        self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        self.assertFalse(m.release_attempt_never_entered(jobs[:-1],source))
+        for before,after in (
+            ('run: python3 scripts/wake-release-lifecycle.py','run: python3 scripts/deploy-approved-app.py'),
+            ('      actions: write','      actions: write\n      id-token: write'),
+            ('      contents: read\n      actions: write','      contents: write\n      actions: write')):
+            self.assertFalse(m.release_attempt_never_entered(jobs,source.replace(before,after)))
+        jobs[-1]['conclusion']='success'
+        self.assertFalse(m.release_attempt_never_entered(jobs,source))
+
     def test_actual_nonentry_with_authenticated_terminal_observers(self):
         jobs = self.observer_jobs()
         self.assertFalse(m.release_attempt_never_entered(jobs))
@@ -3110,4 +3942,7 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Individual hosted scenarios explicitly opt in and mock their providers.
+    # Synthetic planner revisions must never query the real CI repository.
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+        unittest.main()

@@ -4,13 +4,10 @@ name: LEGEND candidate read-only production observation
 # collects bounded SQL and selected provider observations; production proof lives only in
 # all-intentional-direct-release-20260918.yml. It cannot merge, deploy or claim a live SHA.
 on:
-  push:
-    branches:
-      - 'validation/legend-native-*'
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact immutable candidate commit containing this runner
+        description: Exact immutable approved commit to observe
         required: true
         type: string
       validation_scope:
@@ -41,6 +38,7 @@ env:
 
 jobs:
   production-readonly-diagnostic:
+    if: github.ref == 'refs/heads/legend/approved-changes'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -53,7 +51,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}
-          fetch-depth: 1
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify candidate and runner identity
         shell: bash
@@ -61,6 +60,9 @@ jobs:
           set -Eeuo pipefail
           [[ "$LEGEND_VALIDATION_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$LEGEND_VALIDATION_CANDIDATE_SHA"
+          # Candidate source must already belong to reviewed approved history
+          # before any step receives production or provider credentials.
+          git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes
           test -f scripts/run-legend-production-shadow.sh
           git diff --quiet HEAD --
           mkdir -p diagnostics/legend-shadow

@@ -133,14 +133,18 @@ def classify_attempt(auth, repo, token, run, attempt):
         step = (legacy or modern)[0]
         row['step'] = 'legacy' if legacy else 'canonical'
         row['stepOutcome'] = step.get('conclusion')
-        if step.get('conclusion') == 'skipped':
-            row['code'] = 'NO_MIGRATION_STEP_ENTERED'
-            return row
         if legacy:
             source = auth._release_history_source(
                 repo, run['head_sha'],
                 '.github/workflows/' + auth.DIRECT_RELEASE_WORKFLOW, token)
             row['sourceBlob'] = blob_sha(source)
+            if not auth.legacy_migration_step_recognized(source, step):
+                row['code'] = 'MIGRATION_STEP_MISSING'
+                return row
+        if step.get('conclusion') == 'skipped':
+            row['code'] = 'NO_MIGRATION_STEP_ENTERED'
+            return row
+        if legacy:
             if (step.get('conclusion') == 'failure'
                     and (auth._attested_legacy_ef_factory_nonentry(
                         repo, run, job, step, attempt, token)

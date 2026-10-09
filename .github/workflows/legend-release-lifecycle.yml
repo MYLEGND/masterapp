@@ -31,12 +31,100 @@ on:
 permissions:
   contents: read
   actions: read
-concurrency:
-  group: legend-release-lifecycle
-  cancel-in-progress: false
 
 jobs:
+  readiness-observe:
+    # Read-only production observation uses only approved code. Candidate
+    # assemblies stay opaque; only their bounded declarative contract is read.
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: Production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      identity: ${{ steps.observe.outputs.identity }}
+      artifact: ${{ steps.observe.outputs.artifact }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit exact candidate and approved baseline before provider access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/release-lifecycle.py readiness-admit --pr "$PR_NUMBER"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Observe candidate migration and publication prerequisites
+        id: observe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/release-lifecycle.py readiness-observe --pr "$PR_NUMBER" --directory "$RUNNER_TEMP/readiness"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.observe.outputs.artifact }}
+          path: ${{ runner.temp }}/readiness/observation.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: Preserve classified readiness failure
+        if: failure() && steps.observe.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-readiness-failure-${{ github.event.pull_request.head.sha }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/readiness/failure.json
+          retention-days: 90
+          if-no-files-found: error
+
+  release-readiness:
+    needs: readiness-observe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.readiness-observe.outputs.artifact }}
+          path: ${{ runner.temp }}/readiness
+      - name: Prove rehearsal and existing mutation admission without writing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/release-lifecycle.py readiness-finalize --pr "$PR_NUMBER" --directory "$RUNNER_TEMP/readiness"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legend-release-readiness-${{ needs.readiness-observe.outputs.identity }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/readiness/readiness.json
+          retention-days: 90
+          if-no-files-found: error
+
   maintain:
+    concurrency:
+      group: legend-release-lifecycle
+      cancel-in-progress: false
     # Never grant this job to a fork, draft, or untrusted PR author.
     if: >-
       github.event_name != 'pull_request_target' ||
@@ -108,6 +196,13 @@ jobs:
           path: ${{ runner.temp }}/lifecycle-validation-receipt.txt
           retention-days: 30
           if-no-files-found: error
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: scripts/release-artifacts/package-lock.json
+      - name: Install canonical durable operation transport
+        run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
       - name: Integrate ready approved change and start direct release
         if: github.event_name == 'pull_request_target'
         env:

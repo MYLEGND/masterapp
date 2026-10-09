@@ -23,6 +23,47 @@ cloud = load('deploy-founder-cloudflare')
 router = load('release-router')
 
 
+class RehearsalReceiptReuseTests(unittest.TestCase):
+    def test_binding_an_existing_exact_rehearsal_executes_zero_new_sql(self):
+        import os
+        probe=load('migration-probe-package')
+        package=load('release-package')
+        candidate='a'*40;bundle=b'already rehearsed exact bundle'
+        digest=hashlib.sha256(bundle).hexdigest();expected=dict(identity='b'*64)
+        baseline=dict(candidate=candidate,identity='b'*64,contractDigest='c'*64)
+        prior=dict(runId=71,artifactId=81,artifact='prior-rehearsal',receipt=dict(
+            bundleDigest=digest,counts=dict(mutations=1,intents=1,successReceipts=2),proven=True))
+        selected=dict(producerRevision='d'*40,bundleDigest=digest)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'migration').mkdir()
+            (root/'observation.json').write_text(json.dumps(baseline))
+            (root/'rehearsal.reuse.json').write_text(json.dumps(prior))
+            (root/'migration/migration.component.json').write_text('{}')
+            (root/'migration'/package.MIGRATION_BUNDLE).write_bytes(bundle)
+            # Only the package module is loaded before the proven reuse return;
+            # no migration executor, compiler, SQL container, or fixture runs.
+            class Loader:
+                def exec_module(self,module):pass
+            class Spec:
+                loader=Loader()
+            with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder',
+                    GITHUB_RUN_ID='91',GITHUB_RUN_ATTEMPT='2',PREPARED_MIGRATION_ARTIFACT='prepared-a2'), \
+                 patch.object(probe.AUTHORITY,'approved_head_preflight',return_value=dict(current=True,approvedHeadSha='e'*40)), \
+                 patch.object(probe.AUTHORITY,'readiness_targets',return_value=[]), \
+                 patch.object(probe.AUTHORITY,'readiness_identity',return_value=expected), \
+                 patch.object(probe.AUTHORITY,'api_get',return_value=dict(total_count=1,artifacts=[dict(id=101,name='prepared-a2',expired=False)])), \
+                 patch.object(probe.AUTHORITY,'migration_rehearsal_evidence',return_value=prior), \
+                 patch.object(probe.importlib.util,'spec_from_file_location',return_value=Spec()), \
+                 patch.object(probe.importlib.util,'module_from_spec',return_value=package), \
+                 patch.object(package,'verify_prepared_migration',return_value=selected), \
+                 patch.object(probe.subprocess,'run',side_effect=AssertionError('No new SQL/compiler/provider mutation')):
+                probe.rehearse_candidate(candidate,root,None)
+            result=json.loads((root/'rehearsal.json').read_text())
+            self.assertEqual('reused-success',result['state']);self.assertEqual(0,result['executedMutations'])
+            self.assertEqual(1,result['counts']['mutations']);self.assertEqual(81,result['executionSource']['artifactId'])
+            self.assertEqual(selected,result['selectedPackage'])
+
+
 class ReleaseChildTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -76,6 +117,26 @@ class ReleaseChildTests(unittest.TestCase):
             observer=lambda *args: self.schema(True), journal_factory=self.journal,
             execute=lambda *args: self.fail('Repeated migration')), 'preserved')
 
+    def test_ready_twice_records_one_observation_and_no_mutation_intent(self):
+        for _ in range(2):
+            self.assertEqual('preserved', migration.reconcile(self.bundle, self.path, 'opaque',
+                observer=lambda *args: self.schema(True), journal_factory=self.journal,
+                execute=lambda *args: self.fail('Unexpected migration')))
+        self.assertEqual(1, len(self.published))
+        self.assertEqual(['success'], [phase for phase, identity in self.records])
+        self.assertEqual('schema-ready-no-write',
+            next(iter(self.records.values()))['observation']['providerVersion'])
+
+    def test_ready_observation_cannot_authorize_replay_after_pending_drift(self):
+        migration.reconcile(self.bundle, self.path, 'opaque',
+            observer=lambda *args: self.schema(True), journal_factory=self.journal,
+            execute=lambda *args: self.fail('Unexpected migration'))
+        with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+            migration.reconcile(self.bundle, self.path, 'opaque',
+                observer=lambda *args: self.schema(False), journal_factory=self.journal,
+                execute=lambda *args: self.fail('Migration after unproven drift'))
+        self.assertEqual(1, len(self.published))
+
     def test_ambiguous_migration_still_pending_never_blindly_replays(self):
         with self.assertRaisesRegex(RuntimeError, "Migration stage unresolved"):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
@@ -83,6 +144,46 @@ class ReleaseChildTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
             migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: self.schema(False),
                 journal_factory=self.journal, execute=lambda *args: self.fail('Repeated migration'))
+
+    def test_changed_database_baseline_or_bundle_blocks_before_new_intent(self):
+        before = dict(self.schema(False), databaseIdentity='d' * 64, baselineIdentity='e' * 64)
+        proof = dict(before, pendingCount=1,
+            rehearsal={'bundleDigest': hashlib.sha256(self.bundle.read_bytes()).hexdigest()})
+        for key in ('databaseIdentity', 'baselineIdentity', 'schemaIdentity', 'bundleDigest'):
+            receipt = json.loads(json.dumps(proof))
+            if key == 'bundleDigest': receipt['rehearsal'][key] = 'f' * 64
+            else: receipt[key] = 'f' * 64
+            with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'readiness-'):
+                migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: before,
+                    journal_factory=self.journal, readiness=lambda before: receipt,
+                    execute=lambda *args: self.fail('Mutation after drift'))
+            self.assertEqual([], self.published)
+
+    def test_rehearsed_migration_lost_receipt_reconciles_changed_baseline_without_replay(self):
+        before = dict(self.schema(False), databaseIdentity='d' * 64, baselineIdentity='e' * 64)
+        after = dict(before, ready=True, baselineIdentity='f' * 64)
+        proof = dict(before, pendingCount=1,
+            rehearsal={'bundleDigest': hashlib.sha256(self.bundle.read_bytes()).hexdigest()})
+        states = iter([before, after])
+        mutations = []
+        def publish(name, record):
+            if record['phase'] == 'success': raise TimeoutError('Injected receipt loss')
+            return self.publish(name, record)
+        def journal(child, material):
+            return journal_module.ChildJournal(child, material, authority=self.authority,
+                publisher=publish, environment=self.env)
+        with self.assertRaisesRegex(RuntimeError, 'success-receipt'):
+            migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: next(states),
+                journal_factory=journal, readiness=lambda before: proof, execute=lambda *args: mutations.append(1))
+        self.assertEqual('preserved', migration.reconcile(self.bundle, self.path, 'opaque',
+            observer=lambda *args: after, journal_factory=self.journal, readiness=lambda before: proof,
+            execute=lambda *args: self.fail('Duplicate mutation')))
+        self.assertEqual(1, len(mutations))
+        self.assertEqual(2, len(self.published))
+
+        self.assertEqual({'intent', 'success'}, {phase for phase, identity in self.records})
+        for record in self.records.values():
+            self.assertNotIn('providerVersion', record['observation'])
 
     def test_migration_stage_errors_never_disclose_provider_details(self):
         for stage in ('schema-observation', 'child-history', 'mutation-admission', 'bundle-execution', 'schema-verification', 'success-receipt'):
@@ -287,11 +388,43 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
                     firstPendingMigrationId=None if ready else '20261007134500_AddFounderAssistantRules',
                     lastAppliedMigrationId='20261003091500_CanonicalizeBusinessFinanceToolState')
 
+    def test_same_job_admission_reuses_observation_but_rejects_stale_scope(self):
+        scope = dict(GITHUB_RUN_ID='7', GITHUB_RUN_ATTEMPT='1', RELEASE_SHA='a' * 40,
+            APPLICATION_RELEASE_SHA='b' * 40, DATABASE_AUTHORITY='portal', RELEASE_RESOURCE_GROUP='group')
+        path = Path(self.temp.name) / 'observation.json'
+        migration.retain_preflight_observation(path, self.schema(True), environment=scope, now=lambda: 1000)
+        before = migration.load_preflight_observation(path, environment=scope, now=lambda: 1001)
+        with patch.object(migration, 'observe', side_effect=AssertionError('Duplicate SQL observation')) as observe, \
+             patch.object(migration, 'mutation_admission', return_value={'state': 'not-required'}) as admission:
+            self.assertEqual('ready', migration.preflight(None, self.probe, None, observation=before))
+            observe.assert_not_called()
+            admission.assert_called_once()
+        for key in scope:
+            with self.subTest(key=key), self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.load_preflight_observation(path, environment=scope | {key: 'changed'}, now=lambda: 1001)
+        for now in (999, 1901):
+            with self.subTest(now=now), self.assertRaisesRegex(RuntimeError, 'preparation'):
+                migration.load_preflight_observation(path, environment=scope, now=lambda: now)
+
     def test_fresh_zero_pending_reuses_without_bundle_or_historical_scans(self):
         with patch.object(migration, 'observe', return_value=self.schema(True)), \
              patch.object(migration, 'journal_type',
                           side_effect=AssertionError('journal must not run')):
             self.assertEqual(migration.preflight(None, self.probe, 'masked'), 'ready')
+
+    def test_rehearsal_mismatched_history_fingerprint_stops_before_bundle_execution(self):
+        from types import SimpleNamespace
+        before = dict(self.schema(False), baselineIdentity='a' * 64)
+        observed = dict(before, baselineIdentity='b' * 64)
+        connection = ('Server=127.0.0.1,14333;Database=LegendRehearsal_' + 'a' * 32 +
+                      ';User Id=sa;Password=synthetic_password_Aa1!;Encrypt=True;TrustServerCertificate=True')
+        with patch.object(migration.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as fixture, \
+             patch.object(migration, 'observe', return_value=observed), \
+             patch.object(migration, 'reconcile') as mutation:
+            with self.assertRaisesRegex(RuntimeError, 'differs from observed schema baseline'):
+                migration.rehearse(self.bundle, self.probe, self.probe, connection, before)
+            self.assertEqual(1, fixture.call_count)
+            mutation.assert_not_called()
 
     def test_pending_sql_authenticates_first_write_without_publishing_intent(self):
         calls = []
@@ -334,11 +467,12 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
         prepublication = load('release-prepublication')
         env = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
                    EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
-                   DATABASE_AUTHORITY='masterapp-portal')
+                   DATABASE_AUTHORITY='masterapp-portal', GITHUB_REPOSITORY='owner/repo')
         with patch.dict(os.environ, env), \
              patch.object(prepublication, 'git_ok', return_value=True), \
              patch.object(prepublication, 'changed_migrations', return_value=[]), \
              patch.object(prepublication, 'release_proven'), \
+             patch.object(prepublication, 'restore_migration_probe'), \
              patch.object(prepublication, 'run', return_value='{"runId":1,"artifact":"probe"}'), \
              patch.object(prepublication, '_invoke_migration_bundle') as execute:
             os.environ['MIGRATION_READINESS_PENDING'] = 'true'
@@ -346,8 +480,8 @@ class EarlyMigrationReadinessTests(unittest.TestCase):
             execute.assert_called_once()
             execute.reset_mock()
             os.environ['MIGRATION_READINESS_PENDING'] = 'false'
-            self.assertEqual(prepublication.run_migration_lane()['status'], 'not-applicable')
-            execute.assert_not_called()
+            self.assertEqual(prepublication.run_migration_lane()['status'], 'reconciled')
+            execute.assert_called_once()  # Fresh observer/journal; ready-state tests prove zero bundle executions.
             del os.environ['MIGRATION_READINESS_PENDING']
             with self.assertRaisesRegex(RuntimeError, 'readiness gate'):
                 prepublication.run_migration_lane()
@@ -527,6 +661,34 @@ class ChildHistorySafetyTests(unittest.TestCase):
     def test_repository_history_filters_out_unrelated_workflows(self):
         self.run['path'] = '.github/workflows/unrelated-workflow.yml'
         self.assertTrue(self.check())  # No trusted release child can enter via another workflow.
+
+    def observed_ready(self):
+        name = 'legend-release-child-success-' + self.material
+        self.artifacts.append(dict(name=name, id=12, expired=False))
+        record = dict(schemaVersion=1, child=self.child, dependencyIdentity=self.material,
+            materialIdentity=self.material, partitionIdentity=self.material,
+            executionAuthority='e' * 40, phase='success', producingRun=7, producingAttempt=1,
+            observation=dict(providerVersion='schema-ready-no-write', schemaIdentity='f' * 64))
+        self.records[name] = record
+        return record
+
+    def test_authenticated_ready_observation_is_not_a_prior_mutation(self):
+        self.observed_ready()
+        self.assertTrue(self.check())
+
+    def test_ready_observation_rejects_incompatible_or_incomplete_proof(self):
+        for fault in ('attempt', 'authority', 'phase', 'marker', 'duplicate', 'failure', 'cancelled'):
+            with self.subTest(fault=fault):
+                self.setUp()
+                record = self.observed_ready()
+                if fault == 'attempt': record['producingAttempt'] = 2
+                elif fault == 'authority': record['executionAuthority'] = 'f' * 40
+                elif fault == 'phase': record['phase'] = 'intent'
+                elif fault == 'marker': record['observation'] = {}
+                elif fault == 'duplicate': self.artifacts.append(dict(self.artifacts[0], id=13))
+                else: self.step['conclusion'] = fault
+                with self.assertRaises(RuntimeError):
+                    self.check()
 
     def test_attested_successful_prepublication_noop_is_not_a_sql_write(self):
         import subprocess
@@ -1572,6 +1734,72 @@ class ChildHistorySafetyTests(unittest.TestCase):
     def test_deleted_artifact_after_started_child_cannot_authorize_replay(self):
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
             self.check()
+
+    def test_original_cli_noop_requires_exact_source_checkout_and_both_bounded_outputs(self):
+        import subprocess
+        source = subprocess.check_output(['git', 'cat-file', 'blob',
+            '517c091a12aff011e7b1950b791ac9ebd6b76798'], text=True)
+        run = dict(self.run, status='completed', conclusion='failure', run_attempt=2)
+        job = dict(id=123, name='release', status='completed', conclusion='failure', run_attempt=2)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success',
+                    started_at='2026-09-30T06:19:00Z', completed_at='2026-09-30T06:19:28Z')
+        log = ('2026-09-30T06:14:19.0000000Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-09-30T06:14:19.1000000Z ' + run['head_sha'] + '\n'
+               '2026-09-30T06:19:23.4355156Z No migrations were applied. The database is already up to date.\n'
+               '2026-09-30T06:19:27.2460295Z Schema ready. Applied candidate migrations only; no down migrations.\n'
+               '2026-09-30T06:30:00.0000000Z Post job cleanup.\n')
+        def prove(text=log, original=source):
+            with patch.object(self.authority, '_release_job_log', return_value=text):
+                return self.authority._legacy_migration_noop('owner/repo', run, job, step, original, 'fixture')
+        self.assertTrue(prove())
+        self.assertTrue(self.authority.legacy_migration_step_recognized(source, step))
+        self.assertFalse(prove(original=source + '\n# unknown generation\n'))
+        for removed in ('No migrations were applied.', 'Schema ready.', 'Post job cleanup.'):
+            self.assertFalse(prove(text=log.replace(removed, 'Unproven.')))
+        self.assertFalse(prove(text=log.replace(run['head_sha'], 'f' * 40)))
+        self.assertFalse(prove(text=log.replace('06:19:23.', '06:18:23.')))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z Applying migration \'20260930000000_Example\'.\n'))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z Reverting migration \'20260930000000_Example\'.\n'))
+        self.assertFalse(prove(text=log + '2026-09-30T06:19:26.0000000Z No migrations were applied. The database is already up to date.\n'))
+        step['conclusion'] = 'failure'
+        self.assertFalse(prove())
+        self.assertFalse(self.authority.legacy_migration_step_recognized(source, step))
+        step['conclusion'] = 'success'
+        run['head_repository'] = {'full_name': 'untrusted/fork'}
+        self.assertFalse(prove())
+
+    def test_original_skipped_legacy_bundle_is_recognized_without_execution_grant(self):
+        import subprocess
+        head = '5bc6d5392be6471318dc7f8ff59ed6fdac15e761'
+        source = subprocess.check_output(['git', 'show', head +
+            ':.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW], text=True)
+        self.run.update(id=36979837740, head_sha=head, conclusion='failure')
+        self.run.pop('display_title')
+        self.step.update(name='Apply additive diagnostics migrations before restarting apps',
+                         status='completed', conclusion='skipped')
+        with patch.object(self.authority, '_release_history_source', return_value=source):
+            self.assertTrue(self.check())
+            original_api = self.api
+            def duplicate_step(repo, path, token):
+                result = original_api(repo, path, token)
+                if '/jobs?' in path:
+                    result['jobs'][0]['steps'].append(dict(self.step, conclusion='success'))
+                return result
+            with patch.object(self, 'api', side_effect=duplicate_step):
+                with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                    self.check()
+            for outcome in ('success', 'failure', 'cancelled', None):
+                self.step['conclusion'] = outcome
+                with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                    self.check()
+            self.step.update(conclusion='skipped', status='in_progress')
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
+        self.step['status'] = 'completed'
+        with patch.object(self.authority, '_release_history_source', return_value=source + '\n# unknown generation\n'):
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
 
     def test_named_child_never_started_is_positive_proof_even_on_legacy_run(self):
         self.run.pop('display_title')

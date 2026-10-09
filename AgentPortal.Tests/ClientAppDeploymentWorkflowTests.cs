@@ -35,7 +35,9 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.True(prepare >= 0 && publication > prepare && finalize > publication);
         Assert.Contains("needs.admission.outputs.admitted == 'true'", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/release-workflow.py --check", workflow, StringComparison.Ordinal);
-        Assert.Contains("--verify-outcomes --selected-targets", workflow, StringComparison.Ordinal);
+        Assert.Contains("--finalize-only --transaction-plan", workflow, StringComparison.Ordinal);
+        Assert.Contains("result.get('targetMaterial') != material", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("--verify-outcomes", workflow, StringComparison.Ordinal);
         Assert.Contains("--targets-json \"$SELECTED_TARGETS\"", workflow, StringComparison.Ordinal);
         Assert.Contains("--baselines-json \"$LIVE_BASELINES\"", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("Direct deploy AgentPortal", workflow, StringComparison.Ordinal);
@@ -53,7 +55,9 @@ public sealed class ClientAppDeploymentWorkflowTests
         Assert.Contains("Publish exact selected application packages", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/release-package.py verify", workflow, StringComparison.Ordinal);
         Assert.Contains("production rebuild is forbidden", workflow, StringComparison.Ordinal);
-        Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
+        Assert.Contains("artifact-ids: ${{ steps.reusevalidated.outputs.artifact_id }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("--source-evidence \"$RUNNER_TEMP/validated-package-evidence.json\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/release-package.py restore-rollback", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet publish AgentPortal/AgentPortal.csproj", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet publish ClientApp/ClientApp.csproj", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet publish Protect-Website/ProtectWebsite.csproj", workflow, StringComparison.Ordinal);

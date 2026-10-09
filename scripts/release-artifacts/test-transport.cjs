@@ -13,6 +13,7 @@ test('publication returns only after durable content is read back by immutable I
   const calls = [];
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(n, files, root, options) {
       calls.push('upload');
       assert.equal(n, name);
@@ -35,6 +36,7 @@ test('publication returns only after durable content is read back by immutable I
 
 test('readback mismatch fails closed after upload', async () => {
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact() { return {id: 42}; },
     async downloadArtifact(id, options) {
       await fs.mkdir(options.path);
@@ -56,6 +58,7 @@ test('scheduler admission uses the same immutable upload and readback channel', 
     resources: ['app:portal'], authorizationMode: 'automatic', producingRun: 10, producingAttempt: 1, phase: 'admission'};
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(name, files) {
       assert.equal(name, 'legend-release-admission-' + receipt.admissionId);
       stored = await fs.readFile(files[0]);
@@ -80,6 +83,7 @@ test('child proof preserves stable operation and distinct evidence identities wi
   const artifact = 'legend-release-child-success-' + receipt.dependencyIdentity;
   let stored;
   const client = {
+    async listArtifacts() { return {artifacts: []}; },
     async uploadArtifact(name, files) {
       assert.equal(name, artifact);
       stored = await fs.readFile(files[0]);
@@ -94,4 +98,182 @@ test('child proof preserves stable operation and distinct evidence identities wi
   assert.deepEqual(await publish(client, artifact, receipt), {artifactId: 44});
   await assert.rejects(publish(client, artifact, {...receipt, observation: {connectionString: 'forbidden'}}), /Invalid/);
   await assert.rejects(publish(client, artifact, {...receipt, materialIdentity: 'bad'}), /Invalid/);
+});
+
+function durableClient({lostAck = false, failReadback = false} = {}) {
+  const state = {uploads: 0, downloads: 0, artifacts: [], content: null};
+  return {state,
+    async listArtifacts(options) {
+      assert.deepEqual(options, {latest: false});
+      return {artifacts: state.artifacts};
+    },
+    async uploadArtifact(name, files) {
+      state.uploads++;
+      state.content = await fs.readFile(files[0], 'utf8');
+      state.artifacts.push({name, id: 45});
+      if (lostAck) throw new Error('Connection reset after commit');
+      return {id: 45};
+    },
+    async downloadArtifact(id, options) {
+      state.downloads++;
+      assert.equal(id, 45);
+      if (failReadback && state.downloads === 1) throw new Error('Temporary read failure');
+      await fs.mkdir(options.path);
+      await fs.writeFile(path.join(options.path, 'operation.json'), state.content);
+    }
+  };
+}
+
+test('lost upload acknowledgment reconciles identical content without duplicate upload', async () => {
+  const client = durableClient({lostAck: true});
+  assert.deepEqual(await publish(client, name, record), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 1);
+});
+
+test('readiness rerun intent uses canonical immutable transport and rejects widened payloads', async () => {
+  const client = durableClient({lostAck: true});
+  const intent = {schemaVersion: 1, phase: 'intent', operationId: 'e'.repeat(64),
+    candidateRevision: 'a'.repeat(40), executionAuthority: 'b'.repeat(40),
+    targetRun: 12, targetAttempt: 1, targetJob: 34, producingRun: 56, producingAttempt: 1};
+  const artifact = 'legend-readiness-recovery-' + intent.operationId;
+  assert.deepEqual(await publish(client, artifact, intent), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 1);
+  await assert.rejects(publish(client, artifact, {...intent, targetJob: '34'}), /Invalid/);
+  await assert.rejects(publish(client, artifact, {...intent, command: 'arbitrary'}), /Invalid/);
+  assert.equal(client.state.uploads, 1);
+});
+
+test('readback failure and worker restart preserve prior upload', async () => {
+  const client = durableClient({failReadback: true});
+  await assert.rejects(publish(client, name, record), /Temporary read failure/);
+  assert.deepEqual(await publish(client, name, record), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 2);
+});
+
+test('duplicate events reuse exact receipt without a second write', async () => {
+  const client = durableClient();
+  await publish(client, name, record);
+  await publish(client, name, record);
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 2);
+});
+
+test('existing artifact with changed producer or tampered bytes fails closed', async () => {
+  const client = durableClient();
+  await publish(client, name, record);
+  await assert.rejects(publish(client, name, {...record, producingAttempt: 2}), /mismatch/);
+  client.state.content = '{}';
+  await assert.rejects(publish(client, name, record), /mismatch/);
+  assert.equal(client.state.uploads, 1);
+});
+
+test('ambiguous identity and unavailable inventory authorize no upload', async () => {
+  const client = durableClient();
+  client.state.artifacts = [{name, id: 45}, {name, id: 46}];
+  await assert.rejects(publish(client, name, record), /Ambiguous/);
+  assert.equal(client.state.uploads, 0);
+  client.listArtifacts = async () => { throw new Error('Inventory unavailable'); };
+  await assert.rejects(publish(client, name, record), /Inventory unavailable/);
+  assert.equal(client.state.uploads, 0);
+});
+
+test('unknown upload outcome cannot authorize a retry or success', async () => {
+  const client = durableClient();
+  client.uploadArtifact = async () => { client.state.uploads++; throw new Error('Unknown'); };
+  await assert.rejects(publish(client, name, record, {sleep: async () => {}}), /outcome unresolved/);
+  assert.equal(client.state.uploads, 1);
+  assert.equal(client.state.downloads, 0);
+});
+
+test('overlapping publishers converge through provider immutable-name conflict', async () => {
+  const client = durableClient();
+  let accepted = 0;
+  let arrivals = 0;
+  let open;
+  const both = new Promise(resolve => { open = resolve; });
+  const original = client.uploadArtifact;
+  client.uploadArtifact = async (...args) => {
+    arrivals++;
+    if (arrivals === 2) open();
+    await both;
+    // Model the provider's supported create-only artifact-name constraint.
+    if (accepted) throw new Error('409 immutable artifact already exists');
+    accepted++;
+    return original(...args);
+  };
+  const results = await Promise.all([publish(client, name, record), publish(client, name, record)]);
+  assert.deepEqual(results, [{artifactId: 45}, {artifactId: 45}]);
+  assert.equal(arrivals, 2);
+  assert.equal(accepted, 1);
+  assert.equal(client.state.uploads, 1);
+});
+
+
+test('component operation retains actual producer and separate authorization through durable transport', async () => {
+  const component = {...record, schemaVersion: 2, candidateRevision: 'e'.repeat(40),
+    componentSource: {runId: 8, runAttempt: 2, artifactId: 9, artifactDigest: 'sha256:'+'f'.repeat(64),
+      artifactName: 'validated-component-bytes-test', receiptArtifactId: 10, producingJobId: 11}};
+  let stored; let uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored);
+    }
+  };
+  assert.deepEqual(await publish(client, name, component), {artifactId: 42});
+  assert.deepEqual(JSON.parse(stored), component);
+  assert.equal(uploads, 1);
+  await assert.rejects(publish({}, name, {...component, packageProducerRun: 99}), /authorization\/producer/);
+  await assert.rejects(publish({}, name, {...component, schemaVersion: 1}), /unversioned/);
+});
+
+test('mixed producer plan compares rollback with producer, not authorization candidate', async () => {
+  const crypto = require('node:crypto');
+  const candidate = 'a'.repeat(40), producer = 'b'.repeat(40), content = 'c'.repeat(64);
+  const source = {runId: 8, runAttempt: 2, artifactId: 9, artifactDigest: 'sha256:'+'f'.repeat(64),
+    artifactName: `validated-component-bytes-portal-${content}-8-a2`, receiptArtifactId: 10, producingJobId: 11};
+  const snapshot = {candidateRevision: candidate, entries: [], schemaVersion: 1};
+  snapshot.digest = crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+  const row = {app: 'portal', revision: producer, packageDigest: 'd'.repeat(64), rollbackEvidence: null,
+    targetMaterial: {producerRevision: producer, packageDigest: 'd'.repeat(64), contentIdentity: content,
+      executionIdentity: 'e'.repeat(64), source}};
+  const plan = {schemaVersion: 2, planId: '1'.repeat(64), candidateRevision: candidate,
+    producingRun: 12, producingAttempt: 1, targets: [row], historySnapshot: snapshot};
+  let stored, uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'release-transaction.json'), stored);
+    }
+  };
+  const planName = 'legend-release-transaction-plan-' + plan.planId;
+  assert.deepEqual(await publish(client, planName, plan), {artifactId: 42});
+  assert.equal(uploads, 1);
+  const wrong = structuredClone(plan); wrong.targets[0].targetMaterial.source.artifactName = 'wrong';
+  await assert.rejects(publish({}, planName, wrong), /artifact name/);
+  const old = structuredClone(plan); old.schemaVersion = 1;
+  await assert.rejects(publish({}, planName, old), /transaction target/);
+});
+
+test('component locator rerun preserves one immutable index without claiming success', async () => {
+  const locator = {schemaVersion: 1, component: 'portal', contentIdentity: 'f'.repeat(64), runId: 17};
+  const locatorName = 'validated-component-index-portal-' + locator.contentIdentity;
+  let stored, uploads = 0;
+  const client = {
+    async listArtifacts() { return {artifacts: uploads ? [{name: locatorName, id: 42}] : []}; },
+    async uploadArtifact(n, files) { uploads++; stored = await fs.readFile(files[0]); return {id: 42}; },
+    async downloadArtifact(id, options) {
+      await fs.mkdir(options.path); await fs.writeFile(path.join(options.path, 'operation.json'), stored);
+    }
+  };
+  await publish(client, locatorName, locator);
+  await publish(client, locatorName, locator);
+  assert.equal(uploads, 1);
+  assert.deepEqual(JSON.parse(stored), locator);
+  await assert.rejects(publish({}, locatorName, {...locator, state: 'success'}), /Invalid/);
 });

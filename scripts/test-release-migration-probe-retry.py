@@ -159,10 +159,12 @@ class MigrationAssemblyHistoryContractTests(TestCase):
         for identifier in allowed:
             self.assertIn(identifier, audit.splitlines())
             self.assertIn('["' + identifier + '"]', probe)
-        self.assertIn('unknown.Any(id => !auditedLegacy.ContainsKey(id))', probe)
+        self.assertIn('unregistered = unknown.Where(id => !auditedLegacy.ContainsKey(id)).ToArray()', probe)
+        self.assertIn('if (unregistered.Length > 0)', probe)
         self.assertIn('!beforeKnown || !afterKnown || !beforeApplied || !afterApplied', probe)
         self.assertIn('appliedRegistered.SequenceEqual(known.Take(appliedRegistered.Length)', probe)
-        self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION")', probe)
+        self.assertIn('throw new ProbeObservationFailure("UNKNOWN_APPLIED_MIGRATION",', probe)
+        self.assertIn('safeIds, Math.Min(unregistered.Length, 9999)', probe)
         self.assertIn('throw new ProbeObservationFailure("HISTORY_SEQUENCE_DRIFT")', probe)
         # No new executable migration is fabricated for a historical-only row.
         self.assertFalse((root / 'Infrastructure/Migrations' /

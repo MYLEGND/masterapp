@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import shutil
 from pathlib import Path
 import tempfile
 import threading
@@ -62,10 +63,19 @@ class FakeAzure:
         )
 
 
+class RetainedJournal:
+    # Provider-only fixtures retain the original successful write intent.
+    baseline = None
+    intent = {'baselineDeploymentIds': []}
+    def __init__(self): self.successes = []
+    def record_success(self, ids): self.successes.append(ids)
+
+
 class ReconciliationTests(unittest.TestCase):
-    def test_exact_live_revision_is_preserved_without_upload(self):
+    def test_matching_live_revision_without_artifact_proof_blocks_without_upload(self):
         azure = FakeAzure([[row('old', 4)]], [True])
-        self.assertEqual('preserved', azure.run())
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+            azure.run()
         self.assertEqual(0, azure.uploads)
 
     def test_504_and_active_deployment_are_polled_never_resubmitted(self):
@@ -76,7 +86,7 @@ class ReconciliationTests(unittest.TestCase):
 
     def test_preexisting_active_candidate_finishes_without_any_upload(self):
         azure = FakeAzure([[row('pending', 1)], [row('pending', 4)]], [False, True, True])
-        self.assertEqual('preserved', azure.run())
+        self.assertEqual('preserved', azure.run(journal=RetainedJournal()))
         self.assertEqual(0, azure.uploads)
 
     def test_terminal_failure_stays_failed_even_if_runtime_responds(self):
@@ -85,7 +95,7 @@ class ReconciliationTests(unittest.TestCase):
             azure.run()
         self.assertEqual(1, azure.uploads)
 
-    def test_retained_failed_upload_preserves_exact_live_candidate_without_replay(self):
+    def test_retained_failed_upload_cannot_certify_matching_source_without_artifact_proof(self):
         class Journal:
             baseline = 'b' * 40
             history_error = None
@@ -103,12 +113,10 @@ class ReconciliationTests(unittest.TestCase):
         azure.observed_revision = lambda: 'a' * 40
         journal = Journal()
 
-        self.assertEqual(
-            'preserved',
-            azure.run(baseline='b' * 40, reconcile_only=True, journal=journal),
-        )
+        with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'does not prove'):
+            azure.run(baseline='b' * 40, reconcile_only=True, journal=journal)
         self.assertEqual(0, azure.uploads)
-        self.assertEqual([[]], journal.successes)
+        self.assertEqual([], journal.successes)
 
     def test_exact_live_receipt_transport_failure_is_deferred_without_upload_replay(self):
         class Journal:
@@ -340,7 +348,7 @@ class ReconciliationTests(unittest.TestCase):
         with self.assertRaises(deploy.DeploymentReconciliationRequired):
             first.run()
         resumed = FakeAzure([[], [row('delayed-original', 4)]], [False, True, True])
-        self.assertEqual('preserved', resumed.run(reconcile_only=True))
+        self.assertEqual('preserved', resumed.run(reconcile_only=True, journal=RetainedJournal()))
         self.assertEqual(1, first.uploads)
         self.assertEqual(0, resumed.uploads)
 
@@ -360,7 +368,8 @@ class ReconciliationTests(unittest.TestCase):
                     with self.assertRaises(deploy.DeploymentDrift):
                         azure.run(baseline='b' * 40)
                 elif observed == azure.revision:
-                    self.assertEqual('preserved', azure.run(baseline='b' * 40))
+                    with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+                        azure.run(baseline='b' * 40)
                 else:
                     with self.assertRaises(deploy.DeploymentReconciliationRequired):
                         azure.run(baseline='b' * 40, reconcile_only=True)
@@ -368,6 +377,34 @@ class ReconciliationTests(unittest.TestCase):
 
 
 class PackageTests(unittest.TestCase):
+    def test_different_artifact_at_same_sha_cannot_be_certified_from_live_sha(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        revision = 'a' * 40
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = root / 'first'; first.mkdir()
+            second = root / 'second'; second.mkdir()
+            live, live_digest = self.make_package(first, revision=revision)
+            requested, _ = self.make_package(second, revision=revision)
+            with zipfile.ZipFile(requested, 'a') as archive:
+                archive.writestr('different-compiled-output.dll', b'new toolchain bytes')
+            requested_digest = hashlib.sha256(requested.read_bytes()).hexdigest()
+            (second / 'SHA256SUMS').write_text(f'{requested_digest}  {requested.name}\n')
+            self.assertNotEqual(live_digest, deploy.verify_package(requested, revision))
+            azure = FakeAzure([[row('existing-artifact', 4)]], [True])
+            azure.revision = revision
+            azure.observed_revision = lambda: revision
+            journal = SimpleNamespace(baseline=revision, intent=None, history_error=None,
+                identity=dict(applicationRevision=revision, packageDigest=requested_digest), record_success=Mock())
+            with patch.object(deploy, 'target_azure', return_value=azure):
+                with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact is unproven'):
+                    deploy.preflight_target('portal', requested, revision, revision, journal)
+            with self.assertRaisesRegex(deploy.DeploymentReconciliationRequired, 'artifact publication intent'):
+                azure.run(journal=journal)
+            journal.record_success.assert_not_called()
+            self.assertEqual(0, azure.uploads)
+
     def make_package(self, folder, static=False, revision='a' * 40):
         path = Path(folder) / 'app.zip'
         with zipfile.ZipFile(path, 'w') as archive:
@@ -410,7 +447,741 @@ class PackageTests(unittest.TestCase):
 
 
 
+class ComponentIsolationTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('isolation_package_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        for path in ('source', 'nuget', 'npm', 'artifacts', 'website-workspace', 'tools/node', 'tools/python', 'authority', 'probe'):
+            (self.root / path).mkdir(parents=True)
+        (self.root / 'source/Legend-Website').mkdir()
+        (self.root / 'source/Legend-Website/package.json').write_text('{}')
+        self.image = self.package.PACKAGE_TOOL_IMAGES['sdk']
+
+    def command(self, phase='publish', component='website'):
+        return self.package.isolated_component_command(component, self.root,
+            ['python3', 'scripts/release-package.py'], phase=phase)
+
+    def test_publish_inputs_readonly_and_modules_are_disposable_outputs(self):
+        command = self.command()
+        mounts = [command[index + 1] for index, value in enumerate(command) if value == '--mount']
+        for target in ('/src', '/deps/nuget', '/deps/npm', '/src/Legend-Website/package.json', '/tools/node', '/tools/python', '/authority', '/probe'):
+            self.assertTrue(next(row for row in mounts if ',dst=' + target + ',' in row).endswith(',readonly'))
+        for target in ('/tmp/masterapp', '/src/Legend-Website'):
+            self.assertTrue(any(row.endswith(',dst=' + target) for row in mounts))
+        self.assertNotIn('docker.sock', '\n'.join(mounts))
+        self.assertEqual(self.image, command[-3])
+
+    def test_candidate_output_cannot_follow_host_links(self):
+        output=self.root/'artifacts/component'
+        output.mkdir(parents=True,exist_ok=True)
+        archive=output/self.package.component_file('portal')
+        with zipfile.ZipFile(archive,'w') as file:file.writestr('safe','output')
+        self.assertEqual(archive.resolve(),self.package.isolated_component_archive(self.root,'portal'))
+        archive.unlink();archive.symlink_to('/etc/passwd')
+        with self.assertRaisesRegex(ValueError,'escapes owned stage'):
+            self.package.isolated_component_archive(self.root,'portal')
+        archive.unlink();output.rmdir();output.symlink_to(self.root.parent,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'escapes owned stage'):
+            self.package.isolated_component_archive(self.root,'portal')
+
+    def test_adapter_bootstrap_does_not_require_unrestored_website_mounts(self):
+        command=self.package.isolated_component_command('protect',self.root,['/bin/true'],phase='bootstrap')
+        mounts=[command[index+1] for index,value in enumerate(command) if value=='--mount']
+        self.assertFalse(any('dst=/src/Legend-Website' in value for value in mounts))
+        self.assertEqual('none',command[command.index('--network')+1])
+        self.assertTrue(any('dst=/probe' in value and not value.endswith(',readonly') for value in mounts))
+
+    def test_failure_diagnostic_keeps_fixed_reason_and_codes_not_candidate_output(self):
+        log=self.root/'owned.log'
+        log.write_text('synthetic-private-payload\nValueError: private arbitrary input\nerror CS1234: synthetic source text\nValueError: Restored package archive digest mismatch\n')
+        result=self.package.isolated_failure_diagnostic(log,'observe',ValueError('private exception detail'))
+        self.assertEqual('Restored package archive digest mismatch',result['reason'])
+        self.assertEqual(['CS1234'],result['compilerCodes'])
+        self.assertNotIn('private',json.dumps(result))
+        self.assertNotIn('synthetic',json.dumps(result))
+
+    def test_only_restore_has_network_and_observe_has_no_writable_bind_mount(self):
+        for phase in ('restore', 'publish', 'observe'):
+            command = self.command(phase)
+            self.assertEqual('bridge' if phase == 'restore' else 'none', command[command.index('--network') + 1])
+            if phase == 'observe':
+                self.assertTrue(all(command[index + 1].endswith(',readonly')
+                    for index, value in enumerate(command) if value == '--mount'))
+            self.assertIn('--read-only', command)
+            self.assertIn('no-new-privileges', command)
+
+    def test_tokens_proxy_home_and_run_environment_are_never_forwarded(self):
+        first = self.command()
+        with patch.dict(os.environ, dict(GITHUB_TOKEN='test-token', AZURE_CLIENT_SECRET='test-secret',
+                ACTIONS_RUNTIME_TOKEN='test-runtime', HTTPS_PROXY='test-proxy', HOME='/private-host',
+                GITHUB_RUN_ATTEMPT='123', GITHUB_SHA='new-sha')):
+            self.assertEqual(first, self.command())
+        environment = [first[index + 1] for index, value in enumerate(first) if value == '--env']
+        self.assertIn('npm_config_offline=true', environment)
+        self.assertIn('HOME=/tmp/home', environment)
+        self.assertFalse(any(value.startswith(('GITHUB_', 'AZURE_', 'ACTIONS_', 'HTTPS_PROXY=')) for value in environment))
+
+    def test_escaped_mount_or_mutable_tool_reference_is_rejected(self):
+        (self.root / 'nuget').rmdir()
+        (self.root / 'nuget').symlink_to(self.root.parent, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'outside owned stage'):
+            self.command()
+
+    def test_tool_extraction_authenticates_exact_image_and_never_starts_container(self):
+        shutil.rmtree(self.root / 'tools')
+        image_id, container_id = 'sha256:' + 'c' * 64, 'd' * 64
+        calls = []
+        selected_image = None
+        def run(command, **kwargs):
+            nonlocal selected_image
+            calls.append(command)
+            value = ''
+            if command[:3] == ['docker', 'image', 'inspect']:
+                self.assertNotIn('--platform', command)
+                self.assertEqual(image_id, command[-1])
+                value = json.dumps([dict(Os='linux', Architecture='amd64', Id=image_id)])
+            elif command[:2] == ['docker', 'create']:
+                selected_image = command[-1]
+                self.assertIn('--pull=missing', command)
+                value = container_id
+            elif command[:3] == ['docker', 'container', 'inspect']:
+                value = json.dumps([dict(Image=image_id, Config=dict(Image=selected_image), State=dict(Running=False))])
+            elif command[:2] == ['docker', 'cp']:
+                target = Path(command[-1]); target.mkdir()
+                for relative in self.package.PACKAGE_TOOL_PATHS[target.name]:
+                    file = target / relative; file.parent.mkdir(parents=True, exist_ok=True); file.write_bytes(b'pinned-tool')
+            return type('Result', (), dict(stdout=value, returncode=0))()
+        with patch.object(self.package.subprocess, 'run', side_effect=run):
+            proof = self.package.prepare_isolated_tools(self.root)
+        self.assertEqual(3, sum(command[:2] == ['docker', 'create'] for command in calls))
+        self.assertEqual(3, sum(command[:2] == ['docker', 'rm'] for command in calls))
+        self.assertFalse(any(command[:2] == ['docker', 'start'] for command in calls))
+        self.assertEqual(self.package.PACKAGE_TOOL_IMAGES['node'], proof['tools']['node']['image'])
+        self.assertEqual(image_id, proof['tools']['node']['imageId'])
+        with self.assertRaises(FileExistsError):
+            self.package.prepare_isolated_tools(self.root)
+
+    def test_tool_identity_covers_content_modes_links_and_rejects_escape(self):
+        import time
+        tree = self.root / 'tools/node'
+        binary = tree / 'compiler'; binary.write_bytes(b'original')
+        link = tree / 'alias'; link.symlink_to('compiler')
+        first = self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+        self.assertEqual(first, self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10))
+        binary.write_bytes(b'changed')
+        changed = self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+        self.assertNotEqual(first['identity'], changed['identity'])
+        binary.chmod(0o755)
+        self.assertNotEqual(changed['identity'], self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)['identity'])
+        link.unlink(); link.symlink_to('/etc/passwd')
+        with self.assertRaisesRegex(ValueError, 'escapes verified tree'):
+            self.package.verified_tool_tree(tree, deadline=time.monotonic() + 10)
+
+    def test_source_materialization_keeps_exact_commit_without_host_state(self):
+        repository = self.root / 'repository'
+        repository.mkdir()
+        def git(*args):
+            return subprocess.check_output(['git', *args], cwd=repository, stderr=subprocess.DEVNULL, text=True).strip()
+        git('init')
+        git('config', 'user.name', 'Synthetic Test')
+        git('config', 'user.email', 'synthetic@example.invalid')
+        (repository / 'input.txt').write_text('committed input')
+        git('add', 'input.txt')
+        git('commit', '-m', 'synthetic source')
+        revision = git('rev-parse', 'HEAD')
+        git('remote', 'add', 'private', 'https://example.invalid/private')
+        (repository / 'input.txt').write_text('uncommitted edit')
+        (repository / 'private.txt').write_text('untracked synthetic credential')
+        shutil.rmtree(self.root / 'source')
+        with patch.object(self.package, 'ROOT', repository):
+            result = self.package.materialize_component_source(revision, self.root)
+        self.assertEqual(1, result['files'])
+        self.assertEqual('committed input', (self.root / 'source/input.txt').read_text())
+        self.assertFalse((self.root / 'source/private.txt').exists())
+        self.assertNotIn('remote', (self.root / 'source/.git/config').read_text())
+        self.assertEqual(revision, subprocess.check_output(['git', '-C', str(self.root / 'source'),
+            'rev-parse', '--verify', 'HEAD^{commit}'], text=True).strip())
+
+    def test_publish_scratch_drops_unmeasured_restore_state_and_preserves_cache(self):
+        (self.root / 'website-workspace/.npmrc').write_text('injected restore setting')
+        (self.root / 'website-workspace/generated.js').write_text('unmeasured restore output')
+        (self.root / 'npm/retained-cache').write_text('retained verified dependency')
+        self.package.prepare_website_workspace('website', self.root, phase='publish')
+        self.assertEqual(['package.json'], sorted(path.name for path in (self.root / 'website-workspace').iterdir()))
+        self.assertEqual('', (self.root / 'website-workspace/package.json').read_text())
+        self.assertEqual('{}', (self.root / 'source/Legend-Website/package.json').read_text())
+        self.assertEqual('retained verified dependency', (self.root / 'npm/retained-cache').read_text())
+
+    def test_timeout_reclaims_only_exact_owned_container_and_never_retries(self):
+        identity = 'b' * 64
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[:2] == ['docker', 'run']:
+                Path(command[command.index('--cidfile') + 1]).write_text(identity)
+                raise subprocess.TimeoutExpired(command, 1)
+            self.assertEqual(['docker', 'rm', '--force', identity], command)
+            return type('Result', (), {'returncode': 0})()
+        with patch.object(self.package.subprocess, 'run', side_effect=run):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.package.run_isolated_component('website', self.root, ['node', '--version'],
+                    phase='publish', timeout=1)
+        self.assertEqual(2, len(calls))
+        evidence = list(self.root.glob('*.cleanup.json'))
+        self.assertEqual(1, len(evidence))
+        self.assertEqual(dict(containerId=identity, attempted=True, removed=True), json.loads(evidence[0].read_text()))
+
+    def test_unknown_container_identity_never_triggers_cleanup_by_name(self):
+        def run(command, **kwargs):
+            Path(command[command.index('--cidfile') + 1]).write_text('other-container')
+            raise KeyboardInterrupt()
+        with patch.object(self.package.subprocess, 'run', side_effect=run) as execute:
+            with self.assertRaises(KeyboardInterrupt):
+                self.package.run_isolated_component('website', self.root, ['node', '--version'],
+                    phase='publish', timeout=1)
+            self.assertEqual(1, execute.call_count)
+        self.assertFalse(list(self.root.glob('*.cleanup.json')))
+
+
+
+class ComponentRestoreBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('restore_boundary_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.stage = Path(self.temporary.name)
+        self.obj = self.stage / 'artifacts/obj/App'
+        self.obj.mkdir(parents=True)
+        for name in ('project.assets.json', 'App.csproj.nuget.g.props', 'App.csproj.nuget.g.targets'):
+            (self.obj / name).write_text('{}' if name.endswith('.json') else '<Project/>')
+        self.material = dict(projectPaths=['App/App.csproj'])
+
+    def test_only_verified_restore_inputs_survive_and_original_evidence_is_preserved(self):
+        (self.obj / 'unmeasured-restore-script').write_text('unmeasured')
+        (self.stage / 'artifacts/fake-compiled.dll').write_text('must not suppress compilation')
+        identity = self.package.freeze_component_restore(self.stage, self.material)
+        self.assertEqual(64, len(identity))
+        self.assertEqual(3, len(list(self.obj.iterdir())))
+        self.assertFalse((self.stage / 'artifacts/fake-compiled.dll').exists())
+        self.assertTrue((self.stage / 'restore-observation/fake-compiled.dll').exists())
+        self.assertTrue((self.stage / 'restore-observation/obj/App/unmeasured-restore-script').exists())
+
+    def test_superseded_cache_is_unmounted_but_transitive_versions_remain(self):
+        cache = self.stage / 'nuget'
+        for relative in ('example/1.0', 'example/2.0', 'transitive/1.0'):
+            path = cache / relative
+            path.mkdir(parents=True)
+            (path / 'input.dll').write_text(relative)
+        for name, package in (('App', 'example/2.0'), ('Shared', 'transitive/1.0')):
+            path = self.stage / 'artifacts/obj' / name / 'project.assets.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(dict(version=4, libraries={package: dict(type='package', path=package)})))
+        result = self.package.narrow_restore_cache(self.stage)
+        self.assertEqual(['example/1.0'], result['excluded'])
+        self.assertEqual(['example/2.0', 'transitive/1.0'], result['selected'])
+        self.assertEqual('selected-unverified', result['state'])
+        self.assertFalse((cache / 'example/1.0').exists())
+        self.assertEqual('example/1.0', (self.stage / 'restore-cache-observation/example/1.0/input.dll').read_text())
+        self.assertTrue((cache / 'transitive/1.0/input.dll').is_file())
+
+    def test_cache_selection_rejects_traversal_and_symlinks_before_mutation(self):
+        cache = self.stage / 'nuget'
+        cache.mkdir()
+        for relative in ('../escape', 'example/..', '/example/1.0'):
+            (self.obj / 'project.assets.json').write_text(json.dumps(dict(version=4,
+                libraries={relative: dict(type='package', path=relative)})))
+            with self.assertRaisesRegex(ValueError, 'Unsafe restore selection package path'):
+                self.package.narrow_restore_cache(self.stage)
+            self.assertFalse((self.stage / 'restore-cache-observation').exists())
+        (cache / 'alias').symlink_to(self.obj, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Unsafe restore selection entry'):
+            self.package.narrow_restore_cache(self.stage)
+        self.assertTrue(cache.is_dir())
+
+    def test_untrusted_inventory_and_symlink_do_not_replace_original_state(self):
+        for projects in (['../outside.csproj'], ['App/App.csproj', 'Other/App.csproj'], []):
+            with self.subTest(projects=projects):
+                clean = self.stage / 'publish-inputs'
+                if clean.exists(): shutil.rmtree(clean)
+                with self.assertRaises(ValueError):
+                    self.package.freeze_component_restore(self.stage, dict(projectPaths=projects))
+                self.assertTrue(self.obj.is_dir())
+        clean = self.stage / 'publish-inputs'
+        if clean.exists(): shutil.rmtree(clean)
+        (self.obj / 'project.assets.json').unlink()
+        (self.obj / 'project.assets.json').symlink_to('/etc/passwd')
+        with self.assertRaisesRegex(ValueError, 'Unsafe verified restore'):
+            self.package.freeze_component_restore(self.stage, self.material)
+        self.assertTrue(self.obj.is_dir())
+
+
+class ResolvedPackageMaterialTests(unittest.TestCase):
+    def setUp(self):
+        import base64
+        spec = importlib.util.spec_from_file_location('resolved_package_test', ROOT / 'release-package.py')
+        self.package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.package)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.repo, self.cache, self.obj, self.sdk = (self.root / name for name in ('repo', 'cache', 'artifacts', 'sdk'))
+        for path in (self.repo / 'App', self.repo / 'Shared', self.sdk):
+            path.mkdir(parents=True)
+        (self.sdk / 'runtime.json').write_text('{}')
+        for name in ('App', 'Shared'):
+            (self.repo / name / (name + '.csproj')).write_text('<Project/>')
+        self.directory = self.cache / 'example/1.0.0'
+        self.directory.mkdir(parents=True)
+        self.archive = self.directory / 'example.1.0.0.nupkg'
+        (self.directory / 'lib').mkdir()
+        (self.directory / 'lib/library.dll').write_bytes(b'compiler input')
+        with zipfile.ZipFile(self.archive, 'w') as archive:
+            archive.writestr('lib/library.dll', b'compiler input')
+        self.library = dict(type='package', path='example/1.0.0', files=['lib/library.dll'],
+                            sha512=base64.b64encode(hashlib.sha512(self.archive.read_bytes()).digest()).decode())
+        self.assets = {}
+        for name in ('App', 'Shared'):
+            project = self.repo / name / (name + '.csproj')
+            references = {} if name == 'Shared' else {str(self.repo / 'Shared/Shared.csproj'): {'projectPath': str(self.repo / 'Shared/Shared.csproj')}}
+            data = dict(version=3, packageFolders={str(self.cache): {}}, project={'version': '1.0.0', 'restore': {'projectPath': str(project),
+                'frameworks': {'net10.0': {'projectReferences': references}}},
+                'frameworks': {'net10.0': {'runtimeIdentifierGraphPath': str(self.sdk / 'runtime.json')}}},
+                targets={'net10.0': {'Example/1.0.0': {'compile': {'lib/library.dll': {}}}}},
+                libraries={'Example/1.0.0': dict(self.library)})
+            path = self.obj / 'obj' / name / 'project.assets.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(data))
+            for suffix in ('.nuget.g.props', '.nuget.g.targets'):
+                (path.parent / (name + '.csproj' + suffix)).write_text('<Project/>')
+            self.assets[name] = path
+        self.package.ROOT = self.repo
+        self.package.APPS = {'app': ('App/App.csproj', 'app.zip', False)}
+
+    def identity(self):
+        return self.package.resolved_restore_identity('app', self.obj, [self.cache], self.sdk)
+
+    def test_verified_transitive_graph_is_stable_but_dependency_and_framework_changes_invalidate(self):
+        first = self.identity()
+        self.assertEqual(first, self.identity())
+        self.assertEqual(2, first['projectCount'])
+        self.assertEqual(1, first['packageCount'])
+        data = json.loads(self.assets['Shared'].read_text())
+        data['project']['frameworks']['net10.0']['frameworkReferences'] = {'Microsoft.AspNetCore.App': {}}
+        self.assets['Shared'].write_text(json.dumps(data))
+        self.assertNotEqual(first['identity'], self.identity()['identity'])
+        (self.sdk / 'runtime.json').write_text('{"changed":true}')
+        self.assertNotEqual(first['identity'], self.identity()['identity'])
+
+    def test_v4_framework_aliases_remain_distinct_and_schema_changes_invalidate(self):
+        first = self.identity()['identity']
+        data = json.loads(self.assets['App'].read_text())
+        data['version'] = 4
+        data['project']['frameworks']['net10.0']['targetAlias'] = 'net10.0'
+        self.assets['App'].write_text(json.dumps(data))
+        second = self.identity()['identity']
+        self.assertNotEqual(first, second)
+        data['project']['frameworks']['alternate'] = dict(data['project']['frameworks']['net10.0'], targetAlias='alternate')
+        data['targets']['alternate'] = {}
+        self.assets['App'].write_text(json.dumps(data))
+        self.assertNotEqual(second, self.identity()['identity'])
+        data['packageFolders'][str(self.root / 'unverified-cache')] = {}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'search roots differ'):
+            self.identity()
+
+    def test_generated_metadata_is_bound_and_undeclared_cache_roots_are_rejected(self):
+        first = self.identity()['identity']
+        (self.directory / '.nupkg.metadata').write_text('{"version":2}')
+        self.assertNotEqual(first, self.identity()['identity'])
+        (self.cache / 'undeclared').mkdir()
+        with self.assertRaisesRegex(ValueError, 'Unmeasured input'):
+            self.identity()
+
+    def test_generated_import_mutation_changes_identity(self):
+        first = self.identity()['identity']
+        path = self.assets['Shared'].parent / 'Shared.csproj.nuget.g.targets'
+        path.write_text('<Project><Import Project="unexpected.targets"/></Project>')
+        self.assertNotEqual(first, self.identity()['identity'])
+
+    def test_extra_cache_file_and_omitted_analyzer_input_are_rejected(self):
+        injected = self.directory / 'lib/injected.dll'
+        injected.write_bytes(b'injected compiler input')
+        with self.assertRaisesRegex(ValueError, 'inventory differs'):
+            self.identity()
+        injected.unlink()
+        data = json.loads(self.assets['App'].read_text())
+        data['targets']['net10.0']['Example/1.0.0']['analyzers'] = {'analyzers/missing.dll': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'compiler input absent'):
+            self.identity()
+
+    def test_nuget_empty_asset_group_is_not_an_unverified_compiler_file(self):
+        data = json.loads(self.assets['App'].read_text())
+        data['targets']['net10.0']['Example/1.0.0']['compile'] = {'lib/net10.0/_._': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        self.assertEqual(1, self.identity()['packageCount'])
+        data['targets']['net10.0']['Example/1.0.0']['compile'] = {'../_._': {}}
+        self.assets['App'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'escapes owning root'):
+            self.identity()
+
+    def test_shared_count_byte_and_deadline_budgets_fail_closed(self):
+        for key, value, reason in (('projects', 1, 'project budget'), ('packages', 0, 'package budget'),
+                                   ('entries', 0, 'inventory invalid'), ('fileBytes', 1, 'file budget'),
+                                   ('totalBytes', 1, 'byte budget'), ('seconds', 0, 'deadline')):
+            with self.subTest(boundary=key), patch.dict(self.package.RESTORE_MATERIAL_LIMITS, {key: value}):
+                with self.assertRaisesRegex(ValueError, reason):
+                    self.identity()
+
+    def test_restore_material_symlink_escape_is_rejected(self):
+        path = self.assets['App']
+        outside = self.root / 'outside.json'
+        outside.write_bytes(path.read_bytes())
+        path.unlink()
+        path.symlink_to(outside)
+        with self.assertRaisesRegex(ValueError, 'symlink escapes'):
+            self.identity()
+
+    def test_nuget_separator_normalization_preserves_content_and_rejects_alias_collision(self):
+        import base64
+        def bind_archive():
+            digest=base64.b64encode(hashlib.sha512(self.archive.read_bytes()).digest()).decode()
+            for path in self.assets.values():
+                data=json.loads(path.read_text())
+                data['libraries']['Example/1.0.0']['sha512']=digest
+                path.write_text(json.dumps(data))
+        with zipfile.ZipFile(self.archive,'w') as archive:
+            archive.writestr('lib//library.dll',b'compiler input')
+        bind_archive()
+        self.assertEqual(1,self.identity()['packageCount'])
+        with zipfile.ZipFile(self.archive,'a') as archive:
+            archive.writestr('lib/library.dll',b'ambiguous alias')
+        bind_archive()
+        with self.assertRaisesRegex(ValueError,'archive file identity ambiguous'):
+            self.identity()
+
+    def test_archive_and_extracted_compile_input_corruption_are_rejected(self):
+        original = self.archive.read_bytes()
+        self.archive.write_bytes(original + b'tampered')
+        with self.assertRaisesRegex(ValueError, 'archive digest mismatch'):
+            self.identity()
+        self.archive.write_bytes(original)
+        (self.directory / 'lib/library.dll').write_bytes(b'tampered extracted generator')
+        with self.assertRaisesRegex(ValueError, 'Extracted package content'):
+            self.identity()
+
+    def test_missing_transitive_restore_and_unsupported_schema_fail_closed(self):
+        original = self.assets['Shared'].read_text()
+        self.assets['Shared'].unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.identity()
+        data = json.loads(original)
+        data['version'] = 99
+        self.assets['Shared'].write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, 'Unsupported restore material'):
+            self.identity()
+
+    def test_untrusted_paths_and_conflicting_dependency_hashes_are_rejected(self):
+        original = json.loads(self.assets['App'].read_text())
+        for field, value in (('path', '../outside'), ('sha512', 'not-a-digest'),
+                             ('files', ['../outside'])):
+            data = json.loads(json.dumps(original))
+            data['libraries']['Example/1.0.0'][field] = value
+            self.assets['App'].write_text(json.dumps(data))
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.identity()
+        self.assets['App'].write_text(json.dumps(original))
+        original['project']['frameworks']['net10.0']['runtimeIdentifierGraphPath'] = str(self.root / 'outside')
+        self.assets['App'].write_text(json.dumps(original))
+        with self.assertRaisesRegex(ValueError, 'outside measured SDK'):
+            self.identity()
+
+
+class ComponentAssemblyIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('component_assembly_test',ROOT/'release-package.py')
+        self.package=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.package)
+        self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
+        self.directory=Path(self.folder.name);self.candidate='a'*40;self.producer='b'*40
+        self.sources={}
+        for index,(component,(_,name,static)) in enumerate(self.package.APPS.items(),1):
+            path=self.directory/name
+            producer=self.candidate if component=='portal' else self.producer
+            with zipfile.ZipFile(path,'w') as archive:
+                archive.writestr('_deployment-provenance.txt' if static else 'wwwroot/_deployment-provenance.json',
+                    producer if static else json.dumps(dict(releaseSha=producer)))
+            digest=self.package.sha256_file(path)
+            proof=dict(sha256=digest,component=component)
+            (self.directory/(component+'.execution.json')).write_text(json.dumps(proof))
+            receipt=dict(schema=self.package.CONTENT_COMPONENT_SCHEMA,producerRevision=producer,
+                contentIdentity='c'*64,executionIdentity='e'*64,component=component,file=name,sha256=digest)
+            (self.directory/(component+'.component.json')).write_text(json.dumps(receipt))
+            source=dict(schemaVersion=1,component=component,producerRevision=producer,runId=91,runAttempt=2,
+                contentIdentity='c'*64,executionIdentity='e'*64,execution=proof,sha256=digest,
+                artifact=dict(id=index,name=self.package._RELEASE_AUTHORITY.component_attempt_name(component,'c'*64,91,2),digest='sha256:'+'d'*64))
+            self.sources[component]=dict(state='executed-success' if component=='portal' else 'reused-success',
+                sourceReceipt=source,producingJobId=100+index,receiptArtifactId=200+index)
+        self.original={p.name:p.read_bytes() for p in self.directory.glob('*.zip')}
+        (self.directory/self.package.MIGRATION_BUNDLE).write_bytes(b'exact rehearsal bundle')
+        self.patches=[patch.object(self.package,'validate_revision',side_effect=lambda value:value),
+            patch.object(self.package,'contract_hash',return_value='f'*64),
+            patch.object(self.package.subprocess,'check_output',side_effect=lambda cmd,**kw:self.candidate if cmd[-1]=='HEAD' else '9'*40),
+            patch.object(self.package,'component_execution_identity',return_value='e'*64),
+            patch.object(self.package._RELEASE_AUTHORITY,'package_component_manifest',return_value=dict(contentIdentity='c'*64,reusable=True)),
+            patch.object(self.package,'build_isolated_component',side_effect=AssertionError('Assembly rebuilt a child'))]
+        for patched in self.patches:patched.start();self.addCleanup(patched.stop)
+        migration=dict(schema=self.package.COMPONENT_SCHEMA,applicationReleaseSha=self.candidate,
+            packageContractSha256='f'*64,packageIdentity=self.package.package_identity(self.candidate),
+            component='migration',file=self.package.MIGRATION_BUNDLE,
+            sha256=self.package.sha256_file(self.directory/self.package.MIGRATION_BUNDLE))
+        (self.directory/'migration.component.json').write_text(json.dumps(migration))
+
+    def test_assembly_preserves_each_original_producer_and_performs_zero_builds(self):
+        manifest=self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        self.assertEqual(self.package.CONTENT_PACKAGE_SCHEMA,manifest['schema'])
+        self.assertEqual(self.candidate,manifest['applicationReleaseSha'])
+        self.assertEqual(self.candidate,manifest['targets']['portal']['producerRevision'])
+        self.assertEqual(self.producer,manifest['targets']['client']['producerRevision'])
+        self.assertEqual(2,manifest['targets']['client']['source']['runAttempt'])
+        self.assertEqual(self.original,{p.name:p.read_bytes() for p in self.directory.glob('*.zip')})
+        self.package.build_isolated_component.assert_not_called()
+        self.assertEqual(manifest,self.package.verify_all(self.candidate,self.directory))
+
+    def test_changed_child_metadata_cannot_restamp_unchanged_bytes(self):
+        manifest=self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        manifest['targets']['client']['producerRevision']=self.candidate
+        (self.directory/'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError,'target map mismatch'):
+            self.package.verify_all(self.candidate,self.directory)
+        name=self.package.component_file('client')
+        self.assertEqual(self.original[name],(self.directory/name).read_bytes())
+
+    def test_rollback_restores_exact_component_once_without_compilation(self):
+        key='client';name=self.package.component_file(key);content=self.original[name]
+        digest=self.package.sha256_file(self.directory/name)
+        evidence=dict(reusable=True,revision=self.producer,app=key,runId=71,
+            packageArtifact='validated-component-bytes-client-source-71-a2',artifactId=81,
+            packageDigest=digest,componentSource=True)
+        def download(repo,run,artifact,folder,**kwargs):
+            self.assertEqual({'artifact_id':81},kwargs)
+            (folder/name).write_bytes(content)
+        with patch.object(self.package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download) as fetch:
+            result=self.package.restore_rollback_component('owner/repo',self.producer,key,evidence,self.directory/'rollback')
+        self.assertEqual(1,fetch.call_count)
+        self.assertEqual(content,(self.directory/'rollback/package.zip').read_bytes())
+        self.assertEqual(81,result['artifactId']);self.assertEqual(digest,result['packageDigest'])
+        self.package.build_isolated_component.assert_not_called()
+        with patch.object(self.package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=AssertionError('Missing evidence caused work')):
+            with self.assertRaisesRegex(ValueError,'evidence unavailable'):
+                self.package.restore_rollback_component('owner/repo',self.producer,key,dict(evidence,reusable=False),self.directory/'missing')
+
+    def test_legacy_rollback_retains_checksum_contract_and_rejects_changed_bytes(self):
+        key='client';name=self.package.component_file(key);content=self.original[name]
+        digest=self.package.sha256_file(self.directory/name)
+        evidence=dict(reusable=True,revision=self.producer,app=key,runId=71,packageArtifact='retained-legacy')
+        def download(repo,run,artifact,folder,**kwargs):
+            self.assertEqual({},kwargs)
+            (folder/name).write_bytes(content)
+            (folder/'SHA256SUMS').write_text(digest+'  '+name+'\n')
+        with patch.object(self.package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download):
+            result=self.package.restore_rollback_component('owner/repo',self.producer,key,evidence,self.directory/'legacy')
+            with self.assertRaisesRegex(ValueError,'content digest mismatch'):
+                self.package.restore_rollback_component('owner/repo',self.producer,key,dict(evidence,packageDigest='0'*64),self.directory/'changed')
+        self.assertNotIn('artifactId',result)
+        self.assertFalse((self.directory/'changed').exists())
+        self.package.build_isolated_component.assert_not_called()
+
+    def test_aggregate_manifest_substitution_is_rejected_even_with_same_target_map(self):
+        manifest=self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        evidence=dict(revision=self.candidate,packageIdentity=manifest['packageIdentity'],targetMaterials=manifest['targets'],
+            artifactId=101,artifactDigest='sha256:'+'d'*64,manifestSha256=self.package.sha256_file(self.directory/'manifest.json'))
+        self.package.verify_descriptor_binding(self.directory,manifest,evidence)
+        (self.directory/'manifest.json').write_text(json.dumps(dict(manifest,unexpected='substitution')))
+        with self.assertRaisesRegex(ValueError,'contradicts authenticated descriptor'):
+            self.package.verify_descriptor_binding(self.directory,manifest,evidence)
+
+    def test_small_descriptor_preserves_exact_target_and_provider_identity(self):
+        manifest=self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        descriptor=self.package.record_package_source(self.candidate,self.directory,self.directory/'descriptor',
+            run_id=71,attempt=2,artifact_id=101,artifact_digest='sha256:'+'d'*64)
+        self.assertEqual(manifest['targets'],descriptor['targets'])
+        self.assertEqual(self.package.sha256_file(self.directory/'manifest.json'),descriptor['manifestSha256'])
+        self.assertEqual('founder-diagnostics-packages-'+manifest['packageIdentity']+'-71-a2',descriptor['artifact']['name'])
+        self.assertEqual(101,descriptor['artifact']['id'])
+        self.package.build_isolated_component.assert_not_called()
+        with self.assertRaises(FileExistsError):
+            self.package.record_package_source(self.candidate,self.directory,self.directory/'descriptor',
+                run_id=71,attempt=2,artifact_id=101,artifact_digest='sha256:'+'d'*64)
+
+    def test_execution_proof_must_bind_actual_component_digest(self):
+        source=self.sources['client']['sourceReceipt']
+        source['execution']['sha256']='f'*64
+        (self.directory/'client.execution.json').write_text(json.dumps(source['execution']))
+        with self.assertRaisesRegex(ValueError,'Downloaded component source mismatch'):
+            self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        self.package.build_isolated_component.assert_not_called()
+
+    def test_incomplete_new_map_cannot_fall_back_to_legacy(self):
+        manifest=self.package.assemble_components(self.candidate,self.directory,component_sources=self.sources)
+        del manifest['targets']['portal']
+        with self.assertRaisesRegex(ValueError,'Unsupported target provenance'):
+            self.package.package_target_material(manifest,'client')
+        legacy=dict(schema=self.package.SCHEMA,applicationReleaseSha=self.producer,
+            files={self.package.component_file('client'):'d'*64})
+        self.assertEqual(dict(producerRevision=self.producer,packageDigest='d'*64,legacy=True),
+                         self.package.package_target_material(legacy,'client'))
+
+
+class RehearsalAggregateBindingTests(unittest.TestCase):
+    def test_rehearsal_restores_exact_aggregate_bundle_without_restamping_or_build(self):
+        spec=importlib.util.spec_from_file_location('rehearsal_package',ROOT/'release-package.py')
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        candidate,producer='a'*40,'b'*40
+        body=b'original retained migration bundle A';digest=hashlib.sha256(body).hexdigest()
+        selected=dict(reusable=True,revision=producer,runId=71,artifact='founder-diagnostics-packages-'+'c'*64,packageIdentity='c'*64)
+        artifact=dict(id=81,name=selected['artifact'],digest='sha256:'+'d'*64,expired=False)
+        receipt=dict(schema=package.COMPONENT_SCHEMA,applicationReleaseSha=producer,packageContractSha256='e'*64,
+            packageIdentity='c'*64,component='migration',file=package.MIGRATION_BUNDLE,sha256=digest)
+        def download(repo,run,name,root,*,artifact_id):
+            self.assertEqual(81,artifact_id)
+            (root/package.MIGRATION_BUNDLE).write_bytes(body)
+            (root/'migration.component.json').write_text(json.dumps(receipt))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder'), \
+             patch.object(package,'validate_revision',side_effect=lambda value:value), \
+             patch.object(package,'contract_hash',return_value='e'*64), \
+             patch.object(package,'package_identity',return_value='c'*64), \
+             patch.object(package._RELEASE_AUTHORITY,'compute_validated_package_evidence',return_value=selected), \
+             patch.object(package._RELEASE_AUTHORITY,'package_inputs_compatible',return_value=True), \
+             patch.object(package._RELEASE_AUTHORITY,'api_get',return_value=dict(artifacts=[artifact],total_count=1)), \
+             patch.object(package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download) as transfers, \
+             patch.object(package,'verify_all',return_value=dict(files={package.MIGRATION_BUNDLE:digest})) as verify, \
+             patch.object(package,'verify_descriptor_binding') as descriptor, \
+             patch.object(package,'build_migration_bundle') as build:
+            output=Path(temporary)
+            binding=package.restore_aggregate_migration(candidate,output)
+            self.assertEqual(body,(output/package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual(receipt,json.loads((output/'migration.component.json').read_text()))
+            self.assertEqual(binding,package.verify_prepared_migration(candidate,output))
+            self.assertEqual(producer,binding['producerRevision']);self.assertEqual(1,transfers.call_count)
+            verify.assert_called_once();descriptor.assert_called_once();build.assert_not_called()
+            (output/package.MIGRATION_BUNDLE).write_bytes(b'different bundle B')
+            with self.assertRaises(ValueError):package.verify_prepared_migration(candidate,output)
+            build.assert_not_called()
+
+
+    def test_prepared_aggregate_child_survives_worker_loss_without_transfer_rebuild(self):
+        spec=importlib.util.spec_from_file_location('prepared_package',ROOT/'release-package.py')
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        binding=dict(producerRevision='b'*40,artifactId=81)
+        def download(repo,run,name,root,*,artifact_id):
+            (root/'migration').mkdir()
+            (root/'migration'/package.MIGRATION_BUNDLE).write_bytes(b'preserved A')
+            (root/'migration/migration.component.json').write_text(json.dumps({'applicationReleaseSha':'b'*40}))
+            (root/'migration/migration.aggregate.json').write_text(json.dumps(binding))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='placeholder'), \
+             patch.object(package._RELEASE_AUTHORITY,'api_get',return_value=dict(workflow_runs=[])), \
+             patch.object(package._RELEASE_AUTHORITY,'readiness_artifact_candidates',return_value=[(dict(id=71),dict(id=91,name='legend-rehearsal-bundle-x-a1'))]), \
+             patch.object(package._RELEASE_AUTHORITY,'readiness_child_succeeded',return_value=True), \
+             patch.object(package._RELEASE_AUTHORITY,'_download_run_artifact',side_effect=download) as transfer, \
+             patch.object(package,'verify_prepared_migration',return_value=binding) as verify, \
+             patch.object(package,'build_migration_bundle') as build:
+            output=Path(temporary)
+            proof=package.restore_prepared_migration('a'*40,output,'x')
+            self.assertEqual('reused-success',proof['state'])
+            self.assertEqual(binding,json.loads((output/'migration.aggregate.json').read_text()))
+            self.assertEqual(b'preserved A',(output/package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual(1,transfer.call_count);verify.assert_called_once();build.assert_not_called()
+
+
 class PackageContractTests(unittest.TestCase):
+    def test_candidate_component_build_requires_no_evidence_credential(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request'}, clear=True), \
+             patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package._RELEASE_AUTHORITY, 'require_readiness', side_effect=AssertionError('Credentialed lookup in build')) as lookup, \
+             patch.object(package, 'build_migration_bundle', side_effect=lambda output: (output / package.MIGRATION_BUNDLE).write_bytes(b'candidate')) as build:
+            receipt = package.build_component('a' * 40, 'migration', Path(temporary))
+            self.assertEqual(hashlib.sha256(b'candidate').hexdigest(), receipt['sha256'])
+            self.assertEqual(1, build.call_count)
+            lookup.assert_not_called()
+
+    def test_application_component_delegates_once_to_isolated_owner(self):
+        spec = importlib.util.spec_from_file_location('isolated_owner_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package, 'build_static', side_effect=AssertionError('host build')), \
+             patch.object(package, 'build_dotnet', side_effect=AssertionError('host build')), \
+             patch.object(package, 'build_isolated_component', side_effect=lambda revision, component, output:
+                 (output / package.component_file(component)).write_bytes(b'verified isolated bytes')) as isolated:
+            output = Path(folder)
+            for component in package.APPS:
+                receipt = package.build_component('a' * 40, component, output)
+                self.assertEqual(hashlib.sha256(b'verified isolated bytes').hexdigest(), receipt['sha256'])
+                isolated.assert_called_with('a' * 40, component, output)
+            self.assertEqual(len(package.APPS), isolated.call_count)
+
+    def test_content_component_keeps_actual_producer_and_rejects_unsafe_reuse(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        candidate, producer = 'a' * 40, 'b' * 40
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            component = 'portal'
+            path = directory / package.component_file(component)
+            with zipfile.ZipFile(path, 'w') as archive:
+                archive.writestr('wwwroot/_deployment-provenance.json', json.dumps({'releaseSha': producer}))
+            receipt = dict(schema=package.CONTENT_COMPONENT_SCHEMA, producerRevision=producer,
+                contentIdentity='c' * 64, executionIdentity='e' * 64, component=component, file=path.name,
+                sha256=package.sha256_file(path))
+            receipt_path = directory / (component + '.component.json')
+            receipt_path.write_text(json.dumps(receipt))
+            original = path.read_bytes()
+            with patch.object(package, 'validate_revision', side_effect=lambda value: value), \
+                 patch.object(package._RELEASE_AUTHORITY, 'package_component_manifest',
+                    return_value=dict(contentIdentity='c' * 64, reusable=True)) as closure:
+                with self.assertRaisesRegex(ValueError, 'execution environment unproven'):
+                    package.verify_component(candidate, component, directory)
+                with self.assertRaisesRegex(ValueError, 'content receipt mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='f' * 64)
+                self.assertEqual(receipt, package.verify_component(candidate, component, directory, execution_identity='e' * 64))
+                self.assertEqual(original, path.read_bytes())
+                self.assertEqual(producer, package.embedded_revision(path, False))
+                closure.side_effect = [dict(contentIdentity='d' * 64, reusable=True), dict(contentIdentity='c' * 64, reusable=True)]
+                with self.assertRaisesRegex(ValueError, 'dependencies changed'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                closure.side_effect = None
+                closure.return_value = dict(contentIdentity='c' * 64, reusable=False)
+                with self.assertRaisesRegex(ValueError, 'closure unproven'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                closure.return_value = dict(contentIdentity='c' * 64, reusable=True)
+                receipt['producerRevision'] = candidate
+                receipt_path.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError, 'embedded producer mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+                receipt['producerRevision'] = producer
+                receipt['sha256'] = 'f' * 64
+                receipt_path.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError, 'content receipt mismatch'):
+                    package.verify_component(candidate, component, directory, execution_identity='e' * 64)
+
     def test_deployment_and_workflow_orchestration_changes_preserve_package_identity(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
         package = importlib.util.module_from_spec(spec)
@@ -442,15 +1213,63 @@ class PackageContractTests(unittest.TestCase):
 
 
     def test_isolated_migration_component_owns_its_project_restore(self):
-        source = (ROOT / 'release-package.py').read_text()
-        block = source.split('def build_migration_bundle(output: Path):', 1)[1].split(
-            '\ndef ', 1
-        )[0]
-        restore = block.index('run("dotnet", "restore", "AgentPortal/AgentPortal.csproj"')
-        bundle = block.index('"migrations", "bundle"')
-        self.assertLess(restore, bundle)
-        self.assertIn('previously serialized app publish', block)
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            (output / package.MIGRATION_BUNDLE).write_bytes(b'isolated fixture')
+            with patch.object(package, 'run') as execute:
+                package.build_migration_bundle(output)
+            calls = [call.args for call in execute.call_args_list]
+            startup = 'scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj'
+            self.assertEqual(('dotnet', 'restore', startup, '--nologo'), calls[0])
+            self.assertEqual(('dotnet', 'tool', 'restore'), calls[1])
+            self.assertEqual(startup, calls[2][calls[2].index('--startup-project') + 1])
+            self.assertEqual(3, len(calls))
+            self.assertNotIn('AgentPortal/AgentPortal.csproj', sum((list(row) for row in calls), []))
 
+
+    def test_rehearsed_migration_component_is_promoted_without_rebuilding(self):
+        spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        revision, body = 'a' * 40, b'exact validated migration bytes'
+        digest = hashlib.sha256(body).hexdigest()
+        receipt = dict(schema=package.COMPONENT_SCHEMA, applicationReleaseSha=revision,
+            packageContractSha256='b' * 64, packageIdentity='c' * 64,
+            component='migration', file=package.MIGRATION_BUNDLE, sha256=digest)
+        proof = {'receipt': {'rehearsalSource': {'runId': 91, 'artifact': 'retained-rehearsal', 'artifactId': 123},
+                             'rehearsal': {'bundleDigest': digest}}}
+        def download(repo, run, name, root, *, artifact_id):
+            self.assertEqual(123, artifact_id)
+            self.assertEqual((91, 'retained-rehearsal'), (run, name))
+            (root / 'migration').mkdir()
+            (root / 'migration' / package.MIGRATION_BUNDLE).write_bytes(body)
+            (root / 'migration/migration.component.json').write_text(json.dumps(receipt))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REPOSITORY': 'MYLEGND/masterapp'}), \
+             patch.object(package, 'validate_revision', return_value=revision), \
+             patch.object(package, 'contract_hash', return_value='b' * 64), \
+             patch.object(package, 'package_identity', return_value='c' * 64), \
+             patch.object(package._RELEASE_AUTHORITY, 'require_readiness', return_value=proof), \
+             patch.object(package._RELEASE_AUTHORITY, '_download_run_artifact', side_effect=download) as restore, \
+             patch.object(package, 'build_migration_bundle') as build:
+            output = Path(temporary)
+            self.assertEqual(receipt, package.promote_rehearsed_migration(revision, output, proof))
+            self.assertEqual(body, (output / package.MIGRATION_BUNDLE).read_bytes())
+            self.assertEqual('reused-success', json.loads((output / 'migration.reuse.json').read_text())['state'])
+            self.assertEqual(1, restore.call_count)
+            build.assert_not_called()
+            # A new job attempt retains the same validated bytes without trying
+            # to recreate the previous attempt's immutable upload identity.
+            first = package.promoted_migration_artifact(revision, 1)
+            second = package.promoted_migration_artifact(revision, 2)
+            self.assertNotEqual(first, second)
+            self.assertEqual(second, package.promoted_migration_artifact(revision, 2))
+            self.assertEqual(receipt, package.promote_rehearsed_migration(revision, output, proof))
+            self.assertEqual(body, (output / package.MIGRATION_BUNDLE).read_bytes())
+            build.assert_not_called()
 
     def test_reused_immutable_package_keeps_original_manifest_and_bytes(self):
         spec = importlib.util.spec_from_file_location('release_package_test', ROOT / 'release-package.py')
@@ -537,7 +1356,7 @@ class PackageProducerTests(unittest.TestCase):
 
 class ParallelPublicationTests(unittest.TestCase):
     def plan(self, keys):
-        return {'targets': [{'app': key} for key in keys]}
+        return {'schemaVersion': 1, 'targets': [{'app': key, 'packageDigest': 'c'*64} for key in keys]}
 
     def test_parallel_publication_settles_every_prepared_target_and_records_results(self):
         keys = ('portal', 'client', 'protect')
@@ -687,10 +1506,113 @@ class PreparedTransactionTests(unittest.TestCase):
         plan['planId'] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         return plan
 
+    def mixed_plan(self):
+        plan=self.plan();plan['schemaVersion']=2
+        for index,row in enumerate(plan['targets'],1):
+            key=row['app']; producer=('d' if index==1 else 'e')*40
+            source=dict(runId=71,runAttempt=2,artifactId=80+index,artifactDigest='sha256:'+'f'*64,
+                artifactName=deploy._RELEASE_AUTHORITY.component_attempt_name(key,'1'*64,71,2),
+                receiptArtifactId=90+index,producingJobId=100+index)
+            row['targetMaterial']=dict(producerRevision=producer,packageDigest=row['packageDigest'],
+                contentIdentity='1'*64,executionIdentity='2'*64,source=source)
+        plan['planId']=deploy._RELEASE_AUTHORITY.release_transaction_identity(plan['candidateRevision'],
+            {row['app']:row['packageDigest'] for row in plan['targets']},
+            {row['app']:row['targetMaterial'] for row in plan['targets']})
+        return plan
+
+    def test_mixed_producer_plan_binds_exact_material_and_rejects_restamping(self):
+        plan=self.mixed_plan()
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'plan.json';path.write_text(json.dumps(plan))
+            self.assertEqual(plan,deploy.read_transaction_plan(path,'a'*40))
+            plan['targets'][0]['targetMaterial']['producerRevision']='a'*40
+            path.write_text(json.dumps(plan))
+            with self.assertRaisesRegex(ValueError,'content identity mismatch'):
+                deploy.read_transaction_plan(path,'a'*40)
+
+    def test_mixed_producer_publication_uses_original_bytes_and_separate_authorization(self):
+        plan=self.mixed_plan();row=plan['targets'][0];material=row['targetMaterial'];journal=object()
+        with patch.object(deploy,'verify_package',return_value='c'*64) as verify, \
+             patch.object(deploy,'operation_journal',return_value=journal) as evidence, \
+             patch.object(deploy,'deploy_one',return_value='preserved') as publish:
+            self.assertEqual('preserved',deploy.publish_prepared_target(row['app'],'a'*40,Path('/packages'),plan))
+        self.assertEqual(material['producerRevision'],verify.call_args.args[1])
+        evidence.assert_called_once_with(row['app'],material['producerRevision'],'c'*64,'b'*40,
+            candidate_revision='a'*40,component_source=material['source'])
+        publish.assert_called_once_with(row['app'],material['producerRevision'],Path('/packages'),
+            baseline='b'*40,reconcile_only=False,journal=journal)
+
+    def test_live_proof_observes_each_intended_producer(self):
+        import types
+        plan=self.mixed_plan();authority=deploy._RELEASE_AUTHORITY
+        expected={row['app']:row['targetMaterial']['producerRevision'] for row in plan['targets']}
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'plan.json';path.write_text(json.dumps(plan));output=Path(directory)/'live.json'
+            args=types.SimpleNamespace(revision='a'*40,selected_targets=json.dumps([
+                deploy.TARGETS[key]['releaseName'] for key in expected]),transaction_plan=path,
+                output=output,timeout_seconds=1,poll_seconds=0)
+            with patch.object(authority,'_read_provenance',side_effect=lambda host,target,revision:revision) as observe:
+                authority.cmd_verify_live(args)
+            rows=json.loads(output.read_text())
+            self.assertEqual(set(expected.values()),{row['actual'] for row in rows})
+            self.assertTrue(all(row['candidateRevision']=='a'*40 for row in rows))
+            self.assertNotIn('a'*40,{call.args[2] for call in observe.call_args_list})
+
+    def test_mixed_producer_finalization_preserves_successful_sibling(self):
+        plan=self.mixed_plan();calls={};expected={row['app']:row['targetMaterial']['producerRevision'] for row in plan['targets']}
+        def azure(key,path,producer):
+            self.assertEqual(expected[key],producer)
+            return key
+        def reconcile(key,**kwargs):
+            self.assertTrue(kwargs['reconcile_only']);self.assertTrue(kwargs['require_receipt'])
+            calls[key]=calls.get(key,0)+1
+            if key=='client' and calls[key]==1:
+                raise deploy.DeploymentReconciliationRequired('lost receipt')
+        with patch.object(deploy,'verify_package',return_value='c'*64), \
+             patch.object(deploy,'operation_journal',return_value=object()), \
+             patch.object(deploy,'target_azure',side_effect=azure), \
+             patch.object(deploy,'reconcile',side_effect=reconcile):
+            deploy.finalize_prepared_transaction(plan,Path('/packages'),'a'*40,sleep=lambda _:None)
+        self.assertEqual({'portal':1,'client':2},calls)
+
+    def test_finalizer_reconstructs_missing_receipt_without_upload_or_sibling_replay(self):
+        plan = self.plan()
+        journals, providers = {}, {}
+        for index, target in enumerate(plan['targets']):
+            key = target['app']
+            class Journal:
+                baseline = 'b' * 40
+                intent = {'baselineDeploymentIds': ['old']}
+                def __init__(self, fail_first):
+                    self.fail_first, self.receipt_attempts = fail_first, 0
+                def record_success(self, ids):
+                    self.receipt_attempts += 1
+                    if self.fail_first and self.receipt_attempts == 1:
+                        raise RuntimeError('lost receipt acknowledgment')
+                    return {'phase': 'success'}
+            journals[key] = Journal(index == 1)
+            provider = FakeAzure([[row('old', 4), row('new', 4)]], [True])
+            provider.revision = 'a' * 40
+            provider.observed_revision = lambda: 'a' * 40
+            providers[key] = provider
+        original_reconcile = deploy.reconcile
+        def bounded(provider, **kwargs):
+            self.assertIsNotNone(kwargs.get('journal'))
+            return original_reconcile(provider, clock=lambda: provider.now,
+                                      sleep=provider.sleep, interval=1, **kwargs)
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', side_effect=lambda key, *_: journals[key]), \
+             patch.object(deploy, 'target_azure', side_effect=lambda key, *_: providers[key]), \
+             patch.object(deploy, 'reconcile', side_effect=bounded):
+            deploy.finalize_prepared_transaction(plan, Path('/packages'), 'a' * 40, sleep=lambda _: None)
+        self.assertEqual([1, 2], [j.receipt_attempts for j in journals.values()])
+        self.assertEqual([0, 0], [p.uploads for p in providers.values()])
+
     def test_finalization_is_read_only_and_retries_only_unresolved_targets(self):
         plan = self.plan()
         calls = {}
         sleeps = []
+        journal = object()
 
         class FinalizeAzure:
             def __init__(self, key):
@@ -704,11 +1626,14 @@ class PreparedTransactionTests(unittest.TestCase):
             self.assertTrue(kwargs['reconcile_only'])
             self.assertEqual(deploy.FINALIZE_RECONCILE_TIMEOUT_SECONDS, kwargs['timeout'])
             self.assertEqual(1, kwargs['max_status_failures'])
+            self.assertIs(journal, kwargs['journal'])
+            self.assertTrue(kwargs['require_receipt'])
             if azure.key == plan['targets'][1]['app'] and calls[azure.key] < 3:
                 raise deploy.DeploymentReconciliationRequired('receipt pending')
             return 'preserved'
 
-        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=journal):
             with patch.object(deploy, 'target_azure', side_effect=target_azure):
                 with patch.object(deploy, 'reconcile', side_effect=reconcile):
                     deploy.finalize_prepared_transaction(
@@ -720,12 +1645,22 @@ class PreparedTransactionTests(unittest.TestCase):
 
     def test_finalization_drift_fails_without_retry(self):
         plan = self.plan([list(deploy.TARGETS)[0]])
-        with patch.object(deploy, 'verify_package', return_value='c' * 64):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=object()):
             with patch.object(deploy, 'reconcile', side_effect=deploy.DeploymentDrift('drift')) as reconcile:
                 with self.assertRaisesRegex(deploy.DeploymentDrift, 'drift'):
                     deploy.finalize_prepared_transaction(
                         plan, Path('/packages'), 'a' * 40, sleep=lambda _: None)
         self.assertEqual(1, reconcile.call_count)
+
+    def test_finalization_cannot_commit_without_a_durable_journal(self):
+        with patch.object(deploy, 'verify_package', return_value='c' * 64), \
+             patch.object(deploy, 'operation_journal', return_value=None), \
+             patch.object(deploy, 'reconcile') as reconcile:
+            with self.assertRaisesRegex(ValueError, 'durable deployment journal'):
+                deploy.finalize_prepared_transaction(
+                    self.plan(), Path('/packages'), 'a' * 40, sleep=lambda _: None)
+        reconcile.assert_not_called()
 
     def test_target_cannot_publish_modified_package_after_preflight(self):
         plan = self.plan()
@@ -805,6 +1740,50 @@ class PreparedTransactionTests(unittest.TestCase):
                 deploy.read_transaction_plan(path, 'd' * 40)
             with self.assertRaises(ValueError):
                 deploy.read_transaction_plan(path, 'a' * 40, 'client')
+
+
+class DeploymentReadinessTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('readiness_prepublication_test', ROOT / 'release-prepublication.py')
+        self.owner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.owner)
+        self.targets = [row['releaseName'] for row in deploy.TARGETS.values()]
+        self.profile = deploy._RELEASE_AUTHORITY.release_runtime_profile(self.targets)
+        self.env = {'RELEASE_RESOURCE_GROUP': self.profile['resourceGroup'],
+                    'DATABASE_AUTHORITY': self.profile['databaseAuthority']}
+
+    def test_target_readiness_uses_only_provider_reads_and_canonical_configuration(self):
+        calls = []
+        def observe(*args):
+            calls.append(args)
+            if args[:2] == ('webapp', 'show'):
+                name = args[args.index('-n') + 1]
+                return {'id': '/subscriptions/test/resourceGroups/test/providers/Microsoft.Web/sites/' + name, 'state': 'Running'}
+            self.assertEqual(('webapp', 'log', 'deployment', 'list'), args[:4])
+            return []
+        with patch.dict(os.environ, self.env), patch.object(self.owner, 'az_json', side_effect=observe), \
+             patch.object(self.owner, 'source_authority') as source, patch.object(self.owner, 'app_settings'), \
+             patch.object(self.owner, 'configure_target') as mutate:
+            result = self.owner.deployment_readiness(self.targets)
+        self.assertEqual('executed-success', result['state'])
+        self.assertEqual(set(self.targets), {row['target'] for row in result['targets']})
+        self.assertEqual(2 * len(self.targets), len(calls))
+        self.assertEqual(1, source.call_count)
+        mutate.assert_not_called()
+
+    def test_missing_target_blocks_without_configuration_mutation(self):
+        with patch.dict(os.environ, self.env), patch.object(self.owner, 'az_json', return_value={}), \
+             patch.object(self.owner, 'source_authority'), patch.object(self.owner, 'configure_target') as mutate:
+            with self.assertRaisesRegex(RuntimeError, 'missing or not running'):
+                self.owner.deployment_readiness(self.targets[:1])
+        mutate.assert_not_called()
+
+    def test_wrong_environment_is_rejected_before_provider_access(self):
+        with patch.dict(os.environ, self.env | {'RELEASE_RESOURCE_GROUP': 'wrong'}), \
+             patch.object(self.owner, 'az_json') as provider:
+            with self.assertRaisesRegex(RuntimeError, 'canonical inventory'):
+                self.owner.deployment_readiness(self.targets)
+        provider.assert_not_called()
 
 
 class SettingsIdempotenceTests(unittest.TestCase):
@@ -901,6 +1880,24 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
         cls.owner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.owner)
 
+    def test_probe_restore_uses_immutable_id_and_rejects_missing_identity(self):
+        owner = self.owner
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from contextlib import nullcontext
+        download = Mock()
+        budget = Mock(side_effect=lambda deadline: nullcontext())
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'owner/repo'}), \
+             patch.object(owner.time, 'monotonic', return_value=1000), \
+             patch.object(owner, 'release_authority', return_value=SimpleNamespace(_download_run_artifact=download, evidence_lookup_budget=budget)):
+            owner.restore_migration_probe(dict(runId=7, artifact='probe', artifactId=19))
+            download.assert_called_once_with('owner/repo', 7, 'probe', Path('/tmp/migration-probe'), artifact_id=19)
+            for value in (None, 0, -1, True, '19'):
+                with self.subTest(value=value), self.assertRaisesRegex(RuntimeError, 'immutable identity'):
+                    owner.restore_migration_probe(dict(runId=7, artifact='probe', artifactId=value))
+            self.assertEqual(1, download.call_count)
+            budget.assert_called_once_with(1240)
+
     def test_registered_metadata_and_context_changes_require_probe(self):
         owner = self.owner
         paths = (
@@ -913,6 +1910,38 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'git', 'diff', '--name-only', 'a' * 40, 'b' * 40,
             '--', 'Infrastructure/Data', 'Infrastructure/Migrations',
         ], capture=True)
+
+    def test_delayed_probe_provider_exhausts_one_budget_before_migration(self):
+        from types import SimpleNamespace
+        owner = self.owner
+        authority = owner.release_authority()
+        budget = authority.evidence_lookup_budget
+        elapsed, calls = [0.0], []
+        def get(*args, **kwargs):
+            calls.append(kwargs['timeout'])
+            elapsed[0] += min(119, kwargs['timeout'])
+            return SimpleNamespace(returncode=1, stderr='HTTP 503')
+        environment = dict(PRESERVE_LIVE_TARGETS='false', SELECTED_DATABASE_DEPENDENT='true',
+            EXPECTED_DB_BASE_SHA='a' * 40, APPLICATION_RELEASE_SHA='b' * 40,
+            DATABASE_AUTHORITY='portal', GITHUB_REPOSITORY='owner/repo', MIGRATION_READINESS_PENDING='false')
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, environment), \
+             patch.object(owner, 'git_ok', return_value=True), \
+             patch.object(owner, 'changed_migrations', return_value=[]), \
+             patch.object(owner, 'release_proven'), \
+             patch.object(owner, 'run', return_value=json.dumps(dict(runId=7, artifact='probe', artifactId=19))), \
+             patch.object(owner, 'Path', return_value=Path(temporary)), \
+             patch.object(owner, 'release_authority', return_value=authority), \
+             patch.object(owner.time, 'monotonic', side_effect=lambda: elapsed[0]), \
+             patch.object(authority, 'evidence_lookup_budget', side_effect=lambda deadline: budget(deadline, clock=lambda: elapsed[0])), \
+             patch.object(authority.time, 'sleep', side_effect=lambda delay: elapsed.__setitem__(0, elapsed[0] + delay)), \
+             patch.object(authority.subprocess, 'run', side_effect=get), \
+             patch.object(owner, '_invoke_migration_bundle') as migrate:
+            with self.assertRaises(authority.EvidenceLookupUnavailable):
+                owner.run_migration_lane()
+            self.assertEqual(240, elapsed[0])
+            self.assertEqual(2, len(calls))
+            migrate.assert_not_called()
 
     def test_designer_only_migration_metadata_change_enters_existing_probe(self):
         owner = self.owner
@@ -961,6 +1990,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             patch.object(owner, 'migration_metadata_changed', return_value=True),
             patch.object(owner, 'release_proven') as release_proof,
             patch.object(owner, 'run', side_effect=read) as command,
+            patch.object(owner, 'restore_migration_probe'),
             patch.object(owner, '_invoke_migration_bundle') as migrate,
         ):
             result = owner.run_migration_lane()
@@ -969,7 +1999,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
         migrate.assert_called_once()
         self.assertTrue(any('verify' in call.args[0] for call in command.call_args_list))
 
-    def test_non_schema_changes_keep_migration_lane_skipped(self):
+    def test_non_schema_changes_still_require_fresh_schema_reconciliation(self):
         owner = self.owner
         environment = {
             'PRESERVE_LIVE_TARGETS': 'false',
@@ -977,6 +2007,8 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'EXPECTED_DB_BASE_SHA': 'a' * 40,
             'APPLICATION_RELEASE_SHA': 'b' * 40,
             'MIGRATION_READINESS_PENDING': 'false',
+            'DATABASE_AUTHORITY': 'masterapp-portal',
+            'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
         }
         with (
             patch.dict(os.environ, environment),
@@ -985,11 +2017,13 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             patch.object(owner, 'migration_metadata_changed', return_value=False),
             patch.object(owner, '_invoke_migration_bundle') as migrate,
             patch.object(owner, 'release_proven') as release_proof,
+            patch.object(owner, 'run', return_value=json.dumps({'runId': 123, 'artifact': 'validated-probe'})),
+            patch.object(owner, 'restore_migration_probe'),
         ):
             result = owner.run_migration_lane()
-        self.assertEqual({'status': 'not-applicable', 'changedMigrations': []}, result)
-        migrate.assert_not_called()
-        release_proof.assert_not_called()
+        self.assertEqual({'status': 'reconciled', 'changedMigrations': []}, result)
+        migrate.assert_called_once()  # Canonical ready-state tests prove zero SQL execution.
+        release_proof.assert_called_once()
 
 
 class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):

@@ -36,6 +36,71 @@ def successful_jobs(target_step="Publish selected head as one transaction"):
     ]
 
 
+class ReadinessRefreshTests(unittest.TestCase):
+    def test_terminal_child_blocks_while_its_parent_remains_active(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        for conclusion in ('failure', 'cancelled', 'skipped'):
+            with self.subTest(conclusion=conclusion), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[
+                     dict(id=12, run_attempt=2, status='in_progress'),
+                     dict(total_count=1, jobs=[dict(name='release-readiness', status='completed', conclusion=conclusion)])]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=False), \
+                 patch.object(m.time, 'sleep') as sleep:
+                self.assertEqual('READINESS_BLOCKED', m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [])['state'])
+                sleep.assert_not_called()
+
+    def test_only_authenticated_completed_readiness_can_refresh_after_expiry(self):
+        candidate, approved = 'a' * 40, 'b' * 40
+        api = SimpleNamespace(repo='owner/repo', token='token', ref=lambda _: approved)
+        run = dict(id=12, head_sha=candidate, run_attempt=1, status='completed')
+        for conclusion, retained, expected in (('failure', None, 0), ('skipped', None, 0),
+                                               ('success', None, 0), ('success', {'receipt': 'authenticated'}, 1)):
+            jobs = dict(total_count=2, jobs=[dict(id=21, name='readiness-observe', status='completed', conclusion='success'),
+                dict(id=22, name='release-readiness', status='completed', conclusion=conclusion)])
+            with self.subTest(conclusion=conclusion, retained=retained), \
+                 patch.dict(os.environ, {'GITHUB_ACTIONS': 'true'}), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'git_show_file', return_value='READINESS_SCHEMA = 1\n'), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_targets', return_value=[]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence', side_effect=[None, retained]), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'trusted_readiness_run', return_value=True), \
+                 patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[dict(workflow_runs=[run]), jobs]), \
+                 patch.object(m.OPERATION_EVIDENCE, 'readiness_refresh_once', return_value={'state': 'READINESS_REFRESH_REQUESTED'}) as refresh, \
+                 patch.object(m, 'await_readiness_child', return_value=None):
+                result = m.ensure_readiness_progress(api, {'head': {'sha': candidate}})
+                self.assertEqual(expected, refresh.call_count)
+                if expected: self.assertIsNone(result)
+                else: self.assertEqual('READINESS_BLOCKED', result['state'])
+
+    def test_only_classified_transient_reads_permit_automatic_refresh(self):
+        for error, kind in ((m.VALIDATION_AUTHORITY.EvidenceLookupUnavailable(status=503), 'transient-provider-read'),
+                            (m.VALIDATION_AUTHORITY.EvidenceLookupUnavailable(status=403), 'unclassified-or-nonrecoverable'),
+                            (RuntimeError('Schema probe process deadline exceeded'), 'transient-provider-read'),
+                            (RuntimeError('PHYSICAL_SCHEMA_DRIFT'), 'unclassified-or-nonrecoverable'),
+                            (RuntimeError('private provider payload'), 'unclassified-or-nonrecoverable')):
+            self.assertEqual(kind, m.readiness_failure_classification(error))
+
+    def test_delayed_new_attempt_visibility_preserves_request_and_waits_for_exact_child(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        old = dict(id=12, run_attempt=1, status='completed')
+        new = dict(id=12, run_attempt=2, status='completed')
+        with patch.object(m.VALIDATION_AUTHORITY, 'api_get', side_effect=[old, old, new]) as reads, \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=True) as child, \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence', return_value={'receipt': 'authenticated'}) as proof, \
+             patch.object(m.time, 'sleep'):
+            self.assertIsNone(m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [], minimum_attempt=2))
+            self.assertEqual(3, reads.call_count)
+            child.assert_called_once_with('owner/repo', new, 'release-readiness', 2, 'token')
+            self.assertEqual(1, proof.call_count)
+
+    def test_unknown_failed_attempt_stops_without_reclassifying_it_as_success(self):
+        api = SimpleNamespace(repo='owner/repo', token='token')
+        with patch.object(m.VALIDATION_AUTHORITY, 'api_get', return_value=dict(id=12, run_attempt=2, status='completed')), \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_child_succeeded', return_value=False), \
+             patch.object(m.VALIDATION_AUTHORITY, 'readiness_evidence') as proof:
+            self.assertEqual('READINESS_BLOCKED', m.await_readiness_child(api, 12, 'a' * 40, 'b' * 40, [], minimum_attempt=2)['state'])
+            proof.assert_not_called()
+
+
 class GitHubTransportRetry(unittest.TestCase):
     class Response:
         def __enter__(self):
@@ -267,6 +332,34 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         names = ["scripts/release-lifecycle.py"]
         self.assertIsNone(m.candidate_control_plane_integrity(api, pr, names))
 
+    def test_readiness_result_assignment_keeps_first_gate_and_delayed_gate_is_rejected(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                if path == 'scripts/validation-resume.py':
+                    return source.replace('    readiness = require_readiness(args.repository, args.current_sha)',
+                                          '    readiness = None\n    readiness = require_readiness(args.repository, args.current_sha)')
+                return source
+        self.assertIsNone(m.candidate_control_plane_integrity(Api(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+        self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_activated_readiness_cannot_be_removed_to_reenter_bootstrap(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                return source.replace('READINESS_SCHEMA = 1', 'READINESS_SCHEMA = 0') if path == 'scripts/validation-resume.py' else source
+        reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py'])
+        self.assertIn('removed the activated early readiness', reason)
+
+    def test_untrusted_candidate_checkout_in_readiness_is_rejected(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                return source.replace('ref: ${{ github.event.pull_request.base.sha || github.sha }}', 'ref: ${{ github.event.pull_request.head.sha }}', 1) if path == '.github/workflows/legend-release-lifecycle.yml' else source
+        reason = m.candidate_control_plane_integrity(Drift(), {'head': {'sha': 'b' * 40}}, ['.github/workflows/legend-release-lifecycle.yml'])
+        self.assertIn('trusted read-only readiness', reason)
+
     def test_non_control_change_still_requires_repository_safety_rails_only(self):
         api = Api()
         pr = {"head": {"sha": "b" * 40}}
@@ -326,6 +419,21 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
             [".github/workflows/deployment-diagnostics.yml"],
         )
         self.assertIn("no longer read-only", result)
+
+    def test_guard_rejects_unapproved_diagnostic_credential_execution(self):
+        for filename, removed in (
+            ('deployment-diagnostics.yml', "github.ref == 'refs/heads/legend/approved-changes'"),
+            ('legend-production-readonly-diagnostic.yml', "github.ref == 'refs/heads/legend/approved-changes'"),
+            ('legend-production-readonly-diagnostic.yml', 'git merge-base --is-ancestor "$LEGEND_VALIDATION_CANDIDATE_SHA" refs/remotes/origin/legend/approved-changes'),
+        ):
+            with self.subTest(filename=filename, removed=removed):
+                class Drift(Api):
+                    def text(self, revision, path):
+                        value = super().text(revision, path)
+                        return value.replace(removed, 'true') if path == '.github/workflows/' + filename else value
+                result = m.candidate_control_plane_integrity(
+                    Drift(), {"head": {"sha": "b" * 40}}, ['.github/workflows/' + filename])
+                self.assertIn('unapproved', result)
 
     def test_guard_rejects_retired_deployment_bypass_reintroduction(self):
         result = m.candidate_control_plane_integrity(
@@ -2847,9 +2955,52 @@ class WorkerAdmissionPackageIdentity(unittest.TestCase):
         self.assertEqual(result['admission']['admissionId'], m._admission_identity(result['admission']))
         published = json.loads(publish.call_args.kwargs['input'])
         self.assertEqual(result['admission'], published['record'])
+        self.assertEqual(180, publish.call_args.kwargs['timeout'])
 
 
 class HistoricalReleaseRecovery(unittest.TestCase):
+    def test_backfill_terminal_attempt_stops_equivalent_dispatch_for_both_callers(self):
+        approved = 'a' * 40
+        pending = dict(authorizationSha='b' * 40, applicationRevision='c' * 40,
+                       targets=[canonical_name('portal')], sourcePr=385)
+        for conclusion in ('failure', 'cancelled', 'success', 'timed_out'):
+            api = Api()
+            run = dict(id=73, run_attempt=2, head_sha=approved, head_branch=m.APPROVED,
+                       head_repository=dict(full_name=api.repo), event='workflow_dispatch',
+                       path='.github/workflows/' + m.PACKAGE_VALIDATION,
+                       status='completed', conclusion=conclusion)
+            api.pages_map['actions/runs?head_sha=' + approved] = [run]
+            with patch.object(m, '_validated_package_evidence', return_value={'reusable': False}), \
+                 patch.object(m, '_package_backfill_preflight', return_value={'allowed': True}), \
+                 patch.object(m, 'pending_automatic_releases', return_value=[pending]), \
+                 patch.object(m, 'pending_legacy_release_authorization', return_value=pending):
+                automatic = m.dispatch_pending_automatic_release(api, approved)
+                legacy = m.dispatch_pending_legacy_release(api, approved)
+                self.assertEqual('blocked', automatic['pendingCandidates'][0]['packageBackfill'])
+                self.assertEqual('blocked', legacy['packageBackfill'])
+                self.assertEqual(73, legacy['backfillRunId'])
+                self.assertEqual(2, legacy['backfillAttempt'])
+                self.assertEqual([], api.dispatched)
+
+    def test_backfill_lookup_scopes_authority_and_rejects_unproven_identity(self):
+        api = Api()
+        approved = 'a' * 40
+        endpoint = 'actions/runs?head_sha=' + approved
+        run = dict(id=73, run_attempt=1, head_sha=approved, head_branch=m.APPROVED,
+                   head_repository=dict(full_name=api.repo), event='workflow_dispatch',
+                   path='.github/workflows/' + m.PACKAGE_VALIDATION,
+                   status='in_progress', conclusion=None)
+        api.pages_map[endpoint] = [run]
+        self.assertEqual('already queued or running', m._package_backfill_disposition(api, approved)['packageBackfill'])
+        for changes in ({'head_repository': {'full_name': 'other/repo'}}, {'run_attempt': None}, {'id': None}):
+            api.pages_map[endpoint] = [{**run, **changes}]
+            self.assertEqual('blocked', m._package_backfill_disposition(api, approved)['packageBackfill'])
+        for changes in ({'head_sha': 'b' * 40}, {'event': 'pull_request'}, {'path': 'other.yml'}):
+            api.pages_map[endpoint] = [{**run, **changes}]
+            self.assertIsNone(m._package_backfill_disposition(api, approved))
+        api.pages_map[endpoint] = [run]
+        self.assertIsNone(m._package_backfill_disposition(api, 'b' * 40))
+
     @patch.object(m, "release_proven", return_value=False)
     @patch.object(m, "release_targets")
     @patch.object(m, "candidate_validation", return_value=None)
@@ -2941,7 +3092,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_package_backfill_disposition", return_value=None)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
     def test_missing_automatic_package_dispatches_package_backfill_before_release(self, pending, _, __, ___):
@@ -2965,7 +3116,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_package_backfill_disposition", return_value={"packageBackfill": "already queued or running"})
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_automatic_releases")
     def test_running_automatic_package_backfill_does_not_duplicate_dispatch(self, pending, _, __, ___):
@@ -2983,7 +3134,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         self.assertEqual([], api.dispatched)
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=False)
+    @patch.object(m, "_package_backfill_disposition", return_value=None)
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
     def test_missing_package_dispatches_package_only_architecture_recovery(self, pending, _, __, ___):
@@ -3005,7 +3156,7 @@ class HistoricalReleaseRecovery(unittest.TestCase):
         )
 
     @patch.object(m, "_package_backfill_preflight", return_value={"allowed": True})
-    @patch.object(m, "_package_backfill_running", return_value=True)
+    @patch.object(m, "_package_backfill_disposition", return_value={"packageBackfill": "already queued or running"})
     @patch.object(m, "_validated_package_evidence", return_value={"reusable": False, "reason": "exact_validated_package_missing"})
     @patch.object(m, "pending_legacy_release_authorization")
     def test_running_package_backfill_is_preserved_without_duplicate_dispatch(self, pending, _, __, ___):
@@ -3460,4 +3611,7 @@ class StagingSafety(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Unit scenarios opt into hosted execution explicitly; the runner environment
+    # must not turn synthetic revisions into real Git/GitHub lookups.
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+        unittest.main()

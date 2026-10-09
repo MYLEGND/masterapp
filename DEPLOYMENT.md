@@ -21,6 +21,31 @@ No local shell script, developer workstation command, diagnostic workflow, manua
 9. Finalize durable receipts through the single bounded finalizer in `scripts/deploy-approved-app.py`.
 10. Require live runtime provenance and the canonical post-publication checks before the lifecycle can close successfully.
 
+## Immutable component recovery
+
+The package owner records each application's actual producer revision, dependency
+and execution identities, successful producing job/attempt, immutable artifact ID,
+and digest. Assembly authenticates children independently; a failed sibling or
+later attempt does not erase a completed component. Release candidate authorization
+remains separate from the producer of reused bytes. Baseline planning, transaction
+intents, publication, receipts, live verification, and rollback consume that same
+per-target material. Publication never restamps or rebuilds those bytes.
+
+Attempt-qualified aggregate descriptors bind the downloaded manifest and target
+map to the exact uploaded artifact. Confirmed terminal failed attempts permit lookup
+of earlier successful aggregates; unavailable evidence or tampering blocks lookup
+without authorizing a rebuild. Rollback restores verified retained component bytes
+or identical bytes from an authenticated aggregate through the package owner.
+Legacy single-producer packages retain their strict original interpretation.
+
+Candidate compilation uses pinned tools, verified restore content and generated
+imports, read-only source, controlled writable output, and a network-disabled
+container. Candidate builds receive no production or evidence-service credentials.
+Static Website and Protect cross-revision component reuse remains conservatively
+invalidated where the executable dependency scope cannot yet be proven; same-candidate
+recovery remains available. The new component protocol activates only after its
+trusted approved owner is installed. Bootstrap validation is not activation proof.
+
 ## Timing invariants
 
 The release control plane owns these bounds:
@@ -36,6 +61,35 @@ These values are protected by the trusted-base control-plane integrity guard. A 
 ## Database and configuration changes
 
 Production migration and configuration work is part of the same governed release transaction. Only the canonical release child authorities may perform those writes. Developer/local database utilities are not production authorities.
+
+### Early readiness
+
+The lifecycle's `readiness-observe` and `release-readiness` children run approved
+control-plane code for authorized same-repository PRs, including drafts. They
+consume the candidate probe's declarative migration contract as data; candidate
+assemblies never execute with production credentials. Production observation is
+read-only and binds schema history, physical postconditions, database identity,
+candidate inputs, policy, target scope, and observation time.
+
+The architecture workflow builds the minimal Infrastructure probe first. A
+pending migration requires the canonical migration component and an isolated
+representative rehearsal before application validation or package fan-out.
+The rehearsal fixture is a separate executable with synthetic data and a
+disposable loopback SQL database. Its completed bundle is checkpointed before
+rehearsal. Recovery tests require one mutation across lost-receipt recovery.
+The later package component promotes those same bundle bytes.
+
+`validation-resume.py` owns receipt compatibility and the bounded readiness
+wait. Skipped, failed, expired, mismatched, or incomplete proof cannot authorize
+expensive work. Successful children from earlier parent attempts remain usable.
+The initial control-plane installation records an explicit bootstrap exception
+when the approved branch predates this producer; this is not readiness success.
+Once installed, the integrity guard forbids removing readiness to reenter that
+exception. Publication still performs its current-state check before mutation.
+
+The current synthetic fixture covers `20261007134500_AddFounderAssistantRules`.
+Other pending migration shapes require a reviewed representative fixture; they
+fail closed instead of claiming untested compatibility.
 
 ## Diagnostics
 

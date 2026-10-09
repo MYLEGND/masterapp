@@ -62,15 +62,6 @@ def reusable_live_application_revision(rows, head):
 
 
 
-def exact_live_release(rows, application_release_sha, release_mode, website_routing, founder_cloudflare=False):
-    """True only when publication cannot change any selected app or auxiliary runtime."""
-    return (
-        release_mode == 'approved-only'
-        and not website_routing
-        and not founder_cloudflare
-        and bool(rows)
-        and all(row['revision'] == application_release_sha for row in rows)
-    )
 
 
 def _release_package_module():
@@ -325,26 +316,44 @@ def main():
         website_routing,
         website_routing_canary,
     )
+    target_materials = {}
+    pinned_package = {}
     if github_release_context and release_mode == 'approved-only':
-        preserved_package = _validation_authority.compute_validated_package_evidence(
-            os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        readiness = _validation_authority.readiness_evidence(os.environ['GITHUB_REPOSITORY'],
+            validated_source_sha, head, selected_names, token, require_fresh=False)
+        if readiness and readiness['receipt'].get('pendingCount'):
+            pinned_package = readiness['receipt'].get('rehearsal', {}).get('selectedPackage') or {}
+        if pinned_package:
+            preserved_package = _validation_authority.pinned_package_evidence(
+                os.environ['GITHUB_REPOSITORY'], validated_source_sha, pinned_package, token)
+        else:
+            preserved_package = _validation_authority.compute_validated_package_evidence(
+                os.environ['GITHUB_REPOSITORY'], application_release_sha, package_identity)
         if preserved_package.get('reusable'):
             application_release_sha = validate_revision(preserved_package['revision'])
             package_identity = preserved_package['packageIdentity']
+            target_materials = preserved_package.get('targetMaterials', {})
             print('Preserving immutable package producer provenance:', application_release_sha)
-    exact_live = exact_live_release(
-        rows,
-        application_release_sha,
-        release_mode,
-        website_routing,
-        founder_cloudflare,
-    )
-    if exact_live:
-        print('All selected application targets already expose the exact approved application revision; publication work is unnecessary.')
+    for row in rows:
+        material = target_materials.get(row['app'])
+        row['desiredProducerRevision'] = material['producerRevision'] if material else application_release_sha
+        if material is not None:
+            row['targetMaterial'] = material
+    selected_materials = {row['app']: target_materials[row['app']] for row in rows if row['app'] in target_materials}
+    if selected_materials and len(selected_materials) != len(rows):
+        raise ValueError('Authenticated target descriptor does not cover release scope')
+    # Source provenance alone cannot certify the requested immutable bytes.
+    # Matching targets use canonical transaction preflight and retained intent /
+    # provider evidence for zero-upload preservation, including fresh readiness.
+    exact_live = False  # Retained output contract for historical callers.
     print(json.dumps(rows, indent=2))
     if args.output:
         with args.output.open('a') as out:
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
+            out.write('target_materials=' + json.dumps(selected_materials,separators=(',', ':')) + '\n')
+            out.write('pinned_package=' + json.dumps(pinned_package,separators=(',', ':')) + '\n')
+            out.write('readiness_candidate=' + validated_source_sha + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + (database_baseline or rows[0]['revision']) + '\n')
             out.write('database_baseline=' + database_baseline + '\n')
@@ -377,6 +386,7 @@ def main():
             out.write('website_routing_canary=' + website_routing_canary + '\n')
             out.write('preserve_live_targets=' + str(preserve_live_targets).lower() + '\n')
             out.write('exact_live=' + str(exact_live).lower() + '\n')
+            out.write('rollback_required=' + str(any(row['revision'] != row['desiredProducerRevision'] for row in rows)).lower() + '\n')
             out.write('application_release_sha=' + application_release_sha + '\n')
             out.write('package_identity=' + package_identity + '\n')
 

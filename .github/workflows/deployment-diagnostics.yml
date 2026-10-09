@@ -21,7 +21,7 @@ permissions:
   id-token: write
 jobs:
   inspect:
-    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'deployment'
+    if: github.ref == 'refs/heads/legend/approved-changes' && (github.event_name != 'workflow_dispatch' || inputs.scope == 'deployment')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: Production

@@ -9,15 +9,24 @@ using Microsoft.EntityFrameworkCore;
 // assembly owns both schema identities. No application rows or SQL are exposed.
 try
 {
-    if (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory"))
+    var export = args.SequenceEqual(new[] { "--export-contract" });
+    var contractPath = args.Length == 2 && args[0] == "--contract" ? args[1] : null;
+    if (!export && contractPath is null && (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory")))
         throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
-    var connection = Environment.GetEnvironmentVariable("LEGEND_RELEASE_DB_CONNECTION");
+    var connection = export ? "Server=127.0.0.1;Database=OfflineContract;Integrated Security=true" : Environment.GetEnvironmentVariable("LEGEND_RELEASE_DB_CONNECTION");
     if (string.IsNullOrWhiteSpace(connection)) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
     var options = new DbContextOptionsBuilder<MasterAppDbContext>()
         .UseSqlServer(connection, sql => sql.CommandTimeout(30)).Options;
     await using var db = new MasterAppDbContext(options);
+    if (export) { Console.WriteLine(CandidateContract.Export(db)); return; }
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-    var known = db.Database.GetMigrations().Order(StringComparer.Ordinal).ToArray();
+    var contract = contractPath is null ? CandidateContract.Current(db) : CandidateContract.Read(contractPath);
+    // Defense in depth: production metadata must equal this approved assembly's
+    // definitions. A new migration shape needs a reviewed extraction rule;
+    // candidate-provided Supported/IDs cannot suppress a pending operation.
+    if (contractPath is not null && JsonSerializer.Serialize(contract, CandidateContract.Json) != CandidateContract.Export(db))
+        throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
+    var known = contract.Migrations.Select(m => m.Id).ToArray();
     var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token))
         .Order(StringComparer.Ordinal).ToArray();
     if (known.Length == 0)
@@ -25,7 +34,7 @@ try
 
     // Observation only: a complete, bounded inventory is not a release receipt
     // and never runs EF migration commands or reads application row contents.
-    if (args.Length == 1)
+    if (args.SequenceEqual(new[] { "--inventory" }))
     {
         var idPattern = new System.Text.RegularExpressions.Regex(
             @"^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$");
@@ -262,9 +271,22 @@ try
             throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
     }
 
+    if (contract is not null) await CandidateContract.Verify(db, contract, appliedRegistered, timeout.Token);
+    await db.Database.OpenConnectionAsync(timeout.Token);
+    await using var identityCommand = db.Database.GetDbConnection().CreateCommand();
+    identityCommand.CommandTimeout = 30;
+    identityCommand.CommandText = "SELECT CONCAT(CONVERT(nvarchar(256),SERVERPROPERTY('ServerName')),N'/',DB_NAME())";
+    var databaseIdentity = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+        Convert.ToString(await identityCommand.ExecuteScalarAsync(timeout.Token)) ?? throw new InvalidOperationException())));
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
+        databaseIdentity,
+        // Physical postconditions above have passed. Bind the observed applied
+        // prefix and those exact expectations separately from catalog identity.
+        baselineIdentity = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(new { applied, contract }, CandidateContract.Json)))),
+        observedUtc = DateTimeOffset.UtcNow,
         ready = pending == 0,
         // Counts include only an attested historical stamp when actually applied.
         // schemaIdentity still binds the exact registered EF assembly migrations.
