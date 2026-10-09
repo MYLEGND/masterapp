@@ -229,6 +229,12 @@ AUDITED_LEGACY_MIGRATION_NOOP_SOURCE_MARKERS = {
     'd4404ba420b96623602f953b91f3fe1f31911433': LEGACY_NOOP_MARKER,
     'b85c50eadf83daad32b787f2d37f7a32babe67a4': LEGACY_NOOP_MARKER,
     '207f8bc230e35e636e1342e020d2377feadeac2e': LEGACY_OLDER_NOOP_MARKER,
+    # Oct 2 immutable generation: migration-step source matches the audited
+    # early-exit block above, and original run evidence proves the old marker.
+    '0bf49879417aa46c25c5f1a5772912b280efa9ae': LEGACY_OLDER_NOOP_MARKER,
+    # Oct 2 successful single-target publication: identical audited early
+    # migration exit with original checkout and timestamped no-change output.
+    '59887daf87bbbf3be14ade23de17076adb8830ea': LEGACY_OLDER_NOOP_MARKER,
 }
 
 
@@ -408,9 +414,26 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
         return True
     raw = _release_job_log(repository, job['id'], token)
     text = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in raw.splitlines())
-    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
-    if heads != {run['head_sha']}:
+    heads = re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text)
+    if len(heads) != 1:
         return False
+    if heads[0] != run['head_sha']:
+        # A historical successful release may use a protected, earlier
+        # selected commit than its triggering event head. Authenticate the
+        # immutable source and original selected SHA before accepting it.
+        selected = set(re.findall(
+            r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))
+        # Original GitHub Actions logs repeat the identical selected commit
+        # in multiple step environment blocks. Authenticate one DISTINCT
+        # selected SHA, the exact checkout and protected ancestry.
+        if (not trusted_source or len(selected) != 1
+            or heads[0] not in selected):
+            return False
+        ancestry = subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', heads[0], run['head_sha']],
+            capture_output=True, text=True, check=False)
+        if ancestry.returncode != 0:
+            return False
     marker = _audited_legacy_migration_noop_marker(source) or LEGACY_NOOP_MARKER
     hits = 0
     for line in raw.splitlines():
@@ -1055,6 +1078,207 @@ def _historical_migration_prewrite_proven(repository, run, job, step, attempt, t
         return False
 
 
+# Retired release evidence is interpreted only by this canonical first-write gate.
+# An entered EF migration is NEVER reclassified as a no-write operation.
+_RETIRED_PRE_BUNDLE = {
+    '11b3755b66185451547b67b2ae0969504d0df8a6': 'baseline',
+    '4b03bbd5b14e09704cb207b46b721d630a984316': 'pending-model',
+}
+_RETIRED_ENTERED_BUNDLE = {
+    'c0690fce1df3405ff72f45b4ca8f124580fb0741': (
+        '20261001070000_AddLegendEngineeringControlPlane',),
+    '73e74c25982f19e35a6e71f0c8c1e23c17dc6c06': (
+        '20260927080618_SyncCanonicalMarketingModel20260927',
+        '20260927090000_AddOpenAiProductFeedProjections'),
+}
+
+
+def _attested_retired_legacy_failure(repository, run, job, step, source, attempt,
+                                     token, *, first_pending_migration_id=None,
+                                     last_applied_migration_id=None,
+                                     current_application_revision=None):
+    """Attest original pre-bundle nonentry OR a now-applied older EF generation.
+
+    Existing read-only SQL prefix/physical-schema validation is mandatory for
+    the latter. This never suppresses the current migration's journal/first write.
+    """
+    import datetime
+    raw_bytes = source.encode('utf-8')
+    fingerprint = hashlib.sha1(b'blob ' + str(len(raw_bytes)).encode()
+                               + b'\0' + raw_bytes).hexdigest()
+    guard = _RETIRED_PRE_BUNDLE.get(fingerprint)
+    attempted = _RETIRED_ENTERED_BUNDLE.get(fingerprint)
+    if not guard and not attempted:
+        return False
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or run.get('run_attempt') != 1 or attempt != 1
+        or job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+        or job.get('run_attempt', 1) != 1 or type(job.get('id')) is not int
+        or step.get('name') != 'Apply additive diagnostics migrations before restarting apps'
+        or step.get('status') != 'completed' or step.get('conclusion') != 'failure'):
+        return False
+    block = named_step_blocks(_job_blocks(source).get('release', '')).get(
+        'Apply additive diagnostics migrations before restarting apps', '')
+    if ("set -euo pipefail" not in block or
+        "python3 - <<'PYMIGRATE'" not in block or
+        (guard == 'baseline' and
+         'No candidate migration source changed from the proven database baseline.' not in block)):
+        return False
+    try:
+        _trusted_child_producer(repository, run)
+        start = datetime.datetime.fromisoformat(
+            step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(
+            step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        raw = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(
+            re.sub(r'^\d{4}-\d\d-\d\dT[0-9:.]+Z ', '', line)
+            for line in raw.splitlines())
+        checkout = re.findall(
+            r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$',
+            clean)
+        # The protected workflow event head can be newer than the approved
+        # source selected by the release. Positively verify the original
+        # selected SHA and exact checkout, then their protected ancestry.
+        selected = set(re.findall(
+            r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', clean))
+        if (len(checkout) != 1 or len(selected) != 1
+            or checkout[0] != next(iter(selected))
+            or 'Post job cleanup.' not in clean):
+            return False
+        lineage = subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', checkout[0], run['head_sha']],
+            capture_output=True, text=True, check=False)
+        if lineage.returncode != 0:
+            return False
+        observed = []
+        for line in raw.splitlines():
+            stamp, sep, value = line.partition('Z ')
+            if not sep or not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:[0-9.]+',
+                                           stamp):
+                continue
+            # GitHub prints the workflow source in ANSI-colored command echos.
+            # They are NOT authenticated execution output and cannot prove or
+            # disprove a migration; only the producer's actual output may do so.
+            if '\x1b[' in value:
+                continue
+            when = datetime.datetime.fromisoformat(stamp + '+00:00')
+            if start <= when <= end + datetime.timedelta(seconds=2):
+                observed.append(value)
+        if '##[error]Process completed with exit code 1.' not in observed:
+            return False
+        inventory = api_get(
+            repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = inventory.get('artifacts')
+        if (not isinstance(artifacts, list)
+            or type(inventory.get('total_count')) is not int
+            or inventory['total_count'] != len(artifacts)
+            or len(artifacts) > 100
+            or any(not isinstance(a, dict) or a.get('expired') is not False
+                   or (a.get('workflow_run') or {}).get('id') != run['id']
+                   or not isinstance(a.get('name'), str) for a in artifacts)
+            or any(a['name'].startswith(('legend-release-child-intent-',
+                                          'legend-release-child-success-'))
+                   for a in artifacts)):
+            return False
+        entered = re.findall(
+            r"^Applying migration '([0-9]{8,14}_[A-Za-z0-9_]{1,128})'\.$",
+            '\n'.join(observed), re.MULTILINE)
+        if guard:
+            if entered:
+                return False
+            if guard == 'baseline':
+                # Re-run the original strict Git ancestry gate with its
+                # immutable logged environment; lack of SQL logs alone does
+                # not prove an unexecuted migration.
+                baselines = set(re.findall(
+                    r'(?m)^  EXPECTED_DB_BASE_SHA: ([a-f0-9]{40})$', clean))
+                candidates = set(re.findall(
+                    r'(?m)^  APPLICATION_RELEASE_SHA: ([a-f0-9]{40})$', clean))
+                gate_position = block.find('git merge-base --is-ancestor')
+                bundle_position = block.find("python3 - <<'PYMIGRATE'")
+                if (len(baselines) != 1 or len(candidates) != 1
+                    or not 0 <= gate_position < bundle_position):
+                    return False
+                ancestry = subprocess.run(
+                    ['git', 'merge-base', '--is-ancestor',
+                     next(iter(baselines)), next(iter(candidates))],
+                    capture_output=True, text=True, check=False)
+                if ancestry.returncode != 1:
+                    return False
+                return (not any(x.startswith('Database baseline release receipt verified:')
+                                for x in observed)
+                        and not any(x.startswith('Infrastructure/Migrations/')
+                                    for x in observed)
+                        and not any(x == 'No candidate migration source changed from the proven database baseline.'
+                                    for x in observed)
+                        and not any(x == ('Schema ready. Executed the exact validated migration '
+                                          'bundle from the proven live database baseline.')
+                                    for x in observed))
+            return (any('PendingModelChangesWarning' in x for x in observed)
+                    and any('System.InvalidOperationException:' in x
+                            for x in observed)
+                    and not any('Acquiring an exclusive lock for migration'
+                                in x for x in observed))
+        # The original EF bundle DID enter. Authenticate exact original attempted
+        # migration identities, and resolve against the CURRENT observed live
+        # EF prefix, not against absent old journal artifacts.
+        if tuple(entered) != attempted:
+            return False
+        if (not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]{1,128}',
+                            first_pending_migration_id or '')
+            or not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]{1,128}',
+                                last_applied_migration_id or '')
+            or not re.fullmatch(r'[a-f0-9]{40}', current_application_revision or '')
+            or any(x > last_applied_migration_id or x >= first_pending_migration_id
+                   for x in attempted)):
+            return False
+        for identifier in attempted:
+            migration = git_show_file(
+                current_application_revision,
+                'Infrastructure/Migrations/' + identifier + '.cs')
+            if not migration.strip():
+                return False
+        if fingerprint == 'c0690fce1df3405ff72f45b4ca8f124580fb0741':
+            return any('There is no entity type mapped to the table' in x
+                       for x in observed)
+        return any('may cause cycles or multiple cascade paths' in x
+                   for x in observed)
+    except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+            OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
+def _attested_retired_unscheduled_release(repository, run, job, jobs, attempt, token):
+    """Positive scheduler nonentry; missing logs/receipts ALONE are not proof."""
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'cancelled'
+        or run.get('run_attempt') != 1 or attempt != 1
+        or job.get('name') != 'release' or job.get('status') != 'completed'
+        or job.get('conclusion') != 'cancelled'
+        or job.get('runner_id') is not None or job.get('runner_name') is not None
+        or job.get('steps') != [] or job.get('run_attempt', 1) != 1
+        or sum(x.get('name') == 'release' for x in jobs) != 1
+        or any(x.get('name') == 'migration-readiness' for x in jobs)):
+        return False
+    try:
+        _trusted_child_producer(repository, run)
+        original = _release_history_source(
+            repository, run['head_sha'],
+            '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+        if not named_step_blocks(_job_blocks(original).get('release', '')).get(
+                'Apply additive diagnostics migrations before restarting apps'):
+            return False
+        inv = api_get(
+            repository, f"actions/runs/{run['id']}/artifacts?per_page=100",
+            token)
+        return inv.get('total_count') == 0 and inv.get('artifacts') == []
+    except (KeyError, TypeError, ValueError, AttributeError, RuntimeError,
+            OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
@@ -1133,6 +1357,10 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 job = owners[0]
                 if job.get("status") == "queued" or job.get("conclusion") == "skipped":
                     continue
+                if (child == 'migrations' and
+                    _attested_retired_unscheduled_release(
+                        repository, run, job, jobs, attempt, token)):
+                    continue
                 steps = [step for step in job.get("steps", []) if step.get("name") == gate["step"]]
                 if not steps and child == 'migrations':
                     source = _release_history_source(repository, run['head_sha'],
@@ -1144,7 +1372,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                     # validates the current run's checkout and no-write marker.
                     if (hashlib.sha256(block.encode()).hexdigest()
                             == '74500e6966d2c198564712b33c93a1a06150d99bdc3e4aacc4e79fe11ad061cc'
-                            or _audited_legacy_migration_noop_source(source)):
+                            or _audited_legacy_migration_noop_source(source)
+                            or (hashlib.sha1(
+                                    b'blob ' + str(len(source.encode('utf-8'))).encode()
+                                    + b'\0' + source.encode('utf-8')).hexdigest()
+                                in (_RETIRED_PRE_BUNDLE.keys() | _RETIRED_ENTERED_BUNDLE.keys())
+                                and "python3 - <<'PYMIGRATE'" in block)):
                         steps = [step for step in job.get('steps', []) if step.get('name') == legacy]
                 if len(steps) != 1:
                     raise rejection("Release child execution detail unavailable", run_id, attempt)
@@ -1164,6 +1397,12 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                             repository, run, job, steps[0], attempt, token):
                         continue
                     if _legacy_migration_noop(repository, run, job, steps[0], source, token):
+                        continue
+                    if _attested_retired_legacy_failure(
+                            repository, run, job, steps[0], source, attempt, token,
+                            first_pending_migration_id=first_pending_migration_id,
+                            last_applied_migration_id=last_applied_migration_id,
+                            current_application_revision=current_application_revision):
                         continue
                     if _legacy_completed_bundle_is_separate_from_pending_sql(
                             repository, run, job, steps[0], source, attempt, token,

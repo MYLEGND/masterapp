@@ -135,6 +135,73 @@ try
     // A read-only probe cannot authorize a new SQL write on its own.
     var pendingIds = known.Except(appliedRegistered, StringComparer.Ordinal).ToArray();
     var pending = pendingIds.Length;
+    // Historical EF failures previously entered these migration IDs. Their
+    // current applied history is necessary but not sufficient: physically
+    // attest the named schema objects before admitting any NEW SQL write.
+    // Only sys.* catalog metadata is read; no application rows/DDL/EF Migrate.
+    if (appliedRegistered.Contains("20261001070000_AddLegendEngineeringControlPlane",
+                                  StringComparer.Ordinal))
+    {
+        await db.Database.OpenConnectionAsync(timeout.Token);
+        await using var engineering = db.Database.GetDbConnection().CreateCommand();
+        engineering.CommandTimeout = 30;
+        engineering.CommandText = """
+            SELECT COUNT(*) FROM sys.tables t
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            WHERE s.name = N'dbo' AND t.name IN
+              (N'LegendEngineeringControlLocks',
+               N'LegendEngineeringChatGptPlanCredentials',
+               N'LegendEngineeringWorkItems',
+               N'LegendEngineeringContexts',
+               N'LegendEngineeringUsage')
+            """;
+        var tableCount = Convert.ToInt32(await engineering.ExecuteScalarAsync(timeout.Token));
+        if (tableCount != 5)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        engineering.CommandText = """
+            SELECT COUNT(*) FROM sys.columns c
+            JOIN sys.tables t ON t.object_id = c.object_id
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+            WHERE s.name = N'dbo' AND t.name = N'LegendEngineeringControlLocks'
+              AND ((c.name = N'LockKey' AND ty.name = N'nvarchar'
+                    AND c.max_length = 128 AND c.is_nullable = 0)
+                OR (c.name = N'Revision' AND ty.name = N'bigint'
+                    AND c.max_length = 8 AND c.is_nullable = 0))
+            """;
+        if (Convert.ToInt32(await engineering.ExecuteScalarAsync(timeout.Token)) != 2)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+    if (appliedRegistered.Contains("20260927090000_AddOpenAiProductFeedProjections",
+                                  StringComparer.Ordinal))
+    {
+        await db.Database.OpenConnectionAsync(timeout.Token);
+        await using var feeds = db.Database.GetDbConnection().CreateCommand();
+        feeds.CommandTimeout = 30;
+        feeds.CommandText = """
+            SELECT COUNT(*) FROM sys.foreign_keys f
+            JOIN sys.tables t ON t.object_id = f.parent_object_id
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            WHERE s.name = N'dbo' AND t.name = N'OpenAiProductFeedProjections'
+              AND f.name IN (
+                  N'FK_OpenAiProductFeedProjections_CommerceBusinesses_CommerceBusinessId',
+                  N'FK_OpenAiProductFeedProjections_CommerceProducts_CommerceProductId')
+              AND f.delete_referential_action = 0
+            """;
+        if (Convert.ToInt32(await feeds.ExecuteScalarAsync(timeout.Token)) != 2)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+        feeds.CommandText = """
+            SELECT COUNT(*) FROM sys.indexes i
+            JOIN sys.tables t ON t.object_id = i.object_id
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            WHERE s.name = N'dbo' AND t.name = N'OpenAiProductFeedProjections'
+              AND i.name = N'IX_OpenAiProductFeedProjections_CommerceBusinessId_CommerceProductId_Provider'
+              AND i.is_unique = 1 AND i.is_disabled = 0
+            """;
+        if (Convert.ToInt32(await feeds.ExecuteScalarAsync(timeout.Token)) != 1)
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+    }
+
     // Physical SQL Server proof for the ONLY new Founder rules migration.
     // No application rows, UPDATEs, EF Migrate(), or schema DDL are executed.
     // The EF history alone cannot prove whether a column was partially added.
