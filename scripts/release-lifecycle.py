@@ -3038,12 +3038,15 @@ def _completed_pre_admission_direct_workflow(api, run, approved_revision):
         or not SHA.fullmatch(approved_revision or '')
     ):
         return False
-    if not ancestor(revision, approved_revision):
-        return False
-    source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
-    if source.returncode:
-        return False
-    jobs = VALIDATION_AUTHORITY._job_blocks(source.stdout)
+    try:
+        if not ancestor(revision, approved_revision):
+            return False
+        source = git('show', revision + ':.github/workflows/' + DIRECT, check=False)
+        if source.returncode:
+            return False
+        jobs = VALIDATION_AUTHORITY._job_blocks(source.stdout)
+    except (RuntimeError, ValueError, OSError):
+        return False  # Unknown source identity never gets the historical exception.
     return (
         'release' in jobs
         and 'discover-live' in jobs
