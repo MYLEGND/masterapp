@@ -609,6 +609,21 @@ class DirectAuthorization(unittest.TestCase):
 
         self.assertTrue(m.direct_only_request(merged))
 
+    def test_request_only_merge_binds_its_exact_validated_head(self):
+        m.git('checkout', '-b', 'explicit-request')
+        candidate = self.authorize()
+        m.git('checkout', m.APPROVED)
+        m.git('merge', '--no-ff', 'explicit-request', '-m', 'merge exact request')
+        approved = m.git('rev-parse', 'HEAD').stdout.strip()
+        api = Api()
+        pr = dict(number=553, merged_at='2026-10-09T00:00:00Z', merge_commit_sha=approved,
+                  base={'ref': m.APPROVED}, head={'sha': candidate})
+        api.pages_map['commits/' + approved + '/pulls'] = [pr]
+        api.pages_map['pulls/553/files'] = [{'filename': 'Docs/releases/direct-release-request.json'}]
+        self.assertEqual(pr, m.direct_release_approved_pr(api, approved))
+        pr['head']['sha'] = 'f' * 40
+        self.assertIsNone(m.direct_release_approved_pr(api, approved))
+
     def test_product_merge_without_request_change_is_not_new_authorization(self):
         self.authorize()
         m.git("checkout", "-b", "product")
@@ -1480,6 +1495,86 @@ class DurableCandidateQueue(unittest.TestCase):
                 "status": status, "conclusion": conclusion,
                 "display_title": m.release_dispatch_identity(pr["number"], pr["head"]["sha"], self.approved)}
 
+    def explicit(self, number, merge, revision, targets):
+        pr = self.candidate(number, merge, revision, [m.VALIDATION_AUTHORITY.RELEASE_REQUEST_PATH])
+        for name, callback in (
+            ('direct_only_request', lambda sha: sha == merge),
+            ('direct_release_approved_pr', lambda api, sha: pr if sha == merge else None),
+            ('release_targets', lambda sha: set(targets) if sha == merge else set()),
+        ):
+            fixture = patch.object(m, name, side_effect=callback)
+            fixture.start()
+            self.addCleanup(fixture.stop)
+        return pr
+
+    def test_explicit_request_suppresses_old_product_and_dispatches_once(self):
+        self.candidate(525, 'b' * 40, 'd' * 40, ['Infrastructure/Example.cs', 'Legend-Website/src/example.ts'])
+        targets = {row['releaseName'] for row in m.VALIDATION_AUTHORITY.RELEASE_TARGETS.values()}
+        self.explicit(553, 'c' * 40, 'e' * 40, targets)
+        queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([553], [row['sourcePr'] for row in queue])
+        self.assertEqual('explicit', queue[0]['authorizationMode'])
+        first = m.dispatch_pending_automatic_release(self.api, self.approved)
+        second = m.dispatch_pending_automatic_release(self.api, self.approved)
+        self.assertEqual('RELEASE_DISPATCHED', first['state'])
+        self.assertEqual('RELEASE_DISPATCHED', second['state'])
+        self.assertEqual([(m.DIRECT, {'automatic': 'false', 'source_pr': '553',
+                         'validated_sha': 'e' * 40, 'merge_sha': 'c' * 40})], self.api.dispatched)
+
+    def test_old_live_package_does_not_complete_new_explicit_transaction(self):
+        self.explicit(553, 'c' * 40, 'e' * 40, [canonical_name('client')])
+        with patch.object(m, '_validated_package_evidence', return_value={'reusable': True, 'revision': 'f' * 40}), patch.object(m, 'release_proven', return_value=True), patch.object(m, 'authorization_release_proven', return_value=False):
+            queue = m.pending_automatic_releases(self.api, self.approved)
+            self.assertEqual([553], [row['sourcePr'] for row in queue])
+
+    def test_automatic_target_order_preserves_canonical_worker_contract(self):
+        self.candidate(554, 'c' * 40, 'e' * 40, ['Infrastructure/Example.cs'])
+        queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual(list(m.VALIDATION_AUTHORITY.release_targets_for_paths(['Infrastructure/Example.cs'])), queue[0]['targets'])
+
+    def test_completed_explicit_frontier_never_resurrects_old_product(self):
+        self.candidate(525, 'b' * 40, 'd' * 40, ['ClientApp/Program.cs'])
+        self.explicit(553, 'c' * 40, 'e' * 40, [canonical_name('client')])
+        with patch.object(m, 'authorization_release_proven', return_value=True):
+            self.assertEqual([], m.pending_automatic_releases(self.api, self.approved))
+
+    def test_new_automatic_supersedes_old_explicit_only_in_its_scope(self):
+        self.candidate(554, 'c' * 40, 'e' * 40, ['ClientApp/Program.cs'])
+        self.explicit(553, 'b' * 40, 'd' * 40, [canonical_name('client')])
+        self.assertEqual([554], [row['sourcePr'] for row in m.pending_automatic_releases(self.api, self.approved)])
+
+    def test_explicit_partial_overlap_retains_atomic_scope(self):
+        self.candidate(554, 'c' * 40, 'e' * 40, ['ClientApp/Program.cs'])
+        self.explicit(553, 'b' * 40, 'd' * 40, [canonical_name('client'), canonical_name('protect')])
+        queue = m.pending_automatic_releases(self.api, self.approved)
+        self.assertEqual([553, 554], [row['sourcePr'] for row in queue])
+        self.assertIn('combined successor', queue[0]['retained'])
+        result = m.dispatch_pending_automatic_release(self.api, self.approved)
+        self.assertEqual(554, result['sourcePr'])
+        self.assertEqual(1, len(self.api.dispatched))
+
+    def test_disjoint_explicit_survives_failed_automatic_without_replay(self):
+        newer = self.candidate(554, 'c' * 40, 'e' * 40, ['ClientApp/Program.cs'])
+        self.explicit(553, 'b' * 40, 'd' * 40, [canonical_name('protect')])
+        self.api.pages_map[self.runs_path] = [self.release_run(newer)]
+        result = m.dispatch_pending_automatic_release(self.api, self.approved)
+        self.assertEqual(553, result['sourcePr'])
+        self.assertEqual(1, len(self.api.dispatched))
+
+    def test_active_and_ambiguous_legacy_explicit_attempts_prevent_dispatch(self):
+        self.explicit(553, 'c' * 40, 'e' * 40, [canonical_name('client')])
+        for status in ('in_progress', 'completed'):
+            with self.subTest(status=status):
+                self.api.pages_map[self.runs_path] = [{
+                    'id': 99, 'path': '.github/workflows/' + m.DIRECT,
+                    'head_branch': m.APPROVED, 'head_sha': 'c' * 40,
+                    'status': status, 'conclusion': 'failure',
+                    'display_title': m.release_dispatch_identity(0, 'c' * 40, 'c' * 40),
+                }]
+                with patch.object(m, '_never_admitted', return_value=False), patch.object(m, '_release_exact_live_terminal', return_value=False):
+                    m.dispatch_pending_automatic_release(self.api, self.approved)
+                self.assertEqual([], self.api.dispatched)
+
     def test_complete_frontier_does_not_query_superseded_history(self):
         self.candidate(2, "c" * 40, "e" * 40, ["Infrastructure/Example.cs", "Legend-Website/src/example.ts"])
         with patch.object(self.api, "pages", wraps=self.api.pages) as pages:
@@ -1885,6 +1980,33 @@ class HistoricalPrepublicationLeaseProof(unittest.TestCase):
             return m._historical_fenced_prepublication_nonentry(
                 self.api, self.run, self.record
             )
+
+    def test_final_fenced_generation_requires_whole_tuple_and_positive_nonentry(self):
+        generation = {
+            'scripts/release-prepublication.py': '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+            'scripts/release-operation-evidence.py': '28b20739c7782db41134725b2e031f44d6c93f82',
+            'scripts/release-migration.py': 'f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5',
+            'scripts/validation-resume.py': '63f4fbe895230f2b52c29116505432ff3ee9710a',
+        }
+        with patch.dict(self.BLOBS, generation), patch.object(
+            m.VALIDATION_AUTHORITY, '_historical_migration_prewrite_proven',
+            return_value=True,
+        ) as witness:
+            self.assertTrue(self.proven())
+            witness.assert_called_once()
+            witness.return_value = False
+            self.assertFalse(self.proven())
+            witness.return_value = True
+            for path in self.BLOBS:
+                with self.subTest(changed_owner=path), patch.dict(self.BLOBS, {path: 'f' * 40}):
+                    self.assertFalse(self.proven())
+            artifacts = self.api.pages_map[f"actions/runs/{self.run['id']}/artifacts"]
+            artifacts.append({'name': 'legend-release-child-intent-' + '1' * 64, 'expired': False})
+            self.assertFalse(self.proven())
+            artifacts.pop()
+            publication = next(step for step in self.steps if step['conclusion'] == 'skipped')
+            publication['conclusion'] = 'success'
+            self.assertFalse(self.proven())
 
     def test_six_audited_20261008_prepublication_failures_release_ownership(self):
         # Actual immutable writer triples from six completed, failed attempts.
@@ -3098,12 +3220,14 @@ class HistoricalReleaseRecovery(unittest.TestCase):
             "sourcePr": 42,
         }
 
+        api.api_map['pulls/42'] = {'number': 42, 'head': {'sha': 'c' * 40}}
         result = m.dispatch_pending_legacy_release(api, "a" * 40)
 
         self.assertIn("directRelease", result)
         self.assertEqual(77, result["packageEvidenceRunId"])
         self.assertEqual(
-            [(m.DIRECT, {"automatic": "false", "merge_sha": "b" * 40})],
+            [(m.DIRECT, {"automatic": "false", "merge_sha": "b" * 40,
+                         "source_pr": "42", "validated_sha": "c" * 40})],
             api.dispatched,
         )
 
@@ -3265,21 +3389,15 @@ class ReconcileSafety(unittest.TestCase):
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "dispatch_pending_legacy_release")
-    @patch.object(m, "dispatch_pending_automatic_release", return_value=None)
-    def test_control_only_head_recovers_historical_release(self, _, recover, __):
+    @patch.object(m, "dispatch_pending_automatic_release")
+    def test_explicit_release_uses_frontier_without_second_dispatcher(self, frontier, legacy, _):
         api = Api()
-        recovered = {
-            "directRelease": "recovered nearest still-unreleased historical authorization",
-            "authorizationSha": "b" * 40,
-        }
-        recover.return_value = recovered
-        api.pages_map["actions/runs?head_sha=" + "a" * 40] = []
-        api.pages_map["commits/" + "a" * 40 + "/pulls"] = []
-
-        result = m.reconcile(api)
-
-        self.assertEqual(recovered, result)
-        recover.assert_called_once_with(api, "a" * 40)
+        recovered = {'state': 'RELEASE_DISPATCHED', 'authorizationMode': 'explicit',
+                     'authorizationSha': 'b' * 40}
+        frontier.return_value = recovered
+        self.assertEqual(recovered, m.reconcile(api))
+        frontier.assert_called_once_with(api, 'a' * 40)
+        legacy.assert_not_called()
 
     @patch.object(m, "staging_only", return_value=False)
     @patch.object(m, "dispatch_pending_automatic_release")
