@@ -5,6 +5,7 @@ namespace Shared.Analytics;
 public enum ScopeType
 {
     Global,
+    Founder,
     Agent,
     Business
 }
@@ -21,6 +22,8 @@ public sealed class ScopeContext
     // aggregate owners and must never be treated as a single marketing destination.
     public WorkspaceKey? Workspace => ScopeType switch
     {
+        ScopeType.Founder when AgentTrackingProfileId is { } id && id != Guid.Empty && CommerceBusinessId is null
+            => WorkspaceKey.ForAgentTrackingProfile(id),
         ScopeType.Agent when AgentTrackingProfileId is { } id && id != Guid.Empty && CommerceBusinessId is null
             => WorkspaceKey.ForAgentTrackingProfile(id),
         ScopeType.Business when CommerceBusinessId is { } id && id != Guid.Empty && AgentTrackingProfileId is null
@@ -32,6 +35,9 @@ public sealed class ScopeContext
         !string.IsNullOrWhiteSpace(SiteKey) ||
         !string.IsNullOrWhiteSpace(ReportingOwner);
 
+    public static ScopeContext ForFounder(Guid founderAgentId) => founderAgentId != Guid.Empty
+        ? new() { ScopeType = ScopeType.Founder, AgentTrackingProfileId = founderAgentId, ReportingOwner = "founder" }
+        : throw new ArgumentException("A permanent Founder tracking owner is required.", nameof(founderAgentId));
     public static ScopeContext ForAgent(Guid agentId) => new() { ScopeType = ScopeType.Agent, AgentTrackingProfileId = agentId };
     public static ScopeContext ForBusiness(Guid businessId) => businessId != Guid.Empty
         ? new() { ScopeType = ScopeType.Business, CommerceBusinessId = businessId }

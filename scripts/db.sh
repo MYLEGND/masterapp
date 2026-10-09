@@ -263,6 +263,29 @@ is_historical_designer_restoration() {
     grep -Fq 'BuildTargetModel(ModelBuilder modelBuilder)' "$designer_path"
 }
 
+is_inherited_historical_missing_designer() {
+    local source_path="$1"
+    local designer_path="$2"
+    local prior_ref=""
+
+    prior_ref="$(artifact_base_ref)" || return 1
+
+    # Preserve only a gap that was already present in the exact approved/base
+    # commit and that this candidate did not touch. This is not an exception for
+    # new or modified migrations: those still require a complete generated pair.
+    [[ -f "$source_path" ]] || return 1
+    [[ ! -f "$designer_path" ]] || return 1
+    git cat-file -e "${prior_ref}:${source_path}" 2>/dev/null || return 1
+
+    if git cat-file -e "${prior_ref}:${designer_path}" 2>/dev/null; then
+        return 1
+    fi
+
+    path_changed "$source_path" && return 1
+    path_changed "$designer_path" && return 1
+    return 0
+}
+
 add_integrity_error() {
     INTEGRITY_ERRORS+=("$1")
 }
@@ -390,7 +413,11 @@ check_migration_integrity() {
         fi
 
         if ! is_legacy_manual_migration "$path" && [[ ! -f "$designer" ]]; then
-            add_integrity_error "Migration source $file is missing $(basename "$designer")."
+            if is_inherited_historical_missing_designer "$path" "$designer"; then
+                printf '[MIGRATION] Preserved approved historical designer gap: %s\n' "$file"
+            else
+                add_integrity_error "Migration source $file is missing $(basename "$designer")."
+            fi
         fi
     done < <(migration_source_paths)
 

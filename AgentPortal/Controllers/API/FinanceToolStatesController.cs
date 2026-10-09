@@ -19,12 +19,6 @@ namespace AgentPortal.Controllers.API
     {
         private const string LegendLivingBalanceSheetToolId = LegendLivingBalanceSheetConstants.ToolId;
 
-        private static readonly HashSet<string> BusinessOnlyToolIds = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "BusinessExpenseLens",
-            "BusinessSavingsAccelerator"
-        };
-
         private readonly MasterAppDbContext _db;
         private readonly EffectiveAgentContext _agentContext;
         private readonly IHouseholdMembershipService _households;
@@ -116,9 +110,6 @@ namespace AgentPortal.Controllers.API
                 : null;
         }
 
-        private static bool IsBusinessOnlyTool(string? toolId)
-            => !string.IsNullOrWhiteSpace(toolId) && BusinessOnlyToolIds.Contains(toolId.Trim());
-
         private static bool IsAgentWorkspaceRequest(Guid clientProfileId, string? clientUserId)
             => clientProfileId == Guid.Empty && string.IsNullOrWhiteSpace(clientUserId);
 
@@ -141,19 +132,6 @@ namespace AgentPortal.Controllers.API
                 return primary;
 
             return GetCurrentUserKeys().FirstOrDefault() ?? string.Empty;
-        }
-
-        private async Task<bool> IsBusinessClientProfileAsync(Guid clientProfileId)
-        {
-            var crmNotes = await _db.ClientProfiles
-                .AsNoTracking()
-                .Where(x => x.Id == clientProfileId)
-                .Select(x => x.CrmNotes)
-                .FirstOrDefaultAsync();
-
-            var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
-            var recordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
-            return string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeFinanceJsonState(string toolId, string? jsonState, Guid? clientProfileId = null)
@@ -214,8 +192,6 @@ namespace AgentPortal.Controllers.API
 
             if (IsAgentWorkspaceRequest(clientProfileId, clientUserId))
             {
-                if (IsBusinessOnlyTool(normalizedToolId))
-                    return Forbid();
 
                 var agentUserId = GetAgentStateOwnerKey();
                 if (string.IsNullOrWhiteSpace(agentUserId))
@@ -247,9 +223,6 @@ namespace AgentPortal.Controllers.API
                 resolvedClientProfileId.Value,
                 HttpContext.RequestAborted);
             if (!financialScope.HasValue)
-                return Forbid();
-
-            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
@@ -300,8 +273,6 @@ namespace AgentPortal.Controllers.API
 
             if (IsAgentWorkspaceRequest(req.ClientProfileId, req.ClientUserId))
             {
-                if (IsBusinessOnlyTool(normalizedToolId))
-                    return Forbid();
 
                 var agentUserId = GetAgentStateOwnerKey();
                 if (string.IsNullOrWhiteSpace(agentUserId))
@@ -345,9 +316,6 @@ namespace AgentPortal.Controllers.API
             if (!financialScope.HasValue)
                 return Forbid();
 
-            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
-                return Forbid();
-
             var row = await _db.FinanceToolStates
                 .FirstOrDefaultAsync(x =>
                     x.HouseholdAccountId == financialScope.Value.HouseholdAccountId &&
@@ -388,8 +356,6 @@ namespace AgentPortal.Controllers.API
 
             if (IsAgentWorkspaceRequest(clientProfileId, clientUserId))
             {
-                if (IsBusinessOnlyTool(normalizedToolId))
-                    return Forbid();
 
                 var agentUserId = GetAgentStateOwnerKey();
                 if (string.IsNullOrWhiteSpace(agentUserId))
@@ -417,9 +383,6 @@ namespace AgentPortal.Controllers.API
                 resolvedClientProfileId.Value,
                 HttpContext.RequestAborted);
             if (!financialScope.HasValue)
-                return Forbid();
-
-            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates

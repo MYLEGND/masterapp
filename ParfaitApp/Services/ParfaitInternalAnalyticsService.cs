@@ -11,8 +11,8 @@ namespace ParfaitApp.Services;
 public sealed class ParfaitInternalAnalyticsService
 {
     private const string SiteKey = "ParfaitApp";
-    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.FromSeconds(45);
-    private static readonly TimeSpan WorkspaceCacheDuration = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.Zero;
+    private static readonly TimeSpan WorkspaceCacheDuration = TimeSpan.Zero;
     private static readonly string[] FunnelEventTypes =
     [
         "ViewContent",

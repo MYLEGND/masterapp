@@ -90,7 +90,7 @@ public sealed class LegendFounderCloudActionApprovalTests
         var call = fixture.Call() with { MutationAuthorization = new FounderAiMutationAuthorization(Guid.NewGuid().ToString("N")) };
         if (extraConfirmation) call = call with { Arguments = Arguments[..^1] + ",\"confirmed\":true}" };
         var output = await fixture.ExecuteAsync(call);
-        Assert.Contains(extraConfirmation ? "cloud_action_arguments_invalid" : "cloud_action_approval_required", output);
+        Assert.Contains("cloud_action_tool_not_exposed", output);
         Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
         fixture.Remediation.VerifyNoOtherCalls();
     }
@@ -98,23 +98,23 @@ public sealed class LegendFounderCloudActionApprovalTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ApprovalPersistsAndExactReplayAcrossAuthoritiesReturnsOneTerminalReceipt(bool relational)
+    public async Task ApprovalPersistsButModelReplayNeverDispatches(bool relational)
     {
         await using var fixture = await Fixture.CreateAsync(relational);
         var approved = await fixture.ApproveAsync();
         Assert.True(approved.Succeeded, approved.Error);
+        var before = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
         var first = await fixture.ExecuteAsync(fixture.Call());
         var replay = await fixture.ExecuteAsync(fixture.Call());
         Assert.Equal(first, replay);
-        Assert.Contains("publicationRequested", first);
-        fixture.Remediation.Verify(service => service.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("cloud_action_tool_not_exposed", first);
         var row = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
-        Assert.Equal("Completed", row.State);
-        Assert.Equal(first, row.ResultJson);
+        Assert.Equal("Approved", row.State);
+        Assert.Equal(before.ResultJson, row.ResultJson);
         Assert.Equal(approved.ActionDigest, row.ActionDigest);
-        Assert.Equal(fixture.Call().IdempotencyKey, row.IdempotencyKey);
+        Assert.Equal(before.IdempotencyKey, row.IdempotencyKey);
         var anotherCall = fixture.Call("second-call");
-        Assert.Contains("cloud_action_approval_consumed", await fixture.ExecuteAsync(anotherCall));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(anotherCall));
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
@@ -196,20 +196,20 @@ public sealed class LegendFounderCloudActionApprovalTests
     }
 
     [Fact]
-    public async Task UnknownExecutionCannotBeRetriedAfterAuthorityRestart()
+    public async Task ForbiddenRepositoryCallNeverReachesPotentiallyFailingService()
     {
         await using var fixture = await Fixture.CreateAsync(true);
         Assert.True((await fixture.ApproveAsync()).Succeeded);
         fixture.Remediation.Setup(service => service.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("Synthetic lost acknowledgement after possible side effect."));
-        Assert.Contains("cloud_action_outcome_unknown", await fixture.ExecuteAsync(fixture.Call()));
-        Assert.Contains("cloud_action_approval_consumed", await fixture.ExecuteAsync(fixture.Call()));
-        Assert.Equal("OutcomeUnknown", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
-        fixture.Remediation.Verify(service => service.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fixture.Call()));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fixture.Call()));
+        Assert.Equal("Approved", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
+        fixture.Remediation.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task RelationalConcurrentClaimsDispatchExactlyOnce()
+    public async Task RelationalConcurrentModelWritesNeverClaimOrDispatch()
     {
         var barrier = new ClaimBarrier();
         await using var fixture = await Fixture.CreateAsync(true, barrier);
@@ -219,10 +219,9 @@ public sealed class LegendFounderCloudActionApprovalTests
         var left = fixture.NewAuthority().ExecuteAsync(fixture.Principal, fixture.Call(), "legend", timeout.Token, serverDerivedScope: fixture.Scope);
         var right = fixture.NewAuthority().ExecuteAsync(fixture.Principal, fixture.Call(), "legend", timeout.Token, serverDerivedScope: fixture.Scope);
         var receipts = await Task.WhenAll(left, right);
-        Assert.Single(receipts.Where(value => value.Contains("publicationRequested", StringComparison.Ordinal)));
-        Assert.Single(receipts.Where(value => value.Contains("cloud_action_approval_claim_failed", StringComparison.Ordinal)));
-        fixture.Remediation.Verify(service => service.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()), Times.Once);
-        Assert.Equal("Completed", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
+        Assert.All(receipts, value => Assert.Contains("cloud_action_tool_not_exposed", value));
+        fixture.Remediation.VerifyNoOtherCalls();
+        Assert.Equal("Approved", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
     }
 
     [Fact]
@@ -319,7 +318,7 @@ public sealed class LegendFounderCloudActionApprovalTests
         var receipt = await fixture.Db.FounderAiActionAuthorizations.SingleAsync();
         receipt.AuthorizationKind = "ReadExecution";
         await fixture.Db.SaveChangesAsync();
-        Assert.Contains("cloud_action_approval_required", await fixture.ExecuteAsync(fixture.Call()));
+        Assert.Contains("cloud_action_tool_not_exposed", await fixture.ExecuteAsync(fixture.Call()));
         Assert.False((await fixture.ApproveAsync()).Succeeded);
         fixture.Remediation.VerifyNoOtherCalls();
     }

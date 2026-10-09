@@ -85,7 +85,7 @@
                 <div id="resourceMeta" class="preview-meta"></div>
             </div>
 
-            <a id="resourceOpen" class="preview-open" href="#" target="_blank" rel="noopener">
+            <a id="resourceOpen" class="preview-open" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">
                 Open in new tab →
             </a>
         </div>
@@ -457,9 +457,6 @@
     border:1px solid rgba(201,155,54,.52) !important;
 }
 
-@@media (max-width: 767.98px){
-    .hero-title{ font-size:1.5rem; }
-}
 </style>
 
 @section Scripts {
@@ -500,6 +497,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const url = `/resources/${r.File}`;
         openLink.href = url;
+        openLink.removeAttribute("aria-disabled");
+        openLink.removeAttribute("tabindex");
 
         const ext = (r.Extension || "").toLowerCase();
         meta.textContent = `Type: ${extTag(ext)} • File: ${r.File}`;

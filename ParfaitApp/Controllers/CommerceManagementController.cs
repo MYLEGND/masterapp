@@ -1,7 +1,9 @@
 using Domain.Entities;
 using System.Globalization;
 using Infrastructure.Analytics;
+using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -56,7 +58,7 @@ public sealed class CommerceManagementController(
         return View("~/Views/Dashboard/Index.cshtml", await workspace.GetSnapshotAsync(
             store.CommerceBusinessId,
             ResolveAnalyticsScope(store),
-            ResolveMarketingOwner(store),
+            await ResolveMarketingOwnerAsync(store, ct),
             ct));
     }
 
@@ -78,7 +80,7 @@ public sealed class CommerceManagementController(
         var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
         ApplyManagementViewData(store, ticket, "analytics");
         var analyticsScope = ResolveAnalyticsScope(store);
-        var marketingOwner = ResolveMarketingOwner(store);
+        var marketingOwner = await ResolveMarketingOwnerAsync(store, ct);
         return View("~/Views/InternalModules/Analytics.cshtml", await internalAnalytics.GetDashboardAsync(
             store.CommerceBusinessId,
             analyticsScope,
@@ -91,6 +93,75 @@ public sealed class CommerceManagementController(
             timezoneContext.TimezoneId,
             timezoneContext.TimezoneOffsetMinutes,
             ct));
+    }
+
+    [HttpGet("analytics/marketing-setup")]
+    public async Task<IActionResult> MarketingSetup([FromQuery] string ticket, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var owner = await ResolveMarketingOwnerAsync(store, ct);
+        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
+    }
+
+    [HttpPost("analytics/openai-connect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var owner = await ResolveMarketingOwnerAsync(store, ct);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
+    }
+
+    [HttpPost("analytics/openai-refresh")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefreshOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var owner = await ResolveMarketingOwnerAsync(store, ct);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
+    }
+
+    [HttpPost("analytics/openai-disconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DisconnectOpenAi([FromQuery] string ticket, [FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var owner = await ResolveMarketingOwnerAsync(store, ct);
+        try
+        {
+            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
+            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
+        catch (HttpRequestException)
+        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
     }
 
     [HttpGet("analytics/meta-connect")]
@@ -107,7 +178,7 @@ public sealed class CommerceManagementController(
         try
         {
             return Redirect(metaAdsOAuth.BuildConnectUrl(
-                ResolveMarketingOwner(store),
+                await ResolveMarketingOwnerAsync(store, ct),
                 target,
                 redirectUri));
         }
@@ -135,15 +206,16 @@ public sealed class CommerceManagementController(
 
         try
         {
-            var result = await metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, ct);
-            var ticket = TicketFromReturnUrl(result.ReturnUrl);
+            var inspected = metaAdsOAuth.InspectState(state ?? string.Empty);
+            var ticket = TicketFromReturnUrl(inspected.ReturnUrl);
             if (string.IsNullOrWhiteSpace(ticket)) return Unauthorized();
 
             var store = await ResolveAsync(ticket, ct);
             if (store is null ||
-                !string.Equals(result.Owner.Key, ResolveMarketingOwner(store).Key, StringComparison.Ordinal))
+                !string.Equals(inspected.Owner.Key, (await ResolveMarketingOwnerAsync(store, ct)).Key, StringComparison.Ordinal))
                 return Unauthorized();
 
+            var result = await metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, ct);
             await marketingConnections.SaveAdsAsync(result.Owner, result.Connection, ct);
             internalAnalytics.InvalidateCache();
             return Redirect(AppendMetaStatus(result.ReturnUrl, "connected"));
@@ -159,7 +231,7 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        var owner = ResolveMarketingOwner(store);
+        var owner = await ResolveMarketingOwnerAsync(store, ct);
         var row = await marketingConnections.GetStatusAsync(owner, ct);
         return Json(MarketingStatusPayload(row));
     }
@@ -213,7 +285,7 @@ public sealed class CommerceManagementController(
         var dashboard = await internalAnalytics.GetDashboardAsync(
             store.CommerceBusinessId,
             ResolveAnalyticsScope(store),
-            ResolveMarketingOwner(store),
+            await ResolveMarketingOwnerAsync(store, ct),
             preset,
             fromUtc,
             toUtc,
@@ -230,7 +302,7 @@ public sealed class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        await marketingConnections.DisconnectAsync(ResolveMarketingOwner(store), ct);
+        await marketingConnections.DisconnectAsync(await ResolveMarketingOwnerAsync(store, ct), ct);
         internalAnalytics.InvalidateCache();
         return Json(new { ok = true });
     }
@@ -388,14 +460,33 @@ public sealed class CommerceManagementController(
     [HttpPost("product/images/upload")]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadImages(
-        string ticket,
-        [FromForm] string productId,
-        [FromForm] List<IFormFile> images,
+        string? ticket,
         CancellationToken ct = default)
     {
-        var store = await ResolveAsync(ticket, ct);
+        var transport = await MultipartUploadTransport.ReadAsync(Request, ct);
+        if (!transport.IsValid || transport.Form is null)
+            return BadRequest(new { error = "product_media_transport_invalid", message = transport.ErrorMessage });
+
+        ticket = string.IsNullOrWhiteSpace(ticket)
+            ? transport.Form["ticket"].FirstOrDefault()
+            : ticket;
+        var store = await ResolveAsync(ticket ?? string.Empty, ct);
         if (store is null) return Unauthorized();
-        await products.UploadImagesAsync(store.CommerceBusinessId, productId, images);
+
+        var productId = transport.Form["productId"].FirstOrDefault() ?? string.Empty;
+        var images = transport.Form.Files
+            .Where(file => string.Equals(file.Name, "images", StringComparison.OrdinalIgnoreCase) && file.Length > 0)
+            .ToList();
+
+        try
+        {
+            await products.UploadImagesAsync(store.CommerceBusinessId, productId, images);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "product_media_invalid", message = ex.Message });
+        }
+
         TempData["ProductStatus"] = "Images uploaded.";
         return RedirectToAction(nameof(Products), new { ticket });
     }
@@ -555,20 +646,10 @@ public sealed class CommerceManagementController(
         return ScopeContext.ForBusiness(store.CommerceBusinessId);
     }
 
-    private static MarketingOwnerScope ResolveMarketingOwner(CommerceStoreContext store)
-    {
-        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
-        {
-            if (!store.AgentTrackingProfileId.HasValue)
-                throw new InvalidOperationException("Protect commerce marketing requires the canonical agent owner.");
-            return MarketingOwnerScope.Agent(store.AgentTrackingProfileId.Value);
-        }
-
-        if (string.Equals(store.WebsiteSiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
-            return MarketingOwnerScope.Founder;
-
-        return MarketingOwnerScope.Business(store.CommerceBusinessId);
-    }
+    private async Task<MarketingOwnerScope> ResolveMarketingOwnerAsync(CommerceStoreContext store, CancellationToken ct) =>
+        await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(
+            HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>(), configuration, store, Request.Host.Host, ct)
+        ?? throw new InvalidOperationException("The permanent website marketing owner could not be resolved.");
 
     private static object MarketingStatusPayload(MarketingConnection? row)
     {

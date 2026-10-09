@@ -299,6 +299,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 // "model_inference_provider_unavailable" and is never reached,
                 // which would silently hide the promoted-model leak.
                 ["LegendConnect:ModelEvaluation:ApiKey"] = "test-model-key",
+                ["LegendConnect:ModelEvaluation:OpenAiPaygEnabled"] = "true",
                 ["LegendConnect:ModelTraining:Backend"] = "OpenAI",
                 ["LegendConnect:ModelEvaluation:Endpoint"] =
                     "https://external.invalid/responses",

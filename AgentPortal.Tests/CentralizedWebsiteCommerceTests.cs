@@ -73,6 +73,8 @@ public sealed class CentralizedWebsiteCommerceTests
             "PF-1");
 
         Assert.True(recorded);
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+            await Infrastructure.Analytics.MetaSignalAnalyticsBridge.PersistAsync(db, source);
         var row = await db.MetaSignalEvents.SingleAsync();
         Assert.Null(row.CommerceBusinessId);
         Assert.Equal(agentTrackingProfileId, row.AgentTrackingProfileId);
@@ -104,6 +106,8 @@ public sealed class CentralizedWebsiteCommerceTests
                 "https://mylegnd.com/store/checkout"),
             new CommerceSignalProduct("p1", "Product", "product", "L", 1, 5000));
 
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+            await Infrastructure.Analytics.MetaSignalAnalyticsBridge.PersistAsync(db, source);
         var row = await db.MetaSignalEvents.SingleAsync();
         Assert.Null(row.CommerceBusinessId);
         Assert.Null(row.AgentTrackingProfileId);
@@ -142,6 +146,8 @@ public sealed class CentralizedWebsiteCommerceTests
 
         Assert.True(first);
         Assert.False(duplicate);
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+            await Infrastructure.Analytics.MetaSignalAnalyticsBridge.PersistAsync(db, source);
         var row = await db.MetaSignalEvents.SingleAsync();
         Assert.Equal(businessId, row.CommerceBusinessId);
         Assert.Null(row.AgentTrackingProfileId);
@@ -185,6 +191,8 @@ public sealed class CentralizedWebsiteCommerceTests
         Assert.False(duplicate);
 
         var analytics = await db.AnalyticsEvents.SingleAsync();
+        foreach (var source in await db.AnalyticsEvents.AsNoTracking().ToListAsync())
+            await Infrastructure.Analytics.MetaSignalAnalyticsBridge.PersistAsync(db, source);
         var meta = await db.MetaSignalEvents.SingleAsync();
 
         Assert.Equal("Purchase", analytics.EventType);

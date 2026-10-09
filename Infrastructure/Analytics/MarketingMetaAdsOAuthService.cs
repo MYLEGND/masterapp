@@ -29,7 +29,6 @@ public sealed class MarketingMetaAdsOAuthService(
             throw new InvalidOperationException("A valid Meta OAuth redirect URI is required.");
 
         var appId = Required("MetaAds:AppId");
-        var apiVersion = NormalizeVersion();
         var state = new OAuthState
         {
             OwnerType = owner.OwnerType,
@@ -42,7 +41,7 @@ public sealed class MarketingMetaAdsOAuthService(
         var token = _stateProtector.Protect(JsonSerializer.Serialize(state));
         var scopes = (configuration["MetaAds:Scopes"] ?? "ads_read,business_management").Trim();
 
-        return $"https://www.facebook.com/{apiVersion}/dialog/oauth" +
+        return MetaGraphEndpointAuthority.OAuthDialog() +
                $"?client_id={Uri.EscapeDataString(appId)}" +
                $"&redirect_uri={Uri.EscapeDataString(state.RedirectUri)}" +
                $"&state={Uri.EscapeDataString(token)}" +
@@ -67,15 +66,14 @@ public sealed class MarketingMetaAdsOAuthService(
         var owner = ResolveOwner(state);
         var appId = Required("MetaAds:AppId");
         var appSecret = Required("MetaAds:AppSecret");
-        var version = NormalizeVersion();
         var client = httpClientFactory.CreateClient("ResilientDefault");
 
         var shortToken = await ExchangeCodeAsync(
-            client, version, appId, appSecret, code.Trim(), state.RedirectUri, cancellationToken);
+            client, appId, appSecret, code.Trim(), state.RedirectUri, cancellationToken);
         var longToken = await ExchangeLongLivedAsync(
-            client, version, appId, appSecret, shortToken.AccessToken, cancellationToken);
-        var user = await FetchCurrentUserAsync(client, version, longToken.AccessToken, cancellationToken);
-        var account = await FetchBestAccountAsync(client, version, longToken.AccessToken, cancellationToken);
+            client, appId, appSecret, shortToken.AccessToken, cancellationToken);
+        var user = await FetchCurrentUserAsync(client, longToken.AccessToken, cancellationToken);
+        var account = await FetchBestAccountAsync(client, longToken.AccessToken, cancellationToken);
 
         return new MarketingMetaOAuthResult(
             owner,
@@ -130,41 +128,43 @@ public sealed class MarketingMetaAdsOAuthService(
         };
 
     private async Task<(string AccessToken, DateTime? ExpiresUtc)> ExchangeCodeAsync(
-        HttpClient client, string version, string appId, string appSecret, string code,
+        HttpClient client, string appId, string appSecret, string code,
         string redirectUri, CancellationToken ct)
     {
-        var url = $"https://graph.facebook.com/{version}/oauth/access_token" +
+        var url = MetaGraphEndpointAuthority.Graph("oauth/access_token") +
                   $"?client_id={Uri.EscapeDataString(appId)}" +
                   $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
                   $"&client_secret={Uri.EscapeDataString(appSecret)}" +
                   $"&code={Uri.EscapeDataString(code)}";
-        using var response = await client.GetAsync(url, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        var response = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+        var body = response.Body;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("Meta OAuth code exchange failed. status={Status} body={Body}",
                 (int)response.StatusCode, TrimForLog(body));
-            throw new InvalidOperationException("Meta OAuth code exchange failed.");
+            throw new InvalidOperationException(
+                MetaGraphEndpointAuthority.SafeErrorMessage(body, "Meta OAuth code exchange failed."));
         }
         return ReadToken(body, "Meta OAuth returned no access token.");
     }
 
     private async Task<(string AccessToken, DateTime? ExpiresUtc)> ExchangeLongLivedAsync(
-        HttpClient client, string version, string appId, string appSecret, string shortToken,
+        HttpClient client, string appId, string appSecret, string shortToken,
         CancellationToken ct)
     {
-        var url = $"https://graph.facebook.com/{version}/oauth/access_token" +
+        var url = MetaGraphEndpointAuthority.Graph("oauth/access_token") +
                   "?grant_type=fb_exchange_token" +
                   $"&client_id={Uri.EscapeDataString(appId)}" +
                   $"&client_secret={Uri.EscapeDataString(appSecret)}" +
                   $"&fb_exchange_token={Uri.EscapeDataString(shortToken)}";
-        using var response = await client.GetAsync(url, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        var response = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+        var body = response.Body;
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("Meta OAuth long-lived exchange failed. status={Status} body={Body}",
                 (int)response.StatusCode, TrimForLog(body));
-            throw new InvalidOperationException("Meta OAuth long-lived token exchange failed.");
+            throw new InvalidOperationException(
+                MetaGraphEndpointAuthority.SafeErrorMessage(body, "Meta OAuth long-lived token exchange failed."));
         }
         return ReadToken(body, "Meta OAuth returned no long-lived access token.");
     }
@@ -190,12 +190,14 @@ public sealed class MarketingMetaAdsOAuthService(
     }
 
     private static async Task<(string UserId, string UserName)> FetchCurrentUserAsync(
-        HttpClient client, string version, string accessToken, CancellationToken ct)
+        HttpClient client, string accessToken, CancellationToken ct)
     {
-        var url = $"https://graph.facebook.com/{version}/me?fields=id,name&access_token={Uri.EscapeDataString(accessToken)}";
-        using var response = await client.GetAsync(url, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Unable to read Meta profile.");
+        var url = $"{MetaGraphEndpointAuthority.Graph("me")}?fields=id,name&access_token={Uri.EscapeDataString(accessToken)}";
+        var response = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+        var body = response.Body;
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(
+                MetaGraphEndpointAuthority.SafeErrorMessage(body, "Unable to read Meta profile."));
         using var doc = JsonDocument.Parse(body);
         return (
             doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
@@ -203,13 +205,15 @@ public sealed class MarketingMetaAdsOAuthService(
     }
 
     private static async Task<(string AccountId, string AccountName, string? BusinessId, string? BusinessName)> FetchBestAccountAsync(
-        HttpClient client, string version, string accessToken, CancellationToken ct)
+        HttpClient client, string accessToken, CancellationToken ct)
     {
         var fields = "id,name,account_status,business{id,name},campaigns.limit(1){id}";
-        var url = $"https://graph.facebook.com/{version}/me/adaccounts?fields={Uri.EscapeDataString(fields)}&limit=200&access_token={Uri.EscapeDataString(accessToken)}";
-        using var response = await client.GetAsync(url, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("Unable to read Meta ad accounts.");
+        var url = $"{MetaGraphEndpointAuthority.Graph("me/adaccounts")}?fields={Uri.EscapeDataString(fields)}&limit=200&access_token={Uri.EscapeDataString(accessToken)}";
+        var response = await MetaGraphEndpointAuthority.GetAsync(client, url, ct);
+        var body = response.Body;
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(
+                MetaGraphEndpointAuthority.SafeErrorMessage(body, "Unable to read Meta ad accounts."));
 
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
@@ -240,12 +244,6 @@ public sealed class MarketingMetaAdsOAuthService(
             .FirstOrDefault();
         if (selected is null) throw new InvalidOperationException("No Meta ad account available for this user.");
         return (selected.AccountId, selected.AccountName, selected.BusinessId, selected.BusinessName);
-    }
-
-    private string NormalizeVersion()
-    {
-        var version = (configuration["MetaAds:ApiVersion"] ?? "v21.0").Trim();
-        return string.IsNullOrWhiteSpace(version) ? "v21.0" : version;
     }
 
     private string Required(string key)

@@ -2636,7 +2636,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
 public sealed record LegendConnectExternalProviderPolicy(
     bool AllowExternalProviders,
     bool AllowExternalAnswering = true,
-    bool AllowCloudflareInference = false)
+    bool AllowCloudflareInference = false,
+    bool AllowOpenAiPayg = true)
 {
     /// <summary>
     /// An absolute zero-external-provider request.
@@ -2658,11 +2659,15 @@ public sealed record LegendConnectExternalProviderPolicy(
     /// This mode is independent answering, not offline execution.
     /// </summary>
     public static readonly LegendConnectExternalProviderPolicy IndependentAnswering =
-        new(AllowExternalProviders: true, AllowExternalAnswering: false);
+        new(AllowExternalProviders: true, AllowExternalAnswering: false, AllowOpenAiPayg: false);
 
-    /// <summary>Explicit hosted foundation permission; does not permit external teacher calls.</summary>
+    /// <summary>
+    /// Explicit Cloudflare-hosted foundation permission. External providers may
+    /// still be used where separately governed (for example Azure translation),
+    /// but OpenAI PAYG is structurally forbidden for the entire LEGEND request.
+    /// </summary>
     public static readonly LegendConnectExternalProviderPolicy CloudflareFoundation =
-        new(AllowExternalProviders: true, AllowExternalAnswering: false, AllowCloudflareInference: true);
+        new(AllowExternalProviders: true, AllowExternalAnswering: false, AllowCloudflareInference: true, AllowOpenAiPayg: false);
 
     /// <summary>
     /// Resolves an absent policy to the provider-enabled default so existing
@@ -2680,9 +2685,20 @@ public sealed record LegendConnectExternalProviderPolicy(
 
     public bool ForbidsExternalAnswering => ForbidsExternalProviders || !AllowExternalAnswering;
 
+    /// <summary>
+    /// Canonical spend boundary for LEGEND. When true, no LEGEND component may
+    /// resolve an OpenAI credential, construct an OpenAI client, or invoke an
+    /// OpenAI-billed research, evaluation, training, teacher, or answering path.
+    /// </summary>
+    public bool ForbidsOpenAiPayg => ForbidsExternalProviders || !AllowOpenAiPayg;
+
     public string DiagnosticMode => ForbidsExternalProviders
         ? "native_only"
-        : ForbidsExternalAnswering ? "independent_answering" : "provider_enabled";
+        : AllowCloudflareInference && ForbidsOpenAiPayg
+            ? "cloudflare_foundation_zero_openai_payg"
+            : ForbidsExternalAnswering
+                ? "independent_answering"
+                : "provider_enabled";
 }
 
 /// <summary>

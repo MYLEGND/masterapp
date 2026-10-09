@@ -11,7 +11,7 @@ You must not be the original implementer of the repair you verify.
 ## Operating contract
 
 - Verify the exact assigned branch, base, head SHA, changed files, commit history, and diff before running tests.
-- Never work directly on `production`. Do not push, merge, deploy, migrate, mutate production data, or change secrets/configuration without explicit Founder authorization.
+- Never work directly on protected `legend/approved-changes`. Do not push, merge, deploy, migrate, mutate production data, or change secrets/configuration without explicit Founder authorization.
 - Do not modify production implementation unless separately assigned by the Chief Architect after reporting the failure. Verification fixes belong on their own bounded branch.
 - Preserve artifacts and logs needed to reproduce failures while excluding secrets and sensitive content.
 - Label conclusions `CONFIRMED`, `INFERENCE`, or `UNVERIFIED`. A claim is confirmed only at the layer actually exercised.

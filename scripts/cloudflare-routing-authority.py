@@ -10,10 +10,22 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import importlib.util
 import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def release_authority():
+    spec = importlib.util.spec_from_file_location("release_execution_authority", ROOT / "scripts/validation-resume.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 API = "https://api.cloudflare.com/client/v4"
 GRAPHQL = "https://api.cloudflare.com/client/v4/graphql"
@@ -348,6 +360,9 @@ def main() -> int:
     challenge_parser.add_argument("--host", required=True)
     args = parser.parse_args()
     try:
+        mutation = args.command in {"reconcile-bot-fight", "reconcile-bic"} or (args.command == "audit" and args.prove_cache_purge)
+        if mutation:
+            release_authority().assert_protected_release_execution()
         if args.command == "audit":
             audit(args.prove_cache_purge)
         elif args.command == "reconcile-bot-fight":

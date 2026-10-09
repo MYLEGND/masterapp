@@ -1,8 +1,14 @@
 (() => {
+  const websiteStudioParams = new URLSearchParams(window.location?.search || '');
+  if (window.LEGEND_WEBSITE_STUDIO_MODE === true ||
+      websiteStudioParams.has('legendEdit') ||
+      websiteStudioParams.has('legendMaterialize')) {
+    window.__legendMetaSignalSuppressedForWebsiteStudio = true;
+    return;
+  }
   const STORAGE_VISITOR = 'legend_visitor_id';
   const STORAGE_SESSION = 'legend_session_id';
   const STORAGE_SESSION_TS = 'legend_session_ts';
-  const STORAGE_ATTR_SESSION = 'legend_attr_session';
   const STORAGE_SESSION_ENTRY_SOURCE = 'legend_meta_entry_source';
   const STORAGE_SESSION_PAGE_CLUSTERS = 'legend_meta_page_clusters';
   const STORAGE_PAGE_INIT_PREFIX = 'legend_meta_page_init';
@@ -86,15 +92,13 @@
     ContactStepAbandon: -8
   });
 
-  const DEFAULT_META_BROWSER_EVENTS = [
-    'LeadFormStart',
-    'DiscoveryComplete',
-    'RecommendationViewed',
-    'ContactStepReached',
-    'HighIntentLeadSignal',
-    'LeadReadySignal',
-    'AbandonedHighIntentLead'
-  ];
+  // Fail closed to the same low-noise browser optimization surface exposed by
+  // the server catalog. Rich behavior still persists through canonical analytics.
+  const DEFAULT_META_BROWSER_EVENTS = ['ViewContent'];
+
+  function measurementConsentAllowed() {
+    return window.LegendAnalytics?.measurementConsent?.isAllowed?.() === true;
+  }
 
   function uuidNoDash() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -167,6 +171,8 @@
     const source = asTrimmed(attribution?.utmSource).toLowerCase();
     const medium = asTrimmed(attribution?.utmMedium).toLowerCase();
     const fbclid = asTrimmed(attribution?.fbclid);
+    const gclid = asTrimmed(attribution?.gclid);
+    const ttclid = asTrimmed(attribution?.ttclid);
     const hasMetaIds = Boolean(
       asTrimmed(attribution?.metaCampaignId) ||
       asTrimmed(attribution?.metaAdSetId) ||
@@ -174,6 +180,8 @@
     );
 
     if (fbclid || hasMetaIds) return 'meta';
+    if (gclid) return 'google_ads';
+    if (ttclid) return 'tiktok_ads';
     if (source && medium) return `${source}:${medium}`;
     if (source) return source;
     if (medium) return medium;
@@ -216,38 +224,14 @@
       utmId: normalizeAttributionValue(raw?.utmId),
       utmContent: normalizeAttributionValue(raw?.utmContent),
       fbclid: preserveFbclidValue(raw?.fbclid),
+      gclid: normalizeAttributionValue(raw?.gclid),
+      ttclid: normalizeAttributionValue(raw?.ttclid),
       fbc: asTrimmed(raw?.fbc),
       fbp: asTrimmed(raw?.fbp),
       metaCampaignId: normalizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: normalizeAttributionValue(raw?.metaAdSetId),
       metaAdId: normalizeAttributionValue(raw?.metaAdId)
     };
-  }
-
-  function hasAttribution(attribution) {
-    if (!attribution) return false;
-
-    return Boolean(
-      attribution.utmSource ||
-      attribution.utmMedium ||
-      attribution.utmCampaign ||
-      attribution.utmId ||
-      attribution.utmContent ||
-      attribution.fbclid ||
-      attribution.metaCampaignId ||
-      attribution.metaAdSetId ||
-      attribution.metaAdId
-    );
-  }
-
-  function readAttributionFromStorage(key) {
-    const fromSession = safeJsonParse(safeStorageGet(window.sessionStorage, key), null);
-    if (hasAttribution(fromSession)) {
-      return normalizeAttribution(fromSession);
-    }
-
-    const fromLocal = safeJsonParse(safeStorageGet(window.localStorage, key), null);
-    return hasAttribution(fromLocal) ? normalizeAttribution(fromLocal) : null;
   }
 
   function readCookieValue(name) {
@@ -302,6 +286,7 @@
   }
 
   function ensureEarlyMetaCookies() {
+    if (!measurementConsentAllowed()) return;
     const attribution = resolveAttribution();
     const fbp = ensureFbpCookie();
     const fbc = ensureFbcCookie(attribution);
@@ -309,39 +294,6 @@
     if (attribution) {
       attribution.fbp = attribution.fbp || fbp || '';
       attribution.fbc = attribution.fbc || fbc || '';
-    }
-  }
-
-  function writeAttributionToStorage(key, attribution) {
-    const normalized = normalizeAttribution(attribution);
-    if (!hasAttribution(normalized)) return;
-
-    const json = JSON.stringify(normalized);
-    safeStorageSet(window.sessionStorage, key, json);
-    safeStorageSet(window.localStorage, key, json);
-  }
-
-  function readAttributionFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    return normalizeAttribution({
-      utmSource: params.get('utm_source'),
-      utmMedium: params.get('utm_medium'),
-      utmCampaign: params.get('utm_campaign'),
-      utmId: params.get('utm_id'),
-      utmContent: params.get('utm_content'),
-      fbclid: params.get('fbclid'),
-      fbc: readCookieValue('_fbc'),
-      fbp: readCookieValue('_fbp'),
-      metaCampaignId: params.get('meta_campaign_id'),
-      metaAdSetId: params.get('meta_adset_id'),
-      metaAdId: params.get('meta_ad_id')
-    });
-  }
-
-  function rememberQueryAttribution() {
-    const queryAttribution = readAttributionFromQuery();
-    if (hasAttribution(queryAttribution)) {
-      writeAttributionToStorage(STORAGE_ATTR_SESSION, queryAttribution);
     }
   }
 
@@ -374,12 +326,6 @@
 
     if (expired) {
       sessionId = uuidNoDash();
-      try {
-        window.sessionStorage.removeItem(STORAGE_ATTR_SESSION);
-        window.localStorage.removeItem(STORAGE_ATTR_SESSION);
-      } catch {
-        // ignore storage failures
-      }
     }
 
     safeStorageSet(window.localStorage, STORAGE_SESSION, sessionId);
@@ -388,25 +334,10 @@
   }
 
   function resolveAttribution() {
-    rememberQueryAttribution();
-
+    // The canonical tracker owns scoped attribution, including an empty direct
+    // session. Provider adapters never recover campaigns from historical storage.
     const ids = window.legendTrackingIds;
-    if (ids && typeof ids.getAttribution === 'function') {
-      const direct = normalizeAttribution(ids.getAttribution() || {});
-      if (hasAttribution(direct)) {
-        writeAttributionToStorage(STORAGE_ATTR_SESSION, direct);
-        return direct;
-      }
-    }
-
-    const queryAttribution = readAttributionFromQuery();
-    if (hasAttribution(queryAttribution)) {
-      writeAttributionToStorage(STORAGE_ATTR_SESSION, queryAttribution);
-      return queryAttribution;
-    }
-
-    const stored = readAttributionFromStorage(STORAGE_ATTR_SESSION);
-    return hasAttribution(stored) ? stored : normalizeAttribution({});
+    return normalizeAttribution(ids?.getAttribution?.() || {});
   }
 
   function resolveQuoteType(value) {
@@ -532,7 +463,6 @@
       sendServerEvents: rawConfig?.sendServerEvents !== false,
       persistEvents: rawConfig?.persistEvents !== false,
       debugMode: Boolean(rawConfig?.debugMode),
-      endpoint: asTrimmed(rawConfig?.endpoint) || '/analytics/meta-signal',
       pixelId: asTrimmed(rawConfig?.pixelId),
       siteKey: asTrimmed(rawConfig?.siteKey),
       quoteType: asTrimmed(rawConfig?.quoteType) || 'life',
@@ -572,7 +502,6 @@
       trackSubmitAttempt() {},
       trackBacktrack() {},
       trackDeadClick() {},
-      trackConfiguredEvent() { return null; },
       markSubmitted() {},
       getState() {
         return null;
@@ -1106,9 +1035,9 @@
         asTrimmed(attribution?.metaAdId)
       );
 
-      if (asTrimmed(attribution?.fbclid) || hasMetaIds) return 'PaidAds';
+      if (asTrimmed(attribution?.fbclid) || asTrimmed(attribution?.gclid) || asTrimmed(attribution?.ttclid) || hasMetaIds) return 'PaidAds';
       if (['cpc', 'ppc', 'paid', 'paidsearch', 'display', 'paid_social', 'social_paid', 'remarketing', 'retargeting', 'paid_search', 'paid-social'].includes(medium)) return 'PaidAds';
-      if (['adwords', 'googleads', 'google_ads', 'gads', 'bingads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'paidsearch', 'display', 'paid_social', 'cpc', 'ppc', 'remarketing', 'retargeting'].includes(source)) return 'PaidAds';
+      if (['adwords', 'googleads', 'google_ads', 'gads', 'tiktokads', 'tiktok_ads', 'bingads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'paidsearch', 'display', 'paid_social', 'cpc', 'ppc', 'remarketing', 'retargeting'].includes(source)) return 'PaidAds';
       if (['organic', 'seo', 'organic_search'].includes(medium)) return 'Organic';
       if (['(none)', 'direct'].includes(medium)) return 'Direct';
       if (['referral', 'partner'].includes(medium)) return 'Referral';
@@ -1203,33 +1132,15 @@
       return payload;
     }
 
-    function hasHumanBehaviorForMetaBrowserEvent(eventName) {
-      if (eventName === 'ViewContent') {
-        return true;
-      }
-
-      return Boolean(
-        state.stayed5Seconds ||
-        state.meaningfulScroll ||
-        state.firstQuestionAnswered ||
-        state.completedSteps['1'] ||
-        state.recommendationViewed ||
-        state.contactStepReached ||
-        state.contactInputStarted ||
-        state.submitAttempted ||
-        state.leadSubmitted
-      );
-    }
-
     function fireBrowserPixel(eventName, eventId, pixelPayload) {
       if (!config.enabled || !config.sendBrowserEvents) return 'disabled';
+      if (!measurementConsentAllowed()) return 'consent_denied';
       if (!config.browserEventNames.has(eventName)) return 'not_required';
-      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) return 'human_gate';
       if (typeof window.fbq !== 'function') return 'pixel_unavailable';
 
       try {
         if (!config.pixelId) return 'pixel_unavailable';
-        window.fbq('trackSingleCustom', config.pixelId, eventName, pixelPayload, { eventID: eventId });
+        window.fbq('trackSingle', config.pixelId, eventName, pixelPayload, { eventID: eventId });
         // fbq can queue locally. Returning from it does not acknowledge delivery to Meta.
         return 'invoked';
       } catch {
@@ -1237,35 +1148,20 @@
       }
     }
 
-    async function postSignal(payload, useBeacon) {
-      if (useBeacon) {
-        try {
-          const json = JSON.stringify(payload);
-          const blob = new Blob([json], { type: 'application/json' });
-          if (navigator.sendBeacon && navigator.sendBeacon(config.endpoint, blob)) {
-            return { accepted: true, queued: true, metaServerStatus: 'beacon_queued' };
-          }
-        } catch {
-          // fall through to fetch
-        }
-      }
-
-      try {
-        const response = await fetch(config.endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          keepalive: true,
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          return { accepted: false, metaServerStatus: 'http_error' };
-        }
-
-        return await response.json().catch(() => ({ accepted: true }));
-      } catch {
-        return { accepted: false, metaServerStatus: 'network_error' };
-      }
+    async function postSignal(payload) {
+      const analytics = window.LegendAnalytics;
+      if (!analytics?.track) return { accepted: false, status: 'canonical_runtime_unavailable' };
+      const accepted = await analytics.track({
+        ClientEventId: payload.eventId,
+        EventType: payload.eventName,
+        SiteKey: payload.siteKey,
+        WebsiteBindingId: payload.websiteBindingId,
+        PageKey: payload.pageKey,
+        QuoteType: payload.quoteType,
+        MetaSignal: payload,
+        MetadataJson: JSON.stringify(payload.metadata || {})
+      });
+      return { accepted, status: accepted ? 'canonical_ingest_accepted' : 'canonical_ingest_failed' };
     }
 
         function resolveClientContext() {
@@ -1338,7 +1234,42 @@
           }
         }
 
+    const signalAliases = window.LegendAnalytics?.signalAliases || {};
+    const trackerOwnedSignals = new Set(Object.entries(signalAliases)
+      .filter(([source, signal]) => source !== signal).map(([, signal]) => signal));
+    const projectedEventIds = new Set();
+    function projectCanonical(body) {
+      if (body?.MarketingEligibility?.eligible !== true) return;
+      const eventName = signalAliases[body.EventType];
+      let bindingMetadata = {}; try { bindingMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+      if ((!eventName && !bindingMetadata.configuredSignalBindings?.length) || projectedEventIds.has(body.ClientEventId)) return;
+      projectedEventIds.add(body.ClientEventId);
+      const metadata = body.MetaSignal?.metadata || {};
+      if (!body.MetaSignal) applyEventToState(eventName, null, metadata);
+      const score = computeScore();
+      const attribution = resolveAttribution();
+      const pixelPayload = buildPixelPayload(body.MetaSignal?.stepNumber || null,
+        body.MetaSignal?.stepName || null, score, metadata, attribution);
+      let canonicalMetadata = {}; try { canonicalMetadata = JSON.parse(body.MetadataJson || '{}'); } catch {}
+      const bindings = canonicalMetadata.configuredSignalBindings;
+      const projections = Array.isArray(bindings) && bindings.length
+        ? bindings.filter(binding => ['destinations', 'meta'].includes(binding.deliveryMode) && !binding.duplicateBinding).map(binding => signalAliases[binding.eventName]).filter(Boolean)
+        : metadata.configuredDeliveryMode === 'analytics' ? [] : [eventName];
+      for (const projection of new Set(projections)) {
+        const status = fireBrowserPixel(projection, body.ClientEventId, pixelPayload);
+        if (status === 'invoked') {
+          void window.LegendAnalytics.track({EventType:'meta_browser_event_success',
+            MetadataJson:JSON.stringify({sourceEventId:body.ClientEventId, signalName:projection, browserDispatchStatus:status})});
+        }
+      }
+      saveState();
+      maybeFireThresholdEvents(score);
+    }
+
     async function emitSignal(eventName, options = {}) {
+      // The tracker already owns these actions. Provider/session state is updated
+      // by its accepted envelope; never manufacture another source event here.
+      if (trackerOwnedSignals.has(eventName) && !options.metadata?.configuredWebsiteSignal) return null;
       const onceKey = options.onceKey || null;
       if (onceKey && state.fired[onceKey]) {
         debug(`Duplicate prevented for ${eventName}`, { onceKey, eventId: state.fired[onceKey] });
@@ -1364,12 +1295,8 @@
         metadata,
         buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
       );
-      const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
-      const browserDispatchStatus = options.sendBrowserPixel === false
-        ? 'suppressed_by_mapping'
-        : fireBrowserPixel(eventName, eventId, browserPixelPayload);
-      const browserEventSent = browserDispatchStatus === 'invoked';
-      enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
+      const browserEventSent = false; // Projection follows canonical acceptance.
+      enrichedMetadata.browserDispatchStatus = 'awaiting_canonical_ingest';
       const payload = {
         siteKey: config.siteKey || null,
         websiteBindingId: asTrimmed(metadata?.websiteBindingId || metadata?.actionKey) || null,
@@ -1637,35 +1564,6 @@
       });
     }
 
-    function wireScrollTracking() {
-      const onScroll = () => {
-        const doc = document.documentElement;
-        const body = document.body;
-        const fullHeight = Math.max(doc.scrollHeight, body ? body.scrollHeight : 0);
-        const viewport = window.innerHeight || doc.clientHeight || 0;
-        const maxScrollable = Math.max(1, fullHeight - viewport);
-        const scrolled = Math.max(window.scrollY || window.pageYOffset || doc.scrollTop || 0, 0);
-        const percent = Math.min(100, Math.round((scrolled / maxScrollable) * 100));
-        updateScrollSignals(percent);
-
-        if (percent >= MEANINGFUL_SCROLL_THRESHOLD && !state.fired['meaningful-scroll']) {
-          void emitSignal('MeaningfulScroll', {
-            onceKey: 'meaningful-scroll',
-            metadata: {
-              scrollPercent: percent,
-              midIntentCandidate: percent >= MID_INTENT_SCROLL_THRESHOLD,
-              highIntentCandidate: percent >= HIGH_INTENT_SCROLL_THRESHOLD
-            }
-          });
-        }
-
-        if (percent >= HIGH_INTENT_SCROLL_THRESHOLD && state.fired['meaningful-scroll']) {
-          window.removeEventListener('scroll', onScroll);
-        }
-      };
-
-      window.addEventListener('scroll', onScroll, { passive: true });
-    }
 
     function wireGeneralInteractionTracking() {
       document.addEventListener('pointerdown', registerInteraction, { passive: true });
@@ -1750,40 +1648,14 @@
       });
     }
 
-    function scheduleEngagementTimers() {
-      const elapsed = Date.now() - Number(state.startedAt || Date.now());
-      const wait5s = Math.max(0, 5000 - elapsed);
-      const wait15s = Math.max(0, 15000 - elapsed);
-
-      if (!state.fired['engaged-5s']) {
-        window.setTimeout(() => {
-          if (!state.fired['engaged-5s']) {
-            void emitSignal('SessionEngaged5s', { onceKey: 'engaged-5s' });
-          }
-        }, wait5s);
-      }
-
-      if (!state.fired['engaged-15s']) {
-        window.setTimeout(() => {
-          if (!state.fired['engaged-15s']) {
-            void emitSignal('SessionEngaged15s', { onceKey: 'engaged-15s' });
-          }
-        }, wait15s);
-      }
-    }
-
     function init() {
       wireContactInputs();
-      wireScrollTracking();
       wireGeneralInteractionTracking();
       wireCtaHoverTracking();
       wireDisabledClickTracking();
-      scheduleEngagementTimers();
 
-      if (!state.fired['view-content']) {
-        ensureEarlyMetaCookies();
-        void emitSignal('ViewContent', { onceKey: 'view-content' });
-      }
+      ensureEarlyMetaCookies();
+      window.LegendAnalytics?.subscribe?.(`meta:${config.siteKey}:${state.pageKey}`, projectCanonical);
 
       window.addEventListener('pagehide', maybeTrackAbandon);
 
@@ -1878,23 +1750,6 @@
       },
       trackDeadClick(metadata = {}) {
         return emitSignal('DeadClick', { metadata });
-      },
-      trackConfiguredEvent(eventName, options = {}) {
-        const normalizedEventName = asTrimmed(eventName);
-        if (!normalizedEventName || !config.browserSignalEventNames.has(normalizedEventName)) {
-          debug('Configured website signal blocked by browser catalog', { eventName: normalizedEventName || null });
-          return null;
-        }
-        const deliveryMode = options.deliveryMode === 'meta' ? 'meta' : 'analytics';
-        return emitSignal(normalizedEventName, {
-          onceKey: asTrimmed(options.onceKey) || null,
-          metadata: Object.assign({}, options.metadata || {}, {
-            configuredWebsiteSignal: true,
-            configuredDeliveryMode: deliveryMode
-          }),
-          sendBrowserPixel: deliveryMode === 'meta',
-          skipThresholds: true
-        });
       },
       markSubmitted(metadata = {}) {
         state.submitted = true;

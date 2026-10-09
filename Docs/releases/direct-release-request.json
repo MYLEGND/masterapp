@@ -1,9 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized failure-forward routing completion after #215 proved all five web targets live at a8585b03a435f0d9f19d1cf427cebab277ac6779. Declare the complete web inventory only to satisfy the canonical routing release policy. Preserve every application/site at that exact live revision; deploy only the validated Cloudflare website-commerce router. No application rebuild, migration, auth mutation, or redeployment.",
-  "purpose": "Complete the Website Studio Store/Manage Store repair by activating first-party /store* and /commerce/manage/* Worker routes. All five web targets are declared because the canonical routing policy requires complete inventory when the Website target is in scope; preserve-live mode must skip every application deployment.",
-  "requestId": "website-studio-store-manager-routing-preserve-live-20260926-r2",
-  "validatedNoDeployRun": "https://github.com/MYLEGND/masterapp/actions/runs/36237501297",
+  "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
+  "purpose": "Resume the existing authorized five-target publication after release 37954422758 stopped on database activity. Preserve compatible validation, immutable application components, rollback evidence, and completed migrations. Correct only the canonical read-only activity boundary, reconcile current database history and physical schema without migration replay, and require durable target receipts and live acceptance.",
+  "requestId": "founder-pr551-migration-activity-resume-20261009",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -12,8 +11,6 @@
     "masterapp-parfait",
     "masterapp-website"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "a8585b03a435f0d9f19d1cf427cebab277ac6779"
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false
 }

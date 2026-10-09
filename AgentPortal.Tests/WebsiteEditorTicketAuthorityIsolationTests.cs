@@ -46,12 +46,15 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
     public void AppShellFavicons_ReadThePublishedWebsiteParityService()
     {
         var portal = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_Layout.cshtml"));
+        var faviconParity = File.ReadAllText(Source("Infrastructure", "WebsiteEditing", "WebsiteFaviconParity.cs"));
         var workspace = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml"));
         var client = File.ReadAllText(Source("ClientApp", "Views", "Shared", "_Layout.cshtml"));
         var controller = File.ReadAllText(Source("Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
 
         Assert.Contains("WebsiteFaviconParity.PublicUrl", portal, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", portal, StringComparison.Ordinal);
+        Assert.Contains("faviconTrackingProfile?.Slug", portal, StringComparison.Ordinal);
+        Assert.Contains("agentSlug=", faviconParity, StringComparison.Ordinal);
         Assert.Contains("WebsiteFaviconParity.PublicUrl", workspace, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", workspace, StringComparison.Ordinal);
         Assert.Contains("WebsiteFaviconParity.PublicUrl", client, StringComparison.Ordinal);

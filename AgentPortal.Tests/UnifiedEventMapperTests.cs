@@ -13,7 +13,7 @@ public class UnifiedEventMapperTests
         Assert.Equal("Infrastructure", typeof(UnifiedEventContext).Assembly.GetName().Name);
         Assert.Equal("Infrastructure", typeof(UnifiedEventMapper).Assembly.GetName().Name);
         Assert.Equal("Infrastructure", typeof(UnifiedAnalyticsWriter).Assembly.GetName().Name);
-        Assert.Equal("Infrastructure", typeof(MetaSignalCrmOutcomeService).Assembly.GetName().Name);
+        Assert.Equal("Infrastructure", typeof(CanonicalCrmOutcomeService).Assembly.GetName().Name);
     }
 
     [Fact]
@@ -74,7 +74,8 @@ public class UnifiedEventMapperTests
         var analyticsEvent = UnifiedEventMapper.ToAnalytics(context);
 
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isBrowserSignal"));
-        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "measurementServerAuthorityEligible"));
         Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaServerAuthorityEligible"));
         Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaSingleTruthDispatchEligible"));
         Assert.Equal(

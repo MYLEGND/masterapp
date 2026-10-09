@@ -13,12 +13,12 @@
             return;
         }
 
-        modal.style.display = "block";
+        window.bootstrap?.Modal?.getOrCreateInstance(modal).show();
     };
 
     window.closeAppointmentModal = function () {
         const modal = document.getElementById("appointmentModal");
-        if (modal) modal.style.display = "none";
+        if (modal) window.bootstrap?.Modal?.getOrCreateInstance(modal).hide();
     };
 
     window.submitAppointment = async function () {
@@ -66,5 +66,9 @@
             detail: payload
         }));
     };
+
+    document.getElementById("apptCreate")?.addEventListener("click", () => {
+        window.submitAppointment();
+    });
 
 })();

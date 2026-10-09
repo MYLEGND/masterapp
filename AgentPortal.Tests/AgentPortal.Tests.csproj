@@ -37,8 +37,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\\.github\\workflows\\agentportal-production-deploy.yml"
-          Link="agentportal-production-deploy.yml"
+    <None Include="..\\.github\\workflows\\approved-release-security-validation.yml"
+          Link="approved-release-security-validation.yml"
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\.github\\workflows\\all-intentional-direct-release-20260918.yml"
           Link="all-intentional-direct-release-20260918.yml"

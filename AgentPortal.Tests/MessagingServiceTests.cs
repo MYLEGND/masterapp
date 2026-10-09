@@ -4085,7 +4085,8 @@ public sealed partial class MessagingServiceTests
             NullLogger<MessagingService>.Instance,
             moderation,
             images,
-            new ControlledResourceAccessService(db, configuration),
+            new ControlledResourceAccessService(db, configuration ??
+                (configuredFounderOid is null ? null : FounderConfiguration(configuredFounderOid))),
             translation ?? new TestTranslationService(),
             new NotificationEngine(
                 db,

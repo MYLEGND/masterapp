@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
 
+using Shared.Analytics;
 namespace ParfaitApp.Controllers;
 
 [Route("store")]
@@ -242,7 +243,10 @@ public sealed class StoreCheckoutController : Controller
 
         var order = paymentStart.Order;
         var firstItem = validatedItems.FirstOrDefault();
-        var signalContext = BuildSignalContext(store);
+        var signalContext = BuildSignalContext(store) with
+        {
+            OrderId = order.CommerceOrderId, EventUtc = order.CreatedUtc, OrderValueCents = order.TotalCents
+        };
         if (_commerceSignals is not null)
         {
             await _commerceSignals.RecordAsync(
@@ -311,7 +315,11 @@ public sealed class StoreCheckoutController : Controller
             await _commerceSignals!.RecordAsync(
                 "Purchase",
                 paidOrder.OrderNumber,
-                signalContext,
+                signalContext with
+                {
+                    EventUtc = paidOrder.PaidUtc ?? paidOrder.UpdatedUtc ?? paidOrder.CreatedUtc,
+                    PurchaseId = paidOrder.PaymentReferenceId, OrderValueCents = paidOrder.TotalCents
+                },
                 firstItem is null ? null : ProductSignal(firstItem),
                 CustomerSignal(request.Customer),
                 paidOrder.OrderNumber,
@@ -387,7 +395,7 @@ public sealed class StoreCheckoutController : Controller
             AccentColor: "",
             LogoUrl: null,
             GlobalCheckoutUrl: null,
-            Theme: new WebsiteThemeOverride(),
+            Theme: new WebsiteDesignTheme(),
             WebsiteShellPrefix: null,
             WebsiteShellSuffix: null));
     }
@@ -422,7 +430,7 @@ public sealed class StoreCheckoutController : Controller
     private CommerceSignalContext BuildSignalContext(CommerceStoreContext store)
     {
         string? Cookie(string name) => Request.Cookies.TryGetValue(name, out var value) ? value : null;
-        return new CommerceSignalContext(
+        return CommerceSignalAttribution.Apply(new CommerceSignalContext(
             store.CommerceBusinessId,
             store.AgentTrackingProfileId,
             store.WebsiteContentVersionId,
@@ -436,8 +444,9 @@ public sealed class StoreCheckoutController : Controller
             Request.Headers.UserAgent.ToString(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Query["fbclid"].FirstOrDefault(),
+            OpenAiClickReference.Normalize(Cookie("pf_oppref") ?? Request.Query["oppref"].FirstOrDefault()),
             Cookie("_fbc"),
-            Cookie("_fbp"));
+            Cookie("_fbp")), Request);
     }
 
     private static CommerceSignalCustomer CustomerSignal(ParfaitCheckoutCustomerRequest customer) =>

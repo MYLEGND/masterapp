@@ -5,6 +5,8 @@ namespace AgentPortal.Models.Analytics;
 
 public sealed class AnalyticsIncidentMonitorDto
 {
+    public bool IsAvailable { get; set; } = true;
+    public string? ErrorCode { get; set; }
     public string ScopeLabel { get; set; } = "System-wide";
     public string RangeLabel { get; set; } = "Last 24 Hours";
     public DateTime LastUpdatedUtc { get; set; }

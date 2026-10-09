@@ -70,23 +70,31 @@ public sealed class LaunchAuditReliabilityTests
     {
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-        var controller = new Protect_Website.Controllers.AnalyticsController(db,
-            NullLogger<Protect_Website.Controllers.AnalyticsController>.Instance)
-        { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
+        var owner = new AgentTrackingProfile { Id = Guid.NewGuid(), AgentUserId = "replay-owner",
+            AgentUpn = "replay@example.test", Slug = "replay-owner" };
+        db.AgentTrackingProfiles.Add(owner);
+        await db.SaveChangesAsync();
+        var controller = WebsiteTrackingIngestTests.BuildController(db);
+        controller.HttpContext.Items["TrackingProfile"] = owner;
         var request = new MetaSignalIngestRequest
         {
             EventId = Guid.NewGuid().ToString("N"), EventName = "ViewContent",
             SessionId = "qa-session", VisitorId = "qa-visitor"
         };
-        Assert.IsType<JsonResult>(await controller.MetaSignal(request, CancellationToken.None));
-        var duplicate = Assert.IsType<JsonResult>(await controller.MetaSignal(request, CancellationToken.None));
-        var result = Assert.IsType<MetaSignalProcessResult>(duplicate.Value);
-        Assert.True(result.Accepted);
-        Assert.True(result.Skipped);
-        Assert.False(result.MetaServerSent);
+        var envelope = new WebsiteTrackingProxyAuthority.AnalyticsEventRequest {
+            ClientEventId = Guid.Parse(request.EventId), EventType = request.EventName,
+            SessionId = request.SessionId, VisitorId = request.VisitorId, MetaSignal = request
+        };
+        var accepted = Assert.IsType<OkObjectResult>(await controller.Ingest(envelope, default));
+        var duplicate = Assert.IsType<OkObjectResult>(await controller.Ingest(envelope, default));
+        var acceptedJson = System.Text.Json.JsonSerializer.SerializeToElement(accepted.Value);
+        var duplicateJson = System.Text.Json.JsonSerializer.SerializeToElement(duplicate.Value);
+        Assert.Equal(acceptedJson.GetProperty("eventId").GetGuid(), duplicateJson.GetProperty("eventId").GetGuid());
+        Assert.Equal("duplicate_ignored", duplicateJson.GetProperty("status").GetString());
         Assert.Single(await db.AnalyticsEvents.ToListAsync());
-        request.SessionId = "different-session";
-        Assert.IsType<ConflictObjectResult>(await controller.MetaSignal(request, CancellationToken.None));
+        envelope.SessionId = "different-session";
+        Assert.IsType<ConflictObjectResult>(await controller.Ingest(envelope, default));
+
     }
 
     [Fact]
@@ -103,13 +111,15 @@ public sealed class LaunchAuditReliabilityTests
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         };
+        db.AgentTrackingProfiles.Add(serverAgent);
+        await db.SaveChangesAsync();
         var http = new DefaultHttpContext();
         http.Items["TrackingProfile"] = serverAgent;
         http.Items["TrackingSlug"] = serverAgent.Slug;
 
-        var controller = new Protect_Website.Controllers.AnalyticsController(db,
-            NullLogger<Protect_Website.Controllers.AnalyticsController>.Instance)
-        { ControllerContext = new ControllerContext { HttpContext = http } };
+        var controller = WebsiteTrackingIngestTests.BuildController(db);
+        controller.HttpContext.Items["TrackingProfile"] = serverAgent;
+        controller.HttpContext.Items["TrackingSlug"] = serverAgent.Slug;
 
         var request = new MetaSignalIngestRequest
         {
@@ -121,7 +131,10 @@ public sealed class LaunchAuditReliabilityTests
             AgentSlug = "spoofed-agent"
         };
 
-        Assert.IsType<JsonResult>(await controller.MetaSignal(request, CancellationToken.None));
+        Assert.IsType<OkObjectResult>(await controller.Ingest(new WebsiteTrackingProxyAuthority.AnalyticsEventRequest {
+            ClientEventId = Guid.Parse(request.EventId), EventType = request.EventName,
+            SessionId = request.SessionId, VisitorId = request.VisitorId, MetaSignal = request
+        }, default));
 
         var row = await db.AnalyticsEvents.SingleAsync();
         Assert.Equal(serverAgent.Id, row.AgentTrackingProfileId);
@@ -145,4 +158,36 @@ public sealed class LaunchAuditReliabilityTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(body) });
     }
+    [Fact]
+    public async Task BrowserPersistenceRejectsCrossOwnerAndSessionReplayThroughOneAuthority()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var eventId = Guid.NewGuid();
+        var owner = Guid.NewGuid();
+        AnalyticsEvent Row(Guid profile, string session)
+        {
+            var row = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+            {
+                EventId = eventId.ToString("N"), EventName = "page_view", AgentTrackingProfileId = profile,
+                SessionId = session, VisitorId = "visitor", Host = "protect.example.test", PageKey = "home"
+            });
+            row.ClientEventId = eventId;
+            return row;
+        }
+        var original = Row(owner, "session");
+        original.EventId = Guid.NewGuid();
+        Assert.Equal(UnifiedAnalyticsWriter.BrowserWriteResult.Accepted,
+            await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, original));
+        Assert.Equal(original.ClientEventId, original.EventId);
+        var retry = Row(owner, "session");
+        Assert.Equal(UnifiedAnalyticsWriter.BrowserWriteResult.Duplicate,
+            await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, retry));
+        Assert.Equal(original.EventId, retry.EventId);
+        Assert.Equal(UnifiedAnalyticsWriter.BrowserWriteResult.Conflict,
+            await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, Row(Guid.NewGuid(), "session")));
+        Assert.Equal(UnifiedAnalyticsWriter.BrowserWriteResult.Conflict,
+            await UnifiedAnalyticsWriter.PersistBrowserEventAsync(db, Row(owner, "other-session")));
+        Assert.Single(await db.AnalyticsEvents.ToListAsync());
+    }
+
 }

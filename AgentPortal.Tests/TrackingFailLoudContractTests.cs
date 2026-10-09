@@ -23,8 +23,12 @@ public class TrackingFailLoudContractTests
         Assert.Contains("void flushQueuedEvents('visibility_hidden', { useBeacon: true, maxItems: 10 });", content, StringComparison.Ordinal);
         Assert.Contains("void flushQueuedEvents('visibility_visible');", content, StringComparison.Ordinal);
         Assert.Contains("void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 15 });", content, StringComparison.Ordinal);
-        Assert.Contains("void flushQueuedEvents('thank_you_load');", content, StringComparison.Ordinal);
-        Assert.Contains("EventType: 'lead_form_start', FormKey: formKey", content, StringComparison.Ordinal);
+        Assert.Contains("EventType: 'thank_you_view'", content, StringComparison.Ordinal);
+        var initialized = content.IndexOf("window.__legendTrackingInitialized = true;", StringComparison.Ordinal);
+        Assert.True(initialized >= 0 && content.IndexOf("void flushQueuedEvents('page_load');", initialized, StringComparison.Ordinal) > initialized);
+        Assert.Contains("void flushQueuedEvents('successful_event');", content, StringComparison.Ordinal);
+        Assert.Contains("EventType: 'form_start', FormKey: formKey", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("EventType: 'lead_form_start', FormKey: formKey", content, StringComparison.Ordinal);
     }
 
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")

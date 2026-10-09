@@ -36,6 +36,7 @@ public class WebsiteLeadIntakeLink
     public string? UtmTerm { get; set; }
     public string? UtmContent { get; set; }
     public string? Fbclid { get; set; }
+    public string? Oppref { get; set; }
     public string? Fbp { get; set; }
     public string? Fbc { get; set; }
     public string? ClientIpAddress { get; set; }

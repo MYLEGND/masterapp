@@ -1,40 +1,110 @@
-# LEGEND release branch lifecycle
+# LEGEND single-branch release lifecycle
 
-`legend/approved-changes` is the default and the source for quick releases.
-`production` is the release base that has passed the rigorous CI/security path.
-All other branches hold temporary work; unique or failed work stays until proven safe.
+`legend/approved-changes` is the sole protected Git release authority. All other branches are temporary work. Production runtime state is represented by immutable deployment receipts and live provenance, not by a second mutable Git branch.
 
-## Autonomous flow
+## Canonical flow
 
-1. Work on a temporary branch based on current approved changes. Open a same-repository PR to `legend/approved-changes`; draft means work in progress, ready means approved for integration and release. Only repository owners, members and collaborators qualify. Forks do not.
-2. The lifecycle workflow merges the exact ready PR head using GitHub's merge API. Conflicts or branch requirements retain the source branch. It explicitly dispatches the existing direct-release workflow, because a merge made with `GITHUB_TOKEN` does not fire push workflows.
-3. Automatic releases conservatively include **all five existing web targets**, including the backend serving iOS/Android. They reuse the existing build, focused tests, migration, rollback and exact live-provenance checks. The existing manually requested portal-only release remains available.
-4. Only a successful complete direct release of the **current** approved head creates/advances the PR to `production`. The same rigorous workflow resolves that PR's exact merge candidate, checks it includes all live web histories, executes existing CI/security gates, merges, deploys, and verifies. No direct push or protection bypass is used to advance production. A failure is not retried repeatedly without corrections or an explicit workflow rerun.
-5. Successful production history is merged back into approved changes without overwriting newer work. The resulting approved commit receives an explicit direct release so provenance cannot stall. Conflicts retain both histories for repair.
-6. After a successful applicable release, and hourly to recover missed events, cleanup evaluates every branch against fresh evidence. Failed releases do not authorize cleanup. Ready PRs created by automation and new commits on previously approved, retained branches are also reconciled hourly.
+1. Create a bounded branch from the exact current approved head and open a same-repository PR to `legend/approved-changes`.
+2. The lifecycle admits the exact candidate and approved baseline, then observes migration and publication readiness using approved code. The candidate's minimal probe and any required isolated migration rehearsal precede expensive validation. Only a compatible, fresh, successful readiness receipt opens the resume planner. Owning validators then run for the changed scope. Architecture is always required; Step 5, Step 6, Steps 7–8, and approved-release security are required when their owned inputs change. The resume planner preserves unrelated successful evidence.
+3. The lifecycle merges only the exact validated PR head. Protected-branch requirements and conflicts fail closed. Source integration alone never deploys.
+4. A validated merged application PR carries publication authorization directly. The canonical inventory derives its affected targets. Historical explicit `Docs/releases/direct-release-request.json` authorizations remain bound to the exact request-changing approved commit; they do not establish a second scheduler.
+5. The sole web deploy workflow, `all-intentional-direct-release-20260918.yml`, resolves the exact validated application PR head, restores the immutable package set produced by architecture validation, verifies its manifest/checksums, proves the separate Portal database baseline, applies only the validated migration bundle, deploys selected stale targets, and requires complete final live provenance. It has no production package rebuild fallback.
+6. Targets already live at the exact application revision are preserved. A retry deploys only targets that are not already proven live. Each attempt retains a durable step-state receipt; immutable evidence is reused, while current-state and mutation steps re-reconcile safely. A failed direct release is not blindly replayed. Its completion wakes the durable queue so another eligible candidate can proceed; publication still reconciles durable write intent before any upload.
+7. After successful applicable releases, cleanup evaluates temporary branches against fresh approved-history, live-provenance, direct-release-receipt, PR, workflow, and protection evidence.
 
-## Mandatory deletion conditions
+## Mandatory branch deletion conditions
 
-A branch is deleted only when all conditions hold:
+A temporary branch is deleted only when all conditions hold:
 
-- It is neither release branch and is not protected.
-- Its **entire head history** is an ancestor of both release branches and all five observed live web revisions.
-- The current production base and every observed live web revision have successful authoritative release evidence, including actual successful deployment/proof jobs. A green workflow with skipped jobs is insufficient; a newer failed attempt invalidates an older success.
-- No open PR uses it as source or base, no run is active, and its most recent workflow did not fail or cancel.
-- No release is queued or running during the audit.
-- Its changes do not include native iOS, native Android, or Cloudflare Worker publication that only a web receipt would incorrectly certify. Such branches remain until their separate publication evidence is integrated. The repository currently has no automated iOS store release or Worker release workflow; this policy does not invent one.
-- Immediately before deletion, protection, PR use, branch runs, both release tips and the source head are checked again. Git's expected-SHA lease makes deletion fail if a concurrent push changes the source branch.
+- It is not `legend/approved-changes` and is not protected.
+- Its entire head is an ancestor of the approved branch.
+- Its entire head is covered by every relevant observed live web revision.
+- Every live application revision has an exact successful direct-release receipt for that application.
+- No open PR uses the branch as source or base.
+- No workflow for the branch is active, and its most recent workflow did not fail or cancel.
+- No direct release is queued or running while cleanup evaluates live evidence.
+- Immediately before deletion the source SHA, approved SHA, PR use, protection, and workflow state are checked again. Git deletion uses an expected-SHA lease.
 
-The standard GitHub `delete_branch_on_merge` setting must remain **false**: merge completion is not deployment success. Cleanup writes an artifact listing decisions and exact SHAs. It never uses branch age, naming, patch similarity, or a stale baseline as proof of safety.
+The GitHub `delete_branch_on_merge` setting remains false. Merge completion is not deployment proof.
 
 ## Failure and repair
 
-A failing deployment may already have a commit merged into a release branch. That is source preservation, not a successful deployed baseline. Temporary branches remain. Push corrections to the retained branch; the hourly reconciler carries forward new descendants of the previously approved head. Drafts, force-rewritten histories, unknown authors and conflicting merges are retained for inspection. Source code cannot autonomously fix arbitrary application errors; this workflow resumes the release when the correction exists.
+Evidence transport failures retry bounded read-only requests. If the planner still cannot inspect required evidence, it stops at planning with a blocked diagnostic; it never turns a timeout into authorization for a full validation rerun. Resume the failed planning job after access recovers. Positively missing or incompatible evidence still requires its affected checks.
 
-Two permanent release paths do not imply deleting unfinished or unmerged work. Old branches with unique history stay until their changes are individually reconciled; merging abandoned experiments indiscriminately would reintroduce regressions. See `branch-audit-20260919.json` for the initial snapshot. This file is historical evidence; all runtime decisions use fresh API and live endpoint reads.
+A failed validation or deployment preserves all unaffected successful evidence. Repair the canonical failed source on the retained branch, then resume from the invalidated gate. Full reruns occur only when evidence cannot safely be reused.
 
-## Validation and references
+Package backfill uses explicit job status conditions so intentionally skipped PR-only probe/rehearsal ancestors cannot suppress required component builds. Assembly accepts a skipped component matrix only when the authenticated planner explicitly requires no component execution. A completed backfill with unavailable compatible package evidence blocks repeated dispatch under the same approved authority and retains its run/attempt identity. Historical dispatch records do not expose the requested package revision, so this guard conservatively covers that authority's backfill scope. Reconcile retained artifacts and the exact failure before resuming failed jobs; a reviewed authority correction receives a fresh eligibility assessment. This does not clear production ownership or authorize a mutation retry.
 
-Run `python3 scripts/test-release-lifecycle.py` for isolated Git ancestry, race and negative-evidence tests. GitHub workflow execution supplies the actual repository mutation/deployment proof.
+If a merged change needs deployment correction, the approved branch remains the source authority and a new explicit release request or corrected approved descendant is used. No branch promotion, merge-back, parity reconciliation, or second release branch exists.
 
-GitHub documents [GITHUB_TOKEN event behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow) and [workflow_run trust boundaries](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run). Privileged lifecycle steps check out only trusted approved code, never a PR head.
+## Historical migration uncertainty and current-state reconciliation
+
+`release-migration.py:resolve_migration_boundary` distinguishes invalid evidence,
+active execution, proven nonentry, and an unknown historical outcome. An unknown
+outcome is never proof that SQL did not execute and never authorizes replay.
+
+The existing migration-history audit authenticates the exact terminal attempt,
+original workflow, complete artifact inventory, retained execution state, original
+admission, and any child operation records before classifying an otherwise unknown
+modern failure as requiring runtime reconciliation. Missing, expired required, or
+contradictory evidence remains blocked. The original uncertainty stays in the audit.
+
+At the production boundary, the same audit is consumed under the canonical release
+ownership. Other release workers must be terminal; the current worker must match its
+API run attempt. The approved read-only probe checks database activity visibility
+before and after schema observation. Two observations must agree on database,
+migration catalog, applied baseline, and pending state. Insufficient visibility,
+active transactions, or drift stops this boundary without executing a bundle.
+Only positively classified internal engine requests and system transactions are
+excluded; missing DMV mappings remain blocking. A held EF migration session lock
+also blocks, including between transactions. Ordinary user requests/writes still
+require a quiet interval: unknown historical executors are not assumed to follow
+the current EF locking protocol. Sustained traffic may safely block publication.
+Only the fixed active-activity classification retries the observation pair, at
+most six times under one 90-second deadline covering inner SQL-read retries,
+process timeouts and backoff. Historical lookup, compilation, rehearsal and valid
+packages are preserved. Permission, unknown, and schema failures never enter that
+retry path.
+
+When the current desired schema is complete, this new current-policy proof allows
+preservation without SQL, even if a premerge readiness receipt used an older policy.
+It does not relabel old execution as successful or replay an ambiguous operation.
+Before preservation, the existing operation-evidence channel retains a current-state
+observation bound to the run/attempt, candidate, execution authority, bundle, database,
+baseline, activity check, and historical report digest. A missing upload acknowledgment
+stops the boundary; a later attempt may reobserve without executing SQL.
+Pending migrations retain the existing authenticated readiness/rehearsal and strict
+first-write journal requirements. The no-write path is not a policy-transition
+exception for pending SQL. Successful application siblings and immutable packages
+remain under their existing independent authorities.
+
+## Validation
+
+Run `python3 scripts/test-release-lifecycle.py` for isolated ancestry, receipt, replay, cleanup, and single-authority tests. `python3 scripts/test-validation-resume.py` verifies per-gate preservation/invalidation behavior. Hosted workflow runs provide the external GitHub and live-runtime proof.
+
+## Durable queue and admission limits
+
+The scheduler derives both automatic and explicit pending authorization from one approved first-parent history frontier, not a second queue database. A merged explicit request binds its own validated PR head while package producer identity remains separate. Completion of an explicit transaction requires proof bound to its exact authorization; older live package bytes alone cannot discharge a new migration/configuration request. Legacy reader/dispatcher entry points delegate to this same frontier and admission path. It inspects the newest authorization for each affected target and keeps independent candidates in deterministic history order. A newer completed ClientApp release cannot hide an older unreleased Protect candidate. When only part of an older atomic transaction is superseded, that transaction remains explicitly retained until a validated combined successor exists; the scheduler does not split its authorized scope or silently discard the untouched targets.
+
+Fresh integration and recovered candidates share one admission predicate. Active direct-release runs, including legacy runs without a candidate title, block new dispatch. Direct run titles bind source PR, immutable validated candidate, and execution authority, so a failed exact attempt is retained rather than blindly replayed. Both successful and failed completion events wake the queue, and reusable validation/package evidence is consulted without dispatching validation again.
+
+Publication remains globally serialized. Current shared settings, migration, routing, and upload reconciliation have not yet been proven safe under concurrent resource reservations. The lifecycle mutex serializes admission decisions; the publisher mutex protects the current multi-target transaction. These controls do not constitute completed support for concurrent disjoint publication. An ambiguous dispatch or upload remains a reconciliation boundary, never evidence that retry is safe.
+
+### Publication evidence recovery
+
+The immutable operation transport retries only recognized transient downloads of
+an already selected artifact ID, at most three times within the existing publisher
+process deadline. It never returns to upload after a readback failure. Authorization
+errors, unknown errors, missing content and mismatched bytes remain blocked.
+
+Parallel publication retains bounded, attempt-qualified per-target diagnostics even
+when a child fails. An `invocationSubmission=not-entered` result proves only that
+invocation stopped at intent authorization/readback; it does not erase prior intent or authorize
+replay. Unknown failures remain `may-have-entered`. These diagnostic records do not
+replace durable deployment receipts, historical authorization or live acceptance.
+Older successful receipts retain their exact reviewed verifier compatibility.
+
+Legacy attempts that did not retain the submission boundary still require positive
+original transport or provider evidence. Empty provider history and old runtime
+provenance alone do not establish nonentry. New diagnostics cannot retroactively
+certify those attempts.

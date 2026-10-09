@@ -13,13 +13,34 @@ public static class UnifiedEventMapper
     private const string BusinessType = "Insurance";
     private const string ReportingOwner = "AgentPortal";
 
+    /// <summary>Read-only behavioral projection. No pipeline stamp is granted, so this cannot be persisted as a new fact.</summary>
+    public static IQueryable<AnalyticsEvent> ProjectBehaviorEvidence(IQueryable<AnalyticsEvent> query, bool includeMetadata = false) =>
+        query.Select(e => new AnalyticsEvent {
+            EventId = e.EventId, EventUtc = e.EventUtc, CommerceBusinessId = e.CommerceBusinessId,
+            AgentTrackingProfileId = e.AgentTrackingProfileId, SessionId = e.SessionId, VisitorId = e.VisitorId,
+            Host = e.Host, Environment = e.Environment, IsInternal = e.IsInternal, UserAgent = e.UserAgent,
+            WebDriver = e.WebDriver, IsHeadless = e.IsHeadless, HumanInteractionCount = e.HumanInteractionCount,
+            EngagedMilliseconds = e.EngagedMilliseconds, DwellMilliseconds = e.DwellMilliseconds,
+            MouseMoveCount = e.MouseMoveCount, ScrollPercent = e.ScrollPercent,
+            MetadataJson = includeMetadata ? e.MetadataJson : null
+        });
+
+    public static AnalyticsEvent LeadBehaviorEvidence(WebsiteLead lead) => new AnalyticsEvent {
+        EventId = lead.LeadId, CommerceBusinessId = lead.CommerceBusinessId, AgentTrackingProfileId = lead.AgentTrackingProfileId,
+        Host = lead.Host, Environment = lead.Environment, IsInternal = lead.IsInternal, UserAgent = lead.ClientUserAgent,
+        SessionId = lead.SessionId, VisitorId = lead.VisitorId
+    };
+
     public static AnalyticsEvent ToAnalytics(UnifiedEventContext ctx)
     {
+        if (ctx.IsBrowserSignal == true && AnalyticsEventCatalog.RequiresServerAuthority(ctx.EventName))
+            throw new InvalidOperationException("Browser observations cannot create verified server outcomes.");
         return new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
             PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
+            Url = ctx.Url,
             PageKey = ctx.PageKey,
             ElementKey = ctx.ElementKey,
             ButtonLabel = ctx.ButtonLabel,
@@ -35,12 +56,14 @@ public static class UnifiedEventMapper
             UtmMedium = ctx.UtmMedium,
             UtmCampaign = ctx.UtmCampaign,
             UtmId = ctx.UtmId,
+            UtmTerm = ctx.UtmTerm,
             UtmContent = ctx.UtmContent,
             MetaCampaignId = ctx.MetaCampaignId,
             MetaAdSetId = ctx.MetaAdSetId,
             MetaAdId = ctx.MetaAdId,
 
             Fbclid = ctx.Fbclid,
+            Oppref = OpenAiClickReference.Normalize(ctx.Oppref),
             AgentSlug = ctx.AgentSlug,
             AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
             CommerceBusinessId = ctx.CommerceBusinessId,
@@ -97,7 +120,7 @@ public static class UnifiedEventMapper
     {
         return new MetaSignalEvent
         {
-            CreatedUtc = DateTime.UtcNow,
+            CreatedUtc = ctx.EventUtc ?? DateTime.UtcNow,
 
             EventId = ctx.EventId ?? Guid.NewGuid().ToString(),
             EventName = ctx.EventName ?? "unknown",
@@ -150,8 +173,8 @@ public static class UnifiedEventMapper
             WebsiteContentVersionId = ctx.WebsiteContentVersionId,
             WebsiteBindingId = ctx.WebsiteBindingId,
 
-            Environment = null,
-            Host = null
+            Environment = ctx.Environment,
+            Host = ctx.Host
         };
     }
 
@@ -162,6 +185,18 @@ public static class UnifiedEventMapper
             : ctx.SiteKey,
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        behaviorKey = AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var behavior) ? behavior.Key : null,
+        actionKey = ctx.ActionKey ?? (AnalyticsEventCatalog.TryGetBehavior(ctx.EventName, out var action) ? action.Key : null),
+        oppref = OpenAiClickReference.Normalize(ctx.Oppref),
+        gclid = PaidAdsClickReference.NormalizeGoogle(ctx.Gclid),
+        ttclid = PaidAdsClickReference.NormalizeTikTok(ctx.Ttclid),
+        obref = OpenAiBrowserReference.Normalize(ctx.Obref),
+        fbc = ctx.Fbc,
+        fbp = ctx.Fbp,
+        canonicalOutcomeEventId = ctx.IsServerAuthority == true ? ctx.EventId : null,
+        measurementConsentAllowed = ctx.MeasurementConsentAllowed,
+        measurementConsentState = ctx.MeasurementConsentState,
+        measurementConsentSource = ctx.MeasurementConsentSource,
         payload = ctx.Metadata
     };
 }

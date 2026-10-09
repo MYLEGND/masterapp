@@ -19,19 +19,7 @@
                 @foreach (var metric in Shared.Crm.BusinessWorkspacePreferences.AvailableMetrics)
                 { <label class="me-3"><input type="checkbox" name="Metrics" value="@metric" checked="@preferences.Metrics.Contains(metric)" /> @metric</label> }
             </fieldset>
-            <label>Website inquiry recipient<select class="form-select" name="Recipient">
-                @{
-                    var currentRecipient = preferences.NotificationMemberId is { } memberId ? "member:" + memberId.ToString("D") : preferences.NotificationAgentTrackingProfileId is { } agentId ? "agent:" + agentId.ToString("D") : "";
-                }
-                @if (currentRecipient.Length > 0 && !Model.Recipients.Any(x => x.Key == currentRecipient)) { <option value="@currentRecipient" selected>Assigned recipient unavailable — choose an active recipient</option> }
-                <option value="" selected="@(currentRecipient.Length == 0)">Business owner</option>
-                @foreach (var recipient in Model.Recipients)
-                {
-                    var selected = recipient.Key == "member:" + preferences.NotificationMemberId?.ToString("D") || recipient.Key == "agent:" + preferences.NotificationAgentTrackingProfileId?.ToString("D");
-                    <option value="@recipient.Key" selected="@selected">@recipient.Label — @recipient.Email</option>
-                }
-            </select></label>
-            <p>Only active team members and assigned agents are eligible. If an assignment is removed, delivery waits until an eligible recipient is selected.</p>
+            <p class="mb-0">Website inquiry notifications are sent to the Business Profile Email on this scoped business account. Update the business profile email to change the notification destination.</p>
             <button class="btn btn-primary" type="submit">Save preferences</button>
         </form>
 
