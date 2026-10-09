@@ -27,21 +27,21 @@ jobs:
       - name: Checkout protected approved execution authority
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
       - name: Authenticate existing read-only Azure observation
         uses: azure/login@v2
         with:
-          client-id: \${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: \${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: \${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Audit original unresolved operation intents against live Azure
         shell: bash
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -166,7 +166,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legend-historical-azure-audit-\${{ github.run_id }}
-          path: \${{ runner.temp }}/legend-azure-operations-readonly.json
+          name: legend-historical-azure-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/legend-azure-operations-readonly.json
           retention-days: 14
           if-no-files-found: error
