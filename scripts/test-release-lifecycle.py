@@ -1200,6 +1200,22 @@ class AutomaticMergeRelease(unittest.TestCase):
         self.assertEqual("FAILED_NEEDS_REPAIR", blocked["state"])
         self.assertIn("bounded non-entry/exact-live recovery exhausted", blocked["retained"])
 
+    def test_nonpublishing_scope_still_requires_integrity_and_security(self):
+        api = Api()
+        pr = {'number': 78, 'head': {'sha': 'e' * 40}}
+        api.pages_map['pulls/78/files'] = [{'filename': 'scripts/validation-resume.py'}]
+        def denied_merge(*args):
+            self.fail('Incomplete control repair cannot merge')
+        api.api_map['pulls/78/merge'] = denied_merge
+        for integrity, validation in [('integrity denied', None), (None, ['security failed'])]:
+            with self.subTest(integrity=integrity), \
+                 patch.object(m, 'candidate_control_plane_integrity', return_value=integrity), \
+                 patch.object(m, 'ensure_readiness_progress', return_value=None), \
+                 patch.object(m, 'candidate_validation', return_value=validation) as checks:
+                self.assertEqual('VALIDATING', m.merge_validated(api, pr)['state'])
+                if integrity: checks.assert_not_called()
+                else: checks.assert_called_once_with(api, pr)
+
     @patch.object(m, "candidate_validation", return_value=None)
     def test_control_only_green_merge_defers_recovery_until_refreshed_checkout(self, _):
         api = Api()

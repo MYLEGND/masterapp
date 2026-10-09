@@ -4207,6 +4207,41 @@ READINESS_MAX_AGE_SECONDS = 900
 READINESS_WAIT_SECONDS = 900
 
 
+def readiness_scope(candidate, approved):
+    """Scope production readiness using only the approved impact classifier.
+
+    This never grants release admission. Nonpublishing repairs still need every
+    exact-head integrity/security/validation gate. A changed release request,
+    application input, unknown impact, or missing baseline remains required.
+    """
+    result = {'state': 'required', 'reason': 'production_impact_unproven',
+              'candidate': candidate, 'approved': approved}
+    try:
+        if not all(re.fullmatch(r'[a-f0-9]{40}', value or '') for value in (candidate, approved)):
+            return result
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate],
+                          capture_output=True, check=False).returncode:
+            return result
+        paths = subprocess.check_output(['git', 'diff', '--no-renames', '--name-only', '-z',
+                                         approved, candidate, '--']).decode().split('\0')
+        paths = sorted(path for path in paths if path)
+        if not paths or RELEASE_REQUEST_PATH in paths:
+            return dict(result, reason='release_request_or_empty_scope')
+        source = git_show_file(approved, 'scripts/validation-resume.py')
+        # Execute only this authenticated approved module, never candidate
+        # classifier code or candidate imports. It owns the existing path policy.
+        trusted = {'__name__': 'approved_readiness_impact', '__file__': __file__}
+        exec(compile(source, 'approved-validation-resume', 'exec'), trusted)
+        if not all(trusted['release_control_only_path'](path) for path in paths):
+            return dict(result, reason='application_or_unknown_input')
+        proof = dict(candidate=candidate, approved=approved, paths=paths,
+                     authorityDigest=hashlib.sha256(source.encode()).hexdigest())
+        return dict(proof, state='not-required', reason='approved_nonpublishing_control_scope',
+                    identity=hashlib.sha256(json.dumps(proof, sort_keys=True).encode()).hexdigest())
+    except (KeyError, ValueError, TypeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return result
+
+
 def readiness_targets(candidate, approved):
     paths = git_changed(approved, candidate)
     if 'Docs/releases/direct-release-request.json' not in paths:
@@ -4573,6 +4608,9 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
     approved_source = git_show_file(approved, 'scripts/validation-resume.py')
     if not re.search(r'^READINESS_SCHEMA = 1$', approved_source, re.M):
         return {'state': 'not-required', 'reason': 'initial_approved_authority_rollout', 'approved': approved}
+    scope = readiness_scope(candidate, approved)
+    if scope['state'] == 'not-required':
+        return scope
     targets = readiness_targets(candidate, approved)
     deadline = clock() + READINESS_WAIT_SECONDS
     while True:

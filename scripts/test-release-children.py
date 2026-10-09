@@ -23,6 +23,69 @@ cloud = load('deploy-founder-cloudflare')
 router = load('release-router')
 
 
+class ReadinessScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = load('validation-resume')
+        self.approved = '81b9962968048cc2ff473d441d3dbe584f7f2865'
+        self.candidate = 'bab9260795df438ddc3d0b6723b8ec2d5d4f6024'
+        self.source = self.authority.git_show_file(self.approved, 'scripts/validation-resume.py')
+
+    def test_scope_uses_only_approved_policy_and_conservative_complete_diff(self):
+        from types import SimpleNamespace
+        for paths, expected in [(['scripts/validation-resume.py'], 'not-required'),
+                (['scripts/test-release-children.py'], 'not-required'),
+                (['Docs/releases/direct-release-request.json'], 'required'),
+                (['Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs'], 'required'),
+                (['AgentPortal/Program.cs'], 'required'), (['Directory.Build.props'], 'required'),
+                (['unclassified.txt'], 'required'), ([], 'required'),
+                (['AgentPortal/Program.cs', 'Docs/moved.cs'], 'required')]:
+            with self.subTest(paths=paths), \
+                 patch.object(self.authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(self.authority.subprocess, 'check_output', return_value=('\0'.join(paths) + '\0').encode()) as diff, \
+                 patch.object(self.authority, 'git_show_file', return_value=self.source) as source, \
+                 patch.object(self.authority, 'release_control_only_path', return_value=True):
+                result = self.authority.readiness_scope(self.candidate, self.approved)
+                self.assertEqual(expected, result['state'])
+                self.assertIn('--no-renames', diff.call_args.args[0])
+                self.assertIn('-z', diff.call_args.args[0])
+                for call in source.call_args_list:
+                    self.assertEqual(self.approved, call.args[0])
+        with patch.object(self.authority.subprocess, 'run', return_value=SimpleNamespace(returncode=1)):
+            self.assertEqual('required', self.authority.readiness_scope(self.candidate, self.approved)['state'])
+        self.assertEqual('required', self.authority.readiness_scope('invalid', self.approved)['state'])
+
+    def test_nonpublication_scope_never_invokes_provider_or_rehearsal(self):
+        import os
+        lifecycle = load('release-lifecycle')
+        probe = load('migration-probe-package')
+        from types import SimpleNamespace
+        scope = dict(state='not-required', reason='approved_nonpublishing_control_scope', identity='f' * 64,
+                     candidate=self.candidate, approved=self.approved)
+        api = SimpleNamespace(repo='owner/repo', token='fixture', ref=lambda _: self.approved)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request',
+                                     'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_RUN_ATTEMPT': '1',
+                                     'GITHUB_OUTPUT': str(Path(temporary) / 'output')}), \
+             patch.object(self.authority, 'approved_head_preflight', return_value=dict(current=True, approvedHeadSha=self.approved)), \
+             patch.object(self.authority, 'git_show_file', return_value=self.source), \
+             patch.object(self.authority, 'readiness_scope', return_value=scope), \
+             patch.object(self.authority, 'readiness_evidence') as evidence, \
+             patch.object(lifecycle, 'VALIDATION_AUTHORITY', self.authority), \
+             patch.object(lifecycle, 'readiness_context', return_value=({}, self.approved, self.candidate, [])), \
+             patch.object(lifecycle, '_readiness_probe') as provider, \
+             patch.object(lifecycle, '_readiness_module') as mutation, \
+             patch.object(probe, 'AUTHORITY', self.authority):
+            self.assertEqual(scope, self.authority.require_readiness(api.repo, self.candidate))
+            self.assertIsNone(lifecycle._ensure_readiness_progress(api, {'head': {'sha': self.candidate}}))
+            self.assertIsNone(probe.prepare_rehearsal_candidate(self.candidate, Path(temporary), Path(temporary) / 'prepare'))
+            self.assertEqual(scope, lifecycle.readiness_observe(api, 1, Path(temporary)))
+            self.assertEqual(scope, lifecycle.readiness_finalize(api, 1, Path(temporary)))
+            evidence.assert_not_called(); provider.assert_not_called(); mutation.assert_not_called()
+            (Path(temporary) / 'observation.json').write_text('{}')
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_SCOPE_CHANGED'):
+                lifecycle.readiness_finalize(api, 1, Path(temporary))
+
+
 class RehearsalReceiptReuseTests(unittest.TestCase):
     def test_binding_an_existing_exact_rehearsal_executes_zero_new_sql(self):
         import os
