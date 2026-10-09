@@ -667,6 +667,34 @@ class ApprovedReleaseResumePolicy(unittest.TestCase):
         self.assertIn('Reconcile complete immutable release transaction', workflow)
 
 
+    def test_trusted_lifecycle_binds_runtime_before_durable_recovery(self):
+        workflow=(ROOT.parent / '.github/workflows/legend-release-lifecycle.yml').read_text()
+        maintain=workflow.split('  maintain:',1)[1]
+        checkout=maintain.index('ref: legend/approved-changes')
+        install=maintain.index('name: Install canonical durable operation transport')
+        bind=maintain.index('name: Bind canonical lifecycle evidence runtime')
+        integrate=maintain.index('name: Integrate ready approved change and start direct release')
+        resume=maintain.index('name: Resume ready changes and corrections on retained branches')
+        self.assertLess(checkout, install)
+        self.assertLess(install, bind)
+        self.assertLess(bind, integrate)
+        self.assertLess(bind, resume)
+        self.assertEqual(1, maintain.count('uses: ./scripts/release-artifacts'))
+        self.assertNotIn('github.event.pull_request.head.sha', maintain[:bind])
+
+    def test_single_authenticated_probe_extracts_at_verified_root(self):
+        workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
+        download=workflow.split('      - name: Reuse immutable migration probe without rebuilding\n',1)[1].split('      - name:',1)[0]
+        verify=workflow.split('      - name: Verify retained migration probe identity and digest\n',1)[1].split('      - uses:',1)[0]
+        # ID-based download defaults to an artifact-name child directory even
+        # for one ID. The verifier/observer consume the exact root below.
+        self.assertIn('artifact-ids: ${{ steps.probe.outputs.artifactId }}', download)
+        self.assertIn('run-id: ${{ steps.probe.outputs.runId }}', download)
+        self.assertIn('merge-multiple: true', download)
+        self.assertIn('path: ${{ runner.temp }}/migration-probe', download)
+        self.assertIn('--directory "$RUNNER_TEMP/migration-probe"', verify)
+        self.assertNotIn('pattern:', download)
+
     def test_direct_release_reuses_only_exact_validated_package_evidence(self):
         workflow=(ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text()
         self.assertIn('Reuse exact successful validation package when available', workflow)
