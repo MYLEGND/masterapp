@@ -338,3 +338,18 @@ test('authorization and unknown read errors never trigger retry or another uploa
     assert.equal(client.state.uploads, 1);
   }
 });
+
+
+test('pinned SDK delayed artifact visibility recovers without a second upload', async () => {
+  const {ArtifactNotFoundError} = require('@actions/artifact');
+  const client = durableClient();
+  const download = client.downloadArtifact;
+  let attempts = 0;
+  client.downloadArtifact = async (...args) => {
+    if (++attempts === 1) throw new ArtifactNotFoundError();
+    return download(...args);
+  };
+  assert.deepEqual(await publish(client, name, record, {sleep: async () => {}}), {artifactId: 45});
+  assert.equal(attempts, 2);
+  assert.equal(client.state.uploads, 1);
+});
