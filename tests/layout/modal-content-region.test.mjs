@@ -155,7 +155,7 @@ test('every authenticated mobile page consumes the full width and retains an ove
 test('canonical mobile action authority is explicit and cannot capture unrelated page controls',()=>{
   const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const authorityStart=css.indexOf('Canonical authenticated-mobile action authority');
-  const authorityEnd=css.indexOf('One close/collapse glyph everywhere',authorityStart);
+  const authorityEnd=css.indexOf('Close glyphs belong to normalized modal close controls',authorityStart);
   assert(authorityStart>=0 && authorityEnd>authorityStart);
   const authority=css.slice(authorityStart,authorityEnd);
   const actionAuthorityEnd=css.indexOf('html[data-legend-modal-region] body.legend-app .modal .modal-header',authorityStart);
@@ -473,15 +473,15 @@ test('mobile conversational composers own the visual viewport and stay compact a
   const shared=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
   const messagingJs=readFileSync(new URL('../../SHARED/wwwroot/js/messaging.js',import.meta.url),'utf8');
 
-  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-workspace \{[\s\S]*?flex: 1 1 auto;[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
+  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-workspace \{[\s\S]*?flex: 1 1 0;[\s\S]*?height: auto;[\s\S]*?overflow: hidden;/);
   assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
-  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 48px;[\s\S]*?border-radius: 26px;/);
-  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 34px;[\s\S]*?max-height: min\(112px, 20dvh\);/);
+  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 48px;[\s\S]*?border-radius: 26px;/);
+  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 34px;[\s\S]*?max-height: min\(112px, 20dvh\);/);
   assert.match(aiCss,/\.legend-founder-ai-shell\[data-legend-mobile-sheet\] \{[\s\S]*?--legend-mobile-sheet-height: var\(--legend-ai-viewport-height, 100dvh\);[\s\S]*?--legend-mobile-sheet-bottom: var\(--legend-ai-visual-bottom, 0px\);/);
-  assert.match(aiCss,/@media \(max-width: 820px\) \{[\s\S]*?\.legend-founder-ai-composer \{[\s\S]*?margin: 0;/);
+  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-composer \{[\s\S]*?margin: 0;/);
   assert.doesNotMatch(aiCss,/margin: 0 0 var\(--legend-ai-visual-bottom, 0px\)/);
   assert.match(aiCss,/\.legend-founder-ai-composer-tool \{[\s\S]*?display: none;/);
-  assert.match(aiCss,/data-legend-sheet-snap="half"[\s\S]*?calc\(54% - 66px\)/);
+  assert.match(aiCss,/data-legend-sheet-snap="half"[\s\S]*?calc\(54% - 66px - env\(safe-area-inset-bottom\)\)/);
   assert.match(aiJs,/window\.innerHeight - height - top/);
   assert.match(aiJs,/--legend-ai-visual-bottom/);
   assert.match(aiJs,/window\.LegendModal\?\.registerMobileSheet\?\.\(mobileSheet\)/);
@@ -864,4 +864,24 @@ test('custom dialog registration places offset on the fixed overlay once, not it
 test('nested Bootstrap dialogs each retain one overlay region and their original parent relationship',()=>{
   const f=dialogFixture(),outer=f.node('modal'),panel=f.node('modal-dialog',outer),inner=f.node('modal',panel);outer.panels=[panel];
   f.register(outer);f.register(inner);assert('data-legend-modal-surface' in outer.attributes);assert('data-legend-modal-surface' in inner.attributes);assert.equal(inner.parentElement,panel);
+});
+
+test('conversation modal content never inherits standalone quick-view centering or close-label glyphs',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  const desktop=css.slice(css.indexOf('/* Quick View sheets'),css.indexOf('/* One shared content-region'));
+  assert.match(desktop,/\[data-legend-mobile-sheet\]:not\(\.modal-content\)/);
+  assert.doesNotMatch(desktop,/\[data-legend-mobile-sheet\](?:\.open)?\s*\{/);
+  assert.doesNotMatch(css,/\[aria-label\^="Close" i\]/);
+  assert.match(css,/\[data-legend-mobile-sheet\]:not\(\.modal-content\) :is\(button/);
+  assert.doesNotMatch(css,/\.legend-founder-ai-modal button/);
+});
+
+test('mobile hamburger toggles the same sidebar and visual viewport scroll updates composer bounds',()=>{
+  const js=readFileSync(new URL('../../AgentPortal/wwwroot/js/legend-founder-ai.js',import.meta.url),'utf8');
+  let open=false;let click;
+  const context={mobileMenu:{addEventListener:(_,handler)=>click=handler},modalElement:{classList:{contains:()=>open}},setSidebarOpen:value=>open=value};
+  vm.createContext(context);
+  const handler=js.slice(js.indexOf('    mobileMenu?.addEventListener('),js.indexOf('    composerMenu?.addEventListener('));
+  vm.runInContext(handler,context);click();assert.equal(open,true);click();assert.equal(open,false);
+  assert.match(js,/visualViewport\?\.addEventListener\('scroll', syncViewportHeight\)/);
 });
