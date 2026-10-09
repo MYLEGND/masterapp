@@ -506,15 +506,21 @@ class ComponentIsolationTests(unittest.TestCase):
         shutil.rmtree(self.root / 'tools')
         image_id, container_id = 'sha256:' + 'c' * 64, 'd' * 64
         calls = []
+        selected_image = None
         def run(command, **kwargs):
+            nonlocal selected_image
             calls.append(command)
             value = ''
             if command[:3] == ['docker', 'image', 'inspect']:
+                self.assertNotIn('--platform', command)
+                self.assertEqual(image_id, command[-1])
                 value = json.dumps([dict(Os='linux', Architecture='amd64', Id=image_id)])
             elif command[:2] == ['docker', 'create']:
+                selected_image = command[-1]
+                self.assertIn('--pull=missing', command)
                 value = container_id
             elif command[:3] == ['docker', 'container', 'inspect']:
-                value = json.dumps([dict(Image=image_id, State=dict(Running=False))])
+                value = json.dumps([dict(Image=image_id, Config=dict(Image=selected_image), State=dict(Running=False))])
             elif command[:2] == ['docker', 'cp']:
                 target = Path(command[-1]); target.mkdir()
                 for relative in self.package.PACKAGE_TOOL_PATHS[target.name]:
@@ -522,8 +528,8 @@ class ComponentIsolationTests(unittest.TestCase):
             return type('Result', (), dict(stdout=value, returncode=0))()
         with patch.object(self.package.subprocess, 'run', side_effect=run):
             proof = self.package.prepare_isolated_tools(self.root)
-        self.assertEqual(2, sum(command[:2] == ['docker', 'create'] for command in calls))
-        self.assertEqual(2, sum(command[:2] == ['docker', 'rm'] for command in calls))
+        self.assertEqual(3, sum(command[:2] == ['docker', 'create'] for command in calls))
+        self.assertEqual(3, sum(command[:2] == ['docker', 'rm'] for command in calls))
         self.assertFalse(any(command[:2] == ['docker', 'start'] for command in calls))
         self.assertEqual(self.package.PACKAGE_TOOL_IMAGES['node'], proof['tools']['node']['image'])
         self.assertEqual(image_id, proof['tools']['node']['imageId'])

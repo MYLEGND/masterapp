@@ -305,42 +305,37 @@ def prepare_isolated_tools(stage, *, timeout=240):
         return completed.stdout
     proofs = {}
     for kind, image in PACKAGE_TOOL_IMAGES.items():
-        observed = subprocess.run(['docker', 'image', 'inspect', '--platform', 'linux/amd64', image],
-            text=True, capture_output=True, timeout=remaining())
-        if observed.returncode:
-            subprocess.run(['docker', 'pull', '--platform', 'linux/amd64', image],
-                check=True, timeout=remaining())
-            records = json.loads(capture('docker', 'image', 'inspect', '--platform', 'linux/amd64', image))
-        else:
-            if len(observed.stdout) > 1024 * 1024:
-                raise ValueError('Pinned tool provider response exceeds budget')
-            records = json.loads(observed.stdout)
-        if (not isinstance(records, list) or len(records) != 1 or
-                records[0].get('Os') != 'linux' or records[0].get('Architecture') != 'amd64' or
-                not re.fullmatch(r'sha256:[a-f0-9]{64}', records[0].get('Id', ''))):
-            raise ValueError('Pinned tool platform or image identity unproven')
-        image_id = records[0]['Id']
-        proofs[kind] = dict(image=image, imageId=image_id)
-        if kind == 'sdk':
-            continue
-        identity = capture('docker', 'create', '--platform', 'linux/amd64', image).strip()
+        # Resolve through a stopped container. Older hosted Docker clients do not
+        # support image-inspect --platform; inspecting the selected image ID is
+        # portable and still proves exactly which immutable platform was selected.
+        identity = capture('docker', 'create', '--platform', 'linux/amd64', '--pull=missing', image).strip()
         if not re.fullmatch(r'[a-f0-9]{64}', identity):
             raise ValueError('Pinned tool extraction container identity unproven')
         try:
             records = json.loads(capture('docker', 'container', 'inspect', identity))
-            if len(records) != 1 or records[0].get('Image') != image_id or records[0].get('State', {}).get('Running'):
+            if (len(records) != 1 or records[0].get('State', {}).get('Running') is not False or
+                    records[0].get('Config', {}).get('Image') != image or
+                    not re.fullmatch(r'sha256:[a-f0-9]{64}', records[0].get('Image', ''))):
                 raise ValueError('Pinned tool extraction image mismatch')
-            destination = tool_root / kind
-            if destination.exists():
-                raise ValueError('Pinned tool extraction destination already exists')
-            subprocess.run(['docker', 'cp', identity + ':/usr/local', str(destination)],
-                check=True, timeout=remaining())
-            select_tool_inputs(destination, PACKAGE_TOOL_PATHS[kind], deadline=deadline)
+            image_id = records[0]['Image']
+            selected = json.loads(capture('docker', 'image', 'inspect', image_id))
+            if (len(selected) != 1 or selected[0].get('Os') != 'linux' or
+                    selected[0].get('Architecture') != 'amd64' or selected[0].get('Id') != image_id):
+                raise ValueError('Pinned tool platform or image identity unproven')
+            proofs[kind] = dict(image=image, imageId=image_id)
+            if kind != 'sdk':
+                destination = tool_root / kind
+                if destination.exists():
+                    raise ValueError('Pinned tool extraction destination already exists')
+                subprocess.run(['docker', 'cp', identity + ':/usr/local', str(destination)],
+                    check=True, timeout=remaining())
+                select_tool_inputs(destination, PACKAGE_TOOL_PATHS[kind], deadline=deadline)
         finally:
             # Cleanup has one explicit 30-second reserve, no retry multiplication.
             subprocess.run(['docker', 'rm', identity], check=True, capture_output=True, timeout=30)
-        proofs[kind]['paths'] = list(PACKAGE_TOOL_PATHS[kind])
-        proofs[kind]['tree'] = verified_tool_tree(destination, deadline=deadline)
+        if kind != 'sdk':
+            proofs[kind]['paths'] = list(PACKAGE_TOOL_PATHS[kind])
+            proofs[kind]['tree'] = verified_tool_tree(destination, deadline=deadline)
     return dict(schemaVersion=1, platform='linux/amd64', tools=proofs)
 
 
