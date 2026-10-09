@@ -91,6 +91,15 @@ class ReadinessRefreshTests(unittest.TestCase):
                          m.readiness_failure_diagnostic(error))
         self.assertEqual('unclassified-or-nonrecoverable', m.readiness_failure_classification(error))
 
+    def test_contract_failure_reports_exact_reason_without_authorizing_retry(self):
+        for message, code in (
+            ('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required', 'MIGRATION_RUNTIME_DEPENDENCIES_CHANGED'),
+            ('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions', 'MIGRATION_METADATA_DIFFERS_FROM_APPROVED')):
+            error = ValueError(message)
+            self.assertEqual(code, m.readiness_failure_diagnostic(error)['reasonCode'])
+            self.assertEqual('unclassified-or-nonrecoverable', m.readiness_failure_classification(error))
+            self.assertEqual('UNCLASSIFIED_ERROR_REDACTED', m.readiness_failure_diagnostic(ValueError(message + ' secret'))['reasonCode'])
+
     def test_readiness_diagnostic_never_serializes_arbitrary_payloads(self):
         for error in (RuntimeError('token=PRIVATE_SENTINEL'),
                       RuntimeError('READINESS_APPROVED_BASE_CHANGED token=PRIVATE_SENTINEL'),
