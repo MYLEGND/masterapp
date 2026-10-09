@@ -2896,6 +2896,38 @@ class ResourceAdmission(unittest.TestCase):
              patch.object(m, '_admission_settled', return_value=False):
             self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
 
+    def test_completed_legacy_workflow_does_not_consume_modern_admission_artifacts(self):
+        # Historical exact-source release (2026-09-25) had no admission job.
+        # Its original Azure upload history is still owned by the operation journal.
+        legacy = '9b9153ab133a905af7d99151c841cd6c87d0d19a'
+        approved = m.git('rev-parse', 'HEAD').stdout.strip()
+        self.run.update(head_sha=legacy, status='completed', conclusion='failure')
+        self.candidate['executionAuthority'] = approved
+        self.assertTrue(m._completed_pre_admission_direct_workflow(
+            self.api, self.run, approved))
+        with patch.object(m, 'successful_release',
+                          side_effect=AssertionError('legacy must not query success jobs')), \
+             patch.object(m, '_admission_nonmutating_terminal',
+                          side_effect=AssertionError('legacy must not query artifacts')), \
+             patch.object(m, '_admission_records',
+                          side_effect=AssertionError('legacy must not fabricate admission')):
+            self.assertEqual([], m.admission_conflicts(self.api, self.candidate, current_run=99))
+
+    def test_legacy_optimization_does_not_skip_active_or_modern_workflows(self):
+        legacy = '9b9153ab133a905af7d99151c841cd6c87d0d19a'
+        approved = m.git('rev-parse', 'HEAD').stdout.strip()
+        self.run.update(head_sha=legacy, status='in_progress', conclusion=None)
+        self.assertFalse(m._completed_pre_admission_direct_workflow(self.api, self.run, approved))
+        self.run.update(status='completed', conclusion='failure')
+        self.assertFalse(m._completed_pre_admission_direct_workflow(
+            self.api, self.run, 'f' * 40))
+        self.assertFalse(m._completed_pre_admission_direct_workflow(
+            self.api, dict(self.run, head_repository={'full_name': 'elsewhere/other'}), approved))
+        self.assertFalse(m._completed_pre_admission_direct_workflow(
+            self.api, dict(self.run, head_sha=approved), approved))
+        self.assertFalse(m._completed_pre_admission_direct_workflow(
+            self.api, dict(self.run, head_sha='g' * 40), approved))
+
     def test_admission_false_gate_with_omitted_downstream_jobs_is_nonentry(self):
         self.run.update(status='completed', conclusion='failure')
         self.api.pages_map['actions/runs/98/attempts/1/jobs'] = [
