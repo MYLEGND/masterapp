@@ -756,9 +756,18 @@ def candidate_control_plane_integrity(api, pr, names):
         'overlap = set(old_keys).intersection(new_keys)',
         'if not overlap',
         'ancestor(old_revision, new_revision)',
-        'required_targets=overlap',
     )):
         return 'Candidate weakened strict descendant target-scoped stale-lease supersession'
+    receipt_supersession_source = _function_source(
+        source['lifecycle'], lifecycle_tree, '_forward_supersession_receipt_proven'
+    )
+    if not all(token in receipt_supersession_source for token in (
+        '_app_only_admission_keys(record)',
+        '_validate_admission_record_scope(candidate)',
+        'overlap = set(old_keys).intersection(new_keys)',
+        'required_targets=overlap',
+    )):
+        return 'Candidate weakened per-target receipt gate for descendant leases'
     if not all(token in live_settlement_source for token in (
         '_app_only_admission_keys(record)',
         "row.get('app')",
@@ -768,7 +777,8 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate weakened canonical live-provenance stale-lease settlement'
     if not all(token in admission_conflict_source for token in (
         'live_snapshot_loaded = False',
-        '_forward_supersedes_completed_app_lease(api, run, record, candidate)',
+        '_forward_supersedes_completed_app_lease(record, candidate)',
+        '_forward_supersession_receipt_proven(api, run, record, candidate)',
         '_historical_application_publications_completed(api, run, record)',
         'live_revisions()',
         '_admission_covered_by_live_provenance(record, live_snapshot)',
@@ -2911,7 +2921,7 @@ def _historical_application_publications_completed(api, run, record, *, required
     return required.issubset(set(observed))
 
 
-def _forward_supersedes_completed_app_lease(api, run, record, candidate):
+def _forward_supersedes_completed_app_lease(record, candidate):
     """Roll forward the overlapping app slice of a completed app-only lease.
 
     Application writes are independently journaled per target. A newer strict
@@ -2948,11 +2958,32 @@ def _forward_supersedes_completed_app_lease(api, run, record, candidate):
         return False
 
     try:
-        return (ancestor(old_revision, new_revision) and
-                _historical_application_publications_completed(
-                    api, run, record, required_targets=overlap))
+        return ancestor(old_revision, new_revision)
     except Exception:
         return False
+
+
+def _forward_supersession_receipt_proven(api, run, record, candidate):
+    """Independently prove old operation success for every newly overlapping app.
+
+    Preserve the historical strict-ancestry function contract. Admission must
+    require *both* ancestor proof and per-overlap receipt proof; neither alone
+    can discard an unsettled upload lease.
+    """
+    old_keys = _app_only_admission_keys(record)
+    new_keys = _app_only_admission_keys(candidate)
+    if new_keys is None:
+        try:
+            new_keys = _validate_admission_record_scope(candidate)
+        except Exception:
+            return False
+    if old_keys is None or new_keys is None:
+        return False
+    overlap = set(old_keys).intersection(new_keys)
+    if not overlap:
+        return False
+    return _historical_application_publications_completed(
+        api, run, record, required_targets=overlap)
 
 
 def _admission_covered_by_live_provenance(record, rows):
@@ -3034,7 +3065,8 @@ def admission_conflicts(api, candidate, *, current_run):
             if (
                 not own_run
                 and run.get('status') == 'completed'
-                and _forward_supersedes_completed_app_lease(api, run, record, candidate)
+                and _forward_supersedes_completed_app_lease(record, candidate)
+                and _forward_supersession_receipt_proven(api, run, record, candidate)
             ):
                 continue
             if (
