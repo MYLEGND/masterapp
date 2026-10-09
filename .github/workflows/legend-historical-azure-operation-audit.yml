@@ -1,12 +1,11 @@
 name: LEGEND historical Azure operation audit (read only)
 
-# One-shot audit starts on its own approved merge. No publication, lease changes,
+# One-shot audit starts after the proven protected-base lifecycle event. No publication, lease changes,
 # database access, reruns, or Kudu POST operations are permitted.
 on:
-  push:
-    branches: [legend/approved-changes]
-    paths:
-      - .github/workflows/legend-historical-azure-operation-audit.yml
+  workflow_run:
+    workflows: [LEGEND release branch lifecycle]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,7 +18,12 @@ concurrency:
 
 jobs:
   audit:
-    if: github.ref == 'refs/heads/legend/approved-changes' && github.event_name == 'push'
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'legend/approved-changes' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_sha == 'e487b09fcc496c77ba66771ea53b948892363e41'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: Production
