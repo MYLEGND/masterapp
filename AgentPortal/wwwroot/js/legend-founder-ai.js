@@ -11,7 +11,7 @@
     const DESIGN_TOKEN_URL = '/design/legend-design.tokens.json';
     const HISTORY_URL = modalElement.dataset.historyUrl;
     const HISTORY_REFRESH_MS = 20000;
-    const MOBILE_QUERY = '(max-width: 820px)';
+    const MOBILE_QUERY = '(max-width: 900px)';
 
     const transcript = document.getElementById('legendFounderAiTranscript');
     const welcome = document.getElementById('legendFounderAiWelcome');
@@ -263,6 +263,8 @@
         setSidebarOpen(false);
         syncControlPlacement();
     });
+
+    window.visualViewport?.addEventListener('scroll', syncViewportHeight);
 
     window.visualViewport?.addEventListener(
         'resize',
@@ -1397,7 +1399,7 @@
 
     mobileMenu?.addEventListener(
         'click',
-        () => setSidebarOpen(true)
+        () => setSidebarOpen(!modalElement.classList.contains('is-sidebar-open'))
     );
 
     composerMenu?.addEventListener(

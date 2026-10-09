@@ -142,7 +142,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
 
 
     /* Quick View sheets use the same desktop width/height authority as modals. */
-    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] {
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet]:not(.modal-content) {
         box-sizing: border-box;
         top: 50%;
         left: 50%;
@@ -152,7 +152,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         transform: translate(-50%, -50%) scale(.97);
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet].open {
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet]:not(.modal-content).open {
         transform: translate(-50%, -50%) scale(1);
     }
 
@@ -196,7 +196,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         select,
         .form-control,
         .form-select
-    ) {
+    ):not(.legend-founder-ai-input-wrap textarea, .messaging-command-center-search, .messaging-send-form textarea) {
         border: 1px solid var(--legend-modal-line);
         border-radius: var(--legend-app-radius-compact);
         background: var(--legend-app-control);
@@ -1020,57 +1020,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         z-index: 8 !important;
     }
 
-    /*
-     * One close/collapse glyph everywhere: the same boxed arrow language used
-     * by the approved Website Studio control, without changing button behavior.
-     */
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
-    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "]) {
-        position: relative;
-        display: inline-grid !important;
-        flex: 0 0 var(--legend-mobile-control-height);
-        place-items: center;
-        width: var(--legend-mobile-control-height) !important;
-        min-width: var(--legend-mobile-control-height) !important;
-        height: var(--legend-mobile-control-height) !important;
-        min-height: var(--legend-mobile-control-height) !important;
-        padding: 0 !important;
-        border: 1px solid var(--legend-mobile-gold) !important;
-        border-radius: 999px !important;
-        background: color-mix(in srgb, var(--legend-mobile-surface) 95%, transparent) !important;
-        background-image: none !important;
-        color: transparent !important;
-        font-size: 0 !important;
-        line-height: 0 !important;
-        opacity: 1 !important;
-        box-shadow: 0 8px 24px #0005 !important;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
-    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::before {
-        content: "";
-        width: 16px;
-        height: 16px;
-        border: 1.5px solid var(--legend-mobile-text);
-        border-radius: 1px;
-    }
-
-    html[data-legend-modal-region] body.legend-app
-    :is([data-legend-modal-panel], .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)), .ai-drawer[data-legend-modal-surface], [data-legend-mobile-sheet], .expense-lens-week-panel)
-    :is(.btn-close, #btnCloseDrawer, [aria-label^="Close" i], [class$="-close"], [class*="-close "])::after {
-        content: "";
-        position: absolute;
-        left: 10px;
-        top: 13px;
-        width: 8px;
-        height: 8px;
-        border: solid var(--legend-mobile-text);
-        border-width: 0 0 1.5px 1.5px;
-        transform: rotate(45deg);
-    }
-
+    /* Close glyphs belong to normalized modal close controls, never aria-label matches. */
     html[data-legend-modal-region] body.legend-app [data-legend-modal-surface]:not(.modal) > [data-legend-modal-panel] >
     :is([class$="-head"], [class*="-head "], [class$="-header"], [class*="-header "], [class$="__head"], [class*="__head "], [class$="__header"], [class*="__header "], header),
     html[data-legend-modal-region] body.legend-app .modal[data-legend-modal-surface]:not(:has(> .modal-dialog)) >
@@ -1129,7 +1079,7 @@ html[data-legend-modal-region] body .modal .modal-body {
         line-height: 1.08 !important;
     }
 
-    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet] :is(button, .btn, a.btn) {
+    html[data-legend-modal-region] body.legend-app [data-legend-mobile-sheet]:not(.modal-content) :is(button, .btn, a.btn) {
         min-height: var(--legend-mobile-control-height) !important;
         padding: 6px 9px !important;
         border-radius: 8px !important;
@@ -6446,9 +6396,9 @@ header .legend-global-nav .container-fluid {
     overflow: hidden;
     border: 1px solid rgba(224,184,83,.58);
     border-radius: var(--legend-app-radius);
-    background: #ffffff;
-    color: #10213a;
-    box-shadow: 0 34px 88px rgba(2,10,28,.42), inset 0 1px 0 rgba(255,255,255,.96);
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
+    box-shadow: 0 34px 88px rgba(2,10,28,.42), inset 0 1px 0 rgba(255,255,255,.04);
     outline: none;
 }
 
@@ -6478,7 +6428,7 @@ header .legend-global-nav .container-fluid {
 }
 .messaging-thread-header h3,
 .messaging-thread-empty h3 {
-    color: #10213a;
+    color: var(--legend-app-on-dark);
 }
 
 
@@ -7516,26 +7466,26 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
     min-height: 0;
     padding: 1rem;
-    border-right: 1px solid #ead39e;
-    background: #fffaf0;
-    color: #10213a;
+    border-right: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface);
+    color: var(--legend-app-on-dark);
 }
 
 .messaging-command-center-search,
 .messaging-send-form textarea {
     width: 100%;
-    border: 1px solid #d9a53a;
+    border: 1px solid var(--legend-app-control-line);
     border-radius: 13px;
     appearance: none;
-    background: #ffffff;
-    color: #10213a;
-    caret-color: #10213a;
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
+    caret-color: var(--legend-app-on-dark);
     font: inherit;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 .messaging-command-center-search::placeholder,
 .messaging-send-form textarea::placeholder {
-    color: #68758a;
+    color: var(--legend-app-on-dark-muted);
 }
 
 .messaging-command-center-search {
@@ -7561,8 +7511,8 @@ header .legend-global-nav .container-fluid {
     padding: 0.4rem;
     border: 1px solid rgba(211,159,45,.58);
     border-radius: 14px;
-    background: #ffffff;
-    color: #10213a;
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
     box-shadow: 0 18px 34px rgba(15,35,68,.16);
 }
 
@@ -7575,7 +7525,7 @@ header .legend-global-nav .container-fluid {
     border: 0;
     border-radius: 10px;
     background: transparent;
-    color: #10213a;
+    color: var(--legend-app-on-dark);
     text-align: left;
     cursor: pointer;
 }
@@ -7595,14 +7545,14 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-search-result strong {
-    color: #10213a;
+    color: var(--legend-app-on-dark);
     font-size: 0.84rem;
 }
 
 .messaging-search-result small,
 .messaging-search-empty,
 .messaging-list-empty {
-    color: #5b687c;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.75rem;
 }
 
@@ -7631,8 +7581,8 @@ header .legend-global-nav .container-fluid {
     border: 1px solid rgba(212, 170, 71, 0.35);
     border-radius: var(--messaging-card-radius);
     margin-bottom: 0.5rem;
-    background: #ffffff;
-    color: #10213a;
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
     text-align: left;
     cursor: pointer;
     transition: background 0.16s ease, box-shadow 0.16s ease;
@@ -7640,7 +7590,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-item:hover {
     background: #fff8e8;
-    box-shadow: inset 3px 0 0 #d9a53a;
+    box-shadow: inset 3px 0 0 var(--legend-app-control-line);
 }
 .messaging-conversation-item.is-active {
     border-color: #b77d12;
@@ -7653,7 +7603,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-conversation-item.is-unread .messaging-conversation-title {
-    color: #10213a;
+    color: var(--legend-app-on-dark);
 }
 .messaging-conversation-item.is-unread .messaging-conversation-preview {
     color: #39485f;
@@ -7674,7 +7624,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-title {
     overflow: hidden;
-    color: #10213a;
+    color: var(--legend-app-on-dark);
     font-size: 0.86rem;
     font-weight: 850;
     text-overflow: ellipsis;
@@ -7780,8 +7730,8 @@ header .legend-global-nav .container-fluid {
     min-height: 0;
     overflow: hidden;
     padding: 1.15rem 1.3rem 1rem;
-    background: #ffffff;
-    color: #10213a;
+    background: var(--legend-app-surface-elevated);
+    color: var(--legend-app-on-dark);
 }
 
 .messaging-thread-empty {
@@ -7790,7 +7740,7 @@ header .legend-global-nav .container-fluid {
     place-content: center;
     min-height: 0;
     padding: 2rem;
-    color: #5b687c;
+    color: var(--legend-app-on-dark-muted);
     text-align: center;
 }
 
@@ -7803,7 +7753,7 @@ header .legend-global-nav .container-fluid {
 .messaging-attachment-note,
 .messaging-draft-intro {
     margin: 0;
-    color: #5b687c;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.8rem;
 }
 
@@ -7873,9 +7823,9 @@ header .legend-global-nav .container-fluid {
     overflow-y: auto;
     padding: 1rem;
     border: 1px solid rgba(211,159,45,.42);
-    background: #ffffff;
+    background: var(--legend-app-surface-elevated);
     border-radius: var(--messaging-bubble-radius);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
@@ -8103,8 +8053,8 @@ header .legend-global-nav .container-fluid {
     display: grid;
     gap: 0.6rem;
     padding-top: 0.9rem;
-    border-top: 1px solid #ead39e;
-    background: #ffffff;
+    border-top: 1px solid var(--legend-app-control-line);
+    background: var(--legend-app-surface-elevated);
     transition: background 0.16s ease, outline-color 0.16s ease;
 }
 
@@ -8115,7 +8065,7 @@ header .legend-global-nav .container-fluid {
 
 .messaging-compose-target {
     overflow: hidden;
-    color: #8b5c08;
+    color: var(--legend-app-accent-bright);
     font-size: 0.76rem;
     font-weight: 780;
     text-overflow: ellipsis;
@@ -8137,7 +8087,7 @@ header .legend-global-nav .container-fluid {
 .messaging-primary-button {
     min-height: 38px;
     padding: 0.58rem 0.85rem;
-    border-radius: 11px;
+    border-radius: 999px;
     font: inherit;
     font-size: 0.78rem;
     font-weight: 850;
@@ -8300,12 +8250,12 @@ header .legend-global-nav .container-fluid {
         gap: 0.5rem;
         margin-top: 0.55rem;
         padding: 0.72rem;
-        border: 1px solid #d9a53a;
+        border: 1px solid var(--legend-app-control-line);
         border-radius: 22px;
-        background: #ffffff;
+        background: var(--legend-app-surface-elevated);
         box-shadow:
             0 10px 28px rgba(2,10,28,.16),
-            inset 0 1px 0 rgba(255,255,255,.94);
+            inset 0 1px 0 rgba(255,255,255,.04);
     }
 
     .messaging-compose-target {
@@ -8320,7 +8270,7 @@ header .legend-global-nav .container-fluid {
         overflow-y: hidden;
         border: 0;
         border-radius: 0;
-        background: #ffffff;
+        background: var(--legend-app-surface-elevated);
         box-shadow: none;
         font-size: 16px;
         line-height: 1.48;
@@ -9323,12 +9273,9 @@ header .legend-global-nav .container-fluid {
     body.legend-app :is(
         .messaging-text-button,
         .messaging-call-button,
-        .messaging-primary-button,
         .messaging-command-center-close,
         .scripture-close,
-        .legend-founder-ai-nav-button,
-        .legend-founder-ai-modal button,
-        .legend-founder-ai-modal .btn
+        .legend-founder-ai-nav-button
     ) {
         min-height: var(--legend-desktop-control-height);
         border-radius: var(--legend-app-radius-compact);
@@ -9337,8 +9284,7 @@ header .legend-global-nav .container-fluid {
 
 /*
  * Canonical premium modal interiors.
- * CRM custom modals and conversational workspaces consume the same graphite,
- * grey, and dark-gold authority instead of retaining feature-owned navy chrome.
+ * CRM custom modals consume the canonical application palette.
  */
 @media (min-width: 901px) {
     html[data-legend-modal-region] body.legend-app :is(.clients-crm,.leads-crm) .modal.open[data-legend-modal-surface] {
@@ -9379,54 +9325,7 @@ header .legend-global-nav .container-fluid {
         color: var(--legend-modal-ink);
     }
 
-    body.legend-app .messaging-command-center-grid {
-        background: var(--legend-modal-surface);
-        color: var(--legend-modal-ink);
-    }
 
-    body.legend-app .messaging-command-center-sidebar {
-        border-right-color: var(--legend-modal-line);
-        background: var(--legend-modal-surface-subtle);
-        color: var(--legend-modal-ink);
-    }
-
-    body.legend-app .messaging-conversation-item {
-        border-color: var(--legend-modal-line);
-        background: var(--legend-app-surface-elevated);
-        color: var(--legend-modal-ink);
-    }
-
-    body.legend-app .messaging-conversation-item:is(:hover,.is-active) {
-        background: var(--legend-modal-gold-soft);
-        box-shadow: inset 3px 0 0 var(--legend-modal-gold-strong);
-    }
-
-    body.legend-app :is(
-        .messaging-command-center-thread,
-        .messaging-thread-header,
-        .messaging-thread-empty,
-        .messaging-send-form
-    ) {
-        background: var(--legend-modal-surface);
-        color: var(--legend-modal-ink);
-    }
-
-    body.legend-app :is(
-        .messaging-command-center-header h2,
-        .messaging-thread-header h3,
-        .messaging-thread-empty h3
-    ) {
-        color: #fff;
-    }
-
-    body.legend-app :is(
-        .messaging-search-result small,
-        .messaging-search-empty,
-        .messaging-list-empty,
-        .messaging-attachment-note
-    ) {
-        color: var(--legend-modal-muted);
-    }
 }
 
 /*
