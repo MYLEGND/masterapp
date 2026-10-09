@@ -55,6 +55,16 @@ API run attempt. The approved read-only probe checks database activity visibilit
 before and after schema observation. Two observations must agree on database,
 migration catalog, applied baseline, and pending state. Insufficient visibility,
 active transactions, or drift stops this boundary without executing a bundle.
+Only positively classified internal engine requests and system transactions are
+excluded; missing DMV mappings remain blocking. A held EF migration session lock
+also blocks, including between transactions. Ordinary user requests/writes still
+require a quiet interval: unknown historical executors are not assumed to follow
+the current EF locking protocol. Sustained traffic may safely block publication.
+Only the fixed active-activity classification retries the observation pair, at
+most six times under one 90-second deadline covering inner SQL-read retries,
+process timeouts and backoff. Historical lookup, compilation, rehearsal and valid
+packages are preserved. Permission, unknown, and schema failures never enter that
+retry path.
 
 When the current desired schema is complete, this new current-policy proof allows
 preservation without SQL, even if a premerge readiness receipt used an older policy.

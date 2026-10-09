@@ -47,16 +47,35 @@ try
             """;
         if (Convert.ToInt32(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 1)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
+        // Observe availability only; do not acquire a production lock. EF's
+        // session lock can remain held between transactions while its session
+        // is sleeping. It is additional exclusion proof, never a replacement
+        // for unknown/user activity checks below.
+        activityCommand.CommandText = "SELECT APPLOCK_TEST('public','__EFMigrationsLock','Exclusive','Session')";
+        var migrationLock = await activityCommand.ExecuteScalarAsync(timeout.Token);
+        if (migrationLock is null || migrationLock is DBNull)
+            throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
+        if (Convert.ToInt32(migrationLock) != 1)
+            throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
+        // Internal engine requests/transactions are not release workers. Exclude
+        // only positively classified system work; retain missing DMV mappings,
+        // user requests and user writes. Historical lockless execution remains
+        // uncertain, so an ordinary user write still needs a quiet interval.
         activityCommand.CommandText = """
             SELECT
-              (SELECT COUNT_BIG(*) FROM sys.dm_exec_requests
-                WHERE database_id = DB_ID() AND session_id <> @@SPID)
+              (SELECT COUNT_BIG(*) FROM sys.dm_exec_requests AS r
+                LEFT JOIN sys.dm_exec_sessions AS s ON s.session_id = r.session_id
+                WHERE r.database_id = DB_ID() AND r.session_id <> @@SPID
+                  AND (s.is_user_process = 1 OR s.session_id IS NULL))
               + (SELECT COUNT_BIG(*) FROM sys.dm_exec_sessions
                 WHERE database_id = DB_ID() AND session_id <> @@SPID AND is_user_process = 1
                   AND (open_transaction_count > 0 OR status IN ('running','rollback')))
-              + (SELECT COUNT_BIG(*) FROM sys.dm_tran_database_transactions
-                WHERE database_id = DB_ID() AND database_transaction_type = 1
-                  AND database_transaction_state NOT IN (10,11))
+              + (SELECT COUNT_BIG(*) FROM sys.dm_tran_database_transactions AS d
+                LEFT JOIN sys.dm_tran_active_transactions AS a
+                  ON a.transaction_id = d.transaction_id
+                WHERE d.database_id = DB_ID() AND d.database_transaction_type = 1
+                  AND d.database_transaction_state NOT IN (10,11)
+                  AND (a.transaction_type <> 3 OR a.transaction_id IS NULL))
             """;
         if (Convert.ToInt64(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 0)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import random
 import time
 
 
@@ -137,14 +138,17 @@ def connection_string():
     return connection
 
 
-def observe(probe, connection, *, contract=None, activity=False):
+def observe(probe, connection, *, contract=None, activity=False, deadline=None):
     env = os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection}
     # Retry only an explicitly classified transient SQL read failure.
     # All unknown, credential, invalid-schema and timeout failures remain fail-closed.
     for attempt in range(3):
+        remaining = 60 if deadline is None else min(60, deadline - time.monotonic())
+        if remaining <= 0:
+            raise RuntimeError('Schema probe process deadline exceeded')
         try:
             result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []) + (['--activity'] if activity else []), env=env, capture_output=True, text=True,
-                                    timeout=60, check=False)
+                                    timeout=remaining, check=False)
         except subprocess.TimeoutExpired:
             raise RuntimeError('Schema probe process deadline exceeded') from None
         if result.returncode == 0:
@@ -167,7 +171,10 @@ def observe(probe, connection, *, contract=None, activity=False):
         elif len(lines) != 1:
             raise RuntimeError('Read-only schema proof unavailable; nontransient or unclassified failure')
         if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ' and attempt < 2:
-            time.sleep(2 * (attempt + 1))
+            delay = 2 * (attempt + 1)
+            if deadline is not None:
+                delay = min(delay, max(0, deadline - time.monotonic()))
+            time.sleep(delay)
             continue
         if marker == 'LEGEND_SCHEMA_PROBE:TRANSIENT_SQL_READ':
             raise RuntimeError('Transient SQL schema read exhausted bounded retries')
@@ -252,7 +259,7 @@ def history_audit():
     return audit
 
 
-def production_observation(probe, connection):
+def production_observation(probe, connection, *, clock=time.monotonic, sleep=time.sleep, jitter=random.uniform):
     """Settle canonical workers, authenticate history, then observe stable SQL."""
     authority = release_authority()
     repository = os.environ['GITHUB_REPOSITORY']
@@ -272,8 +279,22 @@ def production_observation(probe, connection):
     history = 'outcome-unknown' if any(row['code'] in uncertain for row in report['records']) else 'proven-nonentry'
     # Both observations bracket physical/history reads with activity visibility.
     # A changed applied prefix/target/catalog cannot reuse the first observation.
-    first = observe(probe, connection, activity=True)
-    second = observe(probe, connection, activity=True)
+    # A busy application is not a permanent migration defect. Retry only this
+    # read-only boundary; history lookup, compilation and rehearsal stay intact.
+    # One deadline also caps observe's inner transient-read retries and process.
+    deadline = clock() + 90
+    for attempt in range(6):
+        try:
+            first = observe(probe, connection, activity=True, deadline=deadline)
+            second = observe(probe, connection, activity=True, deadline=deadline)
+            break
+        except RuntimeError as error:
+            if (str(error) != PROBE_TERMINAL_REASONS['MUTATION_ACTIVITY_ACTIVE']
+                    or attempt == 5 or clock() >= deadline):
+                raise
+            delay = min(2 ** attempt + jitter(0, 1), max(0, deadline - clock()))
+            print('LEGEND_MIGRATION_OBSERVATION:ACTIVE:read-only-retry=' + str(attempt + 1), flush=True)
+            sleep(delay)
     for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'ready', 'pendingCount'):
         if key not in first or first[key] != second.get(key):
             raise RuntimeError('Migration stage unresolved: readiness-drift')
