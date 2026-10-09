@@ -1463,6 +1463,56 @@ class ParallelPublicationTests(unittest.TestCase):
             self.assertEqual('DeploymentReconciliationRequired', failed['errorType'])
 
 
+class SubmissionBoundaryEvidenceTests(unittest.TestCase):
+    def test_intent_readback_failure_proves_only_this_invocation_did_not_submit(self):
+        class Journal:
+            baseline = 'b' * 40
+            intent = None
+            history_error = None
+            def before_submit(self, *args, **kwargs):
+                raise RuntimeError('secret provider response must not escape')
+        azure = FakeAzure([[row('old', 4)]], [False])
+        azure.revision = 'a' * 40
+        azure.observed_revision = lambda: 'b' * 40
+        with self.assertRaises(deploy.DeploymentSubmissionNotEntered):
+            azure.run(journal=Journal())
+        self.assertEqual(0, azure.uploads)
+
+    def test_retained_intent_never_becomes_invocation_nonentry_proof(self):
+        azure = FakeAzure([[row('old', 4)]], [False])
+        journal = RetainedJournal()
+        journal.intent = {'baselineDeploymentIds': ['old']}
+        with self.assertRaises(deploy.DeploymentReconciliationRequired) as caught:
+            azure.run(journal=journal)
+        self.assertNotIsInstance(caught.exception, deploy.DeploymentSubmissionNotEntered)
+        self.assertEqual(0, azure.uploads)
+
+    def test_parallel_failure_retains_sibling_and_sanitized_boundary(self):
+        keys = ('portal', 'protect')
+        for error, state in [(deploy.DeploymentSubmissionNotEntered('private payload'), 'not-entered'),
+                             (RuntimeError('private payload'), 'may-have-entered')]:
+            calls = []
+            def publish(key, *args):
+                calls.append(key)
+                if key == 'protect':
+                    raise error
+                return 'preserved'
+            with tempfile.TemporaryDirectory() as directory, \
+                 patch.object(deploy._RELEASE_AUTHORITY, 'selected_release_target_keys', return_value=keys), \
+                 patch.object(deploy, 'publish_prepared_target', side_effect=publish):
+                root = Path(directory)
+                with self.assertRaises(RuntimeError):
+                    deploy.publish_prepared_targets_parallel([], 'a' * 40, root,
+                        ParallelPublicationTests().plan(keys), root)
+                failed = json.loads((root / 'protect.json').read_text())
+                self.assertEqual(state, failed['failure']['invocationSubmission'])
+                self.assertEqual('unresolved', failed['failure']['operationOutcome'])
+                self.assertFalse(failed['failure']['replayAuthorized'])
+                self.assertNotIn('private payload', json.dumps(failed))
+                self.assertTrue(json.loads((root / 'portal.json').read_text())['durableReceiptProven'])
+                self.assertCountEqual(keys, calls)
+
+
 class MigrationProbeEvidenceTests(unittest.TestCase):
     def test_probe_tool_changes_do_not_relabel_application_or_accept_runtime_drift(self):
         authority = deploy._RELEASE_AUTHORITY

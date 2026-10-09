@@ -50,6 +50,15 @@ def target_steps(targets):
             --transaction-plan /tmp/release-transaction.json \\
             --publish-prepared-parallel \\
             --target-results-dir /tmp/release-target-results
+      - name: Retain bounded per-target publication outcomes
+        if: ${{{{ !cancelled() && steps.publish_targets.outcome != 'skipped' }}}}
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-publication-outcomes-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}
+          path: /tmp/release-target-results/*.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: false
 ''']
     for key in targets:
         blocks.append(f'''      - name: Confirm first-pass durable publication receipt ({key})
