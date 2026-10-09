@@ -418,11 +418,12 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
     if len(heads) != 1:
         return False
     if heads[0] != run['head_sha']:
-        # A historical successful release may use a protected, earlier
-        # selected commit than its triggering event head. Authenticate the
-        # immutable source and original selected SHA before accepting it.
+        # Some historical runs selected an older approved commit than the
+        # triggering workflow head. The immutable source, original selected
+        # SHA, actual checkout, and protected ancestry must ALL agree.
         selected = set(re.findall(
-            r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})
+            r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))
+        if not trusted_source or len(selected) != 1 or heads[0] not in selected:
             return False
         ancestry = subprocess.run(
             ['git', 'merge-base', '--is-ancestor', heads[0], run['head_sha']],
