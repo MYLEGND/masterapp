@@ -4399,6 +4399,19 @@ def trusted_rehearsal_run(repository, run, candidate, expected):
     if not _trusted_lineage_run(repository, run, path, candidate, require_completed=False):
         return False
     pulls = run.get('pull_requests')
+    if pulls == []:
+        # Merged PR runs lose this mutable association. GitHub's existing
+        # commit-to-PR endpoint binds the immutable producer after merge.
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        if not token:
+            raise EvidenceLookupUnavailable('Package producer PR association credential unavailable')
+        associated = api_get(repository, f"commits/{run['head_sha']}/pulls?per_page=100", token)
+        if not isinstance(associated, list) or len(associated) >= 100:
+            raise EvidenceLookupUnavailable('Package producer PR association inventory incomplete')
+        pulls = [row for row in associated if
+            row.get('base', {}).get('ref') == TRUSTED_PR_BASE and
+            all(row.get(side, {}).get('repo', {}).get('url') == 'https://api.github.com/repos/' + repository
+                for side in ('head', 'base'))]
     if not isinstance(pulls, list) or len(pulls) != 1:
         return False
     head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
@@ -5125,6 +5138,19 @@ def trusted_component_run(repository, run, candidate):
     if not _trusted_lineage_run(repository, run, workflow, candidate, require_completed=False):
         return False
     pulls = run.get('pull_requests')
+    if pulls == []:
+        # Merged PR runs lose this mutable association. GitHub's existing
+        # commit-to-PR endpoint binds the immutable producer after merge.
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        if not token:
+            raise EvidenceLookupUnavailable('Package producer PR association credential unavailable')
+        associated = api_get(repository, f"commits/{run['head_sha']}/pulls?per_page=100", token)
+        if not isinstance(associated, list) or len(associated) >= 100:
+            raise EvidenceLookupUnavailable('Package producer PR association inventory incomplete')
+        pulls = [row for row in associated if
+            row.get('base', {}).get('ref') == TRUSTED_PR_BASE and
+            all(row.get(side, {}).get('repo', {}).get('url') == 'https://api.github.com/repos/' + repository
+                for side in ('head', 'base'))]
     if not isinstance(pulls, list) or len(pulls) != 1:
         return False
     head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
