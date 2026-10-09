@@ -89,3 +89,22 @@ The scheduler derives both automatic and explicit pending authorization from one
 Fresh integration and recovered candidates share one admission predicate. Active direct-release runs, including legacy runs without a candidate title, block new dispatch. Direct run titles bind source PR, immutable validated candidate, and execution authority, so a failed exact attempt is retained rather than blindly replayed. Both successful and failed completion events wake the queue, and reusable validation/package evidence is consulted without dispatching validation again.
 
 Publication remains globally serialized. Current shared settings, migration, routing, and upload reconciliation have not yet been proven safe under concurrent resource reservations. The lifecycle mutex serializes admission decisions; the publisher mutex protects the current multi-target transaction. These controls do not constitute completed support for concurrent disjoint publication. An ambiguous dispatch or upload remains a reconciliation boundary, never evidence that retry is safe.
+
+### Publication evidence recovery
+
+The immutable operation transport retries only recognized transient downloads of
+an already selected artifact ID, at most three times within the existing publisher
+process deadline. It never returns to upload after a readback failure. Authorization
+errors, unknown errors, missing content and mismatched bytes remain blocked.
+
+Parallel publication retains bounded, attempt-qualified per-target diagnostics even
+when a child fails. An `invocationSubmission=not-entered` result proves only that
+invocation stopped at intent authorization/readback; it does not erase prior intent or authorize
+replay. Unknown failures remain `may-have-entered`. These diagnostic records do not
+replace durable deployment receipts, historical authorization or live acceptance.
+Older successful receipts retain their exact reviewed verifier compatibility.
+
+Legacy attempts that did not retain the submission boundary still require positive
+original transport or provider evidence. Empty provider history and old runtime
+provenance alone do not establish nonentry. New diagnostics cannot retroactively
+certify those attempts.

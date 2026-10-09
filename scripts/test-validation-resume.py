@@ -3991,6 +3991,38 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
         self.assertEqual('b' * 40, self.prove())
         self.assertEqual('b' * 40, self.prove(self.current))
 
+    def test_pre_diagnostic_nonentry_still_requires_exact_target_witness(self):
+        import subprocess
+        revision = '4fe015cdbf81b5253d64558bf056cb5fcc80fa87'
+        def source(repo, checkout, path, token):
+            return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+        start = 'masterapp-protect: approved revision ' + 'b' * 40 + ', ZIP sha256 ' + 'c' * 64
+        witness = ('DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
+                   '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.')
+        ending = '\n##[error]Process completed with exit code 1.'
+        for log, expected in [(start + '\n' + witness + ending, True),
+                              (start + '\nDeploymentReconciliationRequired: unknown' + ending, False),
+                              (start + '\nSubmitting the verified immutable ZIP once.\n' + witness + ending, False),
+                              (witness + ending, False)]:
+            with patch.object(m, '_release_history_source', side_effect=source), \
+                 patch.object(m, '_release_job_log', return_value=log):
+                self.assertEqual(expected, m._historical_publication_failed_before_first_write(
+                    'owner/repo', {'id': 71, 'status': 'completed'}, 'b' * 40, 'protect', revision, 'token'))
+
+    def test_pre_diagnostic_component_workers_preserve_successful_receipt_compatibility(self):
+        import subprocess
+        prior = subprocess.check_output(['git', 'show',
+            '4fe015cdbf81b5253d64558bf056cb5fcc80fa87:scripts/deploy-approved-app.py'], text=True)
+        self.assertEqual('b' * 40, self.prove(prior))
+        for before, after in (
+            ("if digest != row['packageDigest']:", 'if False:'),
+            ('outcome = publish_prepared_target(key, revision, package_root, plan)', "outcome = 'preserved'"),
+        ):
+            with self.subTest(before=before):
+                self.assertIn(before, prior)
+                with self.assertRaises(m.ReleaseOperationHistoryUnproven):
+                    self.prove(prior.replace(before, after))
+
     def test_unknown_parallel_or_immutable_target_verifier_edits_fail_closed(self):
         for source in (self.old, self.current):
             for before, after in (
