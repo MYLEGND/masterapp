@@ -264,6 +264,29 @@ The guard now recognizes both an immediate call and assignment of its result;
 delaying the call remains rejected. Unit scenarios explicitly select hosted
 execution. New exact-head CI is required for this local correction.
 
+## Package planning outage checkpoint
+
+Exact published candidate `a108f3fe7a3295455d44273a569b1d253f5c08a8`
+completed its required checks successfully (19 successful checks; seven
+conditional checks skipped). That evidence does not certify subsequent edits.
+
+The cleanup review found that `cmd_package_canary_plan` converted any planner
+exception into `needed=true`, scheduling a full package rebuild when evidence
+could merely be temporarily unreadable. The canonical planner now preserves any
+prior plan, records a sanitized blocked result beside it, and fails this job before
+build selection. The existing workflow retains that result under an immutable
+run-and-attempt artifact name when artifact storage is available. A storage outage
+cannot turn the failed planner into a successful gate. Existing evidence transport owns bounded provider retries; no
+outer retry or competing planner was introduced. A missing compatible artifact
+still permits an explicit build decision after a successful lookup.
+
+The regression injects provider unavailability and an untrusted-state error. Both
+perform one planning attempt, select zero builds, preserve the previous evidence
+run identity, and provide the exact package-planning resume boundary without
+copying raw provider payloads. Focused Python 3.12 readiness tests passed.
+Independent review accepted this delta only; final integrated release review is
+still required.
+
 ## Outstanding comprehensive requirements
 
 - Early trusted readiness is implemented in this candidate but still requires

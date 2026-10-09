@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +180,35 @@ class EarlyReadinessEvidenceTests(unittest.TestCase):
              patch.object(m, 'package_inputs_compatible') as package:
             with self.assertRaisesRegex(RuntimeError, 'READINESS_BLOCKED'): m.cmd_package_canary_plan(args)
             package.assert_not_called()
+
+    def test_package_lookup_failure_preserves_prior_plan_and_selects_zero_builds(self):
+        for failure in (m.EvidenceLookupUnavailable('provider read unavailable'),
+                        ValueError('untrusted receipt payload')):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'plan.json'
+                prior = dict(needed=False, evidenceRunId=123, reason='prior compatible evidence')
+                output.write_text(json.dumps(prior))
+                args = SimpleNamespace(repository=self.repo, current_sha=self.candidate,
+                    base_sha=self.approved, current_run_id=456, head_branch='repair', output=str(output))
+                with patch.object(m, 'require_readiness', return_value={'receipt': self.receipt}), \
+                     patch.object(m, 'compute_package_canary_plan', side_effect=failure) as plan:
+                    with self.assertRaisesRegex(RuntimeError, 'PACKAGE_PLANNING_BLOCKED'):
+                        m.cmd_package_canary_plan(args)
+                    self.assertEqual(1, plan.call_count)
+                self.assertEqual(prior, json.loads(output.read_text()))
+                blocked = json.loads(Path(str(output) + '.blocked.json').read_text())
+                self.assertEqual('blocked', blocked['state'])
+                self.assertFalse(blocked['needed'])
+                self.assertEqual('validated-release-package-plan', blocked['resumeBoundary'])
+                self.assertNotIn('untrusted receipt payload', json.dumps(blocked))
+
+    def test_blocked_package_plan_is_retained_by_its_exact_attempt(self):
+        text = (ROOT / '.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        block = m.named_step_blocks(text)['Preserve blocked package planning evidence']
+        self.assertIn("if: failure() && steps.packageplan.outcome == 'failure'", block)
+        self.assertIn('validated-release-package-plan-blocked-${{ github.run_id }}-a${{ github.run_attempt }}', block)
+        self.assertIn('package-canary-plan.json.blocked.json', block)
+        self.assertNotIn('overwrite: true', block)
 
     def test_successful_child_survives_failed_parent_and_new_attempt(self):
         run = dict(self.run, run_attempt=3, status='completed', conclusion='failure')

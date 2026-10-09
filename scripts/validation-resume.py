@@ -4837,16 +4837,21 @@ def cmd_package_canary_plan(args):
             args.head_branch,
         )
     except Exception as exc:
-        result = {
-            "schemaVersion": 1,
-            "needed": True,
-            "currentSha": args.current_sha,
-            "evidenceRunId": None,
-            "evidenceHeadSha": None,
-            "changedInputs": [],
-            "reason": "planner_error_fail_closed",
-            "plannerError": type(exc).__name__,
-        }
+        # Unavailable or untrusted evidence is not evidence that all children are
+        # missing. Preserve any existing plan/receipts and stop this boundary.
+        # api_get owns bounded provider retries; never add an outer retry here.
+        reason = ('package_evidence_lookup_unavailable' if isinstance(exc, EvidenceLookupUnavailable)
+                  else 'package_planner_state_unproven')
+        blocked = dict(schemaVersion=1, state='blocked', needed=False,
+            currentSha=args.current_sha, approvedBaseSha=args.base_sha,
+            runId=str(args.current_run_id), runAttempt=int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
+            reason=reason, plannerError=type(exc).__name__,
+            resumeBoundary='validated-release-package-plan',
+            intervention=('Restore evidence-provider access, then rerun package planning.'
+                if isinstance(exc, EvidenceLookupUnavailable)
+                else 'Resolve the package planner error, then rerun package planning with retained receipts.'))
+        Path(str(args.output) + '.blocked.json').write_text(json.dumps(blocked, indent=2, sort_keys=True) + "\n")
+        raise RuntimeError('PACKAGE_PLANNING_BLOCKED:' + reason) from None
     result['migrationReused'] = False
     if result['needed'] and readiness.get('receipt', {}).get('rehearsalSource'):
         import importlib.util

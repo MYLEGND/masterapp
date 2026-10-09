@@ -731,6 +731,15 @@ jobs:
           PYPACKAGEPLAN
           fi
 
+      - name: Preserve blocked package planning evidence
+        if: failure() && steps.packageplan.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-release-package-plan-blocked-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-canary-plan.json.blocked.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Preserve promoted rehearsed migration component
         if: steps.packageplan.outputs.migration_reused == 'true'
         uses: actions/upload-artifact@v4
