@@ -6539,8 +6539,10 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
     # generation. Its later SHA-only success semantics are never executed here.
     # Exact source hashing is independent of the reader's Python AST version.
     prior_reconcile = (historical_reconcile is not None and hashlib.sha256(
-        ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() ==
-        'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502')
+        ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() in {
+        'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502',
+        # Approved pre-diagnostic subtype generation; same pre-submit boundary.
+        '00dd0d2f2145617c3aa22dc5f44e0d4eef948303c8f691d7a887fb42e0eb2473'})
     historical_journal = next((node for node in ast.parse(historical_evidence).body
                                if isinstance(node, ast.ClassDef) and node.name == 'OperationJournal'), None)
     historical_intent = next((node for node in historical_journal.body
@@ -6583,7 +6585,7 @@ def _historical_publication_failed_before_first_write(repository, release_job, a
     return expected in segment and 'Submitting the verified immutable ZIP once.' not in segment
 
 
-def _historical_parallel_verifier_compatible(functions, current_functions):
+def _historical_parallel_verifier_compatible(functions, current_functions, source=None):
     """Recognize bounded reviewed verifier generations, never historical success."""
     import ast
     names = ('publish_prepared_target', 'publish_prepared_targets_parallel')
@@ -6591,6 +6593,16 @@ def _historical_parallel_verifier_compatible(functions, current_functions):
         return False
     if all(ast.dump(functions[name]) == ast.dump(current_functions[name]) for name in names):
         return True
+    # Preserve the jointly reviewed component-aware verifier/worker generation.
+    # This recognizes its contract, never its outcome; source, job, artifact and
+    # attempt authentication below remain mandatory. Source hashes are stable
+    # across Python versions and cannot accept a mix of independently approved parts.
+    if source is not None:
+        pair = tuple(hashlib.sha256(ast.get_source_segment(source, functions[name]).encode()).hexdigest()
+                     for name in names)
+        if pair == ('98b0a32ed17d70631bcb153ba6f01e6c7ac80c23ce1821ee2ffc466fe6b8d527',
+                    '4e0342f97a7b793a8c1f53b88dab568004b835f0bbf720607436ad402d270cc9'):
+            return True
     fingerprints = tuple(hashlib.sha256(ast.dump(functions[name]).encode()).hexdigest() for name in names)
     # Canonical Python 3.12 AST identities: the approved single-producer verifier
     # and its two reviewed first-pass reporting generations. Neither certifies
@@ -6791,7 +6803,7 @@ def _release_attempt_package_revision(repository, run, attempt, release_job, tok
     current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
     current_functions = {node.name: node for node in current.body if isinstance(node, ast.FunctionDef)}
     current_verify = current_functions['verify_package']
-    if parallel_mode and not _historical_parallel_verifier_compatible(functions, current_functions):
+    if parallel_mode and not _historical_parallel_verifier_compatible(functions, current_functions, deployment_source):
         raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
     if receipt is not None and receipt.get('schemaVersion') == 3:
         for name in ('prepare_transaction', 'read_transaction_plan', 'transaction_target_material', 'publish_prepared_target'):

@@ -216,11 +216,25 @@ async function publish(client, name, record, {sleep = ms => new Promise(resolve 
         if (artifactId === null) throw new Error('Artifact upload outcome unresolved');
       }
     }
-    const destination = path.join(directory, 'verified');
-    await client.downloadArtifact(artifactId, {path: destination});
-    const readback = await fs.readFile(path.join(destination, filename), 'utf8');
-    if (readback !== content) throw new Error('Release operation readback mismatch');
-    return {artifactId};
+    // Retry only recognized transient reads of the SAME immutable artifact.
+    // The Python owner retains the overall subprocess deadline. No readback
+    // error returns to upload, and malformed content is never retried.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const destination = path.join(directory, `verified-${attempt}`);
+      try {
+        await client.downloadArtifact(artifactId, {path: destination});
+      } catch (error) {
+        const status = error.statusCode ?? error.status ?? error.response?.status;
+        const transient = [404, 408, 429, 500, 502, 503, 504].includes(status) ||
+          ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'].includes(error.code);
+        if (!transient || attempt === 2) throw error;
+        await sleep((attempt + 1) * 1000);
+        continue;
+      }
+      const readback = await fs.readFile(path.join(destination, filename), 'utf8');
+      if (readback !== content) throw new Error('Release operation readback mismatch');
+      return {artifactId};
+    }
   } finally { await fs.rm(directory, {recursive: true, force: true}); }
 }
 

@@ -299,3 +299,42 @@ m.retain_current_observation(r,'0'*64,publisher=lambda name,record,**kwargs:prin
     await assert.rejects(publish({}, payload.name, {...payload.record, ...delta}), /Invalid/);
   }
 });
+
+test('transient post-upload readback recovers in place with one upload', async () => {
+  const client = durableClient();
+  const download = client.downloadArtifact;
+  let attempts = 0;
+  client.downloadArtifact = async (...args) => {
+    if (++attempts < 3) throw Object.assign(new Error('unavailable'), {statusCode: 503});
+    return download(...args);
+  };
+  const delays = [];
+  assert.deepEqual(await publish(client, name, record, {sleep: async ms => delays.push(ms)}), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [1000, 2000]);
+});
+
+test('exhausted readback preserves exact artifact for a later reader without reupload', async () => {
+  const client = durableClient();
+  const download = client.downloadArtifact;
+  let attempts = 0;
+  client.downloadArtifact = async () => { attempts++; throw Object.assign(new Error('unavailable'), {code: 'ECONNRESET'}); };
+  await assert.rejects(publish(client, name, record, {sleep: async () => {}}), /unavailable/);
+  assert.equal(attempts, 3);
+  assert.equal(client.state.uploads, 1);
+  client.downloadArtifact = download;
+  assert.deepEqual(await publish(client, name, record), {artifactId: 45});
+  assert.equal(client.state.uploads, 1);
+});
+
+test('authorization and unknown read errors never trigger retry or another upload', async () => {
+  for (const statusCode of [401, 403, undefined]) {
+    const client = durableClient();
+    let attempts = 0;
+    client.downloadArtifact = async () => { attempts++; throw Object.assign(new Error('blocked'), {statusCode}); };
+    await assert.rejects(publish(client, name, record, {sleep: async () => assert.fail('unexpected retry')}), /blocked/);
+    assert.equal(attempts, 1);
+    assert.equal(client.state.uploads, 1);
+  }
+});

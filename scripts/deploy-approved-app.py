@@ -69,6 +69,10 @@ class DeploymentReconciliationRequired(RuntimeError):
     """Outcome is ambiguous: only read-only reconciliation may follow."""
 
 
+class DeploymentSubmissionNotEntered(DeploymentReconciliationRequired):
+    """This invocation stopped before submit; prior operation history remains unresolved."""
+
+
 class DeploymentDrift(DeploymentReconciliationRequired):
     """Live revision is neither the preserved baseline nor immutable candidate."""
 
@@ -251,7 +255,7 @@ def reconcile(azure, *, clock=time.monotonic, sleep=time.sleep, timeout=PUBLICAT
                             allow_recovered_baseline=allow_recovered_baseline,
                         )
                     except Exception as exc:
-                        raise DeploymentReconciliationRequired('Durable upload intent could not be proven; no write authorized') from exc
+                        raise DeploymentSubmissionNotEntered('Durable upload intent could not be proven; no write authorized') from exc
                     if not allowed:
                         raise DeploymentReconciliationRequired('Existing upload intent requires read-only reconciliation')
                 submitted = True  # Set before I/O: ambiguous responses never replay.
@@ -592,7 +596,20 @@ def publish_prepared_targets_parallel(target_names, revision, package_root, plan
                 'durableReceiptProven': False,
                 'errorType': type(exc).__name__,
             }
+            # Positive same-invocation evidence only. A retained/unknown prior
+            # intent is never converted into proof that the operation never ran.
+            payload['failure'] = {
+                'code': ('INTENT_READBACK_UNPROVEN' if isinstance(exc, DeploymentSubmissionNotEntered)
+                         else 'PUBLICATION_OUTCOME_UNRESOLVED'),
+                'invocationSubmission': ('not-entered' if isinstance(exc, DeploymentSubmissionNotEntered)
+                                         else 'may-have-entered'),
+                'operationOutcome': 'unresolved',
+                'replayAuthorized': False,
+            }
             record(key, payload)
+            # Bound to immutable target material; no exception strings/provider
+            # payloads. The generated workflow retains these files on failure.
+            print('LEGEND_PUBLICATION_FAILURE=' + json.dumps(payload, sort_keys=True), flush=True)
             return payload
 
     results = {}
