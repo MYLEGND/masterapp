@@ -3609,9 +3609,15 @@ def readiness_failure_diagnostic(exc):
         result['reasonCode'] = 'EVIDENCE_LOOKUP_UNAVAILABLE'
         if type(exc.code) is int and 100 <= exc.code <= 599:
             result['httpStatus'] = exc.code
-    elif type(exc) is RuntimeError:
+    elif type(exc) in {RuntimeError, ValueError}:
         message = str(exc)
-        if message in READINESS_DIAGNOSTIC_REASONS:
+        contract_reasons = {
+            'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required': 'MIGRATION_RUNTIME_DEPENDENCIES_CHANGED',
+            'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions': 'MIGRATION_METADATA_DIFFERS_FROM_APPROVED',
+        }
+        if message in contract_reasons:
+            result['reasonCode'] = contract_reasons[message]
+        elif message in READINESS_DIAGNOSTIC_REASONS:
             result['reasonCode'] = message
         elif message == 'Schema probe process deadline exceeded':
             result['reasonCode'] = 'SCHEMA_PROBE_DEADLINE_EXCEEDED'

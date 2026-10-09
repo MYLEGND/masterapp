@@ -4289,6 +4289,22 @@ def readiness_identity(candidate, approved, targets):
                                                          separators=(',', ':')).encode()).hexdigest())
 
 
+def migration_contract_static_styles_only(candidate, approved):
+    """Reviewed non-executable delta; retain full identities for build/package reuse."""
+    patterns = WORKFLOWS[PACKAGE_VALIDATION_WORKFLOW]['gates']['build-infrastructure']['paths']
+    patterns = tuple(p for p in patterns if p not in {'**/*.csproj', 'MASTERAPP.sln'})
+    def entries(revision):
+        rows = subprocess.check_output(['git', 'ls-tree', '-rz', '--full-tree', revision], text=True).split('\0')
+        return {name: metadata for row in rows if row
+                for metadata, name in [row.split('\t', 1)] if matches(name, patterns)}
+    before, after = entries(approved), entries(candidate)
+    changed = [p for p in before.keys() | after.keys() if before.get(p) != after.get(p)]
+    return bool(changed) and all(
+        p.startswith('SHARED/wwwroot/') and p.endswith('.css') and
+        before.get(p, '').startswith('100644 blob ') and after.get(p, '').startswith('100644 blob ')
+        for p in changed)
+
+
 def candidate_migration_contract_proven(candidate, approved, contract, approved_contract):
     """Candidate metadata cannot declare its own completeness or safety.
 
@@ -4298,12 +4314,18 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     """
     current = migration_probe_identity(candidate, candidate)
     trusted = migration_probe_identity(approved, approved)
+    rule = 'approved-definitions-exact'
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
-        raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
+        if (current.get('toolIdentity') != trusted.get('toolIdentity') or
+            current.get('executionIdentity') != trusted.get('executionIdentity') or
+            not migration_contract_static_styles_only(candidate, approved)):
+            raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
+        rule = 'approved-definitions-static-styles-only'
     if not isinstance(contract, dict) or contract != approved_contract:
         raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions')
-    return {'state': 'proven', 'rule': 'approved-definitions-exact',
-            'runtimeIdentity': trusted['runtimeIdentity']}
+    return {'state': 'proven', 'rule': rule,
+            'runtimeIdentity': current['runtimeIdentity'],
+            'approvedRuntimeIdentity': trusted['runtimeIdentity']}
 
 
 def validate_readiness_receipt(receipt, expected, *, now=None, require_fresh=True):
