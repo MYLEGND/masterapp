@@ -23,6 +23,69 @@ cloud = load('deploy-founder-cloudflare')
 router = load('release-router')
 
 
+class ReadinessScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.authority = load('validation-resume')
+        self.approved = '81b9962968048cc2ff473d441d3dbe584f7f2865'
+        self.candidate = 'bab9260795df438ddc3d0b6723b8ec2d5d4f6024'
+        self.source = self.authority.git_show_file(self.approved, 'scripts/validation-resume.py')
+
+    def test_scope_uses_only_approved_policy_and_conservative_complete_diff(self):
+        from types import SimpleNamespace
+        for paths, expected in [(['scripts/validation-resume.py'], 'not-required'),
+                (['scripts/test-release-children.py'], 'not-required'),
+                (['Docs/releases/direct-release-request.json'], 'required'),
+                (['Infrastructure/Migrations/20261007134500_AddFounderAssistantRules.cs'], 'required'),
+                (['AgentPortal/Program.cs'], 'required'), (['Directory.Build.props'], 'required'),
+                (['unclassified.txt'], 'required'), ([], 'required'),
+                (['AgentPortal/Program.cs', 'Docs/moved.cs'], 'required')]:
+            with self.subTest(paths=paths), \
+                 patch.object(self.authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(self.authority.subprocess, 'check_output', return_value=('\0'.join(paths) + '\0').encode()) as diff, \
+                 patch.object(self.authority, 'git_show_file', return_value=self.source) as source, \
+                 patch.object(self.authority, 'release_control_only_path', return_value=True):
+                result = self.authority.readiness_scope(self.candidate, self.approved)
+                self.assertEqual(expected, result['state'])
+                self.assertIn('--no-renames', diff.call_args.args[0])
+                self.assertIn('-z', diff.call_args.args[0])
+                for call in source.call_args_list:
+                    self.assertEqual(self.approved, call.args[0])
+        with patch.object(self.authority.subprocess, 'run', return_value=SimpleNamespace(returncode=1)):
+            self.assertEqual('required', self.authority.readiness_scope(self.candidate, self.approved)['state'])
+        self.assertEqual('required', self.authority.readiness_scope('invalid', self.approved)['state'])
+
+    def test_nonpublication_scope_never_invokes_provider_or_rehearsal(self):
+        import os
+        lifecycle = load('release-lifecycle')
+        probe = load('migration-probe-package')
+        from types import SimpleNamespace
+        scope = dict(state='not-required', reason='approved_nonpublishing_control_scope', identity='f' * 64,
+                     candidate=self.candidate, approved=self.approved)
+        api = SimpleNamespace(repo='owner/repo', token='fixture', ref=lambda _: self.approved)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'pull_request',
+                                     'GITHUB_REPOSITORY': 'owner/repo', 'GITHUB_RUN_ATTEMPT': '1',
+                                     'GITHUB_OUTPUT': str(Path(temporary) / 'output')}), \
+             patch.object(self.authority, 'approved_head_preflight', return_value=dict(current=True, approvedHeadSha=self.approved)), \
+             patch.object(self.authority, 'git_show_file', return_value=self.source), \
+             patch.object(self.authority, 'readiness_scope', return_value=scope), \
+             patch.object(self.authority, 'readiness_evidence') as evidence, \
+             patch.object(lifecycle, 'VALIDATION_AUTHORITY', self.authority), \
+             patch.object(lifecycle, 'readiness_context', return_value=({}, self.approved, self.candidate, [])), \
+             patch.object(lifecycle, '_readiness_probe') as provider, \
+             patch.object(lifecycle, '_readiness_module') as mutation, \
+             patch.object(probe, 'AUTHORITY', self.authority):
+            self.assertEqual(scope, self.authority.require_readiness(api.repo, self.candidate))
+            self.assertIsNone(lifecycle._ensure_readiness_progress(api, {'head': {'sha': self.candidate}}))
+            self.assertIsNone(probe.prepare_rehearsal_candidate(self.candidate, Path(temporary), Path(temporary) / 'prepare'))
+            self.assertEqual(scope, lifecycle.readiness_observe(api, 1, Path(temporary)))
+            self.assertEqual(scope, lifecycle.readiness_finalize(api, 1, Path(temporary)))
+            evidence.assert_not_called(); provider.assert_not_called(); mutation.assert_not_called()
+            (Path(temporary) / 'observation.json').write_text('{}')
+            with self.assertRaisesRegex(RuntimeError, 'READINESS_SCOPE_CHANGED'):
+                lifecycle.readiness_finalize(api, 1, Path(temporary))
+
+
 class RehearsalReceiptReuseTests(unittest.TestCase):
     def test_binding_an_existing_exact_rehearsal_executes_zero_new_sql(self):
         import os
@@ -1717,6 +1780,73 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, '_release_attempt_package_revision', return_value=old_app), \
              patch.object(self.authority, 'api_get', side_effect=api):
             self.assertFalse(prove(**valid))
+
+    def test_completed_inline_ef_history_reconciles_without_mutation(self):
+        import subprocess
+        head = 'd604a009da7a2b7662099f6aaa389393013933e5'
+        current = '69f397ce73630fc1359dbf5cd284b5c51effbc4a'
+        def source(repo, revision, path, token):
+            return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
+        workflow = source('', head, '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW, '')
+        run = dict(id=36898643763, head_sha=head, status='completed', conclusion='success',
+                   run_attempt=1, event='workflow_dispatch', head_branch=self.authority.TRUSTED_PR_BASE,
+                   head_repository={'full_name': 'owner/repo'},
+                   path='.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW)
+        step = dict(name='Apply additive diagnostics migrations before restarting apps',
+                    status='completed', conclusion='success', started_at='2026-10-01T17:29:00Z',
+                    completed_at='2026-10-01T17:30:00Z')
+        build = dict(name='Build exact selected release candidate', conclusion='success',
+                     started_at='2026-10-01T17:25:00Z', completed_at='2026-10-01T17:28:00Z')
+        job = dict(id=110493195108, status='completed', conclusion='success', steps=[step, build] +
+                   [dict(name=name, conclusion='success') for name in
+                    ('Publish exact selected application packages', 'Direct deploy AgentPortal',
+                     'Enforce complete direct deployment outcome',
+                     'Verify every deployed target and collect all failures')])
+        log = ('2026-10-01T17:24:00Z [command]/usr/bin/git log -1 --format=%H\n'
+               '2026-10-01T17:24:01Z ' + head + '\n'
+               '2026-10-01T17:25:00Z   REUSE_VALIDATED_PACKAGE: false\n'
+               '2026-10-01T17:27:28Z Build succeeded.\n'
+               '2026-10-01T17:29:56Z Schema ready. Applied candidate migrations only; no down migrations.\n')
+        admission = dict(total_count=1, jobs=[dict(name='discover-live', status='completed', conclusion='success')])
+        artifacts = dict(total_count=1, artifacts=[dict(name='translation-direct-release-' + head, expired=False)])
+        kwargs = dict(first_pending_migration_id='20261007134500_AddFounderAssistantRules',
+                      last_applied_migration_id='20261003091500_CanonicalizeBusinessFinanceToolState',
+                      current_application_revision=current)
+        def prove(**overrides):
+            return self.authority._legacy_completed_bundle_is_separate_from_pending_sql(
+                'owner/repo', run, job, step, overrides.pop('workflow', workflow), 1, 'fixture',
+                **(kwargs | overrides))
+        with patch.object(self.authority, '_release_job_log', return_value=log) as logs, \
+             patch.object(self.authority, '_release_attempt_package_revision', return_value=head) as producer, \
+             patch.object(self.authority, '_release_history_source', side_effect=source), \
+             patch.object(self.authority, '_release_history_api', return_value=admission), \
+             patch.object(self.authority, 'api_get', return_value=artifacts), \
+             patch.object(self.authority.subprocess, 'run', wraps=subprocess.run) as calls:
+            self.assertTrue(prove())
+            self.assertEqual(len(calls.call_args_list), 7)  # Four source reads + ancestry + two migration trees.
+            self.assertTrue(all(call.args[0][0] == 'git' for call in calls.call_args_list))
+            self.assertFalse(prove(workflow=workflow.replace('database', 'unknown-database')))
+            self.assertFalse(prove(first_pending_migration_id='20261001160000_AddLegendEngineeringOperationalContract'))
+            self.assertFalse(prove(last_applied_migration_id='20260901000000_Unknown'))
+            for old, new in [('Build succeeded.', 'Build FAILED.'),
+                             ('17:27:28Z Build', '17:24:28Z Build'),
+                             ('REUSE_VALIDATED_PACKAGE: false', 'REUSE_VALIDATED_PACKAGE: true'),
+                             ('Schema ready.', 'Schema unknown.'), (head, 'f' * 40)]:
+                logs.return_value = log.replace(old, new)
+                self.assertFalse(prove(), (old, new))
+            logs.return_value = log
+            producer.return_value = 'f' * 40
+            self.assertFalse(prove())
+            producer.return_value = head
+            for key, value in [('run_attempt', 2), ('conclusion', 'failure'), ('head_branch', 'untrusted')]:
+                original = run[key]; run[key] = value
+                self.assertFalse(prove(), key)
+                run[key] = original
+            admission['jobs'][0]['conclusion'] = 'skipped'
+            self.assertFalse(prove())
+            admission['jobs'][0]['conclusion'] = 'success'
+            artifacts['artifacts'][0]['expired'] = True
+            self.assertFalse(prove())
 
     def test_authenticated_legacy_migration_step_requires_original_intent(self):
         import subprocess

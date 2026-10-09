@@ -62,6 +62,10 @@ def prepare_rehearsal_candidate(revision, directory, output):
     if 'READINESS_SCHEMA = 1' not in AUTHORITY.git_show_file(approved, 'scripts/validation-resume.py'):
         print('LEGEND_REHEARSAL:NOT_REQUIRED:initial_approved_authority_rollout')
         return
+    scope = AUTHORITY.readiness_scope(revision, approved)
+    if scope['state'] == 'not-required':
+        print('LEGEND_REHEARSAL:NOT_REQUIRED:' + scope['reason'])
+        return
     targets = AUTHORITY.readiness_targets(revision, approved)
     expected = AUTHORITY.readiness_identity(revision, approved, targets)
     deadline = time.monotonic() + AUTHORITY.READINESS_WAIT_SECONDS
