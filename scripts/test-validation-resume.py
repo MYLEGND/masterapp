@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -3385,4 +3386,7 @@ class HistoricalParallelVerifierTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Individual hosted scenarios explicitly opt in and mock their providers.
+    # Synthetic planner revisions must never query the real CI repository.
+    with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+        unittest.main()
