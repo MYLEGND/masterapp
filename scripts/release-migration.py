@@ -279,7 +279,8 @@ def production_observation(probe, connection):
             raise RuntimeError('Migration stage unresolved: readiness-drift')
     second['historicalExecution'] = history
     second['historicalReconciliationSources'] = [
-        {key: row[key] for key in ('run', 'attempt', 'code', 'sourceBlob', 'evidence') if key in row}
+        dict({key: row[key] for key in ('run', 'attempt', 'code', 'sourceBlob') if key in row},
+             **({key: row['evidence'][key] for key in ('stateArtifactId', 'admissionId')} if 'evidence' in row else {}))
         for row in report['records'] if row['code'] in uncertain]
     second['historicalEvidenceIdentity'] = hashlib.sha256(
         json.dumps(report, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
