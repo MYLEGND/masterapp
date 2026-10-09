@@ -13,6 +13,8 @@ import time
 # Fixed, redacted classifications from the read-only .NET probe.
 # These markers cannot authorize a migration or an automatic retry.
 PROBE_TERMINAL_REASONS = {
+    'MUTATION_ACTIVITY_UNPROVEN': 'Database mutation activity visibility unproven',
+    'MUTATION_ACTIVITY_ACTIVE': 'Database mutation activity remains active',
     'SQL_AUTH': 'Schema probe database authentication rejected',
     'SCHEMA_DRIFT': 'Schema probe detected migration schema drift',  # historical probe
     'INPUT_UNAVAILABLE': 'Schema probe input unavailable',
@@ -50,6 +52,39 @@ MIGRATION_ADMISSION_DENIAL_CODES = {
     'Release child physical operation already entered; reconcile without replay': 'PHYSICAL_OPERATION_ALREADY_ENTERED',
     'Release child history truncated; no mutation authorized': 'RELEASE_HISTORY_TRUNCATED',
 }
+
+
+# Historical execution and current desired state are independent facts.
+# This resolver never grants SQL execution; the existing first-write authority
+# remains mandatory even when the result requires a new-write admission.
+def resolve_migration_boundary(history, *, schema='unobserved', activity='unknown', action='validate'):
+    if history not in {'proven-nonentry', 'proven-completion', 'outcome-unknown', 'active', 'invalid'}:
+        raise ValueError('Unknown migration history state')
+    if schema not in {'unobserved', 'complete', 'pending', 'inconsistent'} or activity not in {'unknown', 'active', 'settled'}:
+        raise ValueError('Unknown migration observation state')
+    if action not in {'validate', 'reconcile'}:
+        raise ValueError('Unknown migration action')
+    result = dict(historicalExecution=history, currentSchema=schema, sqlExecutionAuthorized=False)
+    if history in {'invalid', 'active'} or schema == 'inconsistent':
+        return dict(result, state='blocked', reason='evidence_invalid_or_activity_unresolved')
+    if action == 'validate':
+        return dict(result, state='requires-runtime-reconciliation' if history == 'outcome-unknown' else 'historical-proof-preserved',
+                    reason='current_database_and_activity_must_be_observed')
+    if activity != 'settled':
+        return dict(result, state='blocked', reason='mutation_activity_unresolved')
+    if schema == 'complete':
+        return dict(result, state='preserve-without-sql', reason='fresh_history_and_physical_postconditions_complete')
+    if schema == 'pending' and history == 'proven-nonentry':
+        return dict(result, state='requires-first-write-admission', reason='pending_requires_existing_governed_admission')
+    return dict(result, state='blocked', reason='historical_execution_requires_reconciliation')
+
+
+MIGRATION_STAGES = frozenset({
+    'schema-observation', 'child-history', 'mutation-admission', 'bundle-execution',
+    'schema-verification', 'success-receipt', 'preparation', 'readiness-identity',
+    'readiness-bundle', 'readiness-drift', 'readiness-missing', 'mutation-activity', 'observation-receipt',
+    'probe-resolution', 'probe-restoration', 'probe-verification',
+})
 
 
 def safe_migration_admission_detail(exc):
@@ -102,13 +137,13 @@ def connection_string():
     return connection
 
 
-def observe(probe, connection, *, contract=None):
+def observe(probe, connection, *, contract=None, activity=False):
     env = os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection}
     # Retry only an explicitly classified transient SQL read failure.
     # All unknown, credential, invalid-schema and timeout failures remain fail-closed.
     for attempt in range(3):
         try:
-            result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []), env=env, capture_output=True, text=True,
+            result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []) + (['--activity'] if activity else []), env=env, capture_output=True, text=True,
                                     timeout=60, check=False)
         except subprocess.TimeoutExpired:
             raise RuntimeError('Schema probe process deadline exceeded') from None
@@ -168,6 +203,8 @@ def observe(probe, connection, *, contract=None):
                 valid = False
             if first is not None and last is not None and first <= last:
                 valid = False
+        if activity and value.get('mutationActivity') != 'settled':
+            raise RuntimeError('Migration stage unresolved: mutation-activity')
         if not valid:
             raise ValueError()
         return value
@@ -207,6 +244,48 @@ def bind_readiness(before, bundle_digest, receipt, *, completed_intent=False):
     return 'current-baseline-proven'
 
 
+def history_audit():
+    spec = importlib.util.spec_from_file_location('migration_history_observation',
+        Path(__file__).with_name('release-migration-history-audit.py'))
+    audit = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(audit)
+    return audit
+
+
+def production_observation(probe, connection):
+    """Settle canonical workers, authenticate history, then observe stable SQL."""
+    authority = release_authority()
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    audit = history_audit()
+    with authority.evidence_lookup_budget(time.monotonic() + 120):
+        current = authority.assert_protected_release_execution()
+        if current.get('run_attempt') != int(os.environ['GITHUB_RUN_ATTEMPT']):
+            raise RuntimeError('Migration stage unresolved: mutation-activity')
+        report = audit.audit(authority, repository, token, current_execution=current)
+    if (report.get('completeHistory') is not True or
+            any(row['code'] in audit.BLOCKED_CODES or row['code'] not in audit.STATUS_CODES
+                for row in report['records'])):
+        raise RuntimeError('Migration stage unresolved: mutation-admission')
+    uncertain = {'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
+                 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE', 'EF_MIGRATION_EXECUTION_ENTERED'}
+    history = 'outcome-unknown' if any(row['code'] in uncertain for row in report['records']) else 'proven-nonentry'
+    # Both observations bracket physical/history reads with activity visibility.
+    # A changed applied prefix/target/catalog cannot reuse the first observation.
+    first = observe(probe, connection, activity=True)
+    second = observe(probe, connection, activity=True)
+    for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'ready', 'pendingCount'):
+        if key not in first or first[key] != second.get(key):
+            raise RuntimeError('Migration stage unresolved: readiness-drift')
+    second['historicalExecution'] = history
+    second['historicalReconciliationSources'] = [
+        {key: row[key] for key in ('run', 'attempt', 'code', 'sourceBlob', 'evidence') if key in row}
+        for row in report['records'] if row['code'] in uncertain]
+    second['historicalEvidenceIdentity'] = hashlib.sha256(
+        json.dumps(report, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return second
+
+
 def production_readiness(before):
     authority = release_authority()
     repository = os.environ['GITHUB_REPOSITORY']
@@ -215,6 +294,19 @@ def production_readiness(before):
     targets = json.loads(os.environ['SELECTED_TARGETS'])
     authority.selected_release_target_keys(targets)
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    if before['ready']:
+        # This is new current-policy observation, not relabelled premerge proof.
+        # No rehearsal or first-write permission is needed when no SQL is needed.
+        history = before.get('historicalExecution', 'invalid')
+        if not re.fullmatch('[a-f0-9]{64}', str(before.get('historicalEvidenceIdentity', ''))):
+            history = 'invalid'
+        resolution = resolve_migration_boundary(history, schema='complete',
+            activity=before.get('mutationActivity', 'unknown'), action='reconcile')
+        if resolution['state'] != 'preserve-without-sql':
+            raise RuntimeError('Migration stage unresolved: mutation-activity')
+        return dict(before, state='executed-success', kind='current-schema-no-write',
+                    candidate=candidate, executionAuthority=approved, targets=sorted(targets),
+                    resolution=resolution)
     # Expensive proof need not expire with a database observation. The caller
     # performs a new observation and exact database/baseline comparison before
     # any mutation, preserving compatible builds and rehearsals across queues.
@@ -224,6 +316,24 @@ def production_readiness(before):
     if not proof:
         raise RuntimeError('Migration stage unresolved: readiness-missing')
     return proof['receipt']
+
+
+def retain_current_observation(receipt, bundle_digest, *, publisher=None):
+    """Durable desired-state proof, never an execution receipt or SQL intent."""
+    record = {key: receipt[key] for key in (
+        'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity',
+        'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity',
+        'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources')}
+    record.update(schemaVersion=1, phase='observation', kind='current-schema-no-write',
+                  bundleDigest=bundle_digest, sqlExecutionAuthorized=False,
+                  producingRun=int(os.environ['GITHUB_RUN_ID']),
+                  producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']))
+    identity = hashlib.sha256(json.dumps(record, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    record['observationIdentity'] = identity
+    # An ambiguous acknowledgement stops this boundary. Reobservation is safe;
+    # neither a missing observation nor its recovery authorizes a SQL command.
+    return (publisher or journal_type()._publish)(
+        'legend-migration-observation-' + identity, record, timeout=120)
 
 
 def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=None, execute=None, readiness=None):
@@ -237,8 +347,11 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
     else:
         journal = migration_stage('child-history', journal_factory, 'migrations', material)
     if readiness is not None:
-        bind_readiness(before, hashlib.sha256(bundle.read_bytes()).hexdigest(), readiness(before),
-                       completed_intent=journal.intent is not None)
+        bundle_digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        receipt = readiness(before)
+        bind_readiness(before, bundle_digest, receipt, completed_intent=journal.intent is not None)
+        if receipt.get('kind') == 'current-schema-no-write':
+            migration_stage('observation-receipt', retain_current_observation, receipt, bundle_digest)
     observation = {'schemaIdentity': before['schemaIdentity']}
     if before['ready']:
         # This receipt proves desired state, never historical execution. The
@@ -443,14 +556,12 @@ if __name__ == '__main__':
             result = preflight(bundle if bundle.is_file() else None, probe,
                                None if observation is not None else connection_string(), observation=observation)
         else:
-            result = reconcile(bundle, probe, connection_string(), readiness=production_readiness)
+            result = reconcile(bundle, probe, connection_string(),
+                observer=production_observation, readiness=production_readiness)
             print('Schema ready; validated migration child ' + result + '.')
     except Exception as exc:
         # Only locally constructed fixed labels may cross this boundary.
-        stages = {'schema-observation', 'child-history', 'mutation-admission',
-                  'bundle-execution', 'schema-verification', 'success-receipt',
-                  'readiness-identity', 'readiness-bundle', 'readiness-drift', 'readiness-missing'}
-        messages = {'Migration stage unresolved: ' + stage for stage in stages}
+        messages = {'Migration stage unresolved: ' + stage for stage in MIGRATION_STAGES}
         messages.update(OBSERVATION_ERRORS)
         detail = str(exc) if type(exc) is RuntimeError and str(exc) in messages else 'Migration stage unresolved: preparation'
         raise SystemExit(detail + '; preserve prior evidence and reconcile without replay.') from None

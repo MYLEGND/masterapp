@@ -1998,5 +1998,164 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.check()
 
 
+class MigrationBoundaryResolutionTests(unittest.TestCase):
+    def test_uncertain_history_never_becomes_nonentry_or_sql_authority(self):
+        value = migration.resolve_migration_boundary('outcome-unknown')
+        self.assertEqual('requires-runtime-reconciliation', value['state'])
+        self.assertEqual('outcome-unknown', value['historicalExecution'])
+        self.assertFalse(value['sqlExecutionAuthorized'])
+        value = migration.resolve_migration_boundary('outcome-unknown', schema='pending', activity='settled', action='reconcile')
+        self.assertEqual('blocked', value['state'])
+
+    def test_complete_schema_requires_settled_activity_and_valid_history(self):
+        for history, activity in [('active','settled'), ('invalid','settled'), ('outcome-unknown','unknown'), ('outcome-unknown','active')]:
+            with self.subTest(history=history, activity=activity):
+                self.assertEqual('blocked', migration.resolve_migration_boundary(history,
+                    schema='complete', activity=activity, action='reconcile')['state'])
+        result = migration.resolve_migration_boundary('outcome-unknown', schema='complete', activity='settled', action='reconcile')
+        self.assertEqual('preserve-without-sql', result['state'])
+        self.assertEqual('outcome-unknown', result['historicalExecution'])
+        self.assertFalse(result['sqlExecutionAuthorized'])
+
+    def test_nonentry_still_requires_existing_first_write_authority(self):
+        result = migration.resolve_migration_boundary('proven-nonentry', schema='pending', activity='settled', action='reconcile')
+        self.assertEqual('requires-first-write-admission', result['state'])
+        self.assertFalse(result['sqlExecutionAuthorized'])
+
+    def authority(self, runs):
+        import contextlib
+        from types import SimpleNamespace
+        return SimpleNamespace(selected_release_target_keys=lambda targets: targets,
+            assert_protected_release_execution=lambda: None,
+            evidence_lookup_budget=lambda deadline: contextlib.nullcontext(),
+            _release_history_runs=lambda *args: iter(runs),
+            readiness_evidence=lambda *args, **kwargs: self.fail('No obsolete-policy lookup for fresh no-write proof'))
+
+    def test_policy_transition_preserves_zero_pending_without_rehearsal_or_mutation(self):
+        import os
+        before=dict(ready=True, pendingCount=0, schemaIdentity='c'*64,
+                    databaseIdentity='d'*64, baselineIdentity='e'*64, mutationActivity='settled',
+                    historicalExecution='outcome-unknown', historicalEvidenceIdentity='f'*64)
+        with patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', RELEASE_CANDIDATE_SHA='a'*40,
+                RELEASE_SHA='b'*40, SELECTED_TARGETS='["masterapp-portal"]', GH_TOKEN='fixture', GITHUB_RUN_ID='8'), \
+             patch.object(migration, 'release_authority', return_value=self.authority([dict(id=7,status='completed'),dict(id=8,status='in_progress')])):
+            value=migration.production_readiness(before)
+        self.assertEqual('current-schema-no-write', value['kind'])
+        self.assertEqual('executed-success', value['state'])
+        self.assertEqual(before['baselineIdentity'], value['baselineIdentity'])
+        self.assertFalse(value['resolution']['sqlExecutionAuthorized'])
+
+    def test_active_prior_worker_or_unobserved_database_activity_blocks(self):
+        import os
+        for runs, activity in [([], 'settled'),([], 'unknown'),([], 'active')]:
+            with self.subTest(runs=runs,activity=activity), \
+                 patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', RELEASE_CANDIDATE_SHA='a'*40,
+                    RELEASE_SHA='b'*40, SELECTED_TARGETS='["masterapp-portal"]', GH_TOKEN='fixture', GITHUB_RUN_ID='8'), \
+                 patch.object(migration, 'release_authority', return_value=self.authority(runs)), \
+                 self.assertRaisesRegex(RuntimeError, 'mutation-activity'):
+                migration.production_readiness(dict(ready=True,mutationActivity=activity))
+
+    def test_pending_policy_mismatch_still_blocks(self):
+        import os
+        auth=self.authority([]);auth.readiness_evidence=lambda *args,**kwargs: None
+        with patch.dict(os.environ, GITHUB_REPOSITORY='owner/repo', RELEASE_CANDIDATE_SHA='a'*40,
+                RELEASE_SHA='b'*40, SELECTED_TARGETS='["masterapp-portal"]', GH_TOKEN='fixture'), \
+             patch.object(migration,'release_authority',return_value=auth), \
+             self.assertRaisesRegex(RuntimeError,'readiness-missing'):
+            migration.production_readiness(dict(ready=False,databaseIdentity='c'*64,schemaIdentity='d'*64,baselineIdentity='e'*64))
+
+
+class MigrationProductionObservationTests(unittest.TestCase):
+    def setUp(self):
+        import os, contextlib
+        from types import SimpleNamespace
+        self.events=[]
+        self.current=dict(id=8,run_attempt=2)
+        self.report=dict(completeHistory=True,records=[dict(code='HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION')])
+        self.before=dict(ready=True,pendingCount=0,databaseIdentity='a'*64,schemaIdentity='b'*64,
+                         baselineIdentity='c'*64,mutationActivity='settled')
+        def settle(*args,**kwargs):
+            self.events.append('settle-workers-and-history');return self.report
+        self.audit=SimpleNamespace(audit=settle,BLOCKED_CODES={'INVALID'},
+            STATUS_CODES={'INVALID','HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION'})
+        self.auth=SimpleNamespace(assert_protected_release_execution=lambda:self.current,
+            evidence_lookup_budget=lambda *args:contextlib.nullcontext())
+        def observe(*args,**kwargs):
+            self.assertTrue(kwargs['activity']);self.events.append('bracketed-observation');return dict(self.before)
+        for patcher in [patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GH_TOKEN='fixture',GITHUB_RUN_ATTEMPT='2'),
+                        patch.object(migration,'release_authority',return_value=self.auth),
+                        patch.object(migration,'history_audit',return_value=self.audit),
+                        patch.object(migration,'observe',side_effect=observe)]:
+            patcher.start();self.addCleanup(patcher.stop)
+
+    def test_workers_settle_before_stable_double_observation(self):
+        result=migration.production_observation(None,None)
+        self.assertEqual(['settle-workers-and-history','bracketed-observation','bracketed-observation'],self.events)
+        self.assertEqual('outcome-unknown',result['historicalExecution'])
+        self.assertRegex(result['historicalEvidenceIdentity'],'^[a-f0-9]{64}$')
+
+    def test_invalid_history_or_stale_attempt_never_reads_database(self):
+        self.report['records']=[dict(code='INVALID')]
+        with self.assertRaises(RuntimeError): migration.production_observation(None,None)
+        self.assertEqual(['settle-workers-and-history'],self.events)
+        self.events.clear();self.current['run_attempt']=3
+        with self.assertRaises(RuntimeError): migration.production_observation(None,None)
+        self.assertEqual([],self.events)
+
+    def test_intervening_database_or_schema_change_blocks_preservation(self):
+        for key,value in [('databaseIdentity','d'*64),('schemaIdentity','d'*64),('baselineIdentity','d'*64),('ready',False),('pendingCount',1)]:
+            with self.subTest(key=key),patch.object(migration,'observe',side_effect=[dict(self.before),dict(self.before,**{key:value})]):
+                with self.assertRaisesRegex(RuntimeError,'readiness-drift'): migration.production_observation(None,None)
+
+    def test_unknown_or_active_observation_does_not_retry_mutation(self):
+        with patch.object(migration,'observe',side_effect=RuntimeError('activity unresolved')) as observer:
+            with self.assertRaises(RuntimeError): migration.production_observation(None,None)
+            self.assertEqual(1,observer.call_count)
+
+
+class MigrationObservationReceiptTests(unittest.TestCase):
+    def test_observation_acknowledgment_loss_blocks_success_without_executing_sql(self):
+        from types import SimpleNamespace
+        calls=[]
+        before=dict(ready=True,pendingCount=0,databaseIdentity='a'*64,schemaIdentity='b'*64,baselineIdentity='c'*64)
+        receipt=dict(before,kind='current-schema-no-write')
+        journal=SimpleNamespace(intent=None,success=None,
+            record_success=lambda *args:calls.append('success'),
+            before_mutation=lambda *args,**kwargs:calls.append('intent'))
+        with tempfile.TemporaryDirectory() as directory:
+            bundle=Path(directory)/'bundle';bundle.write_bytes(b'immutable-bundle')
+            with patch.object(migration,'retain_current_observation',side_effect=TimeoutError('lost ack')) as publish:
+                with self.assertRaisesRegex(RuntimeError,'observation-receipt'):
+                    migration.reconcile(bundle,None,None,observer=lambda *args:before,
+                        journal_factory=lambda *args:journal,execute=lambda *args:calls.append('SQL'),readiness=lambda *args:receipt)
+                self.assertEqual(1,publish.call_count)
+            with patch.object(migration,'retain_current_observation',return_value={'artifactId':9}):
+                self.assertEqual('preserved',migration.reconcile(bundle,None,None,observer=lambda *args:before,
+                    journal_factory=lambda *args:journal,execute=lambda *args:calls.append('SQL'),readiness=lambda *args:receipt))
+        self.assertEqual(['success'],calls)
+
+
+    def test_durable_observation_retains_uncertainty_and_identity_without_sql_intent(self):
+        import os
+        receipt=dict(candidate='a'*40,executionAuthority='b'*40,databaseIdentity='c'*64,
+            schemaIdentity='d'*64,baselineIdentity='e'*64,observedUtc='2026-10-09T12:00:00Z',
+            pendingCount=0,mutationActivity='settled',historicalExecution='outcome-unknown',
+            historicalEvidenceIdentity='f'*64,historicalReconciliationSources=[dict(run=7,attempt=1)])
+        calls=[]
+        def publish(name,record,**kwargs):
+            calls.append((name,record));return dict(artifactId=123)
+        with patch.dict(os.environ,GITHUB_RUN_ID='8',GITHUB_RUN_ATTEMPT='2'):
+            result=migration.retain_current_observation(receipt,'0'*64,publisher=publish)
+            self.assertEqual(123,result['artifactId'])
+            self.assertEqual('observation',calls[0][1]['phase'])
+            self.assertFalse(calls[0][1]['sqlExecutionAuthorized'])
+            self.assertEqual('outcome-unknown',calls[0][1]['historicalExecution'])
+            self.assertEqual('0'*64,calls[0][1]['bundleDigest'])
+            self.assertEqual(2,calls[0][1]['producingAttempt'])
+            with self.assertRaises(TimeoutError):
+                migration.retain_current_observation(receipt,'0'*64,publisher=lambda *a,**k: (_ for _ in ()).throw(TimeoutError()))
+        self.assertEqual(1,len(calls))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -9,6 +9,9 @@ using Microsoft.EntityFrameworkCore;
 // assembly owns both schema identities. No application rows or SQL are exposed.
 try
 {
+    var inspectActivity = args.Count(arg => arg == "--activity") == 1;
+    if (args.Count(arg => arg == "--activity") > 1) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+    args = args.Where(arg => arg != "--activity").ToArray();
     var export = args.SequenceEqual(new[] { "--export-contract" });
     var contractPath = args.Length == 2 && args[0] == "--contract" ? args[1] : null;
     if (!export && contractPath is null && (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory")))
@@ -27,6 +30,38 @@ try
     if (contractPath is not null && JsonSerializer.Serialize(contract, CandidateContract.Json) != CandidateContract.Export(db))
         throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
     var known = contract.Migrations.Select(m => m.Id).ToArray();
+    async Task VerifySettledActivity()
+    {
+        await db.Database.OpenConnectionAsync(timeout.Token);
+        // Only approved, fixed metadata queries. Never expose session identities,
+        // SQL text, application rows or credentials. A restricted DMV view must
+        // not turn invisible workers into a false quiet-database observation.
+        await using var activityCommand = db.Database.GetDbConnection().CreateCommand();
+        activityCommand.CommandTimeout = 30;
+        activityCommand.CommandText = """
+            SELECT CASE WHEN CONVERT(int,SERVERPROPERTY('EngineEdition')) = 5
+              THEN COALESCE(HAS_PERMS_BY_NAME(DB_NAME(),'DATABASE','VIEW DATABASE STATE'),0)
+              ELSE CASE WHEN COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER STATE'),0) = 1
+                OR COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER PERFORMANCE STATE'),0) = 1
+                THEN 1 ELSE 0 END END
+            """;
+        if (Convert.ToInt32(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 1)
+            throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
+        activityCommand.CommandText = """
+            SELECT
+              (SELECT COUNT_BIG(*) FROM sys.dm_exec_requests
+                WHERE database_id = DB_ID() AND session_id <> @@SPID)
+              + (SELECT COUNT_BIG(*) FROM sys.dm_exec_sessions
+                WHERE database_id = DB_ID() AND session_id <> @@SPID AND is_user_process = 1
+                  AND (open_transaction_count > 0 OR status IN ('running','rollback')))
+              + (SELECT COUNT_BIG(*) FROM sys.dm_tran_database_transactions
+                WHERE database_id = DB_ID() AND database_transaction_type = 1
+                  AND database_transaction_state NOT IN (10,11))
+            """;
+        if (Convert.ToInt64(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 0)
+            throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
+    }
+    if (inspectActivity) await VerifySettledActivity();
     var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token))
         .Order(StringComparer.Ordinal).ToArray();
     if (known.Length == 0)
@@ -278,9 +313,12 @@ try
     identityCommand.CommandText = "SELECT CONCAT(CONVERT(nvarchar(256),SERVERPROPERTY('ServerName')),N'/',DB_NAME())";
     var databaseIdentity = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
         Convert.ToString(await identityCommand.ExecuteScalarAsync(timeout.Token)) ?? throw new InvalidOperationException())));
+    if (inspectActivity) await VerifySettledActivity();
+    var mutationActivity = inspectActivity ? "settled" : "not-observed";
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
+        mutationActivity,
         databaseIdentity,
         // Physical postconditions above have passed. Bind the observed applied
         // prefix and those exact expectations separately from catalog identity.

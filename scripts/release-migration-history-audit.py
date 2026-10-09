@@ -9,6 +9,7 @@ Every failure is independently checked again by the canonical first-write gate.
 from __future__ import annotations
 
 import concurrent.futures
+import contextvars
 import hashlib
 import importlib.util
 import json
@@ -25,11 +26,12 @@ BLOCKED_CODES = NOOP_CODES | {
     'HISTORICAL_PREWRITE_UNPROVEN', 'JOB_INVENTORY_INCOMPLETE',
     'RELEASE_JOB_MISSING', 'MIGRATION_STEP_MISSING',
     'EVIDENCE_READ_UNAVAILABLE', 'UNTRUSTED_PRODUCER',
-    'EF_PENDING_MODEL_CHANGE',
+    'EF_PENDING_MODEL_CHANGE', 'MIGRATION_WORKER_ACTIVE',
 }
 # Display names and classifications are authored here, never copied from raw
 # GitHub/SQL/provider exception messages, logs, or artifact bodies.
 STATUS_CODES = BLOCKED_CODES | {
+    'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
     'LEGACY_NOOP_PROVEN', 'LEGACY_PREWRITE_PROVEN',
     'MODERN_PREWRITE_PROVEN', 'MODERN_NOOP_PROVEN',
     'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE',
@@ -44,6 +46,14 @@ def authority():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def migration_resolver():
+    spec = importlib.util.spec_from_file_location('canonical_migration_resolver',
+                                                  Path(__file__).with_name('release-migration.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.resolve_migration_boundary
 
 
 def blob_sha(source):
@@ -82,6 +92,66 @@ def legacy_failure_reason(auth, repo, job, token, row):
            for message in outputs):
         return 'EF_PENDING_MODEL_CHANGE'
     return 'HISTORICAL_PREWRITE_UNPROVEN'
+
+
+def authenticated_admission(auth, repo, run, attempt):
+    spec = importlib.util.spec_from_file_location('migration_historical_lifecycle',
+        Path(__file__).with_name('release-lifecycle.py'))
+    lifecycle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lifecycle)
+    lifecycle.VALIDATION_AUTHORITY = auth
+    api = lifecycle.GitHub()
+    if api.repo != repo:
+        raise RuntimeError('Historical admission repository mismatch')
+    records = lifecycle._admission_records(api, run)
+    exact = [r for r in records if r['producingAttempt'] == attempt]
+    if len(exact) != 1:
+        raise RuntimeError('Historical required admission unavailable')
+    return exact[0]['admissionId']
+
+
+def authenticate_uncertain_attempt(auth, repo, token, run, attempt, job):
+    """Authenticate retained evidence without claiming execution did not occur."""
+    if (type(attempt) is not int or attempt < 1
+            or type(run.get('run_attempt')) is not int or attempt > run['run_attempt']
+            or job.get('run_attempt', attempt) != attempt
+            or job.get('status') != 'completed'
+            or any(step.get('status') != 'completed' for step in job.get('steps', [])
+                   if step.get('name') == MODERN_STEP)):
+        raise RuntimeError('Historical attempt identity invalid')
+    inventory = auth.api_get(repo, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts, count = inventory.get('artifacts'), inventory.get('total_count')
+    if (not isinstance(artifacts, list) or type(count) is not int or count != len(artifacts)
+            or any(not isinstance(a, dict) or type(a.get('id')) is not int or a['id'] < 1
+                   or not isinstance(a.get('name'), str)
+                   or a.get('workflow_run', {}).get('id') != run['id'] for a in artifacts)
+            or len({a['id'] for a in artifacts}) != count
+            or len({a['name'] for a in artifacts}) != count):
+        raise RuntimeError('Historical evidence inventory incomplete')
+    states = [a for a in artifacts if re.fullmatch(
+        rf"legend-release-step-state-[a-f0-9]{{40}}-{run['id']}-{attempt}", a['name'])]
+    if len(states) != 1 or states[0].get('expired') is not False:
+        raise RuntimeError('Historical execution state unavailable')
+    # This existing reader independently corroborates retained state run/attempt,
+    # steps, authority checkout and package identity against Actions and source.
+    auth._release_attempt_package_revision(repo, run, attempt, job, token, 'portal', aggregate=True)
+    admission = authenticated_admission(auth, repo, run, attempt)
+    retained = []
+    for artifact in artifacts:
+        if not artifact['name'].startswith(('legend-release-child-intent-', 'legend-release-child-success-')):
+            continue
+        if artifact.get('expired') is not False:
+            raise RuntimeError('Historical child evidence unavailable')
+        record = auth._release_history_json(repo, run['id'], artifact, 'operation.json')
+        if not isinstance(record, dict):
+            raise RuntimeError('Historical child evidence malformed')
+        phase = 'intent' if artifact['name'].startswith('legend-release-child-intent-') else 'success'
+        auth._validate_child_generation(repo, run, artifact, record, record.get('child'), token, phase=phase)
+        if record.get('child') == 'migrations':
+            retained.append(dict(artifactId=artifact['id'], phase=phase,
+                                 producingAttempt=record['producingAttempt'],
+                                 dependencyIdentity=record['dependencyIdentity']))
+    return dict(stateArtifactId=states[0]['id'], admissionId=admission, migrationRecords=retained)
 
 
 def classify_attempt(auth, repo, token, run, attempt):
@@ -170,6 +240,18 @@ def classify_attempt(auth, repo, token, run, attempt):
                 return row
             row['code'] = legacy_failure_reason(auth, repo, job, token, row)
             return row
+        # Authenticate the original canonical entry point before interpreting
+        # uncertain execution. Source recognition is not a no-write claim.
+        source = auth._release_history_source(repo, run['head_sha'],
+            '.github/workflows/' + auth.DIRECT_RELEASE_WORKFLOW, token)
+        row['sourceBlob'] = blob_sha(source)
+        block = auth.named_step_blocks(auth._job_blocks(source).get('release', '')).get(MODERN_STEP, '')
+        if block.count('python3 scripts/release-prepublication.py') != 1:
+            row['code'] = 'MIGRATION_STEP_MISSING'
+            return row
+        if run.get('status') != 'completed' or job.get('status') != 'completed':
+            row['code'] = 'MIGRATION_WORKER_ACTIVE'
+            return row
         if step.get('conclusion') == 'failure':
             if (auth._attested_migration_prewrite_failure(
                     repo, run, job, step, attempt, token)
@@ -177,7 +259,12 @@ def classify_attempt(auth, repo, token, run, attempt):
                         repo, run, job, step, attempt, token)):
                 row['code'] = 'MODERN_PREWRITE_PROVEN'
             else:
-                row['code'] = 'HISTORICAL_PREWRITE_UNPROVEN'
+                # Complete trusted terminal evidence can establish uncertainty;
+                # it cannot establish nonentry, success, or permission to replay.
+                envelope = authenticate_uncertain_attempt(auth, repo, token, run, attempt, job)
+                resolution = migration_resolver()('outcome-unknown', action='validate')
+                row.update(code='HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
+                           resolution=resolution, evidence=envelope, historicalAuthorization='unresolved')
             return row
         if (step.get('conclusion') == 'success'
                 and auth._attested_migration_noop_success(
@@ -194,7 +281,7 @@ def classify_attempt(auth, repo, token, run, attempt):
         return row
 
 
-def audit(auth, repo, token):
+def audit(auth, repo, token, *, current_execution=None):
     branch = urllib.parse.quote(auth.TRUSTED_PR_BASE, safe='')
     runs, seen, expected = [], 0, None
     for page in range(1, 11):
@@ -219,16 +306,34 @@ def audit(auth, repo, token):
             break
     if expected is None or seen != expected:
         raise RuntimeError('RELEASE_HISTORY_TRUNCATED')
+    if len({run['id'] for run in runs}) != len(runs):
+        raise RuntimeError('RELEASE_HISTORY_INVENTORY_INCOMPLETE')
+    if current_execution is not None:
+        # Only runtime may supply this API-authenticated current execution. Its
+        # earlier attempts remain in scope; the in-flight attempt has no result.
+        current = [r for r in runs if r['id'] == current_execution['id']]
+        if len(current) != 1 or any(current[0].get(k) != current_execution.get(k) for k in
+                ('id', 'head_sha', 'head_branch', 'event', 'path', 'run_attempt', 'status')):
+            raise RuntimeError('CURRENT_RELEASE_IDENTITY_CHANGED')
     tasks = []
     for run in runs:
+        if current_execution is not None and run['id'] != current_execution['id'] and run.get('status') != 'completed':
+            raise RuntimeError('MIGRATION_WORKER_ACTIVE')
         attempts = run.get('run_attempt', 1)
         if type(attempts) is not int or not 1 <= attempts <= 20:
             raise RuntimeError('RELEASE_ATTEMPT_INVENTORY_INCOMPLETE')
         for attempt in range(1, attempts + 1):
-            tasks.append((run, attempt))
+            if current_execution is not None and run['id'] == current_execution['id'] and attempt == attempts:
+                continue
+            attempt_run = run
+            if current_execution is not None and run['id'] == current_execution['id']:
+                attempt_run = auth.api_get(repo, f"actions/runs/{run['id']}/attempts/{attempt}", token)
+                if any(attempt_run.get(k) != run.get(k) for k in ('id', 'head_sha', 'head_branch', 'event', 'path')) or attempt_run.get('run_attempt') != attempt:
+                    raise RuntimeError('RELEASE_ATTEMPT_INVENTORY_INCOMPLETE')
+            tasks.append((attempt_run, attempt))
     # Bounded parallelism; output is deterministically sorted after all reads.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-        futures = [pool.submit(classify_attempt, auth, repo, token, run, attempt)
+        futures = [pool.submit(contextvars.copy_context().run, classify_attempt, auth, repo, token, run, attempt)
                    for run, attempt in tasks]
         rows = [f.result() for f in futures]
     rows.sort(key=lambda x: (-x['run'], x['attempt']))
@@ -243,8 +348,11 @@ def main():
     records = report['records']
     blockers = [r for r in records if r['code'] in BLOCKED_CODES]
     possible = [r for r in records
-                if r['code'] in {'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE',
+                if r['code'] in {'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
+                                 'POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE',
                                  'EF_MIGRATION_EXECUTION_ENTERED'}]
+    report['historicalOutcomeUnknown'] = sum(r['code'] == 'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION' for r in records)
+    report['sqlExecutionAuthorized'] = False
     report['blockingCount'] = len(blockers)
     report['requiresPhysicalSqlFence'] = len(possible)
     output = os.environ.get('LEGEND_MIGRATION_AUDIT_OUTPUT', '').strip()
@@ -258,6 +366,10 @@ def main():
         print('LEGEND_MIGRATION_AUDIT:BLOCKED:run=' + str(row['run']) +
               ':attempt=' + str(row['attempt']) + ':code=' + row['code'] +
               ':sourceBlob=' + (row.get('sourceBlob') or 'unknown'), flush=True)
+    for row in possible:
+        if row['code'] == 'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION':
+            print('LEGEND_MIGRATION_AUDIT:REQUIRES_RUNTIME_RECONCILIATION:run=' + str(row['run'])
+                  + ':attempt=' + str(row['attempt']) + ':HISTORICAL_AUTHORIZATION_UNRESOLVED', flush=True)
     # Unproven source, missing attempt evidence or untrusted producer is a
     # hard CI failure. A positively observed EF execution is NOT a no-write:
     # preserve it as NEEDS_PHYSICAL_SQL, and require a fresh production SQL
