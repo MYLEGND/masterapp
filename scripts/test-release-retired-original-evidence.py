@@ -52,6 +52,26 @@ for run_id, kind in fixtures.items():
         raise SystemExit('RETIRED_EVIDENCE:EF_ENTERED_MISCLASSIFIED_NOOP')
     print('RETIRED_EVIDENCE:AUTHENTICATED:' + kind + ':run=' + str(run_id))
 
+# Authenticate a completed SQL no-op where the original release selected
+# a protected older approved commit than the workflow event's triggering head.
+# The original no-change marker occurs before the historical EF bundle.
+run_id = 36981319917
+run = a.api_get(repo, f'actions/runs/{run_id}', token)
+response = a.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+jobs = response.get('jobs', [])
+owners = [j for j in jobs if j.get('name') == 'release']
+if response.get('total_count') != len(jobs) or len(owners) != 1:
+    raise SystemExit('RETIRED_EVIDENCE:SUCCESSFUL_NOOP_OWNER_UNPROVEN')
+job = owners[0]
+steps = [x for x in job.get('steps', [])
+         if x.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+source = a._release_history_source(
+    repo, run['head_sha'], '.github/workflows/' + a.DIRECT_RELEASE_WORKFLOW, token)
+if len(steps) != 1 or not a._legacy_migration_noop(
+        repo, run, job, steps[0], source, token):
+    raise SystemExit('RETIRED_EVIDENCE:SUCCESSFUL_NOOP_PROOF_REJECTED:run=36981319917')
+print('RETIRED_EVIDENCE:ORIGINAL_SUCCESSFUL_NOOP:run=36981319917')
+
 for run_id in (36278311858, 36275526793):
     run = a.api_get(repo, f'actions/runs/{run_id}', token)
     response = a.api_get(
