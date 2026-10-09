@@ -1736,11 +1736,12 @@ def direct_only_request(sha):
 
 
 def direct_release_approved_pr(api, sha):
-    """Resolve an exact approved-only release revision to its validated product PR.
+    """Resolve an approved-only release to its exact validated source PR.
 
     Release authorization may be rewritten several times, and release-control-only
     PRs may be merged between the last product PR and the final authorization.
-    Walk backward through a bounded chain of request-only commits and release-control
+    A merged explicit request binds its own validated head; older single-parent
+    request formats walk backward through request-only commits and release-control
     PR merges until the nearest product-changing merged PR is reached. Any malformed
     lineage, non-control single-parent commit, excessive chain, or ambiguous PR map
     fails closed.
@@ -1777,6 +1778,14 @@ def direct_release_approved_pr(api, sha):
         if len(matches) != 1:
             return None
         pr = matches[0]
+        # A merged explicit request is itself the validated candidate authority.
+        # Its immutable package may have an older producer, resolved separately
+        # by the package owner. Walking past this PR loses authorization and can
+        # resurrect an unrelated older product release after control-only merges.
+        if len(parts) == 3 and direct_only_request(merged):
+            if pr.get('head', {}).get('sha') != parts[2]:
+                return None
+            return pr
         files = api.pages(f"pulls/{pr['number']}/files")
         names = {row.get('filename') for row in files}
         if names and all(
@@ -1819,54 +1828,9 @@ def authorization_release_proven(api, authorization_sha, targets):
 
 
 def pending_legacy_release_authorization(api, approved):
-    """Resolve only the newest valid explicit authorization on first-parent history.
-
-    Automatic application PRs do not use this path. It exists only to carry a
-    previously authorized release across release-control-only correction merges.
-
-    Scan the literal first-parent commit chain rather than path-filtered history:
-    Git path simplification must never hide a merge that imports a new release
-    request from its second parent. Once the newest valid authorization is found,
-    it is authoritative. If already released, stop; never resurrect an older
-    superseded authorization.
-    """
-    history = git('rev-list', '--first-parent', approved, check=False)
-    if history.returncode:
-        raise RuntimeError('Unable to inspect approved first-parent release authorization history')
-
-    for sha in history.stdout.splitlines():
-        if not SHA.fullmatch(sha) or not direct_only_request(sha):
-            continue
-
-        pr = direct_release_approved_pr(api, sha)
-        if pr is None:
-            return {
-                'retained': 'Historical release authorization cannot be bound to one validated approved PR'
-            }
-
-        pending = candidate_validation(api, pr)
-        if pending:
-            return {'retained': pending}
-
-        targets = release_targets(sha)
-        if not targets:
-            return {'retained': 'Historical release authorization has no canonical target scope'}
-
-        revision = pr['head']['sha']
-        if (
-            all(release_proven(api, revision, app=target) for target in targets)
-            or authorization_release_proven(api, sha, targets)
-        ):
-            return None
-
-        return {
-            'authorizationSha': sha,
-            'applicationRevision': revision,
-            'targets': sorted(targets),
-            'sourcePr': pr['number'],
-        }
-
-    return None
+    """Compatibility reader over the sole automatic/explicit target frontier."""
+    return next((row for row in pending_automatic_releases(api, approved)
+                 if row.get('authorizationMode') == 'explicit'), None)
 
 
 def _validated_package_evidence(api, revision):
@@ -1945,26 +1909,39 @@ def pending_automatic_releases(api, approved):
             break  # older authorizations cannot change any target's frontier
         if not SHA.fullmatch(sha):
             continue
-        matches = merges.get(sha, [])
-        if len(matches) != 1:
-            # Closed-PR collection snapshots can lag immediately after a merge.
-            # Resolve the exact first-parent commit directly before allowing an
-            # older queued candidate to become the apparent frontier.
-            associated = api.pages('commits/' + sha + '/pulls')
-            matches = [
-                candidate for candidate in associated
-                if candidate.get('merged_at')
-                and candidate.get('merge_commit_sha') == sha
-                and candidate.get('base', {}).get('ref') == APPROVED
-            ]
-        if len(matches) != 1:
-            continue
-        pr = matches[0]
-        files = api.pages(f"pulls/{pr['number']}/files")
-        names = [row['filename'] for row in files if row.get('filename')]
-        targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
-        if not targets:
-            continue
+        explicit = direct_only_request(sha)
+        if explicit:
+            targets = release_targets(sha)
+            if targets and set(targets) <= covered:
+                continue
+            pr = direct_release_approved_pr(api, sha)
+            if not targets or pr is None:
+                # Unknown authorization scope cannot safely expose an older
+                # frontier. Preserve uncertainty instead of guessing a target.
+                return [{'authorizationMode': 'explicit', 'authorizationSha': sha,
+                         'retained': 'Explicit release scope or validated source PR is unproven'}]
+            names = []
+        else:
+            matches = merges.get(sha, [])
+            if len(matches) != 1:
+                # Closed-PR collection snapshots can lag immediately after a merge.
+                # Resolve the exact first-parent commit directly before allowing an
+                # older queued candidate to become the apparent frontier.
+                associated = api.pages('commits/' + sha + '/pulls')
+                matches = [
+                    candidate for candidate in associated
+                    if candidate.get('merged_at')
+                    and candidate.get('merge_commit_sha') == sha
+                    and candidate.get('base', {}).get('ref') == APPROVED
+                ]
+            if len(matches) != 1:
+                continue
+            pr = matches[0]
+            files = api.pages(f"pulls/{pr['number']}/files")
+            names = [row['filename'] for row in files if row.get('filename')]
+            targets = VALIDATION_AUTHORITY.release_targets_for_paths(names)
+            if not targets:
+                continue
         revision = pr.get('head', {}).get('sha')
         if not SHA.fullmatch(revision or ''):
             raise RuntimeError('Automatic release source PR has invalid validated head identity')
@@ -1980,16 +1957,20 @@ def pending_automatic_releases(api, approved):
             # Do not silently drop the untouched portion of an older atomic
             # transaction, and do not invent authorization to split it either.
             pending.append({'authorizationSha': sha, 'applicationRevision': revision,
-                            'targets': list(targets), 'sourcePr': pr['number'],
+                            'targets': sorted(targets) if explicit else list(targets), 'sourcePr': pr['number'],
+                            'authorizationMode': 'explicit' if explicit else 'automatic',
                             'retained': 'Partially superseded atomic release needs a validated combined successor',
                             'supersededTargets': sorted(overlap)})
             continue
         package_evidence = _validated_package_evidence(api, revision)
         publication_revision = package_evidence.get('revision', revision) if package_evidence.get('reusable') else revision
-        if all(release_proven(api, publication_revision, app=target) for target in targets):
+        complete = (authorization_release_proven(api, sha, set(targets)) if explicit else
+                    all(release_proven(api, publication_revision, app=target) for target in targets))
+        if complete:
             continue
         row = {'authorizationSha': sha, 'applicationRevision': revision,
-               'targets': list(targets), 'sourcePr': pr['number']}
+               'targets': sorted(targets) if explicit else list(targets), 'sourcePr': pr['number'],
+               'authorizationMode': 'explicit' if explicit else 'automatic'}
         validation = candidate_validation(api, pr)
         if validation:
             row['retained'] = validation
@@ -2035,18 +2016,21 @@ def release_run_candidate(run):
     return match.group(1) if match else None
 
 
-def automatic_release_admission(api, pr, approved, runs):
+def automatic_release_admission(api, pr, approved, runs, *, authorization_mode='automatic'):
     """Admit once, plus one bounded exact-live proof recovery after a settled failed parent."""
     active = [row for row in runs if row.get('status') != 'completed']
     if active:
         return {'state': 'WAITING_FOR_CONFLICTING_RELEASE', 'retained': 'Queued in approved PR history until active transaction completes',
                 'blockingRuns': [row['id'] for row in active]}
     identity = release_dispatch_identity(pr['number'], pr['head']['sha'], approved)
-    attempted = [row for row in runs if row.get('display_title') == identity
+    identities = {identity}
+    if authorization_mode == 'explicit':
+        identities.add(release_dispatch_identity(0, approved, approved))
+    attempted = [row for row in runs if row.get('display_title') in identities
                  or (row.get('head_sha') == approved
                      and not row.get('display_title', '').startswith('LEGEND release pr='))]
     if attempted:
-        exact = [row for row in attempted if row.get('display_title') == identity]
+        exact = [row for row in attempted if row.get('display_title') in identities]
         # One prior exact run may be retried only when it durably proves that
         # publication never entered, or when terminal provider proof shows the
         # immutable application revision is already live. The first case retries
@@ -2061,14 +2045,14 @@ def automatic_release_admission(api, pr, approved, runs):
     return None
 
 
-def admit_automatic_release(api, pr, approved, targets, *, source_merge_sha=None, runs=None):
+def admit_automatic_release(api, pr, approved, targets, *, source_merge_sha=None, runs=None, authorization_mode='automatic'):
     """One admission path for a freshly merged head and a recovered queued head.
 
     Called under the lifecycle workflow mutex. The publisher retains its global
     transaction mutex until durable resource reservations cover every mutation.
     """
     runs = direct_release_runs(api) if runs is None else runs
-    blocked = automatic_release_admission(api, pr, approved, runs)
+    blocked = automatic_release_admission(api, pr, approved, runs, authorization_mode=authorization_mode)
     if blocked:
         return blocked
     identity = release_dispatch_identity(pr['number'], pr['head']['sha'], approved)
@@ -2079,12 +2063,18 @@ def admit_automatic_release(api, pr, approved, targets, *, source_merge_sha=None
     # the later workflow/lease reconciliation may decide whether it executed.
     dispatched.add(identity)
     api._dispatch_handoffs = dispatched
-    api.dispatch(DIRECT, automatic_release_inputs(pr, approved, targets, source_merge_sha=source_merge_sha))
-    return {'state': 'RELEASE_DISPATCHED', 'directRelease': 'automatic validated-merge release', 'targets': list(targets)}
+    inputs = (automatic_release_inputs(pr, approved, targets, source_merge_sha=source_merge_sha)
+              if authorization_mode == 'automatic' else {
+                  'automatic': 'false', 'source_pr': str(pr['number']),
+                  'validated_sha': pr['head']['sha'], 'merge_sha': approved,
+              })
+    api.dispatch(DIRECT, inputs)
+    return {'state': 'RELEASE_DISPATCHED', 'directRelease': authorization_mode + ' validated-merge release', 'targets': list(targets)}
 
 
-def dispatch_pending_automatic_release(api, approved):
-    queue = pending_automatic_releases(api, approved)
+def dispatch_pending_automatic_release(api, approved, *, queue=None):
+    # One ordered frontier, one package recovery path, one dispatch predicate.
+    queue = pending_automatic_releases(api, approved) if queue is None else queue
     if not queue:
         return None
     runs = direct_release_runs(api)
@@ -2094,7 +2084,9 @@ def dispatch_pending_automatic_release(api, approved):
             retained.append(pending)
             continue
         pr_identity = {'number': pending['sourcePr'], 'head': {'sha': pending['applicationRevision']}}
-        blocked = automatic_release_admission(api, pr_identity, approved, runs)
+        mode = pending.get('authorizationMode', 'automatic')
+        execution = pending['authorizationSha'] if mode == 'explicit' else approved
+        blocked = automatic_release_admission(api, pr_identity, execution, runs, authorization_mode=mode)
         if blocked:
             if 'blockingRuns' in blocked:
                 return {**blocked, 'pendingCandidates': queue}
@@ -2106,6 +2098,7 @@ def dispatch_pending_automatic_release(api, approved):
             if not preflight.get('allowed'):
                 retained.append({
                     **pending,
+                    'state': 'SUPERSEDED' if preflight.get('reason') == 'application_inputs_changed_since_validated_revision' else 'WAITING_FOR_DEPENDENCY',
                     'packageBackfill': 'not dispatched',
                     'packageReason': preflight.get('reason') or package.get('reason'),
                     'retained': 'Historical package backfill is ineligible under current approved application lineage',
@@ -2125,51 +2118,24 @@ def dispatch_pending_automatic_release(api, approved):
         if pr.get('head', {}).get('sha') != pending['applicationRevision']:
             retained.append({**pending, 'retained': 'Source PR head changed after queue discovery'})
             continue
-        admission = admit_automatic_release(api, pr, approved, tuple(pending['targets']),
-                                             source_merge_sha=pending['authorizationSha'], runs=runs)
-        return {**admission, **pending}
+        admission = admit_automatic_release(api, pr, execution, tuple(pending['targets']),
+                                             source_merge_sha=pending['authorizationSha'], runs=runs,
+                                             authorization_mode=mode)
+        return {**admission, **pending, 'packageEvidenceRunId': package.get('runId')}
     return {'state': 'WAITING_FOR_DEPENDENCY', 'retained': 'Pending candidates require proof or repair', 'pendingCandidates': retained}
 
 
 def dispatch_pending_legacy_release(api, approved):
+    """Compatibility caller; no independent discovery, package or dispatch policy."""
     pending = pending_legacy_release_authorization(api, approved)
     if not pending:
         return None
-    if 'retained' in pending:
-        return pending
-
-    package = _validated_package_evidence(api, pending['applicationRevision'])
-    if not package.get('reusable'):
-        preflight = _package_backfill_preflight(api, pending['applicationRevision'], approved)
-        if not preflight.get('allowed'):
-            return {
-                'state': 'SUPERSEDED' if preflight.get('reason') == 'application_inputs_changed_since_validated_revision' else 'WAITING_FOR_DEPENDENCY',
-                'packageBackfill': 'not dispatched',
-                'packageReason': preflight.get('reason') or package.get('reason'),
-                'retained': 'Historical release package backfill is ineligible under current approved application lineage',
-                **pending,
-            }
-        backfill = _package_backfill_disposition(api, approved)
-        if backfill:
-            return {**pending, **backfill}
-        api.dispatch(PACKAGE_VALIDATION, {
-            'package_revision': pending['applicationRevision'],
-        })
-        return {
-            'packageBackfill': 'dispatched for exact green historical application revision',
-            'packageReason': package.get('reason'),
-            **pending,
-        }
-
-    api.dispatch(DIRECT, {
-        'automatic': 'false',
-        'merge_sha': pending['authorizationSha'],
-    })
-    return {
-        'directRelease': 'recovered nearest still-unreleased historical authorization',
-        'packageEvidenceRunId': package.get('runId'),
-        **pending,
-    }
+    result = dispatch_pending_automatic_release(
+        api, approved, queue=[{**pending, 'authorizationMode': 'explicit'}])
+    # Retain the legacy single-intent response shape for existing callers.
+    if result and result.get('pendingCandidates'):
+        return result['pendingCandidates'][0]
+    return result
 
 
 def release_execution_state(api, run):
@@ -2279,10 +2245,6 @@ def reconcile(api, trigger=None):
             'state': release_execution_state(api, latest),
             'retained': 'Exact approved release already attempted; queue lease retained until terminal proof',
         }
-
-    historical = dispatch_pending_legacy_release(api, approved)
-    if historical:
-        return historical
 
     promoted = promote_next_release_queue(api)
     if promoted:
@@ -2606,9 +2568,28 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     observed_blobs = {}
     for path, approved_blobs in historical.items():
         observed = git('rev-parse', revision + ':' + path, check=False)
-        if observed.returncode != 0 or observed.stdout.strip() not in approved_blobs:
+        if observed.returncode != 0:
             return False
         observed_blobs[path] = observed.stdout.strip()
+
+    # The final prepublication generation changed the journal as well as its
+    # caller. Admit only this complete audited source tuple, never arbitrary
+    # combinations of independently recognized mutation owners. All inventory,
+    # step and positive first-write witnesses below remain mandatory.
+    fenced_generation = observed_blobs == {
+        '.github/workflows/' + DIRECT: 'bd84c42297a50b29dfa20c2ed926b8233074720e',
+        'scripts/release-prepublication.py': '87fa8505d8df0b67d6c7d81e9edb452bbf6b1e1c',
+        'scripts/release-child-receipt.py': 'b1e262458f8ccac1132f7f71cb434d47b805116a',
+        'scripts/release-operation-evidence.py': '28b20739c7782db41134725b2e031f44d6c93f82',
+        'scripts/release-migration.py': 'f93021971cf0b0362c13ddd3b1f4a6b2cab85ba5',
+        'scripts/deploy-approved-app.py': '39d5b972bf47d9f29146fe44929e005843ffd234',
+        'scripts/validation-resume.py': '63f4fbe895230f2b52c29116505432ff3ee9710a',
+    }
+    if not fenced_generation and any(
+        observed_blobs[path] not in approved_blobs
+        for path, approved_blobs in historical.items()
+    ):
+        return False
 
     # The six newer historical generations were audited as complete source
     # triples, not a cross-product of independently acceptable writer blobs.
@@ -2638,7 +2619,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
     if (generation[0] in {item[0] for item in newer}
         or generation[1] == '4c4bff74892a9924efb45f3968e06a61dffbcab5'
         or generation[2] in {item[2] for item in newer}):
-        if generation not in newer:
+        if not fenced_generation and generation not in newer:
             return False
 
     keys = _validate_admission_record_scope(record)
@@ -2729,7 +2710,7 @@ def _historical_fenced_prepublication_nonentry(api, run, record):
         })
         if not all(outcomes.get(name) == [conclusion] for name, conclusion in required.items()):
             return False
-        if generation in newer:
+        if fenced_generation or generation in newer:
             # Reuse the sole canonical first-SQL-write witness instead of
             # trusting a failed job or missing artifact. It authenticates the
             # exact migration-denial marker inside this failed step's timestamps
