@@ -76,7 +76,7 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
 <section class="sp-store-page">
@@ -335,13 +335,14 @@
                 setAvailability(sizeSelect.value);
             }
 
-            addButton?.addEventListener("click", () => {
+            addButton?.addEventListener("click", async () => {
                 if (!store || !sizeSelect || addButton.disabled) return;
 
                 const size = sizeSelect.value || "@(defaultSize?.Size ?? "XS")";
                 const key = `${addButton.dataset.productId}:${size}`;
 
-                store.addItem({
+                addButton.disabled = true;
+                try { await store.addItem({
                     key,
                     id: addButton.dataset.productId,
                     name: addButton.dataset.productName,
@@ -355,6 +356,7 @@
                     quantity: 1
                 });
 
+                } catch { addButton.textContent = "Please try again"; addButton.disabled = false; return; }
                 addButton.textContent = "Added to Cart";
                 setTimeout(() => {
                     setAvailability(sizeSelect.value);

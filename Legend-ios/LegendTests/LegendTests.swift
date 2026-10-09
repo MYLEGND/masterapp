@@ -67,6 +67,39 @@ final class LegendTests: XCTestCase {
         XCTAssertEqual(notifications.map(\.title), ["Request approved"])
     }
 
+    func testFounderEngineeringUsesDedicatedActionProjectionInsteadOfRawAccountRow() {
+        let now = Date()
+        let notifications = LegendInAppNotificationProjection.make(
+            social: nil,
+            accountNotifications: [
+                MobileActivityNotification(
+                    id: UUID(),
+                    kind: "Engineering",
+                    title: "LEGEND Engineering release approval required",
+                    detail: "machine detail",
+                    occurredUTC: now,
+                    controlledResourceRequestID: nil),
+                MobileActivityNotification(
+                    id: UUID(),
+                    kind: "ControlledResourceApproved",
+                    title: "Request approved",
+                    detail: "Translation enabled",
+                    occurredUTC: now,
+                    controlledResourceRequestID: nil)
+            ])
+
+        XCTAssertEqual(notifications.count, 1)
+        XCTAssertEqual(notifications.first?.title, "Request approved")
+    }
+
+    func testPushTapNavigationTargetsCanonicalNotificationsCenterOnce() {
+        _ = LegendPushNotificationNavigation.consumePendingNotifications()
+        LegendPushNotificationNavigation.requestNotifications()
+
+        XCTAssertTrue(LegendPushNotificationNavigation.consumePendingNotifications())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingNotifications())
+    }
+
     func testPlannerAlertPolicyUsesOneLegendLocalAlertWithoutAnAPNsMirror() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))

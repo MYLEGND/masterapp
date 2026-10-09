@@ -234,6 +234,7 @@ public sealed class ParfaitAutomationWorkspaceViewModel
 
 public sealed class ParfaitAutomationDispatchCandidate
 {
+    public required Guid CommerceBusinessId { get; init; }
     public required Guid WorkflowId { get; init; }
     public required string WorkflowName { get; init; }
     public required string TriggerType { get; init; }

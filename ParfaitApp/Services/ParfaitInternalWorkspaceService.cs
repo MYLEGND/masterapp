@@ -1,3 +1,5 @@
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 using Shared.Analytics;
 
@@ -9,25 +11,47 @@ public sealed class ParfaitInternalWorkspaceService
     private readonly ParfaitOrderService _orders;
     private readonly IParfaitBusinessProfileService _businessProfile;
     private readonly ParfaitInternalAnalyticsService _analytics;
+    private readonly MasterAppDbContext _db;
 
     public ParfaitInternalWorkspaceService(
         ParfaitProductService products,
         ParfaitOrderService orders,
         IParfaitBusinessProfileService businessProfile,
-        ParfaitInternalAnalyticsService analytics)
+        ParfaitInternalAnalyticsService analytics,
+        MasterAppDbContext db)
     {
         _products = products;
         _orders = orders;
         _businessProfile = businessProfile;
         _analytics = analytics;
+        _db = db;
     }
 
-    public async Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(CancellationToken ct = default)
+    public Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(CancellationToken ct = default) =>
+        GetSnapshotAsync(_products.GetDefaultBusinessId(), ct);
+
+    public Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(Guid businessId, CancellationToken ct = default) =>
+        GetSnapshotAsync(
+            businessId,
+            ScopeContext.ForBusiness(businessId),
+            MarketingOwnerScope.Business(businessId),
+            ct);
+
+    public async Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(
+        Guid businessId,
+        ScopeContext analyticsScope,
+        MarketingOwnerScope marketingOwner,
+        CancellationToken ct = default)
     {
-        var products = _products.GetAllProducts().ToList();
-        var orders = _orders.GetAllOrders().ToList();
-        var profile = await _businessProfile.GetProfileAsync(ct);
+        var business = await _db.CommerceBusinesses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)
+            ?? throw new InvalidOperationException("An active commerce business is required.");
+        var products = _products.GetAllProducts(businessId).ToList();
+        var orders = _orders.GetAllOrders(businessId).ToList();
         var analytics = await _analytics.GetWorkspaceSummaryAsync(
+            businessId,
+            analyticsScope,
+            marketingOwner,
             "30d",
             null,
             null,
@@ -70,9 +94,9 @@ public sealed class ParfaitInternalWorkspaceService
 
         return new ParfaitInternalWorkspaceSnapshotViewModel
         {
-            StoreName = profile.StoreName,
-            BusinessType = profile.BusinessType,
-            HasCheckoutUrl = !string.IsNullOrWhiteSpace(profile.GlobalStoreCheckoutUrl),
+            StoreName = business.DisplayName,
+            BusinessType = business.BusinessType,
+            HasCheckoutUrl = true,
             HasMetaPixel = !string.IsNullOrWhiteSpace(meta.MetaPixelId),
             HasMetaConnection = meta.HasActiveMetaAdsConnection,
             HasAnalyticsTraffic = analytics.Sessions > 0 || trackedPurchases > 0 || analytics.HasTrackedEvents,

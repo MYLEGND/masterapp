@@ -135,6 +135,7 @@ public sealed class ParfaitOrderRecord
     public string Source { get; set; } = "Public Store";
     public string? UserAgent { get; set; }
     public string? RequestIp { get; set; }
+    public string? Oppref { get; set; }
 
     public List<ParfaitValidatedCartItem> Items { get; set; } = [];
 

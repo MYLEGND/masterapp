@@ -18,6 +18,7 @@ public sealed class RuntimeDiagnosticIncident
     public string? AppVersion { get; set; }
     public string? SourceFilePath { get; set; }
     public string? StackTrace { get; set; }
+    public string? StructuralReproducerJson { get; set; }
     public string? CorrelationId { get; set; }
     public string Disposition { get; set; } = "Observed";
     public int ReviewVersion { get; set; }

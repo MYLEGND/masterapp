@@ -1,12 +1,11 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using AgentPortal.Models.Analytics;
+using Infrastructure.Analytics;
+using Shared.Analytics;
 
 namespace AgentPortal.Services.Analytics;
 
 public interface IMetaAdsOAuthService
 {
-    string BuildConnectUrl(Guid agentTrackingProfileId, string? returnUrl, string? explicitRedirectUri = null);
-    Task<MetaAdsConnectionRecord> CompleteCallbackAsync(string code, string stateToken, CancellationToken ct = default);
+    string BuildConnectUrl(MarketingOwnerScope owner, string? returnUrl, string? explicitRedirectUri = null);
+    MarketingMetaOAuthState InspectState(string stateToken);
+    Task<MarketingMetaOAuthResult> CompleteCallbackAsync(string code, string stateToken, CancellationToken ct = default);
 }

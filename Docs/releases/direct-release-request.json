@@ -1,13 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Final scoped deployment after release-policy and EF migration-snapshot validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Final scoped release of centralized Store capability. Apply the validated additive WebsiteContentState.CommerceBusinessId migration and deploy only Protect Website, Parfait, and LEGEND Website. No mirrored storefront, no duplicate product/order store, no second Meta sender, no stacked website override system.",
-  "requestId": "centralized-website-commerce-final-scoped-20260925",
+  "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
+  "purpose": "Resume the existing authorized five-target publication after release 37954422758 stopped on database activity. Preserve compatible validation, immutable application components, rollback evidence, and completed migrations. Correct only the canonical read-only activity boundary, reconcile current database history and physical schema without migration replay, and require durable target receipts and live acceptance.",
+  "requestId": "founder-pr551-migration-activity-resume-20261009",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect",
     "masterapp-parfait",
     "masterapp-website"
   ],
-  "cloudflareWebsiteRouting": false
+  "cloudflareWebsiteRouting": false,
+  "preserveLiveTargets": false
 }

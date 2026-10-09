@@ -16,6 +16,7 @@ public sealed class RuntimeDiagnosticPublicWebsiteOptions
 public static class RuntimeDiagnosticsExtensions
 {
     public const string PublicWebsiteCorsPolicy = "RuntimeDiagnosticPublicWebsite";
+    public const string PublicSiteToolsCorsPolicy = "LegendPublicSiteTools";
 
     // Protect supplies its existing public website origins once to both policies.
     // Credentials are enabled only on the diagnostics branch, never on editor routes.
@@ -33,9 +34,15 @@ public static class RuntimeDiagnosticsExtensions
             options.HeaderName = "RequestVerificationToken";
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         });
-        services.AddCors(options => options.AddPolicy(PublicWebsiteCorsPolicy, policy => policy
-            .WithOrigins(origins).WithMethods("GET", "POST")
-            .WithHeaders("Content-Type", "RequestVerificationToken").AllowCredentials()));
+        services.AddCors(options =>
+        {
+            options.AddPolicy(PublicWebsiteCorsPolicy, policy => policy
+                .WithOrigins(origins).WithMethods("GET", "POST")
+                .WithHeaders("Content-Type", "RequestVerificationToken").AllowCredentials());
+            options.AddPolicy(PublicSiteToolsCorsPolicy, policy => policy
+                .WithOrigins(origins).WithMethods("GET", "POST")
+                .WithHeaders("Content-Type", "Accept"));
+        });
         return services;
     }
 

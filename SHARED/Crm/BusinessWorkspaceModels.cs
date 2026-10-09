@@ -23,13 +23,13 @@ public sealed class BusinessWorkspaceModel
     public SummaryKpiDto? Summary { get; set; }
     public MarketingHealthDto? Health { get; set; }
     public List<BusinessWebsiteEventMapRow> EventMap { get; set; } = new();
-    public List<BusinessWebsiteEventRow> RecentEvents { get; set; } = new();
 }
 
 public sealed record BusinessWebsiteEventMapRow(string Page, string Element, string Trigger, string Event,
-    string Mode, bool Published, long Revision);
-public sealed record BusinessWebsiteEventRow(DateTime OccurredUtc, string Event, string? Page, bool ServerSent);
-
+    string Mode, bool Published, long Revision, string? Owner = null, string? Site = null,
+    string? VisibleLabel = null, string? ActionKey = null, string? Binding = null, string? BehaviorKey = null,
+    string? Authority = null, bool Locked = false, string? MetaMapping = null, string? OpenAiMapping = null,
+    Guid? PublishedVersion = null, string? AnalyticsStatus = null, string? MetaStatus = null, string? OpenAiStatus = null);
 public sealed class BusinessCrmContact
 {
     public string Id { get; set; } = string.Empty;

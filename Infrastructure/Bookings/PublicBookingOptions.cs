@@ -37,6 +37,7 @@ public sealed record PublicBookingResolveContext(
 public static class PublicBookingConfigurationSources
 {
     public const string None = "none";
+    public const string BusinessProfile = "business_profile";
     public const string AgentProfile = "agent_profile";
     public const string SlugOverride = "slug_override";
     public const string GlobalFallback = "global_fallback";

@@ -12,7 +12,7 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
 }
 
 <section class="sp-store-page sp-store-page--success">
@@ -130,7 +130,7 @@
                         @foreach (var item in order.Items)
                         {
                             <div class="sp-success-item">
-                                <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                                <img src="@(item.ImageUrl ?? "/store-assets/images/favicon/parfait-logo.png")" alt="@item.Name" />
                                 <div>
                                     <h3>@item.Name</h3>
                                     <p>Size @item.Size · Qty @item.Quantity</p>

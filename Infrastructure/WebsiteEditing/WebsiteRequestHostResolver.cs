@@ -17,7 +17,10 @@ public static class WebsiteRequestHostResolver
     public const string OriginalHostHeader = "X-Legend-Original-Host";
     public const string BridgeSecretHeader = "X-Legend-Website-Bridge";
 
-    public static string Resolve(HttpContext context, IConfiguration? configuration)
+    public static string Resolve(
+        HttpContext context,
+        IConfiguration? configuration,
+        bool allowLegendCommerceHost = false)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -43,13 +46,17 @@ public static class WebsiteRequestHostResolver
 
         try
         {
-            // Business-domain normalization also rejects LEGEND-owned hostnames,
-            // so the bridge cannot redefine portal/protect/client/mylegnd hosts.
+            // Business-domain normalization rejects LEGEND-owned hostnames. The commerce
+            // transport may explicitly allow only the public LEGEND storefront hosts;
+            // portal/client hosts remain ineligible even with a valid bridge secret.
             return WebsiteDomainService.NormalizeHostname(originalHost);
         }
         catch (ArgumentException)
         {
-            return directHost;
+            var normalizedOriginal = NormalizeDirectHost(originalHost);
+            return allowLegendCommerceHost && IsLegendCommerceHost(normalizedOriginal)
+                ? normalizedOriginal
+                : directHost;
         }
     }
 
@@ -71,6 +78,10 @@ public static class WebsiteRequestHostResolver
 
     private static string ResolveBridgeOriginHost(IConfiguration configuration)
     {
+        var explicitHost = NormalizeDirectHost(configuration["WebsiteRouting:BridgeOriginHost"]);
+        if (!string.IsNullOrWhiteSpace(explicitHost))
+            return explicitHost;
+
         var configured = configuration["WebsiteContentApiBaseUrl"];
         if (Uri.TryCreate(configured, UriKind.Absolute, out var configuredUri) &&
             configuredUri.Scheme == Uri.UriSchemeHttps &&
@@ -79,6 +90,9 @@ public static class WebsiteRequestHostResolver
 
         return "masterapp-protect.azurewebsites.net";
     }
+
+    private static bool IsLegendCommerceHost(string host) =>
+        host is "mylegnd.com" or "www.mylegnd.com" or "protect.mylegnd.com";
 
     private static bool SecretEquals(string expected, string presented)
     {

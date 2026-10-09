@@ -41,6 +41,14 @@ public sealed class MobileProfileSettings
     /// </summary>
     public string? PreferredCommunicationLanguage { get; set; }
 
+    /// <summary>
+    /// Canonical account-scoped Founder assistant operating rules. The JSON is
+    /// maintained only by ControlledResourceAccessService; it contains bounded
+    /// rule text, provenance and supersession metadata, never conversation text,
+    /// credentials, customer records or model-generated knowledge.
+    /// </summary>
+    public string FounderAssistantRulesJson { get; set; } = "[]";
+
     // Public is the default. A private profile keeps its public identity
     // discoverable, but its social content is limited to approved followers.
     public bool IsPrivate { get; set; }

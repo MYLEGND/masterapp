@@ -217,8 +217,8 @@
             </div>
 
             <div class="preview-actions">
-                <a id="resourceDownload" class="preview-open preview-download" href="#" style="display:none;">Download</a>
-                <a id="resourceOpen" class="preview-open" href="#" target="_blank" rel="noopener">Open in new tab →</a>
+                <a id="resourceDownload" class="preview-open preview-download" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" style="display:none;">Download</a>
+                <a id="resourceOpen" class="preview-open" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">Open in new tab →</a>
             </div>
         </div>
 
@@ -746,12 +746,22 @@
 
     .policy-actions,
     .preview-actions,
-    .upload-actions{ width:100%; justify-content:stretch; }
+    .upload-actions{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:var(--app-mobile-control-gap);
+        width:100%;
+    }
 
     .policy-action-link,
     .policy-delete-button,
     .upload-submit,
     .preview-open{ width:100%; text-align:center; display:block; }
+
+    :is(.policy-actions,.preview-actions,.upload-actions) > :only-child{
+        width:auto;
+        justify-self:start;
+    }
 }
 </style>
 
@@ -848,10 +858,14 @@ document.addEventListener("DOMContentLoaded", function () {
         title.textContent = name;
         meta.textContent = metaText || `Type: ${extTag(extension)}`;
         openLink.href = viewUrl;
+        openLink.removeAttribute("aria-disabled");
+        openLink.removeAttribute("tabindex");
 
         if (downloadUrl) {
             downloadLink.style.display = "inline-flex";
             downloadLink.href = downloadUrl;
+            downloadLink.removeAttribute("aria-disabled");
+            downloadLink.removeAttribute("tabindex");
         } else {
             downloadLink.style.display = "none";
             downloadLink.removeAttribute("href");

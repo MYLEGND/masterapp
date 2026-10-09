@@ -1,8 +1,10 @@
 using System.Text;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Commerce;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 
@@ -89,6 +91,7 @@ public sealed class ParfaitOrderService
         {
             var now = DateTime.UtcNow;
             var record = CreatePendingOrderRecord(
+                businessId,
                 GenerateOrderNumber(now),
                 null,
                 customer,
@@ -168,6 +171,7 @@ public sealed class ParfaitOrderService
             if (order is null)
             {
                 record = CreatePendingOrderRecord(
+                    businessId,
                     GenerateOrderNumber(now),
                     normalizedAttemptId,
                     customer,
@@ -188,6 +192,7 @@ public sealed class ParfaitOrderService
             {
                 record = MapOrder(order);
                 ApplyCheckoutSnapshot(
+                    businessId,
                     record,
                     normalizedAttemptId,
                     customer,
@@ -336,6 +341,8 @@ public sealed class ParfaitOrderService
         return paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.NetRevenueCents));
     }
 
+    public Guid GetDefaultBusinessId() => GetBusinessId();
+
     private Guid GetBusinessId()
     {
         var business = _db.CommerceBusinesses.SingleOrDefault(x => x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey);
@@ -398,6 +405,7 @@ public sealed class ParfaitOrderService
             Source = order.Source,
             UserAgent = order.UserAgent,
             RequestIp = order.RequestIp,
+            Oppref = order.Oppref,
             Items = order.Lines
                 .OrderBy(x => x.Id)
                 .Select(line => new ParfaitValidatedCartItem
@@ -458,6 +466,7 @@ public sealed class ParfaitOrderService
         entity.Source = record.Source;
         entity.UserAgent = record.UserAgent;
         entity.RequestIp = record.RequestIp;
+        entity.Oppref = OpenAiClickReference.Normalize(record.Oppref);
         entity.SubtotalCents = record.SubtotalCents;
         entity.DiscountCode = record.DiscountCode;
         entity.DiscountLabel = record.DiscountLabel;
@@ -491,6 +500,7 @@ public sealed class ParfaitOrderService
     }
 
     private static ParfaitOrderRecord CreatePendingOrderRecord(
+        Guid businessId,
         string orderNumber,
         string? checkoutAttemptId,
         ParfaitCheckoutCustomerRequest customer,
@@ -523,11 +533,12 @@ public sealed class ParfaitOrderService
             PostalCode = ""
         };
 
-        ApplyCheckoutSnapshot(order, checkoutAttemptId, customer, items, subtotalCents, discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext, now);
+        ApplyCheckoutSnapshot(businessId, order, checkoutAttemptId, customer, items, subtotalCents, discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext, now);
         return order;
     }
 
     private static void ApplyCheckoutSnapshot(
+        Guid businessId,
         ParfaitOrderRecord order,
         string? checkoutAttemptId,
         ParfaitCheckoutCustomerRequest customer,
@@ -567,6 +578,7 @@ public sealed class ParfaitOrderService
         order.Source = "Public Store";
         order.UserAgent = httpContext.Request.Headers.UserAgent.ToString();
         order.RequestIp = httpContext.Connection.RemoteIpAddress?.ToString();
+        order.Oppref ??= ResolveOppref(businessId, httpContext);
         order.Items = items.Select(NormalizeItem).ToList();
         order.SubtotalCents = subtotal;
         order.DiscountCode = string.IsNullOrWhiteSpace(discountCode) ? null : discountCode.Trim().ToUpperInvariant();
@@ -625,6 +637,7 @@ public sealed class ParfaitOrderService
             Source = string.IsNullOrWhiteSpace(order.Source) ? "Public Store" : Clean(order.Source),
             UserAgent = NullIfEmpty(order.UserAgent),
             RequestIp = NullIfEmpty(order.RequestIp),
+            Oppref = OpenAiClickReference.Normalize(order.Oppref),
             Items = normalizedItems,
             SubtotalCents = order.SubtotalCents > 0 ? order.SubtotalCents : normalizedItems.Sum(item => item.LineTotalCents),
             DiscountCode = NullIfEmpty(order.DiscountCode)?.ToUpperInvariant(),
@@ -643,6 +656,16 @@ public sealed class ParfaitOrderService
 
         normalized.Status = BuildStatus(normalized);
         return normalized;
+    }
+
+    private static string? ResolveOppref(Guid businessId, HttpContext httpContext)
+    {
+        // businessId is the validated domain scope already used to load/write
+        // this order. Campaign cookies cannot choose or replace it.
+        var sessionId = httpContext.Request.Cookies["pf_sid"];
+        var context = new CommerceSignalContext(businessId, null, null, "commerce", string.Empty,
+            string.Empty, string.Empty, SessionId: sessionId);
+        return CommerceSignalAttribution.Apply(context, httpContext.Request).Oppref;
     }
 
     private static ParfaitValidatedCartItem NormalizeItem(ParfaitValidatedCartItem item)

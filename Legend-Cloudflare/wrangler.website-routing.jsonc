@@ -6,11 +6,36 @@
   "workers_dev": false,
   "routes": [
     {
+      "pattern": "mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "www.mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "protect.mylegnd.com/store*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "www.mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
+      "pattern": "protect.mylegnd.com/commerce/manage/*",
+      "zone_name": "mylegnd.com"
+    },
+    {
       "pattern": "*/*",
       "zone_name": "mylegnd.com"
     }
   ],
   "vars": {
-    "LEGEND_WEBSITE_ORIGIN": "https://masterapp-protect.azurewebsites.net"
+    "LEGEND_WEBSITE_ORIGIN": "https://masterapp-protect.azurewebsites.net",
+    "LEGEND_COMMERCE_ORIGIN": "https://masterapp-parfait.azurewebsites.net"
   }
 }

@@ -1,10 +1,13 @@
+@import url('/design/legend-web-foundation.css');
+@import url('/design/legend-app-shell.css');
+
 :root {
-    --client-auth-navy: #0d2145;
-    --client-auth-navy-strong: #091832;
-    --client-auth-blue: #2e5fa9;
-    --client-auth-text: #14213a;
-    --client-auth-muted: #64748b;
-    --client-auth-line: #d7e0ee;
+    --client-auth-navy: var(--legend-app-surface);
+    --client-auth-navy-strong: var(--legend-app-surface-elevated);
+    --client-auth-blue: var(--legend-app-accent);
+    --client-auth-text: var(--legend-app-on-dark);
+    --client-auth-muted: var(--legend-app-on-dark-muted);
+    --client-auth-line: var(--legend-app-control-line);
     --client-auth-danger: #a6384a;
 }
 
@@ -16,7 +19,7 @@ body.client-auth-page {
     min-width: 0;
     min-height: 100vh;
     margin: 0;
-    background: #ffffff;
+    background: var(--legend-app-surface);
     color: var(--client-auth-text);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -32,9 +35,9 @@ body.client-auth-page {
     width: min(100%, 680px);
     overflow: hidden;
     border: 1px solid var(--client-auth-line);
-    border-radius: 18px;
-    background: #ffffff;
-    box-shadow: 0 18px 42px rgba(13, 33, 69, 0.12);
+    border-radius: var(--legend-app-radius);
+    background: var(--legend-app-surface-elevated);
+    box-shadow: 0 18px 42px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .client-auth-brand {
@@ -43,7 +46,7 @@ body.client-auth-page {
     gap: 24px;
     padding: 28px 34px;
     background: linear-gradient(135deg, var(--client-auth-navy), var(--client-auth-navy-strong));
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
 }
 
 .client-auth-brand img {
@@ -65,7 +68,7 @@ body.client-auth-page {
 }
 
 .client-auth-brand-label {
-    color: #cbdcff;
+    color: var(--legend-app-on-dark-muted);
     font-size: 0.9rem;
     font-weight: 750;
     letter-spacing: 0.12em;
@@ -100,10 +103,10 @@ body.client-auth-page {
 .client-auth-alert {
     margin: 20px 0 0;
     padding: 10px 12px;
-    border: 1px solid #e6bec6;
-    border-radius: 10px;
-    background: #fff7f8;
-    color: #873244;
+    border: 1px solid color-mix(in srgb, var(--client-auth-danger) 48%, var(--legend-app-control-line));
+    border-radius: var(--legend-app-radius-compact);
+    background: color-mix(in srgb, var(--client-auth-danger) 12%, var(--legend-app-surface-elevated));
+    color: #ffc0cb;
     font-size: 0.85rem;
     line-height: 1.4;
 }
@@ -129,21 +132,21 @@ body.client-auth-page {
     width: 100%;
     min-height: 46px;
     padding: 0 13px;
-    border: 1px solid #cbd7e8;
-    border-radius: 10px;
+    border: 1px solid var(--legend-app-control-line);
+    border-radius: var(--legend-app-radius-compact);
     outline: none;
-    background: #fbfcfe;
+    background: var(--legend-app-control);
     color: var(--client-auth-text);
     font: inherit;
 }
 
 .client-auth-field input::placeholder {
-    color: #8290a7;
+    color: var(--legend-app-on-dark-muted);
 }
 
 .client-auth-field input:focus {
     border-color: var(--client-auth-blue);
-    box-shadow: 0 0 0 3px rgba(46, 95, 169, 0.16);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--legend-app-accent) 18%, transparent);
 }
 
 .client-auth-validation {
@@ -158,7 +161,7 @@ body.client-auth-page {
     align-items: center;
     justify-content: center;
     padding: 0 16px;
-    border-radius: 10px;
+    border-radius: var(--legend-app-radius-compact);
     font: inherit;
     font-size: 0.98rem;
     font-weight: 800;
@@ -169,13 +172,13 @@ body.client-auth-page {
 .client-auth-primary {
     border: 1px solid var(--client-auth-navy);
     background: var(--client-auth-navy);
-    color: #ffffff;
+    color: var(--legend-app-on-dark);
     cursor: pointer;
 }
 
 .client-auth-primary:hover,
 .client-auth-primary:focus-visible {
-    background: #17376d;
+    background: var(--legend-app-control);
 }
 
 .client-auth-help {
@@ -194,47 +197,71 @@ body.client-auth-page {
 @media (max-width: 520px) {
     .client-auth-shell {
         align-items: start;
-        padding: 12px 10px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-card {
-        border-radius: 14px;
+        border-radius: var(--legend-mobile-radius);
     }
 
     .client-auth-brand {
-        gap: 14px;
-        padding: 20px;
+        gap: var(--legend-mobile-gap);
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-brand img {
-        width: 88px;
-        height: 88px;
-        flex: 0 0 88px;
+        width: 52px;
+        height: 52px;
+        flex: 0 0 52px;
     }
 
     .client-auth-brand-name {
-        font-size: 1.08rem;
-        letter-spacing: 0.06em;
+        font-size: .92rem;
+        letter-spacing: .05em;
     }
 
     .client-auth-brand-label {
-        font-size: 0.78rem;
-        letter-spacing: 0.09em;
+        font-size: .68rem;
+        letter-spacing: .07em;
     }
 
     .client-auth-content {
-        padding: 26px 20px 28px;
+        padding: var(--app-mobile-card-pad);
     }
 
     .client-auth-content h1 {
-        font-size: clamp(1.7rem, 9vw, 2rem);
+        font-size: 1.45rem;
+        line-height: 1.05;
     }
 
     .client-auth-intro {
-        font-size: 0.96rem;
+        margin-top: var(--legend-mobile-gap);
+        font-size: .82rem;
+        line-height: 1.4;
+    }
+
+    .client-auth-form {
+        gap: var(--app-mobile-control-gap);
+        margin-top: var(--app-mobile-block-gap);
+    }
+
+    .client-auth-actions {
+        margin-top: var(--app-mobile-block-gap);
     }
 
     .client-auth-field input {
+        min-height: 38px;
         font-size: 16px;
+    }
+
+    .client-auth-primary {
+        min-height: var(--legend-mobile-control-height);
+        padding: 6px 9px;
+        border-radius: 8px;
+        font-size: .78rem;
+    }
+
+    .client-auth-help {
+        margin-top: var(--app-mobile-block-gap);
     }
 }

@@ -42,7 +42,6 @@ public sealed class BusinessWorkspaceSettingsInput
     [Required, MaxLength(40)] public string ClientLabel { get; set; } = "Clients";
     [Required, MaxLength(1240)] public string Stages { get; set; } = "New\nContacted\nQualified\nProposal\nWon\nClosed";
     public List<string> Metrics { get; set; } = [];
-    [MaxLength(50)] public string? Recipient { get; set; }
 }
 
 public sealed record BusinessIntakeRecipient(string Key, string Label, string Email);

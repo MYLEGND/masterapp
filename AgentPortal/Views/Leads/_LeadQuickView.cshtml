@@ -1,15 +1,24 @@
 <div class="backdrop" id="drawerBackdrop"></div>
 
 <aside class="drawer crm-qv-shell lead-qv-shell" id="drawer" data-legend-mobile-sheet aria-hidden="true" aria-label="Lead quick view">
-    <div class="dhead">
-        <div class="drawer-head-row drawer-head-row-primary">
-            <div class="drawer-head-identity">
-                <div class="dtitle">
-                    <span id="dName">Lead</span>
-                </div>
-                <div class="dsub">
-                    <span id="dEmail" class="crm-email-display">-</span> • <span id="dPhone">-</span>
-                </div>
+    <div class="dhead crm-qv-identity-bar">
+        <div class="drawer-head-identity">
+            <div class="dtitle">
+                <span id="dName">Lead</span>
+            </div>
+            <div class="dsub">
+                <span id="dEmail" class="crm-email-display">-</span> • <span id="dPhone">-</span>
+            </div>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btnCloseDrawer" data-legend-sheet-close aria-label="Close quick view">Close</button>
+    </div>
+
+    <div class="dbody" data-legend-sheet-scroll>
+        <section class="crm-qv-command-strip" aria-label="Lead quick actions">
+            <div class="drawer-statbar">
+                <span class="pill" id="dStageAge">Stage Age: 0d</span>
+                <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
+                <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
             </div>
             <div class="drawer-top-actions">
                 <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Today</button>
@@ -19,22 +28,11 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" class="lead-zoom-icon" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>Zoom
                 </button>
                 <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queue</a>
-                <button type="button" class="btn btn-ghost" id="btnCloseDrawer" data-legend-sheet-close>Close</button>
-            </div>
-        </div>
-        <div class="drawer-head-row drawer-head-row-secondary">
-            <div class="drawer-statbar">
-                <span class="pill" id="dStageAge">Stage Age: 0d</span>
-                <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
-                <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
             </div>
             <div class="drawer-head-context">
                 <div id="dPortalWrap">-</div>
             </div>
-        </div>
-    </div>
-
-    <div class="dbody" data-legend-sheet-scroll>
+        </section>
         <section class="crm-qv-overview-card lead-command-overview">
             <div class="crm-qv-overview-body">
                 <div class="crm-qv-summary-grid">
@@ -78,8 +76,8 @@
                 <div class="lead-contact-card-actions">
 
                     <button type="button" class="btn btn-gold qv-booking-launch" data-qv-booking-open>Book Appointment</button>
-                    <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
-                    <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
+                    <a class="btn btn-ghost" id="btnMail" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">Email</a>
+                    <a class="btn btn-ghost" id="btnCall" href="" data-dynamic-destination aria-disabled="true" tabindex="-1" target="_blank" rel="noopener">Call</a>
                     <button type="button" class="btn btn-ghost" id="btnText">Text</button>
                     <button type="button" class="btn btn-ghost" id="leadQuickActionsShortcut">Actions</button>
                     <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open>
@@ -578,8 +576,8 @@
 
 @await Html.PartialAsync("~/Views/Shared/_QuickViewBookingModal.cshtml")
 
-<div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
-    <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">
+<div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay data-legend-modal-surface hidden>
+    <div class="note-self-modal" data-legend-modal-panel role="dialog" aria-modal="true" aria-label="Note to Self">
         <div class="note-self-head">
             <div class="note-self-title-wrap">
                 <h3 class="note-self-title">Note to Self</h3>

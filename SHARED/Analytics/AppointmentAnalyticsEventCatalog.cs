@@ -9,6 +9,8 @@ public static class AppointmentAnalyticsEventCatalog
     public const string BookingFallbackClicked = "appointment_booking_fallback_clicked";
     public const string Completed = "appointment_completed";
     public const string NoShow = "appointment_no_show";
+    public const string Cancelled = "appointment_cancelled";
+    public const string Rescheduled = "appointment_rescheduled";
 
     public static IReadOnlyList<string> All =>
     [
@@ -18,6 +20,8 @@ public static class AppointmentAnalyticsEventCatalog
         Abandoned,
         BookingFallbackClicked,
         Completed,
-        NoShow
+        NoShow,
+        Cancelled,
+        Rescheduled
     ];
 }

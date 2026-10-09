@@ -34,6 +34,14 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
     {
         var options = _options.Value ?? new PublicBookingOptions();
         var resolvedContext = await ResolveAgentContextAsync(context, cancellationToken);
+
+        if (resolvedContext.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
+        {
+            var businessSettings = await _db.CommerceBusinessStorefrontSettings.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId, cancellationToken);
+            return BuildBusinessProfileResolution(options, businessSettings, resolvedContext);
+        }
+
         var agentProfileResolution = BuildAgentProfileResolution(options, resolvedContext.AgentProfile, resolvedContext);
         if (agentProfileResolution.Handled)
         {
@@ -70,6 +78,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         WebsiteLead? websiteLead = null;
         WebsiteLeadIntakeLink? intakeLink = null;
         AgentTrackingProfile? trackingProfile = null;
+        Guid? commerceBusinessId = null;
 
         if (context.WebsiteLeadId is Guid websiteLeadId && websiteLeadId != Guid.Empty)
         {
@@ -97,6 +106,10 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
             if (!string.IsNullOrWhiteSpace(intakeLink?.AgentUserId))
             {
                 effectiveAgentUserId = NormalizeAgentUserId(intakeLink.AgentUserId);
+            }
+            if (intakeLink?.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
+            {
+                commerceBusinessId = businessId;
             }
         }
 
@@ -178,11 +191,55 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         }
 
         return new ResolvedPublicBookingAgentContext(
+            CommerceBusinessId: commerceBusinessId,
             AgentTrackingProfileId: effectiveTrackingProfileId,
             AgentUserId: effectiveAgentUserId,
             AgentSlug: effectiveAgentSlug,
             TrackingProfile: trackingProfile,
             AgentProfile: agentProfile);
+    }
+
+    private static PublicBookingResolution BuildBusinessProfileResolution(
+        PublicBookingOptions options,
+        CommerceBusinessStorefrontSettings? settings,
+        ResolvedPublicBookingAgentContext context)
+    {
+        if (settings is null)
+        {
+            return new PublicBookingResolution(
+                Enabled: false,
+                EmbedUrl: null,
+                FallbackUrl: null,
+                PreferModalOnMobile: options.PreferModalOnMobile,
+                IsAgentOverride: false,
+                Reason: "business_profile_missing",
+                ConfigurationSource: PublicBookingConfigurationSources.BusinessProfile,
+                AgentTrackingProfileId: context.AgentTrackingProfileId,
+                AgentUserId: context.AgentUserId,
+                AgentSlug: context.AgentSlug,
+                CalendarUserId: null,
+                CalendarEmail: null,
+                BookingPageIdOrMailbox: null);
+        }
+
+        var embedUrl = NormalizeHttpUrl(settings.BookingEmbedUrl);
+        var fallbackUrl = NormalizeHttpUrl(settings.BookingFallbackUrl);
+        var hasAnyUrl = !string.IsNullOrWhiteSpace(embedUrl) || !string.IsNullOrWhiteSpace(fallbackUrl);
+        var enabled = settings.BookingEnabled;
+        return new PublicBookingResolution(
+            Enabled: enabled && hasAnyUrl,
+            EmbedUrl: enabled ? embedUrl : null,
+            FallbackUrl: enabled ? fallbackUrl : null,
+            PreferModalOnMobile: false,
+            IsAgentOverride: false,
+            Reason: enabled ? (hasAnyUrl ? "business_profile" : "business_profile_missing_urls") : "business_profile_disabled",
+            ConfigurationSource: PublicBookingConfigurationSources.BusinessProfile,
+            AgentTrackingProfileId: context.AgentTrackingProfileId,
+            AgentUserId: context.AgentUserId,
+            AgentSlug: context.AgentSlug,
+            CalendarUserId: null,
+            CalendarEmail: NormalizeEmail(settings.BookingCalendarEmail),
+            BookingPageIdOrMailbox: Clean(settings.BookingMailboxId));
     }
 
     private static ResolutionBuildResult BuildAgentProfileResolution(
@@ -357,6 +414,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
     }
 
     private sealed record ResolvedPublicBookingAgentContext(
+        Guid? CommerceBusinessId,
         Guid? AgentTrackingProfileId,
         string? AgentUserId,
         string? AgentSlug,

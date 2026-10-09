@@ -141,7 +141,7 @@ public class WebsiteAnalyticsAiRedactorTests
 
     // ── Test: valid page key passes through ───────────────────────────────────
     [Fact]
-    public void Redact_ValidPageKeys_PassThrough()
+    public void Redact_PageKeys_AreStableAliases()
     {
         var payload = MinimalPayload();
         payload.PagePerformance = new List<PagePerfRow>
@@ -153,7 +153,7 @@ public class WebsiteAnalyticsAiRedactorTests
         var result = WebsiteAnalyticsAiRedactor.Redact(payload);
 
         Assert.Equal(2, result.PagePerformance.Count);
-        Assert.Equal("/home", result.PagePerformance[0].PageKey);
+        Assert.Equal(WebsiteAnalyticsAiRedactor.Alias("/home"), result.PagePerformance[0].PageKey);
         Assert.Equal(500, result.PagePerformance[0].Views);
     }
 
@@ -192,7 +192,7 @@ public class WebsiteAnalyticsAiRedactorTests
 
         Assert.Equal(2, result.TopPages.Count);
         Assert.Equal(2, result.TopAbandonedFields.Count);
-        Assert.Equal("/home", result.TopPages[0].Label);
-        Assert.Equal("zip_code", result.TopAbandonedFields[0].Label);
+        Assert.Equal(WebsiteAnalyticsAiRedactor.Alias("/home"), result.TopPages[0].Label);
+        Assert.Equal(WebsiteAnalyticsAiRedactor.Alias("zip_code"), result.TopAbandonedFields[0].Label);
     }
 }

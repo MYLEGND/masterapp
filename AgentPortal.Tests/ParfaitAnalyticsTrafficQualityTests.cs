@@ -17,94 +17,36 @@ namespace AgentPortal.Tests;
 public class ParfaitAnalyticsTrafficQualityTests
 {
     [Fact]
-    public async Task TrackAsync_StoresCanonicalPublicStorefrontAsProductionTraffic()
+    public async Task CanonicalCommerceIngest_UsesVerifiedOriginAndBusiness()
     {
-        var originalEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-
-        try
-        {
-            using var db = ControllerTestHelpers.BuildDb();
-            var service = BuildService(db);
-            var httpContext = BuildHttpContext("localhost", 2121);
-
-            await service.TrackAsync(
-                BuildRequest(
-                    eventName: "page_engaged_15s",
-                    url: "https://shopparfait.com/store",
-                    referrer: "https://www.google.com/search?q=parfait"),
-                httpContext);
-
-            var row = Assert.Single(db.AnalyticsEvents);
-            Assert.Equal("shopparfait.com", row.Host);
-            Assert.Equal("production", row.Environment);
-            Assert.False(row.IsInternal);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", originalEnvironment);
-        }
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db, "https://shopparfait.com");
+        Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.Ingest(BuildRequest("page_engaged_15s", "https://shopparfait.com/store", "https://google.com"), default));
+        var row = Assert.Single(db.AnalyticsEvents);
+        Assert.Equal("shopparfait.com", row.Host);
+        Assert.NotNull(row.CommerceBusinessId);
+        Assert.False(row.IsInternal);
     }
 
     [Fact]
-    public async Task TrackAsync_PublicStorefrontEngagement_QualifiesForRealHumanInsteadOfInternalQa()
+    public async Task CanonicalCommerceIngest_PreservesHumanEvidence()
     {
-        var originalEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-
-        try
-        {
-            using var db = ControllerTestHelpers.BuildDb();
-            var service = BuildService(db);
-            var httpContext = BuildHttpContext("localhost", 2121);
-
-            await service.TrackAsync(
-                BuildRequest(
-                    eventName: "page_engaged_15s",
-                    url: "https://shopparfait.com/store/product/sculpt-jacket",
-                    referrer: "https://www.instagram.com/"),
-                httpContext);
-
-            var allEvents = db.AnalyticsEvents.ToList();
-            Assert.Empty(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(allEvents, TrafficQualityMode.InternalQa));
-            Assert.Single(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(allEvents, TrafficQualityMode.RealHumanTraffic));
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", originalEnvironment);
-        }
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db, "https://shopparfait.com");
+        Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.Ingest(BuildRequest("page_engaged_15s", "https://shopparfait.com/store", "https://instagram.com"), default));
+        var row = Assert.Single(db.AnalyticsEvents);
+        Assert.Equal(15000, row.EngagedMilliseconds);
+        Assert.True(row.HumanInteractionCount > 0);
+        Assert.False(row.WebDriver);
     }
 
     [Fact]
-    public async Task TrackAsync_LocalStorefrontTraffic_RemainsInternalQa()
+    public async Task CanonicalCommerceIngest_RejectsLocalOriginDespitePublicPayloadUrl()
     {
-        var originalEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-
-        try
-        {
-            using var db = ControllerTestHelpers.BuildDb();
-            var service = BuildService(db);
-            var httpContext = BuildHttpContext("localhost", 2121);
-
-            await service.TrackAsync(
-                BuildRequest(
-                    eventName: "page_engaged_15s",
-                    url: "http://localhost:2121/store",
-                    referrer: "http://localhost:2121/"),
-                httpContext);
-
-            var row = Assert.Single(db.AnalyticsEvents);
-            Assert.Equal("development", row.Environment);
-            Assert.True(row.IsInternal);
-
-            var allEvents = db.AnalyticsEvents.ToList();
-            Assert.Single(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(allEvents, TrafficQualityMode.InternalQa));
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", originalEnvironment);
-        }
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db, "http://localhost:2121");
+        Assert.IsType<Microsoft.AspNetCore.Mvc.BadRequestObjectResult>(await controller.Ingest(BuildRequest("page_engaged_15s", "https://shopparfait.com/store", ""), default));
+        Assert.Empty(db.AnalyticsEvents);
     }
 
     [Fact]
@@ -194,16 +136,18 @@ public class ParfaitAnalyticsTrafficQualityTests
         Assert.Empty(suspicious);
     }
 
-    private static ParfaitAnalyticsService BuildService(MasterAppDbContext db)
+    private static ProtectWebsite.Controllers.TrackingProxyController BuildController(MasterAppDbContext db, string origin)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Store:PublicBaseUrl"] = "https://shopparfait.com"
-            })
-            .Build();
-
-        return new ParfaitAnalyticsService(db, configuration);
+        var controller = WebsiteTrackingIngestTests.BuildController(db);
+        var configuration = new ConfigurationBuilder().Build();
+        var stores = new CommerceStoreContextService(db, new Infrastructure.Businesses.CommerceBusinessScopeResolver(db),
+            new ParfaitBusinessScopeService(db), new Infrastructure.WebsiteEditing.WebsiteDomainService(db, Moq.Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(services, db);
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton(services, stores);
+        controller.HttpContext.RequestServices = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        controller.Request.Headers.Origin = origin;
+        return controller;
     }
 
     private static DefaultHttpContext BuildHttpContext(string host, int? port = null)
@@ -219,12 +163,12 @@ public class ParfaitAnalyticsTrafficQualityTests
         return httpContext;
     }
 
-    private static ParfaitAnalyticsEventRequest BuildRequest(string eventName, string url, string referrer)
+    private static WebsiteTrackingProxyAuthority.AnalyticsEventRequest BuildRequest(string eventName, string url, string referrer)
     {
-        return new ParfaitAnalyticsEventRequest
+        return new WebsiteTrackingProxyAuthority.AnalyticsEventRequest
         {
-            EventName = eventName,
-            EventId = Guid.NewGuid().ToString("N"),
+            EventType = eventName, SiteKey = "commerce", Path = new Uri(url).AbsolutePath,
+            ClientEventId = Guid.NewGuid(),
             VisitorId = "pfv_test_visitor",
             SessionId = "pfs_test_session",
             Url = url,

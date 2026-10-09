@@ -592,6 +592,13 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
         .onAppear {
             handleHomeChromeAction(scrollChrome.pendingHomeAction)
+            if LegendPushNotificationNavigation.consumePendingNotifications() {
+                openNotifications()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .legendOpenNotifications)) { _ in
+            _ = LegendPushNotificationNavigation.consumePendingNotifications()
+            openNotifications()
         }
         .onChange(of: scrollChrome.pendingHomeAction) { _, request in
             handleHomeChromeAction(request)

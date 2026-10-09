@@ -352,7 +352,7 @@ public sealed class RuntimeDiagnosticsTests
                 Id TEXT PRIMARY KEY, DeduplicationKey TEXT NOT NULL UNIQUE, AppIdentifier TEXT NOT NULL,
                 Platform TEXT NOT NULL, Route TEXT NOT NULL, ErrorName TEXT NOT NULL, Summary TEXT NOT NULL,
                 Category TEXT NOT NULL, StatusCode INTEGER NULL, GitCommitHash TEXT NULL, ReleaseVerified INTEGER NOT NULL,
-                AppVersion TEXT NULL, SourceFilePath TEXT NULL, StackTrace TEXT NULL, CorrelationId TEXT NULL,
+                AppVersion TEXT NULL, SourceFilePath TEXT NULL, StackTrace TEXT NULL, StructuralReproducerJson TEXT NULL, CorrelationId TEXT NULL,
                 Disposition TEXT NOT NULL, ReviewVersion INTEGER NOT NULL, Recurred INTEGER NOT NULL, ReviewedUtc TEXT NULL,
                 FirstSeenUtc TEXT NOT NULL, LastSeenUtc TEXT NOT NULL, ExpiresUtc TEXT NOT NULL, Occurrences INTEGER NOT NULL);
                 """);

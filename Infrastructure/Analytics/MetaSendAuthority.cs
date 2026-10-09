@@ -79,6 +79,24 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                 : normalized.ReservationToken!;
             var nowUtc = DateTime.UtcNow;
 
+            var persistedRowId = await TryClaimPersistedSignalAsync(
+                normalized,
+                token,
+                nowUtc,
+                cancellationToken);
+            if (persistedRowId == DurableClaimBlocked)
+            {
+                return new MetaSendAuthorityDecision(
+                    Allowed: false,
+                    EventType: normalized.EventType,
+                    LeadId: normalized.LeadId,
+                    Source: normalized.Source,
+                    DedupeKey: normalized.DedupeKey,
+                    ReservationToken: null,
+                    Status: "blocked_duplicate",
+                    Note: "durable_dispatch_claim_active");
+            }
+
             Reservations[normalized.DedupeKey] = new AuthorityReservation(
                 Token: token,
                 DedupeKey: normalized.DedupeKey,
@@ -92,7 +110,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                 Priority: normalized.Priority,
                 ReservedUtc: nowUtc,
                 ExpiresUtc: nowUtc.AddMinutes(ReservationTtlMinutes),
-                Sent: false);
+                Sent: false,
+                RowId: persistedRowId > 0 ? persistedRowId : null);
 
             _logger.LogInformation(
                 "MetaSendAuthority allowed event {EventType} source {Source}",
@@ -159,6 +178,41 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
             return;
         }
 
+        try
+        {
+            if (reservation.RowId.HasValue)
+            {
+                var rowId = reservation.RowId.Value;
+                if (sent)
+                {
+                    _db.MetaSignalEvents
+                        .Where(x => x.Id == rowId && x.MetaDispatchClaimToken == reservation.Token)
+                        .ExecuteUpdate(setters => setters
+                            .SetProperty(x => x.MetaServerSent, true)
+                            .SetProperty(x => x.MetaDispatchClaimToken, (string?)null)
+                            .SetProperty(x => x.MetaDispatchClaimedUtc, (DateTime?)null)
+                            .SetProperty(x => x.MetaDispatchClaimExpiresUtc, (DateTime?)null));
+                }
+                else
+                {
+                    _db.MetaSignalEvents
+                        .Where(x => x.Id == rowId && x.MetaDispatchClaimToken == reservation.Token && !x.MetaServerSent)
+                        .ExecuteUpdate(setters => setters
+                            .SetProperty(x => x.MetaDispatchClaimToken, (string?)null)
+                            .SetProperty(x => x.MetaDispatchClaimedUtc, (DateTime?)null)
+                            .SetProperty(x => x.MetaDispatchClaimExpiresUtc, (DateTime?)null));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "MetaSendAuthority could not persist completion for event {EventType} row {RowId}. The durable lease remains fail-closed until expiry.",
+                decision.EventType,
+                reservation.RowId);
+        }
+
         if (sent)
         {
             Reservations[decision.DedupeKey] = reservation with
@@ -173,6 +227,60 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         }
     }
 
+    private const long DurableClaimBlocked = -1;
+
+    private async Task<long> TryClaimPersistedSignalAsync(
+        NormalizedAuthorityRequest request,
+        string token,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(request.Source, MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService, StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        var query = _db.MetaSignalEvents
+            .AsNoTracking()
+            .Where(x => !x.MetaServerSent && x.EventName == request.EventType);
+
+        if (request.CommerceBusinessId.HasValue)
+            query = query.Where(x => x.CommerceBusinessId == request.CommerceBusinessId && x.AgentTrackingProfileId == null);
+        else if (request.AgentTrackingProfileId.HasValue)
+            query = query.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == request.AgentTrackingProfileId);
+        else
+            query = query.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == null);
+
+        if (!string.IsNullOrWhiteSpace(request.ExplicitDedupeKey))
+            query = query.Where(x => x.MetaDeduplicationKey == request.ExplicitDedupeKey);
+        else if (!string.IsNullOrWhiteSpace(request.EventId))
+            query = query.Where(x => x.EventId == request.EventId);
+        else
+            return 0;
+
+        var rowId = await query
+            .OrderBy(x => x.CreatedUtc)
+            .Select(x => (long?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!rowId.HasValue)
+            return 0;
+
+        var expiresUtc = nowUtc.AddMinutes(ReservationTtlMinutes);
+        var claimed = await _db.MetaSignalEvents
+            .Where(x => x.Id == rowId.Value &&
+                        !x.MetaServerSent &&
+                        (x.MetaDispatchClaimToken == null ||
+                         x.MetaDispatchClaimExpiresUtc == null ||
+                         x.MetaDispatchClaimExpiresUtc <= nowUtc ||
+                         x.MetaDispatchClaimToken == token))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.MetaDispatchClaimToken, token)
+                .SetProperty(x => x.MetaDispatchClaimedUtc, nowUtc)
+                .SetProperty(x => x.MetaDispatchClaimExpiresUtc, expiresUtc),
+                cancellationToken);
+
+        return claimed == 1 ? rowId.Value : DurableClaimBlocked;
+    }
+
     private async Task<bool> HasSentMatchAsync(NormalizedAuthorityRequest request, CancellationToken cancellationToken)
     {
         var sentRows = _db.MetaSignalEvents
@@ -183,7 +291,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         else if (request.AgentTrackingProfileId.HasValue)
             sentRows = sentRows.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == request.AgentTrackingProfileId);
         else
-            sentRows = sentRows.Where(x => x.CommerceBusinessId == null);
+            sentRows = sentRows.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == null);
 
         if (!string.IsNullOrWhiteSpace(request.EventId) &&
             await sentRows.AnyAsync(x => x.EventId == request.EventId, cancellationToken))
@@ -414,7 +522,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         int Priority,
         DateTime ReservedUtc,
         DateTime ExpiresUtc,
-        bool Sent);
+        bool Sent,
+        long? RowId);
 
     private sealed record NormalizedAuthorityRequest(
         string EventType,

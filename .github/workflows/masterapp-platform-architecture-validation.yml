@@ -1,22 +1,74 @@
 name: MasterApp platform architecture validation
 
+# analytics-meta-scope-completion validation trigger: latest isolated head
+# repaired booking harness validation trigger: d5db695
+
 on:
   push:
     branches:
       - architecture/masterapp-platform-ownership-20260925
+      - architecture/masterapp-authority-completion-20260925
+      - architecture/consolidated-platform-domain-release-20260925
+      - architecture/protect-domain-proof-20260925
+      - architecture/analytics-meta-scope-completion-20260925
+      - repair/analytics-canonical-reconciliation-20260926
+      - repair/scoped-website-analytics-canonical-20260926
+      - architecture/meta-test-events-seo-20260926
+      - architecture/provider-neutral-marketing-destinations-20260926
+      - feature/openai-ads-direct-connect-ui-20260926
+      - fix/openai-ads-account-readiness-20260926
+      - fix/openai-measurement-refresh-failsoft-20260926
+      - fix/openai-pixel-provisioning-outcome-20260927
     paths-ignore:
       - 'Docs/**'
+  pull_request:
+    branches:
+      - legend/approved-changes
   workflow_dispatch:
+    inputs:
+      package_revision:
+        description: Exact already-validated PR head to backfill as an immutable release package
+        required: false
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: masterapp-platform-architecture-validation
+  group: masterapp-platform-architecture-validation-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  approved-head-preflight:
+    name: approved-head-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout exact candidate preflight authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify candidate contains current approved head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/validation-resume.py approved-head-preflight \
+            --repository "${{ github.repository }}" \
+            --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --output "$RUNNER_TEMP/approved-head-preflight.json"
+
   validate:
+    needs: [approved-head-preflight, validated-migration-probe]
+    name: architecture-validation
+    if: >-
+      always() &&
+      needs.approved-head-preflight.result == 'success' &&
+      (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      (github.event_name != 'workflow_dispatch' || inputs.package_revision == '')
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
@@ -25,59 +77,242 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Restore PR-local validation gate evidence
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            validation-resume-architecture-pr-${{ github.event.pull_request.number }}-
+
+      - name: Plan exact validation resume
+        id: plan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          plan="$RUNNER_TEMP/validation-resume.json"
+          python3 scripts/validation-resume.py plan \
+            --workflow masterapp-platform-architecture-validation.yml \
+            --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --head-branch "${{ github.head_ref || github.ref_name }}" \
+            --event "${{ github.event_name }}" \
+            --repository "${{ github.repository }}" \
+            --resume-cache "/tmp/validation-resume-cache/validation-resume.json" \
+            --output "$plan"
+          python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPLAN'
+          import json, sys
+          data=json.load(open(sys.argv[1]))
+          running={key for key,row in data.get('gates',{}).items() if row.get('run')}
+          dotnet={
+              'restore-dotnet','build-infrastructure','build-hosts','build-protect','tracking-assets',
+              'compile-regression','founder-diagnostics-regressions','domain-release',
+              'website-regressions','meta-regressions','booking-regressions','crm-regressions',
+          }
+          node={
+              'lifecycle','mobile','renderer-install','renderer-build','renderer-parity','renderer-tests',
+              'cms-install','cms-tests','form-tracking',
+          }
+          compiled_consumers={
+              'compile-regression','founder-diagnostics-regressions','website-regressions',
+              'meta-regressions','booking-regressions','crm-regressions','release-web-contracts',
+          }
+          with open(sys.argv[2],'a') as output:
+              output.write('dotnet='+str(bool(running & dotnet)).lower()+'\n')
+              output.write('node='+str(bool(running & node)).lower()+'\n')
+              output.write('regression_material='+str(bool(running & compiled_consumers)).lower()+'\n')
+              output.write('all_preserved='+str(not running).lower()+'\n')
+          PYPLAN
+
       - uses: actions/setup-dotnet@v4
+        if: steps.plan.outputs.dotnet == 'true'
         with:
           dotnet-version: '10.0.x'
 
       - uses: actions/setup-node@v4
+        if: steps.plan.outputs.node == 'true'
         with:
           node-version: '24'
 
-      - name: Restore .NET graph
-        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+      - name: Run branch lifecycle safety contracts
+        id: gate_lifecycle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Execute the canonical, strictly read-only historical EF no-write
+          # attestor with ACTUAL immutable Actions history BEFORE release.
+          # Prevents another expensive deployment from discovering a false
+          # historical no-write denial that tests with mocks could not catch.
+          python3 - <<'PYLEGACY'
+          import importlib.util, os
+          spec = importlib.util.spec_from_file_location('authority', 'scripts/validation-resume.py')
+          authority = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
+          repo, token = os.environ['GITHUB_REPOSITORY'], os.environ['GH_TOKEN']
+          run_id = 37129696534
+          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
+          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
+          if len(found) != 1:
+              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_JOB_UNPROVEN')
+          job = found[0]
+          matching = [step for step in job.get('steps', [])
+                      if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+          if len(matching) != 1 or not authority._attested_legacy_ef_factory_nonentry(
+                  repo, run, job, matching[0], 1, token):
+              raise SystemExit('LEGEND_EF_NONENTRY:ORIGINAL_PROOF_REJECTED')
+          print('LEGEND_EF_NONENTRY:AUTHENTICATED_READ_ONLY')
+          # Positively exercise the SAME canonical historical migration proof
+          # against the next original October 3 no-SQL baseline rejection.
+          # No Azure connection, migration write or independent receipt.
+          run_id = 37102199040
+          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
+          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
+          if len(found) != 1:
+              raise SystemExit('LEGEND_BASELINE_NONENTRY:ORIGINAL_JOB_UNPROVEN')
+          job = found[0]
+          matches = [step for step in job.get('steps', [])
+                     if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+          source = authority._release_history_source(
+              repo, run['head_sha'],
+              '.github/workflows/' + authority.DIRECT_RELEASE_WORKFLOW, token)
+          if len(matches) != 1 or not authority._legacy_migration_noop(
+                  repo, run, job, matches[0], source, token):
+              raise SystemExit('LEGEND_BASELINE_NONENTRY:ORIGINAL_PROOF_REJECTED')
+          print('LEGEND_BASELINE_NONENTRY:AUTHENTICATED_READ_ONLY')
+          # Read-only ORIGINAL cancelled parent; its successful migration
+          # no-change step is unrelated to later cancelled app publication.
+          run_id = 37091277402
+          run = authority.api_get(repo, f'actions/runs/{run_id}', token)
+          jobs = authority.api_get(repo, f'actions/runs/{run_id}/attempts/1/jobs?per_page=100', token)
+          found = [job for job in jobs.get('jobs', []) if job.get('name') == 'release']
+          if len(found) != 1:
+              raise SystemExit('LEGEND_CANCELLED_NOOP:JOB_UNPROVEN')
+          job = found[0]
+          matches = [step for step in job.get('steps', [])
+                     if step.get('name') == 'Apply additive diagnostics migrations before restarting apps']
+          original = authority._release_history_source(
+              repo, run['head_sha'],
+              '.github/workflows/' + authority.DIRECT_RELEASE_WORKFLOW, token)
+          if len(matches) != 1 or not authority._legacy_migration_noop(
+                  repo, run, job, matches[0], original, token):
+              raise SystemExit('LEGEND_CANCELLED_NOOP:PROOF_REJECTED')
+          print('LEGEND_CANCELLED_NOOP:AUTHENTICATED_READ_ONLY')
+          PYLEGACY
+          # Enumerate ALL retained historical release attempts before publishing;
+          # do not repeatedly discover only the first failing historical record
+          # during a costly production migration preflight.
+          python3 scripts/test-release-migration-history-audit.py
+          python3 scripts/test-release-retired-original-evidence.py
+          LEGEND_MIGRATION_AUDIT_OUTPUT="$RUNNER_TEMP/legend-migration-history-audit.json" \
+            python3 scripts/release-migration-history-audit.py
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate lifecycle; then exit 0; fi
+          python3 scripts/test-release-lifecycle.py
+          python3 scripts/test-validation-resume.py
+          python3 scripts/test-release-children.py
+          python3 scripts/test-release-operation-evidence.py
+          python3 scripts/release-workflow.py --check
+          npm ci --ignore-scripts --prefix scripts/release-artifacts
+          node --test scripts/release-artifacts/test-transport.cjs
 
-      - name: Build shared infrastructure
-        run: dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore
+      - name: Retain complete read-only migration history audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-migration-history-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/legend-migration-history-audit.json
+          retention-days: 30
+          if-no-files-found: warn
 
-      - name: Build Protect host
-        run: dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
-
-      - name: Compile full regression test project
-        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
-
-      - name: Run website ownership and publishing regressions
-        run: >
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests"
-
-      - name: Run Meta authority regressions
-        run: >
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests"
-
-      - name: Run booking authority regressions
-        run: >
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests"
-
-      - name: Install shared website renderer dependencies
-        working-directory: Legend-Website
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Build shared website renderer
-        working-directory: Legend-Website
-        run: npm run build
-
-      - name: Verify renderer authority parity
-        working-directory: Legend-Website
-        run: npm run check
-
-      - name: Run business renderer tests with approved-baseline no-regression proof
+      - name: Run authenticated mobile authority tests
+        id: gate_mobile
         shell: bash
         run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate mobile; then exit 0; fi
+          node --test tests/layout/modal-content-region.test.mjs tests/layout/app-navigation-contract.test.mjs
+
+      - name: Restore .NET graph
+        id: gate_restore_dotnet
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate restore-dotnet; then exit 0; fi
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build shared infrastructure
+        id: gate_build_infrastructure
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-infrastructure; then exit 0; fi
+          dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore
+
+      - name: Build AgentPortal and ClientApp hosts
+        id: gate_build_hosts
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-hosts; then exit 0; fi
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore
+          dotnet build ClientApp/ClientApp.csproj -c Release --no-restore
+
+      - name: Build Protect host
+        id: gate_build_protect
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate build-protect; then exit 0; fi
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
+
+      - name: Verify Protect serves the exact shared tracking assets
+        id: gate_tracking_assets
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate tracking-assets; then exit 0; fi
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore -o "$RUNNER_TEMP/protect-authority-publish"
+          cmp SHARED/WebsitePlatform/tracking.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/tracking.js"
+          cmp SHARED/WebsitePlatform/meta-signal-intelligence.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/meta-signal-intelligence.js"
+          cmp SHARED/WebsitePlatform/openai-measurement.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/openai-measurement.js"
+
+      - name: Install shared website renderer dependencies
+        id: gate_renderer_install
+        working-directory: Legend-Website
+        shell: bash
+        run: |
+          # Resume evidence can preserve the validation result, but node_modules is
+          # runner-local and must be rematerialized on a fresh runner.
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-install && [ -d node_modules ]; then exit 0; fi
+          npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build shared website renderer
+        id: gate_renderer_build
+        working-directory: Legend-Website
+        shell: bash
+        run: |
+          # dist is also runner-local. Preserve prior proof only when the exact
+          # materialized outputs are already present in this workspace.
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-build \
+             && [ -f dist/legend-public-cms.js ] \
+             && [ -f dist/legend-public-web.js ] \
+             && [ -f dist/legend-public-web.css ]; then exit 0; fi
+          npm run build
+
+      - name: Verify renderer authority parity
+        id: gate_renderer_parity
+        working-directory: Legend-Website
+        shell: bash
+        run: |
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-parity; then exit 0; fi
+          npm run check
+
+      - name: Run business renderer tests with approved-baseline no-regression proof
+        id: gate_renderer_tests
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate renderer-tests; then exit 0; fi
           set +e
           (cd Legend-Website && npm run test:renderer)
           renderer_rc=$?
@@ -89,28 +324,885 @@ jobs:
           git fetch --no-tags origin legend/approved-changes
           base=origin/legend/approved-changes
 
-          # A failing renderer suite may only be treated as pre-existing when the
-          # renderer and its tests are unchanged and the centralized assets are
-          # byte-identical to their approved pre-move authorities.
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.test.mjs
-          git diff --quiet "$base" -- Legend-Website/package-lock.json
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "$tmpdir"' EXIT
-          git show "$base:Legend-Design/legend-public-cms.js" > "$tmpdir/legend-public-cms.js"
-          git show "$base:Legend-Design/legend-public-web.js" > "$tmpdir/legend-public-web.js"
-          git show "$base:Legend-Design/legend-public-web.css" > "$tmpdir/legend-public-web.css"
-          cmp -s SHARED/WebsitePlatform/legend-public-cms.js "$tmpdir/legend-public-cms.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.js "$tmpdir/legend-public-web.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.css "$tmpdir/legend-public-web.css"
-
-          echo "Renderer suite failure is pre-existing and all renderer inputs touched by this ownership move are byte-identical to the approved baseline."
+          # Only excuse an approved-baseline failure when every renderer input,
+          # its tests, and the shared runtime are byte-identical to that baseline.
+          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs Legend-Website/scripts/render-business.test.mjs Legend-Website/package-lock.json
+          git diff --quiet "$base" -- SHARED/WebsitePlatform/legend-public-cms.js SHARED/WebsitePlatform/legend-public-web.js SHARED/WebsitePlatform/legend-public-web.css
+          git diff --quiet "$base" -- tests/website ':!tests/website/legend-public-cms.test.mjs'
+          git diff --quiet "$base" -- tests/website/legend-public-cms.test.mjs
+          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:SHARED/WebsitePlatform/tracking.js")
+          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:SHARED/WebsitePlatform/meta-signal-intelligence.js")
+          echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
+        id: gate_cms_install
         working-directory: tests/website
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        shell: bash
+        run: |
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-install; then exit 0; fi
+          npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Run canonical shared CMS tests
+        id: gate_cms_tests
         working-directory: tests/website
-        run: npm test
+        shell: bash
+        run: |
+          if python3 "$GITHUB_WORKSPACE/scripts/validation-resume.py" preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate cms-tests; then exit 0; fi
+          npm test
+
+      - name: Resolve compiled regression material identity
+        id: compileidentity
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
+        shell: bash
+        run: |
+          python3 scripts/validation-resume.py gate-identity \
+            --workflow masterapp-platform-architecture-validation.yml \
+            --revision "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --gate compile-regression \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore exact compiled regression material
+        id: compiledcache
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/masterapp/bin/AgentPortal.Tests/Release
+            /tmp/masterapp/obj/AgentPortal.Tests
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
+
+      - name: Compile full regression test project
+        id: gate_compile_regression
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate compile-regression; then
+            if [ "${{ steps.compiledcache.outputs.cache-hit }}" = "true" ] \
+               && test -f /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/AgentPortal.Tests.dll; then
+              echo "Preserved compile proof and exact material cache reused."
+              echo "material_ready=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Preserved compile proof has no local material; rematerializing exact compiled graph."
+          fi
+          # The compiled regression cache retains only the test project's
+          # material. A cache hit does not prove that every referenced project
+          # has a valid NuGet assets file. Restore the owning graph once when
+          # any referenced asset is absent, then keep the no-restore build.
+          needs_restore=false
+          for project in AgentPortal.Tests AgentPortal ClientApp Domain Infrastructure ParfaitApp ProtectWebsite Shared; do
+            if [ ! -f "/tmp/masterapp/obj/$project/project.assets.json" ]; then
+              needs_restore=true
+              break
+            fi
+          done
+          if [ "$needs_restore" = true ]; then
+            dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
+          fi
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -m:1 -nr:false -p:UseSharedCompilation=false
+          test -f /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0/AgentPortal.Tests.dll
+          echo "material_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve exact compiled regression material
+        if: always() && steps.plan.outcome == 'success' && steps.plan.outputs.regression_material == 'true' && steps.gate_compile_regression.outputs.material_ready == 'true' && steps.compiledcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/masterapp/bin/AgentPortal.Tests/Release
+            /tmp/masterapp/obj/AgentPortal.Tests
+          key: architecture-compiled-regression-v1-${{ runner.os }}-${{ steps.compileidentity.outputs.identity }}
+
+      - name: Run independent architecture gate fanout
+        id: architecturefanout
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        env:
+          COMPILED_MATERIAL_READY: ${{ steps.gate_compile_regression.outputs.material_ready }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/architecture-fanout"
+          mkdir -p "$root"
+          pids=()
+
+          founder_diagnostics_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/founder-tests" \
+              --filter "FullyQualifiedName~LegendSiteToolBridgeTests|FullyQualifiedName~FounderRepositoryInspectionTests|FullyQualifiedName~LegendFounderToolAuthorizationTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~LegendEngineeringControlPlaneTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests"
+          }
+          domain_release() {
+            dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
+          }
+          website_regressions() {
+            # The website compiler invokes the real Node renderer. This is
+            # ephemeral runner-local material, never reusable CI evidence.
+            # Step-plan reuse may intentionally skip renderer install/build,
+            # but a website regression child must rematerialize dependencies
+            # before it can truthfully exercise publication and UTF-8 flows.
+            test -f Legend-Website/scripts/render-business-cli.mjs
+            if [ ! -d Legend-Website/node_modules/linkedom ]; then
+              (cd Legend-Website && npm ci --ignore-scripts --no-audit --no-fund)
+            fi
+            test -d Legend-Website/node_modules/linkedom
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/website-tests" \
+              --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~BusinessAnalyticsCompletionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests"
+          }
+          meta_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/meta-tests" \
+              --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~MetaSendAuthorityTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~MarketingDestinationLayerTests|FullyQualifiedName~OpenAiAdsAccountConnectionAuthorityTests|FullyQualifiedName~OpenAiAdsDirectConnectionServiceTests|FullyQualifiedName~OpenAiMeasurementDeliveryTests|FullyQualifiedName~OpenAiClickReferenceLineageTests|FullyQualifiedName~MarketingSetupCentralizationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests|FullyQualifiedName~MetaSignalContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~AnalyticsEventCatalogTests"
+          }
+          booking_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/booking-tests" \
+              --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests|FullyQualifiedName~PublicBookingControllerParityTests"
+          }
+          crm_regressions() {
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore \
+              --results-directory "$root/crm-tests" \
+              --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~LaunchAuditRiskAssessmentTests|FullyQualifiedName~CanonicalCrmOutcomeLineageTests"
+          }
+          form_tracking() {
+            node --test tests/analytics/form-tracker.test.cjs
+          }
+          release_web_contracts() {
+            node --test tests/analytics/csv-export.test.cjs
+            node tests/analytics/form-tracker.test.cjs .
+            node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+            node --test Legend-Cloudflare/tests/runtime/*.test.mjs Legend-Cloudflare/tests/security/*.test.mjs Legend-Cloudflare/tests/security/application.integration.mjs
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --no-restore --nologo \
+              --results-directory "$root/release-web-tests" \
+              --filter 'FullyQualifiedName~WebsiteDomainImportTests'
+            npm ci --prefix Legend-Cloudflare
+            npm --prefix Legend-Cloudflare run check:founder-baseline
+            npm --prefix Legend-Cloudflare run test:website-routing
+            npm --prefix Legend-Cloudflare run check:website-routing
+            python3 -m py_compile scripts/cloudflare-routing-authority.py
+            legacy_secret_ref='secrets.CLOUDFLARE''_API_TOKEN'
+            if grep -Fq "$legacy_secret_ref" .github/workflows/all-intentional-direct-release-20260918.yml; then
+              echo "::error::Legacy Cloudflare API token reference reintroduced into the centralized routing release."
+              return 1
+            fi
+            python3 scripts/test-diagnostic-project-impact.py
+            python3 scripts/test-sync-published-checkout.py
+          }
+          release_policy() {
+            python3 scripts/test-release-policy.py
+            python3 scripts/test-deploy-approved-app.py
+          }
+
+          run_lane() {
+            gate="$1"
+            needs_compile="$2"
+            fn="$3"
+            (
+              status="$root/$gate.status"
+              log="$root/$gate.log"
+              if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate "$gate"; then
+                echo preserved > "$status"
+                exit 0
+              fi
+              if [ "$needs_compile" = true ] && [ "$COMPILED_MATERIAL_READY" != true ]; then
+                echo dependency_failure > "$status"
+                exit 0
+              fi
+              set +e
+              ( set -euo pipefail; "$fn" ) >"$log" 2>&1
+              rc=$?
+              set -e
+              if [ "$rc" -eq 0 ]; then
+                echo success > "$status"
+              else
+                echo failure > "$status"
+              fi
+              exit 0
+            ) &
+            pids+=("$!")
+          }
+
+          run_lane founder-diagnostics-regressions true founder_diagnostics_regressions
+          run_lane domain-release false domain_release
+          run_lane website-regressions true website_regressions
+          run_lane meta-regressions true meta_regressions
+          run_lane booking-regressions true booking_regressions
+          run_lane crm-regressions true crm_regressions
+          run_lane form-tracking false form_tracking
+          run_lane release-web-contracts true release_web_contracts
+          run_lane release-policy false release_policy
+
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+
+      - name: Run Founder diagnostics and safe GPT Codex regressions
+        id: gate_founder_diagnostics_regressions
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate founder-diagnostics-regressions; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/founder-diagnostics-regressions.status")" = success
+
+      - name: Compile shared domain release refresh
+        id: gate_domain_release
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate domain-release; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/domain-release.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/domain-release.status")" = success
+
+      - name: Run website ownership and publishing regressions
+        id: gate_website_regressions
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate website-regressions; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/website-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/website-regressions.status")" = success
+
+      - name: Run Meta authority regressions
+        id: gate_meta_regressions
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate meta-regressions; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/meta-regressions.status")" = success
+
+      - name: Run booking authority regressions
+        id: gate_booking_regressions
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate booking-regressions; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/booking-regressions.status")" = success
+
+      - name: Run CRM outcome regressions
+        id: gate_crm_regressions
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate crm-regressions; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/crm-regressions.status")" = success
+
+      - name: Run canonical form tracking tests
+        id: gate_form_tracking
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate form-tracking; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/form-tracking.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/form-tracking.status")" = success
+
+      - name: Run release web contract regressions
+        id: gate_release_web_contracts
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-web-contracts; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-web-contracts.status")" = success
+
+      - name: Verify consolidated release scope and routing policy
+        id: gate_release_policy
+        if: always() && steps.plan.outcome == 'success'
+        shell: bash
+        run: |
+          if python3 scripts/validation-resume.py preserved --plan "$RUNNER_TEMP/validation-resume.json" --gate release-policy; then exit 0; fi
+          cat "$RUNNER_TEMP/architecture-fanout/release-policy.log" || true
+          test "$(cat "$RUNNER_TEMP/architecture-fanout/release-policy.status")" = success
+
+      - name: Record canonical child execution evidence
+        if: always() && steps.plan.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_STEP_CONTEXT: ${{ toJSON(steps) }}
+        run: |
+          python3 scripts/validation-resume.py record-evidence \
+            --plan "$RUNNER_TEMP/validation-resume.json" \
+            --output "$RUNNER_TEMP/validation-resume.json" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --cache-output /tmp/validation-resume-cache/validation-resume.json
+
+      - name: Preserve exact validation resume plan
+        if: always() && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-resume-architecture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/validation-resume.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Check PR-local validation gate cache readiness
+        id: gatecache
+        if: always() && steps.plan.outcome == 'success' && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if [ -f /tmp/validation-resume-cache/validation-resume.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save PR-local validation gate evidence
+        if: always() && steps.gatecache.outputs.ready == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/validation-resume-cache
+          key: validation-resume-architecture-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+
+  validated-release-package-plan:
+    needs: [approved-head-preflight, validated-migration-probe]
+    name: validated-release-package-plan
+    if: >-
+      always() &&
+      needs.approved-head-preflight.result == 'success' &&
+      (github.event_name != 'pull_request' || needs.validated-migration-probe.result == 'success') &&
+      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != ''))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      needed: ${{ steps.packageplan.outputs.needed }}
+      revision: ${{ steps.packageplan.outputs.revision }}
+      validation_run_id: ${{ steps.packageplan.outputs.validation_run_id }}
+      evidence_run_id: ${{ steps.packageplan.outputs.evidence_run_id }}
+      evidence_head_sha: ${{ steps.packageplan.outputs.evidence_head_sha }}
+      migration_reused: ${{ steps.packageplan.outputs.migration_reused }}
+      migration_artifact: ${{ steps.packageplan.outputs.migration_artifact }}
+      component_protocol: ${{ steps.packageplan.outputs.component_protocol }}
+      component_matrix: ${{ steps.packageplan.outputs.component_matrix }}
+      components_needed: ${{ steps.packageplan.outputs.components_needed }}
+    steps:
+      - name: Checkout exact package planning authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve whether application bytes changed
+        id: packageplan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          revision="${{ github.event.pull_request.head.sha || inputs.package_revision }}"
+          test -n "$revision"
+          plan="$RUNNER_TEMP/package-canary-plan.json"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 scripts/validation-resume.py package-backfill-plan \
+              --repository "${{ github.repository }}" \
+              --revision "$revision" \
+              --current-sha "${{ github.sha }}" \
+              --output "$plan"
+            python3 - "$plan" "$GITHUB_OUTPUT" <<'PYPACKAGEBACKFILL'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          if not data.get('allowed'):
+              raise SystemExit('Package backfill refused: '+str(data.get('reason') or 'unknown'))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed=true\n')
+              output.write('component_protocol=false\ncomponents_needed=true\n')
+              output.write('component_matrix='+json.dumps(data['requiredComponents'],separators=(',',':'))+'\n')
+              output.write(f"revision={data['revision']}\n")
+              output.write(f"validation_run_id={data.get('validationRunId') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYPACKAGEBACKFILL
+          else
+            python3 scripts/validation-resume.py package-canary-plan \
+              --repository "${{ github.repository }}" \
+              --current-sha "$revision" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --current-run-id "${{ github.run_id }}" \
+              --head-branch "${{ github.head_ref }}" \
+              --output "$plan"
+            python3 - "$plan" "$GITHUB_OUTPUT" "$revision" <<'PYPACKAGEPLAN'
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          with open(sys.argv[2],'a') as output:
+              output.write('needed='+str(bool(data.get('needed'))).lower()+'\n')
+              output.write(f"revision={sys.argv[3]}\n")
+              output.write(f"evidence_run_id={data.get('evidenceRunId') or ''}\n")
+              output.write(f"evidence_head_sha={data.get('evidenceHeadSha') or ''}\n")
+              output.write('migration_reused='+str(bool(data.get('migrationReused'))).lower()+'\n')
+              output.write('component_protocol='+str(bool(data.get('componentProtocol'))).lower()+'\n')
+              output.write('components_needed='+str(bool(data.get('needed') and data.get('requiredComponents'))).lower()+'\n')
+              output.write('component_matrix='+json.dumps(data.get('requiredComponents',[]),separators=(',',':'))+'\n')
+              output.write(f"migration_artifact={data.get('migrationArtifact') or ''}\n")
+          print(json.dumps(data,sort_keys=True))
+          PYPACKAGEPLAN
+          fi
+
+      - name: Prepare canonical component locator transport
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+
+      - name: Bind canonical component locator runtime
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        uses: ./scripts/release-artifacts
+
+      - name: Preserve component run locators
+        if: steps.packageplan.outputs.component_protocol == 'true' && steps.packageplan.outputs.needed == 'true'
+        run: >-
+          python3 scripts/release-package.py component-indexes
+          --revision "${{ steps.packageplan.outputs.revision }}"
+          --plan "$RUNNER_TEMP/package-canary-plan.json"
+          --run-id "${{ github.run_id }}"
+
+      - name: Preserve blocked package planning evidence
+        if: failure() && steps.packageplan.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-release-package-plan-blocked-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-canary-plan.json.blocked.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Preserve promoted rehearsed migration component
+        if: steps.packageplan.outputs.migration_reused == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.packageplan.outputs.migration_artifact }}
+          path: ${{ runner.temp }}/validated-release-migration/
+          retention-days: 7
+          if-no-files-found: error
+
+  validated-release-package-components:
+    needs: validated-release-package-plan
+    name: validated-release-package-components (${{ matrix.component }})
+    if: >-
+      always() && !cancelled() &&
+      needs.validated-release-package-plan.result == 'success' &&
+      needs.validated-release-package-plan.outputs.components_needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.validated-release-package-plan.outputs.component_matrix) }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_USE_MSBUILD_SERVER: '0'
+      MSBUILDDISABLENODEREUSE: '1'
+    steps:
+      - name: Checkout exact package component authority
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET for canonical package component build
+        if: matrix.component == 'migration' && needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Build immutable validated release package component
+        id: component
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          content=()
+          if [ "${{ needs.validated-release-package-plan.outputs.component_protocol }}" = "true" ] && [ "${{ matrix.component }}" != "migration" ]; then
+            content=(--content-receipt)
+          fi
+          python3 scripts/release-package.py build-component "${content[@]}" \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
+            --component "${{ matrix.component }}" \
+            --directory "$RUNNER_TEMP/validated-release-component" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Preserve immutable validated release package component
+        id: componentartifact
+        if: matrix.component != 'migration' || needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration' && format('validated-component-bytes-{0}-{1}-{2}-a{3}', matrix.component, steps.component.outputs.identity, github.run_id, github.run_attempt) || format('validated-release-package-component-{0}-{1}', needs.validated-release-package-plan.outputs.revision, matrix.component) }}
+          path: ${{ runner.temp }}/validated-release-component/
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: ${{ needs.validated-release-package-plan.outputs.component_protocol != 'true' || matrix.component == 'migration' }}
+
+      - name: Record immutable component source
+        if: needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration'
+        run: >-
+          python3 scripts/release-package.py record-component-source
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --component "${{ matrix.component }}"
+          --directory "$RUNNER_TEMP/validated-release-component"
+          --output "$RUNNER_TEMP/component-source"
+          --run-id "${{ github.run_id }}"
+          --attempt "${{ github.run_attempt }}"
+          --artifact-id "${{ steps.componentartifact.outputs.artifact-id }}"
+          --artifact-digest "sha256:${{ steps.componentartifact.outputs.artifact-digest }}"
+
+      - name: Preserve immutable component source
+        if: needs.validated-release-package-plan.outputs.component_protocol == 'true' && matrix.component != 'migration'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-component-receipt-${{ matrix.component }}-${{ steps.component.outputs.identity }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/component-source/component-source.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Preserve blocked component boundary
+        if: failure() && steps.component.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-component-blocked-${{ github.run_id }}-a${{ github.run_attempt }}-${{ matrix.component }}
+          path: ${{ runner.temp }}/validated-release-component/*.blocked.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Retain authenticated rehearsed migration success
+        if: matrix.component == 'migration' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
+        run: echo 'LEGEND_PACKAGE:REUSED:migration:authenticated planner receipt; exact bytes verified by assembly'
+
+  validated-release-package:
+    needs:
+      - approved-head-preflight
+      - validated-release-package-plan
+      - validated-release-package-components
+    name: validated-release-package
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.package_revision != '')) &&
+      needs.validated-release-package-plan.result == 'success' &&
+      ((needs.validated-release-package-components.result == 'success' &&
+        needs.validated-release-package-plan.outputs.components_needed == 'true') ||
+       (needs.validated-release-package-components.result == 'skipped' &&
+        needs.validated-release-package-plan.outputs.components_needed == 'false'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact package authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && needs.validated-release-package-plan.outputs.revision || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Load immutable package components
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-*
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Resolve authenticated successful component children
+        id: componentsources
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/validation-resume.py component-sources
+          --repository "${{ github.repository }}"
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --current-run-id "${{ github.run_id }}"
+          --output "$RUNNER_TEMP/component-sources.json"
+          --github-output "$GITHUB_OUTPUT"
+
+      # BEGIN GENERATED CANONICAL COMPONENT DOWNLOADS
+      - name: Load authenticated portal component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.portal_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.portal_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated client component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.client_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.client_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated protect component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.protect_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.protect_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated parfait component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.parfait_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.parfait_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      - name: Load authenticated website component bytes
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.componentsources.outputs.website_run_id }}
+          artifact-ids: ${{ steps.componentsources.outputs.website_artifact_id }}
+          path: ${{ runner.temp }}/validated-release-package
+          merge-multiple: true
+
+      # END GENERATED CANONICAL COMPONENT DOWNLOADS
+      - name: Load unrehearsed bootstrap migration component
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true' && needs.validated-release-package-plan.outputs.migration_reused != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-release-package-component-${{ needs.validated-release-package-plan.outputs.revision }}-migration
+          path: ${{ runner.temp }}/validated-release-package
+
+      - name: Load exact promoted migration attempt
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.migration_reused == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.validated-release-package-plan.outputs.migration_artifact }}
+          path: ${{ runner.temp }}/validated-release-package
+
+      - name: Build immutable validated release package
+        id: package
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sources=()
+          if [ "${{ needs.validated-release-package-plan.outputs.component_protocol }}" = "true" ]; then
+            sources=(--component-sources "$RUNNER_TEMP/component-sources.json")
+          fi
+          python3 scripts/release-package.py assemble "${sources[@]}" \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
+            --directory "$RUNNER_TEMP/validated-release-package" \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Verify immutable validated release package
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          python3 scripts/release-package.py verify \
+            --revision "${{ needs.validated-release-package-plan.outputs.revision }}" \
+            --directory "$RUNNER_TEMP/validated-release-package"
+
+      - name: Preserve immutable validated release package
+        id: packageartifact
+        if: needs.validated-release-package-plan.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.artifact }}
+          path: ${{ runner.temp }}/validated-release-package/
+          retention-days: 90
+          if-no-files-found: error
+          overwrite: ${{ needs.validated-release-package-plan.outputs.component_protocol != 'true' }}
+
+      - name: Record immutable package source
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        run: >-
+          python3 scripts/release-package.py record-package-source
+          --revision "${{ needs.validated-release-package-plan.outputs.revision }}"
+          --directory "$RUNNER_TEMP/validated-release-package"
+          --output "$RUNNER_TEMP/package-source"
+          --run-id "${{ github.run_id }}"
+          --attempt "${{ github.run_attempt }}"
+          --artifact-id "${{ steps.packageartifact.outputs.artifact-id }}"
+          --artifact-digest "sha256:${{ steps.packageartifact.outputs.artifact-digest }}"
+
+      - name: Preserve immutable package source
+        if: needs.validated-release-package-plan.outputs.needed == 'true' && needs.validated-release-package-plan.outputs.component_protocol == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-source-${{ steps.package.outputs.identity }}-${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package-source/package-source.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Retain exact validated package backfill receipt
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
+        shell: bash
+        env:
+          REVISION: ${{ needs.validated-release-package-plan.outputs.revision }}
+          VALIDATION_RUN_ID: ${{ needs.validated-release-package-plan.outputs.validation_run_id }}
+          PACKAGE_IDENTITY: ${{ steps.package.outputs.identity }}
+        run: |
+          python3 - <<'PYBACKFILL'
+          import json,os
+          data={
+              'schemaVersion':1,
+              'revision':os.environ['REVISION'],
+              'validationRunId':int(os.environ['VALIDATION_RUN_ID']),
+              'packageIdentity':os.environ['PACKAGE_IDENTITY'],
+          }
+          with open('/tmp/validated-package-backfill.json','w') as output:
+              json.dump(data,output,sort_keys=True,indent=2)
+          PYBACKFILL
+
+      - name: Preserve exact validated package backfill receipt
+        if: github.event_name == 'workflow_dispatch' && needs.validated-release-package-plan.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-package-backfill-${{ needs.validated-release-package-plan.outputs.revision }}-${{ steps.package.outputs.identity }}
+          path: /tmp/validated-package-backfill.json
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+  wake-release-lifecycle-after-package-backfill:
+    needs: validated-release-package
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.package_revision != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout protected lifecycle wake authority
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Wake protected lifecycle after terminal package backfill
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/wake-release-lifecycle.py
+
+  validated-migration-probe:
+    needs: approved-head-preflight
+    name: validated-migration-probe
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact migration probe authority
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve preserved migration probe
+        id: probeplan
+        shell: bash
+        run: |
+          python3 scripts/migration-probe-package.py plan \
+            --tool-revision "${{ github.event.pull_request.head.sha }}" \
+            --application-revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/migration-probe" --output "$GITHUB_OUTPUT"
+      - name: Setup exact migration probe toolchain
+        if: steps.probeplan.outputs.needed == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - name: Build immutable migration probe
+        id: probe
+        if: steps.probeplan.outputs.needed == 'true'
+        shell: bash
+        run: |
+          python3 scripts/migration-probe-package.py build \
+            --tool-revision "${{ github.event.pull_request.head.sha }}" \
+            --application-revision "${{ github.event.pull_request.head.sha }}" \
+            --directory "$RUNNER_TEMP/migration-probe" --output "$GITHUB_OUTPUT"
+      - name: Preserve validated migration probe
+        if: steps.probeplan.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.probe.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-probe/
+          retention-days: 90
+          if-no-files-found: error
+
+  migration-rehearsal-prepare:
+    needs: [approved-head-preflight, validated-migration-probe]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      artifact: ${{ steps.rehearsal.outputs.artifact }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - name: Prepare immutable migration component before isolated fixture execution
+        id: rehearsal
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 scripts/migration-probe-package.py prepare-rehearsal \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
+            --directory "$RUNNER_TEMP/migration-rehearsal" --output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.rehearsal.outputs.artifact != ''
+        with:
+          name: ${{ steps.rehearsal.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal/
+          retention-days: 90
+          if-no-files-found: error
+
+  migration-rehearsal:
+    needs: migration-rehearsal-prepare
+    if: needs.migration-rehearsal-prepare.outputs.artifact != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.migration-rehearsal-prepare.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - name: Exercise validated migration bytes and lost-receipt recovery in isolated SQL
+        id: rehearsal
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          PREPARED_MIGRATION_ARTIFACT: ${{ needs.migration-rehearsal-prepare.outputs.artifact }}
+        run: |
+          python3 scripts/migration-probe-package.py rehearse \
+            --tool-revision "$CANDIDATE_SHA" --application-revision "$CANDIDATE_SHA" \
+            --directory "$RUNNER_TEMP/migration-rehearsal" --output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.rehearsal.outputs.artifact != ''
+        with:
+          name: ${{ steps.rehearsal.outputs.artifact }}
+          path: ${{ runner.temp }}/migration-rehearsal/rehearsal.json
+          retention-days: 90
+          if-no-files-found: error

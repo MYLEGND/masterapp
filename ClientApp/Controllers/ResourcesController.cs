@@ -1,5 +1,6 @@
 using ClientApp.Models;
 using ClientApp.Services;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -91,15 +92,19 @@ namespace ClientApp.Controllers
             .SelectMany(f => f.Types)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        private static readonly HashSet<string> AllowedPolicyExtensions = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".pdf",
-            ".png",
-            ".jpg",
-            ".jpeg"
-        };
-
         private const long MaxPolicyFileBytes = 15 * 1024 * 1024;
+
+        private static UploadValidationPolicy PolicyDocumentUploadPolicy => new()
+        {
+            MaxSizeBytes = MaxPolicyFileBytes,
+            AllowedExtensions = UploadValidator.VisualMediaExtensions(imagesOnly: true)
+                .Append(".pdf")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            AllowedContentTypes = UploadValidator.VisualMediaContentTypes(imagesOnly: true)
+                .Append("application/pdf")
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RequireKnownSignature = true
+        };
         private readonly EffectiveClientContextService _clientContext;
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _configuration;
@@ -214,10 +219,24 @@ namespace ClientApp.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UploadPolicyDocuments(int policyYear, string? policyType, string? displayName, IFormFile? file)
+        [RequestSizeLimit(MaxPolicyFileBytes + 1024 * 1024)]
+        public async Task<IActionResult> UploadPolicyDocuments()
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
             if (context == null) return Forbid();
+
+            var transport = await MultipartUploadTransport.ReadAsync(Request, HttpContext.RequestAborted);
+            if (!transport.IsValid || transport.Form is null)
+            {
+                TempData["ResourceUploadError"] = transport.ErrorMessage ?? "The policy upload could not be read.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var form = transport.Form;
+            _ = int.TryParse(form["policyYear"].FirstOrDefault(), out var policyYear);
+            var policyType = form["policyType"].FirstOrDefault();
+            var displayName = form["displayName"].FirstOrDefault();
+            var file = form.Files.GetFile("file");
 
             if (policyYear < 2000 || policyYear > 2100)
             {
@@ -238,47 +257,44 @@ namespace ClientApp.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            await using var buffer = new MemoryStream();
+            await file.CopyToAsync(buffer, HttpContext.RequestAborted);
+            var bytes = buffer.ToArray();
+            var validation = UploadValidator.ValidateContent(
+                bytes,
+                file.FileName,
+                file.ContentType,
+                PolicyDocumentUploadPolicy);
+            if (!validation.IsValid || string.IsNullOrWhiteSpace(validation.DetectedContentType))
+            {
+                TempData["ResourceUploadError"] = validation.ErrorMessage ?? "Choose a valid PDF or image document.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType);
+            if (extension is null)
+            {
+                TempData["ResourceUploadError"] = "The policy document container is not recognized.";
+                return RedirectToAction(nameof(Index));
+            }
+
             var policyFolder = GetPolicyDocumentsFolder(context.ClientProfileId);
-
-            var originalName = Path.GetFileName(file.FileName ?? string.Empty);
-            var extension = Path.GetExtension(originalName).ToLowerInvariant();
-
-            if (!AllowedPolicyExtensions.Contains(extension))
-            {
-                TempData["ResourceUploadError"] = "Only PDF, PNG, JPG, and JPEG files are allowed for policy uploads.";
-                return RedirectToAction(nameof(Index));
-            }
-
-            if (file.Length > MaxPolicyFileBytes)
-            {
-                TempData["ResourceUploadError"] = "Each file must be 15 MB or smaller.";
-                return RedirectToAction(nameof(Index));
-            }
-
             var safeDisplayName = string.IsNullOrWhiteSpace(displayName)
                 ? safePolicyType
                 : displayName.Trim();
 
             safeDisplayName = Regex.Replace(safeDisplayName, @"\s+", " ").Trim();
             if (safeDisplayName.Length > 140)
-            {
                 safeDisplayName = safeDisplayName[..140];
-            }
 
             var safeBaseName = Regex.Replace(safeDisplayName, @"[^A-Za-z0-9\- _]", "").Trim();
             if (string.IsNullOrWhiteSpace(safeBaseName))
-            {
                 safeBaseName = "policy-document";
-            }
 
             var id = Guid.NewGuid().ToString("N");
             var stampedFileName = $"{SlugifyFileName(safeBaseName)}-{id}{extension}";
             var fullPath = Path.Combine(policyFolder, stampedFileName);
-
-            await using (var stream = System.IO.File.Create(fullPath))
-            {
-                await file.CopyToAsync(stream);
-            }
+            await System.IO.File.WriteAllBytesAsync(fullPath, bytes, HttpContext.RequestAborted);
 
             var records = LoadPolicyRecords(policyFolder);
             records.Add(new PolicyDocumentRecord
@@ -290,13 +306,12 @@ namespace ClientApp.Controllers
                 PolicyFamily = GetPolicyFamily(safePolicyType),
                 PolicyYear = policyYear,
                 UploadedUtc = DateTime.UtcNow,
-                SizeBytes = file.Length,
+                SizeBytes = bytes.Length,
                 Extension = extension
             });
             SavePolicyRecords(policyFolder, records);
 
             TempData["ResourceUploadSuccess"] = "Your policy document was uploaded successfully.";
-
             return RedirectToAction(nameof(Index));
         }
 
@@ -318,14 +333,9 @@ namespace ClientApp.Controllers
                 return NotFound();
             }
 
-            var extension = Path.GetExtension(safeFileName).ToLowerInvariant();
-            var contentType = extension switch
-            {
-                ".pdf" => "application/pdf",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                _ => "application/octet-stream"
-            };
+            var contentType = UploadValidator.TryResolveAttachmentContentType(safeFileName, out var resolvedContentType)
+                ? resolvedContentType
+                : "application/octet-stream";
 
             Response.Headers["Content-Disposition"] = "inline";
 
@@ -350,14 +360,9 @@ namespace ClientApp.Controllers
                 return NotFound();
             }
 
-            var extension = Path.GetExtension(safeFileName).ToLowerInvariant();
-            var contentType = extension switch
-            {
-                ".pdf" => "application/pdf",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                _ => "application/octet-stream"
-            };
+            var contentType = UploadValidator.TryResolveAttachmentContentType(safeFileName, out var resolvedContentType)
+                ? resolvedContentType
+                : "application/octet-stream";
 
             return PhysicalFile(fullPath, contentType, GetDisplayName(safeFileName), enableRangeProcessing: true);
         }

@@ -4,7 +4,7 @@ import android.content.Intent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class LegendNotificationDestination(val conversationId: String?)
+data class LegendNotificationDestination(val conversationId: String?, val openNotifications: Boolean = false)
 
 /**
  * In-process handoff for server-issued FCM route metadata. It owns no
@@ -25,8 +25,15 @@ class LegendNotificationNavigation {
         val normalizedConversationId = conversationId
             ?.trim()
             ?.takeIf(String::isNotBlank)
-        if (normalizedConversationId != null) {
-            mutableDestination.value = LegendNotificationDestination(normalizedConversationId)
+        val notificationId = intent?.getStringExtra(EXTRA_NOTIFICATION_ID)
+            ?: intent?.getStringExtra(FCM_NOTIFICATION_ID)
+        val hasNotification = !notificationId.isNullOrBlank()
+
+        when {
+            normalizedConversationId != null ->
+                mutableDestination.value = LegendNotificationDestination(normalizedConversationId)
+            hasNotification ->
+                mutableDestination.value = LegendNotificationDestination(null, openNotifications = true)
         }
     }
 
@@ -36,6 +43,8 @@ class LegendNotificationNavigation {
 
     companion object {
         const val EXTRA_CONVERSATION_ID = "com.mylegnd.legend.registered.CONVERSATION_ID"
+        const val EXTRA_NOTIFICATION_ID = "com.mylegnd.legend.registered.NOTIFICATION_ID"
         private const val FCM_CONVERSATION_ID = "conversationId"
+        private const val FCM_NOTIFICATION_ID = "notificationId"
     }
 }

@@ -1,4 +1,5 @@
 using Domain.Messaging;
+using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -313,13 +314,16 @@ public abstract class MessagingControllerBase : Controller
     [HttpPost("/Messaging/Messages/{messageId:guid}/Attachments")]
     [ValidateAntiForgeryToken]
     [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]
-    public async Task<IActionResult> UploadAttachment(Guid messageId, IFormFile? file)
+    public async Task<IActionResult> UploadAttachment(Guid messageId)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
-        if (file is null)
-            return BadRequest(new { errorCode = "MESSAGING_ATTACHMENT_REQUIRED", errorMessage = "Choose an attachment to upload." });
+
+        var transport = await MultipartUploadTransport.ReadAsync(Request, HttpContext.RequestAborted);
+        var file = transport.Form?.Files.GetFile("file");
+        if (!transport.IsValid || file is null)
+            return BadRequest(new { errorCode = "MESSAGING_ATTACHMENT_REQUIRED", errorMessage = transport.ErrorMessage ?? "Choose an attachment to upload." });
 
         var attachmentId = Guid.NewGuid();
         await using var content = file.OpenReadStream();

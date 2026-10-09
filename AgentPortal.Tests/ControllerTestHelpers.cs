@@ -45,6 +45,18 @@ internal static class ControllerTestHelpers
         return new ClaimsPrincipal(identity);
     }
 
+    public static void AttachMultipartForm(HttpContext httpContext, IFormFile file)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentNullException.ThrowIfNull(file);
+
+        var files = new FormFileCollection { file };
+        httpContext.Request.ContentType = "multipart/form-data; boundary=legend-test";
+        httpContext.Request.Form = new FormCollection(
+            new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>(),
+            files);
+    }
+
     internal static IServiceScopeFactory BuildIsolatedFounderHistoryScopes(MasterAppDbContext identityDb)
     {
         // Protected-data/model fixtures keep operational data read-only while
@@ -209,7 +221,7 @@ internal static class ControllerTestHelpers
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
         var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
-        var metaSignalOutcomes = new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance);
+        var metaSignalOutcomes = new CanonicalCrmOutcomeService(db, NullLogger<CanonicalCrmOutcomeService>.Instance);
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
         var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes, clientBillingWorkspaceService)
         {
@@ -346,34 +358,33 @@ internal static class ControllerTestHelpers
         string accessToken = "test-access-token")
     {
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
-        var tokenAcquisition = new Mock<ITokenAcquisition>();
-        tokenAcquisition
-            .Setup(x => x.GetAccessTokenForUserAsync(
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<ClaimsPrincipal>(),
-                It.IsAny<TokenAcquisitionOptions>()))
-            .ReturnsAsync(accessToken);
-
-        var client = new HttpClient(handler, disposeHandler: false);
-        var httpClientFactory = new Mock<IHttpClientFactory>();
-        httpClientFactory
-            .Setup(x => x.CreateClient(It.IsAny<string>()))
-            .Returns(client);
 
         var timeResolver = new Mock<IAgentTimeZoneResolver>();
         timeResolver
             .Setup(resolver => resolver.Resolve(It.IsAny<HttpContext>()))
             .Returns(TimeZoneInfo.Utc);
 
+        var calendarConnections = new Mock<Infrastructure.Bookings.IMicrosoftCalendarConnectionAuthority>();
+        calendarConnections
+            .Setup(x => x.CreateGraphClientAsync(
+                It.IsAny<Shared.Analytics.MarketingOwnerScope>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(appGraph);
+        calendarConnections
+            .Setup(x => x.GetAsync(
+                It.IsAny<Shared.Analytics.MarketingOwnerScope>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Shared.Analytics.MarketingOwnerScope owner, CancellationToken _) =>
+                new Infrastructure.Bookings.MicrosoftCalendarConnectionSnapshot(
+                    owner, true, true, Guid.NewGuid(), "Test Calendar", "test-user",
+                    "agent@example.com", Infrastructure.Bookings.MicrosoftCalendarConnectionAuthority.DelegatedAuthorization,
+                    new[] { "Calendars.ReadWrite" }, DateTime.UtcNow, null, DateTime.UtcNow, DateTime.UtcNow.AddHours(1)));
+
         return new CalendarController(
-            tokenAcquisition.Object,
             NullLogger<CalendarController>.Instance,
             db,
-            httpClientFactory.Object,
             timeResolver.Object,
-            appGraph)
+            calendarConnections.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

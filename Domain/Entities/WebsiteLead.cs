@@ -47,6 +47,7 @@ public class WebsiteLead
 
     /// <summary>Facebook click ID (fbclid) captured at lead submission.</summary>
     public string? Fbclid { get; set; }
+    public string? Oppref { get; set; }
 
     public string? ClientIpAddress { get; set; }
     public string? ClientUserAgent { get; set; }
