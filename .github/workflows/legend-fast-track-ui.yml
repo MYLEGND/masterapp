@@ -1,0 +1,167 @@
+name: LEGEND Fast Track UI — AgentPortal and ClientApp
+
+# Dedicated UI delivery branch. No protected merge, historical release
+# admission, database migration, rollback rebuild, or full test suite.
+on:
+  push:
+    branches:
+      - Legend/fast-track-release
+    paths:
+      - .github/workflows/legend-fast-track-ui.yml
+      - AgentPortal/Views/**
+      - AgentPortal/wwwroot/**
+      - ClientApp/Views/**
+      - ClientApp/wwwroot/**
+      - SHARED/wwwroot/**
+      - Legend-Design/**
+
+permissions:
+  contents: read
+  id-token: write
+
+# Share the publication mutex with the existing release workflow.
+# Only protects against simultaneous production uploads, not branch editing.
+concurrency:
+  group: legend-approved-release
+  cancel-in-progress: false
+
+jobs:
+  deploy-ui:
+    name: UI Deploy — ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: Production
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: AgentPortal
+            project: AgentPortal/AgentPortal.csproj
+            azure_app: masterapp-portal
+            host: portal.mylegnd.com
+          - target: ClientApp
+            project: ClientApp/ClientApp.csproj
+            azure_app: masterapp-client
+            host: client.mylegnd.com
+    steps:
+      - name: Check out current fast-track UI code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      - name: Compile application and produce ZIP
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: |
+          set -euo pipefail
+          dotnet publish "$PROJECT" -c Release -o "$RUNNER_TEMP/publish" --nologo -p:SourceRevisionId="$GITHUB_SHA"
+          python3 - <<'PY'
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'publish'/'wwwroot'/'_deployment-provenance.json'
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_text(json.dumps({'releaseSha':os.environ['GITHUB_SHA']})+'\n')
+          PY
+          (cd "$RUNNER_TEMP/publish" && zip -q -r "$RUNNER_TEMP/deploy.zip" .)
+          sha256sum "$RUNNER_TEMP/deploy.zip" | cut -d' ' -f1
+
+      - name: Sign in to Azure Production
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check for an active deployment and save baseline IDs
+        shell: bash
+        env:
+          APP: ${{ matrix.azure_app }}
+        run: |
+          set -euo pipefail
+          az webapp log deployment list --resource-group masterapp-rg --name "$APP" --only-show-errors -o json > "$RUNNER_TEMP/baseline.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          rows=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'baseline.json').read_text())
+          if not isinstance(rows,list) or any(not isinstance(x,dict) or not x.get('id') or type(x.get('status')) is not int for x in rows):
+              raise SystemExit('Azure deployment status unavailable or malformed; no upload started')
+          if any(x['status'] in (0,1,2) for x in rows):
+              raise SystemExit('Another Azure deployment is in progress; no simultaneous upload')
+          print('Azure idle; baseline deployment records:',len(rows))
+          PY
+
+      - name: Submit one direct ZIP deployment
+        id: upload
+        shell: bash
+        env:
+          APP: ${{ matrix.azure_app }}
+        run: |
+          set +e
+          timeout 240 az webapp deploy --resource-group masterapp-rg --name "$APP" \
+            --src-path "$RUNNER_TEMP/deploy.zip" --type zip \
+            --clean true --restart true --async true \
+            --track-status false --enable-kudu-warmup false \
+            --only-show-errors -o json > "$RUNNER_TEMP/upload.json" 2> "$RUNNER_TEMP/upload.stderr"
+          code=$?
+          set -e
+          echo "upload_exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning::The upload response was not confirmed. Do not resubmit; checking Azure instead."
+          fi
+
+      - name: Verify deployed Azure revision without resubmitting
+        shell: bash
+        env:
+          APP: ${{ matrix.azure_app }}
+          HOST: ${{ matrix.host }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib,subprocess,time,urllib.request,urllib.error
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          baseline=json.loads((root/'baseline.json').read_text())
+          initial_ids={str(x['id']) for x in baseline}
+          expected=os.environ['GITHUB_SHA']
+          url='https://'+os.environ['HOST']+'/api/runtime-provenance'
+          last='not observed'
+          for attempt in range(40):
+              time.sleep(15)
+              provider=subprocess.run(
+                  ['az','webapp','log','deployment','list','--resource-group','masterapp-rg',
+                   '--name',os.environ['APP'],'--only-show-errors','-o','json'],
+                  capture_output=True,text=True,timeout=35)
+              if provider.returncode:
+                  last='Azure deployment read unavailable'
+                  continue
+              try:
+                  entries=json.loads(provider.stdout)
+                  if not isinstance(entries,list):
+                      raise ValueError('unrecognized Azure response')
+                  fresh=[x for x in entries if str(x.get('id')) not in initial_ids]
+                  if len(fresh)>1:
+                      raise RuntimeError('Concurrent Azure deployments detected')
+                  if any(x.get('status')==3 for x in fresh):
+                      raise RuntimeError('Azure reported failed deployment')
+                  active=any(x.get('status') in (0,1,2) for x in entries)
+                  try:
+                      with urllib.request.urlopen(urllib.request.Request(
+                              url+'?fastTrack='+str(time.time_ns()),
+                              headers={'Cache-Control':'no-cache'}),timeout=12) as response:
+                          body=json.loads(response.read(8192))
+                          live=body.get('sourceRevision') if response.status==200 else None
+                  except (OSError,ValueError):
+                      live=None
+                  last=f'new_deployments={len(fresh)}, active={active}, revision={live}'
+                  if not active and len(fresh)==1 and fresh[0].get('status')==4 and live==expected:
+                      print('LIVE_REVISION_VERIFIED:',os.environ['APP'],live)
+                      raise SystemExit(0)
+              except (ValueError,KeyError) as exc:
+                  last='Azure deployment response unrecognized: '+type(exc).__name__
+                  continue
+          raise SystemExit('NOT_DEPLOYED_AND_NOT_VERIFIED: '+os.environ['APP']+' '+last)
+          PY
