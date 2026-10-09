@@ -609,9 +609,37 @@ class EarlyReadinessEvidenceTests(unittest.TestCase):
                     m.candidate_migration_contract_proven(self.candidate, self.approved, contract, approved)
 
     def test_changed_discovery_or_runtime_requires_reviewed_extraction_rule(self):
-        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]):
+        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]), patch.object(m, 'migration_contract_static_styles_only', return_value=False):
             with self.assertRaisesRegex(ValueError, 'dependency content changed'):
                 m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
+
+    def test_static_style_rule_keeps_contract_and_tooling_checks(self):
+        current = dict(runtimeIdentity='new', toolIdentity='tool', executionIdentity='exec')
+        trusted = dict(current, runtimeIdentity='old')
+        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
+            self.assertEqual('approved-definitions-static-styles-only', m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})['rule'])
+        for changed in ('toolIdentity', 'executionIdentity'):
+            with patch.object(m, 'migration_probe_identity', side_effect=[dict(current, **{changed: 'changed'}), trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
+                with self.assertRaisesRegex(ValueError, 'UNPROVEN'):
+                    m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
+        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
+            with self.assertRaisesRegex(ValueError, 'metadata differs'):
+                m.candidate_migration_contract_proven(self.candidate, self.approved, {'changed': True}, {})
+
+    def test_static_style_delta_rejects_code_build_changes_and_symlinks(self):
+        css = 'SHARED/wwwroot/css/dashboard-home-shared.css'
+        def tree(path, oid, mode='100644'):
+            return mode + ' blob ' + oid * 40 + '\t' + path + '\0'
+        base = tree(css, 'a')
+        for candidate, expected in (
+            (tree(css, 'b'), True), (base, False),
+            (tree(css, 'b', '120000'), False), ('', False),
+            (tree(css, 'b') + tree('Infrastructure/Migrations/Test.cs', 'b'), False),
+            (tree(css, 'b') + tree('Directory.Build.targets', 'b'), False),
+            (tree(css, 'b') + tree('SHARED/Shared.csproj', 'b'), False),
+            (tree(css, 'b') + tree('SHARED/wwwroot/payload.js', 'b'), False)):
+            with self.subTest(candidate=candidate), patch.object(m.subprocess, 'check_output', side_effect=[base, candidate]):
+                self.assertEqual(expected, m.migration_contract_static_styles_only(self.candidate, self.approved))
 
     def test_unchanged_migration_definitions_allow_new_candidate_without_metadata_trust(self):
         contract = {'schemaVersion': 1, 'migrations': []}
