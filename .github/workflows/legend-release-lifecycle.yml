@@ -206,6 +206,8 @@ jobs:
           cache-dependency-path: scripts/release-artifacts/package-lock.json
       - name: Install canonical durable operation transport
         run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - name: Bind canonical lifecycle evidence runtime
+        uses: ./scripts/release-artifacts
       - name: Integrate ready approved change and start direct release
         if: github.event_name == 'pull_request_target'
         env:
