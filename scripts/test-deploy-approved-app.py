@@ -1125,7 +1125,7 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
         migrate.assert_called_once()
         self.assertTrue(any('verify' in call.args[0] for call in command.call_args_list))
 
-    def test_non_schema_changes_keep_migration_lane_skipped(self):
+    def test_non_schema_changes_still_require_fresh_schema_reconciliation(self):
         owner = self.owner
         environment = {
             'PRESERVE_LIVE_TARGETS': 'false',
@@ -1133,6 +1133,8 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             'EXPECTED_DB_BASE_SHA': 'a' * 40,
             'APPLICATION_RELEASE_SHA': 'b' * 40,
             'MIGRATION_READINESS_PENDING': 'false',
+            'DATABASE_AUTHORITY': 'masterapp-portal',
+            'GITHUB_REPOSITORY': 'MYLEGND/masterapp',
         }
         with (
             patch.dict(os.environ, environment),
@@ -1141,11 +1143,12 @@ class MigrationMetadataAdmissionTests(unittest.TestCase):
             patch.object(owner, 'migration_metadata_changed', return_value=False),
             patch.object(owner, '_invoke_migration_bundle') as migrate,
             patch.object(owner, 'release_proven') as release_proof,
+            patch.object(owner, 'run', return_value=json.dumps({'runId': 123, 'artifact': 'validated-probe'})),
         ):
             result = owner.run_migration_lane()
-        self.assertEqual({'status': 'not-applicable', 'changedMigrations': []}, result)
-        migrate.assert_not_called()
-        release_proof.assert_not_called()
+        self.assertEqual({'status': 'reconciled', 'changedMigrations': []}, result)
+        migrate.assert_called_once()  # Canonical ready-state tests prove zero SQL execution.
+        release_proof.assert_called_once()
 
 
 class RedactedPrepublicationDiagnosticsTests(unittest.TestCase):
