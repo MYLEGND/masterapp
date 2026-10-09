@@ -1,11 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Explicit Founder authorization on 2026-10-02 to complete PR #405 end-to-end: integrate the canonical Founder engineering notification/action experience and deploy the affected masterapp-portal runtime after the exact-head required gates pass. Preserve successful compatible validation evidence, do not bypass any gate, and require final live provenance.",
-  "purpose": "Release the Founder engineering notification/action backend and web Action Center to masterapp-portal from the exact validated PR #405 revision. The same approved source revision also contains the iOS and Android native notification-center experience; native binaries must be built and distributed through their platform-native release authority because the web direct-release workflow cannot update installed mobile applications. Do not deploy ClientApp, Protect, Parfait, the static Website, or Cloudflare routing.",
-  "requestId": "founder-engineering-notification-actions-20261002",
+  "authorization": "Explicit Founder authorization to complete PR #551 and the canonical migration-to-live release flow, apply only the currently proven pending migration through the governed transaction, and publish the canonically affected targets after exact-head validation and readiness.",
+  "purpose": "Activate the installed canonical early-readiness and immutable-package recovery authorities; rehearse and promote the exact selected migration bundle, reconcile production history and physical schema, and verify affected application artifacts live. Preserve compatible successful work and stop at unresolved authority or mutation ambiguity.",
+  "requestId": "founder-pr551-autonomous-release-20261009",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false
