@@ -39,6 +39,49 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Validate fast-track workflow syntax and commerce gate wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/legend-fast-track-ui.yml")'
+          python3 - <<'PYVALIDATE'
+          from pathlib import Path
+          source=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+          required=(
+            'commerce-gates:',
+            'CommerceCore/',
+            "COMMERCE_FAST_TRACK_NON_SCHEMA_VALIDATED: YES",
+            'COMMERCE_PRODUCTION_FLAGS_OFF_AND_TARGET_AUTHORIZED:',
+            "needs.select-targets.outputs.commerce == 'true'",
+            "needs.commerce-gates.result == 'success'",
+            "Unmapped fast-track source path",
+            'LEGEND_FAST_TRACK_SELECTED=',
+          )
+          for token in required:
+              if token not in source: raise SystemExit('Fast-track commerce contract absent: '+token)
+          print('FAST_TRACK_COMMERCE_WORKFLOW_SYNTAX_AND_GATES: READY')
+          PYVALIDATE
+      - name: Read current production revision without changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYREADBACK'
+          import json,re,urllib.request,urllib.error
+          for app in ('masterapp-protect','masterapp-parfait'):
+              url='https://'+app+'.azurewebsites.net/api/runtime-provenance'
+              request=urllib.request.Request(url,headers={'Cache-Control':'no-cache','Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(request,timeout=20) as response:
+                      if response.status!=200: raise RuntimeError('status not 200')
+                      body=json.loads(response.read(8192))
+                  revision=body.get('sourceRevision')
+                  if not isinstance(revision,str) or not re.fullmatch('[0-9a-f]{40}',revision):
+                      raise RuntimeError('runtime revision identity not verified')
+                  print('PREDEPLOY_LIVE_REVISION='+app+':'+revision)
+              except (OSError,ValueError,KeyError,RuntimeError) as ex:
+                  raise SystemExit('PREDEPLOY_LIVE_READBACK_UNAVAILABLE: '+app+':'+type(ex).__name__)
+          PYREADBACK
+
       - name: Restore isolated commerce and Parfait projects
         run: |
           dotnet restore CommerceCore/LegendCommerce.csproj --nologo
