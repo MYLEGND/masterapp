@@ -48,14 +48,14 @@ jobs:
                           print('AZURE_FAILURE_DETAIL='+json.dumps({k:str(x.get(k,''))[:380] for k in ('log_time','message','type','details_url')},sort_keys=True))
                   else: print('AZURE_FAILURE_READ='+json.dumps(details,sort_keys=True)[:900])
           print('APP_STATE='+json.dumps(azure(['webapp','show','-g','masterapp-rg','-n',app,'--query','{state:state,availabilityState:availabilityState,enabled:enabled}']),sort_keys=True))
-          for path in ('/_deployment-provenance.txt','/favicon.jpg','/'):
+          for host,path in (('masterapp-website.azurewebsites.net','/_deployment-provenance.txt'),('masterapp-website.azurewebsites.net','/favicon.jpg'),('masterapp-website.azurewebsites.net','/'),('mylegnd.com','/favicon.jpg'),('www.mylegnd.com','/favicon.jpg'),('protect.mylegnd.com','/images/favicon/legend-favicon.jpg')):
               try:
-                  request=urllib.request.Request('https://masterapp-website.azurewebsites.net'+path,headers={'Cache-Control':'no-cache'})
+                  request=urllib.request.Request('https://'+host+path,headers={'Cache-Control':'no-cache'})
                   with urllib.request.urlopen(request,timeout=14) as response:
                       body=response.read(256)
-                      print('HTTP_READBACK='+json.dumps({'path':path,'status':response.status,'content_type':response.headers.get('Content-Type'),'revision':body.decode('utf8','replace').strip() if path.endswith('.txt') else None,'jpeg':body.startswith(bytes([255,216,255])) if path.endswith('.jpg') else None}))
+                      print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':response.status,'content_type':response.headers.get('Content-Type'),'revision':body.decode('utf8','replace').strip() if path.endswith('.txt') else None,'jpeg':body.startswith(bytes([255,216,255])) if path.endswith('.jpg') else None}))
               except urllib.error.HTTPError as e:
-                  print('HTTP_READBACK='+json.dumps({'path':path,'status':e.code}))
+                  print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':e.code}))
               except OSError:
-                  print('HTTP_READBACK='+json.dumps({'path':path,'status':'network_unavailable'}))
+                  print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':'network_unavailable'}))
           PY
