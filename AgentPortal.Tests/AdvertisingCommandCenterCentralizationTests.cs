@@ -95,7 +95,7 @@ public sealed class AdvertisingCommandCenterCentralizationTests
     public void Parfait_RemainsACommerceBusinessConsumer_NotAnAdvertisingOwnerType()
     {
         var root = Root();
-        var parfait = Read(root, "ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs");
+        var parfait = Read(root, "CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs");
         var profile = Read(root, "ParfaitApp", "Services", "ParfaitBusinessProfileService.cs");
 
         Assert.Contains("MarketingOwnerScope.Business", parfait, StringComparison.Ordinal);
