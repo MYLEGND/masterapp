@@ -1959,7 +1959,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         embedContainer.dataset.activeToolId = "CoachingToolLibrary";
         embedContainer.innerHTML = "";
         embedContainer.classList.remove("finance-main--dual");
-        setDualToolMode(false);
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
         clearWealthForecastSearchHost();
 
@@ -2008,7 +2007,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         // clear UI
         embedContainer.innerHTML = '';
         embedContainer.classList.remove('finance-main--dual');
-        setDualToolMode(false);
 
         // close any active tooltip cleanly
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();

@@ -39,4 +39,5 @@ for(const path of [agent,client]) {
 test('shared Finance source is syntactically valid and both app views keep the same tool host',()=>{new Function(src);assert.match(agent,/id="budgetDropdown"/);assert.match(client,/id="budgetDropdown"/);});
 test('initial Finance tool boot renders even when local browser storage is denied',async()=>{const f=fixture({storageDenied:true});await f.start();assert.ok(f.added.length>=9);assert.match(f.get('budget-embed').innerHTML,/llbs-tool/);});
 test('Finance tool boot runs when the shared script arrives after DOMContentLoaded',async()=>{const f=fixture({late:true});await f.start();assert.ok(f.added.length>=9);assert.match(f.get('budget-embed').innerHTML,/llbs-tool/);});
+test('removed dual tool control is not called from canonical rendering',()=>{assert.doesNotMatch(src,/\bsetDualToolMode\s*\(/);});
 test('finance state and authority endpoints are preserved rather than reset on load',()=>{assert.match(src,/\/api\/finance-state\/load/);assert.match(src,/\/api\/finance-state\/save/);assert.match(src,/const selectedToolStateId = "__workspace__"/);assert.doesNotMatch(src,/localStorage\.clear\(/);});
