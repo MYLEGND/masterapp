@@ -100,6 +100,7 @@ public sealed class ParfaitCartQuoteResponse
 public sealed class ParfaitOrderRecord
 {
     public Guid CommerceOrderId { get; set; }
+    public Guid CommerceBusinessId { get; set; }
     public required string OrderNumber { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime? UpdatedUtc { get; set; }
