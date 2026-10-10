@@ -4,6 +4,8 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using System.Text.Encodings.Web;
 using ParfaitApp.Models;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace ParfaitApp.Services;
 
@@ -12,11 +14,36 @@ public class GraphMailService : IGraphMailService
     private const string DefaultParfaitOrdersInbox = "parfait@mylegnd.com";
     private readonly IConfiguration _config;
     private readonly ILogger<GraphMailService> _logger;
+    private readonly MasterAppDbContext? _db;
 
-    public GraphMailService(IConfiguration config, ILogger<GraphMailService> logger)
+    public GraphMailService(IConfiguration config, ILogger<GraphMailService> logger,
+        MasterAppDbContext? db = null)
     {
         _config = config;
         _logger = logger;
+        _db = db;
+    }
+
+    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveMerchant(ParfaitOrderRecord order)
+    {
+        // Production orders must resolve the original SQL tenant, not a default
+        // "Shop Parfait" label or a globally configured orders inbox.
+        if (order.CommerceBusinessId == Guid.Empty)
+            throw new InvalidOperationException("Order commerce business identity is required for mail delivery.");
+        if (_db is null)
+            throw new InvalidOperationException("Canonical commerce business authority is unavailable.");
+
+        var merchant = _db.CommerceBusinesses.AsNoTracking().SingleOrDefault(x =>
+            x.Id == order.CommerceBusinessId && x.IsActive && x.Status == "Active")
+            ?? throw new InvalidOperationException("Order business is unavailable.");
+
+        var isParfait = string.Equals(merchant.Key, "parfait", StringComparison.OrdinalIgnoreCase);
+        var storeName = isParfait
+            ? (_config["Contact:WebsiteName"] ?? merchant.DisplayName).Trim()
+            : merchant.DisplayName.Trim();
+        if (string.IsNullOrWhiteSpace(storeName))
+            throw new InvalidOperationException("Order merchant has no display name.");
+        return (storeName, merchant.OwnerEmail, isParfait);
     }
 
     private GraphServiceClient BuildClient()
@@ -40,7 +67,8 @@ public class GraphMailService : IGraphMailService
     public async Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
         var senderUpn = ResolveSenderUpn();
-        var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
+        var merchant = ResolveMerchant(order);
+        var siteName = merchant.StoreName;
 
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
@@ -96,10 +124,13 @@ $@"
     {
         var senderUpn = ResolveSenderUpn();
         var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
-        var inboxes = ResolveRecipients(
-            DefaultParfaitOrdersInbox,
-            _config["Commerce:OrdersInbox"],
-            _config["GraphMail:NotifyInbox"]);
+        // The platform-wide notification inbox is reserved for its legacy
+        // Parfait tenant. Unrelated merchants receive orders only at their
+        // own recorded owner address; never expose cross-tenant order details.
+        var inboxes = merchant.IsParfait
+            ? ResolveRecipients(DefaultParfaitOrdersInbox, _config["Commerce:OrdersInbox"],
+                _config["GraphMail:NotifyInbox"])
+            : ResolveRecipients(merchant.OrdersInbox);
 
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
@@ -140,7 +171,7 @@ $@"
   </p>
 
   <p style='margin-top:18px;color:#666;font-size:13px;'>
-    View orders inside Parfait Internal → Orders.
+    View orders inside {(merchant.IsParfait ? "Parfait Internal" : "your LEGEND® business workspace")} → Orders.
   </p>
 </div>";
 
