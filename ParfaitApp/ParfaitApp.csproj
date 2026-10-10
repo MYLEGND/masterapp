@@ -82,6 +82,12 @@
   </Target>
 
   <ItemGroup>
+    <!-- Legal pages for the commerce controller use the original Parfait files. -->
+    <Content Include="Views/Home/Terms.cshtml;Views/Home/Privacy.cshtml"
+             Link="Views/StoreLegal/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="../SHARED/WebsitePlatform/tracking.js" Link="wwwroot/js/tracking.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../SHARED/WebsitePlatform/meta-signal-intelligence.js" Link="wwwroot/js/meta-signal-intelligence.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../SHARED/WebsitePlatform/openai-measurement.js" Link="wwwroot/js/openai-measurement.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

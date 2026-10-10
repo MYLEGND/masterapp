@@ -93,6 +93,22 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.DoesNotContain("AddLegendCommerceMvc()", protect, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SharedWebsiteHostBundlesOriginalParfaitPresentationWithoutDefaultTheme()
+    {
+        var project = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "ProtectWebsite.csproj"));
+        Assert.Contains("../ParfaitApp/Views/Store/*.cshtml", project, StringComparison.Ordinal);
+        Assert.Contains("Views/Shared/_CommerceParfaitLayout.cshtml", project, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/store-assets/css/", project, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/store-assets/images/", project, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/uploads/parfait-products/", project, StringComparison.Ordinal);
+        var start = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Views", "Store", "_ViewStart.cshtml"));
+        Assert.Contains("CommerceStorefrontPresentation.ResolveLayout(commerce)", start, StringComparison.Ordinal);
+        Assert.Contains("\"_CommerceParfaitLayout\"", start, StringComparison.Ordinal);
+        var controller = File.ReadAllText(Path.Combine(Root(), "CommerceCore", "Controllers", "StoreController.cs"));
+        Assert.Contains("~/Views/StoreLegal/", controller, StringComparison.Ordinal);
+    }
+
     private static string Root()
     {
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");

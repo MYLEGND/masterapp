@@ -119,7 +119,7 @@ public sealed class StoreController : Controller
         if (redirect is not null) return redirect;
 
         ApplyStoreContext(store);
-        return View("~/Views/Home/" + viewName + ".cshtml");
+        return View("~/Views/StoreLegal/" + viewName + ".cshtml");
     }
 
     private async Task<IActionResult?> CanonicalizeScopedRequestAsync(
