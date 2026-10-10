@@ -124,9 +124,13 @@
     <Content Include="../ParfaitApp/Views/Shared/_ParfaitCommerceTracking.cshtml" Link="Views/Shared/_ParfaitCommerceTracking.cshtml" />
     <Content Include="../ParfaitApp/Views/Home/Terms.cshtml;../ParfaitApp/Views/Home/Privacy.cshtml"
              Link="Views/StoreLegal/%(Filename)%(Extension)" />
-    <Content Include="../ParfaitApp/wwwroot/css/**/*" Link="wwwroot/store-assets/css/%(RecursiveDir)%(Filename)%(Extension)"
+    <Content Include="../ParfaitApp/wwwroot/css/**/*"
+             Exclude="../ParfaitApp/wwwroot/css/internal.css;../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css"
+             Link="wwwroot/store-assets/css/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../ParfaitApp/wwwroot/js/**/*" Link="wwwroot/store-assets/js/%(RecursiveDir)%(Filename)%(Extension)"
+    <Content Include="../ParfaitApp/wwwroot/js/**/*"
+             Exclude="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
+             Link="wwwroot/store-assets/js/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/lib/**/*" Link="wwwroot/store-assets/lib/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -151,9 +155,6 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
              Link="wwwroot/js/parfait-agentportal-analytics.js"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../ParfaitApp/wwwroot/images/favicon/parfait-logo.png"
-             Link="wwwroot/images/favicon/parfait-logo.png"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
