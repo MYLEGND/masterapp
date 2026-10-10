@@ -7,15 +7,20 @@ import {compileBusiness} from './render-business.mjs';
 const business={id:'b72b8796-2b35-4eed-8d6d-7260976084ea',displayName:'Sample & Business',legalName:'Sample LLC'};
 const document=()=>({elements:{},sectionOrder:{},extras:[],theme:{},pages:{}});
 
-test('published business pages use a raster fallback without overwriting the website-selected favicon',async()=>{
+test('published business pages resolve the selected favicon behind one stable host URL',async()=>{
   const fallback=await compileBusiness({business,document:document()});
   const initial=parseHTML(fallback.pages['/'].html).document.querySelector('link[rel="icon"]');
   assert.equal(initial?.getAttribute('href'),'/favicon.jpg');
-  assert.equal(initial?.getAttribute('type'),'image/jpeg');
+  assert.equal(initial?.hasAttribute('type'),false);
   const custom=await compileBusiness({business,document:{...document(),faviconImageDataUrl:'https://cdn.example.test/icon.png'}});
   const selected=parseHTML(custom.pages['/'].html).document.querySelector('link[rel="icon"]');
-  assert.equal(selected?.getAttribute('href'),'https://cdn.example.test/icon.png');
+  assert.equal(selected?.getAttribute('href'),'/favicon.jpg');
   assert.equal(selected?.hasAttribute('type'),false);
+  const metadata=parseHTML(custom.pages['/'].html).document;
+  const schema=JSON.parse(metadata.querySelector('script[type="application/ld+json"]').textContent);
+  assert.equal(schema['@type'],'Organization');
+  assert.equal(schema.name,business.displayName);
+  assert.equal(schema.url,'__LEGEND_CANONICAL_URL__');
 });
 
 test('publication compiler process consumes stdin and returns compiled pages',()=>{
@@ -156,7 +161,7 @@ test('published text, URLs, section color and imported page are rendered before 
   assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
   assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
   assert.equal(page.querySelector('.hero').style.backgroundImage,'none');
-  assert.equal(page.querySelector('link[rel~="icon"]').href,value.faviconImageDataUrl);
+  assert.equal(page.querySelector('link[rel~="icon"]').href,'/favicon.jpg');
   assert.equal(page.querySelector('link[rel~="icon"]').hasAttribute('type'),false);
   assert.ok(page.querySelector('.site-header').compareDocumentPosition(page.querySelector('main')) & 4);
   assert.ok(page.querySelector('main').compareDocumentPosition(page.querySelector('.site-footer')) & 4);
@@ -287,7 +292,10 @@ test('untrusted business facts remain text and unsafe page routes reject publica
   const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
   const dom=parseHTML(result.pages['/'].html).document;
   assert.equal(dom.querySelector('.brand strong').textContent,'</script><script>alert(1)</script>');
-  assert.equal(dom.querySelectorAll('script:not([src]):not([type="application/json"])').length,0);
+  assert.equal(dom.querySelectorAll('script:not([src]):not([type="application/json"]):not([type="application/ld+json"])').length,0);
+  const organization=JSON.parse(dom.querySelector('script[type="application/ld+json"]').textContent);
+  assert.equal(organization.name,'</script><script>alert(1)</script>');
+  assert.equal(organization['@type'],'Organization');
   for(const route of ['/../private','//other.example','/x?legendEdit=secret']){
     const value=document();value.pages[route]={};
     await assert.rejects(compileBusiness({business,document:value}),/Invalid website page route/);

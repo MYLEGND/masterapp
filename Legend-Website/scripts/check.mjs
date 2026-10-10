@@ -1,6 +1,7 @@
 import { readFile, access } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import { publicApiBase } from '../src/runtime-config.mjs';
 const root=resolve(import.meta.dirname,'..');
 const routes=['','about','contact','logo','privacy-terms'];
 const businessPreviewRoute='business-preview';
@@ -23,7 +24,7 @@ const jpeg=await readFile(resolve(root,'dist','favicon.jpg'));
 if(jpeg[0]!==0xff || jpeg[1]!==0xd8 || jpeg[2]!==0xff) throw new Error('Google favicon is not a valid JPEG');
 for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
-  if(!html.includes('<link rel="icon" href="/favicon.jpg" type="image/jpeg" sizes="128x128">')) throw new Error('Missing raster favicon for '+route);
+  if(!html.includes(`href="${publicApiBase}/api/website-content/public/legend/favicon"`)) throw new Error('Static route must use stable published favicon authority: '+route);
 }
 // All published entrypoints must paint even if CMS/analytics fetches stall.
 for(const route of routes){
@@ -89,6 +90,12 @@ for(const file of ['legend-public-cms.js','legend-public-web.js','site.css']){
   if(!businessPreview.includes(`/${file}?v=${version}`))throw new Error('Business preview missing exact shared asset version: '+file);
 }
 const sitemap=await readFile(resolve(root,'dist','sitemap.xml'),'utf8');
+for(const route of routes){
+  const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
+  const canonical=`https://www.mylegnd.com/${route?route+'/':''}`;
+  if(!html.includes(`<link rel="canonical" href="${canonical}">`)) throw new Error('Canonical URL must agree with static route: '+route);
+  if(!sitemap.includes(`<loc>${canonical}</loc>`)) throw new Error('Sitemap must agree with canonical URL: '+route);
+}
 if(sitemap.includes('/business-preview'))throw new Error('Business preview must not enter the public sitemap.');
 console.log('Business preview consumes the same shared renderer assets without entering the public sitemap.');
 

@@ -38,3 +38,17 @@ test('Other three web app layouts never hide their whole document while loading 
     assert.doesNotMatch(source, /<html lang="en" hidden|data-legend-canonical-pending/);
   }
 });
+
+test('Protect emits Website Studio published SEO metadata and favicon on initial response', () => {
+  assert.match(protect, /publishedSeoTitle/);
+  assert.match(protect, /publishedSeoDescription/);
+  assert.match(protect, /WebsiteSeoDb/);
+  assert.match(protect, /WebsiteFaviconParity\.PublicUrl/);
+});
+test('Published CMS hydration preserves the initial favicon URL', () => {
+  assert.match(cms, /const href = editorMode && value \? mediaUrl\(value\) : originalFaviconHref/);
+});
+test('Business compilation uses one crawlable icon URL and structured data', () => {
+  assert.match(business, /structured\.setAttribute\('type','application\/ld\+json'\)/);
+  assert.match(business, /favicon\.setAttribute\('href','\/favicon\.jpg'\)/);
+});

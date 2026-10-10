@@ -67,6 +67,37 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         }
         if (path == "/favicon.jpg")
         {
+            // Project the icon from the same immutable published version as the HTML.
+            // Do not cache this selector: a new publication must become visible immediately.
+            context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate,max-age=0";
+            using var publishedDocument = JsonDocument.Parse(version.DocumentJson);
+            var icon = publishedDocument.RootElement.TryGetProperty("faviconImageDataUrl", out var rawIcon) &&
+                rawIcon.ValueKind == JsonValueKind.String ? rawIcon.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(icon))
+            {
+                if (Uri.TryCreate(icon, UriKind.Absolute, out var iconUri) && iconUri.Scheme == Uri.UriSchemeHttps)
+                {
+                    context.Response.Redirect(icon, permanent: false);
+                    return;
+                }
+                foreach (var mime in new[] { "image/png", "image/jpeg" })
+                {
+                    var prefix = "data:" + mime + ";base64,";
+                    if (!icon.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    try
+                    {
+                        var encoded = icon[prefix.Length..];
+                        if (encoded.Length > 7_000_000) break;
+                        var bytes = Convert.FromBase64String(encoded);
+                        if (bytes.Length > 5_000_000) break;
+                        context.Response.ContentType = mime;
+                        if (!HttpMethods.IsHead(context.Request.Method))
+                            await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+                        return;
+                    }
+                    catch (FormatException) { break; }
+                }
+            }
             var faviconPath = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", "favicon.jpg");
             if (!File.Exists(faviconPath)) { await Unavailable(context, bridged, "favicon"); return; }
             context.Response.ContentType = "image/jpeg";
