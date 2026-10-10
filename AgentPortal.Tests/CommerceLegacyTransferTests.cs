@@ -54,6 +54,8 @@ public sealed class CommerceLegacyTransferTests
             Assert.True(copied.CopyAttempted);
             Assert.Equal(2, copied.VerifiedDestinationFiles);
             Assert.Equal(plan.ManifestSha256, copied.ManifestSha256);
+            Assert.Equal(copied.ManifestSha256,
+                await migration.ReadManifestAsync(business.Id, "parfait", target));
             Assert.Equal(await File.ReadAllBytesAsync(sourceFile),
                 await File.ReadAllBytesAsync(Path.Combine(target.UploadRoot, "product-1", "img.png")));
             Assert.Equal(await File.ReadAllTextAsync(source.CustomerAutomationsPath),

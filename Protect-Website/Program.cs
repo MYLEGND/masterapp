@@ -76,6 +76,7 @@ if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(bui
     builder.Services.AddMasterAppBilling(builder.Configuration);
     builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
     builder.Services.AddScoped<IGraphMailService, GraphMailService>();
+    builder.Services.AddHostedService<CommerceCutoverStartupProof>();
 }
 else
 {
