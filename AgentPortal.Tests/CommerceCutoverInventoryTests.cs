@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,6 +15,30 @@ namespace AgentPortal.Tests;
 
 public sealed class CommerceCutoverInventoryTests
 {
+    [Fact]
+    public async Task AtomicAutomationStoragePreservesExistingBytesAndSerializesScopedWriters()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "commerce-atomic-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "parfait-customer-automations.json");
+        try
+        {
+            var first = CommerceAutomationFileStore.ReadOrCreate(path, "{\"version\":1}");
+            Assert.Equal("{\"version\":1}", first);
+            Assert.Equal("{\"version\":1}", CommerceAutomationFileStore.ReadOrCreate(path, "{\"version\":2}"));
+
+            var writes = Enumerable.Range(0, 20).Select(i => Task.Run(() =>
+                CommerceAutomationFileStore.WriteAtomic(path, "{\"version\":" + i + "}"))).ToArray();
+            await Task.WhenAll(writes);
+            var actual = await File.ReadAllTextAsync(path);
+            using var json = System.Text.Json.JsonDocument.Parse(actual);
+            var value = json.RootElement.GetProperty("version").GetInt32();
+            Assert.InRange(value, 0, 19);
+            Assert.Empty(Directory.GetFiles(root, "*.tmp", SearchOption.AllDirectories));
+            Assert.Same(CommerceAutomationFileStore.SyncRoot(path), CommerceAutomationFileStore.SyncRoot(path));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task ReadsOnlyOneTenantAndDoesNotProvisionMissingAutomationFiles()
     {
