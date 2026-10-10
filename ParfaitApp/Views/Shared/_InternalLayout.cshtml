@@ -51,6 +51,12 @@
         .GroupBy(navPage => new { navPage.Group, navPage.GroupOrder })
         .OrderBy(group => group.Key.GroupOrder)
         .ToList();
+    var canCatalog = (ViewData["CommerceCanCatalog"] as bool?) ?? true;
+    var canOrders = (ViewData["CommerceCanOrders"] as bool?) ?? true;
+    var canAutomations = (ViewData["CommerceCanAutomations"] as bool?) ?? true;
+    var canAnalytics = (ViewData["CommerceCanAnalytics"] as bool?) ?? true;
+    var canSettings = (ViewData["CommerceCanSettings"] as bool?) ?? true;
+    var canTeam = (ViewData["CommerceCanTeam"] as bool?) ?? true;
     string ScopedUrl(string path) => path + "?ticket=" + Uri.EscapeDataString(managerTicket ?? "");
 }
 
@@ -90,14 +96,22 @@
                 </div>
                 <div class="pf-nav-group">
                     <div class="pf-nav-section">Operations</div>
-                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/products")">Products</a>
-                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/orders")">Orders</a>
+                    @if (canCatalog) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/products")">Products</a> }
+                    @if (canOrders) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/orders")">Orders</a> }
                 </div>
                 <div class="pf-nav-group">
                     <div class="pf-nav-section">Growth</div>
-                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/automations")">Automations</a>
-                    <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/analytics")">Analytics + Health</a>
+                    @if (canAutomations) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/automations")">Automations</a> }
+                    @if (canAnalytics) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/analytics")">Analytics + Health</a> }
                 </div>
+                @if (canSettings || canTeam)
+                {
+                    <div class="pf-nav-group">
+                        <div class="pf-nav-section">Settings</div>
+                        @if (canSettings) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/business-profile")">Business Profile</a> }
+                        @if (canTeam) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/team")">Team</a> }
+                    </div>
+                }
             }
             else
             {
