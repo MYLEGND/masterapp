@@ -65,7 +65,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@Html.Raw(ViewData["Title"]) - @Shared.Branding.LegendBrand.RegisteredTitle</title>
+    <title>@Html.Raw(ViewData["Title"]) - @Shared.Branding.LegendBrand.RegisteredUpper</title>
     <script>
         // Shared immutable registry, never a separately authored browser brand.
         window.LEGEND_BRAND = Object.freeze(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {

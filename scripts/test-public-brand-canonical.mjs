@@ -65,3 +65,31 @@ test('the four requested apps have no legacy ™ mark in customer-facing Razor m
   for(const file of ['AgentPortal/wwwroot/js/legend-founder-ai.js','AgentPortal/wwwroot/js/legend-connect.js'])
     assert.doesNotMatch(read(file),/LEGEND®|Legend®|LEGEND™|Legend™/,file);
 });
+
+test('portal branding titles come only from the registered platform identity',()=>{
+  for (const file of ['AgentPortal/Views/Home/Index.cshtml','ClientApp/Views/Home/Index.cshtml']) {
+    const source=read(file);
+    assert.ok(source.includes('<h1 class="dashboard-hero-title">@Shared.Branding.LegendBrand.RegisteredUpper</h1>'),file);
+    assert.ok(!source.includes('LegendBrand.ProtectionName'),file);
+  }
+  assert.ok(read('AgentPortal/Views/Dashboard/Index.cshtml').includes(
+    '<h1 class="dashboard-hero-title">@Shared.Branding.LegendBrand.RegisteredUpper Core Dashboard</h1>'));
+  const pdf=read('AgentPortal/Controllers/FactFinderController.cs');
+  assert.ok(pdf.includes('.Text(Shared.Branding.LegendBrand.RegisteredUpper)'));
+  assert.ok(!pdf.includes('LegendBrand.ProtectionUpper'));
+  for (const file of [
+    'AgentPortal/Views/Shared/_Layout.cshtml',
+    'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
+    'ClientApp/Views/Shared/_Layout.cshtml',
+    'ClientApp/Views/Account/Login.cshtml',
+    'ClientApp/Views/Account/ActivationRequired.cshtml',
+    'ClientApp/Views/SubscriptionActivation/Index.cshtml',
+    'ClientApp/Views/SubscriptionActivation/Confirmed.cshtml',
+    'ClientApp/Views/SubscriptionActivation/Expired.cshtml',
+    'ClientApp/Views/SubscriptionActivation/Unavailable.cshtml'
+  ])assert.ok(read(file).includes(' - @Shared.Branding.LegendBrand.RegisteredUpper</title>'),file);
+  const protect=read('Protect-Website/Views/Shared/_Layout.cshtml');
+  assert.ok(protect.includes('<strong>@Shared.Branding.LegendBrand.ProtectionName</strong>'));
+  assert.ok(!protect.includes('LEGEND® Legacy Protection'));
+  assert.equal(brand.protectionName,'Legend Legacy Protection');
+});
