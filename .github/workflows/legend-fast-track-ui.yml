@@ -1,4 +1,4 @@
-name: LEGEND Fast Track — Five Web Apps
+name: LEGEND Fast Track — Affected Web Apps
 
 # Source-only fast track; no protected merge, historical release admission,
 # database migration, rollback rebuild, or full test suite.
@@ -38,36 +38,90 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  select-targets:
+    name: Select exact affected applications
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.scope.outputs.matrix }}
+      selected: ${{ steps.scope.outputs.selected }}
+    steps:
+      - name: Check out exact fast-track source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Derive application impact exclusively from changed paths
+        id: scope
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re,subprocess
+          catalog={
+              'AgentPortal': {'target':'AgentPortal','project':'AgentPortal/AgentPortal.csproj','azure_app':'masterapp-portal','host':'portal.mylegnd.com'},
+              'ClientApp': {'target':'ClientApp','project':'ClientApp/ClientApp.csproj','azure_app':'masterapp-client','host':'client.mylegnd.com'},
+              'Protect': {'target':'Protect','project':'Protect-Website/ProtectWebsite.csproj','azure_app':'masterapp-protect','host':'masterapp-protect.azurewebsites.net'},
+              'Parfait': {'target':'Parfait','project':'ParfaitApp/ParfaitApp.csproj','azure_app':'masterapp-parfait','host':'masterapp-parfait.azurewebsites.net'},
+              'Website': {'target':'Website','project':'static','azure_app':'masterapp-website','host':'masterapp-website.azurewebsites.net'}
+          }
+          def impacts(path):
+              if path.startswith('AgentPortal/'): return {'AgentPortal'}
+              if path.startswith('ClientApp/'): return {'ClientApp'}
+              if path.startswith('Protect-Website/'): return {'Protect'}
+              if path.startswith('ParfaitApp/'): return {'Parfait'}
+              if path.startswith('Legend-Website/'):
+                  # The Protect business-website compiler consumes this shared source.
+                  return {'Website'} if path=='Legend-Website/scripts/check.mjs' else {'Website','Protect'}
+              if path.startswith('SHARED/wwwroot/js/finance-') or path in (
+                  'SHARED/wwwroot/js/legend-living-balance-sheet.js',
+                  'SHARED/wwwroot/js/expense-lens-projection.js',
+                  'SHARED/wwwroot/css/legend-finance-shared.css',
+              ): return {'AgentPortal','ClientApp'}
+              if path.startswith('SHARED/wwwroot/'): return {'AgentPortal','ClientApp','Protect','Parfait','Website'}
+              if path.startswith('SHARED/WebsitePlatform/'): return {'Website','Protect'}
+              if path.startswith('Legend-Design/'): return set(catalog)
+              if path=='Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs': return {'AgentPortal','ClientApp','Protect'}
+              if path=='Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs': return {'Protect'}
+              # Workflow changes and test-only changes never trigger an app upload.
+              if path.startswith('.github/workflows/') or path.startswith('tests/'): return set()
+              raise SystemExit('Unmapped fast-track source path: '+path)
+          assert impacts('SHARED/wwwroot/js/finance-tools.js')=={'AgentPortal','ClientApp'}
+          assert impacts('Legend-Website/scripts/check.mjs')=={'Website'}
+          assert impacts('Protect-Website/Views/Shared/_Layout.cshtml')=={'Protect'}
+          assert impacts('.github/workflows/legend-fast-track-ui.yml')==set()
+          before=os.environ['BEFORE']
+          head=os.environ['GITHUB_SHA']
+          if not re.fullmatch('[0-9a-f]{40}',head): raise SystemExit('Invalid exact fast-track commit')
+          if before=='0'*40:
+              changed=subprocess.check_output(['git','diff-tree','--root','--no-commit-id','--name-only','-r',head],text=True).splitlines()
+          elif re.fullmatch('[0-9a-f]{40}',before):
+              changed=subprocess.check_output(['git','diff','--name-only',before,head],text=True).splitlines()
+          else:
+              raise SystemExit('Invalid fast-track event baseline')
+          impacted=set()
+          for path in changed: impacted.update(impacts(path))
+          selected=[catalog[name] for name in catalog if name in impacted]
+          output=json.dumps({'include':selected},separators=(',',':'))
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
+              stream.write('selected='+str(bool(selected)).lower()+'\n')
+              stream.write('matrix='+output+'\n')
+          print('LEGEND_FAST_TRACK_CHANGED_FILES='+json.dumps(changed))
+          print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in selected]))
+          PY
+
   deploy-ui:
     name: UI Deploy — ${{ matrix.target }}
+    needs: select-targets
+    if: ${{ needs.select-targets.outputs.selected == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: Production
     strategy:
       fail-fast: false
       max-parallel: 2
-      matrix:
-        include:
-          - target: AgentPortal
-            project: AgentPortal/AgentPortal.csproj
-            azure_app: masterapp-portal
-            host: portal.mylegnd.com
-          - target: ClientApp
-            project: ClientApp/ClientApp.csproj
-            azure_app: masterapp-client
-            host: client.mylegnd.com
-          - target: Protect
-            project: Protect-Website/ProtectWebsite.csproj
-            azure_app: masterapp-protect
-            host: masterapp-protect.azurewebsites.net
-          - target: Parfait
-            project: ParfaitApp/ParfaitApp.csproj
-            azure_app: masterapp-parfait
-            host: masterapp-parfait.azurewebsites.net
-          - target: Website
-            project: static
-            azure_app: masterapp-website
-            host: masterapp-website.azurewebsites.net
+      matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}
     steps:
       - name: Check out current fast-track UI code
         uses: actions/checkout@v4
