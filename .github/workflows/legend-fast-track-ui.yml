@@ -1,7 +1,9 @@
 name: LEGEND Fast Track — Affected Web Apps
 
-# Source-only fast track; no protected merge, historical release admission,
-# database migration, rollback rebuild, or full test suite.
+# One exact affected-app fast track. UI-only updates retain their original
+# lane. Commerce/backend updates must pass focused admission, require an
+# unchanged live configuration, and never execute database migrations,
+# Cloudflare routing changes, or customer-data transfer as part of publication.
 on:
   push:
     branches:
@@ -49,6 +51,7 @@ jobs:
     outputs:
       matrix: ${{ steps.scope.outputs.matrix }}
       selected: ${{ steps.scope.outputs.selected }}
+      commerce: ${{ steps.scope.outputs.commerce }}
     steps:
       - name: Check out exact fast-track source
         uses: actions/checkout@v4
@@ -72,6 +75,13 @@ jobs:
               'Website': {'target':'Website','project':'static','azure_app':'masterapp-website','host':'masterapp-website.azurewebsites.net'}
           }
           def impacts(path):
+              if path.startswith('CommerceCore/'): return {'Parfait','Protect'}
+              if path.startswith('Infrastructure/Commerce/'): return {'Parfait','Protect'}
+              if path.startswith('Infrastructure/WebsiteRuntime/'): return {'Protect'}
+              if path == 'Domain/Entities/CommerceProduct.cs': return {'Parfait','Protect'}
+              if path.startswith('Legend-Cloudflare/src/website-routing/') or path.startswith('Legend-Cloudflare/tests/website-routing/'): return set()
+              if path.startswith('AgentPortal.Tests/') or path.startswith('docs/'): return set()
+              if path in ('MASTERAPP.sln','MasterApp.slnx'): return set()
               if path.startswith('AgentPortal/'): return {'AgentPortal'}
               if path.startswith('ClientApp/'): return {'ClientApp'}
               if path.startswith('Protect-Website/'): return {'Protect'}
@@ -116,19 +126,85 @@ jobs:
               raise SystemExit('Invalid fast-track event baseline')
           impacted=set()
           for path in changed: impacted.update(impacts(path))
+          backend=any(
+              path.startswith(('CommerceCore/','Infrastructure/Commerce/','Infrastructure/WebsiteRuntime/',
+                  'Legend-Cloudflare/src/website-routing/','Legend-Cloudflare/tests/website-routing/')) or
+              path in ('Domain/Entities/CommerceProduct.cs','ParfaitApp/Program.cs','Protect-Website/Program.cs')
+              for path in changed)
+          if backend and any(x not in {'Parfait','Protect'} for x in impacted):
+              raise SystemExit('Mixed fast-track backend release would affect unrelated applications; split release')
           selected=[catalog[name] for name in catalog if name in impacted]
           output=json.dumps({'include':selected},separators=(',',':'))
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
               stream.write('selected='+str(bool(selected)).lower()+'\n')
               stream.write('matrix='+output+'\n')
+              stream.write('commerce='+str(backend).lower()+'\n')
           print('LEGEND_FAST_TRACK_CHANGED_FILES='+json.dumps(changed))
           print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in selected]))
           PY
 
-  deploy-ui:
-    name: UI Deploy — ${{ matrix.target }}
+  commerce-gates:
+    name: Commerce / backend focused admission (no production mutation)
     needs: select-targets
-    if: ${{ needs.select-targets.outputs.selected == 'true' }}
+    if: ${{ needs.select-targets.outputs.commerce == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify exact candidate identity and no EF migration mutation
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PYFAST'
+          import os,re,subprocess
+          before=os.environ['BEFORE'];head=os.environ['GITHUB_SHA']
+          if not re.fullmatch('[a-f0-9]{40}',before) or not re.fullmatch('[a-f0-9]{40}',head):
+              raise SystemExit('Exact candidate identity missing')
+          changed=subprocess.check_output(['git','diff','--name-only',before,head],text=True).splitlines()
+          banned=[path for path in changed if path.startswith('Infrastructure/Migrations/')
+              or path=='Infrastructure/Data/MasterAppDbContext.cs'
+              or path.startswith('scripts/release-lifecycle')]
+          if banned: raise SystemExit('Commerce fast-track SQL/release mutation path prohibited: '+str(banned))
+          if not any(x.startswith('CommerceCore/') for x in changed):
+              raise SystemExit('Commerce lane missing shared engine diff')
+          print('COMMERCE_FAST_TRACK_NON_SCHEMA_VALIDATED: YES')
+          PYFAST
+      - name: Build exact affected commerce applications
+        run: |
+          set -euo pipefail
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
+          dotnet build ParfaitApp/ParfaitApp.csproj -c Release --nologo
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo
+      - name: Verify commerce and isolation contracts
+        run: |
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo --filter 'FullyQualifiedName~Commerce|FullyQualifiedName~Parfait|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests'
+          node --test Legend-Cloudflare/tests/website-routing/*.test.mjs
+      - name: Verify source Parfait presentation remains exact
+        run: |
+          set -euo pipefail
+          test -s ParfaitApp/wwwroot/css/storefront.css
+          test -s ParfaitApp/wwwroot/js/storefront.js
+          test -s ParfaitApp/wwwroot/images/favicon/parfait-logo.png
+          echo "PARFAIT_COMMERCE_ADMISSION: SOURCE_AND_ROUTING_GREEN"
+
+  deploy-ui:
+    name: Affected App Deploy — ${{ matrix.target }}
+    needs: [select-targets, commerce-gates]
+    if: ${{ needs.select-targets.outputs.selected == 'true' && (needs.commerce-gates.result == 'success' || needs.commerce-gates.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: Production
@@ -197,6 +273,38 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Fail closed if a shared-host cutover is already enabled in Azure
+        if: ${{ needs.select-targets.outputs.commerce == 'true' }}
+        shell: bash
+        env:
+          APP: ${{ matrix.azure_app }}
+        run: |
+          set -euo pipefail
+          az webapp config appsettings list --resource-group masterapp-rg \
+            --name "$APP" --only-show-errors -o json > "$RUNNER_TEMP/commerce-settings.json"
+          python3 - <<'PYFLAGS'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'commerce-settings.json'
+          values=json.loads(p.read_text())
+          if not isinstance(values,list):
+              raise SystemExit('Azure configuration unavailable. No production upload.')
+          flags={
+              'commerce__sharedhostcutover__enabled',
+              'commerce:sharedhostcutover:enabled',
+              'commerce__sharedhostpreview__enabled',
+              'commerce:sharedhostpreview:enabled',
+              'legend_commerce_cutover_enabled'
+          }
+          for entry in values:
+              if not isinstance(entry,dict) or not isinstance(entry.get('name'),str):
+                  raise SystemExit('Azure configuration malformed. No production upload.')
+              if entry['name'].lower() in flags and str(entry.get('value') or '').strip().lower() not in ('','false','0'):
+                  raise SystemExit('Existing commerce cutover or preview settings are not off. No upload.')
+          if os.environ['APP'] not in ('masterapp-parfait','masterapp-protect'):
+              raise SystemExit('Unexpected commerce release target. No upload.')
+          print('COMMERCE_PRODUCTION_FLAGS_OFF_AND_TARGET_AUTHORIZED: '+os.environ['APP'])
+          PYFLAGS
 
       - name: Check for an active deployment and save baseline IDs
         shell: bash
