@@ -166,7 +166,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       favicon?.remove();
     }
     doc.querySelectorAll('script').forEach(script=>{
-      if(!['/legend-public-web.js','/legend-public-cms.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
+      if(!['/legend-public-web.js','/legend-public-cms.js','/legend-public-inquiry.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
     });
     doc.querySelectorAll('a[href]').forEach(link=>{
       const href=link.getAttribute('href');
