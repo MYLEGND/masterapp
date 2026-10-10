@@ -96,7 +96,7 @@ public sealed class AdvertisingCommandCenterCentralizationTests
     {
         var root = Root();
         var parfait = Read(root, "CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs");
-        var profile = Read(root, "ParfaitApp", "Services", "ParfaitBusinessProfileService.cs");
+        var profile = Read(root, "CommerceCore", "Services", "ParfaitBusinessProfileService.cs");
 
         Assert.Contains("MarketingOwnerScope.Business", parfait, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business", profile, StringComparison.Ordinal);
