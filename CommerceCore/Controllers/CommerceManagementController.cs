@@ -920,7 +920,8 @@ public sealed class CommerceManagementController(
                     x.ClientProfileId == actor.ActorClientProfileId.Value && x.Status == "Active", ct);
             if (member is null) return null;
 
-            var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase);
+            var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+                member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
             ViewData["CommerceCanCatalog"] = member.CanManageStorefront && member.CanManageCatalog;
             ViewData["CommerceCanOrders"] = member.CanManageStorefront && member.CanManageOrders;
             ViewData["CommerceCanAutomations"] = member.CanManageStorefront && member.CanManageOrders;
