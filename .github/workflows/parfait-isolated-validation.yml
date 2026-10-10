@@ -48,4 +48,26 @@ jobs:
       - name: Run focused Parfait commerce and canonical parity tests
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo \
-            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests'
+            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests|FullyQualifiedName~CommerceLegacyTransferTests'
+
+      - name: Publish and inspect exact Parfait + Protect packages without deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-restore --nologo \
+            -o "$RUNNER_TEMP/parfait-package"
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore --nologo \
+            -o "$RUNNER_TEMP/protect-package"
+          test -s "$RUNNER_TEMP/protect-package/wwwroot/store-assets/css/storefront.css"
+          test -s "$RUNNER_TEMP/protect-package/wwwroot/store-assets/js/storefront.js"
+          test -s "$RUNNER_TEMP/protect-package/wwwroot/store-assets/images/favicon/parfait-logo.png"
+          test -s "$RUNNER_TEMP/protect-package/wwwroot/css/internal.css"
+          cmp ParfaitApp/wwwroot/css/storefront.css \
+            "$RUNNER_TEMP/protect-package/wwwroot/store-assets/css/storefront.css"
+          cmp ParfaitApp/wwwroot/js/storefront.js \
+            "$RUNNER_TEMP/protect-package/wwwroot/store-assets/js/storefront.js"
+          cmp ParfaitApp/wwwroot/images/favicon/parfait-logo.png \
+            "$RUNNER_TEMP/protect-package/wwwroot/store-assets/images/favicon/parfait-logo.png"
+          cmp ParfaitApp/wwwroot/css/internal.css \
+            "$RUNNER_TEMP/protect-package/wwwroot/css/internal.css"
+          echo "PARFAIT_PUBLISHED_ASSETS_MATCH_SOURCE: YES"
