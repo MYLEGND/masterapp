@@ -4,6 +4,8 @@ Working branch: isolation/parfait-canonical-commerce-20261010
 Protected base: 5fcc93fb4279ec7c875f9c3fb27bc3a31a1cca96
 Release authority: NONE. No merge or deployment without explicit Founder approval.
 
+Future deployment route: Legend/fast-track-release, **only after commerce-capable fast-track admission is validated and explicitly authorized**. The current fast-track is UI-only and auto-publishes certain changed paths on push. See fast-track-handoff.md for exact branch/divergence, affected-app planning, blocked triggers and stop conditions.
+
 ## Invariants
 
 Parfait's original business-specific design, layout, styles, navigation, products, images, URLs, business and payment identities must be preserved. The default LEGEND business-site template may never replace Parfait's presentation. Non-Parfait scoped websites retain their own published business website shells.
