@@ -914,6 +914,19 @@ public sealed class CommerceManagementController(
                 db, store.CommerceBusinessId, actor.ActorClientProfileId.Value,
                 actor.ActorUserId, actor.ActorEmail, capability, ct);
             if (authorized is null) return null;
+
+            var member = await db.CommerceBusinessMembers.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.CommerceBusinessId == store.CommerceBusinessId &&
+                    x.ClientProfileId == actor.ActorClientProfileId.Value && x.Status == "Active", ct);
+            if (member is null) return null;
+
+            var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase);
+            ViewData["CommerceCanCatalog"] = member.CanManageStorefront && member.CanManageCatalog;
+            ViewData["CommerceCanOrders"] = member.CanManageStorefront && member.CanManageOrders;
+            ViewData["CommerceCanAutomations"] = member.CanManageStorefront && member.CanManageOrders;
+            ViewData["CommerceCanAnalytics"] = member.CanManageAnalytics;
+            ViewData["CommerceCanSettings"] = owner;
+            ViewData["CommerceCanTeam"] = owner && member.CanManageTeam;
         }
 
         return store;
