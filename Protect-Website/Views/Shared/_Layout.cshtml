@@ -98,6 +98,8 @@
             ).SingleOrDefaultAsync(Context.RequestAborted);
             if (!string.IsNullOrWhiteSpace(publishedJson))
             {
+                try
+                {
                 using var published = JsonDocument.Parse(publishedJson);
                 if (published.RootElement.TryGetProperty("pages", out var seoPages) &&
                     seoPages.ValueKind == JsonValueKind.Object)
@@ -114,6 +116,12 @@
                             publishedSeoDescription = descValue.GetString();
                         break;
                     }
+                }
+                }
+                catch (JsonException)
+                {
+                    // Historical unreadable publications cannot blank a public page.
+                    // Razor route metadata remains the safe SEO fallback.
                 }
             }
         }
