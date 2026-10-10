@@ -1,4 +1,6 @@
 using Domain.Entities;
+using Infrastructure.Businesses;
+using Legend.Commerce;
 using System.Globalization;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
@@ -799,8 +801,37 @@ public sealed class CommerceManagementController(
         return url;
     }
 
-    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct) =>
-        await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct)
+    {
+        // Resolve the signed website-editor ticket and its live business/website
+        // state first, exactly as before. This is not a second login authority.
+        var store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+        if (store is null) return null;
+
+        var actor = tickets.TryUnprotect(ticket);
+        if (actor is null) return null;
+
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
+        {
+            // Storefront permission alone is insufficient to mutate orders,
+            // products, ads or automation. Use the SAME canonical membership
+            // evaluator as AgentPortal and ClientApp, not a Parfait role mirror.
+            if (!actor.ActorClientProfileId.HasValue ||
+                actor.CommerceBusinessId != store.CommerceBusinessId)
+                return null;
+
+            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (capability is null) return null;
+
+            var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+            var authorized = await BusinessWorkspaceAccess.ResolveAsync(
+                db, store.CommerceBusinessId, actor.ActorClientProfileId.Value,
+                actor.ActorUserId, actor.ActorEmail, capability, ct);
+            if (authorized is null) return null;
+        }
+
+        return store;
+    }
 
     private void ApplyManagementViewData(CommerceStoreContext store, string ticket, string activePage)
     {
