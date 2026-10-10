@@ -56,7 +56,7 @@ const cards=(items)=>`<div class="card-grid">${items.map(i=>`<article class="car
 const section=(k,t,text,extra='',cls='')=>`<section class="section ${cls}"><div class="section-head"><p class="eyebrow">${k}</p><h2>${t}</h2>${text?`<p class="lead">${text}</p>`:''}</div>${extra}</section>`;
 const nav=(path)=>`<a data-website-action-key="legend_home" href="/" ${path==='/'?'aria-current="page"':''}>Home</a><a data-website-action-key="legend_about" href="/about" ${path==='/about'?'aria-current="page"':''}>About</a><a href="/logo" ${path==='/logo'?'aria-current="page"':''}>Our Mark</a><a data-website-action-key="legend_contact" href="/contact" ${path==='/contact'?'aria-current="page"':''}>Contact</a><a class="nav-cta" data-website-action-key="legend_protect" href="https://protect.mylegnd.com/">Legacy Protection</a>`;
 function shell(page,body,options={}){
-  const canonical=options.canonical || `https://www.mylegnd.com${page.path==='/'?'/':page.path}`;
+  const canonical=options.canonical || `https://www.mylegnd.com${page.path==='/'?'/':page.path.replace(/\/$/,'')+'/'}`;
   const siteKey=options.siteKey || 'legend';
   const businessMode=siteKey==='business';
   const robots=options.noIndex?'<meta name="robots" content="noindex,nofollow">':'';
@@ -111,7 +111,7 @@ for(const page of businessPages){
     {siteKey:'business',noIndex:true,navigation:businessNav(),canonical:'https://www.mylegnd.com/business-preview/'+(page.key==='home'?'':page.key+'/')}
   ));
 }
-const sitemap=Object.values(pages).map(p=>`  <url><loc>https://www.mylegnd.com${p.path==='/'?'/':p.path}</loc></url>`).join('\n');
+const sitemap=Object.values(pages).map(p=>`  <url><loc>https://www.mylegnd.com${p.path==='/'?'/':p.path.replace(/\/$/,'')+'/'}</loc></url>`).join('\n');
 await writeFile(resolve(dist,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemap}\n</urlset>`);
 await writeFile(resolve(dist,'404.html'),shell({path:'/',title:'Page not found | LEGEND®',description:'Return to LEGEND®.'},'<section class="page-hero"><p class="eyebrow">404</p><h1>THIS PATH DOESN’T LEAD FORWARD.</h1><p>Return to the LEGEND® home page and keep moving.</p><a class="btn primary" data-website-action-key="legend_home" href="/">Return home</a></section>'));
 console.log(`Built ${Object.keys(pages).length} LEGEND® routes from shared design authority.`);
