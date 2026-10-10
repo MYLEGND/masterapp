@@ -15,7 +15,8 @@ on:
       - Legend-Cloudflare/**
       - ParfaitApp/**
       - AgentPortal.Tests/**
-      - .github/workflows/parfait-isolated-validation.yml
+      - .github/workflows/parfait-fast-track-integration-validation.yml
+      - .github/workflows/legend-fast-track-ui.yml
   workflow_dispatch:
 
 permissions:
