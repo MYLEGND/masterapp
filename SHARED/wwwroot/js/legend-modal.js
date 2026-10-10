@@ -445,7 +445,21 @@
     node.querySelectorAll('.modal, [role="dialog"], [role="alertdialog"]').forEach(registerDialog);
   }
 
+  // One visual-viewport authority for every canonical mobile sheet, including
+  // Messages and LEGEND AI. Avoid feature-owned keyboard positioning forks.
+  function syncMobileSheetViewport(){
+    const viewport = window.visualViewport;
+    const height = viewport?.height || window.innerHeight;
+    const top = viewport?.offsetTop || 0;
+    const bottom = Math.max(0, window.innerHeight - top - height);
+    document.querySelectorAll('[data-legend-mobile-sheet]').forEach(sheet => {
+      sheet.style.setProperty('--legend-mobile-sheet-height', `${Math.round(height)}px`);
+      sheet.style.setProperty('--legend-mobile-sheet-bottom', `${Math.round(bottom)}px`);
+    });
+  }
+
   function syncViewportOffsets(){
+    syncMobileSheetViewport();
     const root = document.documentElement;
     if (!root || !header) return;
     const viewport = window.visualViewport;
@@ -609,6 +623,7 @@
       });
     }
     syncMobileSheetState(sheet);
+    syncMobileSheetViewport();
   }
 
   function registerMobileSheets(root){

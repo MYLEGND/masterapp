@@ -11,6 +11,8 @@
   const token = root.querySelector('#messagingAntiForgery input[name="__RequestVerificationToken"]')?.value || '';
   const elements = {
     window: root.querySelector('.messaging-command-center-window'),
+    mobileMenu: root.querySelector('#messagingMobileMenu'),
+    sidebarScrim: root.querySelector('#messagingSidebarScrim'),
     close: root.querySelector('#messagingCommandCenterClose'),
     error: root.querySelector('#messagingError'),
     recipientScopeButtons: Array.from(root.querySelectorAll('[data-messaging-recipient-scope]')),
@@ -844,6 +846,7 @@
   }
 
   function selectConversationForCurrentIntent(conversation) {
+    setConversationSidebarOpen(false);
     if (state.callSelectionFlight) return;
     if (state.callSelection) startSelectedCall(conversation.id, conversation.counterparty);
     else loadConversation(conversation.id, true).catch(error => showError(error.message));
@@ -1809,6 +1812,7 @@
   }
 
   function selectDraftRecipient(recipient) {
+    setConversationSidebarOpen(false);
     cancelDetailRequests();
     state.navigationVersion += 1;
     state.requestedConversationId = null;
@@ -2413,6 +2417,16 @@
     }
   }
 
+  // Mobile Messages consumes the shared LEGEND sheet/open-state authority.
+  // This is presentation only; message, call, draft and authorization handlers
+  // remain unchanged and are never mirrored or replaced.
+  function setConversationSidebarOpen(open) {
+    const mobile = window.matchMedia?.('(max-width: 900px)')?.matches === true;
+    const expanded = Boolean(open && mobile && state.isOpen);
+    root.classList.toggle('is-sidebar-open', expanded);
+    elements.mobileMenu?.setAttribute('aria-expanded', String(expanded));
+  }
+
   async function openCommandCenter(trigger) {
     if (state.isOpen || state.isOpening) return;
     state.isOpening = true;
@@ -2421,6 +2435,8 @@
       root.hidden = false;
       root.setAttribute('aria-hidden', 'false');
       root.classList.add('is-open');
+      elements.window.classList.add('open');
+      elements.window.dataset.legendSheetSnap = 'full';
       document.body.classList.add('messaging-command-center-open');
       unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'true'));
       state.isOpen = true;
@@ -2467,6 +2483,8 @@
       elements.journeyOpen?.setAttribute('aria-expanded', 'false');
       clearJourneyCirclesOpenMark();
     }
+    setConversationSidebarOpen(false);
+    elements.window.classList.remove('open');
     root.classList.remove('is-open');
     root.setAttribute('aria-hidden', 'true');
     root.hidden = true;
@@ -2486,6 +2504,17 @@
   });
   window.addEventListener('messaging:open', () => openCommandCenter(null));
   window.addEventListener('messaging:journey-open', () => openJourneyCircles());
+  elements.mobileMenu?.addEventListener('click', () =>
+    setConversationSidebarOpen(!root.classList.contains('is-sidebar-open')));
+  elements.sidebarScrim?.addEventListener('click', () => setConversationSidebarOpen(false));
+  window.addEventListener('resize', () => {
+    if (!window.matchMedia?.('(max-width: 900px)')?.matches) setConversationSidebarOpen(false);
+  });
+  root.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !root.classList.contains('is-sidebar-open')) return;
+    event.stopPropagation();
+    setConversationSidebarOpen(false);
+  });
   elements.close.addEventListener('click', closeCommandCenter);
   elements.journeyOpen?.addEventListener('click', () => openJourneyCircles());
   elements.journeyBack?.addEventListener('click', closeJourneyCircles);

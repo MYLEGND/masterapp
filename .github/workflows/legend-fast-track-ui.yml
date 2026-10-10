@@ -50,6 +50,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify shared AI and Messages mobile-sheet contract
+        run: node --test tests/layout/messaging-mobile-sheet.test.mjs
+
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
         with:

@@ -10,8 +10,10 @@
      data-messaging-compose-prompt="@Model.ComposePrompt"
      aria-hidden="true"
      hidden>
-    <section class="messaging-command-center-window"
+    <section class="messaging-command-center-window legend-conversation-shell"
              data-legend-modal-panel
+             data-legend-mobile-sheet
+             data-legend-sheet-snap="full"
              role="dialog"
              aria-modal="true"
              aria-labelledby="messagingCommandCenterTitle"
@@ -19,100 +21,16 @@
         <form id="messagingAntiForgery" class="visually-hidden">@Html.AntiForgeryToken()</form>
 
         <header class="messaging-command-center-header">
-            <h2 id="messagingCommandCenterTitle" class="visually-hidden">Messages</h2>
+            <button type="button" id="messagingMobileMenu" class="messaging-command-center-mobile-menu"
+                    aria-controls="messagingConversationSidebar" aria-expanded="false"
+                    aria-label="Open Messages conversations and controls">
+                <span aria-hidden="true"></span>
+            </button>
+            <h2 id="messagingCommandCenterTitle">Messages</h2>
             <span id="messagingUnreadDescription" class="visually-hidden">Unread messages</span>
-            <div class="messaging-command-center-header-actions">
-                <button type="button" class="messaging-text-button" id="messagingCallingProfile">Calling profile</button>
-                @if (Model.CurrentParticipantType == "Agent")
-                {
-                    <div class="messaging-recipient-scope"
-                         aria-label="Recipient type"
-                         role="group">
-                        <button type="button"
-                                class="messaging-recipient-scope-button is-active"
-                                data-messaging-recipient-scope="Clients"
-                                aria-pressed="true"
-                                aria-label="Client conversations">
-                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24">
-                                    <circle cx="12" cy="7.5" r="3.5"></circle>
-                                    <path d="M4.5 21v-1.75a7.5 7.5 0 0 1 15 0V21"></path>
-                                </svg>
-                            </span>
-                            <span class="messaging-recipient-scope-label">Clients</span>
-                            <span class="messaging-recipient-scope-unread"
-                                  data-messaging-recipient-scope-unread="Clients"
-                                  aria-label="0 unread client messages"
-                                  hidden>0</span>
-                        </button>
-                        <button type="button"
-                                class="messaging-recipient-scope-button"
-                                data-messaging-recipient-scope="Agents"
-                                aria-pressed="false"
-                                aria-label="Agent conversations">
-                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24">
-                                    <circle cx="9" cy="8" r="3"></circle>
-                                    <circle cx="17" cy="9" r="2.5"></circle>
-                                    <path d="M3 21v-1.5a6 6 0 0 1 12 0V21"></path>
-                                    <path d="M15 15.5a5 5 0 0 1 6 4.5V21"></path>
-                                </svg>
-                            </span>
-                            <span class="messaging-recipient-scope-label">Agents</span>
-                            <span class="messaging-recipient-scope-unread"
-                                  data-messaging-recipient-scope-unread="Agents"
-                                  aria-label="0 unread agent messages"
-                                  hidden>0</span>
-                        </button>
-                    </div>
-                }
-
-                <button type="button" class="messaging-call-button" id="messagingChooseVoiceCall" aria-label="Call" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4l2 5-3 2a15 15 0 0 0 6 6l2-3 5 2v4c0 1-1 2-2 2C10 21 3 14 3 5c0-1 1-2 2-2Z"></path></svg></button>
-                <button type="button" class="messaging-call-button" id="messagingChooseVideoCall" aria-label="FaceTime" title="FaceTime"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="3"></rect><path d="m15 9 6-4v14l-6-4Z"></path></svg></button>
-                @if (Model.SupportsJourneyCircles)
-                {
-                    <button type="button"
-                            class="messaging-command-center-journey"
-                            id="messagingJourneyCirclesOpen"
-                            aria-controls="messagingJourneyCircles"
-                            aria-expanded="false">
-                        <span class="messaging-journey-button-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24">
-                                <circle cx="8" cy="8" r="3"></circle>
-                                <circle cx="16.5" cy="9" r="2.5"></circle>
-                                <path d="M3 20v-2a5 5 0 0 1 10 0v2"></path>
-                                <path d="M14 15.5a4.5 4.5 0 0 1 6.5 4"></path>
-                            </svg>
-                        </span>
-                        <span class="messaging-journey-button-label">Journey Circles</span>
-                        <span class="messaging-journey-recommendation-badge"
-                              id="messagingJourneyRecommendationBadge"
-                              aria-label="0 Journey Circles recommendations">0</span>
-                    </button>
-                }
-                <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
-                <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose" aria-label="Close Messages">×</button>
-            </div>
-            @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
-                 !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
-                 !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
-            {
-                <div class="messaging-service-contact" aria-label="Your servicing agent contact details">
-                    <span>Your servicing agent</span>
-                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName))
-                    {
-                        <strong>@Model.ServiceContactName</strong>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactPhone))
-                    {
-                        <a href="tel:@Model.ServiceContactPhone">@Model.ServiceContactPhone</a>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
-                    {
-                        <a href="mailto:@Model.ServiceContactEmail">@Model.ServiceContactEmail</a>
-                    }
-                </div>
-            }
+            <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
+            <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose"
+                    data-legend-sheet-close aria-label="Close Messages">×</button>
         </header>
 
         <div class="messaging-error" id="messagingError" role="alert" hidden></div>
@@ -481,8 +399,101 @@
             </div>
         </section>
 
-        <div class="messaging-command-center-grid" id="messagingCommandCenterGrid">
-            <aside class="messaging-command-center-sidebar" aria-label="Conversations">
+        <div class="messaging-command-center-grid" id="messagingCommandCenterGrid" data-legend-modal-scroll>
+            <aside class="messaging-command-center-sidebar" id="messagingConversationSidebar" aria-label="Conversations">
+            <div class="messaging-command-center-sidebar-actions">
+                <button type="button" class="messaging-text-button" id="messagingCallingProfile">Calling profile</button>
+                @if (Model.CurrentParticipantType == "Agent")
+                {
+                    <div class="messaging-recipient-scope"
+                         aria-label="Recipient type"
+                         role="group">
+                        <button type="button"
+                                class="messaging-recipient-scope-button is-active"
+                                data-messaging-recipient-scope="Clients"
+                                aria-pressed="true"
+                                aria-label="Client conversations">
+                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="7.5" r="3.5"></circle>
+                                    <path d="M4.5 21v-1.75a7.5 7.5 0 0 1 15 0V21"></path>
+                                </svg>
+                            </span>
+                            <span class="messaging-recipient-scope-label">Clients</span>
+                            <span class="messaging-recipient-scope-unread"
+                                  data-messaging-recipient-scope-unread="Clients"
+                                  aria-label="0 unread client messages"
+                                  hidden>0</span>
+                        </button>
+                        <button type="button"
+                                class="messaging-recipient-scope-button"
+                                data-messaging-recipient-scope="Agents"
+                                aria-pressed="false"
+                                aria-label="Agent conversations">
+                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="9" cy="8" r="3"></circle>
+                                    <circle cx="17" cy="9" r="2.5"></circle>
+                                    <path d="M3 21v-1.5a6 6 0 0 1 12 0V21"></path>
+                                    <path d="M15 15.5a5 5 0 0 1 6 4.5V21"></path>
+                                </svg>
+                            </span>
+                            <span class="messaging-recipient-scope-label">Agents</span>
+                            <span class="messaging-recipient-scope-unread"
+                                  data-messaging-recipient-scope-unread="Agents"
+                                  aria-label="0 unread agent messages"
+                                  hidden>0</span>
+                        </button>
+                    </div>
+                }
+
+                <button type="button" class="messaging-call-button" id="messagingChooseVoiceCall" aria-label="Call" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4l2 5-3 2a15 15 0 0 0 6 6l2-3 5 2v4c0 1-1 2-2 2C10 21 3 14 3 5c0-1 1-2 2-2Z"></path></svg></button>
+                <button type="button" class="messaging-call-button" id="messagingChooseVideoCall" aria-label="FaceTime" title="FaceTime"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="3"></rect><path d="m15 9 6-4v14l-6-4Z"></path></svg></button>
+                @if (Model.SupportsJourneyCircles)
+                {
+                    <button type="button"
+                            class="messaging-command-center-journey"
+                            id="messagingJourneyCirclesOpen"
+                            aria-controls="messagingJourneyCircles"
+                            aria-expanded="false">
+                        <span class="messaging-journey-button-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="8" cy="8" r="3"></circle>
+                                <circle cx="16.5" cy="9" r="2.5"></circle>
+                                <path d="M3 20v-2a5 5 0 0 1 10 0v2"></path>
+                                <path d="M14 15.5a4.5 4.5 0 0 1 6.5 4"></path>
+                            </svg>
+                        </span>
+                        <span class="messaging-journey-button-label">Journey Circles</span>
+                        <span class="messaging-journey-recommendation-badge"
+                              id="messagingJourneyRecommendationBadge"
+                              aria-label="0 Journey Circles recommendations">0</span>
+                    </button>
+                }
+
+
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
+                 !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
+                 !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+            {
+                <div class="messaging-service-contact" aria-label="Your servicing agent contact details">
+                    <span>Your servicing agent</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName))
+                    {
+                        <strong>@Model.ServiceContactName</strong>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactPhone))
+                    {
+                        <a href="tel:@Model.ServiceContactPhone">@Model.ServiceContactPhone</a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+                    {
+                        <a href="mailto:@Model.ServiceContactEmail">@Model.ServiceContactEmail</a>
+                    }
+                </div>
+            }
+
                 <label class="visually-hidden" for="messagingUniversalSearch">@Model.SearchPlaceholder</label>
                 <input id="messagingUniversalSearch"
                        class="messaging-command-center-search"
@@ -492,6 +503,8 @@
                 <div class="messaging-command-center-search-results" id="messagingSearchResults" hidden></div>
                 <div class="messaging-conversation-list" id="messagingConversationList"></div>
             </aside>
+            <button type="button" id="messagingSidebarScrim" class="messaging-sidebar-scrim"
+                    aria-label="Close Messages conversations" tabindex="-1"></button>
 
             <main class="messaging-command-center-thread" aria-live="polite">
                 <div class="messaging-thread-empty" id="messagingThreadEmpty">
@@ -515,7 +528,7 @@
                             <button type="button" class="messaging-text-button" id="messagingCloseConversation">Close</button>
                         </div>
                     </header>
-                    <div class="messaging-messages" id="messagingMessages"></div>
+                    <div class="messaging-messages" id="messagingMessages" data-legend-sheet-scroll></div>
                     <button type="button" class="messaging-new-messages" id="messagingNewMessages" hidden>New messages</button>
                 </div>
 
@@ -523,14 +536,20 @@
                     <div class="messaging-compose-target" id="messagingComposeTarget">@Model.ComposePrompt</div>
                     <label class="visually-hidden" for="messagingMessageBody">Write a message</label>
                     <textarea id="messagingMessageBody"
-                              rows="3"
+                              rows="1"
                               maxlength="10000"
                               placeholder="Write a message"
                               disabled></textarea>
                     <div class="messaging-send-actions">
                         <label class="messaging-file-label" for="messagingFiles">Attach files</label>
                         <input id="messagingFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx,.xls,.xlsx" disabled />
-                        <button type="submit" class="messaging-primary-button" id="messagingSendButton" disabled>Send</button>
+                        <button type="submit" class="messaging-primary-button" id="messagingSendButton" disabled
+                                aria-label="Send message"><span class="messaging-send-label">Send</span>
+                                <svg class="messaging-send-icon" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m5 12 14-7-5 14-2-6-7-1Z"></path>
+                                </svg></button>
                     </div>
                     <p class="messaging-attachment-note">Attachments remain unavailable until malware scanning marks them clean.</p>
                 </form>
