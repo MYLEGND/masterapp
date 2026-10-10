@@ -1,0 +1,61 @@
+name: LEGEND Fast Track Website Failed Deployment Diagnostic (read only)
+on:
+  push:
+    branches:
+      - Legend/fast-track-release
+    paths:
+      - .github/workflows/legend-fast-track-website-diagnostic.yml
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  website-provider-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: Production
+    steps:
+      - name: Sign in to existing Azure production authority
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Read failed deployment and exact static site without writing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,subprocess,urllib.request,urllib.error,re
+          def azure(args):
+              try:
+                  p=subprocess.run(['az',*args,'--only-show-errors','-o','json'],capture_output=True,text=True,timeout=65)
+                  if p.returncode: return {'error':'azure_read_failed','stderr':p.stderr[-280:]}
+                  return json.loads(p.stdout)
+              except (subprocess.TimeoutExpired,ValueError): return {'error':'azure_read_timeout_or_invalid'}
+          app='masterapp-website'
+          rows=azure(['webapp','log','deployment','list','-g','masterapp-rg','-n',app])
+          if not isinstance(rows,list):
+              print('DEPLOYMENT_HISTORY='+json.dumps(rows,sort_keys=True))
+          else:
+              rows=sorted(rows,key=lambda x:str(x.get('received_time') or ''),reverse=True)
+              for row in rows[:6]:
+                  print('AZURE_DEPLOYMENT='+json.dumps({k:row.get(k) for k in ('id','status','received_time','end_time','status_text','message')},sort_keys=True))
+              failed=next((x for x in rows if x.get('status')==3),None)
+              if failed:
+                  details=azure(['webapp','log','deployment','show','-g','masterapp-rg','-n',app,'--deployment-id',str(failed['id'])])
+                  if isinstance(details,list):
+                      for x in details[-30:]:
+                          print('AZURE_FAILURE_DETAIL='+json.dumps({k:str(x.get(k,''))[:380] for k in ('log_time','message','type','details_url')},sort_keys=True))
+                  else: print('AZURE_FAILURE_READ='+json.dumps(details,sort_keys=True)[:900])
+          print('APP_STATE='+json.dumps(azure(['webapp','show','-g','masterapp-rg','-n',app,'--query','{state:state,availabilityState:availabilityState,enabled:enabled}']),sort_keys=True))
+          for path in ('/_deployment-provenance.txt','/favicon.jpg','/'):
+              try:
+                  request=urllib.request.Request('https://masterapp-website.azurewebsites.net'+path,headers={'Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(request,timeout=14) as response:
+                      body=response.read(256)
+                      print('HTTP_READBACK='+json.dumps({'path':path,'status':response.status,'content_type':response.headers.get('Content-Type'),'revision':body.decode('utf8','replace').strip() if path.endswith('.txt') else None,'jpeg':body.startswith(bytes([255,216,255])) if path.endswith('.jpg') else None}))
+              except urllib.error.HTTPError as e:
+                  print('HTTP_READBACK='+json.dumps({'path':path,'status':e.code}))
+              except OSError:
+                  print('HTTP_READBACK='+json.dumps({'path':path,'status':'network_unavailable'}))
+          PY
