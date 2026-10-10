@@ -1,6 +1,6 @@
 @{
     ViewData["Title"] = "Resources";
-    Layout = "~/Views/Shared/_Layout.cshtml";
+    Layout = ViewData["ParfaitHostLayout"] as string ?? "~/Views/Shared/_Layout.cshtml";
 }
 
 <div class="finance-page container mt-4 finance-container">

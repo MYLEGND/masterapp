@@ -55,7 +55,7 @@ public sealed class AnalyticsCanonicalArchitectureTests
         var opcodes = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field.FieldType == typeof(OpCode)).Select(field => (OpCode)field.GetValue(null)!)
             .ToDictionary(code => unchecked((ushort)code.Value));
-        var assemblies = new[] { "Infrastructure", "AgentPortal", "ProtectWebsite", "ParfaitApp", "ClientApp", "Shared" }
+        var assemblies = new[] { "Infrastructure", "AgentPortal", "ProtectWebsite", "ParfaitApp", "LegendCommerce", "ClientApp", "Shared" }
             .Select(Assembly.Load);
         foreach (var assembly in assemblies)
         foreach (var type in assembly.GetTypes())
@@ -137,7 +137,7 @@ public sealed class AnalyticsCanonicalArchitectureTests
         Assert.DoesNotContain("MetaAds:AgentAccountMap", reporting);
         var editor = File.ReadAllText(Path.Combine(Root, "Infrastructure/WebsiteEditing/WebsitePlatformController.cs"));
         Assert.DoesNotContain("MarketingOwnerScope.Agent(", editor);
-        var commerce = File.ReadAllText(Path.Combine(Root, "ParfaitApp/Controllers/CommerceManagementController.cs"));
+        var commerce = File.ReadAllText(Path.Combine(Root, "CommerceCore/Controllers/CommerceManagementController.cs"));
         Assert.DoesNotContain("MarketingOwnerScope.Agent(", commerce);
         var contract = typeof(IMetaAdsConnectionStore).GetMethods().Select(m => m.Name).ToArray();
         Assert.Equal(new[] { "GetAsync" }, contract);
@@ -164,7 +164,7 @@ public sealed class AnalyticsCanonicalArchitectureTests
         var protect = File.ReadAllText(Path.Combine(Root, "Protect-Website", "Program.cs"));
         var marketing = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Analytics", "MarketingConnectionStore.cs"));
         var leads = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
-        var parfaitMail = File.ReadAllText(Path.Combine(Root, "ParfaitApp", "Services", "GraphMailService.cs"));
+        var parfaitMail = File.ReadAllText(Path.Combine(Root, "CommerceCore", "Services", "GraphMailService.cs"));
 
         Assert.Contains("AddMarketingBackgroundWorkers(builder.Services, builder.Configuration)", portal, StringComparison.Ordinal);
         Assert.Contains("AddWebsiteLeadBackgroundWorkers(builder.Services)", portal, StringComparison.Ordinal);

@@ -141,3 +141,55 @@ test('external HTTP requests are upgraded before proxying', async () => {
   assert.equal(response.status, 308);
   assert.equal(response.headers.get('location'), 'https://business.example/path?q=1');
 });
+
+test('Parfait commerce cutover is explicit and never moves other tenant storefronts', () => {
+  const staged = {
+    ...env,
+    LEGEND_COMMERCE_CUTOVER_ENABLED: 'true',
+    LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com,www.shopparfait.com'
+  };
+  for (const host of ['shopparfait.com', 'www.shopparfait.com']) {
+    const result = buildBridgeRequest(new Request('https://' + host + '/store/checkout/pay', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{"test":true}'
+    }), staged);
+    assert.equal(result.error, undefined);
+    assert.equal(result.sharedCommerce, true);
+    assert.equal(result.request.url, 'https://masterapp-protect.azurewebsites.net/store/checkout/pay');
+    assert.equal(result.request.headers.get('X-Legend-Original-Host'), host);
+  }
+  for (const host of ['camoexterior.com', 'business.example', 'mylegnd.com', 'protect.mylegnd.com']) {
+    const result = buildBridgeRequest(new Request('https://' + host + '/store'), staged);
+    assert.equal(result.sharedCommerce, false);
+    assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net/store');
+  }
+  assert.equal(buildBridgeRequest(new Request('https://shopparfait.com/'), staged).request.url,
+    'https://masterapp-protect.azurewebsites.net/');
+});
+
+test('A malformed or disabled cutover host list never moves commerce traffic', () => {
+  const commerce = new Request('https://shopparfait.com/store');
+  for (const overrides of [
+    { LEGEND_COMMERCE_CUTOVER_ENABLED: 'false', LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com' },
+    { LEGEND_COMMERCE_CUTOVER_ENABLED: 'true', LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com,*.com' },
+    { LEGEND_COMMERCE_CUTOVER_ENABLED: 'true', LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com,shopparfait.com' },
+    { LEGEND_COMMERCE_CUTOVER_ENABLED: 'true', LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com,portal.mylegnd.com' },
+    { LEGEND_COMMERCE_CUTOVER_ENABLED: 'true', LEGEND_COMMERCE_CUTOVER_HOSTS: '' }
+  ]) {
+    const result = buildBridgeRequest(commerce, { ...env, ...overrides });
+    assert.equal(result.sharedCommerce, false);
+    assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net/store');
+  }
+});
+
+test('Parfait management and analytics remain on the legacy authority during storefront handoff', () => {
+  const staged = {
+    ...env, LEGEND_COMMERCE_CUTOVER_ENABLED: 'true',
+    LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com'
+  };
+  for (const path of ['/commerce/manage/products?ticket=original', '/parfait-analytics/summary']) {
+    const result = buildBridgeRequest(new Request('https://shopparfait.com' + path), staged);
+    assert.equal(result.sharedCommerce, false);
+    assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net' + path);
+  }
+});
+

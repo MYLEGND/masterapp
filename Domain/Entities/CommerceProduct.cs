@@ -11,7 +11,7 @@ public sealed class CommerceProduct
     public string Slug { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string PriceLabel { get; set; } = "Coming Soon";
-    public string Badge { get; set; } = "Parfait";
+    public string Badge { get; set; } = "";
 
     public int PriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }

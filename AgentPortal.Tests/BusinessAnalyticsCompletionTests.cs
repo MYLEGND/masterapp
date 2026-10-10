@@ -245,7 +245,7 @@ public sealed class BusinessAnalyticsCompletionTests
     public void ParfaitAnalyticsUsesCanonicalServicesWithoutStaleDashboardCache()
     {
         var root = RepoRoot();
-        var source = File.ReadAllText(Path.Combine(root, "ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs"));
+        var source = File.ReadAllText(Path.Combine(root, "CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs"));
 
         Assert.Contains("IAnalyticsQueryService _analytics", source, StringComparison.Ordinal);
         Assert.Contains("IMetaSignalAnalyticsService _metaSignal", source, StringComparison.Ordinal);

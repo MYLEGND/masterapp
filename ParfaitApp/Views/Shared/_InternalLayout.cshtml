@@ -1,4 +1,4 @@
-@inject ParfaitApp.Services.IParfaitTeamAccessService TeamAccessService
+@using Microsoft.Extensions.DependencyInjection
 @{
     var title = ViewData["Title"] as string ?? "Internal";
     var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
@@ -35,7 +35,8 @@
     var visiblePages = scopedManager
         ? Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>()
         : User.Identity?.IsAuthenticated == true
-            ? await TeamAccessService.GetVisiblePagesAsync(User, ViewContext.HttpContext.RequestAborted)
+            ? await Context.RequestServices.GetRequiredService<ParfaitApp.Services.IParfaitTeamAccessService>()
+                .GetVisiblePagesAsync(User, ViewContext.HttpContext.RequestAborted)
             : Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>();
     var navGroups = visiblePages
         .GroupBy(navPage => new { navPage.Group, navPage.GroupOrder })

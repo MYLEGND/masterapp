@@ -8,6 +8,7 @@
   <Folder Name="/SHARED/">
     <Project Path="SHARED/Shared.csproj" />
   </Folder>
+  <Project Path="CommerceCore/LegendCommerce.csproj" />
   <Project Path="Domain/Domain.csproj" />
   <Project Path="Infrastructure/Infrastructure.csproj" />
 </Solution>

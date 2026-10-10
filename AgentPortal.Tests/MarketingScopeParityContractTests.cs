@@ -83,8 +83,8 @@ public sealed class MarketingScopeParityContractTests
     [Fact]
     public void Parfait_RemainsBusinessScopedProjectionOfCanonicalMarketingAndAnalyticsAuthorities()
     {
-        var controller = Read("ParfaitApp", "Controllers", "CommerceManagementController.cs");
-        var analytics = Read("ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs");
+        var controller = Read("CommerceCore", "Controllers", "CommerceManagementController.cs");
+        var analytics = Read("CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs");
         var tracking = Read("ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml");
         var program = Read("ParfaitApp", "Program.cs");
 
@@ -149,7 +149,7 @@ public sealed class MarketingScopeParityContractTests
     {
         var agentController = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
         var businessController = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
-        var parfaitController = Read("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var parfaitController = Read("CommerceCore", "Controllers", "CommerceManagementController.cs");
 
         foreach (var source in new[] { agentController, businessController, parfaitController })
         {

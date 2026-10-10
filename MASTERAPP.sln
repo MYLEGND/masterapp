@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClientApp", "ClientApp\Clie
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentPortal", "AgentPortal\AgentPortal.csproj", "{2B61CB73-60C9-E169-CD7E-64074AD989FF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LegendCommerce", "CommerceCore\LegendCommerce.csproj", "{8E3C6AAA-9485-46F5-AE7D-B0CC5F136E31}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParfaitApp", "ParfaitApp\ParfaitApp.csproj", "{7A87D406-8396-D874-19F5-D21213006FDC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "SHARED\Shared.csproj", "{22F72E50-B86A-48A6-4252-6FDC98C636E8}"
@@ -30,6 +32,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8E3C6AAA-9485-46F5-AE7D-B0CC5F136E31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E3C6AAA-9485-46F5-AE7D-B0CC5F136E31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8E3C6AAA-9485-46F5-AE7D-B0CC5F136E31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8E3C6AAA-9485-46F5-AE7D-B0CC5F136E31}.Release|Any CPU.Build.0 = Release|Any CPU
 		{4EFA8830-82EA-5BE9-0042-095FA3162C22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{4EFA8830-82EA-5BE9-0042-095FA3162C22}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4EFA8830-82EA-5BE9-0042-095FA3162C22}.Release|Any CPU.ActiveCfg = Release|Any CPU

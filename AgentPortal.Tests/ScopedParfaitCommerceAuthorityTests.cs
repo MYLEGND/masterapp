@@ -14,7 +14,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Views", "CommerceManagement", "Workspace.cshtml")));
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Models", "CommerceManagementWorkspaceViewModel.cs")));
 
-        var controller = ReadSource("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var controller = ReadSource("CommerceCore", "Controllers", "CommerceManagementController.cs");
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
@@ -27,9 +27,9 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     [Fact]
     public void ProductsOrdersAndAutomations_StayOnExistingParfaitAuthorities_WithBusinessScope()
     {
-        var products = ReadSource("ParfaitApp", "Services", "ParfaitProductService.cs");
-        var orders = ReadSource("ParfaitApp", "Services", "ParfaitOrderService.cs");
-        var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
+        var products = ReadSource("CommerceCore", "Services", "ParfaitProductService.cs");
+        var orders = ReadSource("CommerceCore", "Services", "ParfaitOrderService.cs");
+        var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
 
         Assert.Contains("GetAllProducts(Guid businessId)", products, StringComparison.Ordinal);
         Assert.Contains("GetAllOrders(Guid businessId)", orders, StringComparison.Ordinal);
@@ -74,8 +74,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Services", "ParfaitMetaAdsOAuthService.cs")));
 
         var program = ReadSource("ParfaitApp", "Program.cs");
-        var analytics = ReadSource("ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs");
-        var controller = ReadSource("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var analytics = ReadSource("CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs");
+        var controller = ReadSource("CommerceCore", "Controllers", "CommerceManagementController.cs");
         var tracking = ReadSource("ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml");
         var signals = ReadSource("Infrastructure", "Commerce", "CommerceSignalService.cs");
 
@@ -102,10 +102,10 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     [Fact]
     public void CommerceEventsAndAutomations_RemainLiveForEveryScopedStore()
     {
-        var checkout = ReadSource("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
-        var analyticsController = ReadSource("ParfaitApp", "Controllers", "StoreCartController.cs");
-        var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
-        var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
+        var checkout = ReadSource("CommerceCore", "Controllers", "StoreCheckoutController.cs");
+        var analyticsController = ReadSource("CommerceCore", "Controllers", "StoreCartController.cs");
+        var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
+        var hosted = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
         Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
         Assert.Contains("_automations.MarkOrderConverted(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
@@ -120,13 +120,17 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     public void ScopedPublicCommerce_UsesPublishedWebsiteShell_WhileParfaitRemainsBackendAuthority()
     {
         var viewStart = ReadSource("ParfaitApp", "Views", "_ViewStart.cshtml");
+        var presentation = ReadSource("Infrastructure", "Commerce", "CommerceStorefrontPresentation.cs");
         var scopedLayout = ReadSource("ParfaitApp", "Views", "Shared", "_ScopedWebsiteStoreLayout.cshtml");
         var legacyLayout = ReadSource("ParfaitApp", "Views", "Shared", "_Layout.cshtml");
         var storeContext = ReadSource("Infrastructure", "Commerce", "CommerceStoreContextService.cs");
         var storefrontCss = ReadSource("ParfaitApp", "wwwroot", "css", "storefront.css");
 
-        Assert.Contains("WebsiteShellPrefix", viewStart, StringComparison.Ordinal);
-        Assert.Contains("_ScopedWebsiteStoreLayout", viewStart, StringComparison.Ordinal);
+        Assert.Contains("CommerceStorefrontPresentation.ResolveLayout(commerce)", viewStart, StringComparison.Ordinal);
+        Assert.Contains("WebsiteShellPrefix", presentation, StringComparison.Ordinal);
+        Assert.Contains("WebsiteShellSuffix", presentation, StringComparison.Ordinal);
+        Assert.Contains("_ScopedWebsiteStoreLayout", presentation, StringComparison.Ordinal);
+        Assert.Contains("ParfaitOriginalLayout", presentation, StringComparison.Ordinal);
         Assert.Contains("@Html.Raw(prefix)", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("@Html.Raw(suffix)", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("window.PARFAIT_COMMERCE_CONTEXT", scopedLayout, StringComparison.Ordinal);
