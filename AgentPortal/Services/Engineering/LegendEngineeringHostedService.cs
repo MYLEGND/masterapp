@@ -35,13 +35,16 @@ internal sealed class LegendEngineeringHostedService(
             var releasePlanner = scope.ServiceProvider.GetRequiredService<LegendEngineeringReleaseCohortPlanner>();
             var founderNotifications = scope.ServiceProvider.GetRequiredService<LegendEngineeringFounderNotificationService>();
 
-            await orchestrator.ProcessIncidentsAsync(
-                Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
+            // Runtime incident ingestion is observational. Its failure must not
+            // prevent the independent deterministic CI/release reconciliation.
+            // A release reconciliation failure still stops downstream agent starts.
+            await RunIndependentIncidentAndReleasePassAsync(
+                token => orchestrator.ProcessIncidentsAsync(
+                    Math.Clamp(configuration.GetValue<int?>("LegendEngineering:Autonomous:IncidentScanLimit") ?? 250, 1, 1000),
+                    token),
+                token => releasePlanner.ReconcileAndReleaseAsync(token),
+                logger,
                 cancellationToken);
-
-            // CI/release reconciliation is deterministic and remains active even
-            // when ChatGPT plan execution is unavailable or Founder-paused.
-            await releasePlanner.ReconcileAndReleaseAsync(cancellationToken);
 
             // The work-item authority, not the scheduler, owns restart recovery.
             // Any abandoned exact lease is restored before new work is considered.
@@ -86,13 +89,13 @@ internal sealed class LegendEngineeringHostedService(
                 recoveredEpisode.ValueKind == JsonValueKind.String
                     ? recoveredEpisode.GetString()
                     : null;
-            await founderNotifications.NotifyActionableAsync(
-                openWork,
-                blocker,
-                blockerEpisodeId,
-                recoveredEpisodeId,
-                cancellationToken);
-            await founderNotifications.NotifyDailyDigestAsync(openWork, cancellationToken);
+            await RunNonAuthoritativeObservationAsync(
+                token => founderNotifications.NotifyActionableAsync(
+                    openWork, blocker, blockerEpisodeId, recoveredEpisodeId, token),
+                "founder_notifications", logger, cancellationToken);
+            await RunNonAuthoritativeObservationAsync(
+                token => founderNotifications.NotifyDailyDigestAsync(openWork, token),
+                "founder_digest", logger, cancellationToken);
 
             if (!autonomyEnabled || !runtimeReady)
             {
@@ -139,6 +142,47 @@ internal sealed class LegendEngineeringHostedService(
             logger.LogWarning(
                 "LEGEND engineering scheduler pass failed closed ({ExceptionType}).",
                 exception.GetType().Name);
+        }
+    }
+
+    internal static async Task RunIndependentIncidentAndReleasePassAsync(
+        Func<CancellationToken, Task<object>> ingestIncidents,
+        Func<CancellationToken, Task<object>> reconcileRelease,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        await RunNonAuthoritativeObservationAsync(
+            async token => { await ingestIncidents(token); },
+            "incident_intake", logger, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        // Never mask a failure here: the outer pass guard must block subsequent
+        // agent starts if release state cannot be safely reconciled.
+        await reconcileRelease(cancellationToken);
+    }
+
+    internal static async Task RunNonAuthoritativeObservationAsync(
+        Func<CancellationToken, Task> observe,
+        string stage,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            await observe(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // Never forward diagnostic or provider exception messages.
+            // Notification and incident failures cannot block authoritative work.
+            logger.LogWarning(
+                "LEGEND engineering observation {Stage} failed ({ExceptionType}); continue independent work.",
+                stage, exception.GetType().Name);
         }
     }
 
