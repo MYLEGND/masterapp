@@ -163,7 +163,10 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       favicon.setAttribute('href',faviconUrl);
       favicon.removeAttribute('type');
     } else {
-      favicon?.remove();
+      // Published business pages require a stable raster fallback on their own hostname.
+      if(!favicon){ favicon=doc.createElement('link'); favicon.setAttribute('rel','icon'); doc.head.appendChild(favicon); }
+      favicon.setAttribute('href','/favicon.jpg');
+      favicon.setAttribute('type','image/jpeg');
     }
     doc.querySelectorAll('script').forEach(script=>{
       if(!['/legend-public-web.js','/legend-public-cms.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();

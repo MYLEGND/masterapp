@@ -20,7 +20,7 @@ public static class WebsiteFaviconParity
     }
 
     public static string FallbackUrl(IConfiguration configuration) =>
-        ApiBase(configuration) + "/images/favicon/legend-favicon.svg";
+        ApiBase(configuration) + "/images/favicon/legend-favicon.jpg";
 
     private static string ApiBase(IConfiguration configuration) =>
         (configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');

@@ -1,7 +1,7 @@
-name: LEGEND Fast Track UI — AgentPortal and ClientApp
+name: LEGEND Fast Track — Five Web Apps
 
-# Dedicated UI delivery branch. No protected merge, historical release
-# admission, database migration, rollback rebuild, or full test suite.
+# Source-only fast track; no protected merge, historical release admission,
+# database migration, rollback rebuild, or full test suite.
 on:
   push:
     branches:
@@ -14,6 +14,13 @@ on:
       - ClientApp/wwwroot/**
       - SHARED/wwwroot/**
       - Legend-Design/**
+      - Legend-Website/scripts/**
+      - Protect-Website/Views/Shared/_Layout.cshtml
+      - Protect-Website/ProtectWebsite.csproj
+      - ParfaitApp/Views/Shared/_InternalLayout.cshtml
+      - Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs
+      - Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs
+      - SHARED/WebsitePlatform/legend-public-cms.js
 
 permissions:
   contents: read
@@ -44,6 +51,18 @@ jobs:
             project: ClientApp/ClientApp.csproj
             azure_app: masterapp-client
             host: client.mylegnd.com
+          - target: Protect
+            project: Protect-Website/ProtectWebsite.csproj
+            azure_app: masterapp-protect
+            host: masterapp-protect.azurewebsites.net
+          - target: Parfait
+            project: ParfaitApp/ParfaitApp.csproj
+            azure_app: masterapp-parfait
+            host: masterapp-parfait.azurewebsites.net
+          - target: Website
+            project: static
+            azure_app: masterapp-website
+            host: masterapp-website.azurewebsites.net
     steps:
       - name: Check out current fast-track UI code
         uses: actions/checkout@v4
@@ -53,7 +72,13 @@ jobs:
       - name: Verify shared AI and Messages mobile-sheet contract
         run: node --test tests/layout/messaging-mobile-sheet.test.mjs
 
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Install .NET 10
+        if: ${{ matrix.project != 'static' }}
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.x
@@ -64,14 +89,21 @@ jobs:
           PROJECT: ${{ matrix.project }}
         run: |
           set -euo pipefail
-          dotnet publish "$PROJECT" -c Release -o "$RUNNER_TEMP/publish" --nologo -p:SourceRevisionId="$GITHUB_SHA"
-          python3 - <<'PY'
+          if [ "$PROJECT" = static ]; then
+            npm ci --prefix Legend-Website --omit=dev --ignore-scripts --no-audit --no-fund
+            (cd Legend-Website && node scripts/build.mjs && node scripts/check.mjs && node --test scripts/render-business.test.mjs)
+            printf '%s\n' "$GITHUB_SHA" > Legend-Website/dist/_deployment-provenance.txt
+            (cd Legend-Website/dist && zip -q -r "$RUNNER_TEMP/deploy.zip" .)
+          else
+            dotnet publish "$PROJECT" -c Release -o "$RUNNER_TEMP/publish" --nologo -p:SourceRevisionId="$GITHUB_SHA"
+            python3 - <<'PY'
           import json,os,pathlib
           out=pathlib.Path(os.environ['RUNNER_TEMP'])/'publish'/'wwwroot'/'_deployment-provenance.json'
           out.parent.mkdir(parents=True,exist_ok=True)
           out.write_text(json.dumps({'releaseSha':os.environ['GITHUB_SHA']})+'\n')
           PY
-          (cd "$RUNNER_TEMP/publish" && zip -q -r "$RUNNER_TEMP/deploy.zip" .)
+            (cd "$RUNNER_TEMP/publish" && zip -q -r "$RUNNER_TEMP/deploy.zip" .)
+          fi
           sha256sum "$RUNNER_TEMP/deploy.zip" | cut -d' ' -f1
 
       - name: Sign in to Azure Production
@@ -130,14 +162,19 @@ jobs:
           baseline=json.loads((root/'baseline.json').read_text())
           initial_ids={str(x['id']) for x in baseline}
           expected=os.environ['GITHUB_SHA']
-          url='https://'+os.environ['HOST']+'/api/runtime-provenance'
+          is_static=os.environ['APP']=='masterapp-website'
+          url='https://'+os.environ['HOST']+('/_deployment-provenance.txt' if is_static else '/api/runtime-provenance')
           last='not observed'
           for attempt in range(40):
               time.sleep(15)
-              provider=subprocess.run(
-                  ['az','webapp','log','deployment','list','--resource-group','masterapp-rg',
-                   '--name',os.environ['APP'],'--only-show-errors','-o','json'],
-                  capture_output=True,text=True,timeout=35)
+              try:
+                  provider=subprocess.run(
+                      ['az','webapp','log','deployment','list','--resource-group','masterapp-rg',
+                       '--name',os.environ['APP'],'--only-show-errors','-o','json'],
+                      capture_output=True,text=True,timeout=35)
+              except subprocess.TimeoutExpired:
+                  last='Azure deployment read timeout; observe again without another upload'
+                  continue
               if provider.returncode:
                   last='Azure deployment read unavailable'
                   continue
@@ -155,13 +192,25 @@ jobs:
                       with urllib.request.urlopen(urllib.request.Request(
                               url+'?fastTrack='+str(time.time_ns()),
                               headers={'Cache-Control':'no-cache'}),timeout=12) as response:
-                          body=json.loads(response.read(8192))
-                          live=body.get('sourceRevision') if response.status==200 else None
+                          raw=response.read(8192).decode().strip()
+                          live=(raw if is_static else json.loads(raw).get('sourceRevision')) if response.status==200 else None
                   except (OSError,ValueError):
                       live=None
                   last=f'new_deployments={len(fresh)}, active={active}, revision={live}'
                   if not active and len(fresh)==1 and fresh[0].get('status')==4 and live==expected:
-                      print('LIVE_REVISION_VERIFIED:',os.environ['APP'],live)
+                      icon_path='/favicon.jpg' if is_static else ('/images/favicon/legend-favicon.jpg' if os.environ['APP']=='masterapp-protect' else '/images/favicon/parfait-logo.png' if os.environ['APP']=='masterapp-parfait' else None)
+                      if icon_path:
+                          try:
+                              with urllib.request.urlopen('https://'+os.environ['HOST']+icon_path,timeout=12) as icon:
+                                  payload=icon.read(64)
+                                  is_jpeg=icon_path.endswith('.jpg')
+                                  valid=payload.startswith(bytes([255,216,255])) if is_jpeg else payload.startswith(bytes([137,80,78,71]))
+                                  if icon.status!=200 or ('image/jpeg' if is_jpeg else 'image/png') not in icon.headers.get('Content-Type','') or not valid:
+                                      raise ValueError('Live favicon response invalid')
+                          except (OSError,ValueError) as exc:
+                              last='Favicon bytes/type unverified: '+type(exc).__name__
+                              continue
+                      print('LIVE_REVISION_AND_FAVICON_VERIFIED:',os.environ['APP'],live)
                       raise SystemExit(0)
               except (ValueError,KeyError) as exc:
                   last='Azure deployment response unrecognized: '+type(exc).__name__

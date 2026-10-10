@@ -65,6 +65,14 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.SendFileAsync(asset, context.RequestAborted);
             return;
         }
+        if (path == "/favicon.jpg")
+        {
+            var faviconPath = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", "favicon.jpg");
+            if (!File.Exists(faviconPath)) { await Unavailable(context, bridged, "favicon"); return; }
+            context.Response.ContentType = "image/jpeg";
+            if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.SendFileAsync(faviconPath, context.RequestAborted);
+            return;
+        }
         using var compiled = JsonDocument.Parse(version.CompiledPagesJson);
         var pages = compiled.RootElement.GetProperty("pages");
         var origin = "https://" + host;

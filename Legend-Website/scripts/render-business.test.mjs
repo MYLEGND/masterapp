@@ -7,6 +7,17 @@ import {compileBusiness} from './render-business.mjs';
 const business={id:'b72b8796-2b35-4eed-8d6d-7260976084ea',displayName:'Sample & Business',legalName:'Sample LLC'};
 const document=()=>({elements:{},sectionOrder:{},extras:[],theme:{},pages:{}});
 
+test('published business pages use a raster fallback without overwriting the website-selected favicon',async()=>{
+  const fallback=await compileBusiness({business,document:document()});
+  const initial=parseHTML(fallback.pages['/'].html).document.querySelector('link[rel="icon"]');
+  assert.equal(initial?.getAttribute('href'),'/favicon.jpg');
+  assert.equal(initial?.getAttribute('type'),'image/jpeg');
+  const custom=await compileBusiness({business,document:{...document(),faviconImageDataUrl:'https://cdn.example.test/icon.png'}});
+  const selected=parseHTML(custom.pages['/'].html).document.querySelector('link[rel="icon"]');
+  assert.equal(selected?.getAttribute('href'),'https://cdn.example.test/icon.png');
+  assert.equal(selected?.hasAttribute('type'),false);
+});
+
 test('publication compiler process consumes stdin and returns compiled pages',()=>{
   const scriptPath=fileURLToPath(new URL('./render-business-cli.mjs',import.meta.url));
   const stdout=execFileSync(process.execPath,[scriptPath],{

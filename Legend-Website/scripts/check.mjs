@@ -19,6 +19,12 @@ if(!css.includes(':root[data-legend-site="business"]')) throw new Error('Busines
 if(!css.includes('.hero--single')) throw new Error('Single-column starter hero authority is missing.');
 console.log('Route, business preview, global chrome, exclusion, and scroll checks passed.');
 
+const jpeg=await readFile(resolve(root,'dist','favicon.jpg'));
+if(jpeg[0]!==0xff || jpeg[1]!==0xd8 || jpeg[2]!==0xff) throw new Error('Google favicon is not a valid JPEG');
+for(const route of routes){
+  const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
+  if(!html.includes('<link rel="icon" href="/favicon.jpg" type="image/jpeg" sizes="128x128">')) throw new Error('Missing raster favicon for '+route);
+}
 const index=await readFile(resolve(root,'dist','index.html'),'utf8');
 for(const required of ['legend-public-web.js','legend-public-cms.js','instagram.com/legend.vault','apps.apple.com/us/app/legend/id6798419225'])if(!index.includes(required))throw new Error(`dist/index.html missing ${required}`);
 

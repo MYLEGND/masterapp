@@ -52,7 +52,7 @@
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
-  const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.svg' : '/favicon.svg');
+  const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.jpg' : '/favicon.jpg');
   const originalFaviconType = initialFaviconLink?.getAttribute('type') || '';
   const defaultBreakpoints = () => [
     { key: 'mobile', label: 'Mobile', minWidth: 0, maxWidth: 767, isSystem: true },
