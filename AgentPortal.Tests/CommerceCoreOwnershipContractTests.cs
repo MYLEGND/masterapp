@@ -109,6 +109,20 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.Contains("~/Views/StoreLegal/", controller, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void MerchantManagementViews_LinkOriginalTemplatesWithoutEnablingRoutes()
+    {
+        var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "ProtectWebsite.csproj"));
+        Assert.Contains("../ParfaitApp/Views/InternalModules/*.cshtml", protect, StringComparison.Ordinal);
+        Assert.Contains("../ParfaitApp/Views/Shared/_InternalLayout.cshtml", protect, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/css/internal.css", protect, StringComparison.Ordinal);
+        Assert.Contains("wwwroot/js/parfait-agentportal-analytics.js", protect, StringComparison.Ordinal);
+        var host = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
+        Assert.Contains("ExcludeLegendCommerceMvc()", host, StringComparison.Ordinal);
+        var layout = File.ReadAllText(Path.Combine(Root(), "ParfaitApp", "Views", "Shared", "_InternalLayout.cshtml"));
+        Assert.Contains("GetRequiredService<ParfaitApp.Services.IParfaitTeamAccessService>()", layout, StringComparison.Ordinal);
+    }
+
     private static string Root()
     {
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");

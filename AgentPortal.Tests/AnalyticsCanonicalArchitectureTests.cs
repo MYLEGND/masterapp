@@ -164,7 +164,7 @@ public sealed class AnalyticsCanonicalArchitectureTests
         var protect = File.ReadAllText(Path.Combine(Root, "Protect-Website", "Program.cs"));
         var marketing = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Analytics", "MarketingConnectionStore.cs"));
         var leads = File.ReadAllText(Path.Combine(Root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));
-        var parfaitMail = File.ReadAllText(Path.Combine(Root, "ParfaitApp", "Services", "GraphMailService.cs"));
+        var parfaitMail = File.ReadAllText(Path.Combine(Root, "CommerceCore", "Services", "GraphMailService.cs"));
 
         Assert.Contains("AddMarketingBackgroundWorkers(builder.Services, builder.Configuration)", portal, StringComparison.Ordinal);
         Assert.Contains("AddWebsiteLeadBackgroundWorkers(builder.Services)", portal, StringComparison.Ordinal);

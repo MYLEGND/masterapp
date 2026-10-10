@@ -137,5 +137,25 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Published merchant management views also come from the exact same
+       Parfait sources; the website host does not activate these endpoints. -->
+  <ItemGroup>
+    <Content Include="../ParfaitApp/Views/InternalModules/*.cshtml" Link="Views/InternalModules/%(Filename)%(Extension)" />
+    <Content Include="../ParfaitApp/Views/Dashboard/Index.cshtml" Link="Views/Dashboard/Index.cshtml" />
+    <Content Include="../ParfaitApp/Views/Shared/_InternalLayout.cshtml" Link="Views/Shared/_InternalLayout.cshtml" />
+    <Content Include="../ParfaitApp/Views/Shared/_MarketingProviderSetup.cshtml" Link="Views/Shared/_MarketingProviderSetup.cshtml" />
+    <Content Include="../ParfaitApp/wwwroot/css/internal.css" Link="wwwroot/css/internal.css"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css"
+             Link="wwwroot/css/parfait-agentportal-analytics.css"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
+             Link="wwwroot/js/parfait-agentportal-analytics.js"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../ParfaitApp/wwwroot/images/favicon/parfait-logo.png"
+             Link="wwwroot/images/favicon/parfait-logo.png"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
 </Project>
