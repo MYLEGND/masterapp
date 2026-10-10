@@ -14,7 +14,8 @@ public static class BusinessWorkspaceAccess
         var member = await db.CommerceBusinessMembers.AsNoTracking().SingleOrDefaultAsync(x =>
             x.CommerceBusinessId == businessId && x.ClientProfileId == profileId && x.Status == "Active", ct);
         if (member is null) return null;
-        var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase);
+        var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
         var allowed = capability switch
         {
             "website" => member.CanManageStorefront,
