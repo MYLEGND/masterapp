@@ -1,4 +1,7 @@
 using Legend.Commerce;
+using Infrastructure.Billing;
+using Infrastructure.FinancialIntelligence;
+using ParfaitApp.Services;
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
@@ -34,7 +37,11 @@ var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 });
 // This website consumes only the shared catalog until audited media, views,
 // checkout and automation state are ready. Never publish commerce routes here yet.
-if (Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.IsConfigured(builder.Configuration))
+if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
+{
+    mvcBuilder.AddLegendCommerceCutoverMvc();
+}
+else if (Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.IsConfigured(builder.Configuration))
 {
     mvcBuilder.AddLegendCommercePreviewMvc();
 }
@@ -63,7 +70,17 @@ builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
 builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
-builder.Services.AddLegendCommerceCatalogReadOnly();
+if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
+{
+    builder.Services.AddLegendCommerceCore();
+    builder.Services.AddMasterAppBilling(builder.Configuration);
+    builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
+    builder.Services.AddScoped<IGraphMailService, GraphMailService>();
+}
+else
+{
+    builder.Services.AddLegendCommerceCatalogReadOnly();
+}
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
 builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();

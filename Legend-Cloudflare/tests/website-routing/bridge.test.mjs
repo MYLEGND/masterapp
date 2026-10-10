@@ -180,3 +180,16 @@ test('A malformed or disabled cutover host list never moves commerce traffic', (
     assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net/store');
   }
 });
+
+test('Parfait management and analytics remain on the legacy authority during storefront handoff', () => {
+  const staged = {
+    ...env, LEGEND_COMMERCE_CUTOVER_ENABLED: 'true',
+    LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com'
+  };
+  for (const path of ['/commerce/manage/products?ticket=original', '/parfait-analytics/summary']) {
+    const result = buildBridgeRequest(new Request('https://shopparfait.com' + path), staged);
+    assert.equal(result.sharedCommerce, false);
+    assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net' + path);
+  }
+});
+

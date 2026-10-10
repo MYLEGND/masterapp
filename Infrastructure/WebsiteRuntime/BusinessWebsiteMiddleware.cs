@@ -49,6 +49,18 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             finally { context.Request.Path = originalPath; }
             return;
         }
+        // Production commerce is a distinct, exact-business gate. Existing
+        // custom-domain binding and immutable website publication were verified
+        // above; all other business hosts remain on the current storefront origin.
+        if (CommerceSharedHostCutoverGate.MayRoute(
+                configuration, binding.Value, host, context.Request.Path, context.Request.Method))
+        {
+            if (context.Request.Path.StartsWithSegments("/uploads/parfait-products", StringComparison.OrdinalIgnoreCase))
+                context.Items[CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem] = binding.Value;
+            await next(context);
+            return;
+        }
+
         // Validated custom domain + immutable published website first; only a
         // separately configured, exact-business read-only preview may reach
         // the commerce GET controllers and original Parfait static assets.

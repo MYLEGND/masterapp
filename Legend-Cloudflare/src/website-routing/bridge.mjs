@@ -36,6 +36,12 @@ function isApprovedCommerceCutover(hostname, env) {
   return hosts.includes(hostname.toLowerCase());
 }
 
+function isSharedStorefrontPath(pathname) {
+  return pathname === "/store" || pathname.startsWith("/store/") ||
+    pathname.startsWith("/store-assets/") ||
+    pathname.startsWith("/uploads/parfait-products/");
+}
+
 function validatedOrigin(raw, fallback) {
   const value = (raw || fallback).trim();
   let url;
@@ -62,7 +68,8 @@ export function buildBridgeRequest(request, env) {
   }
 
   const commerce = isCommerceTransportPath(incoming.pathname);
-  const sharedCommerce = commerce && isApprovedCommerceCutover(incoming.hostname, env);
+  const sharedCommerce = commerce && isSharedStorefrontPath(incoming.pathname) &&
+    isApprovedCommerceCutover(incoming.hostname, env);
   const origin = validatedOrigin(
     sharedCommerce || !commerce ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
     sharedCommerce || !commerce ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN

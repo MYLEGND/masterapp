@@ -68,6 +68,24 @@ public static class CommerceSharedHostPreviewGate
                 relative.EndsWith(".gif", StringComparison.OrdinalIgnoreCase));
     }
 
+    public static bool MayRouteAssetsOnly(string value)
+    {
+        if (value.StartsWith("/store-assets/", StringComparison.OrdinalIgnoreCase))
+            return !value.Contains("..", StringComparison.Ordinal) && !value.Contains('%');
+        const string uploads = "/uploads/parfait-products/";
+        if (!value.StartsWith(uploads, StringComparison.OrdinalIgnoreCase)) return false;
+        var segments = value[uploads.Length..].Split('/');
+        return segments.Length >= 2 &&
+               segments.All(segment => segment.Length is > 0 and <= 255 &&
+                   segment is not "." and not ".." &&
+                   segment.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')) &&
+               (value.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+                value.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                value.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                value.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ||
+                value.EndsWith(".gif", StringComparison.OrdinalIgnoreCase));
+    }
+
     public const string OriginalPagePathItem = "Legend.Commerce.OriginalPublicPreviewPath";
     public const string PreviewMediaBusinessIdItem = "Legend.Commerce.PreviewMediaBusinessId";
 
@@ -76,11 +94,12 @@ public static class CommerceSharedHostPreviewGate
         out PathString internalPath)
     {
         internalPath = PathString.Empty;
-        if (!IsConfigured(configuration) ||
-            !Guid.TryParse(configuration["Commerce:SharedHostPreview:BusinessId"], out var id) ||
-            id != verifiedBusinessId ||
-            !string.Equals(host, configuration["Commerce:SharedHostPreview:Hostname"]?.Trim(),
-                StringComparison.OrdinalIgnoreCase) ||
+        var previewAdmitted = IsConfigured(configuration) &&
+            Guid.TryParse(configuration["Commerce:SharedHostPreview:BusinessId"], out var id) &&
+            id == verifiedBusinessId &&
+            string.Equals(host, configuration["Commerce:SharedHostPreview:Hostname"]?.Trim(),
+                StringComparison.OrdinalIgnoreCase);
+        if (!(previewAdmitted || CommerceSharedHostCutoverGate.IsAdmitted(configuration, verifiedBusinessId, host)) ||
             (!HttpMethods.IsGet(method) && !HttpMethods.IsHead(method)))
             return false;
 

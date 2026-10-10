@@ -70,6 +70,34 @@ public static class CommerceServiceRegistration
         }
     }
 
+    /// <summary>Full public storefront and checkout, but no merchant management
+    /// endpoints or independently started automation workers.</summary>
+    public static IMvcBuilder AddLegendCommerceCutoverMvc(this IMvcBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.AddLegendCommerceMvc();
+        builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.Conventions.Add(new CommerceCutoverControllerConvention()));
+        return builder;
+    }
+
+    private sealed class CommerceCutoverControllerConvention :
+        Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelConvention
+    {
+        public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
+        {
+            var allowed = new[] {
+                typeof(StoreController), typeof(StoreCartController),
+                typeof(StoreCheckoutController), typeof(ParfaitPublicPreviewController)
+            };
+            var assembly = typeof(StoreController).Assembly;
+            foreach (var controller in application.Controllers.Where(c =>
+                c.ControllerType.Assembly == assembly &&
+                !allowed.Contains(c.ControllerType.AsType())).ToArray())
+                application.Controllers.Remove(controller);
+        }
+    }
+
     public static IMvcBuilder ExcludeLegendCommerceMvc(this IMvcBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);

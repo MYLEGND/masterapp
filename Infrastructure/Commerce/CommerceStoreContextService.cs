@@ -80,8 +80,9 @@ public sealed class CommerceStoreContextService(
         {
             // A website-host preview is GET-only and must never implicitly
             // seed a new Parfait identity into the production SQL database.
-            var parfait = string.Equals(configuration["Commerce:SharedHostPreview:Enabled"],
-                "true", StringComparison.OrdinalIgnoreCase)
+            var parfait = (string.Equals(configuration["Commerce:SharedHostPreview:Enabled"],
+                "true", StringComparison.OrdinalIgnoreCase) ||
+                Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(configuration))
                 ? await parfaitScope.FindExistingParfaitAsync(ct)
                 : await parfaitScope.GetParfaitAsync(ct);
             return parfait is null
