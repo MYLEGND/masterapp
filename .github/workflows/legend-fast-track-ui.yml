@@ -82,6 +82,7 @@ jobs:
               ): return {'AgentPortal','ClientApp'}
               if path.startswith('SHARED/wwwroot/'): return {'AgentPortal','ClientApp','Protect','Parfait','Website'}
               if path.startswith('SHARED/WebsitePlatform/'): return {'Website','Protect'}
+              if path=='Legend-Design/legend-public-inquiry.js': return {'Website','Protect'}
               if path.startswith('Legend-Design/'): return set(catalog)
               if path=='Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs': return {'AgentPortal','ClientApp','Protect'}
               if path=='Infrastructure/WebsiteEditing/WebsitePlatformController.cs': return {'Protect'}
@@ -91,6 +92,7 @@ jobs:
               raise SystemExit('Unmapped fast-track source path: '+path)
           assert impacts('SHARED/wwwroot/js/finance-tools.js')=={'AgentPortal','ClientApp'}
           assert impacts('Legend-Website/scripts/check.mjs')=={'Website'}
+          assert impacts('Legend-Design/legend-public-inquiry.js')=={'Website','Protect'}
           assert impacts('Protect-Website/Views/Shared/_Layout.cshtml')=={'Protect'}
           assert impacts('Infrastructure/WebsiteEditing/WebsitePlatformController.cs')=={'Protect'}
           assert impacts('.github/workflows/legend-fast-track-ui.yml')==set()
@@ -141,6 +143,9 @@ jobs:
 
       - name: Verify all five web entrypoints render without blocking on CMS or analytics
         run: node --test tests/website/public-first-paint.test.mjs
+
+      - name: Verify canonical inquiry button states and retry behavior
+        run: node --test Legend-Website/scripts/inquiry-button.test.mjs
 
       - name: Verify shared Finance bootstrap without touching saved state
         run: node --test tests/layout/finance-startup-canonical.test.mjs

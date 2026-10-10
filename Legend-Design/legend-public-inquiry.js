@@ -30,18 +30,41 @@
     form.dataset.legendInquiryBound = 'true';
     let submissionId = null;
     let pendingPayload = null;
+    let sending = false;
+    let sent = false;
+    const button = form.querySelector('[type="submit"]');
+    const status = form.querySelector('[role="status"]');
+    if (!button) return;
+    const originalButtonMarkup = button.innerHTML;
+    if (status) status.dataset.legendInquiryAnnouncement = 'true';
+
+    function showState(state, label, announcement) {
+      button.dataset.legendInquiryState = state;
+      button.textContent = label;
+      button.setAttribute('aria-busy', state === 'sending' ? 'true' : 'false');
+      if (status) status.textContent = announcement;
+    }
+    function restoreOnEdit() {
+      if (sending || (button.dataset.legendInquiryState !== 'sent' && button.dataset.legendInquiryState !== 'error')) return;
+      sent = false;
+      button.disabled = false;
+      button.removeAttribute('data-legend-inquiry-state');
+      button.removeAttribute('aria-busy');
+      button.innerHTML = originalButtonMarkup;
+      if (status) status.textContent = '';
+    }
+    form.addEventListener('input', restoreOnEdit);
+    form.addEventListener('change', restoreOnEdit);
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (!form.reportValidity()) return;
+      if (sending || sent || !form.reportValidity()) return;
 
       // The shared tracker owns browser form telemetry. This AJAX runtime only
       // reports the attempt into that existing lifecycle; it does not emit a
       // separate Lead conversion.
       form._trackSubmitAttempt?.(true, 0);
 
-      const button = form.querySelector('[type="submit"]');
-      const status = form.querySelector('[role="status"]');
       const fields = new FormData(form);
       const analytics = window.LegendAnalytics;
       const attribution = analytics?.ids?.getAttribution?.() || {};
@@ -112,8 +135,9 @@
         pendingPayload = fingerprint;
       }
 
+      sending = true;
       button.disabled = true;
-      status.textContent = 'Sending your inquiry…';
+      showState('sending', 'Sending inquiry…', 'Sending your inquiry.');
       try {
         const endpoint = new URL('/api/website-inquiries/public', resolveApiBase()).toString();
         const response = await fetch(endpoint, {
@@ -124,7 +148,8 @@
         const result = await response.json().catch(() => null);
         if (!response.ok || !result?.accepted) throw new Error('inquiry_failed');
 
-        status.textContent = 'Your inquiry has been sent.';
+        sent = true;
+        showState('sent', '✓ Inquiry sent', 'Your inquiry has been received.');
         window.LEGEND_PUBLIC_META_SESSION?.markSubmitted?.({
           websiteLeadSaved: true,
           sourceActionKey
@@ -140,9 +165,10 @@
         submissionId = null;
         pendingPayload = null;
       } catch {
-        status.textContent = 'Your inquiry could not be confirmed. Please try again.';
+        showState('error', 'Not confirmed — retry', 'Your inquiry could not be confirmed. Please try again.');
       } finally {
-        button.disabled = false;
+        sending = false;
+        button.disabled = sent;
       }
     });
   }

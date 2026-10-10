@@ -124,6 +124,43 @@
   outline:3px solid color-mix(in srgb,var(--gold,#c9a55d) 70%,transparent);
   outline-offset:3px
 }
+/* The submit button owns visible progress and outcome. Keep the existing
+   role=status announcement accessible without a disconnected message below. */
+.public-form [role="status"][data-legend-inquiry-announcement],
+.legend-native-experience [role="status"][data-legend-inquiry-announcement]{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;
+  overflow:hidden;white-space:nowrap;clip-path:inset(50%)
+}
+.public-form .btn.primary[data-legend-inquiry-state="sending"],
+.legend-native-experience button[type="submit"][data-legend-inquiry-state="sending"]{
+  opacity:1;cursor:progress
+}
+.public-form .btn.primary[data-legend-inquiry-state="sent"],
+.legend-native-experience button[type="submit"][data-legend-inquiry-state="sent"]{
+  background:#147d49;border-color:#147d49;color:#fff;
+  box-shadow:0 10px 24px rgba(20,125,73,.24);
+  opacity:1;cursor:default;transform:none
+}
+.public-form .btn.primary[data-legend-inquiry-state="sent"]:hover,
+.legend-native-experience button[type="submit"][data-legend-inquiry-state="sent"]:hover{
+  background:#147d49;border-color:#147d49;transform:none;filter:none;
+  box-shadow:0 10px 24px rgba(20,125,73,.24)
+}
+.public-form .btn.primary[data-legend-inquiry-state="error"],
+.legend-native-experience button[type="submit"][data-legend-inquiry-state="error"]{
+  background:#802b34;border-color:#802b34;color:#fff;opacity:1
+}
+.public-form .btn.primary[data-legend-inquiry-state="sending"]::before,
+.legend-native-experience button[type="submit"][data-legend-inquiry-state="sending"]::before{
+  content:"";display:inline-block;width:15px;height:15px;margin-right:10px;
+  border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;
+  animation:legend-inquiry-spin .75s linear infinite
+}
+@keyframes legend-inquiry-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){
+  .public-form .btn.primary[data-legend-inquiry-state="sending"]::before,
+  .legend-native-experience button[type="submit"][data-legend-inquiry-state="sending"]::before{animation:none}
+}
 @media(max-width:650px){
   .public-form fieldset{padding:20px 16px;border-radius:18px}
   .public-form-grid{grid-template-columns:1fr;gap:14px;margin-bottom:20px}
