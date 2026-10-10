@@ -69,6 +69,7 @@ public static class CommerceSharedHostPreviewGate
     }
 
     public const string OriginalPagePathItem = "Legend.Commerce.OriginalPublicPreviewPath";
+    public const string PreviewMediaBusinessIdItem = "Legend.Commerce.PreviewMediaBusinessId";
 
     public static bool TryMapPublicPage(IConfiguration configuration,
         Guid verifiedBusinessId, string host, PathString path, string method,

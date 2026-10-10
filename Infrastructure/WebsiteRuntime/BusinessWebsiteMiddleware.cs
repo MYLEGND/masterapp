@@ -55,6 +55,8 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (CommerceSharedHostPreviewGate.MayRoute(
                 configuration, binding.Value, host, context.Request.Path, context.Request.Method))
         {
+            if (context.Request.Path.StartsWithSegments("/uploads/parfait-products", StringComparison.OrdinalIgnoreCase))
+                context.Items[CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem] = binding.Value;
             await next(context);
             return;
         }

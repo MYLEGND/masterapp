@@ -230,6 +230,7 @@ app.UseHttpsRedirection();
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
 app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
+app.UseMiddleware<Legend.Commerce.CommercePreviewMediaMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
 app.Use(async (context, next) =>
