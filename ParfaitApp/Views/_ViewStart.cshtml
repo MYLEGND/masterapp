@@ -1,8 +1,4 @@
 ﻿@{
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
-    Layout = commerce is { IsParfait: false } &&
-             !string.IsNullOrWhiteSpace(commerce.WebsiteShellPrefix) &&
-             !string.IsNullOrWhiteSpace(commerce.WebsiteShellSuffix)
-        ? "_ScopedWebsiteStoreLayout"
-        : "_Layout";
+    Layout = Infrastructure.Commerce.CommerceStorefrontPresentation.ResolveLayout(commerce);
 }
