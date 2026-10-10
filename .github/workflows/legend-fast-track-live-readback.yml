@@ -1,0 +1,90 @@
+name: LEGEND Fast Track — read-only publication reconciliation
+
+# An independent GET-only proof after an ambiguous Azure CLI timeout.
+# NEVER resubmits, restarts, patches, configures or rolls back a web app.
+on:
+  push:
+    branches: [Legend/fast-track-release]
+    paths: [.github/workflows/legend-fast-track-live-readback.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  live-proof:
+    name: Portal and Client live revision audit (no writes)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: Production
+    steps:
+      - name: Azure read-only authentication
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify both exact runtime revisions and actual shared UI assets
+        shell: bash
+        env:
+          EXPECTED_UI_REVISION: 1cc15923309140a39cb72e472c8def0f6ad706b5
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, time, urllib.error, urllib.request
+          expected=os.environ["EXPECTED_UI_REVISION"]
+          apps=[("portal","masterapp-portal","portal.mylegnd.com"),
+                ("client","masterapp-client","client.mylegnd.com")]
+          report={}
+          def fetch(url):
+              request=urllib.request.Request(url+"?readback="+str(time.time_ns()),
+                         headers={"Cache-Control":"no-cache","User-Agent":"LEGEND-read-only-live-proof"})
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  if response.status!=200 or response.url.split("?")[0]!=url: return None
+                  return response.read(600000).decode("utf-8")
+          for key,app,host in apps:
+              target={"app":app,"expected":expected,"provider":"UNVERIFIED","live":"UNVERIFIED","assets":"UNVERIFIED"}
+              url="https://"+host
+              for attempt in range(4):
+                  try:
+                      body=fetch(url+"/api/runtime-provenance")
+                      rev=json.loads(body).get("sourceRevision") if body else None
+                      if rev==expected:
+                          target["live"]="EXACT"
+                          break
+                      target["live"]="DIFFERENT_OR_UNAVAILABLE"
+                  except (OSError,ValueError,KeyError):
+                      target["live"]="UNAVAILABLE"
+                  time.sleep(6)
+              try:
+                  css=fetch(url+"/_content/Shared/css/dashboard-home-shared.css")
+                  js=fetch(url+"/_content/Shared/js/messaging.js")
+                  target["assets"]="CANONICAL" if (css and js
+                      and "messaging-command-center-modal.is-sidebar-open" in css
+                      and "legend-conversation-shell" in css
+                      and "setConversationSidebarOpen" in js
+                      and "elements.window.classList.add('open')" in js) else "MISSING_OR_STALE"
+              except (OSError,ValueError):
+                  target["assets"]="UNAVAILABLE"
+              for attempt in range(3):
+                  try:
+                      response=subprocess.run(["az","webapp","log","deployment","list","-g","masterapp-rg","-n",app,
+                          "--only-show-errors","-o","json"],capture_output=True,text=True,timeout=22)
+                      if response.returncode: raise RuntimeError("AZURE_READ_FAILED")
+                      rows=json.loads(response.stdout)
+                      if not isinstance(rows,list) or any(
+                          not isinstance(row,dict) or type(row.get("status")) is not int or not row.get("id")
+                          for row in rows): raise RuntimeError("AZURE_RESPONSE_INVALID")
+                      target["provider"]="ACTIVE" if any(row["status"] in (0,1,2) for row in rows) else "IDLE"
+                      break
+                  except (RuntimeError,ValueError,subprocess.TimeoutExpired):
+                      target["provider"]="UNAVAILABLE"
+                      time.sleep(5)
+              report[key]=target
+              print("LEGEND_READBACK="+json.dumps(target,sort_keys=True),flush=True)
+          if any(row["live"]!="EXACT" or row["assets"]!="CANONICAL" or row["provider"]!="IDLE"
+              for row in report.values()):
+              raise SystemExit("At least one app is unverified. No upload was retried.")
+          print("LEGEND_UI_EXACT_LIVE_AND_IDLE: PORTAL + CLIENT",flush=True)
+          PY
