@@ -1,4 +1,5 @@
 using Infrastructure.Commerce;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using ParfaitApp.Controllers;
 using Microsoft.Extensions.DependencyInjection;
 using ParfaitApp.Services;
@@ -16,7 +17,11 @@ public static class CommerceServiceRegistration
     public static IMvcBuilder AddLegendCommerceMvc(this IMvcBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        return builder.AddApplicationPart(typeof(StoreController).Assembly);
+        var assembly = typeof(StoreController).Assembly;
+        return builder.PartManager.ApplicationParts.OfType<AssemblyPart>()
+            .Any(part => part.Assembly == assembly)
+            ? builder
+            : builder.AddApplicationPart(assembly);
     }
 
     public static IServiceCollection AddLegendCommerceCore(this IServiceCollection services)

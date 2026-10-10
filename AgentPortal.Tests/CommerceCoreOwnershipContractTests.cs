@@ -55,7 +55,7 @@ public sealed class CommerceCoreOwnershipContractTests
     public void MvcHostDiscoversOneCanonicalInstanceOfEachCommerceController()
     {
         var services = new ServiceCollection();
-        var builder = services.AddControllersWithViews().AddLegendCommerceMvc();
+        var builder = services.AddControllersWithViews().AddLegendCommerceMvc().AddLegendCommerceMvc();
         var part = Assert.Single(builder.PartManager.ApplicationParts
             .Where(p => p.Name == typeof(StoreController).Assembly.GetName().Name));
         Assert.IsType<AssemblyPart>(part);
