@@ -62,6 +62,57 @@ public sealed class CommerceCutoverInventoryTests
     }
 
     [Fact]
+    public async Task ImageManifestMatchesExactFileBytesAndRejectsTraversal()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var tenant = new CommerceBusiness { Key = "parfait", IsActive = true };
+        var product = new CommerceProduct { CommerceBusinessId = tenant.Id, Name = "Test" };
+        var image = new CommerceProductImage
+        {
+            CommerceProductId = product.Id,
+            ImageUrl = "/uploads/parfait-products/product-1/original.png"
+        };
+        db.CommerceBusinesses.Add(tenant);
+        db.CommerceProducts.Add(product);
+        db.CommerceProductImages.Add(image);
+        await db.SaveChangesAsync();
+
+        var root = Path.Combine(Path.GetTempPath(), "commerce-manifest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var folder = Path.Combine(root, "uploads", "parfait-products", "product-1");
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, "original.png");
+            await File.WriteAllBytesAsync(path, new byte[] { 1, 2, 3, 4, 5 });
+
+            var env = new Mock<IWebHostEnvironment>();
+            env.SetupGet(x => x.ContentRootPath).Returns(root);
+            env.SetupGet(x => x.WebRootPath).Returns(root);
+            var storage = new ParfaitApp.Services.ParfaitStoragePaths(env.Object,
+                new ConfigurationBuilder().AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("Parfait:StorageRoot", root)
+                }).Build());
+            var inventory = new CommerceCutoverInventory(db, storage);
+            var before = await inventory.ReadAsync(tenant.Id, "parfait");
+            Assert.Equal(1, before.LocalProductImages);
+            Assert.Equal(1, before.VerifiedLocalProductImages);
+            Assert.Equal(0, before.MissingLocalProductImages);
+            Assert.Equal(64, before.ProductMediaSha256!.Length);
+
+            await File.WriteAllBytesAsync(path, new byte[] { 1, 2, 3, 4, 6 });
+            var after = await inventory.ReadAsync(tenant.Id, "parfait");
+            Assert.NotEqual(before.ProductMediaSha256, after.ProductMediaSha256);
+            Assert.Empty(storage.ResolveImagePhysicalPaths("/uploads/parfait-products/../secret.png"));
+            Assert.Empty(storage.ResolveImagePhysicalPaths("/uploads/parfait-products/%2e%2e/secret.png"));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task IncludesExistingWorkflowCountsAndDigestWithoutWritingToFile()
     {
         using var db = ControllerTestHelpers.BuildDb();

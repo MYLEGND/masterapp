@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -35,7 +36,7 @@ public sealed class CommerceCutoverInventory(MasterAppDbContext db, ParfaitStora
         var productIds = products.ToHashSet();
         var imageRows = await db.CommerceProductImages.AsNoTracking()
             .Where(x => productIds.Contains(x.CommerceProductId))
-            .Select(x => x.ImageUrl)
+            .Select(x => new { x.Id, x.ImageUrl })
             .ToListAsync(ct);
         var inventoryCount = await db.CommerceProductInventoryItems.AsNoTracking()
             .CountAsync(x => productIds.Contains(x.CommerceProductId), ct);
@@ -51,17 +52,52 @@ public sealed class CommerceCutoverInventory(MasterAppDbContext db, ParfaitStora
 
         var missingLocalImages = 0;
         var localImages = 0;
-        foreach (var url in imageRows)
+        var mediaHashes = new List<(Guid Id, string Sha256)>();
+        foreach (var image in imageRows)
         {
+            var url = image.ImageUrl;
             if (string.IsNullOrWhiteSpace(url) ||
                 !url.StartsWith(LocalImagePrefix, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             localImages++;
-            if (!IsSafeLocalImageUrl(url) ||
-                !storage.ResolveImagePhysicalPaths(url).Any(File.Exists))
+            if (!IsSafeLocalImageUrl(url))
+            {
                 missingLocalImages++;
+                continue;
+            }
+
+            var existingFile = storage.ResolveImagePhysicalPaths(url).FirstOrDefault(File.Exists);
+            if (existingFile is null)
+            {
+                missingLocalImages++;
+                continue;
+            }
+
+            try
+            {
+                var before = new FileInfo(existingFile);
+                await using var content = File.OpenRead(existingFile);
+                var digest = Convert.ToHexString(await SHA256.HashDataAsync(content, ct)).ToLowerInvariant();
+                var after = new FileInfo(existingFile);
+                if (before.Length != after.Length || before.LastWriteTimeUtc != after.LastWriteTimeUtc)
+                {
+                    missingLocalImages++;
+                    continue;
+                }
+                mediaHashes.Add((image.Id, digest));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                missingLocalImages++;
+            }
         }
+        // Stable across machines and roots: hashes refer to database image IDs and
+        // exact original file bytes, not host-dependent filesystem paths.
+        var mediaDigest = mediaHashes.Count == 0 ? null
+            : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("\n", mediaHashes.OrderBy(x => x.Id)
+                    .Select(x => x.Id.ToString("N") + ":" + x.Sha256))))).ToLowerInvariant();
 
         var automation = await ReadAutomationAsync(storage.GetCustomerAutomationsPath(business.Key), ct);
         var legacyTeamPresent = string.Equals(business.Key, "parfait", StringComparison.OrdinalIgnoreCase)
@@ -70,6 +106,7 @@ public sealed class CommerceCutoverInventory(MasterAppDbContext db, ParfaitStora
         return new CommerceCutoverSnapshot(
             business.Id, business.Key, products.Count, inventoryCount, discountCount,
             imageRows.Count, localImages, missingLocalImages,
+            mediaHashes.Count, mediaDigest,
             orders.Count, linesCount, automation.Exists, automation.Readable,
             automation.Sha256, automation.Workflows, automation.CartLeads,
             automation.Dispatches, legacyTeamPresent);
@@ -132,6 +169,8 @@ public sealed record CommerceCutoverSnapshot(
     int ProductImages,
     int LocalProductImages,
     int MissingLocalProductImages,
+    int VerifiedLocalProductImages,
+    string? ProductMediaSha256,
     int Orders,
     int OrderLines,
     bool AutomationFileExists,
