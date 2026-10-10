@@ -5,6 +5,15 @@
     var managerTicket = ViewData["CommerceManagerTicket"] as string;
     var scopedManager = scopedStore is not null && !string.IsNullOrWhiteSpace(managerTicket);
     var storeName = scopedStore?.StoreName ?? "Parfait";
+    // The one shared internal shell must never render Parfait's icon for another
+    // commerce tenant. Parfait's original identity remains byte-for-byte in its
+    // legacy internal session, while scoped managers use their own published logo.
+    var scopedLogoUrl = scopedManager && !string.IsNullOrWhiteSpace(scopedStore?.LogoUrl)
+        ? scopedStore.LogoUrl
+        : null;
+    var faviconUrl = !scopedManager || scopedStore?.IsParfait == true
+        ? Url.Content("~/images/favicon/parfait-logo.png")
+        : scopedLogoUrl ?? "https://www.mylegnd.com/favicon.jpg";
     var storeRoot = scopedStore?.StoreRootPath ?? "/store";
     var theme = scopedStore?.Theme;
     var primary = theme?.GoldStrong ?? theme?.Gold ?? scopedStore?.AccentColor;
@@ -51,7 +60,7 @@
     <meta charset="utf-8" />
     <title>@title - @storeName</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
+    <link rel="icon" href="@faviconUrl" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -141,6 +150,14 @@
                                     <img src="~/images/favicon/parfait-logo.png"
                                          asp-append-version="true"
                                          alt="Parfait"
+                                         class="pf-brand-logo" />
+                                </span>
+                            }
+                            else if (scopedLogoUrl is not null)
+                            {
+                                <span class="pf-brand-emblem">
+                                    <img src="@scopedLogoUrl"
+                                         alt="@storeName"
                                          class="pf-brand-logo" />
                                 </span>
                             }
