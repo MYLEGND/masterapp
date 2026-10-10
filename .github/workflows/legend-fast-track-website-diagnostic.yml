@@ -11,7 +11,7 @@ permissions:
 jobs:
   website-provider-evidence:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: Production
     steps:
       - name: Sign in to existing Azure production authority
@@ -58,4 +58,76 @@ jobs:
                   print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':e.code}))
               except OSError:
                   print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':'network_unavailable'}))
+          PY
+
+      - name: Inspect nested Kudu deployment failure without changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, re, subprocess, urllib.request, urllib.error, xml.etree.ElementTree as ET
+          app='masterapp-website'
+          host='masterapp-website.scm.azurewebsites.net'
+          def az(*args):
+              try:
+                  p=subprocess.run(['az',*args],capture_output=True,text=True,timeout=90)
+                  return p.stdout if p.returncode==0 else None
+              except subprocess.TimeoutExpired:
+                  return None
+          raw=az('webapp','log','deployment','list','-g','masterapp-rg','-n',app,'--only-show-errors','-o','json')
+          if not raw:
+              print('KUDU_DIAGNOSTIC=DEPLOYMENT_LIST_UNAVAILABLE')
+              raise SystemExit(0)
+          try: rows=json.loads(raw)
+          except ValueError:
+              print('KUDU_DIAGNOSTIC=DEPLOYMENT_LIST_INVALID')
+              raise SystemExit(0)
+          recent=sorted(rows,key=lambda row: str(row.get('received_time') or ''),reverse=True)[:5]
+          failures=[row for row in recent if row.get('status')==3]
+          print('KUDU_RECENT_STATES='+json.dumps([{'id':r.get('id'),'status':r.get('status'),'received':r.get('received_time')} for r in recent]))
+          if not failures:
+              print('KUDU_DIAGNOSTIC=NO_RECENT_FAILED_DEPLOYMENTS')
+              raise SystemExit(0)
+          profile_xml=az('webapp','deployment','list-publishing-profiles','-g','masterapp-rg','-n',app,'--xml','--only-show-errors')
+          if not profile_xml:
+              print('KUDU_DIAGNOSTIC=PUBLISH_PROFILE_READ_UNAVAILABLE')
+              raise SystemExit(0)
+          try:
+              profiles=ET.fromstring(profile_xml).findall('.//publishProfile')
+              profile=next((p for p in profiles if p.get('publishUserName') and p.get('publishPassword') and p.get('publishMethod') in ('MSDeploy','ZipDeploy')),None)
+              if profile is None: raise ValueError('profile_missing')
+              token=base64.b64encode((profile.get('publishUserName')+':'+profile.get('publishPassword')).encode()).decode()
+          except (ValueError,ET.ParseError,TypeError):
+              print('KUDU_DIAGNOSTIC=PROFILE_FORMAT_UNAVAILABLE')
+              raise SystemExit(0)
+          def kudu(url):
+              if not url.startswith('https://'+host+'/api/deployments/'):
+                  raise ValueError('outside scoped Kudu read authority')
+              req=urllib.request.Request(url,headers={'Authorization':'Basic '+token,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=22) as res: return json.loads(res.read(262144))
+              except (OSError,ValueError) as e:
+                  return {'error':type(e).__name__}
+          def safe_message(message):
+              text=str(message or '')
+              text=re.sub(r'(?i)(password|token|authorization|client.secret|connectionstring)(\s*[:=]\s*)[^\s,;]+',r'\1\2[REDACTED]',text)
+              return text[:650]
+          for row in failures[:2]:
+              did=str(row['id'])
+              root=kudu('https://'+host+'/api/deployments/'+did+'/log')
+              if not isinstance(root,list):
+                  print('KUDU_FAILURE_LOG_READ='+json.dumps({'id':did,'result':root}))
+                  continue
+              for entry in root[-24:]:
+                  msg=safe_message(entry.get('message'))
+                  print('KUDU_FAILURE_ENTRY='+json.dumps({'id':did,'type':entry.get('type'),'message':msg}))
+                  child=entry.get('details_url')
+                  if not isinstance(child,str) or not child.startswith('https://'+host+'/api/deployments/'+did+'/log/'):
+                      continue
+                  nested=kudu(child)
+                  if isinstance(nested,list):
+                      for detail in nested[-25:]:
+                          print('KUDU_FAILURE_NESTED='+json.dumps({'id':did,'type':detail.get('type'),'message':safe_message(detail.get('message'))}))
+                  else:
+                      print('KUDU_NESTED_READ='+json.dumps({'id':did,'result':nested}))
           PY
