@@ -23,7 +23,7 @@ const jpeg=await readFile(resolve(root,'dist','favicon.jpg'));
 if(jpeg[0]!==0xff || jpeg[1]!==0xd8 || jpeg[2]!==0xff) throw new Error('Google favicon is not a valid JPEG');
 for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
-  if(!html.includes('<link rel="icon" href="/favicon.jpg" type="image/jpeg" sizes="128x128">')) throw new Error('Missing raster favicon for '+route);
+  if(!html.includes('href="https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/favicon"')) throw new Error('Static route must use stable published favicon authority: '+route);
 }
 // All published entrypoints must paint even if CMS/analytics fetches stall.
 for(const route of routes){
