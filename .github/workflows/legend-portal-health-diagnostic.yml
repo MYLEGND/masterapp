@@ -1,0 +1,88 @@
+name: LEGEND Portal live health diagnostic (read only)
+
+# One-shot incident probe. No build, deployment, restart, rollback, appsetting
+# changes, production mutations, or work against ClientApp.
+on:
+  push:
+    branches: [Legend/fast-track-release]
+    paths: [.github/workflows/legend-portal-health-diagnostic.yml]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  portal-readback:
+    if: github.ref == 'refs/heads/Legend/fast-track-release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: Production
+    steps:
+      - name: Sign in to existing read-only Azure observation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Inspect Azure site state, deployment history, and direct runtime endpoints
+        shell: bash
+        env:
+          EXPECTED_UI_SHA: 1cc15923309140a39cb72e472c8def0f6ad706b5
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re,subprocess,time,urllib.error,urllib.request
+          def azure(args,timeout=50):
+              try:
+                  result=subprocess.run(['az',*args,'--only-show-errors','-o','json'],
+                      capture_output=True,text=True,timeout=timeout,check=False)
+                  if result.returncode: return {'available':False,'failure':'AZURE_READ_DENIED_OR_FAILED'}
+                  return {'available':True,'value':json.loads(result.stdout)}
+              except (subprocess.TimeoutExpired,ValueError):
+                  return {'available':False,'failure':'AZURE_READ_TIMEOUT_OR_INVALID'}
+          def probe(url):
+              try:
+                  request=urllib.request.Request(url+'?incident='+os.environ['GITHUB_RUN_ID']+'-'+str(time.time_ns()),
+                      headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-portal-read-only-diagnostic'})
+                  with urllib.request.urlopen(request,timeout=18) as response:
+                      status=response.status
+                      body=response.read(8192) if status==200 else b''
+                      revision=None
+                      if status==200 and url.endswith('/api/runtime-provenance'):
+                          try:
+                              candidate=json.loads(body).get('sourceRevision')
+                              if isinstance(candidate,str) and re.fullmatch('[0-9a-f]{40}',candidate):
+                                  revision=candidate
+                          except (ValueError,AttributeError): pass
+                      return {'status':status,'revision':revision,
+                          'exact':revision==os.environ['EXPECTED_UI_SHA'] if revision else None}
+              except urllib.error.HTTPError as exc:
+                  return {'status':exc.code,'failure':'HTTP_NON_200'}
+              except (OSError,ValueError):
+                  return {'status':None,'failure':'NETWORK_TLS_DNS_OR_TIMEOUT'}
+          app='masterapp-portal'
+          meta=azure(['webapp','show','-g','masterapp-rg','-n',app,
+              '--query','{state:state,defaultHostName:defaultHostName,httpsOnly:httpsOnly,availabilityState:availabilityState,enabled:enabled}'])
+          print('PORTAL_APP_STATE='+json.dumps(meta,sort_keys=True),flush=True)
+          history=azure(['webapp','log','deployment','list','-g','masterapp-rg','-n',app],timeout=55)
+          if history['available']:
+              rows=history['value']
+              if isinstance(rows,list) and all(isinstance(x,dict) for x in rows):
+                  history={'available':True,'count':len(rows),
+                      'recent':[{'id':str(x.get('id',''))[:130],'status':x.get('status'),
+                          'received_time':str(x.get('received_time') or x.get('receivedTime') or '')[:40]}
+                          for x in rows[:6]],
+                      'activeCount':sum(x.get('status') in (0,1,2) for x in rows)}
+              else: history={'available':False,'failure':'INVALID_HISTORY'}
+          print('PORTAL_DEPLOYMENT_HISTORY='+json.dumps(history,sort_keys=True),flush=True)
+          hosts=[
+              'https://portal.mylegnd.com',
+              'https://masterapp-portal.azurewebsites.net',
+              'https://client.mylegnd.com'
+          ]
+          for host in hosts:
+              for path in ['/api/runtime-provenance','/']:
+                  print('HTTP_READBACK='+json.dumps({'host':host,'path':path,
+                      'observation':probe(host+path)},sort_keys=True),flush=True)
+          # No provider mutation, no Azure writes, and no inference requests.
+          PY
