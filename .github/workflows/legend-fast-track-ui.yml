@@ -13,6 +13,9 @@ on:
       - ClientApp/Views/**
       - ClientApp/wwwroot/**
       - SHARED/wwwroot/**
+      - AgentPortal/Views/Finance/Index.cshtml
+      - ClientApp/Views/Finance/Index.cshtml
+      - tests/layout/finance-startup-canonical.test.mjs
       - Legend-Design/**
       - Legend-Website/scripts/**
       - Protect-Website/Views/Shared/_Layout.cshtml
@@ -81,6 +84,9 @@ jobs:
 
       - name: Verify all five web entrypoints render without blocking on CMS or analytics
         run: node --test tests/website/public-first-paint.test.mjs
+
+      - name: Verify shared Finance bootstrap without touching saved state
+        run: node --test tests/layout/finance-startup-canonical.test.mjs
 
       - name: Install .NET 10
         if: ${{ matrix.project != 'static' }}

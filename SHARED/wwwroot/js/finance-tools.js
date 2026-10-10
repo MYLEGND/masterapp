@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", async function () {
+async function initializeLegendFinanceTools() {
     const dropdown = document.getElementById("budgetDropdown");
     const financialHealthButton = document.getElementById("btnFinancialHealthSnapshot");
     const embedContainer = document.getElementById("budget-embed");
@@ -331,12 +331,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     const serverSaveInFlight = new Set();
 
     function readLocalPersistedState(key) {
-        const raw = localStorage.getItem(localStateKey(key));
-        if (!raw) return null;
-
         try {
-            return normalizePersistedState(key, JSON.parse(raw || "{}"));
+            const raw = localStorage.getItem(localStateKey(key));
+            return raw ? normalizePersistedState(key, JSON.parse(raw)) : null;
         } catch (_) {
+            // Storage denial must not prevent server-backed finance tools from rendering.
             return null;
         }
     }
@@ -405,7 +404,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                         const payload = await res.json();
                         if (payload?.found) {
                             const state = normalizePersistedState(candidateKey, JSON.parse(payload?.jsonState || "{}"));
-                            localStorage.setItem(localStateKey(getPrimaryStateKey(candidateKey)), JSON.stringify(state ?? {}));
+                            try { localStorage.setItem(localStateKey(getPrimaryStateKey(candidateKey)), JSON.stringify(state ?? {})); } catch (_) { /* Database state remains authoritative. */ }
                             return state;
                         }
                     }
@@ -506,7 +505,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         const jsonState = JSON.stringify(normalizedState ?? {});
 
         if (!options.skipLocalCache) {
-            localStorage.setItem(localStateKey(primaryKey), jsonState);
+            try { localStorage.setItem(localStateKey(primaryKey), jsonState); } catch (_) {
+                // Browser storage availability cannot gate an authorized server save.
+            }
         }
 
         if (!canUseServerState) return;
@@ -601,7 +602,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const normalizedSelection = normalizeSelectedToolSelection(selection);
 
         if (!canUseServerState) {
-            storageSet("selected-tool", JSON.stringify(normalizedSelection));
+            try { storageSet("selected-tool", JSON.stringify(normalizedSelection)); } catch (_) { /* Render still proceeds. */ }
             return;
         }
 
@@ -781,7 +782,12 @@ document.addEventListener("DOMContentLoaded", async function () {
             return;
         }
 
-        const persistedSelection = await loadSelectedToolSelection();
+        let persistedSelection;
+        try { persistedSelection = await loadSelectedToolSelection(); }
+        catch (_) {
+            requestToolSelection(DEFAULT_TOOL_ID);
+            return;
+        }
         if (
             enableCoachingTools
             && persistedSelection.selectedToolType === "coaching"
@@ -1989,7 +1995,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         });
     }
 
-    dropdown.addEventListener("change", async function () {
+    const renderSelectedFinanceTool = async function () {
         const selectedToolId = resolveToolSelection(requestedToolOverrideId || this.value);
         requestedToolOverrideId = "";
         this.blur();
@@ -12311,8 +12317,31 @@ if (t.id === "DebtAssetPulse") {
     toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToDebtAssetPulse);
     } // ✅ closes if (t.id === "DebtAssetPulse")
 
-}); // ✅ closes dropdown.addEventListener("change", ...)
+}; // Canonical finance renderer shared by Portal and Client.
+
+    dropdown.addEventListener("change", function () {
+        void renderSelectedFinanceTool.call(this).catch(error => {
+            console.error("[legend-finance-render]", error);
+            if (!embedContainer.querySelector(".llbs-tool, .networth-tool, .finance-coaching-shell")) {
+                embedContainer.textContent = "Finance tools could not finish loading. Your saved financial data is unchanged. Reload to try again.";
+                embedContainer.setAttribute("role", "alert");
+            }
+        });
+    });
 
     await restoreFinanceToolSelection();
 
-}); // ✅ closes document.addEventListener("DOMContentLoaded", ...)
+} // Canonical finance initializer.
+
+function startLegendFinanceTools() {
+    void initializeLegendFinanceTools().catch(error => {
+        console.error("[legend-finance-startup]", error);
+        const host = document.getElementById("budget-embed");
+        if (host && !host.querySelector(".llbs-tool, .networth-tool, .finance-coaching-shell")) {
+            host.textContent = "Finance tools could not finish loading. Your saved financial data is unchanged. Reload to try again.";
+            host.setAttribute("role", "alert");
+        }
+    });
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startLegendFinanceTools, { once: true });
+else startLegendFinanceTools();

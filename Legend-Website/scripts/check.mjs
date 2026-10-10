@@ -96,7 +96,7 @@ for(const route of ['','about','services','contact']){
   const html=await readFile(resolve(root,'dist/business-preview',route,'index.html'),'utf8');
   if(!html.includes(`data-page-key="${route||'home'}"`))throw new Error('Business page scope is missing: '+route);
   if(/Berthony|MyLegnd, LLC|Christ-centered|connect@mylegnd/.test(html))throw new Error('LEGEND company facts leaked into business template: '+route);
-  if(!html.includes('noindex,nofollow')||!html.includes('data-legend-site="business"')||!/<html[^>]*\shidden(?:\s|>)/.test(html))throw new Error('Business draft must wait for authenticated/published content and use the business starter authority: '+route);
+  if(!html.includes('noindex,nofollow')||!html.includes('data-legend-site="business"')||!/<html lang="en" data-legend-site="business"><head>/.test(html))throw new Error('Business preview must paint immediately while staying noindex and business-scoped: '+route);
 }
 const config=await readFile(resolve(root,'public/web.config'),'utf8');
 if(!config.includes('Reject unrecognized website host'))throw new Error('Static LEGEND origin must reject foreign hosts.');
