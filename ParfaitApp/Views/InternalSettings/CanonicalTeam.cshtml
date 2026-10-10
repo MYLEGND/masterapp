@@ -1,0 +1,52 @@
+@model Legend.Commerce.CommerceBusinessTeamViewModel
+@{
+    Layout = "_InternalLayout";
+    ViewData["Title"] = "Team";
+    var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
+    var saveUrl = "/commerce/manage/team/permissions?ticket=" + Uri.EscapeDataString(ticket);
+}
+<section class="pf-command-page">
+    <div class="pf-command-heading">
+        <h1>Team access</h1>
+        <p>Manage permissions for @Model.StoreName with the same LEGEND® business membership authority used by ClientApp.</p>
+    </div>
+    <div class="pf-command-panel">
+        @foreach (var member in Model.Members)
+        {
+            var locked = member.Role.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+                         member.Role.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
+            <div class="pf-command-card" data-commerce-member="@member.Id">
+                <div class="pf-command-card-heading">
+                    <strong>@(string.IsNullOrWhiteSpace(member.DisplayName) ? member.Email : member.DisplayName)</strong>
+                    <span>@member.Email · @member.Role · @member.Status</span>
+                </div>
+                @if (!member.IsLinked)
+                {
+                    <p>Client identity activation is required before this member can sign in through LEGEND® ClientApp.</p>
+                }
+                @if (locked)
+                {
+                    <p>Business ownership permissions are protected and must be changed through the canonical ownership flow.</p>
+                }
+                else
+                {
+                    <form method="post" action="@saveUrl" class="pf-command-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="MemberId" value="@member.Id" />
+                        <input type="hidden" name="ExpectedUpdatedTicks" value="@member.UpdatedTicks" />
+                        <label><input type="checkbox" name="CanManageStorefront" value="true" checked="@member.CanManageStorefront" /> Website &amp; storefront</label>
+                        <label><input type="checkbox" name="CanManageCatalog" value="true" checked="@member.CanManageCatalog" /> Products &amp; inventory</label>
+                        <label><input type="checkbox" name="CanManageOrders" value="true" checked="@member.CanManageOrders" /> Orders &amp; automations</label>
+                        <label><input type="checkbox" name="CanManageAnalytics" value="true" checked="@member.CanManageAnalytics" /> Analytics</label>
+                        <label><input type="checkbox" name="CanManageTeam" value="true" checked="@member.CanManageTeam" /> Team administration</label>
+                        <button type="submit" class="pf-action">Save permissions</button>
+                    </form>
+                }
+            </div>
+        }
+        @if (Model.Members.Count == 0)
+        {
+            <p>No business memberships are available. Assign members through the canonical ClientApp business activation flow.</p>
+        }
+    </div>
+</section>
