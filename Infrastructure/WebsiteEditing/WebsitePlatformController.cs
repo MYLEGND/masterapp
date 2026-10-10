@@ -199,9 +199,29 @@ public class WebsitePlatformController : ControllerBase
         Response.Headers.Expires = "0";
 
         var favicon = document?.FaviconImageDataUrl;
-        return Redirect(string.IsNullOrWhiteSpace(favicon)
-            ? WebsiteFaviconParity.FallbackUrl(_configuration)
-            : favicon);
+        if (!string.IsNullOrWhiteSpace(favicon))
+        {
+            // Do not redirect browsers or Googlebot-Image to a data: URL.
+            // The media bytes are served by this same published authority.
+            foreach (var mime in new[] { "image/png", "image/jpeg" })
+            {
+                var prefix = "data:" + mime + ";base64,";
+                if (!favicon.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var encoded = favicon[prefix.Length..];
+                    if (encoded.Length > 7_000_000) break;
+                    var bytes = Convert.FromBase64String(encoded);
+                    if (bytes.Length > 5_000_000) break;
+                    return File(bytes, mime);
+                }
+                catch (FormatException) { break; }
+            }
+            if (Uri.TryCreate(favicon, UriKind.Absolute, out var uri) &&
+                uri.Scheme == Uri.UriSchemeHttps)
+                return Redirect(favicon);
+        }
+        return Redirect(WebsiteFaviconParity.FallbackUrl(_configuration));
     }
 
     [HttpGet("public/runtime")]
