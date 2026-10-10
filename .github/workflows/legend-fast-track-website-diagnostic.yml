@@ -126,3 +126,48 @@ jobs:
                   else:
                       print('KUDU_NESTED_READ='+json.dumps({'id':did,'result':nested}))
           PY
+
+      - name: Confirm deployed commerce revisions and public sitemap without mutation
+        shell: bash
+        env:
+          EXPECTED_COMMERCE_RELEASE: 97555039d28fdeb4b2afe5c58d395ac70531d302
+        run: |
+          set -euo pipefail
+          python3 - <<'PYPROOF'
+          import json,os,time,urllib.request,urllib.error,xml.etree.ElementTree as ET
+          expected=os.environ['EXPECTED_COMMERCE_RELEASE']
+          def request(url,accept='*/*'):
+              req=urllib.request.Request(url,headers={
+                  'Accept':accept,'Cache-Control':'no-cache',
+                  'User-Agent':'LegendPostReleaseReadOnlyVerification/1.0'
+              })
+              last='unavailable'
+              for attempt in range(4):
+                  try:
+                      with urllib.request.urlopen(req,timeout=22) as response:
+                          return response.status,response.headers.get('Content-Type','').lower(),response.read(1048576)
+                  except (OSError,ValueError) as exc:
+                      last=type(exc).__name__
+                      print('PUBLIC_READBACK_RETRY='+json.dumps({'url':url,'attempt':attempt+1,'reason':last}),flush=True)
+                      if attempt!=3:time.sleep(7)
+              raise SystemExit('PUBLIC_READBACK_UNAVAILABLE='+url+' reason='+last)
+          for app in ('masterapp-protect','masterapp-parfait'):
+              status,ctype,data=request('https://'+app+'.azurewebsites.net/api/runtime-provenance','application/json')
+              parsed=json.loads(data)
+              if status!=200 or parsed.get('sourceRevision')!=expected:
+                  raise SystemExit('COMMERCE_LIVE_REVISION_MISMATCH: '+app)
+              print('COMMERCE_POSTRELEASE_REVISION_EXACT='+app+':'+expected)
+          origin='https://protect.mylegnd.com'
+          status,ctype,data=request(origin+'/sitemap.xml','application/xml,text/xml')
+          if status!=200 or ('application/xml' not in ctype and 'text/xml' not in ctype):
+              raise SystemExit('PROTECT_SITEMAP_NOT_XML: status='+str(status)+' type='+ctype)
+          root=ET.fromstring(data)
+          ns='{http://www.sitemaps.org/schemas/sitemap/0.9}'
+          locations=[e.text for e in root.findall(ns+'url/'+ns+'loc')]
+          if root.tag!=ns+'urlset' or not locations or len(locations)!=len(set(locations)) or any(not loc or not loc.startswith(origin+'/') for loc in locations):
+              raise SystemExit('PROTECT_SITEMAP_STRUCTURE_INVALID')
+          robots_status,robots_type,robots_data=request(origin+'/robots.txt','text/plain')
+          if robots_status!=200 or 'text/plain' not in robots_type or 'Sitemap: '+origin+'/sitemap.xml' not in robots_data.decode('utf8').splitlines():
+              raise SystemExit('PROTECT_ROBOTS_CONTRACT_INVALID')
+          print('PROTECT_POSTRELEASE_SITEMAP_AND_ROBOTS_VERIFIED='+str(len(locations)))
+          PYPROOF

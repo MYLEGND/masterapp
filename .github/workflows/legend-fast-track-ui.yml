@@ -432,7 +432,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, urllib.request, xml.etree.ElementTree as ET
+          import os, time, urllib.request, urllib.error, xml.etree.ElementTree as ET
           target=os.environ['SITE_TARGET']
           if target not in ('Website','Protect'):
               raise SystemExit('Unexpected sitemap target')
@@ -444,8 +444,18 @@ jobs:
                   'Cache-Control':'no-cache',
                   'User-Agent':'LegendSitemapReleaseVerification/1.0'
               })
-              with urllib.request.urlopen(req,timeout=20) as response:
-                  return response.status,response.headers.get('Content-Type','').lower(),response.read(1048576)
+              last='not attempted'
+              for attempt in range(4):
+                  try:
+                      with urllib.request.urlopen(req,timeout=22) as response:
+                          result=(response.status,response.headers.get('Content-Type','').lower(),response.read(1048576))
+                      print(f'SITEMAP_TRANSPORT_REACHED target={target} path={path} attempt={attempt+1}')
+                      return result
+                  except (OSError,ValueError) as error:
+                      last=type(error).__name__
+                      print(f'SITEMAP_TRANSPORT_RETRY target={target} path={path} attempt={attempt+1} reason={last}',flush=True)
+                      if attempt!=3: time.sleep(8)
+              raise SystemExit(f'SITEMAP_TRANSPORT_UNAVAILABLE target={target} path={path} reason={last}')
           status,content_type,raw=request('/sitemap.xml','application/xml,text/xml')
           if status!=200 or not any(t in content_type for t in ('application/xml','text/xml')):
               raise SystemExit(f'SITEMAP_NOT_XML_HTTP: {target}: status={status}, type={content_type}')
