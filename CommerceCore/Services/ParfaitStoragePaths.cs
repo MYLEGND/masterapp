@@ -118,7 +118,13 @@ public sealed class ParfaitStoragePaths
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToArray();
 
-        if (segments.Length == 0)
+        // Image paths originate from persisted commerce data. Never allow an
+        // escaped path to resolve outside either authorized product-media root.
+        if (segments.Length == 0 ||
+            segments.Any(part => part.Length > 255 || part is "." or ".." ||
+                part.Contains(':') || part.Contains('%') ||
+                part.Any(char.IsControl)) ||
+            relative.Contains('?') || relative.Contains('#'))
             yield break;
 
         yield return Path.Combine(UploadRoot, Path.Combine(segments));

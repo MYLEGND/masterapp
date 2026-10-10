@@ -1,3 +1,4 @@
+using Legend.Commerce;
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Microsoft.AspNetCore.Authentication;
@@ -18,7 +19,8 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddLegendCommerceMvc();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
@@ -140,10 +142,8 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
 builder.Services.AddScoped<CommerceStoreContextService>();
+builder.Services.AddLegendCommerceCore();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
-builder.Services.AddScoped<ParfaitProductService>();
-builder.Services.AddScoped<ParfaitOrderService>();
-builder.Services.AddScoped<ParfaitCustomerAutomationService>();
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddMasterAppBilling(builder.Configuration);
@@ -151,17 +151,12 @@ builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton<ParfaitStoragePaths>();
-builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
-builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
-builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
-builder.Services.AddScoped<ParfaitInternalWorkspaceService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
-builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
+builder.Services.AddLegendCommerceAutomationWorker();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
 {

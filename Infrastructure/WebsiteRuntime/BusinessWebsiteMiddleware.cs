@@ -36,6 +36,42 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (binding is null) { await Unavailable(context, bridged, "binding"); return; }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context, bridged, "publication"); return; }
+        // Preview the tenant's original public editorial pages only after the
+        // verified domain and immutable published website admission above.
+        if (CommerceSharedHostPreviewGate.TryMapPublicPage(
+                configuration, binding.Value, host, context.Request.Path,
+                context.Request.Method, out var previewPath))
+        {
+            var originalPath = context.Request.Path;
+            context.Items[CommerceSharedHostPreviewGate.OriginalPagePathItem] = originalPath;
+            context.Request.Path = previewPath;
+            try { await next(context); }
+            finally { context.Request.Path = originalPath; }
+            return;
+        }
+        // Production commerce is a distinct, exact-business gate. Existing
+        // custom-domain binding and immutable website publication were verified
+        // above; all other business hosts remain on the current storefront origin.
+        if (CommerceSharedHostCutoverGate.MayRoute(
+                configuration, binding.Value, host, context.Request.Path, context.Request.Method))
+        {
+            if (context.Request.Path.StartsWithSegments("/uploads/parfait-products", StringComparison.OrdinalIgnoreCase))
+                context.Items[CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem] = binding.Value;
+            await next(context);
+            return;
+        }
+
+        // Validated custom domain + immutable published website first; only a
+        // separately configured, exact-business read-only preview may reach
+        // the commerce GET controllers and original Parfait static assets.
+        if (CommerceSharedHostPreviewGate.MayRoute(
+                configuration, binding.Value, host, context.Request.Path, context.Request.Method))
+        {
+            if (context.Request.Path.StartsWithSegments("/uploads/parfait-products", StringComparison.OrdinalIgnoreCase))
+                context.Items[CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem] = binding.Value;
+            await next(context);
+            return;
+        }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
             path == "/api/website-inquiries/public" ||

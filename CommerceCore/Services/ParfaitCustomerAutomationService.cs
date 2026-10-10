@@ -16,7 +16,6 @@ public sealed class ParfaitCustomerAutomationService
     private readonly ParfaitProductService _products;
     private readonly Infrastructure.Data.MasterAppDbContext? _db;
     private readonly CommerceStoreContextService? _stores;
-    private readonly object _lock = new();
 
     public ParfaitCustomerAutomationService(
         ParfaitStoragePaths storagePaths,
@@ -42,7 +41,7 @@ public sealed class ParfaitCustomerAutomationService
     public ParfaitAutomationWorkspaceViewModel GetWorkspaceViewModel(Guid businessId)
     {
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
@@ -131,7 +130,7 @@ public sealed class ParfaitCustomerAutomationService
     public void SaveWorkflow(Guid businessId, ParfaitAutomationWorkflowEditorInput input)
     {
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
@@ -158,7 +157,7 @@ public sealed class ParfaitCustomerAutomationService
     public void DeleteWorkflow(Guid businessId, Guid id)
     {
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             store.Workflows.RemoveAll(workflow => workflow.Id == id);
@@ -195,7 +194,7 @@ public sealed class ParfaitCustomerAutomationService
             return;
 
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
@@ -238,7 +237,7 @@ public sealed class ParfaitCustomerAutomationService
     public void MarkOrderConverted(Guid businessId, ParfaitOrderRecord order)
     {
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
@@ -271,7 +270,7 @@ public sealed class ParfaitCustomerAutomationService
     public IReadOnlyList<ParfaitAutomationDispatchCandidate> GetDueDispatchCandidates(Guid businessId)
     {
         var dataPath = DataPathForBusiness(businessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             CleanupUnsafe(store, DateTime.UtcNow);
@@ -342,7 +341,7 @@ public sealed class ParfaitCustomerAutomationService
     public void MarkDispatchSent(ParfaitAutomationDispatchCandidate candidate)
     {
         var dataPath = DataPathForBusiness(candidate.CommerceBusinessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             store.Dispatches.Add(new ParfaitAutomationDispatchLogRecord
@@ -366,7 +365,7 @@ public sealed class ParfaitCustomerAutomationService
     public void MarkDispatchFailed(ParfaitAutomationDispatchCandidate candidate, string errorMessage)
     {
         var dataPath = DataPathForBusiness(candidate.CommerceBusinessId);
-        lock (_lock)
+        lock (Legend.Commerce.CommerceAutomationFileStore.SyncRoot(dataPath))
         {
             var store = LoadStoreUnsafe(dataPath);
             store.Dispatches.Add(new ParfaitAutomationDispatchLogRecord
@@ -682,8 +681,8 @@ $"""
 
     private ParfaitAutomationStoreRecord LoadStoreUnsafe(string dataPath)
     {
-        EnsureDataFile(dataPath);
-        var json = File.ReadAllText(dataPath);
+        var json = Legend.Commerce.CommerceAutomationFileStore.ReadOrCreate(
+            dataPath, JsonSerializer.Serialize(new ParfaitAutomationStoreRecord()));
         var store = JsonSerializer.Deserialize<ParfaitAutomationStoreRecord>(json) ?? new ParfaitAutomationStoreRecord();
         store.Workflows ??= [];
         store.CartLeads ??= [];
@@ -697,23 +696,8 @@ $"""
     {
         CleanupUnsafe(store, DateTime.UtcNow);
         store.UpdatedUtc = DateTime.UtcNow;
-        Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
-        File.WriteAllText(
-            dataPath,
-            JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
-    }
-
-    private void EnsureDataFile() => EnsureDataFile(DataPath);
-
-    private void EnsureDataFile(string dataPath)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
-        if (!File.Exists(dataPath))
-        {
-            File.WriteAllText(
-                dataPath,
-                JsonSerializer.Serialize(new ParfaitAutomationStoreRecord(), new JsonSerializerOptions { WriteIndented = true }));
-        }
+        Legend.Commerce.CommerceAutomationFileStore.WriteAtomic(
+            dataPath, JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private string DataPathForBusiness(Guid businessId)

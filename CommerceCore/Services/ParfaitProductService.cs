@@ -7,7 +7,7 @@ using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
 
-public sealed class ParfaitProductService
+public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogReader
 {
     private static readonly object Lock = new();
 
@@ -27,6 +27,7 @@ public sealed class ParfaitProductService
 
     public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts(Guid businessId)
     {
+        var fallbackBadge = ResolveTenantBadge(businessId);
         return _db.CommerceProducts
             .AsNoTracking()
             .Include(x => x.Images)
@@ -37,7 +38,7 @@ public sealed class ParfaitProductService
             .ThenBy(x => x.Name)
             .ToList()
             .Select(MapEditorProduct)
-            .Select(product => NormalizeProduct(product))
+            .Select(product => NormalizeProduct(product, fallbackBadge: fallbackBadge))
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
             .ToList();
@@ -317,7 +318,7 @@ public sealed class ParfaitProductService
                     .Select(MapImage)
                     .ToList();
 
-            var normalized = NormalizeProduct(product, existingImages);
+            var normalized = NormalizeProduct(product, existingImages, ResolveTenantBadge(businessId));
 
             if (existing is null)
             {
@@ -646,6 +647,17 @@ public sealed class ParfaitProductService
         return business.Id;
     }
 
+    private string ResolveTenantBadge(Guid businessId)
+    {
+        var business = _db.CommerceBusinesses.AsNoTracking()
+            .Where(x => x.Id == businessId && x.IsActive)
+            .Select(x => new { x.DisplayName, x.Key })
+            .SingleOrDefault() ?? throw new InvalidOperationException("Commerce business is unavailable.");
+        return !string.IsNullOrWhiteSpace(business.DisplayName) ? business.DisplayName.Trim()
+            : string.Equals(business.Key, ParfaitBusinessScopeService.ParfaitBusinessKey,
+                StringComparison.OrdinalIgnoreCase) ? "Parfait" : "Store";
+    }
+
     private static ParfaitProductEditorViewModel MapEditorProduct(CommerceProduct product)
     {
         return new ParfaitProductEditorViewModel
@@ -888,7 +900,7 @@ public sealed class ParfaitProductService
         };
     }
 
-    private static ParfaitProductEditorViewModel NormalizeProduct(ParfaitProductEditorViewModel product, IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null)
+    private static ParfaitProductEditorViewModel NormalizeProduct(ParfaitProductEditorViewModel product, IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null, string fallbackBadge = "Parfait")
     {
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
@@ -905,7 +917,7 @@ public sealed class ParfaitProductService
             PriceLabel = normalizedPriceCents > 0 ? $"${normalizedPriceCents / 100m:0.00}" : "Coming Soon",
             PriceCents = normalizedPriceCents,
             CompareAtPriceCents = normalizedCompareAtCents,
-            Badge = string.IsNullOrWhiteSpace(product.Badge) ? "Parfait" : product.Badge.Trim(),
+            Badge = string.IsNullOrWhiteSpace(product.Badge) ? fallbackBadge : product.Badge.Trim(),
             IsFeatured = product.IsFeatured,
             IsActive = product.IsActive,
             DisplayOrder = product.DisplayOrder,

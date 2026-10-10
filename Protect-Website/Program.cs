@@ -1,3 +1,7 @@
+using Legend.Commerce;
+using Infrastructure.Billing;
+using Infrastructure.FinancialIntelligence;
+using ParfaitApp.Services;
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
@@ -31,6 +35,20 @@ var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add<ProtectWebsite.Services.Tracking.TrackingViewDataFilter>();
 });
+// This website consumes only the shared catalog until audited media, views,
+// checkout and automation state are ready. Never publish commerce routes here yet.
+if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
+{
+    mvcBuilder.AddLegendCommerceCutoverMvc();
+}
+else if (Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.IsConfigured(builder.Configuration))
+{
+    mvcBuilder.AddLegendCommercePreviewMvc();
+}
+else
+{
+    mvcBuilder.ExcludeLegendCommerceMvc();
+}
 if (builder.Environment.IsDevelopment())
 {
     mvcBuilder.AddRazorRuntimeCompilation();
@@ -52,6 +70,18 @@ builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
 builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
+if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
+{
+    builder.Services.AddLegendCommerceCore();
+    builder.Services.AddMasterAppBilling(builder.Configuration);
+    builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
+    builder.Services.AddScoped<IGraphMailService, GraphMailService>();
+    builder.Services.AddHostedService<CommerceCutoverStartupProof>();
+}
+else
+{
+    builder.Services.AddLegendCommerceCatalogReadOnly();
+}
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
 builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();
@@ -218,8 +248,19 @@ app.UseHttpsRedirection();
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
 app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
+app.UseMiddleware<Legend.Commerce.CommercePreviewMediaMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    // Endpoint selection already happened on the internal preview path.
+    // Restore the externally requested URL for canonical links and rendering.
+    if (context.Items.TryGetValue(
+            Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.OriginalPagePathItem,
+            out var original) && original is PathString originalPath)
+        context.Request.Path = originalPath;
+    await next();
+});
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
     diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),

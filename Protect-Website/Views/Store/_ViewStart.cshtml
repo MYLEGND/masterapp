@@ -1,0 +1,7 @@
+@{
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var originalLayout = Infrastructure.Commerce.CommerceStorefrontPresentation.ResolveLayout(commerce);
+    Layout = originalLayout == Infrastructure.Commerce.CommerceStorefrontPresentation.ParfaitOriginalLayout
+        ? "_CommerceParfaitLayout"
+        : originalLayout;
+}

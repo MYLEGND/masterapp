@@ -22,6 +22,11 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
             try
             {
                 using var scope = _scopeFactory.CreateScope();
+                await using var dispatcherLease = await scope.ServiceProvider
+                    .GetRequiredService<Legend.Commerce.ICommerceAutomationDispatchLease>()
+                    .TryAcquireAsync(stoppingToken);
+                if (dispatcherLease is not null)
+                {
                 var automations = scope.ServiceProvider.GetRequiredService<ParfaitCustomerAutomationService>();
                 var mail = scope.ServiceProvider.GetRequiredService<IGraphMailService>();
 
@@ -48,6 +53,7 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
 
                         automations.MarkDispatchFailed(candidate, ex.Message);
                     }
+                }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
