@@ -18,7 +18,8 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddApplicationPart(typeof(ParfaitApp.Controllers.StoreController).Assembly);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =

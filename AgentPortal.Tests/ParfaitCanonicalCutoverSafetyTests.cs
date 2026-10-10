@@ -27,12 +27,12 @@ public sealed class ParfaitCanonicalCutoverSafetyTests
     [Fact]
     public void SharedCommerceCheckout_RetainsExistingSquareAndAttributionConnections()
     {
-        var checkout = Read("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
+        var checkout = Read("CommerceCore", "Controllers", "StoreCheckoutController.cs");
         var program = Read("ParfaitApp", "Program.cs");
         Assert.Contains("ExecuteCommerceOneTimePaymentAsync", checkout, StringComparison.Ordinal);
         Assert.Contains("BuildPaymentIdempotencyKey", checkout, StringComparison.Ordinal);
         Assert.Contains("_orders.MarkPaymentCaptured", checkout, StringComparison.Ordinal);
-        Assert.Contains("commerceSignals.RecordAsync", Read("ParfaitApp", "Controllers", "StoreCartController.cs"), StringComparison.Ordinal);
+        Assert.Contains("commerceSignals.RecordAsync", Read("CommerceCore", "Controllers", "StoreCartController.cs"), StringComparison.Ordinal);
         Assert.Contains("AddMasterAppBilling", program, StringComparison.Ordinal);
         Assert.Contains("AddMasterAppFinancialIntelligence", program, StringComparison.Ordinal);
     }

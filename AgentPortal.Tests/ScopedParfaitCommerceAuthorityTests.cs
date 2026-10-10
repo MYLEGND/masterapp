@@ -102,8 +102,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     [Fact]
     public void CommerceEventsAndAutomations_RemainLiveForEveryScopedStore()
     {
-        var checkout = ReadSource("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
-        var analyticsController = ReadSource("ParfaitApp", "Controllers", "StoreCartController.cs");
+        var checkout = ReadSource("CommerceCore", "Controllers", "StoreCheckoutController.cs");
+        var analyticsController = ReadSource("CommerceCore", "Controllers", "StoreCartController.cs");
         var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
         var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
