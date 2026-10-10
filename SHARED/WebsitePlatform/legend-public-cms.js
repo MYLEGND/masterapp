@@ -2512,13 +2512,16 @@
       link.setAttribute('rel', 'icon');
       document.head.appendChild(link);
     }
-    const href = value ? mediaUrl(value) : originalFaviconHref;
+    // Published pages keep the exact server-head/favicon URL; do not replace it
+    // during hydration with a second, possibly cached media destination.
+    // Editor preview alone may resolve an unpublished image directly.
+    const href = editorMode && value ? mediaUrl(value) : originalFaviconHref;
     if (href) link.setAttribute('href', href);
     const clearType = () => {
       if (typeof link.removeAttribute === 'function') link.removeAttribute('type');
       else link.setAttribute('type', '');
     };
-    if (value) clearType();
+    if (editorMode && value) clearType();
     else if (originalFaviconType) link.setAttribute('type', originalFaviconType);
     else clearType();
   }
