@@ -42,7 +42,9 @@ internal sealed class LegendEngineeringOrchestrator(
     LegendEngineeringBudgetAuthority budget,
     IFounderSoftwareRemediationService remediation,
     ILegendEngineeringContractAuthority contractAuthority,
-    IConfiguration configuration) : ILegendEngineeringOrchestrator
+    IConfiguration configuration,
+    ILogger<LegendEngineeringOrchestrator>? logger = null,
+    Infrastructure.Diagnostics.RuntimeDiagnosticStore? releaseIncidentStore = null) : ILegendEngineeringOrchestrator
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -117,6 +119,34 @@ internal sealed class LegendEngineeringOrchestrator(
     public async Task<object> ProcessIncidentsAsync(int maximum, CancellationToken cancellationToken)
     {
         maximum = Math.Clamp(maximum, 1, 500);
+        // Existing hosted pass owns the cadence; the GitHub App authenticates
+        // failures while the existing diagnostics store owns all persistence.
+        var releaseObservations = 0;
+        if (releaseIncidentStore is not null)
+        {
+            try
+            {
+                foreach (var failure in await remediation.ReadRecentFailedReleaseEvidenceAsync(cancellationToken))
+                {
+                    if (await releaseIncidentStore.RecordAuthenticatedReleaseFailureAsync(
+                            failure.RunId, failure.SourcePullRequest, failure.CandidateSha,
+                            failure.AuthoritySha, failure.FailureStage, cancellationToken))
+                        releaseObservations++;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                // Failed read-only evidence collection must never starve
+                // independent runtime incidents or authorized release work.
+                logger?.LogWarning(
+                    "Release evidence ingestion unavailable ({FailureType}).",
+                    exception.GetType().Name);
+            }
+        }
         var now = DateTime.UtcNow;
         var incidents = await db.RuntimeDiagnosticIncidents.AsNoTracking()
             .Where(row => row.ExpiresUtc > now)
@@ -139,6 +169,7 @@ internal sealed class LegendEngineeringOrchestrator(
         {
             ok = true,
             observedIncidents = incidents.Length,
+            releaseObservationsAdded = releaseObservations,
             deterministicClassifications = deterministic,
             distinctWorkItems = touched.Count,
             workItems = touched.Values

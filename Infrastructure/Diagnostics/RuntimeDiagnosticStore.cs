@@ -47,6 +47,74 @@ public sealed class RuntimeDiagnosticStore(IServiceScopeFactory scopes, IHostEnv
         return RuntimeDiagnosticAdmissionResult.Recorded;
     }
 
+    // GitHub identity and merged ancestry are authenticated by the existing
+    // Founder remediation reader before this call. The diagnostics store remains
+    // the sole writer of all RuntimeDiagnosticIncidents. This is observation only.
+    public async Task<bool> RecordAuthenticatedReleaseFailureAsync(
+        long runId, int sourcePullRequest, string candidateSha, string authoritySha,
+        string stage, CancellationToken cancellationToken = default)
+    {
+        var incident = BuildAuthenticatedReleaseFailure(
+            runId, sourcePullRequest, candidateSha, authoritySha, stage, DateTime.UtcNow);
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        if (await db.RuntimeDiagnosticIncidents.AsNoTracking()
+            .AnyAsync(row => row.DeduplicationKey == incident.DeduplicationKey, cancellationToken))
+            return false;
+
+        db.RuntimeDiagnosticIncidents.Add(incident);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(incident).State = EntityState.Detached;
+            // Only a proven concurrent insertion of the identical fingerprint
+            // is a duplicate. All unrelated write failures remain failures.
+            if (await db.RuntimeDiagnosticIncidents.AsNoTracking()
+                .AnyAsync(row => row.DeduplicationKey == incident.DeduplicationKey, cancellationToken))
+                return false;
+            throw;
+        }
+    }
+
+    public static RuntimeDiagnosticIncident BuildAuthenticatedReleaseFailure(
+        long runId, int sourcePullRequest, string candidateSha, string authoritySha,
+        string stage, DateTime observedUtc)
+    {
+        static bool Sha(string value) =>
+            value is { Length: 40 } &&
+            value.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
+        if (runId <= 0 || sourcePullRequest <= 0 || !Sha(candidateSha) ||
+            !Sha(authoritySha) || stage is not (
+                "PREPUBLICATION" or "LIVE_BASE" or "TRANSACTION_PREPARE" or
+                "TRANSACTION_RECONCILE" or "LIVE_PROOF" or "UNCLASSIFIED"))
+            throw new ArgumentException("Invalid authenticated release observation identity.");
+
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"release-observation:{runId}:{candidateSha}:{authoritySha}:{stage}"))).ToLowerInvariant();
+        return new RuntimeDiagnosticIncident
+        {
+            Id = Guid.NewGuid(),
+            DeduplicationKey = fingerprint,
+            AppIdentifier = "FounderRelease",
+            Platform = "Release",
+            Route = $"/founder/release/{sourcePullRequest}",
+            ErrorName = "RELEASE_" + stage,
+            Category = "ReleaseObservation",
+            Summary = $"Verified protected release run {runId} failed at {stage}. Candidate not verified live.",
+            CorrelationId = runId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            GitCommitHash = candidateSha,
+            ReleaseVerified = false,
+            SourceFilePath = null,
+            FirstSeenUtc = observedUtc,
+            LastSeenUtc = observedUtc,
+            ExpiresUtc = observedUtc.AddDays(30)
+        };
+    }
+
     private bool Admit(string key)
     {
         lock (_admissionLock)
