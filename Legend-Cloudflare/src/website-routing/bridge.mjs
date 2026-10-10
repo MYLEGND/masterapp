@@ -23,6 +23,19 @@ function isCommerceTransportPath(pathname) {
     path.startsWith("/parfait-analytics/");
 }
 
+// Cut over only explicitly selected customer domains. Do not change the
+// shared platform or unrelated tenant stores when Parfait changes runtime.
+function isApprovedCommerceCutover(hostname, env) {
+  if (env?.LEGEND_COMMERCE_CUTOVER_ENABLED !== "true") return false;
+  const hosts = (env?.LEGEND_COMMERCE_CUTOVER_HOSTS || "").split(",")
+    .map(value => value.trim().toLowerCase()).filter(Boolean);
+  if (hosts.length === 0 || hosts.length > 8 ||
+      new Set(hosts).size !== hosts.length ||
+      hosts.some(host => !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(host) ||
+        isPlatformHost(host) || host.endsWith(".azurewebsites.net"))) return false;
+  return hosts.includes(hostname.toLowerCase());
+}
+
 function validatedOrigin(raw, fallback) {
   const value = (raw || fallback).trim();
   let url;
@@ -49,9 +62,11 @@ export function buildBridgeRequest(request, env) {
   }
 
   const commerce = isCommerceTransportPath(incoming.pathname);
-  const origin = commerce
-    ? validatedOrigin(env?.LEGEND_COMMERCE_ORIGIN, DEFAULT_COMMERCE_ORIGIN)
-    : validatedOrigin(env?.LEGEND_WEBSITE_ORIGIN, DEFAULT_WEBSITE_ORIGIN);
+  const sharedCommerce = commerce && isApprovedCommerceCutover(incoming.hostname, env);
+  const origin = validatedOrigin(
+    sharedCommerce || !commerce ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
+    sharedCommerce || !commerce ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN
+  );
   if (!origin) {
     return { error: new Response("Website routing is temporarily unavailable.", { status: 503 }) };
   }
@@ -67,6 +82,7 @@ export function buildBridgeRequest(request, env) {
 
   return {
     commerce,
+    sharedCommerce,
     request: new Request(upstream, {
       headers,
       redirect: "manual"
