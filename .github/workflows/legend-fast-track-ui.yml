@@ -27,6 +27,19 @@ on:
       - Protect-Website/Views/Shared/_Layout.cshtml
       - Protect-Website/ProtectWebsite.csproj
       - ParfaitApp/Views/Shared/_InternalLayout.cshtml
+      - ParfaitApp/Program.cs
+      - ParfaitApp/Services/**
+      - ParfaitApp/Controllers/**
+      - ParfaitApp/Models/**
+      - ParfaitApp/Views/**
+      - CommerceCore/**
+      - Infrastructure/Commerce/**
+      - Infrastructure/WebsiteRuntime/**
+      - Domain/Entities/CommerceProduct.cs
+      - Legend-Cloudflare/src/website-routing/**
+      - Legend-Cloudflare/tests/website-routing/**
+      - Protect-Website/Program.cs
+      - Protect-Website/Views/**
       - Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs
       - Infrastructure/WebsiteEditing/WebsitePlatformController.cs
       - Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs
@@ -204,7 +217,7 @@ jobs:
   deploy-ui:
     name: Affected App Deploy — ${{ matrix.target }}
     needs: [select-targets, commerce-gates]
-    if: ${{ needs.select-targets.outputs.selected == 'true' && (needs.commerce-gates.result == 'success' || needs.commerce-gates.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.select-targets.outputs.selected == 'true' && (needs.commerce-gates.result == 'success' || needs.commerce-gates.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: Production
