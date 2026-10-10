@@ -16,6 +16,8 @@ namespace AgentPortal.Tests;
 public sealed class ParfaitCanonicalPresentationPreservationTests
 {
     [Theory]
+    [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
+    [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
     [InlineData("Views/Shared/_Layout.cshtml", "b677436132bd4242bb52e70acf8a80a0cbac48dc")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
     [InlineData("Views/Home/Index.cshtml", "f623f2e9b55cf53e99aae2ed277949b29f1585da")]
