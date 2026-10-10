@@ -102,6 +102,8 @@ test('canonical v3 business publication renders only the composition graph and k
   assert.equal(cta.getAttribute('href'),'/contact');
   const contact=parseHTML(result.pages['/contact'].html).document;
   assert.ok(contact.querySelector('form[data-website-inquiry]'));
+  assert.equal(contact.querySelectorAll('script[src^="/legend-public-inquiry.js"]').length,1,
+    'Compiled customer contact forms must retain the canonical JSON transport');
   const contactEmbedded=JSON.parse(contact.querySelector('#legend-cms-published-document').textContent);
   assert.equal(contactEmbedded.pageKey,'contact');
   const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent);

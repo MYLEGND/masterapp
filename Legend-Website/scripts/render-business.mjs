@@ -179,7 +179,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     structured.setAttribute('type','application/ld+json');
     structured.textContent=JSON.stringify(schema).replace(/</g,'\\u003c');
     doc.querySelectorAll('script').forEach(script=>{
-      if(!['/legend-public-web.js','/legend-public-cms.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
+      if(!['/legend-public-web.js','/legend-public-cms.js','/legend-public-inquiry.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
     });
     // Attach schema after stripping preview-only scripts; it must survive in
     // the immutable HTML that Google reads before any browser hydration.

@@ -12,6 +12,9 @@
     openAiMeasurementAsset: renderInput.runtime?.openAiMeasurementAsset || '/legend-public-openai-measurement.js'
   } : null);
   if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
+  // The published document provides the verified API runtime context. Reuse it
+  // rather than a separate business submission configuration.
+  window.LEGEND_PUBLIC_CMS_CONTEXT ||= context;
 
   // Protect deliberately uses an empty base for its same-origin CMS authority.
   const API_BASE = (context.apiBase.trim() || location.origin).replace(/\/$/, '');
@@ -3863,6 +3866,39 @@
     if (editorMode) installBusinessNavigationEditor(nav);
   }
 
+  // CMS publication hydration owns the one public inquiry transport. Older
+  // compiled pages omitted its script; reattach the shared transport without
+  // creating a scope-specific handler or allowing native form POSTs.
+  function ensureCanonicalPublicInquiry() {
+    if (studioIsolationMode || renderInput?.server) return;
+    const forms = document.querySelectorAll(
+      '[data-website-inquiry]:not([data-preview]),' +
+      '[data-website-experience-form][data-submit-capability="lead_capture"]:not([data-preview])'
+    );
+    if (!forms.length) return;
+    for (const form of forms) {
+      if (form.dataset.legendInquiryGuard === 'true') continue;
+      form.dataset.legendInquiryGuard = 'true';
+      form.addEventListener('submit', event => {
+        if (form.dataset.legendInquiryBound === 'true') return;
+        event.preventDefault();
+        const status = form.querySelector('[role="status"]');
+        if (status) status.textContent = 'This form is still loading. Please try again.';
+      }, true);
+    }
+    const loaded = [...document.scripts].some(script => {
+      const source = script.getAttribute('src');
+      if (!source) return false;
+      const pathname = new URL(source, location.href).pathname;
+      return pathname === '/legend-public-inquiry.js' || pathname === '/js/public-inquiry-form.mjs';
+    });
+    if (loaded) return;
+    const script = document.createElement('script');
+    script.src = '/legend-public-inquiry.js';
+    script.defer = true;
+    document.body.appendChild(script);
+  }
+
   function applyDocument(doc) {
     documentState=normalizeDocument(doc);
     applyTheme(documentState.theme);
@@ -3890,6 +3926,7 @@
       bindBusiness(managementPayload || renderInput);
     applyBusinessPageNavigation();
     applyStoreNavigation();
+    ensureCanonicalPublicInquiry();
     try {
       window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
         detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:editorMode,materialize:materializeMode}
