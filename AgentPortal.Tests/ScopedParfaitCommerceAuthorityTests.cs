@@ -14,7 +14,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Views", "CommerceManagement", "Workspace.cshtml")));
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Models", "CommerceManagementWorkspaceViewModel.cs")));
 
-        var controller = ReadSource("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var controller = ReadSource("CommerceCore", "Controllers", "CommerceManagementController.cs");
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
@@ -74,8 +74,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", "Services", "ParfaitMetaAdsOAuthService.cs")));
 
         var program = ReadSource("ParfaitApp", "Program.cs");
-        var analytics = ReadSource("ParfaitApp", "Services", "ParfaitInternalAnalyticsService.cs");
-        var controller = ReadSource("ParfaitApp", "Controllers", "CommerceManagementController.cs");
+        var analytics = ReadSource("CommerceCore", "Services", "ParfaitInternalAnalyticsService.cs");
+        var controller = ReadSource("CommerceCore", "Controllers", "CommerceManagementController.cs");
         var tracking = ReadSource("ParfaitApp", "Views", "Shared", "_ParfaitCommerceTracking.cshtml");
         var signals = ReadSource("Infrastructure", "Commerce", "CommerceSignalService.cs");
 
