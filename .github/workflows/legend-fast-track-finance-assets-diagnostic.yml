@@ -1,0 +1,36 @@
+name: LEGEND Fast Track Finance Asset Availability (read only)
+on:
+  push:
+    branches:
+      - Legend/fast-track-release
+    paths:
+      - .github/workflows/legend-fast-track-finance-assets-diagnostic.yml
+permissions:
+  contents: read
+jobs:
+  finance-assets-readback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Verify public Finance JS and CSS asset URLs without authenticating or writing
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,time,json
+          hosts=('portal.mylegnd.com','client.mylegnd.com')
+          assets=('/_content/Shared/js/finance-tools.js','/_content/Shared/js/legend-living-balance-sheet.js',
+                  '/_content/Shared/js/expense-lens-projection.js','/_content/Shared/js/finance-shell.js',
+                  '/_content/Shared/css/legend-finance-shared.css')
+          for host in hosts:
+              for path in assets:
+                  begun=time.monotonic()
+                  try:
+                      req=urllib.request.Request('https://'+host+path,headers={'User-Agent':'LegendFinanceReadOnlyDiagnostic','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(req,timeout=12) as r:
+                          body=r.read(700000)
+                          print('FINANCE_ASSET='+json.dumps({'host':host,'path':path,'status':r.status,'type':r.headers.get('Content-Type'),'length':len(body),'start':body[:45].decode('utf-8','replace'),'elapsedMs':round((time.monotonic()-begun)*1000)},sort_keys=True),flush=True)
+                  except urllib.error.HTTPError as e:
+                      print('FINANCE_ASSET='+json.dumps({'host':host,'path':path,'status':e.code,'elapsedMs':round((time.monotonic()-begun)*1000)},sort_keys=True),flush=True)
+                  except OSError as e:
+                      print('FINANCE_ASSET='+json.dumps({'host':host,'path':path,'status':'UNAVAILABLE','reason':type(e).__name__,'elapsedMs':round((time.monotonic()-begun)*1000)},sort_keys=True),flush=True)
+          PY
