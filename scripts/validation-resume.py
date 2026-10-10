@@ -4289,8 +4289,8 @@ def readiness_identity(candidate, approved, targets):
                                                          separators=(',', ':')).encode()).hexdigest())
 
 
-def migration_contract_static_styles_only(candidate, approved):
-    """Reviewed non-executable delta; retain full identities for build/package reuse."""
+def migration_contract_reviewed_browser_assets_only(candidate, approved):
+    """Browser-only assets cannot alter EF migration contracts; reject unknown changed inputs."""
     patterns = WORKFLOWS[PACKAGE_VALIDATION_WORKFLOW]['gates']['build-infrastructure']['paths']
     patterns = tuple(p for p in patterns if p not in {'**/*.csproj', 'MASTERAPP.sln'})
     def entries(revision):
@@ -4299,8 +4299,14 @@ def migration_contract_static_styles_only(candidate, approved):
                 for metadata, name in [row.split('\t', 1)] if matches(name, patterns)}
     before, after = entries(approved), entries(candidate)
     changed = [p for p in before.keys() | after.keys() if before.get(p) != after.get(p)]
+    # SHARED/** feeds the .NET infrastructure build, but the exact canonical
+    # public CMS browser script is neither compiled into the EF migration probe
+    # nor used as a migration-definition source. Do not broadly admit JS.
+    reviewed_browser_assets = frozenset({
+        'SHARED/WebsitePlatform/legend-public-cms.js',
+    })
     return bool(changed) and all(
-        p.startswith('SHARED/wwwroot/') and p.endswith('.css') and
+        (p.startswith('SHARED/wwwroot/') and p.endswith('.css') or p in reviewed_browser_assets) and
         before.get(p, '').startswith('100644 blob ') and after.get(p, '').startswith('100644 blob ')
         for p in changed)
 
@@ -4318,9 +4324,9 @@ def candidate_migration_contract_proven(candidate, approved, contract, approved_
     if current['runtimeIdentity'] != trusted['runtimeIdentity']:
         if (current.get('toolIdentity') != trusted.get('toolIdentity') or
             current.get('executionIdentity') != trusted.get('executionIdentity') or
-            not migration_contract_static_styles_only(candidate, approved)):
+            not migration_contract_reviewed_browser_assets_only(candidate, approved)):
             raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
-        rule = 'approved-definitions-static-styles-only'
+        rule = 'approved-definitions-reviewed-browser-assets-only'
     if not isinstance(contract, dict) or contract != approved_contract:
         raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions')
     return {'state': 'proven', 'rule': rule,
