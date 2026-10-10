@@ -290,3 +290,45 @@ jobs:
                   continue
           raise SystemExit('NOT_DEPLOYED_AND_NOT_VERIFIED: '+os.environ['APP']+' '+last)
           PY
+
+      - name: Verify public sitemap XML and robots contract
+        if: ${{ matrix.target == 'Website' || matrix.target == 'Protect' }}
+        shell: bash
+        env:
+          SITE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, urllib.request, xml.etree.ElementTree as ET
+          target=os.environ['SITE_TARGET']
+          if target not in ('Website','Protect'):
+              raise SystemExit('Unexpected sitemap target')
+          origin='https://www.mylegnd.com' if target=='Website' else 'https://protect.mylegnd.com'
+          sitemap_url=origin+'/sitemap.xml'
+          def request(path,accept):
+              req=urllib.request.Request(origin+path,headers={
+                  'Accept':accept,
+                  'Cache-Control':'no-cache',
+                  'User-Agent':'LegendSitemapReleaseVerification/1.0'
+              })
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  return response.status,response.headers.get('Content-Type','').lower(),response.read(1048576)
+          status,content_type,raw=request('/sitemap.xml','application/xml,text/xml')
+          if status!=200 or not any(t in content_type for t in ('application/xml','text/xml')):
+              raise SystemExit(f'SITEMAP_NOT_XML_HTTP: {target}: status={status}, type={content_type}')
+          try:
+              root=ET.fromstring(raw)
+          except ET.ParseError as error:
+              raise SystemExit(f'SITEMAP_MALFORMED_XML: {target}: {error}')
+          ns='{http://www.sitemaps.org/schemas/sitemap/0.9}'
+          locations=[e.text for e in root.findall(ns+'url/'+ns+'loc')]
+          if root.tag!=ns+'urlset' or not locations or len(locations)!=len(set(locations)):
+              raise SystemExit(f'SITEMAP_INCOMPLETE_OR_DUPLICATE: {target}')
+          if any(not loc or not loc.startswith(origin+'/') for loc in locations):
+              raise SystemExit(f'SITEMAP_CANONICAL_HOST_MISMATCH: {target}')
+          robots_status,robots_type,robots_raw=request('/robots.txt','text/plain')
+          robots=robots_raw.decode('utf-8')
+          if robots_status!=200 or 'text/plain' not in robots_type or 'Sitemap: '+sitemap_url not in robots.splitlines():
+              raise SystemExit(f'ROBOTS_SITEMAP_DISAGREEMENT: {target}')
+          print(f'PUBLIC_SITEMAP_XML_VERIFIED target={target} urls={len(locations)} sitemap={sitemap_url}')
+          PY
