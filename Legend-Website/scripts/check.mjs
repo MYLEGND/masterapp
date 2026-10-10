@@ -1,5 +1,6 @@
 import { readFile, access } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { pages } from '../src/content.mjs';
 import { resolve } from 'node:path';
 import { publicApiBase } from '../src/runtime-config.mjs';
 const root=resolve(import.meta.dirname,'..');
@@ -96,6 +97,22 @@ for(const route of routes){
   if(!html.includes(`<link rel="canonical" href="${canonical}">`)) throw new Error('Canonical URL must agree with static route: '+route);
   if(!sitemap.includes(`<loc>${canonical}</loc>`)) throw new Error('Sitemap must agree with canonical URL: '+route);
 }
+const canonicalOrigin='https://www.mylegnd.com';
+const expectedUrls=Object.values(pages).map(page=>canonicalOrigin+(page.path==='/'?'/':page.path.replace(/\/$/,'')+'/'));
+const sitemapUrls=[...sitemap.matchAll(/<url>\s*<loc>([^<>]+)<\/loc>\s*<\/url>/g)].map(match=>match[1]);
+const residue=sitemap
+  .replace(/^<\?xml version="1\.0" encoding="UTF-8"\?>\s*/,'')
+  .replace(/^<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">\s*/,'')
+  .replace(/\s*<\/urlset>\s*$/,'')
+  .replace(/<url>\s*<loc>[^<>]+<\/loc>\s*<\/url>/g,'').trim();
+if(!sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>') ||
+  !sitemap.includes('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">') ||
+  !sitemap.trimEnd().endsWith('</urlset>') || residue ||
+  JSON.stringify(sitemapUrls)!==JSON.stringify(expectedUrls))
+  throw new Error('LEGEND sitemap must be canonical XML generated from the single public page inventory.');
+const robots=await readFile(resolve(root,'dist','robots.txt'),'utf8');
+if(!robots.split(/\r?\n/).some(line=>line.trim()==='Sitemap: '+canonicalOrigin+'/sitemap.xml'))
+  throw new Error('Published robots.txt does not reference the canonical XML sitemap.');
 if(sitemap.includes('/business-preview'))throw new Error('Business preview must not enter the public sitemap.');
 console.log('Business preview consumes the same shared renderer assets without entering the public sitemap.');
 
