@@ -64,7 +64,8 @@ public static class CommerceServiceRegistration
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers
                 .Where(c => c.ControllerType.Assembly == assembly &&
-                    c.ControllerType.AsType() != typeof(StoreController)).ToArray())
+                    c.ControllerType.AsType() != typeof(StoreController) &&
+                    c.ControllerType.AsType() != typeof(ParfaitPublicPreviewController)).ToArray())
                 application.Controllers.Remove(controller);
         }
     }

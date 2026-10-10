@@ -125,7 +125,7 @@
     <Content Include="../ParfaitApp/Views/Home/Terms.cshtml;../ParfaitApp/Views/Home/Privacy.cshtml"
              Link="Views/StoreLegal/%(Filename)%(Extension)" />
     <Content Include="../ParfaitApp/wwwroot/css/**/*"
-             Exclude="../ParfaitApp/wwwroot/css/internal.css;../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css"
+             Exclude="../ParfaitApp/wwwroot/css/internal.css;../ParfaitApp/wwwroot/css/parfait-agentportal-analytics.css;../ParfaitApp/wwwroot/css/home.css"
              Link="wwwroot/store-assets/css/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/js/**/*"
@@ -134,7 +134,8 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/lib/**/*" Link="wwwroot/store-assets/lib/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../ParfaitApp/wwwroot/images/**/*" Link="wwwroot/store-assets/images/%(RecursiveDir)%(Filename)%(Extension)"
+    <Content Include="../ParfaitApp/wwwroot/images/**/*" Exclude="../ParfaitApp/wwwroot/images/company-icons/**/*"
+             Link="wwwroot/store-assets/images/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/uploads/parfait-products/**/*"
              Link="wwwroot/uploads/parfait-products/%(RecursiveDir)%(Filename)%(Extension)"
@@ -155,6 +156,25 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js"
              Link="wwwroot/js/parfait-agentportal-analytics.js"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exact original Parfait public Razor pages, not default LEGEND page copies. -->
+    <Content Include="../ParfaitApp/Views/Home/Index.cshtml" Link="Views/ParfaitOriginal/Home.cshtml" />
+    <Content Include="../ParfaitApp/Views/About/About.cshtml" Link="Views/ParfaitOriginal/About.cshtml" />
+    <Content Include="../ParfaitApp/Views/Contact/Index.cshtml" Link="Views/ParfaitOriginal/Contact.cshtml" />
+    <Content Include="../ParfaitApp/Views/TrainingPackages/Index.cshtml" Link="Views/ParfaitOriginal/TrainingPackages.cshtml" />
+    <Content Include="../ParfaitApp/Views/Training/Index.cshtml" Link="Views/ParfaitOriginal/Training.cshtml" />
+    <Content Include="../ParfaitApp/Views/Resources/Index.cshtml" Link="Views/ParfaitOriginal/Resources.cshtml" />
+    <Content Include="../ParfaitApp/Views/Support/Index.cshtml" Link="Views/ParfaitOriginal/Support.cshtml" />
+    <Content Include="../ParfaitApp/wwwroot/css/home.css" Link="wwwroot/css/home.css"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../ParfaitApp/wwwroot/images/company-icons/**/*"
+             Link="wwwroot/images/company-icons/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../ParfaitApp/wwwroot/resources/**/*"
+             Link="wwwroot/resources/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

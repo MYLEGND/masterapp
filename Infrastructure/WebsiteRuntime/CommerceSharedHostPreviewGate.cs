@@ -37,6 +37,15 @@ public static class CommerceSharedHostPreviewGate
             return value.Length > "/store/product/".Length &&
                 !value["/store/product/".Length..].Contains('/');
 
+        // Original business-page assets remain isolated to the verified host.
+        if (value is "/css/home.css" or "/css/public-inquiry-form.css" or
+            "/js/public-inquiry-form.mjs")
+            return true;
+        if (value.StartsWith("/images/company-icons/", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("/resources/", StringComparison.OrdinalIgnoreCase))
+            return value.Length > 12 && !value.Contains("..", StringComparison.Ordinal) &&
+                   !value.Contains('%');
+
         // Read-only static files bundled with the exact source Parfait website.
         if (value.StartsWith("/store-assets/", StringComparison.OrdinalIgnoreCase))
             return !value.Contains("..", StringComparison.Ordinal) &&
@@ -57,6 +66,38 @@ public static class CommerceSharedHostPreviewGate
                 relative.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
                 relative.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ||
                 relative.EndsWith(".gif", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public const string OriginalPagePathItem = "Legend.Commerce.OriginalPublicPreviewPath";
+
+    public static bool TryMapPublicPage(IConfiguration configuration,
+        Guid verifiedBusinessId, string host, PathString path, string method,
+        out PathString internalPath)
+    {
+        internalPath = PathString.Empty;
+        if (!IsConfigured(configuration) ||
+            !Guid.TryParse(configuration["Commerce:SharedHostPreview:BusinessId"], out var id) ||
+            id != verifiedBusinessId ||
+            !string.Equals(host, configuration["Commerce:SharedHostPreview:Hostname"]?.Trim(),
+                StringComparison.OrdinalIgnoreCase) ||
+            (!HttpMethods.IsGet(method) && !HttpMethods.IsHead(method)))
+            return false;
+
+        var route = (path.Value ?? "/").TrimEnd('/').ToLowerInvariant();
+        var page = route switch
+        {
+            "" or "/" or "/home" or "/home/index" => "home",
+            "/about" or "/about/about" => "about",
+            "/contact" or "/contact/index" => "contact",
+            "/trainingpackages" or "/trainingpackages/index" => "training-packages",
+            "/training" or "/training/index" => "training",
+            "/resources" or "/resources/index" => "resources",
+            "/support" or "/support/index" => "support",
+            _ => null
+        };
+        if (page is null) return false;
+        internalPath = new PathString("/__parfait-preview/" + page);
+        return true;
     }
 
     private static bool ValidHostname(string? value)

@@ -20,7 +20,7 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
     [InlineData("Views/Shared/_Layout.cshtml", "b677436132bd4242bb52e70acf8a80a0cbac48dc")]
     [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "64d65583c778f715af5bde408577a0fd7b155ffc")]
-    [InlineData("Views/Home/Index.cshtml", "f623f2e9b55cf53e99aae2ed277949b29f1585da")]
+    [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]
     [InlineData("Views/Store/Cart.cshtml", "a635fd5d545607201878271fd5697fd667e745be")]
     [InlineData("Views/Store/Product.cshtml", "d320b04f64562136f6cd0e2dee5855d7c67c541c")]

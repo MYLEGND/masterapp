@@ -232,6 +232,16 @@ app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    // Endpoint selection already happened on the internal preview path.
+    // Restore the externally requested URL for canonical links and rendering.
+    if (context.Items.TryGetValue(
+            Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.OriginalPagePathItem,
+            out var original) && original is PathString originalPath)
+        context.Request.Path = originalPath;
+    await next();
+});
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
     diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/legend-public-site-tools"),

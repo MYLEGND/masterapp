@@ -17,6 +17,28 @@ public sealed class CommerceSharedHostPreviewGateTests
             ["Commerce:SharedHostPreview:Hostname"] = host
         }).Build();
 
+    [Theory]
+    [InlineData("/", "/__parfait-preview/home")]
+    [InlineData("/Home/Index", "/__parfait-preview/home")]
+    [InlineData("/About/About", "/__parfait-preview/about")]
+    [InlineData("/Contact", "/__parfait-preview/contact")]
+    [InlineData("/TrainingPackages", "/__parfait-preview/training-packages")]
+    [InlineData("/Training", "/__parfait-preview/training")]
+    [InlineData("/Resources", "/__parfait-preview/resources")]
+    [InlineData("/Support", "/__parfait-preview/support")]
+    public void OriginalParfaitPageRewriteNeedsVerifiedBusinessAndGet(string path, string mapped)
+    {
+        var id = Guid.NewGuid();
+        var config = Config(true, id.ToString());
+        Assert.True(CommerceSharedHostPreviewGate.TryMapPublicPage(
+            config, id, "shopparfait.com", path, "GET", out var rewritten));
+        Assert.Equal(mapped, rewritten.Value);
+        Assert.False(CommerceSharedHostPreviewGate.TryMapPublicPage(
+            config, id, "shopparfait.com", path, "POST", out _));
+        Assert.False(CommerceSharedHostPreviewGate.TryMapPublicPage(
+            config, Guid.NewGuid(), "shopparfait.com", path, "GET", out _));
+    }
+
     [Fact]
     public void PreviewHasNoImplicitActivation()
     {
