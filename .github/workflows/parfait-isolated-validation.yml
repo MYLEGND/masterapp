@@ -6,6 +6,7 @@ on:
       - isolation/parfait-canonical-commerce-20261010
     paths:
       - CommerceCore/**
+      - Protect-Website/**
       - ParfaitApp/**
       - AgentPortal.Tests/**
       - .github/workflows/parfait-isolated-validation.yml
@@ -36,10 +37,12 @@ jobs:
         run: |
           dotnet restore CommerceCore/LegendCommerce.csproj --nologo
           dotnet restore ParfaitApp/ParfaitApp.csproj --nologo
+          dotnet restore Protect-Website/ProtectWebsite.csproj --nologo
       - name: Compile shared commerce and Parfait host
         run: |
           dotnet build CommerceCore/LegendCommerce.csproj -c Release --no-restore --nologo
           dotnet build ParfaitApp/ParfaitApp.csproj -c Release --no-restore --nologo
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore --nologo
       - name: Restore contract tests
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
       - name: Run focused Parfait commerce and canonical parity tests

@@ -7,7 +7,7 @@ using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
 
-public sealed class ParfaitProductService
+public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogReader
 {
     private static readonly object Lock = new();
 

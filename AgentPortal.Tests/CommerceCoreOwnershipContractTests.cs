@@ -72,6 +72,27 @@ public sealed class CommerceCoreOwnershipContractTests
             Assert.Single(feature.Controllers.Where(x => x.AsType() == controller));
     }
 
+    [Fact]
+    public void WebsiteRuntimeConsumesOnlySharedCatalogWithoutEnablingCommerceRoutes()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddControllersWithViews().AddLegendCommerceMvc()
+            .ExcludeLegendCommerceMvc();
+        Assert.DoesNotContain(builder.PartManager.ApplicationParts,
+            p => p is AssemblyPart part && part.Assembly == typeof(StoreController).Assembly);
+
+        services.AddLegendCommerceCatalogReadOnly();
+        Assert.Single(services.Where(d => d.ServiceType == typeof(ICommerceCatalogReader)));
+        Assert.Single(services.Where(d => d.ServiceType == typeof(ParfaitProductService)));
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(ParfaitOrderService));
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(ParfaitCustomerAutomationService));
+
+        var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
+        Assert.Contains("AddLegendCommerceCatalogReadOnly()", protect, StringComparison.Ordinal);
+        Assert.Contains("ExcludeLegendCommerceMvc()", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddLegendCommerceMvc()", protect, StringComparison.Ordinal);
+    }
+
     private static string Root()
     {
         var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");

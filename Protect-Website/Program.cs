@@ -1,3 +1,4 @@
+using Legend.Commerce;
 using Infrastructure.Diagnostics;
 using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
@@ -31,6 +32,9 @@ var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add<ProtectWebsite.Services.Tracking.TrackingViewDataFilter>();
 });
+// This website consumes only the shared catalog until audited media, views,
+// checkout and automation state are ready. Never publish commerce routes here yet.
+mvcBuilder.ExcludeLegendCommerceMvc();
 if (builder.Environment.IsDevelopment())
 {
     mvcBuilder.AddRazorRuntimeCompilation();
@@ -52,6 +56,7 @@ builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
 builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
+builder.Services.AddLegendCommerceCatalogReadOnly();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
 builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();
