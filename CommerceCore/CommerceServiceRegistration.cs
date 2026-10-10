@@ -1,4 +1,5 @@
 using Infrastructure.Commerce;
+using ParfaitApp.Controllers;
 using Microsoft.Extensions.DependencyInjection;
 using ParfaitApp.Services;
 
@@ -11,6 +12,13 @@ namespace Legend.Commerce;
 /// </summary>
 public static class CommerceServiceRegistration
 {
+    /// <summary>Registers exactly the same shared controllers with any MVC host.</summary>
+    public static IMvcBuilder AddLegendCommerceMvc(this IMvcBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        return builder.AddApplicationPart(typeof(StoreController).Assembly);
+    }
+
     public static IServiceCollection AddLegendCommerceCore(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);

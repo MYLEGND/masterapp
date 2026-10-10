@@ -20,7 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 builder.Services.AddControllersWithViews()
-    .AddApplicationPart(typeof(ParfaitApp.Controllers.StoreController).Assembly);
+    .AddLegendCommerceMvc();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =

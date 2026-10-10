@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.Extensions.DependencyInjection;
 using CommerceEngine = Legend.Commerce.CommerceServiceRegistration;
 using ParfaitApp.Controllers;
 using ParfaitApp.Services;
@@ -43,8 +46,29 @@ public sealed class CommerceCoreOwnershipContractTests
     {
         var program = File.ReadAllText(Path.Combine(Root(), "ParfaitApp", "Program.cs"));
         Assert.Contains("AddLegendCommerceCore()", program, StringComparison.Ordinal);
-        Assert.Contains("AddApplicationPart(typeof(ParfaitApp.Controllers.StoreController).Assembly)", program, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceMvc()", program, StringComparison.Ordinal);
         Assert.DoesNotContain("builder.Services.AddScoped<ParfaitProductService>()", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MvcHostDiscoversOneCanonicalInstanceOfEachCommerceController()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddControllersWithViews().AddLegendCommerceMvc();
+        var part = Assert.Single(builder.PartManager.ApplicationParts
+            .Where(p => p.Name == typeof(StoreController).Assembly.GetName().Name));
+        Assert.IsType<AssemblyPart>(part);
+
+        var feature = new ControllerFeature();
+        if (!builder.PartManager.FeatureProviders.OfType<ControllerFeatureProvider>().Any())
+            builder.PartManager.FeatureProviders.Add(new ControllerFeatureProvider());
+        builder.PartManager.PopulateFeature(feature);
+        foreach (var controller in new[]
+        {
+            typeof(StoreController), typeof(StoreCartController),
+            typeof(StoreCheckoutController), typeof(CommerceManagementController)
+        })
+            Assert.Single(feature.Controllers.Where(x => x.AsType() == controller));
     }
 
     private static string Root()
