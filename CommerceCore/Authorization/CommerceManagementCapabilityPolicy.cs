@@ -24,6 +24,8 @@ public static class CommerceManagementCapabilityPolicy
             if (route is "workspace" or "dashboard" or "preview" ||
                 route.StartsWith("preview/product/", StringComparison.Ordinal))
                 return "website";
+            if (route is "business-profile") return "settings";
+            if (route is "team") return "team";
             if (route is "products") return "catalog";
             if (route is "orders") return "orders";
             if (route is "automations") return "automations";
@@ -42,6 +44,8 @@ public static class CommerceManagementCapabilityPolicy
             "product/images/reorder" or "product/images/display" or
             "products/reorder" or "settings/commerce")
             return "catalog";
+        if (route is "business-profile") return "settings";
+        if (route is "team/permissions") return "team";
         if (route is "order" or "order/receipt")
             return "orders";
         if (route is "automations/workflows" or "automations/workflows/delete")
