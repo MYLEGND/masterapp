@@ -780,7 +780,7 @@ class EarlyReadinessEvidenceTests(unittest.TestCase):
         cms = 'SHARED/WebsitePlatform/legend-public-cms.js'
         css = 'SHARED/wwwroot/css/dashboard-home-shared.css'
         def tree(path, oid, mode='100644'):
-            return mode + ' blob ' + oid * 40 + '\\t' + path + '\\0'
+            return mode + ' blob ' + oid * 40 + '\t' + path + '\0'
         base = tree(cms, 'a') + tree(css, 'c')
         for candidate, expected in (
             (tree(cms, 'b') + tree(css, 'c'), True),
