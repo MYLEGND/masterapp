@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Legend.Commerce;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.DependencyInjection;
