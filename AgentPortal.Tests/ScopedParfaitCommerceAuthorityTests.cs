@@ -27,9 +27,9 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     [Fact]
     public void ProductsOrdersAndAutomations_StayOnExistingParfaitAuthorities_WithBusinessScope()
     {
-        var products = ReadSource("ParfaitApp", "Services", "ParfaitProductService.cs");
-        var orders = ReadSource("ParfaitApp", "Services", "ParfaitOrderService.cs");
-        var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
+        var products = ReadSource("CommerceCore", "Services", "ParfaitProductService.cs");
+        var orders = ReadSource("CommerceCore", "Services", "ParfaitOrderService.cs");
+        var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
 
         Assert.Contains("GetAllProducts(Guid businessId)", products, StringComparison.Ordinal);
         Assert.Contains("GetAllOrders(Guid businessId)", orders, StringComparison.Ordinal);
@@ -104,7 +104,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     {
         var checkout = ReadSource("ParfaitApp", "Controllers", "StoreCheckoutController.cs");
         var analyticsController = ReadSource("ParfaitApp", "Controllers", "StoreCartController.cs");
-        var automations = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationService.cs");
+        var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
         var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
         Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);

@@ -40,7 +40,7 @@ public sealed class ParfaitCanonicalCutoverSafetyTests
     [Fact]
     public void ExistingParfaitCustomerStateAndImages_CannotBeDiscardedEarly()
     {
-        var paths = Read("ParfaitApp", "Services", "ParfaitStoragePaths.cs");
+        var paths = Read("CommerceCore", "Services", "ParfaitStoragePaths.cs");
         Assert.Contains("parfait-customer-automations.json", paths, StringComparison.Ordinal);
         Assert.Contains("parfait-team-access.json", paths, StringComparison.Ordinal);
         Assert.Contains("parfait-business-profile.json", paths, StringComparison.Ordinal);
