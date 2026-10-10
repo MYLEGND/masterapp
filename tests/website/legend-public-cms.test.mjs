@@ -1831,6 +1831,46 @@ test('published business rendering activates the shared inquiry path without inj
   assert.equal(businessRenderSource.includes("script.src='/business-inquiry.js'"),false);
 });
 
+test('published business compiler retains the same JSON inquiry transport used by Founder',()=>{
+  const compilerFilter = businessRenderSource.match(/doc\.querySelectorAll\('script'\)\.forEach\(script=>\{[\s\S]*?\}\);/);
+  assert.ok(compilerFilter,'Published script allowlist is required');
+  assert.match(compilerFilter[0], /'\/legend-public-inquiry\.js'/);
+  assert.match(businessBuildSource,/script src="\/legend-public-inquiry\.js\?v=\$\{inquiryVersion\}" defer/);
+  assert.match(publicInquirySource,/headers: \{ 'Content-Type': 'application\/json' \}/);
+  assert.match(publicInquirySource,/body: JSON\.stringify\(\{ submissionId, \.\.\.values \}\)/);
+  assert.doesNotMatch(businessRenderSource,/script\.src='\/business-inquiry\.js'/);
+});
+
+test('existing business publications without the inquiry asset hydrate the canonical runtime and block native 415 submissions',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('contact.section','section','section',{children:[
+    canonicalNode('contact.inquiry','form','form',{systemKey:'canonical_inquiry',text:'Send inquiry',title:'Contact us'})
+  ]})];
+  const business={id:'11111111-1111-1111-1111-111111111111',displayName:'Scoped customer'};
+  const f=await domFixture({siteKey:'business',business,doc,search:'',origin:'https://business.example'});
+  try{
+    const form=f.w.document.querySelector('form[data-website-inquiry]');
+    assert.ok(form,'Canonical published business form must render');
+    assert.equal(form.dataset.legendInquiryGuard,'true');
+    const scripts=[...f.w.document.scripts].filter(script=>new URL(script.src || 'https://business.example/', 'https://business.example').pathname==='/legend-public-inquiry.js');
+    assert.equal(scripts.length,1,'Missing historical asset is loaded exactly once from the shared runtime');
+    const submit=new f.w.Event('submit',{bubbles:true,cancelable:true});
+    form.dispatchEvent(submit);
+    assert.equal(submit.defaultPrevented,true,'Unbound forms never POST urlencoded data to JSON API');
+    assert.match(form.querySelector('[role="status"]').textContent,/still loading/i);
+  }finally{f.close();}
+});
+
+test('CMS reuses a present shared runtime without loading an additional inquiry handler',async()=>{
+  const doc=canonicalDocument();
+  doc.pages['/'].composition=[canonicalNode('inquiry.form','form','form',{systemKey:'canonical_inquiry'})];
+  const f=await domFixture({doc,search:'',html:'<!doctype html><html><head></head><body data-page-key="home"><main></main><script src="/legend-public-inquiry.js?v=approved" defer></script></body></html>'});
+  try{
+    assert.ok(f.w.document.querySelector('form[data-website-inquiry]'));
+    assert.equal([...f.w.document.scripts].filter(script=>script.src.includes('legend-public-inquiry.js')).length,1);
+  }finally{f.close();}
+});
+
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
   assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(secureEmbedSource(source))"));
   const embedStart=source.indexOf('function buildCanonicalEmbed');
