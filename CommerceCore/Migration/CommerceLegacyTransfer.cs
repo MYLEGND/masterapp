@@ -112,12 +112,41 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
             }
         }
 
+        // A completed copy is not trusted until every source and destination
+        // is reread after all writes. A changed source, even after its own copy,
+        // must stop the cutover instead of silently blessing a stale replica.
+        var verified = 0;
+        foreach (var item in preflight)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Sha256(await ReadBoundedAsync(item.Source, ct)) != item.Hash)
+                throw new InvalidOperationException("Commerce source changed before final migration verification.");
+            if (File.Exists(item.Destination))
+            {
+                if (Sha256(await ReadBoundedAsync(item.Destination, ct)) != item.Hash)
+                    throw new InvalidOperationException("Commerce destination failed final migration verification.");
+                verified++;
+            }
+            else if (mode == CommerceTransferMode.CopyNoOverwrite)
+            {
+                throw new InvalidOperationException("Commerce destination missing after copy.");
+            }
+        }
+
+        // The digest deliberately excludes raw customer JSON, media bytes,
+        // email, physical paths, and provider/payment identities.
+        var manifest = Sha256(System.Text.Encoding.UTF8.GetBytes(
+            string.Join("\\n", preflight.Select(x => x.Hash + ":" +
+                x.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .OrderBy(x => x, StringComparer.Ordinal))));
         return new CommerceTransferReport(
             businessId, preflight.Count,
             preflight.Count(x => x.Existing),
             preflight.Count(x => !x.Existing),
             preflight.Sum(x => x.Length),
-            mode == CommerceTransferMode.CopyNoOverwrite);
+            mode == CommerceTransferMode.CopyNoOverwrite,
+            verified,
+            manifest);
     }
 
     private static string Constrain(string root, string relative)
@@ -152,4 +181,5 @@ public enum CommerceTransferMode { PlanOnly, CopyNoOverwrite }
 
 public sealed record CommerceTransferReport(
     Guid BusinessId, int Files, int ExistingIdenticalFiles,
-    int FilesToCopy, long Bytes, bool CopyAttempted);
+    int FilesToCopy, long Bytes, bool CopyAttempted,
+    int VerifiedDestinationFiles, string ManifestSha256);

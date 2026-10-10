@@ -45,11 +45,15 @@ public sealed class CommerceLegacyTransferTests
             Assert.Equal(2, plan.Files);
             Assert.Equal(2, plan.FilesToCopy);
             Assert.False(plan.CopyAttempted);
+            Assert.Equal(0, plan.VerifiedDestinationFiles);
+            Assert.Equal(64, plan.ManifestSha256.Length);
             Assert.False(Directory.Exists(target.RootPath));
 
             var copied = await migration.ReconcileAsync(business.Id, "parfait",
                 source, target, CommerceTransferMode.CopyNoOverwrite);
             Assert.True(copied.CopyAttempted);
+            Assert.Equal(2, copied.VerifiedDestinationFiles);
+            Assert.Equal(plan.ManifestSha256, copied.ManifestSha256);
             Assert.Equal(await File.ReadAllBytesAsync(sourceFile),
                 await File.ReadAllBytesAsync(Path.Combine(target.UploadRoot, "product-1", "img.png")));
             Assert.Equal(await File.ReadAllTextAsync(source.CustomerAutomationsPath),
@@ -59,12 +63,23 @@ public sealed class CommerceLegacyTransferTests
                 source, target, CommerceTransferMode.CopyNoOverwrite);
             Assert.Equal(2, repeated.ExistingIdenticalFiles);
             Assert.Equal(0, repeated.FilesToCopy);
+            Assert.Equal(2, repeated.VerifiedDestinationFiles);
+            Assert.Equal(copied.ManifestSha256, repeated.ManifestSha256);
 
             await File.WriteAllTextAsync(target.CustomerAutomationsPath, "{\"conflict\":true}");
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 migration.ReconcileAsync(business.Id, "parfait", source, target,
                     CommerceTransferMode.CopyNoOverwrite));
             Assert.True(File.Exists(sourceFile));
+
+            // Existing source files must never be modified or removed.
+            var original = await File.ReadAllBytesAsync(sourceFile);
+            await File.WriteAllBytesAsync(sourceFile, new byte[] { 9, 9, 9, 9 });
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                migration.ReconcileAsync(business.Id, "parfait", source, target,
+                    CommerceTransferMode.PlanOnly));
+            Assert.True(File.Exists(sourceFile));
+            Assert.NotEqual(original, await File.ReadAllBytesAsync(sourceFile));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
