@@ -45,4 +45,4 @@ jobs:
       - name: Run focused Parfait commerce and canonical parity tests
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo \
-            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests'
+            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests'

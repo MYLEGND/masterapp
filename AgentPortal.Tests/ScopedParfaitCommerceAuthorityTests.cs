@@ -120,13 +120,17 @@ public sealed class ScopedParfaitCommerceAuthorityTests
     public void ScopedPublicCommerce_UsesPublishedWebsiteShell_WhileParfaitRemainsBackendAuthority()
     {
         var viewStart = ReadSource("ParfaitApp", "Views", "_ViewStart.cshtml");
+        var presentation = ReadSource("Infrastructure", "Commerce", "CommerceStorefrontPresentation.cs");
         var scopedLayout = ReadSource("ParfaitApp", "Views", "Shared", "_ScopedWebsiteStoreLayout.cshtml");
         var legacyLayout = ReadSource("ParfaitApp", "Views", "Shared", "_Layout.cshtml");
         var storeContext = ReadSource("Infrastructure", "Commerce", "CommerceStoreContextService.cs");
         var storefrontCss = ReadSource("ParfaitApp", "wwwroot", "css", "storefront.css");
 
-        Assert.Contains("WebsiteShellPrefix", viewStart, StringComparison.Ordinal);
-        Assert.Contains("_ScopedWebsiteStoreLayout", viewStart, StringComparison.Ordinal);
+        Assert.Contains("CommerceStorefrontPresentation.ResolveLayout(commerce)", viewStart, StringComparison.Ordinal);
+        Assert.Contains("WebsiteShellPrefix", presentation, StringComparison.Ordinal);
+        Assert.Contains("WebsiteShellSuffix", presentation, StringComparison.Ordinal);
+        Assert.Contains("_ScopedWebsiteStoreLayout", presentation, StringComparison.Ordinal);
+        Assert.Contains("ParfaitOriginalLayout", presentation, StringComparison.Ordinal);
         Assert.Contains("@Html.Raw(prefix)", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("@Html.Raw(suffix)", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("window.PARFAIT_COMMERCE_CONTEXT", scopedLayout, StringComparison.Ordinal);
