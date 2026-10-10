@@ -141,7 +141,7 @@
                             <div class="client-create-section-head">
                                 <div>
                                     <div class="client-create-section-title">@(isBusinessClient ? "Owner contact details" : "Primary Profile")</div>
-                                    <p class="client-create-section-copy">Keep your contact details up to date for your LEGEND guide.</p>
+                                    <p class="client-create-section-copy">Keep your contact details up to date for your @Shared.Branding.LegendBrand.RegisteredUpper guide.</p>
                                 </div>
                             </div>
                             <div class="client-create-grid">
@@ -171,7 +171,7 @@
                                 <div class="client-create-section-head">
                                     <div>
                                         <div class="client-create-section-title">Account Privacy</div>
-                                        <p class="client-edit-note">Choose whether your LEGEND guide can open your full account. Your contact record remains visible to your guide either way.</p>
+                                        <p class="client-edit-note">Choose whether your @Shared.Branding.LegendBrand.RegisteredUpper guide can open your full account. Your contact record remains visible to your guide either way.</p>
                                     </div>
                                 </div>
                                 <div class="client-create-grid">
@@ -208,7 +208,7 @@
                             <div class="client-edit-section-head">
                                 <div>
                                     <div class="client-create-section-title">Children</div>
-                                    <p class="client-edit-note">Household members shared with your LEGEND guide.</p>
+                                    <p class="client-edit-note">Household members shared with your @Shared.Branding.LegendBrand.RegisteredUpper guide.</p>
                                 </div>
                                 <button type="button" class="client-create-button client-create-button-secondary client-edit-button-small" id="addChildBtn">Add Child</button>
                             </div>
@@ -276,15 +276,15 @@
                                     <p class="client-edit-note">
                                         @if (canResumeAccount)
                                         {
-                                            @:Your Legend account is paused. Resume it here to restore access to the rest of your workspace.
+                                            @:Your @Shared.Branding.LegendBrand.RegisteredTitle account is paused. Resume it here to restore access to the rest of your workspace.
                                         }
                                         else if (accountIsRestricted)
                                         {
-                                            @:Account closure is in progress. Legend access remains disabled while the required process is completed.
+                                            @:Account closure is in progress. @Shared.Branding.LegendBrand.RegisteredTitle access remains disabled while the required process is completed.
                                         }
                                         else
                                         {
-                                            @:Need time away? Pausing is reversible and disables regular Legend access until you resume.
+                                            @:Need time away? Pausing is reversible and disables regular @Shared.Branding.LegendBrand.RegisteredTitle access until you resume.
                                         }
                                     </p>
                                 </div>
@@ -306,7 +306,7 @@
                                     <div class="client-create-full">
                                         <label class="client-create-label" for="pauseConfirmation">Type PAUSE to confirm</label>
                                         <input id="pauseConfirmation" name="confirmation" class="client-create-input" autocomplete="off" />
-                                        <p class="client-edit-note client-edit-note-tight">Pausing disables regular Legend access. Return to this Profile page to resume.</p>
+                                        <p class="client-edit-note client-edit-note-tight">Pausing disables regular @Shared.Branding.LegendBrand.RegisteredTitle access. Return to this Profile page to resume.</p>
                                     </div>
                                     <div class="client-create-actions">
                                         <button type="submit" class="client-create-button client-create-button-secondary">Pause Account</button>

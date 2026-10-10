@@ -61,7 +61,7 @@ public sealed class ClientSubscriptionInvitationEmailService
         var safeActivationUrl = HtmlEncode(activationUrl);
         var safeSignInUrl = HtmlEncode(signInUrl);
         var safeSignInEmail = HtmlEncode(signInEmail);
-        var safeAgentName = HtmlEncode(FirstNonEmpty(agent.FullName, agent.Email, "Legend") ?? "Legend");
+        var safeAgentName = HtmlEncode(FirstNonEmpty(agent.FullName, agent.Email, Shared.Branding.LegendBrand.RegisteredTitle) ?? Shared.Branding.LegendBrand.RegisteredTitle);
         var safeAgentTitle = HtmlEncode(agent.Title ?? string.Empty);
         var safeAgentPhone = HtmlEncode(agent.Phone ?? string.Empty);
         var safeAgentEmail = HtmlEncode(agent.Email ?? string.Empty);
@@ -80,10 +80,10 @@ public sealed class ClientSubscriptionInvitationEmailService
             ? string.Empty
             : $"""<div style="margin:8px 0 0;"><span style="display:inline-block;min-width:56px;color:#2e5fa9;font-weight:700;">NPN</span><span style="color:#0d2145;font-weight:700;">{safeAgentNpn}</span></div>""";
         var replyCopy = string.IsNullOrWhiteSpace(agent.Email)
-            ? "If you need help, contact your Legend agent before your invitation expires."
+            ? $"If you need help, contact your {Shared.Branding.LegendBrand.RegisteredTitle} agent before your invitation expires."
             : "If you need help, reply directly to this email and your agent will pick it up.";
 
-        var subject = "Activate your Legend Client Portal access";
+        var subject = $"Activate your {Shared.Branding.LegendBrand.RegisteredTitle} Client Portal access";
         var htmlBody = $"""
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;color:#14213a;">
   <tr>
@@ -95,7 +95,7 @@ public sealed class ClientSubscriptionInvitationEmailService
               <tr>
                 <td style="padding:24px 28px 8px 28px;">
                   <div style="color:#cbdcff;font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;">
-                    Legend Client Portal
+                    {Shared.Branding.LegendBrand.RegisteredTitle} Client Portal
                   </div>
                 </td>
               </tr>
@@ -137,7 +137,7 @@ public sealed class ClientSubscriptionInvitationEmailService
         <tr>
           <td style="padding:20px 28px 0 28px;background:#ffffff;">
             <div style="font-size:15px;line-height:1.55;color:#506078;">
-              After activation, sign in at <a href="{safeSignInUrl}" target="_blank" style="color:#0d2145;font-weight:700;text-decoration:none;">Legend Client Portal</a>.
+              After activation, sign in at <a href="{safeSignInUrl}" target="_blank" style="color:#0d2145;font-weight:700;text-decoration:none;">{Shared.Branding.LegendBrand.RegisteredTitle} Client Portal</a>.
             </div>
             <div style="margin-top:8px;font-size:15px;line-height:1.55;color:#506078;">{replyCopy}</div>
           </td>
@@ -154,7 +154,7 @@ public sealed class ClientSubscriptionInvitationEmailService
                   {agentPhoneHtml}
                   {agentEmailHtml}
                   {agentNpnHtml}
-                  <div style="margin-top:16px;font-size:14px;font-weight:800;color:#0d2145;">Legend™</div>
+                  <div style="margin-top:16px;font-size:14px;font-weight:800;color:#0d2145;">{Shared.Branding.LegendBrand.RegisteredTitle}</div>
                 </td>
               </tr>
             </table>
@@ -170,7 +170,7 @@ public sealed class ClientSubscriptionInvitationEmailService
         {
             $"Hi {displayName},",
             string.Empty,
-            "Your Legend Client Portal access is ready.",
+            $"Your {Shared.Branding.LegendBrand.RegisteredTitle} Client Portal access is ready.",
             $"Monthly amount: {monthlyAmount}",
             $"Billing day: {DescribeBillingAnchor(offer)}",
             $"Invitation expires: {invitationExpires}",
@@ -189,7 +189,7 @@ public sealed class ClientSubscriptionInvitationEmailService
         if (!string.IsNullOrWhiteSpace(agent.Npn))
             textLines.Add($"NPN: {agent.Npn}");
 
-        textLines.Add("Legend");
+        textLines.Add(Shared.Branding.LegendBrand.RegisteredTitle);
 
         var textBody = string.Join("\n", textLines);
 
@@ -269,7 +269,7 @@ public sealed class ClientSubscriptionInvitationEmailService
     private static string BuildFromDisplayName(AgentInvitationContact agent)
     {
         var name = FirstNonEmpty(agent.FullName, agent.Email);
-        return string.IsNullOrWhiteSpace(name) ? "Legend Client Access" : $"{name} | Legend";
+        return string.IsNullOrWhiteSpace(name) ? Shared.Branding.LegendBrand.RegisteredTitle + " Client Access" : $"{name} | {Shared.Branding.LegendBrand.RegisteredTitle}";
     }
 
     private static string? FirstNonEmpty(params string?[] values)

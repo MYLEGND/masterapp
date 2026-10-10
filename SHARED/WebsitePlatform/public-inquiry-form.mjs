@@ -5,7 +5,7 @@ export function publicInquiryForm({ preview = false, business = false, ownerLabe
     ? escapeHtml(ownerLabel)
     : business
       ? '<span data-business-name>this business</span>'
-      : 'LEGEND®';
+      : 'this website';
   const notice = preview
     ? '<p data-preview-notice>Inquiries become available on your verified published domain.</p>'
     : '';

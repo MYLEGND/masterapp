@@ -65,7 +65,15 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@Html.Raw(ViewData["Title"]) - Legend™</title>
+    <title>@Html.Raw(ViewData["Title"]) - @Shared.Branding.LegendBrand.RegisteredTitle</title>
+    <script>
+        // Shared immutable registry, never a separately authored browser brand.
+        window.LEGEND_BRAND = Object.freeze(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+            registeredUpper = Shared.Branding.LegendBrand.RegisteredUpper,
+            registeredTitle = Shared.Branding.LegendBrand.RegisteredTitle,
+            protectionName = Shared.Branding.LegendBrand.ProtectionName
+        })));
+    </script>
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
@@ -119,19 +127,19 @@
             @if (isOnboardingPublic)
             {
                 <span class="navbar-brand disabled-logo">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="@Shared.Branding.LegendBrand.RegisteredTitle" />
                 </span>
             }
             else if (isAssistant)
             {
                 <a class="navbar-brand" asp-controller="Assistant" asp-action="Index">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="@Shared.Branding.LegendBrand.RegisteredTitle" />
                 </a>
             }
             else
             {
                 <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="@Shared.Branding.LegendBrand.RegisteredTitle" />
                 </a>
             }
 
@@ -192,8 +200,8 @@
                         <button type="button"
                                 id="legendFounderAiTrigger"
                                 class="legend-founder-ai-nav-button"
-                                title="Legend® Ai"
-                                aria-label="Open Legend® Ai">
+                                title="@Shared.Branding.LegendBrand.RegisteredTitle Ai"
+                                aria-label="Open @Shared.Branding.LegendBrand.RegisteredTitle Ai">
                             <img src="~/images/legend-ai/legendai.png"
                                  asp-append-version="true"
                                  alt=""
@@ -266,7 +274,7 @@
                 if (isFounder)
                 {
                     @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
-                        "Edit LEGEND® website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
+                        $"Edit {Shared.Branding.LegendBrand.RegisteredUpper} website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
                 }
             }
             @if ((ViewData["BusinessWorkspace"] ?? ViewData.Model) is Shared.Crm.BusinessWorkspaceModel selectedBusinessWorkspace)
@@ -318,7 +326,7 @@
                     <small>Revenue</small>
                 </a>
                 <a class="explore-item" data-tone="ops" asp-controller="LegendConnect" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
-                    <span>Legend® Connect</span>
+                    <span>@Shared.Branding.LegendBrand.RegisteredTitle Connect</span>
                     <small>Language</small>
                 </a>
                 <a class="explore-item" data-tone="ops" href="/founder/diagnostics">

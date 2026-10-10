@@ -415,7 +415,7 @@
             <div class="zoom-qp-dialog">
                 <div class="zoom-qp-head">
                     <div class="zoom-qp-head-copy">
-                        <div class="zoom-qp-kicker">Legend™ Quick Access</div>
+                        <div class="zoom-qp-kicker">${window.LEGEND_BRAND?.registeredTitle || ""} Quick Access</div>
                         <div class="zoom-qp-title">Zoom Links</div>
                         <p class="zoom-qp-sub">Launch your saved Zoom meeting links instantly. Open, copy, or send to your contact.</p>
                     </div>

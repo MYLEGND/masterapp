@@ -1792,7 +1792,7 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
 test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
   assert.ok(businessBuildSource.includes("import { publicInquiryForm } from '../../SHARED/WebsitePlatform/public-inquiry-form.mjs'"));
   assert.ok(publicInquiryFormSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
-  assert.ok(businessBuildSource.includes('${publicInquiryForm()}</section>'));
+  assert.ok(businessBuildSource.includes('${publicInquiryForm({ownerLabel:brandRegistry.registeredUpper})}</section>'));
   assert.ok(businessBuildSource.includes('publicInquiryForm({preview:true,business:true})'));
   assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
   assert.ok(publicInquiryFormSource.includes('name="FirstName"'));

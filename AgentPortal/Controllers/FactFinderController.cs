@@ -147,7 +147,7 @@ public class FactFinderController : Controller
                 {
                     r.RelativeItem().Column(c =>
                     {
-                        c.Item().Text("LEGEND™ LEGACY PROTECTION").FontSize(16).SemiBold().FontColor(GoldDark);
+                        c.Item().Text(Shared.Branding.LegendBrand.ProtectionUpper).FontSize(16).SemiBold().FontColor(GoldDark);
                         c.Item().Text($"Fact Finder — {LabelFormType(model.FormType)}").FontSize(11).SemiBold();
                         c.Item().Text($"Generated: {DateTime.Now:MMMM dd, yyyy}").FontSize(9).FontColor(Muted);
                     });

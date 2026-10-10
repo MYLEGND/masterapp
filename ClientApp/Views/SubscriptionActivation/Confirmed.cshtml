@@ -9,21 +9,21 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Legend™</title>
+    <title>@ViewData["Title"] - @Shared.Branding.LegendBrand.RegisteredTitle</title>
     <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
 </head>
 <body class="subscription-activation-standalone">
     <main class="activation-page">
         <section class="activation-notice-card activation-confirmation-card">
             <header>
-                <p class="activation-brand">LEGEND</p>
+                <p class="activation-brand">@Shared.Branding.LegendBrand.RegisteredUpper</p>
                 <h1>Membership confirmed</h1>
                 <p>@Model.ClientName · @Model.ClientEmail</p>
             </header>
             <div class="activation-confirmation-body">
                 <div class="activation-membership-confirmation">
                     <h2>You are subscribed</h2>
-                    <p>Your $0.00/month LEGEND membership is active. Sign in with @Model.ClientEmail to open your portal.</p>
+                    <p>Your $0.00/month @Shared.Branding.LegendBrand.RegisteredUpper membership is active. Sign in with @Model.ClientEmail to open your portal.</p>
                 </div>
                 <form asp-action="Continue" asp-route-token="@Model.Token" method="post">
                     @Html.AntiForgeryToken()

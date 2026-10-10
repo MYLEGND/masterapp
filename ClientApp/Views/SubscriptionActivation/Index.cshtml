@@ -1,6 +1,6 @@
 @model ClientApp.Models.SubscriptionActivationPageViewModel
 @{
-    ViewData["Title"] = "Activate LEGEND";
+    ViewData["Title"] = $"Activate {Shared.Branding.LegendBrand.RegisteredUpper}";
     Layout = null;
     var squareScriptUrl = string.Equals(Model.SquareEnvironment, "Production", StringComparison.OrdinalIgnoreCase)
         ? "https://web.squarecdn.com/v1/square.js"
@@ -12,7 +12,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Legend™</title>
+    <title>@ViewData["Title"] - @Shared.Branding.LegendBrand.RegisteredTitle</title>
     <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
 </head>
 <body class="subscription-activation-standalone">
@@ -23,7 +23,7 @@
         <section class="activation-card">
             <header class="activation-header">
                 <div>
-                    <p class="activation-brand">LEGEND</p>
+                    <p class="activation-brand">@Shared.Branding.LegendBrand.RegisteredUpper</p>
                     <h1>Activate your access</h1>
                     <p class="activation-client">@Model.ClientName · @Model.ClientEmail</p>
                 </div>
@@ -58,12 +58,12 @@
                         <div asp-validation-summary="ModelOnly" class="activation-validation"></div>
                         <section class="activation-membership-confirmation" aria-labelledby="complimentaryMembershipTitle">
                             <h2 id="complimentaryMembershipTitle" class="activation-form-title">Your complimentary membership</h2>
-                            <p>This LEGEND membership is active at $0.00 per month. No payment method is needed.</p>
+                            <p>This @Shared.Branding.LegendBrand.RegisteredUpper membership is active at $0.00 per month. No payment method is needed.</p>
                         </section>
 
                         <label class="activation-authorization" for="billingAuthorizationAccepted">
                             <input type="checkbox" id="billingAuthorizationAccepted" name="BillingAuthorizationAccepted" value="true" required />
-                            <span>I acknowledge this $0.00/month LEGEND membership and confirm activation for @Model.ClientEmail.</span>
+                            <span>I acknowledge this $0.00/month @Shared.Branding.LegendBrand.RegisteredUpper membership and confirm activation for @Model.ClientEmail.</span>
                         </label>
 
                         <div class="activation-actions">

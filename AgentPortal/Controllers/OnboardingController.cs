@@ -291,7 +291,7 @@ public class OnboardingController : Controller
 
                 page.Header().Row(row =>
                 {
-                    row.RelativeItem().Text("Legend™ Onboarding Submission").SemiBold().FontSize(16).FontColor(navy);
+                    row.RelativeItem().Text(Shared.Branding.LegendBrand.RegisteredTitle + " Onboarding Submission").SemiBold().FontSize(16).FontColor(navy);
                     row.ConstantItem(200).AlignRight().Column(col =>
                     {
                         col.Item().Text(text =>

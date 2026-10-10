@@ -9,14 +9,14 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Legend™</title>
+    <title>@ViewData["Title"] - @Shared.Branding.LegendBrand.RegisteredTitle</title>
     <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
 </head>
 <body class="subscription-activation-standalone">
     <main class="activation-page">
         <section class="activation-notice-card">
             <header>
-                <p class="activation-brand">LEGEND</p>
+                <p class="activation-brand">@Shared.Branding.LegendBrand.RegisteredUpper</p>
                 <h1>@Model.Title</h1>
                 <p>@Model.Message</p>
             </header>

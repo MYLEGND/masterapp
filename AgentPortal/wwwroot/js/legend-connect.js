@@ -854,7 +854,7 @@
                 body,
                 "p",
                 "lc-copy",
-                "Loading governed LEGEND® intelligence.");
+                `Loading governed ${window.LEGEND_BRAND?.registeredUpper ?? ""} intelligence.`);
         }
     };
 
@@ -867,7 +867,7 @@
             body,
             "p",
             "lc-copy",
-            "This intelligence section could not be loaded. The rest of Legend® Connect remains available.");
+            `This intelligence section could not be loaded. The rest of ${window.LEGEND_BRAND?.registeredTitle ?? ""} Connect remains available.`);
 
         const button =
             appendText(

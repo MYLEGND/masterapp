@@ -473,7 +473,7 @@
             nextMode !== 'teacher'
         ) {
             if (status) {
-                updateThinkingStatus('Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.', false);
+                updateThinkingStatus(`Conversation mode is invalid. Select ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai or OpenAI Teacher.`, false);
             }
             return;
         }
@@ -487,7 +487,7 @@
         }
 
         // One browser conversation has exactly one responder identity. Never
-        // relabel an existing Legend® Ai transcript as OpenAI Teacher (or the
+        // relabel an existing LEGEND brand AI transcript as OpenAI Teacher (or the
         // reverse), because that would feed one AI's prior responses to the
         // other under the wrong role. A mode change starts a clean thread while
         // preserving both histories independently.
@@ -673,7 +673,7 @@
             input.placeholder =
                 conversation.mode === 'teacher'
                     ? 'Message the OpenAI Teacher…'
-                    : 'Message Legend® Ai…';
+                    : `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
         }
     }
 
@@ -756,7 +756,7 @@
                 (
                     conversation.mode === 'teacher'
                         ? 'OpenAI Teacher'
-                        : 'Legend® Ai'
+                        : `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`
                 );
 
             const time =
@@ -1232,7 +1232,7 @@
 
     function structuredFailureMessage(result, fallback = '') {
         if (!result || typeof result !== 'object') {
-            return fallback || 'Legend® Ai could not complete that response.';
+            return fallback || `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai could not complete that response.`;
         }
 
         // Preserve the authoritative summary as one exact catalog source.
@@ -1240,7 +1240,7 @@
         // localization cannot match a summary concatenated with raw codes.
         return typeof result.error === 'string' && result.error.trim()
             ? result.error.trim()
-            : fallback || 'Legend® Ai could not complete that response.';
+            : fallback || `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai could not complete that response.`;
     }
 
     async function consumeChatResultStream(response, signal) {
@@ -1305,7 +1305,7 @@
 
         if (!result) {
             throw new Error(
-                'Legend® Ai ended the response stream before returning a structured result.');
+                `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai ended the response stream before returning a structured result.`);
         }
 
         return result;
@@ -1479,7 +1479,7 @@
         if (kind === 'model') {
             settingsTitle.textContent = 'Model';
             settingsBody.append(
-                settingsAction('Legend® Ai', 'Use LEGEND hosted foundation and governed tools.', () => { closeSettingsPanel(); setMode('legend'); }),
+                settingsAction(`${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`, 'Use LEGEND hosted foundation and governed tools.', () => { closeSettingsPanel(); setMode('legend'); }),
                 settingsAction('OpenAI', 'Use the direct OpenAI teacher conversation mode.', () => { closeSettingsPanel(); setMode('teacher'); })
             );
         } else if (kind === 'tools') {

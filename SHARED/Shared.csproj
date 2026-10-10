@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="Branding/legend-brand.json" LogicalName="LegendBrand.Canonical" />
     <Content Include="Calling/Resources/raw/*.wav" Link="wwwroot/calling/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

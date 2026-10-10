@@ -460,7 +460,7 @@ public class ClientProvisioningService
         loginUpn = (loginUpn ?? "").Trim();
         portalLink = (portalLink ?? "").Trim();
 
-        var subject = "Your Client Portal Login (Legend™)";
+        var subject = $"Your Client Portal Login ({Shared.Branding.LegendBrand.RegisteredTitle})";
 
         var safeName = System.Net.WebUtility.HtmlEncode(firstName);
         var safeUpn = System.Net.WebUtility.HtmlEncode(loginUpn);
@@ -488,7 +488,7 @@ public class ClientProvisioningService
     <div style='margin:0 0 10px 0; color:#cecece;'>---</div>
 
     <div style='margin:0 0 2px 0; font-weight:700; color:#cecece;'>Zac Owen – Chief Executive Officer</div>
-    <div style='margin:0 0 10px 0; font-weight:800; color:#cecece;'>Legend™</div>
+    <div style='margin:0 0 10px 0; font-weight:800; color:#cecece;'>{Shared.Branding.LegendBrand.RegisteredTitle}</div>
 
     <div style='margin:0 0 10px 0; font-style:italic; color:#cecece;'>
       Where Your Faith Fuels Your Future &amp; Wellness Meets Wealth
@@ -637,10 +637,10 @@ public class ClientProvisioningService
                 var safeLink = System.Net.WebUtility.HtmlEncode(inviteRedirectUrl);
                 var safeInviter = System.Net.WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(inviterName) ? "your agent" : inviterName);
 
-                var subject = "You’re invited to join Legend™ as an Assistant";
+                var subject = $"You’re invited to join {Shared.Branding.LegendBrand.RegisteredTitle} as an Assistant";
                 var bodyHtml = $@"
 <div style='font-family: Inter, Arial, sans-serif; color:#111;'>
-    <h2 style='margin:0 0 10px 0;'>Hi {safeName}, welcome to Legend™.</h2>
+    <h2 style='margin:0 0 10px 0;'>Hi {safeName}, welcome to {Shared.Branding.LegendBrand.RegisteredTitle}.</h2>
     <p style='margin:0 0 12px 0; line-height:1.6;'>
         <strong>{safeInviter}</strong> invited you to collaborate as their assistant in the Agent Portal.
         We’re glad to have you on the team.
@@ -661,7 +661,7 @@ public class ClientProvisioningService
     </p>
 
     <p style='margin:14px 0 0 0;color:#444;'>
-        — Legend™ Team
+        — {Shared.Branding.LegendBrand.RegisteredTitle} Team
     </p>
 </div>";
 

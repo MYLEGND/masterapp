@@ -88,7 +88,15 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@Html.Raw(ViewData["Title"]) - Legend™</title>
+    <title>@Html.Raw(ViewData["Title"]) - @Shared.Branding.LegendBrand.RegisteredTitle</title>
+    <script>
+        // Shared immutable registry, never a separately authored browser brand.
+        window.LEGEND_BRAND = Object.freeze(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+            registeredUpper = Shared.Branding.LegendBrand.RegisteredUpper,
+            registeredTitle = Shared.Branding.LegendBrand.RegisteredTitle,
+            protectionName = Shared.Branding.LegendBrand.ProtectionName
+        })));
+    </script>
     <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="pragma" content="no-cache" />
     <meta http-equiv="expires" content="0" />
@@ -226,7 +234,7 @@
         <div class="container-fluid legend-global-nav-shell">
 
             <a class="navbar-brand" asp-controller="Clients" asp-action="Index">
-                <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
+                <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="@Shared.Branding.LegendBrand.RegisteredTitle" />
             </a>
 
             <button class="nav-toggle" data-legend-nav-toggle aria-label="Toggle navigation" aria-expanded="false">

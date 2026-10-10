@@ -8,6 +8,10 @@ on:
       - Legend/fast-track-release
     paths:
       - .github/workflows/legend-fast-track-ui.yml
+      - SHARED/Branding/**
+      - SHARED/Shared.csproj
+      - SHARED/Views/**
+      - scripts/test-public-brand-canonical.mjs
       - AgentPortal/Views/**
       - AgentPortal/wwwroot/**
       - ClientApp/Views/**
@@ -82,17 +86,22 @@ jobs:
               ): return {'AgentPortal','ClientApp'}
               if path.startswith('SHARED/wwwroot/'): return {'AgentPortal','ClientApp','Protect','Parfait','Website'}
               if path.startswith('SHARED/WebsitePlatform/'): return {'Website','Protect'}
+              if path.startswith('SHARED/Views/'): return {'AgentPortal','ClientApp','Protect'}
+              if path.startswith('SHARED/Branding/'): return {'AgentPortal','ClientApp','Protect','Website'}
+              if path=='SHARED/Shared.csproj': return {'AgentPortal','ClientApp','Protect'}
               if path=='Legend-Design/legend-public-inquiry.js': return {'Website','Protect'}
               if path.startswith('Legend-Design/'): return set(catalog)
               if path=='Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs': return {'AgentPortal','ClientApp','Protect'}
               if path=='Infrastructure/WebsiteEditing/WebsitePlatformController.cs': return {'Protect'}
               if path=='Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs': return {'Protect'}
               # Workflow changes and test-only changes never trigger an app upload.
-              if path.startswith('.github/workflows/') or path.startswith('tests/'): return set()
+              if path.startswith('.github/workflows/') or path.startswith('tests/') or path=='scripts/test-public-brand-canonical.mjs': return set()
               raise SystemExit('Unmapped fast-track source path: '+path)
           assert impacts('SHARED/wwwroot/js/finance-tools.js')=={'AgentPortal','ClientApp'}
           assert impacts('Legend-Website/scripts/check.mjs')=={'Website'}
           assert impacts('Legend-Design/legend-public-inquiry.js')=={'Website','Protect'}
+          assert impacts('SHARED/Branding/legend-brand.json')=={'AgentPortal','ClientApp','Protect','Website'}
+          assert impacts('SHARED/Shared.csproj')=={'AgentPortal','ClientApp','Protect'}
           assert impacts('Protect-Website/Views/Shared/_Layout.cshtml')=={'Protect'}
           assert impacts('Infrastructure/WebsiteEditing/WebsitePlatformController.cs')=={'Protect'}
           assert impacts('.github/workflows/legend-fast-track-ui.yml')==set()
@@ -143,6 +152,9 @@ jobs:
 
       - name: Verify all five web entrypoints render without blocking on CMS or analytics
         run: node --test tests/website/public-first-paint.test.mjs
+
+      - name: Verify canonical brand registry and four-app identity
+        run: node --test scripts/test-public-brand-canonical.mjs
 
       - name: Verify canonical inquiry button states and retry behavior
         run: node --test Legend-Website/scripts/inquiry-button.test.mjs
