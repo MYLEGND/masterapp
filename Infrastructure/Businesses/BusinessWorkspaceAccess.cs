@@ -14,12 +14,17 @@ public static class BusinessWorkspaceAccess
         var member = await db.CommerceBusinessMembers.AsNoTracking().SingleOrDefaultAsync(x =>
             x.CommerceBusinessId == businessId && x.ClientProfileId == profileId && x.Status == "Active", ct);
         if (member is null) return null;
+        var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase);
         var allowed = capability switch
         {
             "website" => member.CanManageStorefront,
-            "settings" => member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase),
+            "catalog" => member.CanManageStorefront && member.CanManageCatalog,
+            "orders" => member.CanManageStorefront && member.CanManageOrders,
+            "automations" => member.CanManageStorefront && member.CanManageOrders,
+            "team" => owner && member.CanManageTeam,
+            "settings" => owner,
             "analytics" => member.CanManageAnalytics,
-            "crm" => member.CanManageOrders || member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase),
+            "crm" => member.CanManageOrders || owner,
             _ => false
         };
         return allowed ? await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId, ct) : null;
