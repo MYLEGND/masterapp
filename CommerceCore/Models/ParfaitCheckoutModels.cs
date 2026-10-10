@@ -66,7 +66,7 @@ public sealed class ParfaitCartLineQuote
     public required string Name { get; set; }
     public required string Slug { get; set; }
     public required string Size { get; set; }
-    public string Badge { get; set; } = "Parfait";
+    public string Badge { get; set; } = "";
     public int RequestedQuantity { get; set; }
     public int Quantity { get; set; }
     public int UnitPriceCents { get; set; }

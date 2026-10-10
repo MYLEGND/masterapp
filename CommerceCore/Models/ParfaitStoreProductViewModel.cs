@@ -98,7 +98,7 @@ public sealed class ParfaitStoreProductViewModel
     public int DisplayPriceCents { get; init; }
     public int DisplayCompareAtPriceCents { get; init; }
     public string DisplayDiscountLabel { get; init; } = "";
-    public string Badge { get; init; } = "Parfait";
+    public string Badge { get; init; } = "";
     public bool IsFeatured { get; init; }
     public IReadOnlyList<ParfaitStoreProductImageViewModel> Images { get; init; } = [];
     public IReadOnlyList<ParfaitStoreProductSizeViewModel> Sizes { get; init; } = [];
@@ -236,7 +236,7 @@ public sealed class ParfaitProductEditorViewModel
     [Required]
     public string PriceLabel { get; set; } = "Coming Soon";
 
-    public string Badge { get; set; } = "Parfait";
+    public string Badge { get; set; } = "";
     public int PriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }
     public bool IsFeatured { get; set; }
