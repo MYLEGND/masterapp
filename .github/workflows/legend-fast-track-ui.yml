@@ -22,6 +22,7 @@ on:
       - Protect-Website/ProtectWebsite.csproj
       - ParfaitApp/Views/Shared/_InternalLayout.cshtml
       - Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs
+      - Infrastructure/WebsiteEditing/WebsitePlatformController.cs
       - Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs
       - SHARED/WebsitePlatform/legend-public-cms.js
       - tests/website/public-first-paint.test.mjs
@@ -83,6 +84,7 @@ jobs:
               if path.startswith('SHARED/WebsitePlatform/'): return {'Website','Protect'}
               if path.startswith('Legend-Design/'): return set(catalog)
               if path=='Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs': return {'AgentPortal','ClientApp','Protect'}
+              if path=='Infrastructure/WebsiteEditing/WebsitePlatformController.cs': return {'Protect'}
               if path=='Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs': return {'Protect'}
               # Workflow changes and test-only changes never trigger an app upload.
               if path.startswith('.github/workflows/') or path.startswith('tests/'): return set()
@@ -90,6 +92,7 @@ jobs:
           assert impacts('SHARED/wwwroot/js/finance-tools.js')=={'AgentPortal','ClientApp'}
           assert impacts('Legend-Website/scripts/check.mjs')=={'Website'}
           assert impacts('Protect-Website/Views/Shared/_Layout.cshtml')=={'Protect'}
+          assert impacts('Infrastructure/WebsiteEditing/WebsitePlatformController.cs')=={'Protect'}
           assert impacts('.github/workflows/legend-fast-track-ui.yml')==set()
           before=os.environ['BEFORE']
           head=os.environ['GITHUB_SHA']
