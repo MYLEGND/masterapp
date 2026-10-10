@@ -3195,11 +3195,12 @@ test('duplicate canonical link has independent stable identity and one unsaved c
   } finally { f.close(); }
 });
 
-test('public publication renders without stale-template flash and HTML is never cached',()=>{
-  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
-  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
-  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
-  assert.match(protectLayoutSource,/<noscript><style>html\[hidden\]\{display:block!important\}<\/style><\/noscript>/);
+test('public publication paints its initial server content while canonical CMS synchronization continues',()=>{
+  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}"><head>/);
+  assert.doesNotMatch(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
+  assert.match(protectLayoutSource,/<html lang="en">\s*<head>/);
+  assert.doesNotMatch(protectLayoutSource,/data-legend-canonical-pending|hidden="@\(!isStandaloneQuoteLanding/);
+  assert.match(source,/await loadPublic\(\);\s*\/\/ Published content is independent of measurement\/provider startup\.\s*void startPublicRuntime\(\);/);
   assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
   assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
   assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);

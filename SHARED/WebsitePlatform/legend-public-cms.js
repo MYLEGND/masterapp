@@ -8492,8 +8492,11 @@
     injectContentStyles();
     if (editorMode || materializeMode) await loadEditor();
     else {
-      try { await loadPublic(); await startPublicRuntime(); }
-      catch (error) { unavailable(error); }
+      try {
+        await loadPublic();
+        // Published content is independent of measurement/provider startup.
+        void startPublicRuntime();
+      } catch (error) { unavailable(error); }
     }
     window.addEventListener('resize', refreshResponsiveComposition);
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);

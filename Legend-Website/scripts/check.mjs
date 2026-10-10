@@ -25,6 +25,11 @@ for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
   if(!html.includes('<link rel="icon" href="/favicon.jpg" type="image/jpeg" sizes="128x128">')) throw new Error('Missing raster favicon for '+route);
 }
+// All published entrypoints must paint even if CMS/analytics fetches stall.
+for(const route of routes){
+  const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
+  if(!/<html lang="en" data-legend-site="legend"><head>/.test(html)) throw new Error('Website initial render is hidden: '+route);
+}
 const index=await readFile(resolve(root,'dist','index.html'),'utf8');
 for(const required of ['legend-public-web.js','legend-public-cms.js','instagram.com/legend.vault','apps.apple.com/us/app/legend/id6798419225'])if(!index.includes(required))throw new Error(`dist/index.html missing ${required}`);
 

@@ -21,6 +21,8 @@ on:
       - Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs
       - Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs
       - SHARED/WebsitePlatform/legend-public-cms.js
+      - tests/website/public-first-paint.test.mjs
+      - tests/website/legend-public-cms.test.mjs
 
 permissions:
   contents: read
@@ -76,6 +78,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - name: Verify all five web entrypoints render without blocking on CMS or analytics
+        run: node --test tests/website/public-first-paint.test.mjs
 
       - name: Install .NET 10
         if: ${{ matrix.project != 'static' }}
