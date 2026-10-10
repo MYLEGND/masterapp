@@ -1,11 +1,13 @@
 ﻿@using System.Text.Json
 @using Microsoft.AspNetCore.Http
+@using Microsoft.EntityFrameworkCore
 @using Shared.Analytics
 @inject Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider EditorActions
 @inject Microsoft.AspNetCore.Mvc.Razor.IRazorViewEngine EditorViews
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Infrastructure.Data.MasterAppDbContext WebsiteSeoDb
 @{
     var requestPath = HttpContextAccessor.HttpContext?.Request?.Path.Value ?? string.Empty;
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
@@ -64,16 +66,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
 @{
-    var seoRawTitle = (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "Life Insurance & Protection Planning";
+    // The immutable published Website Studio document is the only authored SEO metadata source.
+    // Keep route-specific Razor defaults when no published SEO value exists.
+    string? publishedSeoTitle = null;
+    string? publishedSeoDescription = null;
+    var seoRequestPath = Context.Request.Path.Value ?? "/";
+    var seoCanonicalPath = ProtectRouteCatalog.CanonicalPath(seoRequestPath);
+    var seoDocumentRoute = seoCanonicalPath;
+    if (!string.IsNullOrWhiteSpace(trackingSlug))
+    {
+        var agentPrefix = "/a/" + trackingSlug;
+        if (seoDocumentRoute.StartsWith(agentPrefix + "/", StringComparison.OrdinalIgnoreCase))
+            seoDocumentRoute = seoDocumentRoute[agentPrefix.Length..];
+    }
+    if (Guid.TryParse(trackingProfileId, out var seoProfileId))
+    {
+        var seoOwner = await WebsiteSeoDb.AgentTrackingProfiles.AsNoTracking()
+            .Where(profile => profile.Id == seoProfileId)
+            .Select(profile => profile.AgentUserId)
+            .SingleOrDefaultAsync(Context.RequestAborted);
+        if (!string.IsNullOrWhiteSpace(seoOwner))
+        {
+            var publishedJson = await (
+                from state in WebsiteSeoDb.Set<Domain.Entities.WebsiteContentState>().AsNoTracking()
+                join version in WebsiteSeoDb.Set<Domain.Entities.WebsiteContentVersion>().AsNoTracking()
+                    on state.PublishedVersionId equals version.Id
+                where state.OwnerKey == seoOwner.Trim().ToLowerInvariant()
+                    && state.SiteKey == Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect
+                    && version.StateId == state.Id
+                select version.DocumentJson
+            ).SingleOrDefaultAsync(Context.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(publishedJson))
+            {
+                using var published = JsonDocument.Parse(publishedJson);
+                if (published.RootElement.TryGetProperty("pages", out var seoPages) &&
+                    seoPages.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var route in seoPages.EnumerateObject())
+                    {
+                        if (!string.Equals(route.Name, seoDocumentRoute, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (route.Value.TryGetProperty("title", out var titleValue) &&
+                            titleValue.ValueKind == JsonValueKind.String)
+                            publishedSeoTitle = titleValue.GetString();
+                        if (route.Value.TryGetProperty("description", out var descValue) &&
+                            descValue.ValueKind == JsonValueKind.String)
+                            publishedSeoDescription = descValue.GetString();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    var seoRawTitle = !string.IsNullOrWhiteSpace(publishedSeoTitle)
+        ? publishedSeoTitle
+        : (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "Life Insurance & Protection Planning";
     var seoTitle = seoRawTitle.Contains("Legend", StringComparison.OrdinalIgnoreCase)
         ? seoRawTitle
         : seoRawTitle + " | LEGEND";
 
-    var seoDescription = (ViewData["SeoDescription"] as string)
-        ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
-
-    var seoRequestPath = Context.Request.Path.Value ?? "/";
-    var seoCanonicalPath = ProtectRouteCatalog.CanonicalPath(seoRequestPath);
+    var seoDescription = !string.IsNullOrWhiteSpace(publishedSeoDescription)
+        ? publishedSeoDescription
+        : (ViewData["SeoDescription"] as string)
+            ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
     var seoOrigin = Env.IsProduction() ? ProtectRouteCatalog.CanonicalOrigin : $"{Context.Request.Scheme}://{Context.Request.Host}";
     var seoCanonicalUrl = seoOrigin + seoCanonicalPath;
     var seoOgImage = (ViewData["SeoImage"] as string) ?? $"{Context.Request.Scheme}://{Context.Request.Host}/images/legend-social-preview.png";
@@ -104,7 +159,7 @@
     <link rel="stylesheet" href="~/design/legend-public-web.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/public-inquiry-form.css" asp-append-version="true" />
 
-    <link rel="icon" type="image/jpeg" sizes="128x128" href="~/images/favicon/legend-favicon.jpg" />
+    <link rel="icon" href="@Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(Config, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, isFounderPath ? null : trackingSlug)" />
     <script>
         window.LEGEND_WEBSITE_STUDIO_MODE = @websiteStudioMode.ToString().ToLowerInvariant();
         window.AGENT_TRACKING_PROFILE_ID = "@trackingProfileId";
