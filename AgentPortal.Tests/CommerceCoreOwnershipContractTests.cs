@@ -29,6 +29,7 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.Equal("LegendCommerce", typeof(ParfaitProductService).Assembly.GetName().Name);
         Assert.Equal("LegendCommerce", typeof(ParfaitOrderService).Assembly.GetName().Name);
         Assert.Equal("LegendCommerce", typeof(ParfaitCustomerAutomationService).Assembly.GetName().Name);
+        Assert.Equal("LegendCommerce", typeof(ParfaitCustomerAutomationHostedService).Assembly.GetName().Name);
         Assert.Equal("LegendCommerce", typeof(CommerceEngine).Assembly.GetName().Name);
 
         foreach (var source in new[]

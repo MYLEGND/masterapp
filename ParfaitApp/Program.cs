@@ -156,7 +156,7 @@ builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsServi
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
-builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
+builder.Services.AddLegendCommerceAutomationWorker();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
 {

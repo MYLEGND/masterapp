@@ -105,7 +105,7 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var checkout = ReadSource("CommerceCore", "Controllers", "StoreCheckoutController.cs");
         var analyticsController = ReadSource("CommerceCore", "Controllers", "StoreCartController.cs");
         var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
-        var hosted = ReadSource("ParfaitApp", "Services", "ParfaitCustomerAutomationHostedService.cs");
+        var hosted = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
         Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId", checkout, StringComparison.Ordinal);
         Assert.Contains("_automations.MarkOrderConverted(store.CommerceBusinessId", checkout, StringComparison.Ordinal);

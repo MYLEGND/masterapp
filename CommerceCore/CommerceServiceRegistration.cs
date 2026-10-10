@@ -80,6 +80,18 @@ public static class CommerceServiceRegistration
         return builder;
     }
 
+    /// <summary>
+    /// Explicitly grants the current commerce origin one SQL-arbitrated email
+    /// dispatcher. Read-only website hosts intentionally do not register it.
+    /// </summary>
+    public static IServiceCollection AddLegendCommerceAutomationWorker(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.TryAddScoped<ICommerceAutomationDispatchLease, SqlCommerceAutomationDispatchLease>();
+        services.AddHostedService<ParfaitCustomerAutomationHostedService>();
+        return services;
+    }
+
     public static IServiceCollection AddLegendCommerceCore(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
