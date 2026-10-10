@@ -1,6 +1,6 @@
 # Parfait public-route baseline (read-only)
 
-Capture date: 2026-10-10. Sources: https://shopparfait.com/ , https://shopparfait.com/store , https://shopparfait.com/store/cart , https://shopparfait.com/store/product/sculpt-jacket
+Capture date: 2026-10-10. Independently verified text responses: https://shopparfait.com/ , https://shopparfait.com/store , https://shopparfait.com/store/cart . Product detail and checkout could not be independently retrieved in this verification.
 
 This is a read-only content/route baseline from public HTML retrieval. It is not a database export, browser screenshot, pixel-diff baseline, dynamic payment test, or authorization proof. Product names/prices/inventory may legitimately change; reconcile against a fresh live read before migration/cutover. No user or payment data captured.
 
@@ -29,11 +29,9 @@ This is a read-only content/route baseline from public HTML retrieval. It is not
 
 ## Product /store/product/sculpt-jacket
 
-- Title: Sculpt Jacket - Parfait
-- Collection-return link, image carousel, category Training
-- Discount label 15% Off, size selector, Add to Cart, View Cart
-- Product feature and care descriptions present
-- Public inventory UI displayed 10 XS Left at readback; NOT authoritative inventory proof
+- The store listing publicly links a Sculpt Jacket product and displays Training, its reference price, discounted price and 15% Off.
+- Direct product-detail retrieval was not independently available in this verification. The previously documented image carousel, size inventory and product-detail interaction claims are NOT accepted as release evidence.
+- Require browser-based desktop/mobile product view and live inventory reconciliation before production cutover.
 
 ## Cart /store/cart
 
@@ -46,7 +44,7 @@ This is a read-only content/route baseline from public HTML retrieval. It is not
 
 - Live responsive screenshots, typography/color computed styles, dynamic DOM interactions
 - Authenticated business management, client/team permission state
-- Checkout /store/checkout and /store/success (direct anonymous retrieval unavailable)
+- Product detail /store/product/sculpt-jacket, checkout /store/checkout and /store/success (direct anonymous retrieval unavailable)
 - Payment provider sandbox/live idempotency, fulfillment and receipt webhooks
 - Real SQL product/order/automation/media data inventory
 
