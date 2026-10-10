@@ -19,6 +19,11 @@ public sealed class ParfaitBusinessScopeService
         _db = db;
     }
 
+    /// <summary>Read-only Parfait business resolution for the new preview host.</summary>
+    public Task<CommerceBusiness?> FindExistingParfaitAsync(CancellationToken ct = default) =>
+        _db.CommerceBusinesses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Key == ParfaitBusinessKey && x.IsActive, ct);
+
     public async Task<CommerceBusiness> GetParfaitAsync(CancellationToken ct = default)
     {
         var business = await _db.CommerceBusinesses

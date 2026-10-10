@@ -78,8 +78,15 @@ public sealed class CommerceStoreContextService(
 
         if (IsParfaitHost(host))
         {
-            var parfait = await parfaitScope.GetParfaitAsync(ct);
-            return await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false);
+            // A website-host preview is GET-only and must never implicitly
+            // seed a new Parfait identity into the production SQL database.
+            var parfait = string.Equals(configuration["Commerce:SharedHostPreview:Enabled"],
+                "true", StringComparison.OrdinalIgnoreCase)
+                ? await parfaitScope.FindExistingParfaitAsync(ct)
+                : await parfaitScope.GetParfaitAsync(ct);
+            return parfait is null
+                ? null
+                : await BuildAsync(parfait, publishedOnly: false, ct, useScopedPath: false);
         }
 
         if (PublicWebsiteRuntimeScopeResolver.IsLegendHost(host))

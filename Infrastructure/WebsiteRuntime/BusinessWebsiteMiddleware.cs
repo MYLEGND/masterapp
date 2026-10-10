@@ -36,6 +36,15 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (binding is null) { await Unavailable(context, bridged, "binding"); return; }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context, bridged, "publication"); return; }
+        // Validated custom domain + immutable published website first; only a
+        // separately configured, exact-business read-only preview may reach
+        // the commerce GET controllers and original Parfait static assets.
+        if (CommerceSharedHostPreviewGate.MayRoute(
+                configuration, binding.Value, host, context.Request.Path, context.Request.Method))
+        {
+            await next(context);
+            return;
+        }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
             path == "/api/website-inquiries/public" ||

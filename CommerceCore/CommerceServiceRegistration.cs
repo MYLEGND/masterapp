@@ -43,6 +43,32 @@ public static class CommerceServiceRegistration
     /// Excludes commerce endpoints from hosts consuming catalog reads only.
     /// Routes are registered later through explicit AddLegendCommerceMvc.
     /// </summary>
+    /// <summary>
+    /// Registers GET-only storefront MVC actions. Never include checkout,
+    /// cart writes, payment capture, or merchant management in preview.
+    /// </summary>
+    public static IMvcBuilder AddLegendCommercePreviewMvc(this IMvcBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.AddLegendCommerceMvc();
+        builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.Conventions.Add(new CommercePreviewControllerConvention()));
+        return builder;
+    }
+
+    private sealed class CommercePreviewControllerConvention :
+        Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelConvention
+    {
+        public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
+        {
+            var assembly = typeof(StoreController).Assembly;
+            foreach (var controller in application.Controllers
+                .Where(c => c.ControllerType.Assembly == assembly &&
+                    c.ControllerType.AsType() != typeof(StoreController)).ToArray())
+                application.Controllers.Remove(controller);
+        }
+    }
+
     public static IMvcBuilder ExcludeLegendCommerceMvc(this IMvcBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);

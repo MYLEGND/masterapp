@@ -34,7 +34,14 @@ var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 });
 // This website consumes only the shared catalog until audited media, views,
 // checkout and automation state are ready. Never publish commerce routes here yet.
-mvcBuilder.ExcludeLegendCommerceMvc();
+if (Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.IsConfigured(builder.Configuration))
+{
+    mvcBuilder.AddLegendCommercePreviewMvc();
+}
+else
+{
+    mvcBuilder.ExcludeLegendCommerceMvc();
+}
 if (builder.Environment.IsDevelopment())
 {
     mvcBuilder.AddRazorRuntimeCompilation();
