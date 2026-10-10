@@ -743,20 +743,20 @@ class EarlyReadinessEvidenceTests(unittest.TestCase):
                     m.candidate_migration_contract_proven(self.candidate, self.approved, contract, approved)
 
     def test_changed_discovery_or_runtime_requires_reviewed_extraction_rule(self):
-        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]), patch.object(m, 'migration_contract_static_styles_only', return_value=False):
+        with patch.object(m, 'migration_probe_identity', side_effect=[{'runtimeIdentity': 'new'}, {'runtimeIdentity': 'old'}]), patch.object(m, 'migration_contract_reviewed_browser_assets_only', return_value=False):
             with self.assertRaisesRegex(ValueError, 'dependency content changed'):
                 m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
 
     def test_static_style_rule_keeps_contract_and_tooling_checks(self):
         current = dict(runtimeIdentity='new', toolIdentity='tool', executionIdentity='exec')
         trusted = dict(current, runtimeIdentity='old')
-        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
-            self.assertEqual('approved-definitions-static-styles-only', m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})['rule'])
+        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_reviewed_browser_assets_only', return_value=True):
+            self.assertEqual('approved-definitions-reviewed-browser-assets-only', m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})['rule'])
         for changed in ('toolIdentity', 'executionIdentity'):
-            with patch.object(m, 'migration_probe_identity', side_effect=[dict(current, **{changed: 'changed'}), trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
+            with patch.object(m, 'migration_probe_identity', side_effect=[dict(current, **{changed: 'changed'}), trusted]), patch.object(m, 'migration_contract_reviewed_browser_assets_only', return_value=True):
                 with self.assertRaisesRegex(ValueError, 'UNPROVEN'):
                     m.candidate_migration_contract_proven(self.candidate, self.approved, {}, {})
-        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_static_styles_only', return_value=True):
+        with patch.object(m, 'migration_probe_identity', side_effect=[current, trusted]), patch.object(m, 'migration_contract_reviewed_browser_assets_only', return_value=True):
             with self.assertRaisesRegex(ValueError, 'metadata differs'):
                 m.candidate_migration_contract_proven(self.candidate, self.approved, {'changed': True}, {})
 
@@ -773,7 +773,27 @@ class EarlyReadinessEvidenceTests(unittest.TestCase):
             (tree(css, 'b') + tree('SHARED/Shared.csproj', 'b'), False),
             (tree(css, 'b') + tree('SHARED/wwwroot/payload.js', 'b'), False)):
             with self.subTest(candidate=candidate), patch.object(m.subprocess, 'check_output', side_effect=[base, candidate]):
-                self.assertEqual(expected, m.migration_contract_static_styles_only(self.candidate, self.approved))
+                self.assertEqual(expected, m.migration_contract_reviewed_browser_assets_only(self.candidate, self.approved))
+
+    def test_canonical_browser_cms_delta_does_not_change_migration_definitions(self):
+        # Exact browser-source exception, not a blanket JavaScript bypass.
+        cms = 'SHARED/WebsitePlatform/legend-public-cms.js'
+        css = 'SHARED/wwwroot/css/dashboard-home-shared.css'
+        def tree(path, oid, mode='100644'):
+            return mode + ' blob ' + oid * 40 + '\\t' + path + '\\0'
+        base = tree(cms, 'a') + tree(css, 'c')
+        for candidate, expected in (
+            (tree(cms, 'b') + tree(css, 'c'), True),
+            (tree(cms, 'b') + tree(css, 'd'), True),
+            (base, False),
+            (tree(cms, 'b', '120000') + tree(css, 'c'), False),
+            (tree(css, 'c'), False),
+            (tree(cms, 'b') + tree(css, 'c') + tree('Infrastructure/Leads/WebsiteInquiryAuthority.cs', 'd'), False),
+            (tree(cms, 'b') + tree(css, 'c') + tree('SHARED/WebsitePlatform/tracking.js', 'd'), False),
+            (tree(cms, 'b') + tree(css, 'c') + tree('SHARED/WebsitePlatform/legend-public-inquiry.js', 'd'), False),
+        ):
+            with self.subTest(candidate=candidate), patch.object(m.subprocess, 'check_output', side_effect=[base, candidate]):
+                self.assertEqual(expected, m.migration_contract_reviewed_browser_assets_only(self.candidate, self.approved))
 
     def test_unchanged_migration_definitions_allow_new_candidate_without_metadata_trust(self):
         contract = {'schemaVersion': 1, 'migrations': []}
