@@ -322,7 +322,8 @@ public sealed class ParfaitOrderService
             if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) && order.RefundedCents == 0)
                 order.RefundedCents = order.TotalCents;
 
-            order.UpdatedUtc = now;
+            order.CommerceBusinessId = businessId;
+        order.UpdatedUtc = now;
             order.Status = BuildStatus(MapOrder(order));
 
             _db.SaveChanges();
@@ -375,6 +376,7 @@ public sealed class ParfaitOrderService
         return new ParfaitOrderRecord
         {
             CommerceOrderId = order.Id,
+            CommerceBusinessId = order.CommerceBusinessId,
             OrderNumber = Clean(order.OrderNumber),
             CreatedUtc = order.CreatedUtc,
             UpdatedUtc = order.UpdatedUtc,
@@ -435,6 +437,10 @@ public sealed class ParfaitOrderService
     {
         if (record.CommerceOrderId != Guid.Empty)
             entity.Id = record.CommerceOrderId;
+
+        if (record.CommerceBusinessId != Guid.Empty &&
+            record.CommerceBusinessId != entity.CommerceBusinessId)
+            throw new InvalidOperationException("Order business identity mismatch.");
 
         entity.OrderNumber = record.OrderNumber;
         entity.CreatedUtc = record.CreatedUtc;
@@ -599,6 +605,7 @@ public sealed class ParfaitOrderService
         var normalized = new ParfaitOrderRecord
         {
             CommerceOrderId = order.CommerceOrderId,
+            CommerceBusinessId = order.CommerceBusinessId,
             OrderNumber = Clean(order.OrderNumber),
             CreatedUtc = createdUtc,
             UpdatedUtc = order.UpdatedUtc == default ? createdUtc : order.UpdatedUtc,
