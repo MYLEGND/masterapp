@@ -5,6 +5,7 @@ on:
     branches:
       - isolation/parfait-canonical-commerce-20261010
       - isolation/canonical-scoped-commerce-internal-20261010
+      - isolation/parfait-live-cutover-20261011
       - isolation/business-scoped-payments-20261011
     paths:
       - .github/workflows/legend-fast-track-ui.yml
