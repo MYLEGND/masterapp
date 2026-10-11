@@ -5,6 +5,7 @@ name: LEGEND Fast Track — Affected Web Apps
 # durable migration and upload journals. Routing follows verified app publication.
 # Migration admission retains terminal zero-job attempts as proven non-entry.
 # Older ambiguous SQL generations require fresh physical-prefix reconciliation.
+# Historical admission reads use this job's existing Actions credential.
 
 on:
   push:

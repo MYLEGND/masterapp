@@ -36,6 +36,24 @@ def successful_jobs(target_step="Publish selected head as one transaction"):
     ]
 
 
+class GitHubCredentialTests(unittest.TestCase):
+    def test_actions_token_is_accepted_without_cli_token_alias(self):
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'owner/repo',
+                                    'GITHUB_TOKEN': 'actions-fixture'}, clear=True):
+            self.assertEqual(m.GitHub().token, 'actions-fixture')
+
+    def test_explicit_cli_token_precedence_and_missing_credentials(self):
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'owner/repo',
+                                    'GITHUB_TOKEN': 'actions-fixture',
+                                    'GH_TOKEN': 'cli-fixture'}, clear=True):
+            self.assertEqual(m.GitHub().token, 'cli-fixture')
+            os.environ['GH_TOKEN'] = ''
+            self.assertEqual(m.GitHub().token, 'actions-fixture')
+            del os.environ['GITHUB_TOKEN']
+            with self.assertRaises(KeyError):
+                m.GitHub()
+
+
 class ReadinessRefreshTests(unittest.TestCase):
     def test_terminal_child_blocks_while_its_parent_remains_active(self):
         api = SimpleNamespace(repo='owner/repo', token='token')

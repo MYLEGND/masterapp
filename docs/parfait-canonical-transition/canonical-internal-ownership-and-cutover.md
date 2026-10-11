@@ -243,3 +243,18 @@ Corrupt evidence or a changed database baseline never triggers fallback. Reused
 bytes are not uploaded under the new candidate's rehearsal name. This prevents
 repair-only PRs from failing merely because their delta adds no migration source,
 without relabelling old evidence or skipping the source recovery checks.
+
+PR #587 merged at `960486d501fdf63ef8aa06659b1c3190f15dafeb` after all three
+source workflows passed. Production run `38152614831` stopped before writes:
+the historical admission reader required `GH_TOKEN`, while the production job
+supplies `GITHUB_TOKEN`. The same whole-history diagnostic with the CLI alias
+found zero unproven entries. The canonical GitHub client now accepts the Actions
+token as a fallback, preserving explicit CLI token precedence and existing
+permissions. Regression tests cover both aliases and absent credentials.
+Both uncertain historical envelopes now authenticate using only `GITHUB_TOKEN`
+in a read-only reproduction. The two new credential tests pass. The broader
+lifecycle suite has 21 failures and two errors; restoring the original constructor
+produces the identical pre-existing failure set. Independent source review approved
+the credential fallback without changes to admission or permissions.
+Resume through fast-track after exact-head validation; the preserved rehearsal
+and all five pending application targets remain unchanged.
