@@ -150,7 +150,7 @@
     <Content Include="../ParfaitApp/Views/InternalSettings/Canonical*.cshtml" Link="Views/InternalSettings/%(Filename)%(Extension)" />
     <Content Include="../ParfaitApp/Views/Dashboard/Index.cshtml" Link="Views/Dashboard/Index.cshtml" />
     <Content Include="../ParfaitApp/Views/Shared/_InternalLayout.cshtml" Link="Views/Shared/_InternalLayout.cshtml" />
-    <Content Include="../ParfaitApp/wwwroot/images/favicon/parfait-logo.png" Link="wwwroot/images/favicon/parfait-logo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../ParfaitApp/wwwroot/images/favicon/parfait-logo.png" Link="wwwroot/images/favicon/parfait-logo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../ParfaitApp/Views/Shared/_MarketingProviderSetup.cshtml" Link="Views/Shared/_MarketingProviderSetup.cshtml" />
     <Content Include="../ParfaitApp/wwwroot/css/internal.css" Link="wwwroot/css/internal.css"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
