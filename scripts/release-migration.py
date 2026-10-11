@@ -448,6 +448,42 @@ def retain_current_observation(receipt, bundle_digest, *, publisher=None):
         'legend-migration-observation-' + identity, record, timeout=120)
 
 
+def reconcile_current_schema_no_sql(probe, connection, *, observer=None, readiness=None,
+                                    journal_factory=None, publisher=None):
+    """Journal fresh, complete physical/history observation without requiring SQL bundle bytes.
+
+    This path cannot execute SQL and cannot accept pending or unsettled schema.
+    The caller authenticates the exact fast-track source and schema-invariant
+    diff. Regular migration candidates retain the original rehearsed-bundle path.
+    """
+    observer = observer or production_observation
+    readiness = readiness or production_readiness
+    before = migration_stage('schema-observation', observer, probe, connection)
+    if before.get('ready') is not True or type(before.get('pendingCount')) is not int or before['pendingCount'] != 0:
+        raise RuntimeError('Migration stage unresolved: readiness-drift')
+    receipt = migration_stage('readiness', readiness, before)
+    if receipt.get('kind') != 'current-schema-no-write' or receipt.get('pendingCount') != 0:
+        raise RuntimeError('Migration stage unresolved: readiness-missing')
+    # No executable migration component exists on this branch. This distinct
+    # fixed marker cannot be confused with the SHA-256 of a migration bundle.
+    no_sql_digest = hashlib.sha256(b'legend:schema-ready-no-sql:v1').hexdigest()
+    material = hashlib.sha256(json.dumps(dict(schemaIdentity=before['schemaIdentity'],
+        noSqlDigest=no_sql_digest), sort_keys=True).encode()).hexdigest()
+    if journal_factory is None:
+        partition = hashlib.sha256(json.dumps(dict(resourceGroup=os.environ['RELEASE_RESOURCE_GROUP'],
+            authority=os.environ['DATABASE_AUTHORITY']), sort_keys=True).encode()).hexdigest()
+        journal = migration_stage('child-history', journal_type(), 'migrations', material,
+                                  partition_identity=partition)
+    else:
+        journal = migration_stage('child-history', journal_factory, 'migrations', material)
+    migration_stage('readiness', bind_readiness, before, no_sql_digest, receipt,
+                    completed_intent=journal.intent is not None)
+    migration_stage('observation-receipt', publisher or retain_current_observation, receipt, no_sql_digest)
+    observation = dict(schemaIdentity=before['schemaIdentity'], providerVersion='schema-ready-no-write')
+    migration_stage('success-receipt', journal.record_success, observation)
+    return 'preserved'
+
+
 def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=None, execute=None, readiness=None):
     before = migration_stage('schema-observation', observer, probe, connection)
     material = hashlib.sha256(json.dumps(dict(schemaIdentity=before['schemaIdentity'],
@@ -658,11 +694,27 @@ if __name__ == '__main__':
         release_authority().assert_release_execution()
         import sys
         is_preflight = sys.argv[1:] == ['--preflight']
-        if sys.argv[1:] and not is_preflight:
+        no_sql = sys.argv[1:] == ['--no-sql']
+        if sys.argv[1:] and not (is_preflight or no_sql):
             raise RuntimeError('Migration stage unresolved: preparation')
+        if no_sql:
+            authority = release_authority()
+            baseline = os.environ.get('FAST_TRACK_RELEASE_BASELINE', '')
+            revision = os.environ.get('GITHUB_SHA', '')
+            if (os.environ.get('FAST_TRACK_SCHEMA_CHANGED') != 'false'
+                or os.environ.get('GITHUB_REF') != 'refs/heads/' + authority.FAST_TRACK_PR_BASE
+                or not re.fullmatch('[a-f0-9]{40}', baseline)
+                or not re.fullmatch('[a-f0-9]{40}', revision)
+                or subprocess.run(['git', 'merge-base', '--is-ancestor', baseline, revision],
+                                  capture_output=True).returncode != 0):
+                raise RuntimeError('Migration stage unresolved: preparation')
+            changed = subprocess.check_output(
+                ['git', 'diff', '--name-only', baseline, revision], text=True).splitlines()
+            if authority.fast_track_scope(changed)['schema']:
+                raise RuntimeError('Migration stage unresolved: preparation')
         bundle = Path('/tmp/diagnostics-packages') / os.environ['MIGRATION_BUNDLE']
         probe = Path(os.environ.get('MIGRATION_PROBE_DLL', '/tmp/migration-probe/MigrationReleaseProbe.dll'))
-        if not probe.is_file() or (not is_preflight and not bundle.is_file()):
+        if not probe.is_file() or (not (is_preflight or no_sql) and not bundle.is_file()):
             raise RuntimeError('Validated migration bundle or read-only probe unavailable')
         if is_preflight:
             retained = os.environ.get('MIGRATION_READINESS_OBSERVATION')
@@ -670,6 +722,9 @@ if __name__ == '__main__':
                            production_observation(probe, connection_string()))
             result = preflight(bundle if bundle.is_file() else None, probe,
                                None if observation is not None else connection_string(), observation=observation)
+        elif no_sql:
+            result = reconcile_current_schema_no_sql(probe, connection_string())
+            print('Schema ready; validated no-SQL migration child ' + result + '.')
         else:
             result = reconcile(bundle, probe, connection_string(),
                 observer=production_observation, readiness=production_readiness)
