@@ -58,6 +58,7 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
   id-token: write
 
 # Share the publication mutex with the existing release workflow.
@@ -126,6 +127,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
