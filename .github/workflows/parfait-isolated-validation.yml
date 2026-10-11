@@ -12,6 +12,8 @@ on:
       - scripts/release-operation-evidence.py
       - scripts/release-router.py
       - scripts/release-migration-history-audit.py
+      - scripts/release-lifecycle.py
+      - scripts/test-release-lifecycle.py
       - scripts/test-fast-track-release.py
       - CommerceCore/**
       - Infrastructure/Commerce/**

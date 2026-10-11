@@ -97,7 +97,7 @@ def eligible(branch, approved, live, open_refs, active_refs, failed_refs):
 class GitHub:
     def __init__(self):
         self.repo = os.environ['GITHUB_REPOSITORY']
-        self.token = os.environ['GH_TOKEN']
+        self.token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
         self.root = 'https://api.github.com/repos/' + self.repo
 
     def api(self, path, data=None, method=None):
