@@ -1309,8 +1309,8 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
     def test_queued_parent_requires_exact_current_active_runner(self):
         job=dict(run_id=123,run_attempt=2,head_sha='a'*40,status='in_progress',
             runner_name='runner-fixture',name='Affected App Deploy — Parfait')
-        def invoke(jobs):
-            with patch.dict(os.environ,self.env|dict(GITHUB_JOB='deploy-ui',RUNNER_NAME='runner-fixture'),clear=True), \
+        def invoke(jobs,job_key='deploy-ui'):
+            with patch.dict(os.environ,self.env|dict(GITHUB_JOB=job_key,RUNNER_NAME='runner-fixture'),clear=True), \
                  patch.object(m,'api_get',side_effect=[self.run|dict(status='queued'),
                     dict(total_count=len(jobs),jobs=jobs),dict(object=dict(sha='a'*40))]):
                 return m.assert_fast_track_release_execution()
@@ -1321,6 +1321,8 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
                 invoke([job|{key:value}])
         with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([])
         with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([job,job])
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([job],job_key='unknown')
+        with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB_UNPROVEN'):invoke([None])
 
     def test_advanced_release_head_stops_stale_execution(self):
         with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):

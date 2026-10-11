@@ -3483,7 +3483,9 @@ def assert_fast_track_release_execution():
             'routing-cloudflare': 'Publish verified website routing'}
         payload = api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
         jobs = payload.get('jobs')
-        if not isinstance(jobs, list) or payload.get('total_count') != len(jobs) or not runner:
+        if (not isinstance(jobs, list) or type(payload.get('total_count')) is not int
+            or payload['total_count'] != len(jobs) or not all(isinstance(job, dict) for job in jobs)
+            or not runner or job_key not in {*names, 'deploy-ui'}):
             raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
         active = [job for job in jobs if job.get('run_id') == int(run_id)
             and job.get('run_attempt') == int(attempt) and job.get('head_sha') == revision
