@@ -120,7 +120,9 @@ public sealed class SquareMerchantPaymentGateway(IHttpClientFactory clients, ICo
     {
         if(!PaymentWebhookSignatures.VerifySquare(body,Header(headers,"x-square-hmacsha256-signature"),Setting(Provider,environment,"WebhookSignatureKey"),endpointUrl))return null;
         using var doc=JsonDocument.Parse(body);var root=doc.RootElement;var obj=P(P(root,"data"),"object");var payment=P(obj,"payment");
-        var reference=payment.ValueKind==JsonValueKind.Object?S(payment,"order_id"):S(P(obj,"refund"),"order_id");
+        // A refund has its own order. Match its original payment instead; the
+        // canonical checkout owner scopes that reference to merchant/environment.
+        var reference=payment.ValueKind==JsonValueKind.Object?S(payment,"order_id"):S(P(obj,"refund"),"payment_id");
         if(reference=="")return null;
         await Task.CompletedTask;
         return new(S(root,"event_id"),S(root,"merchant_id"),environment,reference,DateTime.Parse(S(root,"created_at")).ToUniversalTime());

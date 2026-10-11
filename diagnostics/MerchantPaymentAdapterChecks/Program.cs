@@ -23,6 +23,16 @@ var configuration=new ConfigurationBuilder().AddInMemoryCollection(new Dictionar
  ["MerchantPayments:PayPal:Production:Enabled"]="true",["MerchantPayments:PayPal:Production:ClientId"]="synthetic",["MerchantPayments:PayPal:Production:ClientSecret"]="synthetic",["MerchantPayments:PayPal:Production:PartnerMerchantId"]="synthetic",["MerchantPayments:PayPal:Production:PartnerAttributionId"]="synthetic"
 }).Build();
 var factory=new TestFactory();var stripe=new StripeMerchantPaymentGateway(factory,configuration);var square=new SquareMerchantPaymentGateway(factory,configuration);var paypal=new PayPalMerchantPaymentGateway(factory,configuration);
+configuration["MerchantPayments:Square:Sandbox:WebhookSignatureKey"]=key;
+var refundEvent="""
+{"event_id":"synthetic-refund-event","merchant_id":"merchant-a","created_at":"2026-10-11T00:00:00Z","data":{"object":{"refund":{"order_id":"distinct-refund-order","payment_id":"original-payment"}}}}
+""";
+string SignSquare(string payload) => Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key),Encoding.UTF8.GetBytes(endpoint+payload)));
+var refundHook=await square.VerifyWebhookAsync("Sandbox",refundEvent,new Dictionary<string,string>{{"x-square-hmacsha256-signature",SignSquare(refundEvent)}},endpoint,default);
+Check(refundHook?.Reference=="original-payment" && refundHook.AccountId=="merchant-a","Square refund binds original payment rather than refund order");
+var unlinkedRefundEvent=refundEvent.Replace(",\"payment_id\":\"original-payment\"","");
+Check(await square.VerifyWebhookAsync("Sandbox",unlinkedRefundEvent,new Dictionary<string,string>{{"x-square-hmacsha256-signature",SignSquare(unlinkedRefundEvent)}},endpoint,default) is null,"Square unlinked refund cannot match an unrelated order");
+Check(await square.VerifyWebhookAsync("Sandbox",refundEvent,new Dictionary<string,string>{{"x-square-hmacsha256-signature","invalid"}},endpoint,default) is null,"Square refund requires authentic signature");
 Check(!stripe.IsAvailable("Production"),"Stripe live unavailable without live config");Check(!paypal.IsAvailable("Production"),"PayPal partner gate");
 var account=new MerchantAccount("Stripe","Sandbox","acct_merchant_a",null,new(""));
 factory.Handler.Next="{\"id\":\"cs_synthetic\",\"url\":\"https://checkout.stripe.com/synthetic\",\"livemode\":false}";
