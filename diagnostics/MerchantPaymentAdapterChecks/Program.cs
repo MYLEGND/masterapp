@@ -101,6 +101,19 @@ factory.Handler.Replies.Enqueue("{\"payment_links\":[{\"order_id\":\"unrelated-o
 var recovered=await square.FindCheckoutAsync(new("Square","Sandbox","merchant-a","location-a",new("synthetic-seller-token")),new(squareAttempt,"original-key",1000,"USD","reference-recovered",""),default);
 Check(recovered?.State=="Pending" && recovered.CheckoutUrl=="https://square.link/recovered","Square finds exact original hosted link");
 Check(factory.Handler.Last!.Method==HttpMethod.Get && factory.Handler.Last.RequestUri!.AbsolutePath=="/v2/online-checkout/payment-links","Square checkout discovery never recreates payment link");
+// Future providers stay unavailable until explicitly enabled, even with credentials present.
+configuration["MerchantPayments:Stripe:Production:Enabled"]="false";
+Check(!stripe.IsAvailable("Production"),"Stripe coming soon cannot connect with credentials alone");
+configuration["MerchantPayments:PayPal:Production:WebhookId"]="synthetic";
+configuration["MerchantPayments:PayPal:Production:WebhookUrl"]="https://example.invalid/webhook";
+configuration["MerchantPayments:PayPal:Production:Enabled"]="false";
+Check(!paypal.IsAvailable("Production"),"PayPal coming soon cannot connect with credentials and approval alone");
+configuration["MerchantPayments:Square:Production:WebhookSignatureKey"]="synthetic";
+configuration["MerchantPayments:Square:Production:WebhookUrl"]="https://example.invalid/webhook";
+Check(square.IsAvailable("Production"),"Square can launch while future providers remain disabled");
+configuration["MerchantPayments:Stripe:Production:Enabled"]="true";
+configuration["MerchantPayments:PayPal:Production:Enabled"]="true";
+Check(stripe.IsAvailable("Production") && paypal.IsAvailable("Production"),"Future providers can activate through configuration without code changes");
 Console.WriteLine($"PASS {checkedCount} focused adapter checks; synthetic in-memory HTTP only.");
 sealed class TestFactory:IHttpClientFactory { public TestHandler Handler {get;}=new();public HttpClient CreateClient(string name)=>new(Handler,false); }
 sealed class TestHandler:HttpMessageHandler

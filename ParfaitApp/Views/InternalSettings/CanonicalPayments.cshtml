@@ -8,7 +8,7 @@
 <section class="pf-command-page">
     <div class="pf-command-heading">
         <h1>Payments</h1>
-        <p>Connect this business's processor account to accept customer payments. Your LEGEND® subscription billing is managed separately.</p>
+        <p>Connect your business’s processor account to accept customer payments. Square is our first supported connection. Your LEGEND® subscription billing is managed separately.</p>
     </div>
     <div class="pf-command-panel">
         <nav aria-label="Payment environment">
@@ -35,7 +35,7 @@
                     _ => null
                 };
             }
-            @if (dashboard is not null)
+            @if (dashboard is not null && provider.Available)
             { <p><a href="@dashboard" target="_blank" rel="noopener noreferrer">Open @provider.Provider dashboard</a></p> }
             @if (provider.Available)
             {
@@ -48,9 +48,15 @@
                     <button class="pf-action" type="submit">Connect @provider.Provider</button>
                 </form>
             }
+            else if (provider.Provider is "Stripe" or "PayPal")
+            {
+                <p><strong>Coming soon</strong></p>
+                <p>Support for connecting this processor is coming soon.</p>
+                <button class="pf-action" type="button" disabled>Coming soon</button>
+            }
             else
             {
-                <p>Unavailable in this environment. Provider setup or approval is required before you can connect.</p>
+                <p>Square connection setup is pending in this environment. Once available, connect your existing Square account and select your business location.</p>
             }
         </div>
     }

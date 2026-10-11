@@ -76,3 +76,15 @@ Use isolated build outputs. In constrained environments, `DOTNET_PROCESSOR_COUNT
 - Independent source/security review completed; external production validation remains pending.
 
 These are focused local checks, not a claim that all repository CI gates or actual provider end-to-end tests have passed. Release remains blocked pending the Founder's explicit green light and the provider/configuration/runtime checks above.
+
+## Square-first launch decision
+
+Square is the initial launch provider. Leave `MerchantPayments:Stripe:{environment}:Enabled` and `MerchantPayments:PayPal:{environment}:Enabled` absent or false in both environments. Their adapters remain implemented; unavailable Stripe/PayPal cards display Coming soon without connect forms or dashboard links. Their existing server-side availability checks reject authorization while disabled. Later activation uses the existing one-time configuration and Enabled setting, after provider validation/approval; no adapter rewrite is required.
+
+The old `SquareBillingOptions` consumes ApplicationId, AccessToken, LocationId, WebhookSignatureKey, WebhookNotificationUrl, and Environment. It does not consume an OAuth ApplicationSecret. Existing direct merchant payment success therefore does not prove that the new seller OAuth configuration is present.
+
+Reuse the existing Square developer application only after verifying its identity/environment and OAuth suitability. Configure `MerchantPayments:Square:{environment}:ApplicationId` and `ApplicationSecret` from that application through the approved secret store. Register the new `/commerce/manage/payments/callback` URL and `/commerce/payments/webhooks/Square/{environment}` subscription; configure its exact WebhookUrl and associated WebhookSignatureKey. Do not assume the old webhook subscription's signature key belongs to the new endpoint. Supply CallbackUrl and set Enabled only after configuration verification. Authorize each business's existing merchant account and confirm its location through the UI. Never copy the legacy AccessToken or LocationId into every business connection, or change platform subscription billing settings.
+
+Live settings were not inspected or changed by this source update. Square OAuth, actual sandbox end-to-end validation, production configuration, and approved cutover remain release prerequisites. The existing live Square route stays intact during preparation.
+
+Square-first update verification: 41 synthetic adapter checks passed; ProtectWebsite (including shared Payments Razor view) built with zero warnings/errors. Earlier 83 core regression tests remain applicable because this update changes presentation, focused checks, and documentation only.
