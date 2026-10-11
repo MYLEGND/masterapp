@@ -7,6 +7,12 @@ on:
       - isolation/canonical-scoped-commerce-internal-20261010
       - isolation/business-scoped-payments-20261011
     paths:
+      - .github/workflows/legend-fast-track-ui.yml
+      - scripts/deploy-approved-app.py
+      - scripts/release-operation-evidence.py
+      - scripts/release-router.py
+      - scripts/release-migration-history-audit.py
+      - scripts/test-fast-track-release.py
       - CommerceCore/**
       - Infrastructure/Commerce/**
       - Infrastructure/Businesses/**
