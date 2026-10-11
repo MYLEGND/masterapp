@@ -6,6 +6,7 @@ on:
       - isolation/parfait-canonical-commerce-20261010
       - isolation/canonical-scoped-commerce-internal-20261010
       - repair/fast-track-already-ready-no-sql-20261011
+      - repair/fast-track-map-no-sql-regression-20261011
       - isolation/parfait-live-cutover-20261011
       - isolation/business-scoped-payments-20261011
     paths:
