@@ -321,7 +321,12 @@ def production_readiness(before):
     candidate = os.environ['RELEASE_CANDIDATE_SHA']
     approved = os.environ['RELEASE_SHA']
     targets = json.loads(os.environ['SELECTED_TARGETS'])
-    authority.selected_release_target_keys(targets)
+    # A routing-only fast-track release still observes the database, but has no
+    # app targets. Empty scope is valid only for the already-ready no-SQL path.
+    if not targets and before['ready'] and os.environ.get('GITHUB_REF') == 'refs/heads/' + authority.FAST_TRACK_PR_BASE:
+        authority.selected_release_target_keys(targets, allow_empty=True)
+    else:
+        authority.selected_release_target_keys(targets)
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     if before['ready']:
         # This is new current-policy observation, not relabelled premerge proof.

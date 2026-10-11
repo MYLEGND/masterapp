@@ -472,6 +472,9 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
         self.log=('2026-10-11T17:59:00Z [command]/usr/bin/git log -1 --format=%H\n'
             +'2026-10-11T17:59:01Z '+self.head+'\n'
             +'2026-10-11T18:00:30Z Traceback (most recent call last):\n'
+            +'2026-10-11T18:00:30Z   File "release-router.py", line 122, in <module>\n'
+            +'2026-10-11T18:00:30Z     fast_track()\n'
+            +'2026-10-11T18:00:30Z   File "release-router.py", line 98, in fast_track\n'
             +'2026-10-11T18:00:30Z     company_render_ready(authority)\n'
             +'2026-10-11T18:00:30Z   File "release-router.py", line 68, in company_render_ready\n'
             +'2026-10-11T18:00:30Z urllib.error.HTTPError: HTTP Error 500: Internal Server Error\n')
@@ -481,6 +484,54 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
             return authority.attested_fast_track_router_prewrite('owner/repo',self.run,[self.job],'fixture')
     def test_original_renderer_failure_proves_no_router_write(self):
         self.assertTrue(self.prove())
+    def test_new_workflow_renderer_timeout_and_unavailable_precede_intent(self):
+        head='a9ced61b188dcad851fd9d1062ce8beaa77f135d'
+        self.run['head_sha']=head
+        original=self.log.replace(self.head,head)
+        for marker in ('TimeoutError: The read operation timed out',
+                       'urllib.error.HTTPError: HTTP Error 503: Service Unavailable'):
+            self.log=original.replace('urllib.error.HTTPError: HTTP Error 500: Internal Server Error',marker)
+            self.assertTrue(self.prove())
+            self.log=self.log.replace('line 68, in company_render_ready','line 109, in publish')
+            self.assertFalse(self.prove())
+    def admission_failure(self):
+        head='a9ced61b188dcad851fd9d1062ce8beaa77f135d'
+        self.run['head_sha']=head
+        self.log=self.log.split('2026-10-11T18:00:30Z Traceback')[0].replace(self.head,head)
+        lines=['Traceback (most recent call last):',
+            '  File "release-router.py", line 122, in <module>',
+            '    fast_track()',
+            '  File "release-router.py", line 111, in fast_track',
+            '    result = reconcile_tagged_router(journal, observe, publish)',
+            '  File "release-router.py", line 40, in reconcile_tagged_router',
+            "    journal.before_mutation({'providerVersion': version or 'absent'})",
+            '  File "release-operation-evidence.py", line 262, in before_mutation',
+            '    self.authority.release_child_first_write_proven(self.repository, self.child,',
+            '  File "validation-resume.py", line 1819, in release_child_first_write_proven',
+            "    raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)",
+            'RuntimeError: Release child may have written; missing intent cannot authorize replay']
+        self.log+=''.join('2026-10-11T18:00:30Z '+line+'\n' for line in lines)
+    def test_exact_admission_denial_precedes_intent_publication(self):
+        self.admission_failure(); self.assertTrue(self.prove())
+        original=self.log
+        for changed in (original.replace('line 262, in before_mutation','line 267, in before_mutation'),
+                        original.replace('in release_child_first_write_proven','in publish_record'),
+                        original.replace('18:00:30Z   File "validation','17:59:30Z   File "validation'),
+                        original+original.split('2026-10-11T18:00:30Z Traceback')[1]):
+            self.log=changed; self.assertFalse(self.prove())
+        self.log=original
+        source=authority._release_history_source
+        for changed_path in ('scripts/release-operation-evidence.py','scripts/validation-resume.py'):
+            with patch.object(authority,'_release_history_source',side_effect=lambda repo,head,path,token:
+                    'changed' if path==changed_path else source(repo,head,path,token)):
+                self.assertFalse(self.prove())
+    def test_incomplete_inventory_or_retained_write_never_proves_nonentry(self):
+        self.admission_failure()
+        for inventory in (dict(total_count=1,artifacts=[]),
+                dict(total_count=1,artifacts=[dict(id=1,name='legend-release-child-intent-'+'a'*64)]),
+                dict(total_count=1,artifacts=[dict(id=1,name='legend-release-child-success-'+'a'*64)])):
+            with patch.object(authority,'api_get',return_value=inventory),patch.object(authority,'_release_job_log',return_value=self.log):
+                self.assertFalse(authority.attested_fast_track_router_prewrite('owner/repo',self.run,[self.job],'fixture'))
     def test_unbound_frames_changed_source_or_other_error_cannot_prove_nonentry(self):
         original=self.log
         for changed in (original.replace('18:00:30Z     company','17:59:30Z     company'),
@@ -504,6 +555,34 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
             self.assertTrue(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
             earlier['conclusion']='success'
             self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+    def test_selected_package_repair_preserves_completed_apps(self):
+        jobs=[dict(name='Affected App Deploy — Protect',status='completed',conclusion='success')]
+        jobs += [dict(name=name,status='completed',conclusion='success') for name in
+            ('Admit exact validated fast-track source','Reconcile production schema before publication')]
+        jobs.append(self.job)
+        with patch.object(authority,'api_get',return_value=dict(total_count=len(jobs),jobs=jobs)), \
+             patch.object(authority,'attested_fast_track_router_prewrite',return_value=True):
+            self.assertTrue(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+            jobs[0]['conclusion']='failure'
+            self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+            jobs[0]['conclusion']='success'; jobs.append(jobs[0])
+            self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+    def test_routing_only_resume_requires_explicit_empty_app_selection(self):
+        source=Path('.github/workflows/legend-fast-track-ui.yml').read_text().split('  routing-cloudflare:')[1]
+        self.assertIn("needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped'",source)
+    def test_empty_routing_scope_requires_ready_database_and_fast_track(self):
+        before=dict(ready=True,mutationActivity='settled',historicalExecution='outcome-unknown',historicalEvidenceIdentity='f'*64)
+        env=dict(GITHUB_REPOSITORY='owner/repo',RELEASE_CANDIDATE_SHA='a'*40,RELEASE_SHA='b'*40,
+                 SELECTED_TARGETS='[]',GH_TOKEN='fixture',GITHUB_REF='refs/heads/'+authority.FAST_TRACK_PR_BASE)
+        with patch.dict(os.environ,env),patch.object(migration,'release_authority',return_value=authority):
+            result=migration.production_readiness(before)
+            self.assertEqual([],result['targets'])
+            self.assertFalse(result['resolution']['sqlExecutionAuthorized'])
+            with self.assertRaises(ValueError):migration.production_readiness(dict(before,ready=False))
+            with patch.dict(os.environ,GITHUB_REF='refs/heads/'+authority.TRUSTED_PR_BASE):
+                with self.assertRaises(ValueError):migration.production_readiness(before)
+            with self.assertRaisesRegex(RuntimeError,'mutation-activity'):
+                migration.production_readiness(dict(before,mutationActivity='active'))
 
 class PublishedCompilerBrandingTests(unittest.TestCase):
     def test_packaged_content_module_resolves_canonical_registry(self):
