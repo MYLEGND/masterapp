@@ -1841,8 +1841,16 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(prove(**valid))
 
     def test_completed_inline_ef_history_reconciles_without_mutation(self):
+        self._check_completed_inline_history('d604a009da7a2b7662099f6aaa389393013933e5', True)
+
+    def test_completed_pre_reuse_inline_generations_reconcile_without_mutation(self):
+        for head in ('df4bae6f9a175ecc04992235cfaf834a0095a7bf',
+                     '74df7397d71ce695f6e6033c9a03682a96d83922'):
+            with self.subTest(head=head):
+                self._check_completed_inline_history(head, False)
+
+    def _check_completed_inline_history(self, head, has_reuse):
         import subprocess
-        head = 'd604a009da7a2b7662099f6aaa389393013933e5'
         current = '69f397ce73630fc1359dbf5cd284b5c51effbc4a'
         def source(repo, revision, path, token):
             return subprocess.check_output(['git', 'show', revision + ':' + path], text=True)
@@ -1866,6 +1874,8 @@ class ChildHistorySafetyTests(unittest.TestCase):
                '2026-10-01T17:25:00Z   REUSE_VALIDATED_PACKAGE: false\n'
                '2026-10-01T17:27:28Z Build succeeded.\n'
                '2026-10-01T17:29:56Z Schema ready. Applied candidate migrations only; no down migrations.\n')
+        if not has_reuse:
+            log = log.replace('2026-10-01T17:25:00Z   REUSE_VALIDATED_PACKAGE: false\n', '')
         admission = dict(total_count=1, jobs=[dict(name='discover-live', status='completed', conclusion='success')])
         artifacts = dict(total_count=1, artifacts=[dict(name='translation-direct-release-' + head, expired=False)])
         kwargs = dict(first_pending_migration_id='20261007134500_AddFounderAssistantRules',
@@ -1882,16 +1892,32 @@ class ChildHistorySafetyTests(unittest.TestCase):
              patch.object(self.authority, 'api_get', return_value=artifacts), \
              patch.object(self.authority.subprocess, 'run', wraps=subprocess.run) as calls:
             self.assertTrue(prove())
-            self.assertEqual(len(calls.call_args_list), 7)  # Four source reads + ancestry + two migration trees.
+            self.assertEqual(len(calls.call_args_list), 7 if has_reuse else 6)  # Pinned owner reads + ancestry + migration trees.
             self.assertTrue(all(call.args[0][0] == 'git' for call in calls.call_args_list))
+            portal = next(row for row in job['steps'] if row['name'] == 'Direct deploy AgentPortal')
+            protect_step = ('Direct deploy Protect' if head.startswith('74df7397') else
+                            'Direct deploy Protect immutable ZIP')
+            portal['name'] = protect_step
+            self.assertEqual(prove(), not has_reuse)
+            portal['conclusion'] = 'skipped'
+            self.assertFalse(prove())
+            portal.update(name='Direct deploy Website', conclusion='success')
+            self.assertFalse(prove())
+            portal['name'] = 'Direct deploy AgentPortal'
             self.assertFalse(prove(workflow=workflow.replace('database', 'unknown-database')))
-            self.assertFalse(prove(first_pending_migration_id='20261001160000_AddLegendEngineeringOperationalContract'))
+            prior_ids = sorted(name[:-3] for name in subprocess.check_output(
+                ['git', 'ls-tree', '-r', '--name-only', head, '--', 'Infrastructure/Migrations'], text=True).splitlines()
+                if name.endswith('.cs') and not name.endswith('.Designer.cs') and 'ModelSnapshot' not in name)
+            self.assertFalse(prove(first_pending_migration_id=prior_ids[-1].rsplit('/', 1)[-1]))
+            with patch.object(self.authority, '_release_history_source', return_value='altered original owner'):
+                self.assertFalse(prove())
             self.assertFalse(prove(last_applied_migration_id='20260901000000_Unknown'))
             for old, new in [('Build succeeded.', 'Build FAILED.'),
                              ('17:27:28Z Build', '17:24:28Z Build'),
                              ('REUSE_VALIDATED_PACKAGE: false', 'REUSE_VALIDATED_PACKAGE: true'),
                              ('Schema ready.', 'Schema unknown.'), (head, 'f' * 40)]:
-                logs.return_value = log.replace(old, new)
+                logs.return_value = (log + '2026-10-01T17:25:00Z   REUSE_VALIDATED_PACKAGE: true\n'
+                    if old == 'REUSE_VALIDATED_PACKAGE: false' and not has_reuse else log.replace(old, new))
                 self.assertFalse(prove(), (old, new))
             logs.return_value = log
             producer.return_value = 'f' * 40

@@ -689,8 +689,22 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
     # really mutated SQL; this is completed-history reconciliation, NOT a noop
     # allowlist or permission to replay a missing intent. Pin the audited full
     # workflow rather than trusting a marker or a run ID.
-    inline = hashlib.sha256(source.encode()).hexdigest() == (
-        'e596c919e0aa2f99ede614467d756bf7606f1b343f2fb18d0d1f0c0334181d4e')
+    fingerprint = hashlib.sha256(source.encode()).hexdigest()
+    inline_profiles = {
+        'e596c919e0aa2f99ede614467d756bf7606f1b343f2fb18d0d1f0c0334181d4e': (
+            'e2b2bada659a17265aab97fe91098e69d3399909d6bcce83c112f0a529336b20',
+            '66ff9be20166cf9d3fff421bd6f90b277857788cdfb974fe521034322edca727', True, None),
+        # September generations compiled locally without any package reuse path.
+        '478c67e2c30a5dbac8edb420b13239a12d9979dfdb34cdbb0b7e882adf1dd0bc': (
+            '089f4cb690bfe57bd392c76fa05002becea265474423c19ad8bb660bbd1fa5d4',
+            'aee39578fced3e70e83e79f76996b0fd7fbb591d60c1aaf1ce9a42724d39cb9b', False,
+            'Direct deploy Protect immutable ZIP'),
+        '03f186490228dc4a54e6352a1258ba0509c8c952b74744f964a6b2da4fef873c': (
+            'c9357daee49cb972e28f6c0db01a6437ede56f64725635d4d881517a17673c58',
+            'aee39578fced3e70e83e79f76996b0fd7fbb591d60c1aaf1ce9a42724d39cb9b', False,
+            'Direct deploy Protect'),
+    }
+    inline = fingerprint in inline_profiles
     valid_id = re.compile(r'^[0-9]{8,14}_[A-Za-z0-9_]{1,128}$')
     valid_sha = re.compile(r'^[a-f0-9]{40}$')
     if (run.get('status') != 'completed' or run.get('conclusion') != 'success'
@@ -708,9 +722,12 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
                    for x in job.get('steps', [])) == 1
     required = (('Build exact selected release candidate',
                  'Publish exact selected application packages',
-                 'Direct deploy AgentPortal', 'Enforce complete direct deployment outcome')
+                 'Enforce complete direct deployment outcome')
                 if inline else ('Verify restored immutable validation package',
                                 'Retain exact approved release receipt'))
+    if inline and not (exactly('Direct deploy AgentPortal') or
+                       (inline_profiles[fingerprint][3] and exactly(inline_profiles[fingerprint][3]))):
+        return False
     if not (all(exactly(name) for name in required)
             and exactly('Verify every deployed target and collect all failures')):
         return False
@@ -720,11 +737,12 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
             # Authenticate the original admission semantics, including the
             # reviewed request and exact-head validation reader it imported.
             owners = {
-                'scripts/approved-release-baseline.py': 'e2b2bada659a17265aab97fe91098e69d3399909d6bcce83c112f0a529336b20',
-                'scripts/release-lifecycle.py': '66ff9be20166cf9d3fff421bd6f90b277857788cdfb974fe521034322edca727',
-                'scripts/validation-resume.py': '99f3c15343a9536f8a6b8edfcab8cbcbf6c9c4202d3d82fe47a17432d0b2dc33',
+                'scripts/approved-release-baseline.py': inline_profiles[fingerprint][0],
+                'scripts/release-lifecycle.py': inline_profiles[fingerprint][1],
                 'scripts/release_policy.py': 'cc73125e7147270b19b6c8ed85f6b5ae3f72bf7d28fe576ca0efbea61572e574',
             }
+            if inline_profiles[fingerprint][2]:
+                owners['scripts/validation-resume.py'] = '99f3c15343a9536f8a6b8edfcab8cbcbf6c9c4202d3d82fe47a17432d0b2dc33'
             for path, digest in owners.items():
                 if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
                     return False
@@ -761,7 +779,8 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
                     build_stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
             if (len(build_stamps) != 1 or not build_start <= build_stamps[0] <= build_end + datetime.timedelta(seconds=2)
                 or build_end > start or '  REUSE_VALIDATED_PACKAGE: true' in clean
-                or '  REUSE_VALIDATED_PACKAGE: false' not in clean):
+                or (inline_profiles[fingerprint][2] and '  REUSE_VALIDATED_PACKAGE: false' not in clean)
+                or (not inline_profiles[fingerprint][2] and 'REUSE_VALIDATED_PACKAGE' in source)):
                 return False
         stamps = []
         for line in log.splitlines():

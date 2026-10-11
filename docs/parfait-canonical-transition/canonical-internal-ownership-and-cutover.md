@@ -258,3 +258,28 @@ produces the identical pre-existing failure set. Independent source review appro
 the credential fallback without changes to admission or permissions.
 Resume through fast-track after exact-head validation; the preserved rehearsal
 and all five pending application targets remain unchanged.
+
+### Completed September migration generations
+
+PR #588 merged at `e67e81b3ad9311858c48e731d2406da0ba3a8059` after exact-head
+security, isolated and read-only workflows passed. Production run `38154021328`
+authenticated the history with the existing Actions token and reconciled both
+October unknown generations, then stopped before writes on successful September
+run `36332699867`. The completed-history compatibility owner recognized only the
+later inline workflow, not its two earlier source generations.
+
+A batch inspection of every remaining possible SQL execution found nine successful
+September releases requiring these two exact profiles. The existing completed-history
+proof now pins each workflow to its original baseline, lifecycle and policy owners.
+Those original workflows had no package-reuse path or validation-resume reader;
+their timestamped local build, migration completion, exact package and aggregate
+receipt remain mandatory. Two were successful Protect/Website-only releases, so
+their exact original Protect deployment step is accepted instead of requiring a
+Portal deployment outside their scope. Website-only success cannot satisfy this.
+
+All nine original execution/package proofs pass the read-only reproduction with
+unchanged older migration sources and strictly newer pending work. Fresh production
+physical prefix/activity checks remain mandatory; no run is reclassified as nonentry.
+The existing proofs for the two failed historical EF executions remain unchanged.
+No production writes occurred in `38154021328`. Continue with the preserved bundle,
+all five app targets and routing after source validation and independent review.
