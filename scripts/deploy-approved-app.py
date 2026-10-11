@@ -748,7 +748,16 @@ def verify_fast_track_favicon(key):
 
 
 def fast_track_restore_package(key, directory):
-    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
+    # Actions can briefly expose stale parent status while a matrix sibling starts.
+    # Refresh only this read-only entry; mutation admission remains unchanged.
+    for retry in range(3):
+        try:
+            run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
+            break
+        except RuntimeError as error:
+            if str(error) != 'FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN' or retry == 2:
+                raise
+            time.sleep(2)
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     name = 'fast-track-package-' + run['head_sha'] + '-' + key
@@ -772,6 +781,9 @@ def fast_track_restore_package(key, directory):
             if jobs.get('total_count') != len(jobs.get('jobs', [])):
                 raise ValueError('FAST_TRACK_PACKAGE_PRIOR_ATTEMPT_UNPROVEN')
             owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Affected App Deploy — ' + display]
+            if not owners and _RELEASE_AUTHORITY.fast_track_skipped_matrix(jobs.get('jobs', [])):
+                saw_owner = True
+                continue
             if not owners and attempt > 1 and saw_owner:
                 continue
             if len(owners) != 1:
@@ -779,8 +791,10 @@ def fast_track_restore_package(key, directory):
             saw_owner = True
             if owners[0].get('conclusion') == 'skipped' or owners[0].get('status') == 'queued':
                 continue
+            build = [s for s in owners[0].get('steps', []) if s.get('name') == 'Compile application and produce ZIP']
             steps = [s for s in owners[0].get('steps', []) if s.get('name') == 'Publish or reconcile exact application bytes']
-            if len(steps) != 1 or steps[0].get('conclusion') != 'skipped':
+            if (len(build) != 1 or build[0].get('conclusion') not in {'skipped', 'failure'}
+                or len(steps) != 1 or steps[0].get('conclusion') != 'skipped'):
                 raise ValueError('FAST_TRACK_RETAINED_PACKAGE_MISSING_NO_REBUILD')
     return False
 

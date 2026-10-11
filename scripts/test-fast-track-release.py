@@ -354,4 +354,87 @@ class RecoveryWindowTests(unittest.TestCase):
         self.assertTrue(all('list' in c or 'show' in c for c in calls))
 
 
+
+class SkippedMatrixRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.jobs=[dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[])]
+        self.run=dict(id=17,head_sha='a'*40,run_attempt=3)
+    def restore(self):
+        def get(repo,path,token):
+            if '/artifacts?' in path:return dict(total_count=0,artifacts=[])
+            return dict(total_count=len(self.jobs),jobs=self.jobs)
+        with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
+             patch.object(deploy._RELEASE_AUTHORITY,'assert_fast_track_release_execution',return_value=self.run), \
+             patch.object(deploy._RELEASE_AUTHORITY,'api_get',side_effect=get):
+            return deploy.fast_track_restore_package('portal',Path('/unused'))
+    def test_unexpanded_skipped_matrix_allows_first_build(self):
+        self.assertFalse(self.restore())
+    def test_missing_active_or_executed_matrix_cannot_prove_nonentry(self):
+        for key,value in [('name','unknown'),('status','in_progress'),('conclusion','failure'),('steps',[dict(name='upload')])]:
+            original=dict(self.jobs[0]);self.jobs[0][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):self.restore()
+            self.jobs[0]=original
+    def test_entered_upload_without_package_never_rebuilds(self):
+        self.jobs=[dict(name='Affected App Deploy — AgentPortal',status='completed',conclusion='failure',
+            steps=[dict(name='Publish or reconcile exact application bytes',conclusion='failure')])]
+        with self.assertRaisesRegex(ValueError,'NO_REBUILD'):self.restore()
+    def test_missing_already_built_package_never_rebuilds(self):
+        self.jobs=[dict(name='Affected App Deploy — AgentPortal',status='completed',conclusion='failure',steps=[
+            dict(name='Compile application and produce ZIP',conclusion='success'),
+            dict(name='Publish or reconcile exact application bytes',conclusion='skipped')])]
+        with self.assertRaisesRegex(ValueError,'NO_REBUILD'):self.restore()
+
+    def test_readonly_identity_refresh_is_bounded_and_does_not_relax_admission(self):
+        with patch.object(deploy._RELEASE_AUTHORITY,'assert_fast_track_release_execution',
+                side_effect=RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')) as check, \
+             patch.object(deploy.time,'sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):
+                deploy.fast_track_restore_package('portal',Path('/unused'))
+            self.assertEqual(3,check.call_count);self.assertEqual(2,sleep.call_count)
+
+
+class CompletedSqlScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.run=dict(id=17,run_attempt=3,head_sha='a'*40,status='completed',conclusion='failure')
+        self.routing=dict(name='Publish verified website routing',status='completed',conclusion='skipped')
+        self.first=[dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[]),self.routing]
+        self.apps=[dict(name='Affected App Deploy — '+name,status='completed',conclusion='failure',steps=[
+            dict(name='Publish or reconcile exact application bytes',status='completed',conclusion='skipped')])
+            for name in ('AgentPortal','ClientApp','Protect','Parfait','Website')]
+        self.latest=self.apps+[self.routing,dict(name=authority.FAST_TRACK_CHILD_STEPS['migrations'][0],conclusion='success',run_attempt=3)]
+        self.intent=dict(producingRun=17,producingAttempt=2,partitionIdentity='e'*64,dependencyIdentity='b'*64,materialIdentity='c'*64,
+            executionAuthority='a'*40,applicationRevision='a'*40)
+        self.success=dict(self.intent,producingAttempt=3)
+        self.inventory=dict(total_count=1,artifacts=[dict(name='legend-release-child-intent-'+'b'*64,expired=False)])
+        self.source=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+    def prove(self):
+        def get(repo,path,token):
+            if '/artifacts?' in path:return self.inventory
+            jobs=self.latest if '/attempts/3/' in path else self.first
+            return dict(total_count=len(jobs),jobs=jobs)
+        with patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority,'_release_history_source',return_value=self.source), \
+             patch.object(authority,'release_child_history',side_effect=lambda *args:self.intent if args[-1]=='intent' else self.success):
+            return authority.fast_track_completed_sql_unpublished('owner/repo',self.run,self.latest,'fixture')
+    def test_completed_sql_preserves_scope_without_claiming_sql_nonentry(self):
+        self.assertTrue(self.prove())
+    def test_any_earlier_publication_missing_owner_or_changed_original_source_blocks(self):
+        self.first=self.latest
+        self.apps[0]['steps'][0]['conclusion']='failure';self.assertFalse(self.prove())
+        self.apps[0]['steps'][0]['conclusion']='skipped'
+        self.latest.remove(self.apps[1]);self.assertFalse(self.prove())
+    def test_missing_or_conflicting_sql_success_blocks(self):
+        self.success=None;self.assertFalse(self.prove())
+        self.success=dict(self.intent,materialIdentity='d'*64);self.assertFalse(self.prove())
+    def test_other_partition_or_unbound_success_attempt_blocks(self):
+        self.success['partitionIdentity']='f'*64;self.assertFalse(self.prove())
+        self.success['partitionIdentity']='e'*64
+        self.success['producingAttempt']=2;self.assertFalse(self.prove())
+
+    def test_changed_source_incomplete_artifacts_or_entered_routing_blocks(self):
+        original=self.source;self.source+='\n# changed';self.assertFalse(self.prove());self.source=original
+        self.inventory['total_count']=2;self.assertFalse(self.prove());self.inventory['total_count']=1
+        self.routing['conclusion']='success';self.assertFalse(self.prove())
+
+
 if __name__ == '__main__':unittest.main()
