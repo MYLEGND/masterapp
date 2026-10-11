@@ -91,6 +91,19 @@ class RouterConfigurationTests(unittest.TestCase):
         router.require_disabled_cutover([dict(name='LEGEND_COMMERCE_CUTOVER_ENABLED',type='plain_text',text='false')])
 
 
+class CompanyRendererAdmissionTests(unittest.TestCase):
+    def test_http_success_without_published_html_is_not_renderer_readiness(self):
+        from unittest.mock import MagicMock
+        for body, succeeds in [(b'<main>stale static page</main>',False),
+                (b'<main>Published</main><script id="legend-cms-published-document">{}</script>',True)]:
+            response=MagicMock();response.__enter__.return_value=response
+            response.status=200;response.headers={'Content-Type':'text/html'};response.read.return_value=body
+            with patch.object(router.urllib.request,'urlopen',return_value=response):
+                if succeeds:router.company_render_ready(authority)
+                else:
+                    with self.assertRaises(RuntimeError):router.company_render_ready(authority)
+
+
 class SuccessfulSiblingTests(unittest.TestCase):
     def test_prior_successful_migration_is_preserved_for_failed_app_retry(self):
         run=dict(id=12,head_sha='a'*40,run_attempt=3)

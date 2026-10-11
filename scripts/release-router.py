@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 
 
@@ -58,6 +59,20 @@ def require_disabled_cutover(bindings):
             raise RuntimeError('Router commerce cutover flags must remain off')
 
 
+def company_render_ready(authority):
+    # Verify the actual anonymous compiler response before moving company HTML
+    # traffic to it; an assembly revision alone cannot prove Node/render readiness.
+    origin = 'https://' + authority.RELEASE_TARGETS['protect']['azureHost']
+    request = urllib.request.Request(origin + '/api/website-content/public/legend/page?path=/',
+        headers={'Accept': 'text/html', 'Cache-Control': 'no-cache'})
+    with urllib.request.urlopen(request, timeout=45) as response:
+        body = response.read(4 * 1024 * 1024)
+        if (response.status != 200 or 'text/html' not in response.headers.get('Content-Type', '')
+            or b'legend-cms-published-document' not in body or b'<main' not in body.lower()):
+            raise RuntimeError('Published company renderer unproven; routing remains unchanged')
+    print('FAST_TRACK_COMPANY_RENDERER:VERIFIED_BEFORE_ROUTING')
+
+
 def fast_track():
     authority = load('validation-resume')
     authority.fast_track_source_admission()
@@ -80,6 +95,7 @@ def fast_track():
         raise RuntimeError('Existing router bridge secret missing')
     require_disabled_cutover(bindings)
     material = hashlib.sha256(json.dumps(dict(account=account, worker=worker, zone=zone), sort_keys=True).encode()).hexdigest()
+    company_render_ready(authority)
     journal = load('release-operation-evidence').ChildJournal('routing-cloudflare', material)
     def observe():
         version = provider.current_worker_version(account, worker)
