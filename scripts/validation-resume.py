@@ -3929,8 +3929,19 @@ def attested_fast_track_two_attempt_no_sql_preflight(repository, run, token):
                 return False
             log = _release_job_log(repository, owner['id'], token)
             marker = 'Database mutation activity remains active; preserve prior evidence and reconcile without replay.'
-            if (len(re.findall(r'(?m)^\d{4}-\d{2}-\d{2}T[^\n]+Z ' +
-                 re.escape(marker) + r'
+            matched = [line for line in log.splitlines() if marker in line]
+            if (len(matched) != 1 or
+                not re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}T[^\\n]+Z ' + re.escape(marker), matched[0]) or
+                'Schema ready; validated migration child applied.' in log or
+                'Schema ready; validated no-SQL migration child preserved.' in log):
+                return False
+        return True
+    except (ValueError, RuntimeError, KeyError, TypeError,
+            ReleaseOperationHistoryUnproven, EvidenceLookupUnavailable):
+        return False
+
+
+def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
