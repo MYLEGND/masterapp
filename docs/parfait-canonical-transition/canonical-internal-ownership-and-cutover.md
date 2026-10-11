@@ -235,3 +235,11 @@ retained-intent rejection. Exact-head security and isolated CI remain required.
 Continue the same fast-track release with the preserved rehearsal bundle, verify
 SQL and all five apps plus routing, then verify live revision and public HTML.
 No production writes have occurred in the failed runs named above.
+
+The source read-only workflow also restores a compatible original rehearsal via
+the same `restore_fast_track` owner and compares it with the authenticated fresh
+observation. It creates a new rehearsal only when no compatible proof exists.
+Corrupt evidence or a changed database baseline never triggers fallback. Reused
+bytes are not uploaded under the new candidate's rehearsal name. This prevents
+repair-only PRs from failing merely because their delta adds no migration source,
+without relabelling old evidence or skipping the source recovery checks.

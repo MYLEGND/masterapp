@@ -476,6 +476,45 @@ def restore_fast_track(revision, directory, probe_directory):
     raise ValueError('FAST_TRACK_COMPATIBLE_REHEARSAL_MISSING')
 
 
+def prepare_observed_fast_track(revision, directory, observation_path, probe_directory):
+    """Reuse compatible rehearsal against fresh observation; build only if absent."""
+    if any(os.environ.get(key) for key in ('LEGEND_RELEASE_DB_CONNECTION',
+        'SQLCONNSTR_MasterAppDb', 'ConnectionStrings__MasterAppDb', 'AZURE_CLIENT_ID',
+        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID')):
+        raise ValueError('FAST_TRACK_REHEARSAL_REQUIRES_CREDENTIAL_FREE_JOB')
+    if (not re.fullmatch('[a-f0-9]{40}', revision)
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision
+        or os.environ.get('GITHUB_SHA') != revision):
+        raise ValueError('FAST_TRACK_REHEARSAL_CANDIDATE_CHANGED')
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GITHUB_TOKEN') or os.environ['GH_TOKEN']
+    run_id, attempt = int(os.environ['GITHUB_RUN_ID']), int(os.environ['GITHUB_RUN_ATTEMPT'])
+    run = AUTHORITY.api_get(repository, f'actions/runs/{run_id}', token)
+    if (run.get('id') != run_id or run.get('run_attempt') != attempt or run.get('head_sha') != revision
+        or run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
+        or run.get('head_branch') != 'isolation/canonical-scoped-commerce-internal-20261010'
+        or run.get('event') not in {'push', 'workflow_dispatch'} or run.get('status') != 'in_progress'
+        or run.get('head_repository', {}).get('full_name') != repository):
+        raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_UNPROVEN')
+    source = fast_track_observation_source(repository, revision, run_id, attempt, token)
+    report = json.loads(observation_path.read_text())
+    baseline = fast_track_baseline(report, revision, run_id)
+    if report.get('producingAttempt') != source['attempt']:
+        raise ValueError('FAST_TRACK_OBSERVATION_ATTEMPT_MISMATCH')
+    try:
+        proof = restore_fast_track(revision, directory, directory / 'preserved-probe')
+    except ValueError as error:
+        if str(error) != 'FAST_TRACK_COMPATIBLE_REHEARSAL_MISSING':
+            raise
+        rehearse_fast_track(revision, directory, observation_path, probe_directory)
+        return False
+    if proof.get('baseline') != baseline:
+        raise ValueError('FAST_TRACK_REUSED_REHEARSAL_BASELINE_CHANGED')
+    print('FAST_TRACK_REHEARSAL_REUSED:producer=' + proof['candidate'])
+    # Keep original producer identity; never upload old bytes as a new rehearsal.
+    return True
+
+
 def test_schema_contract(directory):
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
@@ -492,7 +531,7 @@ def test_schema_contract(directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse', 'test-contract', 'fast-track-rehearse'])
+    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse', 'test-contract', 'fast-track-rehearse', 'fast-track-prepare'])
     parser.add_argument('--tool-revision', required=True)
     parser.add_argument('--application-revision', required=True)
     parser.add_argument('--directory', required=True, type=Path)
@@ -500,10 +539,15 @@ def main():
     parser.add_argument('--observation', type=Path)
     parser.add_argument('--probe-directory', type=Path)
     args = parser.parse_args()
-    if args.command == 'fast-track-rehearse':
+    if args.command in {'fast-track-rehearse', 'fast-track-prepare'}:
         if args.tool_revision != args.application_revision or args.observation is None or args.probe_directory is None:
             parser.error('fast-track-rehearse requires same exact revision, observation, and probe directory')
-        rehearse_fast_track(args.application_revision, args.directory, args.observation, args.probe_directory)
+        if args.command == 'fast-track-prepare':
+            reused = prepare_observed_fast_track(args.application_revision, args.directory, args.observation, args.probe_directory)
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                output.write('reused=' + str(reused).lower() + '\n')
+        else:
+            rehearse_fast_track(args.application_revision, args.directory, args.observation, args.probe_directory)
         return
     if args.command == 'test-contract':
         test_schema_contract(args.directory)
