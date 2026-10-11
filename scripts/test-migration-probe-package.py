@@ -35,6 +35,12 @@ class ObservedRehearsalReuseTests(unittest.TestCase):
     def prepare(self):
         return m.prepare_observed_fast_track(self.revision,self.root/'bundle',self.observation,self.root/'probe')
 
+    def test_authenticated_ready_schema_requires_no_rehearsal_or_relabeling(self):
+        self.baseline.update(ready=True,pendingCount=0)
+        with patch.object(m,'restore_fast_track') as restore, patch.object(m,'rehearse_fast_track') as build:
+            self.assertTrue(self.prepare())
+            restore.assert_not_called();build.assert_not_called()
+
     def test_compatible_original_proof_executes_no_new_rehearsal(self):
         proof=dict(candidate='c'*40,baseline=self.baseline)
         with patch.object(m,'restore_fast_track',return_value=proof),patch.object(m,'rehearse_fast_track') as build:

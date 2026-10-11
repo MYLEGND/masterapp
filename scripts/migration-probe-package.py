@@ -501,6 +501,10 @@ def prepare_observed_fast_track(revision, directory, observation_path, probe_dir
     baseline = fast_track_baseline(report, revision, run_id)
     if report.get('producingAttempt') != source['attempt']:
         raise ValueError('FAST_TRACK_OBSERVATION_ATTEMPT_MISMATCH')
+    if baseline.get('ready') is True and baseline.get('pendingCount') == 0:
+        print('FAST_TRACK_REHEARSAL_NOT_REQUIRED:authenticated-current-schema-ready')
+        # No new artifact: original SQL evidence remains with its original producer.
+        return True
     try:
         proof = restore_fast_track(revision, directory, directory / 'preserved-probe')
     except ValueError as error:

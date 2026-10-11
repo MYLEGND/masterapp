@@ -3511,8 +3511,65 @@ def fast_track_validation_receipt(repository, run, workflow, candidate, pr, toke
     return artifacts[0]['id']
 
 
+def fast_track_skipped_matrix(jobs):
+    """GitHub represents a wholly skipped matrix by its unexpanded job name."""
+    owners = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ')]
+    return (len(owners) == 1 and owners[0].get('name') == 'Affected App Deploy — ${{ matrix.target }}'
+        and owners[0].get('status') == 'completed' and owners[0].get('conclusion') == 'skipped'
+        and owners[0].get('steps') == [])
+
+
+def fast_track_completed_sql_unpublished(repository, run, latest_jobs, token):
+    """Carry app scope only; completed SQL remains owned by its durable journal."""
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100):
+        return False
+    migrations = [j for j in latest_jobs if j.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][0]]
+    if len(migrations) != 1 or migrations[0].get('conclusion') != 'success':
+        return False
+    source = _release_history_source(repository, run['head_sha'], '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    if hashlib.sha256(source.encode()).hexdigest() != '5ab1bab0315385c56838c2e0ffdc7cb78da00a34b734e716f25d0f26e5de6f51':
+        return False
+    expected = {'Affected App Deploy — ' + name for name in ('AgentPortal','ClientApp','Protect','Parfait','Website')}
+    for attempt in range(1, run['run_attempt'] + 1):
+        payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+        jobs = payload.get('jobs')
+        if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+            return False
+        routing = [j for j in jobs if j.get('name') == 'Publish verified website routing']
+        if len(routing) != 1 or routing[0].get('status') != 'completed' or routing[0].get('conclusion') != 'skipped':
+            return False
+        if fast_track_skipped_matrix(jobs):
+            continue
+        owners = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ')]
+        if len(owners) != 5 or {j.get('name') for j in owners} != expected:
+            return False
+        for job in owners:
+            steps = [s for s in job.get('steps', []) if s.get('name') == 'Publish or reconcile exact application bytes']
+            if (job.get('status') != 'completed' or len(steps) != 1
+                or steps[0].get('status') != 'completed' or steps[0].get('conclusion') != 'skipped'):
+                return False
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts')
+    if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+        return False
+    intents = [a for a in artifacts if a.get('name', '').startswith('legend-release-child-intent-')]
+    if len(intents) != 1 or intents[0].get('expired') is not False:
+        return False
+    identity = intents[0]['name'].removeprefix('legend-release-child-intent-')
+    intent = release_child_history(repository, 'migrations', identity, token, 'intent')
+    success = release_child_history(repository, 'migrations', identity, token, 'success')
+    keys = ('producingRun','dependencyIdentity','materialIdentity','executionAuthority','applicationRevision','partitionIdentity')
+    return bool(intent and success and intent.get('producingRun') == run['id']
+        and re.fullmatch('[a-f0-9]{64}', str(intent.get('partitionIdentity', '')))
+        and success.get('producingAttempt') == migrations[0].get('run_attempt')
+        and type(intent.get('producingAttempt')) is int
+        and 1 <= intent['producingAttempt'] <= success['producingAttempt']
+        and all(intent.get(key) == success.get(key) for key in keys))
+
+
 def fast_track_effective_baseline(before, revision):
-    """Carry unpublished scope through an admission repair, never through a write."""
+    """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     # Keep a bounded chain while carrying successive positively proven prewrite repairs.
@@ -3530,7 +3587,7 @@ def fast_track_effective_baseline(before, revision):
             return before
         if prior.get('status') != 'completed':
             raise RuntimeError('FAST_TRACK_PREDECESSOR_ACTIVE')
-        if len(runs) != 1 or prior.get('run_attempt') != 1 or prior.get('head_sha') != before:
+        if len(runs) != 1 or prior.get('head_sha') != before:
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
         payload = api_get(repository, f"actions/runs/{prior['id']}/jobs?filter=latest&per_page=100", token)
         jobs = payload.get('jobs')
@@ -3550,7 +3607,10 @@ def fast_track_effective_baseline(before, revision):
             and len(mutation) == 1 and (mutation[0].get('conclusion') == 'skipped' or
                 attested_fast_track_migration_prewrite(repository, prior, jobs, token))
             and all(j.get('conclusion') == 'skipped' for j in publications))
-        if len(writes) < 3 or not (admission_stopped or recovery_stopped):
+        prewrite = prior.get('run_attempt') == 1 and (admission_stopped or recovery_stopped)
+        completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
+            and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
+        if len(writes) < 3 or not (prewrite or completed_sql):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
         pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
         merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before
@@ -7899,6 +7959,9 @@ def release_operation_history(repository, operation_id, application_revision, ta
             label = RELEASE_TARGETS[target]['releaseName']
             display = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect', 'parfait': 'Parfait', 'website': 'Website'}[target]
             owners = [j for j in jobs if j.get('name') in {'Affected App Deploy — ' + display, 'UI Deploy — ' + display}]
+            if not owners and fast_track_skipped_matrix(jobs):
+                saw_owner = True
+                continue
             if not owners and attempt > 1 and saw_owner:
                 continue
             if len(owners) != 1:

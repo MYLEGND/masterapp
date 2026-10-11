@@ -309,3 +309,32 @@ changing the internal admission evidence. Focused validation: 31 fast-track and
 108 release-child tests pass. Independent review approved these changes. Resume
 only through exact-head source validation and the canonical fast-track workflow;
 all five app targets, the preserved bundle and routing remain pending.
+
+### Completed SQL and first application entry
+
+PR #590 merged at `39fc10572cb8ffc7de812d3b50eb26992367c2d1` with all three
+required source workflows successful. Production run `38157422917` attempt 2
+executed the preserved migration bundle. Attempt 3 reconciled and verified the
+completed schema without replay. Its durable intent artifact `11709737329`
+(attempt 2) and success artifact `11709078139` (attempt 3) share operation
+`8e240717f3ec653f6613fc9a22edf81922d1307ea8e66fb0a9e38045cf8e1fb4`.
+Both pending migrations are now applied. SQL is complete; apps and routing are not.
+
+All five app jobs stopped in package restore before compilation or publication.
+GitHub represented earlier skipped matrices with their unexpanded name; the
+restore/history readers now recognize only the exact completed/skipped empty
+placeholder. Missing artifacts after a successful build or entered publication
+still prohibit rebuilding. Read-only package identity refresh is bounded; mutation
+identity checks are unchanged.
+
+A separate scope-recovery predicate authenticates the original workflow, every
+attempt's complete app/routing nonentry inventory, and the canonical SQL
+intent/success pair, including physical partition and reconciliation attempt.
+It preserves unpublished app scope without claiming SQL nonentry or granting
+migration replay. The real run passes this predicate and retains original scope
+baseline `640a2fa3e44fe1b36ff9c12e44aa1bbd1a7f21f6`.
+Fresh authenticated zero-pending source observations require no new rehearsal or
+artifact; original rehearsal provenance remains unchanged. Production still
+performs its fresh schema/activity verification. Focused checks: 41 fast-track,
+17 migration-probe, and 108 release-child tests pass. Remaining work is exact-head
+source validation, canonical deployment of all five apps/routing, and live verification.
