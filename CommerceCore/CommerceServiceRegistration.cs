@@ -1,3 +1,4 @@
+using Infrastructure.Commerce.Payments;
 using Infrastructure.Commerce;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using ParfaitApp.Controllers;
@@ -113,7 +114,7 @@ public static class CommerceServiceRegistration
         {
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
-                typeof(StoreCheckoutController), typeof(ParfaitPublicPreviewController),
+                typeof(StoreCheckoutController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
                 typeof(CommerceManagementController)
             };
             var assembly = typeof(StoreController).Assembly;
@@ -143,6 +144,7 @@ public static class CommerceServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddScoped<ICommerceAutomationDispatchLease, SqlCommerceAutomationDispatchLease>();
         services.AddHostedService<ParfaitCustomerAutomationHostedService>();
+        services.AddHostedService<MerchantPaymentReconciliationWorker>();
         return services;
     }
 
@@ -151,6 +153,9 @@ public static class CommerceServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddLegendCommerceCatalogReadOnly();
+        services.AddMerchantPayments();
+        services.AddScoped<MerchantCheckoutService>();
+        services.AddScoped<MerchantPaymentCompletionService>();
         services.AddScoped<ParfaitOrderService>();
         services.AddScoped<ParfaitCustomerAutomationService>();
         services.AddScoped<CommerceSignalService>();

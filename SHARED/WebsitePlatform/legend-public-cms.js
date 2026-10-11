@@ -4635,8 +4635,14 @@
     manage.id='legend-cms-manage-store';
     manage.textContent='Manage products';
     manage.disabled=!storeContext?.managerUrl;
-    manage.addEventListener('click',openStoreManager);
-    actions.append(action,manage);
+    manage.addEventListener('click',()=>openStoreManager());
+    const payments=document.createElement('button');
+    payments.type='button';
+    payments.id='legend-cms-store-payments';
+    payments.textContent='Payments';
+    payments.disabled=!storeContext?.paymentsUrl;
+    payments.addEventListener('click',()=>openStoreManager(storeContext?.paymentsUrl));
+    actions.append(action,manage,payments);
     host.insertBefore(actions,settings);
   }
 
@@ -4701,8 +4707,8 @@
     if(overlay) overlay.hidden=true;
   }
 
-  function openStoreManager() {
-    if(!storeContext?.managerUrl) return;
+  function openStoreManager(managerUrl=storeContext?.managerUrl) {
+    if(!managerUrl) return;
     let modal=document.querySelector('.legend-cms-store-manager');
     if(!modal) {
       modal=document.createElement('div');
@@ -4719,7 +4725,7 @@
       shell.append(top,frame); modal.appendChild(shell); document.body.appendChild(modal);
     }
     const frame=modal.querySelector('iframe');
-    if(frame) frame.src=storeContext.managerUrl;
+    if(frame) frame.src=managerUrl;
     modal.hidden=false;
   }
   function preservePreviewNavigation() {

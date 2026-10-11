@@ -8,6 +8,7 @@
     var storeCart = ViewData["StoreCartPath"] as string ?? "/store/cart";
     var storeName = commerce?.StoreName ?? "Parfait";
 
+    var hosted = ViewBag.MerchantHostedCheckout is true;
     var appId = ViewBag.SquareApplicationId as string;
     var locationId = ViewBag.SquareLocationId as string;
     var environment = ViewBag.SquareEnvironment as string ?? "Sandbox";
@@ -129,7 +130,7 @@
                             <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
                             <span id="spPayButtonLabel">Complete Purchase</span>
                         </span>
-                        <small class="sp-button-note">Secure encrypted Square checkout</small>
+                        <small class="sp-button-note">Secure encrypted checkout</small>
                     </button>
                 </div>
 
@@ -140,7 +141,7 @@
 </section>
 
 @section Scripts {
-    <script src="@squareScript"></script>
+    @if (!hosted) { <script src="@squareScript"></script> }
     <script>
         (() => {
             const store = window.ParfaitStorefront;
@@ -151,6 +152,7 @@
             const payEndpoint = checkoutPath + "/pay";
             const successPath = commerce.successPath || "/store/success";
             const storeRoot = commerce.storeRootPath || "/store";
+            const hosted = @Html.Raw(hosted ? "true" : "false");
             const appId = @Html.Raw(appIdJson);
             const locationId = @Html.Raw(locationIdJson);
             const payButton = document.getElementById("spPayButton");
@@ -282,7 +284,7 @@
             };
 
             const renderEmptySummary = () => {
-                clearCheckoutAttemptId();
+                if (!hosted) clearCheckoutAttemptId();
                 latestQuote = null;
                 summaryHost.innerHTML = `
                     <div class="sp-cart-empty">
@@ -474,12 +476,14 @@
             async function startSquare() {
                 const firstQuote = await requestQuote();
 
+                if (!hosted) {
                 if (!window.Square) throw new Error("Square.js failed to load.");
                 if (!appId || !locationId) throw new Error("Square Application ID or Location ID is missing.");
 
                 const payments = window.Square.payments(appId, locationId);
                 card = await payments.card();
                 await card.attach("#card-container");
+                } else { document.getElementById("card-container").textContent = "Continue to your secure payment provider to complete your purchase."; }
                 ensureCheckoutAttemptId();
                 window.setTimeout(queueLeadCapture, 650);
 
@@ -504,7 +508,7 @@
                             throw new Error(errorHost.textContent || "Checkout totals changed. Review the updated order before paying.");
                         }
 
-                        const result = await card.tokenize();
+                        const result = hosted ? { status: "OK", token: null } : await card.tokenize();
                         if (result.status !== "OK") throw new Error("Unable to tokenize payment card.");
 
                         const payload = {
@@ -537,9 +541,11 @@
                             throw new Error(data.error || "Payment failed.");
                         }
 
-                        clearCheckoutAttemptId();
-                        store.clearCart();
-                        store.clearDiscountCode();
+                        if (!hosted) {
+                            clearCheckoutAttemptId();
+                            store.clearCart();
+                            store.clearDiscountCode();
+                        }
                         window.location.href = data.redirectUrl || successPath;
                     } catch (error) {
                         setError(error.message || "Payment failed.");
@@ -563,7 +569,7 @@
             });
 
             startSquare().catch(error => {
-                setError(error.message || "Square checkout failed to initialize.");
+                setError(error.message || "Checkout failed to initialize.");
                 setPayButtonAvailability(false);
             });
         })();

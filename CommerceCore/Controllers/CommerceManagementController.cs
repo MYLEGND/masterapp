@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Infrastructure.Commerce.Payments;
 using Infrastructure.Businesses;
 using Legend.Commerce;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,198 @@ public sealed class CommerceManagementController(
     IMetaAdsService metaAds,
     IGraphMailService mail) : Controller
 {
+    [HttpGet("payments")]
+    public async Task<IActionResult> Payments([FromQuery] string ticket,
+        [FromQuery] string environment = "Production", CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (environment is not ("Production" or "Sandbox")) return BadRequest();
+        ApplyManagementViewData(store, ticket, "payments");
+        var service = HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>();
+        var model = await service.ListAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        ViewData["MerchantPayments"] = await (from attempt in db.CommercePaymentAttempts.AsNoTracking()
+            join order in db.CommerceOrders.AsNoTracking() on attempt.CommerceOrderId equals order.Id
+            where attempt.CommerceBusinessId == store.CommerceBusinessId && order.CommerceBusinessId == store.CommerceBusinessId && attempt.Environment == environment
+            orderby attempt.CreatedUtc descending
+            select new MerchantPaymentSummary(attempt.CommerceOrderId, order.OrderNumber, attempt.Provider,
+                attempt.AmountMinor, attempt.RefundedMinor, attempt.Currency, attempt.State,
+                db.CommercePaymentRefunds.Any(refund => refund.AttemptId == attempt.Id && (refund.State == "Unknown" || refund.State == "Pending"))))
+            .Take(20).ToListAsync(ct);
+        return View("~/Views/InternalSettings/CanonicalPayments.cshtml", model);
+    }
+
+    [HttpPost("payments/reconcile")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReconcilePayment([FromQuery] string ticket,
+        [FromForm] Guid orderId, [FromForm] string environment, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (environment is not ("Production" or "Sandbox")) return BadRequest();
+        await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>().ListAsync(
+            store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var attemptId = await db.CommercePaymentAttempts.Where(x => x.CommerceBusinessId == store.CommerceBusinessId &&
+            x.CommerceOrderId == orderId && x.Environment == environment).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
+        if (!attemptId.HasValue) return NotFound();
+        try
+        {
+            var evidence = await HttpContext.RequestServices.GetRequiredService<MerchantCheckoutService>()
+                .ReconcileAsync(store.CommerceBusinessId, orderId, ct);
+            await HttpContext.RequestServices.GetRequiredService<MerchantPaymentCompletionService>()
+                .CompleteAsync(attemptId.Value, ct);
+            TempData["MerchantRefundStatus"] = evidence?.State == "Captured"
+                ? "Processor payment status verified. Review payment and refund status below."
+                : "Processor check completed. Payment is not yet verified as captured; review its status below.";
+            return RedirectToAction(nameof(Payments), new { ticket, environment });
+        }
+        catch (MerchantPaymentException)
+        { return BadRequest("Processor status could not be verified. The original payment remains recorded; check it again without starting a new charge."); }
+    }
+
+    [HttpPost("payments/refund")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefundPayment([FromQuery] string ticket,
+        [FromForm] Guid orderId, [FromForm] long amountMinor, [FromForm] string requestKey,
+        [FromForm] string environment, [FromForm] bool confirmRefund, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (!confirmRefund || amountMinor <= 0 || !Guid.TryParseExact(requestKey, "N", out _) || environment is not ("Production" or "Sandbox")) return BadRequest();
+        await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>().ListAsync(
+            store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        if (!await db.CommercePaymentAttempts.AnyAsync(x => x.CommerceBusinessId == store.CommerceBusinessId &&
+            x.CommerceOrderId == orderId && x.Environment == environment, ct)) return NotFound();
+        try
+        {
+            var result = await HttpContext.RequestServices.GetRequiredService<MerchantCheckoutService>()
+                .RefundAsync(store.CommerceBusinessId, orderId, amountMinor, requestKey, ct);
+            var settled = await HttpContext.RequestServices.GetRequiredService<MerchantCheckoutService>()
+                .GetAttemptAsync(store.CommerceBusinessId, orderId, ct);
+            if (settled is not null)
+                await HttpContext.RequestServices.GetRequiredService<MerchantPaymentCompletionService>().CompleteAsync(settled.Id, ct);
+            TempData["MerchantRefundStatus"] = result.State == "Unknown"
+                ? "Refund outcome is unknown. The request is saved. Reconcile it before starting another refund."
+                : "Refund request recorded. Status: " + result.State;
+            return RedirectToAction(nameof(Payments), new { ticket, environment });
+        }
+        catch (MerchantPaymentException)
+        { return BadRequest("Refund was not completed. Refresh Payments and review existing refund requests before retrying."); }
+    }
+
+    [HttpPost("payments/connect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConnectPayment([FromQuery] string ticket,
+        [FromForm] string provider, [FromForm] string environment, [FromForm] bool authorizeSharing = false, CancellationToken ct = default)
+    {
+        if (!authorizeSharing) return BadRequest("Authorize sharing account details with your payment processor to continue.");
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (environment is not ("Production" or "Sandbox")) return BadRequest();
+        var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/payments/callback";
+        try
+        {
+            var redirect = await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
+                .BeginAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
+                    provider, environment, callback, ticket, ct);
+            return Redirect(redirect);
+        }
+        catch (MerchantPaymentException)
+        { return BadRequest("Payment connection could not be started. Refresh Payments and check provider availability."); }
+    }
+
+    [HttpPost("payments/resume")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResumePayment([FromQuery] string ticket,
+        [FromForm] Guid connectionId, [FromForm] int revision, [FromForm] bool authorizeSharing = false, CancellationToken ct = default)
+    {
+        if (!authorizeSharing) return BadRequest("Authorize sharing account details with your payment processor to continue.");
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/payments/callback";
+        try
+        {
+            return Redirect(await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
+                .ResumeAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
+                    connectionId, revision, callback, ticket, ct));
+        }
+        catch (MerchantPaymentException)
+        { return BadRequest("Onboarding could not resume. Refresh Payments and review the connection status."); }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("payments/callback")]
+    public async Task<IActionResult> PaymentCallback([FromQuery] string state,
+        [FromQuery] string? code = null, [FromQuery] string? error = null, CancellationToken ct = default)
+    {
+        var service = HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>();
+        try
+        {
+            var ticket = service.InspectTicket(state);
+            var store = await ResolveAsync(ticket, ct);
+            var actor = tickets.TryUnprotect(ticket);
+            if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+            if (!string.IsNullOrEmpty(error))
+                return BadRequest("Provider authorization was not completed. Return to Payments to try again.");
+            await service.CompleteAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
+                actor.ActorEmail, state, code ?? "", ct);
+            return RedirectToAction(nameof(Payments), new { ticket, environment = service.InspectEnvironment(state) });
+        }
+        catch (MerchantPaymentException)
+        { return BadRequest("Payment authorization could not be verified. Return to Payments and restart the connection."); }
+    }
+
+    [HttpPost("payments/confirm")]
+    [HttpPost("payments/default")]
+    [HttpPost("payments/disconnect")]
+    [HttpPost("payments/refresh")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ManagePayment([FromQuery] string ticket,
+        [FromForm] Guid connectionId, [FromForm] int revision,
+        [FromForm] string environment, [FromForm] string? accountId = null,
+        [FromForm] string? locationId = null, [FromForm] bool confirmOwnership = false,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        var actor = tickets.TryUnprotect(ticket);
+        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (environment is not ("Production" or "Sandbox")) return BadRequest();
+        var service = HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>();
+        try
+        {
+            var path = Request.Path.Value ?? "";
+            if (path.EndsWith("/confirm", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!confirmOwnership || string.IsNullOrWhiteSpace(accountId))
+                    return BadRequest("Confirm the displayed merchant account belongs to this business.");
+                await service.ConfirmAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
+                    actor.ActorEmail, connectionId, accountId, locationId, revision, ct);
+            }
+            else if (path.EndsWith("/default", StringComparison.OrdinalIgnoreCase))
+                await service.SetDefaultAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
+                    actor.ActorEmail, connectionId, revision, ct);
+            else if (path.EndsWith("/disconnect", StringComparison.OrdinalIgnoreCase))
+                await service.RevokeAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
+                    actor.ActorEmail, connectionId, revision, ct);
+            else
+                await service.RefreshAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
+                    actor.ActorEmail, connectionId, revision, ct);
+            return RedirectToAction(nameof(Payments), new { ticket, environment });
+        }
+        catch (DbUpdateConcurrencyException)
+        { return Conflict("Payments changed in another session. Reload Payments before making another change."); }
+        catch (MerchantPaymentException)
+        { return BadRequest("The payment change was not completed. Refresh Payments to review readiness and required actions."); }
+    }
+
     [HttpGet("business-profile")]
     public async Task<IActionResult> BusinessProfile([FromQuery] string ticket,
         CancellationToken ct = default)
@@ -899,7 +1092,7 @@ public sealed class CommerceManagementController(
         if (store is null) return null;
 
         var actor = tickets.TryUnprotect(ticket);
-        if (actor is null) return null;
+        if (actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return null;
 
         if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
         {
@@ -967,3 +1160,5 @@ public sealed class CommerceManagementController(
     private static bool HasCheckedValue(IFormCollection form, string key) =>
         form[key].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
 }
+
+public sealed record MerchantPaymentSummary(Guid OrderId, string OrderNumber, string Provider, long AmountMinor, long RefundedMinor, string Currency, string State, bool HasUnresolvedRefund);

@@ -20,7 +20,6 @@ public sealed record CheckoutPaymentStartResult(CheckoutPaymentStartState State,
 public sealed class ParfaitOrderService
 {
     private static readonly HashSet<string> PaidStatuses = new(StringComparer.OrdinalIgnoreCase) { "Paid", "Refunded" };
-    private static readonly TimeSpan PaymentProcessingTimeout = TimeSpan.FromMinutes(10);
     private static readonly object Lock = new();
 
     private readonly MasterAppDbContext _db;
@@ -162,7 +161,8 @@ public sealed class ParfaitOrderService
                 if (existing.IsPaid)
                     return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyPaid, existing);
 
-                if (IsPaymentProcessingActive(existing, now))
+                if (_db.CommercePaymentAttempts.Any(x => x.CommerceOrderId == order.Id && x.CommerceBusinessId == businessId)
+                    || IsPaymentProcessingActive(existing, now))
                     return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyProcessing, existing);
             }
 
@@ -213,7 +213,18 @@ public sealed class ParfaitOrderService
             StampOrder(record);
 
             ApplyRecordToEntity(order, NormalizeOrder(record));
-            _db.SaveChanges();
+            try { _db.SaveChanges(); }
+            catch (DbUpdateException)
+            {
+                // The database uniqueness constraint arbitrates across host processes.
+                _db.ChangeTracker.Clear();
+                var winner = _db.CommerceOrders.Include(x => x.Lines).SingleOrDefault(x =>
+                    x.CommerceBusinessId == businessId && x.CheckoutAttemptId == normalizedAttemptId);
+                if (winner is null) throw;
+                var existing = NormalizeOrder(MapOrder(winner));
+                return new CheckoutPaymentStartResult(existing.IsPaid
+                    ? CheckoutPaymentStartState.AlreadyPaid : CheckoutPaymentStartState.AlreadyProcessing, existing);
+            }
 
             return new CheckoutPaymentStartResult(CheckoutPaymentStartState.Ready, NormalizeOrder(MapOrder(order)));
         }
@@ -222,7 +233,10 @@ public sealed class ParfaitOrderService
     public void MarkPaymentCaptured(string orderNumber, string? paymentReferenceId) =>
         MarkPaymentCaptured(GetBusinessId(), orderNumber, paymentReferenceId);
 
-    public void MarkPaymentCaptured(Guid businessId, string orderNumber, string? paymentReferenceId)
+    public void MarkPaymentCaptured(Guid businessId, string orderNumber, string? paymentReferenceId) =>
+        MarkPaymentCaptured(businessId, orderNumber, paymentReferenceId, "Square", null);
+
+    public void MarkPaymentCaptured(Guid businessId, string orderNumber, string? paymentReferenceId, string provider, string? environment)
     {
         lock (Lock)
         {
@@ -237,7 +251,10 @@ public sealed class ParfaitOrderService
 
             order.PaymentStatus = "Paid";
             order.PaidUtc = DateTime.UtcNow;
-            order.SquarePaymentId = NullIfEmpty(paymentReferenceId);
+            order.PaymentProvider = provider;
+            order.PaymentReference = NullIfEmpty(paymentReferenceId);
+            order.PaymentEnvironment = environment;
+            if (provider == "Square") order.SquarePaymentId = NullIfEmpty(paymentReferenceId);
             order.IsPaymentProcessing = false;
             order.PaymentProcessingStartedUtc = null;
             order.SquareError = null;
@@ -293,6 +310,10 @@ public sealed class ParfaitOrderService
 
             var now = DateTime.UtcNow;
 
+            // Merchant financial state is processor evidence, never an editable order field.
+            if (_db.CommercePaymentAttempts.Any(x => x.CommerceOrderId == order.Id && x.CommerceBusinessId == businessId)
+                && (NormalizePaymentStatus(request.PaymentStatus) != order.PaymentStatus || request.RefundedCents != order.RefundedCents))
+                return false;
             order.PaymentStatus = NormalizePaymentStatus(request.PaymentStatus);
             order.FulfillmentStatus = NormalizeFulfillmentStatus(request.FulfillmentStatus);
             order.ReturnStatus = NormalizeReturnStatus(request.ReturnStatus);
@@ -390,6 +411,9 @@ public sealed class ParfaitOrderService
             CheckoutAttemptId = order.CheckoutAttemptId,
             IsPaymentProcessing = order.IsPaymentProcessing,
             PaymentProcessingStartedUtc = order.PaymentProcessingStartedUtc,
+            PaymentProvider = order.PaymentProvider,
+            PaymentReference = order.PaymentReference,
+            PaymentEnvironment = order.PaymentEnvironment,
             SquarePaymentId = order.SquarePaymentId,
             SquareError = order.SquareError,
             TrackingCarrier = order.TrackingCarrier,
@@ -619,14 +643,15 @@ public sealed class ParfaitOrderService
             CheckoutAttemptId = NullIfEmpty(order.CheckoutAttemptId),
             IsPaymentProcessing = order.IsPaymentProcessing
                 && string.Equals(NormalizePaymentStatus(order.PaymentStatus), "Pending", StringComparison.OrdinalIgnoreCase)
-                && order.PaymentProcessingStartedUtc is not null
-                && order.PaymentProcessingStartedUtc.Value >= DateTime.UtcNow - PaymentProcessingTimeout,
+                && order.PaymentProcessingStartedUtc is not null,
             PaymentProcessingStartedUtc = order.IsPaymentProcessing
                 && string.Equals(NormalizePaymentStatus(order.PaymentStatus), "Pending", StringComparison.OrdinalIgnoreCase)
                 && order.PaymentProcessingStartedUtc is not null
-                && order.PaymentProcessingStartedUtc.Value >= DateTime.UtcNow - PaymentProcessingTimeout
                     ? order.PaymentProcessingStartedUtc
                     : null,
+            PaymentProvider = order.PaymentProvider,
+            PaymentReference = order.PaymentReference,
+            PaymentEnvironment = order.PaymentEnvironment,
             SquarePaymentId = NullIfEmpty(order.SquarePaymentId),
             SquareError = NullIfEmpty(order.SquareError),
             TrackingCarrier = NullIfEmpty(order.TrackingCarrier),
@@ -747,8 +772,7 @@ public sealed class ParfaitOrderService
     private static bool IsPaymentProcessingActive(ParfaitOrderRecord order, DateTime now)
     {
         return order.IsPaymentProcessing
-            && order.PaymentProcessingStartedUtc is not null
-            && order.PaymentProcessingStartedUtc.Value >= now - PaymentProcessingTimeout;
+            && order.PaymentProcessingStartedUtc is not null;
     }
 
     private static string GenerateOrderNumber(DateTime utc) => $"PF-{utc:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";

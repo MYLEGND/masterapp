@@ -150,7 +150,10 @@ public sealed class ParfaitOrderRecord
     public int TotalCents { get; set; }
 
     public string CustomerName => $"{FirstName} {LastName}".Trim();
-    public string? PaymentReferenceId => SquarePaymentId;
+    public string? PaymentProvider { get; set; }
+    public string? PaymentReference { get; set; }
+    public string? PaymentEnvironment { get; set; }
+    public string? PaymentReferenceId => PaymentReference ?? SquarePaymentId;
     public string? PaymentFailureSummary => SquareError;
     public bool IsPaid => string.Equals(PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase);
     public bool IsPendingPayment => string.Equals(PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase);
