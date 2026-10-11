@@ -141,7 +141,9 @@ def connection_string():
     return connection
 
 
-def observe(probe, connection, *, contract=None, activity=False, deadline=None):
+def observe(probe, connection, *, contract=None, activity=False, schema_only_activity=False, deadline=None):
+    if activity and schema_only_activity:
+        raise RuntimeError('Migration stage unresolved: preparation')
     env = os.environ | {'LEGEND_RELEASE_DB_CONNECTION': connection}
     # Retry only an explicitly classified transient SQL read failure.
     # All unknown, credential, invalid-schema and timeout failures remain fail-closed.
@@ -150,7 +152,7 @@ def observe(probe, connection, *, contract=None, activity=False, deadline=None):
         if remaining <= 0:
             raise RuntimeError('Schema probe process deadline exceeded')
         try:
-            result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []) + (['--activity'] if activity else []), env=env, capture_output=True, text=True,
+            result = subprocess.run(['dotnet', str(probe)] + (['--contract', str(contract)] if contract else []) + (['--activity'] if activity else ['--schema-only-activity'] if schema_only_activity else []), env=env, capture_output=True, text=True,
                                     timeout=remaining, check=False)
         except subprocess.TimeoutExpired:
             raise RuntimeError('Schema probe process deadline exceeded') from None
@@ -262,7 +264,7 @@ def history_audit():
     return audit
 
 
-def production_observation(probe, connection, *, clock=time.monotonic, sleep=time.sleep, jitter=random.uniform):
+def production_observation(probe, connection, *, schema_only=False, clock=time.monotonic, sleep=time.sleep, jitter=random.uniform):
     """Settle canonical workers, authenticate history, then observe stable SQL."""
     authority = release_authority()
     repository = os.environ['GITHUB_REPOSITORY']
@@ -288,8 +290,10 @@ def production_observation(probe, connection, *, clock=time.monotonic, sleep=tim
     deadline = clock() + 90
     for attempt in range(6):
         try:
-            first = observe(probe, connection, activity=True, deadline=deadline)
-            second = observe(probe, connection, activity=True, deadline=deadline)
+            options = (dict(schema_only_activity=True, deadline=deadline) if schema_only
+                       else dict(activity=True, deadline=deadline))
+            first = observe(probe, connection, **options)
+            second = observe(probe, connection, **options)
             break
         except RuntimeError as error:
             if (str(error) != PROBE_TERMINAL_REASONS['MUTATION_ACTIVITY_ACTIVE']
@@ -313,6 +317,12 @@ def production_observation(probe, connection, *, clock=time.monotonic, sleep=tim
     second['historicalEvidenceIdentity'] = hashlib.sha256(
         json.dumps(report, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return second
+
+
+def production_observation_no_sql(probe, connection):
+    # Complete history and paired physical proof remain identical; only the
+    # activity fence is appropriate for a strictly non-mutating publication.
+    return production_observation(probe, connection, schema_only=True)
 
 
 def production_readiness(before):
@@ -456,7 +466,7 @@ def reconcile_current_schema_no_sql(probe, connection, *, observer=None, readine
     The caller authenticates the exact fast-track source and schema-invariant
     diff. Regular migration candidates retain the original rehearsed-bundle path.
     """
-    observer = observer or production_observation
+    observer = observer or production_observation_no_sql
     readiness = readiness or production_readiness
     before = migration_stage('schema-observation', observer, probe, connection)
     if before.get('ready') is not True or type(before.get('pendingCount')) is not int or before['pendingCount'] != 0:
@@ -719,7 +729,10 @@ if __name__ == '__main__':
         if is_preflight:
             retained = os.environ.get('MIGRATION_READINESS_OBSERVATION')
             observation = (load_preflight_observation(Path(retained)) if retained else
-                           production_observation(probe, connection_string()))
+                           (production_observation_no_sql(probe, connection_string())
+                            if os.environ.get('FAST_TRACK_SCHEMA_CHANGED') == 'false' and
+                            os.environ.get('GITHUB_REF') == 'refs/heads/Legend/fast-track-release'
+                            else production_observation(probe, connection_string())))
             result = preflight(bundle if bundle.is_file() else None, probe,
                                None if observation is not None else connection_string(), observation=observation)
         elif no_sql:
