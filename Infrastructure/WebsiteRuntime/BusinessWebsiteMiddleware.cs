@@ -218,6 +218,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         var html = page.GetProperty("html").GetString() ?? "";
         html = html.Replace("__LEGEND_CANONICAL_URL__", WebUtility.HtmlEncode(origin + normalized), StringComparison.Ordinal);
         context.Response.Headers["X-Robots-Tag"] = "index, follow";
+        context.Response.Headers["X-Legend-Publication-Id"] = version.Id.ToString();
         context.Response.ContentType = "text/html; charset=utf-8";
         if (!HttpMethods.IsHead(context.Request.Method)) await context.Response.WriteAsync(html, context.RequestAborted);
     }

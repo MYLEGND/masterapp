@@ -33,7 +33,7 @@ function fixture(transport) {
     window:{LEGEND_PUBLIC_CMS_CONTEXT:{apiBase:'https://masterapp-protect.azurewebsites.net'},addEventListener(){}},
     document:{cookie:'',querySelectorAll(q){return q.includes('[data-website-inquiry]')?[form]:[];}},
     location:{search:'',pathname:'/contact',origin:'https://business.example'},
-    URL,URLSearchParams,FormData:FormFields,CSS:{escape:x=>x},
+    URL,URLSearchParams,AbortController,setTimeout,clearTimeout,FormData:FormFields,CSS:{escape:x=>x},
     crypto:{randomUUID:()=> '11111111-1111-4111-8111-111111111111'},
     sessionStorage:{getItem(){return null;}},
     fetch:(url,options)=>{calls.push({url,options});return transport(url,options);}

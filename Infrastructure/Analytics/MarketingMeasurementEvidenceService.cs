@@ -70,7 +70,9 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
             sourceById.TryGetValue(id, out var source) && source.AgentTrackingProfileId == m.AgentTrackingProfileId &&
             source.CommerceBusinessId == m.CommerceBusinessId && currentMeta is { DisconnectedUtc: null } &&
             !string.IsNullOrWhiteSpace(currentMeta.PixelId) &&
-            (CanonicalAdvertisingEventProjection.ReadBoolean(m.MetadataJson, "metaServerAttempted") != true ||
+            // Unattempted pending rows need no destination stamp yet. A sent
+            // claim must match the current pixel even when its attempted flag is missing.
+            ((!m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaAttempted(m)) ||
              CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerPixelId") == currentMeta.PixelId)).ToArray();
         var deliveries = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
             .Where(r => r.OwnerKey == owner.Key &&

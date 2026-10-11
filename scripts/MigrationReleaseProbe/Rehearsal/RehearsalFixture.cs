@@ -32,9 +32,15 @@ internal static class RehearsalFixture
         // Other tables require a reviewed fixture; empty tables are not proof
         // that existing rows and constraints survive a migration.
         const string paymentMigration = "20261011064911_AddBusinessScopedMerchantPayments";
+        const string retentionMigration = "20261011120000_AddWebsiteSnapshotRetirement";
         var payments = pending.Any(m => m.Id == paymentMigration);
+        var retention = pending.Any(m => m.Id == retentionMigration);
         if (pending.Length != count || pending.Any(m => !m.Supported ||
-            (m.Id != paymentMigration && (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 ||
+            (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
+                m.Indexes.Length != 0 || m.Guards.Length != 0 || m.Columns[0] is not {
+                    Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
+                    Type: "datetime2", Nullable: true } || m.Columns[0].Default.ValueKind != JsonValueKind.Null)) ||
+            (m.Id != paymentMigration && m.Id != retentionMigration && (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         if (operation == "initialize")
@@ -43,6 +49,16 @@ internal static class RehearsalFixture
                 throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
+            if (retention)
+            {
+                var state = new Domain.Entities.WebsiteContentState { OwnerKey = "synthetic-owner", SiteKey = "legend", Revision = 2 };
+                db.Add(state);
+                for (var revision = 1; revision <= 2; revision++)
+                    db.Add(new Domain.Entities.WebsiteContentVersion {
+                        StateId = state.Id, Revision = revision, ActorUserId = "synthetic-owner",
+                        DocumentJson = "{\"synthetic\":true}", CompiledPagesJson = "{\"/\":\"original\"}",
+                        ImportReportJson = "{\"preserved\":true}" });
+            }
             if (payments)
             {
                 // Same checkout identity in different tenants is valid; neither
@@ -131,6 +147,16 @@ internal static class RehearsalFixture
             var row = await db.MobileProfileSettings.SingleAsync(timeout.Token);
             if (row.Bio != "synthetic migration fixture")
                 throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            if (retention)
+            {
+                var versions = await db.Set<Domain.Entities.WebsiteContentVersion>().AsNoTracking().ToArrayAsync(timeout.Token);
+                if (versions.Length != 2 || versions.Select(v => v.StateId).Distinct().Count() != 1 ||
+                    versions.Select(v => v.Revision).Order().SequenceEqual(new long[] { 1, 2 }) is false ||
+                    versions.Any(v => v.SnapshotRetiredUtc is not null || v.ActorUserId != "synthetic-owner" ||
+                        v.DocumentJson != "{\"synthetic\":true}" || v.CompiledPagesJson != "{\"/\":\"original\"}" ||
+                        v.ImportReportJson != "{\"preserved\":true}"))
+                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            }
             await db.Database.OpenConnectionAsync(timeout.Token);
             if (payments)
             {

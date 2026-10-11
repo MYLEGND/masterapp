@@ -1345,6 +1345,12 @@ class FastTrackImpactTests(unittest.TestCase):
     def test_cms_bundle_selects_only_its_two_consumers(self):
         self.assertEqual(self.targets('SHARED/WebsitePlatform/legend-public-cms.js'), {'Protect', 'Website'})
 
+    def test_reporting_and_retention_changes_select_all_shared_server_consumers(self):
+        for path in ('Infrastructure/Analytics/MarketingMeasurementEvidenceService.cs',
+                     'Infrastructure/WebsitePublishing/WebsiteSnapshotRetention.cs',
+                     'Domain/Entities/WebsiteContentState.cs'):
+            self.assertEqual(self.targets(path), {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+
     def test_routing_is_explicit_without_application_upload(self):
         result = self.scope('Legend-Cloudflare/src/website-routing/bridge.mjs')
         self.assertTrue(result['routing'])

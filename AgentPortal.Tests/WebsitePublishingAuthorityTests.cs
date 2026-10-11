@@ -128,6 +128,53 @@ public sealed class WebsitePublishingAuthorityTests
 
 
     [Fact]
+    public async Task AdversarialConversionTraceRejectsMislinkedAndBrowserReceipts()
+    {
+        using var f = new Fixture(); var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Published"));
+        var publication = Body(await f.Controller.Publish(new(token,1)));
+        var source = Infrastructure.Analytics.UnifiedEventMapper.ToAnalytics(new Infrastructure.Analytics.UnifiedEventContext {
+            SiteKey = "legend", Host = "www.mylegnd.com", EventName = "Lead", IsServerAuthority = true,
+            EventUtc = DateTime.UtcNow, WebsiteContentVersionId = publication.GetProperty("versionId").GetGuid()
+        });
+        Infrastructure.Analytics.UnifiedAnalyticsWriter.Write(f.Db, source); await f.Db.SaveChangesAsync();
+        foreach (var (channel, canonicalSource) in new[] {("server","AnalyticsEvent"),("browser","AnalyticsEvent"),("server","unrelated_source")})
+            f.Db.Add(new Domain.Entities.MarketingDestinationDelivery {
+                OwnerKey = Shared.Analytics.MarketingOwnerScope.Founder.Key, AnalyticsEventId = source.Id,
+                Channel=channel, CanonicalSource=canonicalSource, Provider="openai", Status="sent", LastHttpStatusCode=200,
+                CanonicalEventId=source.EventId.ToString("N")
+            });
+        await f.Db.SaveChangesAsync();
+        var trace = Body(await f.Controller.CreativeConversionTrace(token));
+        var entry = Assert.Single(trace.GetProperty("events").EnumerateArray());
+        var receipt = Assert.Single(entry.GetProperty("openai").GetProperty("receipts").EnumerateArray());
+        Assert.True(receipt.GetProperty("httpAccepted").GetBoolean());
+        Assert.Equal("AnalyticsEvent", receipt.GetProperty("canonicalSource").GetString());
+    }
+
+    [Fact]
+    public async Task PublicationRequestReconcilesWithoutCreatingAnotherVersion()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Publication"));
+        var requestId = Guid.NewGuid();
+        var first = Body(await f.Controller.Publish(new(token, 1, requestId)));
+        Assert.Equal(requestId, first.GetProperty("versionId").GetGuid());
+        var count = await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync();
+        var retry = Body(await f.Controller.Publish(new(token, 1, requestId)));
+        Assert.True(retry.GetProperty("alreadyPublished").GetBoolean());
+        Assert.Equal(count, await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync());
+        var status = Body(await f.Controller.PublicationStatus(token, requestId));
+        Assert.True(status.GetProperty("found").GetBoolean());
+        Assert.True(status.GetProperty("isCurrent").GetBoolean());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, Guid.NewGuid())).GetProperty("found").GetBoolean());
+        Assert.IsType<UnauthorizedResult>(await f.Controller.PublicationStatus("invalid", requestId));
+        var published = Body(await f.Controller.Public("legend"));
+        Assert.Equal(requestId, published.GetProperty("publication").GetProperty("versionId").GetGuid());
+    }
+
+    [Fact]
     public async Task AgentContractBootstrapsCompact_AndLoadsCompleteScopedCatalogsOnDemand()
     {
         using var f = new Fixture();

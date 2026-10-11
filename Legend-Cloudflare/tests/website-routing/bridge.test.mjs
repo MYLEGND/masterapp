@@ -59,7 +59,7 @@ test('business custom-domain storefront stays on its domain while transport targ
   assert.equal(result.request.headers.get('X-Legend-Website-Bridge'), secret);
 });
 
-test('LEGEND storefront path is transported to Parfait without moving normal LEGEND pages', async () => {
+test('LEGEND storefront retains Parfait while company HTML uses the publication authority', async () => {
   const store = new Request('https://mylegnd.com/store/cart');
   let storeSeen;
   await handleWebsiteRouting(store, env, async forwarded => {
@@ -75,7 +75,7 @@ test('LEGEND storefront path is transported to Parfait without moving normal LEG
     homeSeen = forwarded;
     return new Response('home');
   });
-  assert.equal(homeSeen.url, home.url);
+  assert.equal(homeSeen.url, 'https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/page?path=%2F');
   assert.equal(homeSeen.headers.get('X-Legend-Original-Host'), null);
 });
 
@@ -203,3 +203,52 @@ test('Approved Parfait cutover also migrates private management and stale analyt
   assert.equal(disabled.request.url, 'https://masterapp-parfait.azurewebsites.net/commerce/manage/dashboard');
 });
 
+
+test('company HTML transports only its route, never visitor credentials or campaign parameters', async () => {
+  for (const hostname of ['mylegnd.com','www.mylegnd.com']) {
+    let seen;
+    const response=await handleWebsiteRouting(new Request(`https://${hostname}/contact/?utm_source=test`, {
+      headers:{Cookie:'private=value',Authorization:'Bearer test','X-Legend-Original-Host':'spoof.example'}
+    }),env,async request=>{seen=request;return new Response('<h1>Published</h1>');});
+    assert.equal(await response.text(),'<h1>Published</h1>');
+    assert.equal(seen.url,'https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/page?path=%2Fcontact%2F');
+    for(const header of ['Cookie','Authorization','X-Legend-Original-Host']) assert.equal(seen.headers.get(header),null);
+  }
+});
+
+test('Studio, static assets, business previews and other applications retain their origins',async()=>{
+  for(const path of ['/?legendEdit=test-ticket','/contact?legendEdit=test-ticket&legendAudit=1','/site.css','/legend-public-cms.js','/business-preview/']) {
+    const request=new Request('https://www.mylegnd.com'+path);
+    let seen;
+    await handleWebsiteRouting(request,env,async value=>{seen=value;return new Response('ok');});
+    assert.equal(seen.url,request.url);
+  }
+});
+
+test('company renderer failure cannot fall back to stale static HTML',async()=>{
+  let calls=0;
+  const response=await handleWebsiteRouting(new Request('https://www.mylegnd.com/'),env,async()=>{calls++;throw new Error('offline');});
+  assert.equal(response.status,503);
+  assert.equal(response.headers.get('Cache-Control'),'no-store');
+  assert.equal(calls,1);
+  const missing=await handleWebsiteRouting(new Request('https://www.mylegnd.com/missing'),env,async()=>new Response('missing',{status:404}));
+  assert.equal(missing.status,404);
+});
+
+test('HEAD remains HEAD and company page writes are not proxied',async()=>{
+  let seen;
+  await handleWebsiteRouting(new Request('https://www.mylegnd.com/',{method:'HEAD'}),env,async request=>{seen=request;return new Response(null);});
+  assert.equal(seen.method,'HEAD');
+  const response=await handleWebsiteRouting(new Request('https://www.mylegnd.com/',{method:'POST'}),env,async()=>{throw new Error('unexpected');});
+  assert.equal(response.status,405);
+});
+
+
+test('explicit index files cannot expose the old static homepage',async()=>{
+  for(const [path,route] of [['/index.html','/'],['/contact/index.html','/contact/']]) {
+    let seen;
+    await handleWebsiteRouting(new Request('https://www.mylegnd.com'+path),env,async request=>{seen=request;return new Response('published');});
+    assert.equal(new URL(seen.url).pathname,'/api/website-content/public/legend/page');
+    assert.equal(new URL(seen.url).searchParams.get('path'),route);
+  }
+});

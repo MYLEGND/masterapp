@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  if (new URLSearchParams(location.search).has('legendEdit')) return;
+  if (window.LEGEND_WEBSITE_STUDIO_MODE === true || new URLSearchParams(location.search).has('legendEdit')) return;
 
   const context = window.LEGEND_PUBLIC_CMS_CONTEXT || {};
   const configuredBase = typeof context.apiBase === 'string' ? context.apiBase.trim() : '';
@@ -30,6 +30,7 @@
     form.dataset.legendInquiryBound = 'true';
     let submissionId = null;
     let pendingPayload = null;
+    let pendingFingerprint = null;
     let sending = false;
     let sent = false;
     const button = form.querySelector('[type="submit"]');
@@ -129,13 +130,28 @@
         measurementConsent: measurementConsent?.state || null
       };
 
-      const fingerprint = JSON.stringify(values);
-      if (pendingPayload !== fingerprint) {
+      // Attribution can change after an uncertain response. Keep the original
+      // request and identity for retries of the same visitor-entered inquiry.
+      const fingerprint = JSON.stringify([
+        values.firstName, values.lastName, values.phone, values.email, values.message,
+        values.sourcePath, values.sourceFormElementId, values.consent,
+        values.experienceId, values.answers
+      ]);
+      if (pendingFingerprint !== fingerprint) {
         submissionId = crypto.randomUUID();
-        pendingPayload = fingerprint;
+        pendingFingerprint = fingerprint;
+        pendingPayload = { submissionId, ...values };
       }
 
+      pendingPayload.measurementConsent = values.measurementConsent;
+      if (!measurementAllowed) {
+        pendingPayload.obref = null;
+        pendingPayload.fbp = null;
+        pendingPayload.fbc = null;
+      }
       sending = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       button.disabled = true;
       showState('sending', 'Sending inquiry…', 'Sending your inquiry.');
       try {
@@ -143,7 +159,8 @@
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ submissionId, ...values })
+          body: JSON.stringify(pendingPayload),
+          signal: controller.signal
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result?.accepted) throw new Error('inquiry_failed');
@@ -164,9 +181,11 @@
         form.reset();
         submissionId = null;
         pendingPayload = null;
+        pendingFingerprint = null;
       } catch {
         showState('error', 'Not confirmed — retry', 'Your inquiry could not be confirmed. Please try again.');
       } finally {
+        clearTimeout(timeout);
         sending = false;
         button.disabled = sent;
       }

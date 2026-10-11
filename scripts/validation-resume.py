@@ -1928,6 +1928,10 @@ def fast_track_scope(paths):
             return {'portal', 'client', 'protect'}
         if path == 'Infrastructure/WebsiteEditing/WebsitePlatformController.cs':
             return {'protect'}
+        if path.startswith(('Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/',
+                            'Infrastructure/WebsiteEditing/')) or path == 'Domain/Entities/WebsiteContentState.cs':
+            # These shared server owners are compiled into all four managed apps.
+            return set(dotnet)
         if path.startswith('Legend-Website/'):
             return {'website'} if path == 'Legend-Website/scripts/check.mjs' else {'website', 'protect'}
         direct = {key for key, row in RELEASE_TARGETS.items() if path.startswith(row['sourceRoot'] + '/')}

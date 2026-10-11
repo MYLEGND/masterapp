@@ -26,6 +26,8 @@ public sealed class WebsiteContentVersion
     public string DocumentJson { get; set; } = "{}";
     public string? CompiledPagesJson { get; set; }
     public string? ImportReportJson { get; set; }
+    // Snapshot payload is deleted after retention; identity remains for historical FKs.
+    public DateTime? SnapshotRetiredUtc { get; set; }
     public string ActorUserId { get; set; } = "";
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }

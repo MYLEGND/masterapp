@@ -13059,6 +13059,9 @@ namespace Infrastructure.Migrations
                     b.Property<long>("Revision")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("SnapshotRetiredUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("StateId")
                         .HasColumnType("uniqueidentifier");
 
