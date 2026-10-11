@@ -2,6 +2,7 @@
 """Exercise disposable SQL ownership without contacting Docker or production."""
 import importlib.util
 import json
+import copy
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -54,6 +55,75 @@ class IsolatedSqlTests(unittest.TestCase):
                 with m.isolated_sql():
                     self.fail('failed provider accepted')
         self.assertEqual(1, run.call_count)
+
+
+class FastTrackObservationResumeTests(unittest.TestCase):
+    def source(self, artifacts, jobs, attempt=2):
+        with patch.object(m.AUTHORITY, 'api_get', side_effect=[
+            dict(total_count=len(artifacts), artifacts=artifacts),dict(total_count=len(jobs),jobs=jobs)]):
+            return m.fast_track_observation_source('owner/repo', 'a'*40, 10, attempt, 'token')
+
+    def artifact(self, attempt):
+        return dict(name='parfait-readonly-evidence-'+'a'*40+'-'+str(attempt),expired=False)
+
+    def job(self, conclusion='success'):
+        return dict(name='Non-mutating Azure, SQL schema and public runtime inventory',
+                    status='completed',conclusion=conclusion)
+
+    def test_reuses_prior_successful_attempt_without_repeating_observation(self):
+        result=self.source([self.artifact(1)],[self.job()])
+        self.assertEqual(result['attempt'],1)
+
+    def test_failed_latest_observation_cannot_fall_back_to_older_success(self):
+        with self.assertRaisesRegex(ValueError, 'JOB_UNPROVEN'):
+            self.source([self.artifact(1),self.artifact(2)],[self.job('failure')])
+
+    def test_expired_duplicate_or_future_artifact_rejected(self):
+        expired=self.artifact(1);expired['expired']=True
+        for artifacts in ([expired],[self.artifact(1),self.artifact(1)],[self.artifact(3)]):
+            with self.subTest(artifacts=artifacts),self.assertRaisesRegex(ValueError, 'ARTIFACT_UNPROVEN'):
+                self.source(artifacts,[self.job()])
+
+
+class FastTrackBaselineTests(unittest.TestCase):
+    def setUp(self):
+        self.row = dict(observed=True, databaseIdentity='a'*64, schemaIdentity='b'*64,
+            baselineIdentity='c'*64, ready=False, pendingCount=1,
+            firstPendingMigrationId='20261011064911_AddBusinessScopedMerchantPayments',
+            lastAppliedMigrationId='20261007134500_AddFounderAssistantRules')
+        self.report = dict(schemaVersion=1, purpose='read-only-schema-plan', authorizesMutation=False,
+            candidate='d'*40, runId='123', producingAttempt=1, sharedDatabase=True,
+            applications={'masterapp-parfait': dict(self.row), 'masterapp-protect': dict(self.row)})
+
+    def test_same_run_same_database_baseline_accepted(self):
+        baseline=m.fast_track_baseline(self.report, 'd'*40, 123)
+        self.assertEqual(baseline['pendingCount'], 1)
+        self.assertNotIn('observed', baseline)
+
+    def test_wrong_candidate_run_and_mutation_claim_rejected(self):
+        for key,value in [('candidate','e'*40),('runId','124'),('authorizesMutation',True),
+                          ('sharedDatabase',False),('purpose','release-admission')]:
+            report=copy.deepcopy(self.report);report[key]=value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'IDENTITY_UNPROVEN'):
+                m.fast_track_baseline(report,'d'*40,123)
+
+    def test_unobserved_or_inconsistent_schema_rejected(self):
+        for key,value in [('observed',False),('ready',True),('pendingCount',True),
+                          ('baselineIdentity','invalid'),('firstPendingMigrationId','unsafe')]:
+            report=copy.deepcopy(self.report);report['applications']['masterapp-protect'][key]=value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'SCHEMA_UNPROVEN'):
+                m.fast_track_baseline(report,'d'*40,123)
+
+    def test_different_database_or_baseline_rejected(self):
+        for key in ('databaseIdentity','schemaIdentity','baselineIdentity'):
+            report=copy.deepcopy(self.report);report['applications']['masterapp-protect'][key]='f'*64
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'BASELINES_DIFFER'):
+                m.fast_track_baseline(report,'d'*40,123)
+
+    def test_unexpected_host_rejected(self):
+        self.report['applications']['unrelated-app']=self.row
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_UNPROVEN'):
+            m.fast_track_baseline(self.report,'d'*40,123)
 
 
 if __name__ == '__main__':

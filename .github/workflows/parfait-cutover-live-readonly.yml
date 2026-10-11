@@ -8,6 +8,7 @@ on:
       - .github/workflows/parfait-cutover-live-readonly.yml
       - scripts/MigrationReleaseProbe/**
       - scripts/release-migration.py
+      - scripts/migration-probe-package.py
   workflow_dispatch:
 
 permissions:
@@ -224,7 +225,8 @@ jobs:
                       except Exception:
                           pass  # Keep the original classified failure; never turn inventory into readiness.
           report=dict(schemaVersion=1,purpose='read-only-schema-plan',authorizesMutation=False,
-              candidate=os.environ['GITHUB_SHA'],runId=os.environ['GITHUB_RUN_ID'],applications=results,
+              candidate=os.environ['GITHUB_SHA'],runId=os.environ['GITHUB_RUN_ID'],
+              producingAttempt=int(os.environ['GITHUB_RUN_ATTEMPT']),applications=results,
               sharedDatabase=(results['masterapp-parfait']['databaseIdentity']==results['masterapp-protect']['databaseIdentity'])
                   if all(row['observed'] for row in results.values()) else None)
           (root/'parfait-proof/sanitized-schema.json').write_text(json.dumps(report,indent=2)+'\n')
@@ -252,3 +254,59 @@ jobs:
                 "$RUNNER_TEMP/parfait-proof/masterapp-protect-settings.json" \
                 "$RUNNER_TEMP/parfait-proof/masterapp-parfait-webapp.json" \
                 "$RUNNER_TEMP/parfait-proof/masterapp-protect-webapp.json"
+
+  migration-rehearsal:
+    name: Rehearse exact migration bundle and recovery without production credentials
+    needs: [validated-observer, production-readback]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: parfait-readonly-schema-observer-${{ github.sha }}
+          path: ${{ runner.temp }}/parfait-schema-observer
+      - name: Resolve successful observation for safe rehearsal resume
+        id: observation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYSOURCE'
+          import importlib.util,os
+          spec=importlib.util.spec_from_file_location('probe_package','scripts/migration-probe-package.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          source=owner.fast_track_observation_source(os.environ['GITHUB_REPOSITORY'],os.environ['GITHUB_SHA'],
+              int(os.environ['GITHUB_RUN_ID']),int(os.environ['GITHUB_RUN_ATTEMPT']),os.environ['GITHUB_TOKEN'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('artifact='+source['artifact']+'\n')
+          PYSOURCE
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.observation.outputs.artifact }}
+          path: ${{ runner.temp }}/parfait-proof
+      - name: Prepare and rehearse exact migration bytes against the observed baseline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/migration-probe-package.py fast-track-rehearse \
+            --tool-revision "$GITHUB_SHA" --application-revision "$GITHUB_SHA" \
+            --observation "$RUNNER_TEMP/parfait-proof/sanitized-schema.json" \
+            --probe-directory "$RUNNER_TEMP/parfait-schema-observer" \
+            --directory "$RUNNER_TEMP/parfait-fast-track-migration"
+      - name: Preserve exact rehearsed bytes and recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: parfait-fast-track-migration-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/parfait-fast-track-migration
+          retention-days: 30
+          if-no-files-found: error

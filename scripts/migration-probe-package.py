@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -241,6 +242,132 @@ def record_rehearsal_result(result, selected_package, baseline, bundle_source, e
     print(json.dumps(result, sort_keys=True))
 
 
+def fast_track_observation_source(repository, revision, run_id, current_attempt, token):
+    """Resume from the successful same-run observer without repeating Azure reads."""
+    inventory = AUTHORITY.api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+    rows = inventory.get('artifacts')
+    if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+        raise ValueError('FAST_TRACK_OBSERVATION_ARTIFACT_HISTORY_INCOMPLETE')
+    prefix = 'parfait-readonly-evidence-' + revision + '-'
+    matching = []
+    for row in rows:
+        name = row.get('name', '')
+        if name.startswith(prefix):
+            suffix = name[len(prefix):]
+            if not suffix.isdigit() or not 1 <= int(suffix) <= current_attempt or row.get('expired') is not False:
+                raise ValueError('FAST_TRACK_OBSERVATION_ARTIFACT_UNPROVEN')
+            matching.append((int(suffix), name))
+    if not matching or len(set(a for a,n in matching)) != len(matching):
+        raise ValueError('FAST_TRACK_OBSERVATION_ARTIFACT_UNPROVEN')
+    attempt, name = max(matching)
+    jobs = AUTHORITY.api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+    rows = jobs.get('jobs')
+    if not isinstance(rows, list) or jobs.get('total_count') != len(rows):
+        raise ValueError('FAST_TRACK_OBSERVATION_JOB_HISTORY_INCOMPLETE')
+    owners = [job for job in rows if job.get('name') == 'Non-mutating Azure, SQL schema and public runtime inventory']
+    if len(owners) != 1 or owners[0].get('status') != 'completed' or owners[0].get('conclusion') != 'success':
+        raise ValueError('FAST_TRACK_OBSERVATION_JOB_UNPROVEN')
+    return dict(artifact=name, attempt=attempt)
+
+
+def fast_track_baseline(report, revision, run_id):
+    """Bind a same-run, non-mutating observation to both affected SQL hosts."""
+    if (report.get('schemaVersion') != 1 or report.get('purpose') != 'read-only-schema-plan'
+        or report.get('authorizesMutation') is not False or report.get('candidate') != revision
+        or str(report.get('runId')) != str(run_id) or type(report.get('producingAttempt')) is not int
+        or report['producingAttempt'] < 1 or report.get('sharedDatabase') is not True
+        or set(report.get('applications', {})) != {'masterapp-parfait', 'masterapp-protect'}):
+        raise ValueError('FAST_TRACK_OBSERVATION_IDENTITY_UNPROVEN')
+    rows = list(report['applications'].values())
+    keys = ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'ready', 'pendingCount',
+            'firstPendingMigrationId', 'lastAppliedMigrationId')
+    for row in rows:
+        if (row.get('observed') is not True or type(row.get('ready')) is not bool
+            or type(row.get('pendingCount')) is not int or not 0 <= row['pendingCount'] <= 1000
+            or row['ready'] != (row['pendingCount'] == 0)
+            or any(not re.fullmatch('[a-f0-9]{64}', str(row.get(key, '')))
+                   for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity'))
+            or not re.fullmatch('[0-9]{8,14}_[A-Za-z0-9_]{1,128}', str(row.get('lastAppliedMigrationId', '')))
+            or (row['pendingCount'] and not re.fullmatch('[0-9]{8,14}_[A-Za-z0-9_]{1,128}',
+                str(row.get('firstPendingMigrationId', ''))))):
+            raise ValueError('FAST_TRACK_OBSERVATION_SCHEMA_UNPROVEN')
+    baseline = {key: rows[0].get(key) for key in keys}
+    if any(row.get(key) != value for row in rows[1:] for key, value in baseline.items()):
+        raise ValueError('FAST_TRACK_SQL_HOST_BASELINES_DIFFER')
+    return baseline
+
+
+def rehearse_fast_track(revision, directory, observation_path, probe_directory):
+    """Prepare exact bundle bytes through existing owners; never admit production."""
+    import tempfile
+    if any(os.environ.get(key) for key in ('LEGEND_RELEASE_DB_CONNECTION',
+        'SQLCONNSTR_MasterAppDb', 'ConnectionStrings__MasterAppDb', 'AZURE_CLIENT_ID',
+        'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID')):
+        raise ValueError('FAST_TRACK_REHEARSAL_REQUIRES_CREDENTIAL_FREE_JOB')
+    if (not re.fullmatch('[a-f0-9]{40}', revision)
+        or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != revision
+        or os.environ.get('GITHUB_SHA') != revision):
+        raise ValueError('FAST_TRACK_REHEARSAL_CANDIDATE_CHANGED')
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GITHUB_TOKEN') or os.environ['GH_TOKEN']
+    run_id = int(os.environ['GITHUB_RUN_ID'])
+    attempt = int(os.environ['GITHUB_RUN_ATTEMPT'])
+    run = AUTHORITY.api_get(repository, f'actions/runs/{run_id}', token)
+    if (run.get('id') != run_id or run.get('run_attempt') != attempt or run.get('head_sha') != revision
+        or run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
+        or run.get('head_branch') != 'isolation/canonical-scoped-commerce-internal-20261010'
+        or run.get('event') not in {'push', 'workflow_dispatch'} or run.get('status') != 'in_progress'
+        or run.get('head_repository', {}).get('full_name') != repository):
+        raise ValueError('FAST_TRACK_REHEARSAL_PRODUCER_UNPROVEN')
+    branch = AUTHORITY.api_get(repository, 'git/ref/heads/Legend/fast-track-release', token)
+    base = branch.get('object', {}).get('sha', '')
+    if not re.fullmatch('[a-f0-9]{40}', base):
+        raise ValueError('FAST_TRACK_BASE_UNPROVEN')
+    subprocess.run(['git', 'merge-base', '--is-ancestor', base, revision], check=True)
+    changed = subprocess.check_output(['git', 'diff', '--name-only', base, revision], text=True).splitlines()
+    scope = AUTHORITY.fast_track_scope(changed)
+    report = json.loads(observation_path.read_text())
+    source = fast_track_observation_source(repository, revision, run_id, attempt, token)
+    if report.get('producingAttempt') != source['attempt']:
+        raise ValueError('FAST_TRACK_OBSERVATION_ATTEMPT_MISMATCH')
+    baseline = fast_track_baseline(report, revision, run_id)
+    directory.mkdir(parents=True, exist_ok=False)
+    if not baseline['pendingCount']:
+        (directory / 'rehearsal.json').write_text(json.dumps(dict(schemaVersion=1,
+            purpose='fast-track-migration-rehearsal', state='not-required', releaseAdmission=False,
+            authorizesMutation=False, candidate=revision, fastTrackHead=base, baseline=baseline,
+            producingRun=run_id, producingAttempt=attempt, observationAttempt=source['attempt'])) + '\n')
+        print('FAST_TRACK_MIGRATION_REHEARSAL:NOT_REQUIRED:current_schema_complete')
+        return
+    if not scope['schema']:
+        raise ValueError('FAST_TRACK_PENDING_SCHEMA_OUTSIDE_CANDIDATE')
+    def module(name):
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + '.py'))
+        value = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(value)
+        return value
+    package = module('release-package')
+    component = package.build_component(revision, 'migration', directory)
+    with tempfile.TemporaryDirectory(prefix='legend-fast-track-fixture-') as temporary:
+        fixture = Path(temporary)
+        subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
+            '-c', 'Release', '--nologo', '-o', str(fixture), '-m:1', '-nr:false',
+            '-p:UseSharedCompilation=false'], check=True)
+        with isolated_sql() as connection:
+            result = module('release-migration').rehearse(directory / package.MIGRATION_BUNDLE,
+                probe_directory / 'MigrationReleaseProbe.dll', fixture / 'MigrationRehearsal.dll', connection, baseline)
+    if (result.get('proven') is not True or result.get('bundleDigest') != component['sha256']
+        or result.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}):
+        raise ValueError('FAST_TRACK_EXACT_BUNDLE_REHEARSAL_UNPROVEN')
+    result.update(schemaVersion=1, purpose='fast-track-migration-rehearsal', releaseAdmission=False,
+        authorizesMutation=False, candidate=revision, fastTrackHead=base,
+        producingRun=run_id, producingAttempt=attempt, observationRun=run_id, observationAttempt=source['attempt'],
+        sqlImage=SQL_REHEARSAL_IMAGE, baseline=baseline,
+        targets=[row['azure_app'] for row in scope['matrix']['include']])
+    (directory / 'rehearsal.json').write_text(json.dumps(result, sort_keys=True) + '\n')
+    print('FAST_TRACK_EXACT_BUNDLE_REHEARSAL:PASS:lost-receipt-recovery-without-repeat-sql')
+
+
 def test_schema_contract(directory):
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
@@ -257,12 +384,19 @@ def test_schema_contract(directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse', 'test-contract'])
+    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse', 'test-contract', 'fast-track-rehearse'])
     parser.add_argument('--tool-revision', required=True)
     parser.add_argument('--application-revision', required=True)
     parser.add_argument('--directory', required=True, type=Path)
     parser.add_argument('--output')
+    parser.add_argument('--observation', type=Path)
+    parser.add_argument('--probe-directory', type=Path)
     args = parser.parse_args()
+    if args.command == 'fast-track-rehearse':
+        if args.tool_revision != args.application_revision or args.observation is None or args.probe_directory is None:
+            parser.error('fast-track-rehearse requires same exact revision, observation, and probe directory')
+        rehearse_fast_track(args.application_revision, args.directory, args.observation, args.probe_directory)
+        return
     if args.command == 'test-contract':
         test_schema_contract(args.directory)
         return
