@@ -2,7 +2,7 @@
 
 Implementation branch: `isolation/business-scoped-payments-20261011`.
 Baseline: PR #580 commit `d4f9bcc424f2ccb07d5370eeb72d80d979062b14`.
-This is the payment portion of the existing canonical-commerce consolidation. It does not replace the other squad's checkout or modify its branch. Final integration/release authority is `Legend/fast-track-release`; merge and deployment remain on Founder hold. The protected branch is not a release destination.
+This is the payment portion of the existing canonical-commerce consolidation. It does not replace the other squad's checkout or modify its branch. Final integration/release authority is `Legend/fast-track-release`; the Founder authorized preparation and production release on October 11, 2026; technical admission and live verification gates remain required. The protected branch is not a release destination.
 
 ## Canonical ownership
 
@@ -75,7 +75,7 @@ Use isolated build outputs. In constrained environments, `DOTNET_PROCESSOR_COUNT
 - Shared CMS JavaScript syntax and Git whitespace checks passed.
 - Independent source/security review completed; external production validation remains pending.
 
-These are focused local checks, not a claim that all repository CI gates or actual provider end-to-end tests have passed. Release remains blocked pending the Founder's explicit green light and the provider/configuration/runtime checks above.
+These are focused local checks, not a claim that all repository CI gates or actual provider end-to-end tests have passed. The Founder has given the green light. Release remains blocked by the provider/configuration/runtime checks above and the schema admission requirement below.
 
 ## Square-first launch decision
 
@@ -88,3 +88,11 @@ Reuse the existing Square developer application only after verifying its identit
 Live settings were not inspected or changed by this source update. Square OAuth, actual sandbox end-to-end validation, production configuration, and approved cutover remain release prerequisites. The existing live Square route stays intact during preparation.
 
 Square-first update verification: 41 synthetic adapter checks passed; ProtectWebsite (including shared Payments Razor view) built with zero warnings/errors. Earlier 83 core regression tests remain applicable because this update changes presentation, focused checks, and documentation only.
+
+## Fast-track readiness reconciliation
+
+The payment branch incorporates consolidation head `659e2ed58fa223fd05a5b81e190f5b8b1fe34a46`, including tenant/logical-file-bound migration proofs and the read-only inventory Production environment correction. This is a merge into the isolated payment branch only; it does not merge PR #580 or change fast-track.
+
+Observed fast-track head `640a2fa3e44fe1b36ff9c12e44aa1bbd1a7f21f6` prohibits any `Infrastructure/Migrations/` or MasterAppDbContext change. Its affected-path selector also rejects unmapped entity/model paths. This payment candidate therefore cannot pass current fast-track admission. The existing migration owner is `scripts/release-migration.py`, invoked through protected release admission; it must retain its operation journal, exact candidate binding, evidence reuse, ambiguity reconciliation and trusted security validation. Do not run standalone SQL or remove the prohibition as a shortcut. An admitted migration handoff and verified schema prerequisite are needed before this candidate can publish through fast-track.
+
+This session exposes neither workflow dispatch nor Azure/Square configuration operations. Operational access is needed to verify secret presence (never disclose values), provider configuration, durable keys and the actual sandbox flow. Source tests are not substitutes for those checks.

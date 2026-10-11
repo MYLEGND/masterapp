@@ -6,6 +6,7 @@ The isolated `CommerceLegacyTransfer` performs **plan-only by default** and supp
 - Includes the correct business's customer-automation JSON and, for Parfait, legacy team JSON
 - Checks all source file contents and target conflicts before any mutation; stops on missing or unsafe media
 - Rejects different existing target bytes, verifies source stability, copies through a same-directory staging file and verifies each destination hash
+- Uses one versioned manifest for planning and startup admission, binding each logical media/state identity to its bytes and immutable business ID, independently of physical roots. Swapped file contents and legacy content-only receipts fail verification; duplicate logical identities fail before copying
 - Reuses matching targets, never overwrites originals, and never changes SQL order, payment, product, attribution, or membership records
 - Has synthetic-file idempotency and conflict tests. This does NOT authorize a live copy
 
