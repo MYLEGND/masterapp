@@ -765,20 +765,39 @@ def fast_track_restore_package(key, directory):
         return True
     if run['run_attempt'] > 1:
         display = TARGETS[key]['sourceRoot'] if key in {'portal', 'client'} else key.title()
+        saw_owner = False
         for attempt in range(1, run['run_attempt']):
             jobs = _RELEASE_AUTHORITY.api_get(repository,
                 f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
             if jobs.get('total_count') != len(jobs.get('jobs', [])):
                 raise ValueError('FAST_TRACK_PACKAGE_PRIOR_ATTEMPT_UNPROVEN')
             owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Affected App Deploy — ' + display]
+            if not owners and attempt > 1 and saw_owner:
+                continue
             if len(owners) != 1:
                 raise ValueError('FAST_TRACK_PACKAGE_PRIOR_OWNER_UNPROVEN')
+            saw_owner = True
             if owners[0].get('conclusion') == 'skipped' or owners[0].get('status') == 'queued':
                 continue
             steps = [s for s in owners[0].get('steps', []) if s.get('name') == 'Publish or reconcile exact application bytes']
             if len(steps) != 1 or steps[0].get('conclusion') != 'skipped':
                 raise ValueError('FAST_TRACK_RETAINED_PACKAGE_MISSING_NO_REBUILD')
     return False
+
+
+def fast_track_migration_gate(run):
+    # Failed-jobs reruns inherit successful siblings from their original attempt.
+    # GitHub's latest inventory retains those jobs without executing them again.
+    jobs = _RELEASE_AUTHORITY.api_get(os.environ['GITHUB_REPOSITORY'],
+        f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100",
+        os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
+    owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Reconcile production schema before publication']
+    if (jobs.get('total_count') != len(jobs.get('jobs', [])) or len(owners) != 1
+        or owners[0].get('conclusion') != 'success' or owners[0].get('status') != 'completed'
+        or owners[0].get('run_id') != run['id'] or owners[0].get('head_sha') != run['head_sha']
+        or not 1 <= owners[0].get('run_attempt', 0) <= run['run_attempt']):
+        raise ValueError('FAST_TRACK_SCHEMA_RELEASE_GATE_UNPROVEN')
+    return owners[0]
 
 
 def fast_track_deploy(key, package_root):
@@ -794,13 +813,7 @@ def fast_track_deploy(key, package_root):
         raise ValueError('FAST_TRACK_TARGET_OUTSIDE_SCOPE')
     if scope['commerce']:
         _RELEASE_AUTHORITY.fast_track_source_admission()
-        jobs = _RELEASE_AUTHORITY.api_get(os.environ['GITHUB_REPOSITORY'],
-            f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100",
-            os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
-        owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Reconcile production schema before publication']
-        if (jobs.get('total_count') != len(jobs.get('jobs', [])) or len(owners) != 1
-            or owners[0].get('conclusion') != 'success'):
-            raise ValueError('FAST_TRACK_SCHEMA_RELEASE_GATE_UNPROVEN')
+        fast_track_migration_gate(run)
     package = package_root / 'deploy.zip'
     digest = verify_package(package, revision, TARGETS[key]['static'])
     azure = target_azure(key, package, revision)

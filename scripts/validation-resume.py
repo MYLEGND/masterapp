@@ -207,6 +207,7 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
         count = run.get('run_attempt')
         if type(count) is not int or not 1 <= count <= 100:
             raise RuntimeError('FAST_TRACK_ATTEMPTS_INCOMPLETE')
+        saw_owner = False
         for attempt in range(1, count + 1):
             if run['id'] == current_run and attempt == current_attempt:
                 continue
@@ -217,8 +218,11 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
             if not jobs and (run.get('status') == 'completed' or attempt < count):
                 continue
             owners = [j for j in jobs if j.get('name') == owner_name]
+            if not owners and attempt > 1 and saw_owner:
+                continue  # Complete attempt inventory proves this sibling was not rerun.
             if len(owners) != 1:
                 raise RuntimeError('FAST_TRACK_CHILD_OWNER_UNPROVEN')
+            saw_owner = True
             job = owners[0]
             if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
                 continue
@@ -7637,6 +7641,7 @@ def release_operation_history(repository, operation_id, application_revision, ta
         count = run.get('run_attempt')
         if type(count) is not int or not 1 <= count <= 100:
             raise ReleaseOperationHistoryUnproven('Fast-track deployment attempts incomplete')
+        saw_owner = False
         for attempt in range(1, count + 1):
             if run['id'] == current_run and attempt == current_attempt:
                 continue
@@ -7649,8 +7654,11 @@ def release_operation_history(repository, operation_id, application_revision, ta
             label = RELEASE_TARGETS[target]['releaseName']
             display = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect', 'parfait': 'Parfait', 'website': 'Website'}[target]
             owners = [j for j in jobs if j.get('name') in {'Affected App Deploy — ' + display, 'UI Deploy — ' + display}]
+            if not owners and attempt > 1 and saw_owner:
+                continue
             if len(owners) != 1:
                 raise ReleaseOperationHistoryUnproven('Fast-track deployment owner unproven: ' + label)
+            saw_owner = True
             job = owners[0]
             if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
                 continue

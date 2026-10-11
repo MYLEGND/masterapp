@@ -91,6 +91,21 @@ class RouterConfigurationTests(unittest.TestCase):
         router.require_disabled_cutover([dict(name='LEGEND_COMMERCE_CUTOVER_ENABLED',type='plain_text',text='false')])
 
 
+class SuccessfulSiblingTests(unittest.TestCase):
+    def test_prior_successful_migration_is_preserved_for_failed_app_retry(self):
+        run=dict(id=12,head_sha='a'*40,run_attempt=3)
+        job=dict(name='Reconcile production schema before publication',run_id=12,head_sha='a'*40,
+                 run_attempt=1,status='completed',conclusion='success')
+        with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
+             patch.object(deploy._RELEASE_AUTHORITY,'api_get',return_value=dict(total_count=1,jobs=[job])) as api:
+            self.assertEqual(job,deploy.fast_track_migration_gate(run))
+            self.assertIn('filter=latest',api.call_args.args[1])
+            job['conclusion']='failure'
+            with self.assertRaises(ValueError):deploy.fast_track_migration_gate(run)
+            job['conclusion']='success';job['head_sha']='b'*40
+            with self.assertRaises(ValueError):deploy.fast_track_migration_gate(run)
+
+
 class FastTrackHistoryTests(unittest.TestCase):
     def setUp(self):
         self.run=dict(id=10,run_attempt=1,status='completed',event='push',head_sha='a'*40,
@@ -117,6 +132,19 @@ class FastTrackHistoryTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'INCOMPLETE'):self.attempts(False)
         self.run['status']='in_progress'
         with self.assertRaisesRegex(RuntimeError,'ACTIVE'):self.attempts()
+
+    def test_partial_rerun_does_not_erase_successful_migration_sibling(self):
+        self.run['run_attempt']=2
+        self.step['conclusion']='success';self.job['conclusion']='success'
+        def get(repo,path,token):
+            jobs=[self.job] if '/attempts/1/' in path else [dict(name='Affected App Deploy — Protect')]
+            return dict(total_count=len(jobs),jobs=jobs)
+        with patch.object(authority,'fast_track_execution_history',return_value=[self.run]), \
+             patch.object(authority,'_release_history_source',return_value='source'), \
+             patch.object(authority,'named_step_blocks',return_value={self.step['name']:'source'}), \
+             patch.object(authority,'api_get',side_effect=get):
+            rows=authority.fast_track_child_attempts('owner/repo','migrations','fixture')
+            self.assertEqual([1],[row[1] for row in rows])
 
     def test_missing_or_expired_intent_after_entry_cannot_authorize_mutation(self):
         for artifacts in [[],[dict(name='legend-release-child-intent-'+ 'c'*64,expired=True)]]:
