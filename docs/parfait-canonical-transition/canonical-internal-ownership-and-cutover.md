@@ -283,3 +283,29 @@ physical prefix/activity checks remain mandatory; no run is reclassified as none
 The existing proofs for the two failed historical EF executions remain unchanged.
 No production writes occurred in `38154021328`. Continue with the preserved bundle,
 all five app targets and routing after source validation and independent review.
+
+### Durable transport initialization and pre-write recovery
+
+PR #589 merged at `3bae3fd25ce92f2140b23230f9ef94e45888c5e9` after all three
+source workflows passed. Production run `38155548986` passed the full SQL
+preflight. Its migration step then stopped at `mutation-admission`, before the
+bundle subprocess, because fast-track installed the artifact SDK without invoking
+the canonical JavaScript action that exports the runner's artifact credentials.
+The retained inventory contains admission/recovery artifacts and no child intent.
+
+Fast-track now invokes `./scripts/release-artifacts` in migration, app publication
+and routing jobs. The shared historical reader recognizes only the audited
+workflow/migration/journal/transport source generation with an authenticated exact
+checkout, a single timestamped terminal pre-bundle marker in its failed step,
+complete artifact inventory, no retained child records and skipped app/routing
+publication. Both child history and unpublished-scope recovery use this same proof;
+absence of an intent by itself remains insufficient. Real run `38155548986` passes
+that read-only attestation. The repair chain bound is 16 rather than 8, retaining
+every per-hop check and covered by a nine-hop regression.
+
+Desired-state observation receipts also strip internal `migrationRecords` from
+their public source summaries, matching the existing transport schema without
+changing the internal admission evidence. Focused validation: 31 fast-track and
+108 release-child tests pass. Independent review approved these changes. Resume
+only through exact-head source validation and the canonical fast-track workflow;
+all five app targets, the preserved bundle and routing remain pending.

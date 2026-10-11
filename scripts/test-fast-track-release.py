@@ -235,10 +235,91 @@ class AdmissionRepairScopeTests(unittest.TestCase):
     def test_multiple_runs_require_operation_reconciliation(self):
         with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(duplicate=True)
 
+    def test_longer_proven_prewrite_repair_chain_keeps_original_application_scope(self):
+        heads=[format(i+1,'040x') for i in range(9)]
+        original='c'*40;head='b'*40
+        jobs=[dict(name='Admit exact validated fast-track source',conclusion='failure'),
+              dict(name='Reconcile production schema before publication',conclusion='skipped'),
+              dict(name='Affected App Deploy — target',conclusion='skipped'),
+              dict(name='Publish verified website routing',conclusion='skipped')]
+        def get(repo,path,token):
+            if path.startswith('actions/runs?'):
+                candidate=path.split('head_sha=')[1].split('&')[0]
+                rows=[] if candidate==original else [dict(id=heads.index(candidate)+1,run_attempt=1,
+                    head_sha=candidate,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+                    path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+                    head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')]
+                return dict(total_count=len(rows),workflow_runs=rows)
+            if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
+            candidate=path.split('/')[1]
+            return [dict(merged_at='time',merge_commit_sha=candidate,base=dict(ref=authority.FAST_TRACK_PR_BASE),
+                head=dict(repo=dict(full_name='owner/repo')))]
+        def parents(args,**kwargs):
+            candidate=args[-1];i=heads.index(candidate)
+            return candidate+' '+(heads[i+1] if i+1<len(heads) else original)+' '+head
+        with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
+             patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority.subprocess,'check_output',side_effect=parents):
+            self.assertEqual(original,authority.fast_track_effective_baseline(heads[0],head))
+
+
     def test_prewrite_recovery_failure_preserves_unpublished_scope(self):
         self.assertEqual('c'*40,self.baseline(recovery=True))
     def test_entered_migration_cannot_inherit_scope(self):
         with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(recovery=True,mutation='failure')
+
+
+class FastTrackPrewriteEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.head='3bae3fd25ce92f2140b23230f9ef94e45888c5e9'
+        self.run=dict(id=38155548986,head_sha=self.head,head_branch=authority.FAST_TRACK_PR_BASE,
+            event='push',path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure',run_attempt=1)
+        self.step=dict(name=authority.FAST_TRACK_CHILD_STEPS['migrations'][1],status='completed',conclusion='failure',
+            started_at='2026-10-11T16:33:54Z',completed_at='2026-10-11T16:38:19Z')
+        self.jobs=[dict(id=91,name=authority.FAST_TRACK_CHILD_STEPS['migrations'][0],status='completed',conclusion='failure',steps=[self.step]),
+            dict(name='Affected App Deploy — target',conclusion='skipped'),
+            dict(name='Publish verified website routing',conclusion='skipped')]
+        self.log=('2026-10-11T16:32:00Z [command]/usr/bin/git log -1 --format=%H\n'
+            +'2026-10-11T16:32:01Z '+self.head+'\n'
+            +'2026-10-11T16:38:18Z Migration stage unresolved: mutation-admission; preserve prior evidence and reconcile without replay.\n')
+        self.inventory=dict(total_count=0,artifacts=[])
+    def prove(self):
+        with patch.object(authority,'api_get',return_value=self.inventory), \
+             patch.object(authority,'_release_job_log',return_value=self.log):
+            return authority.attested_fast_track_migration_prewrite('owner/repo',self.run,self.jobs,'fixture')
+    def test_exact_pre_bundle_failure_proves_nonentry(self):
+        self.assertTrue(self.prove())
+    def test_absence_alone_changed_source_or_out_of_step_marker_cannot_prove_nonentry(self):
+        original=self.log
+        for text in ('',original.replace('mutation-admission','bundle-execution'),
+                     original.replace('16:38:18Z','16:32:18Z'),original+original.splitlines()[-1]+'\n',
+                     original.replace(self.head,'f'*40)):
+            self.log=text
+            self.assertFalse(self.prove())
+        self.log=original
+        with patch.object(authority,'_release_history_source',return_value='changed original owner'):
+            self.assertFalse(self.prove())
+    def test_retained_intent_incomplete_inventory_or_entered_publication_still_blocks(self):
+        for inventory in (dict(total_count=1,artifacts=[]),dict(total_count=1,artifacts=[dict(id=1,name='legend-release-child-intent-'+'a'*64)])):
+            self.inventory=inventory;self.assertFalse(self.prove())
+        self.inventory=dict(total_count=0,artifacts=[])
+        self.jobs[1]['conclusion']='failure';self.assertFalse(self.prove())
+        self.jobs[1]['conclusion']='skipped'
+        self.run['run_attempt']=2;self.assertFalse(self.prove())
+    def test_same_proof_controls_unpublished_scope(self):
+        with patch.object(authority,'attested_fast_track_migration_prewrite',return_value=True):
+            self.assertEqual('c'*40,AdmissionRepairScopeTests().baseline(recovery=True,mutation='failure'))
+    def test_each_fast_track_mutation_job_prepares_artifact_runtime_before_writes(self):
+        source=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        jobs=authority._job_blocks(source)
+        for job,write in [('migrations','Apply or reconcile the exact rehearsed migration bundle'),
+                          ('deploy-ui','Sign in to Azure Production'),
+                          ('routing-cloudflare','Publish or reconcile canonical website routing')]:
+            body=jobs[job]
+            self.assertEqual(1,body.count('uses: ./scripts/release-artifacts'))
+            self.assertLess(body.index('uses: ./scripts/release-artifacts'),body.index(write))
 
 
 class RecoveryWindowTests(unittest.TestCase):

@@ -204,6 +204,8 @@ jobs:
           PY
       - name: Install canonical durable evidence transport
         run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - name: Prepare canonical durable evidence transport
+        uses: ./scripts/release-artifacts
       - name: Sign in to Azure Production
         uses: azure/login@v2
         with:
@@ -329,6 +331,8 @@ jobs:
           if-no-files-found: error
       - name: Install canonical durable evidence transport
         run: npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - name: Prepare canonical durable evidence transport
+        uses: ./scripts/release-artifacts
 
       - name: Sign in to Azure Production
         uses: azure/login@v2
@@ -451,5 +455,7 @@ jobs:
         run: |
           npm ci --prefix Legend-Cloudflare --ignore-scripts --no-audit --no-fund
           npm ci --prefix scripts/release-artifacts --ignore-scripts --no-audit --no-fund
+      - name: Prepare canonical durable evidence transport
+        uses: ./scripts/release-artifacts
       - name: Publish or reconcile canonical website routing
         run: python3 scripts/release-router.py fast-track
