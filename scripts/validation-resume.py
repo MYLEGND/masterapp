@@ -3855,6 +3855,6040 @@ def fast_track_pending_routing(revision):
     return fast_track_completed_apps_pending_routing(repository, runs[0], jobs, token)
 
 
+def attested_fast_track_two_attempt_no_sql_preflight(repository, run, token):
+    """Authenticate one pinned two-attempt preflight-only failure; never permit SQL replay."""
+    source = '910f93fc6bd247f826fffb9d9701676cf4d33112'
+    if (run.get('id') != 38178839491 or run.get('head_sha') != source
+        or run.get('run_attempt') != 2 or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'
+        or not is_fast_track_producer(repository, run)):
+        return False
+    names = {'Select exact affected applications',
+             'Admit exact validated fast-track source',
+             'Reconcile production schema before publication',
+             'Affected App Deploy — ${{ matrix.target }}',
+             'Publish verified website routing'}
+    retained = {'fast-track-admission-38178839491-1': 11716507721,
+                'fast-track-database-recovery-38178839491-1': 11716567678,
+                'fast-track-database-recovery-38178839491-2': 11716923766}
+    try:
+        workflow = _release_history_source(repository, source,
+            '.github/workflows/legend-fast-track-ui.yml', token)
+        if not all(name in workflow for name in (
+            'Check migration admission without entering a write step',
+            'Apply or reconcile the exact rehearsed migration bundle',
+            'Reconcile fresh already-ready schema without SQL bundle or mutation')):
+            return False
+        response = api_get(repository, 'actions/runs/38178839491/artifacts?per_page=100', token)
+        artifacts = response.get('artifacts')
+        if (not isinstance(artifacts, list) or response.get('total_count') != 3
+            or len(artifacts) != 3
+            or {a.get('name'): a.get('id') for a in artifacts if isinstance(a, dict)} != retained
+            or any(a.get('expired') is not False or
+                   a.get('workflow_run', {}).get('id') != run['id'] for a in artifacts)):
+            return False
+        for attempt in (1, 2):
+            payload = api_get(repository,
+                f'actions/runs/{run["id"]}/attempts/{attempt}/jobs?per_page=100', token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != 5 or len(jobs) != 5:
+                return False
+            indexed = {j.get('name'): j for j in jobs if isinstance(j, dict)}
+            if set(indexed) != names or any(j.get('run_attempt') != attempt or
+                j.get('status') != 'completed' for j in jobs):
+                return False
+            for job_name in ('Select exact affected applications',
+                             'Admit exact validated fast-track source'):
+                if indexed[job_name].get('conclusion') != 'success':
+                    return False
+            for job_name in ('Affected App Deploy — ${{ matrix.target }}',
+                             'Publish verified website routing'):
+                if indexed[job_name].get('conclusion') != 'skipped':
+                    return False
+            owner = indexed['Reconcile production schema before publication']
+            if owner.get('conclusion') != 'failure' or type(owner.get('id')) is not int:
+                return False
+            steps = owner.get('steps')
+            if not isinstance(steps, list):
+                return False
+            keyed = {step.get('name'): step for step in steps if isinstance(step, dict)}
+            required = {
+                'Run actions/checkout@v4': 'success',
+                'Build current read-only schema observer for source-only release': 'success',
+                'Verify current database recovery window before retention readers': 'success',
+                'Preserve recovery evidence before SQL or retention publication': 'success',
+                'Check migration admission without entering a write step': 'failure',
+                'Apply or reconcile the exact rehearsed migration bundle': 'skipped',
+                'Reconcile fresh already-ready schema without SQL bundle or mutation': 'skipped'}
+            if any(keyed.get(name, {}).get('conclusion') != result
+                   for name, result in required.items()):
+                return False
+            if [step.get('name') for step in steps
+                if step.get('conclusion') == 'failure'] != [
+                    'Check migration admission without entering a write step']:
+                return False
+            log = _release_job_log(repository, owner['id'], token)
+            marker = 'Database mutation activity remains active; preserve prior evidence and reconcile without replay.'
+            if (len(re.findall(r'(?m)^\d{4}-\d{2}-\d{2}T[^\n]+Z ' +
+                 re.escape(marker) + r'
+    """Carry unpublished app scope; this never authorizes SQL or publication replay."""
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    # Keep a bounded chain while carrying successive positively proven prewrite repairs.
+    for _ in range(16):
+        if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
+                ['git', 'merge-base', '--is-ancestor', before, revision], capture_output=True).returncode:
+            raise RuntimeError('FAST_TRACK_SCOPE_BASELINE_UNPROVEN')
+        payload = api_get(repository, f'actions/runs?head_sha={before}&event=push&per_page=100', token)
+        rows = payload.get('workflow_runs')
+        if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_INVENTORY_INCOMPLETE')
+        runs = [r for r in rows if is_fast_track_producer(repository, r)]
+        prior = max(runs, key=lambda r:r['id']) if runs else None
+        if prior is None:
+            repair_parent = fast_track_untriggered_repair_parent(repository, before, token)
+            if repair_parent is None:
+                return before
+            before = repair_parent
+            continue
+        if prior.get('conclusion') == 'success':
+            return before
+        if prior.get('status') != 'completed':
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_ACTIVE')
+        if len(runs) != 1 or prior.get('head_sha') != before:
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
+        payload = api_get(repository, f"actions/runs/{prior['id']}/jobs?filter=latest&per_page=100", token)
+        jobs = payload.get('jobs')
+        if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
+        if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):
+            return before
+        selections = [j for j in jobs if j.get('name') == 'Select exact affected applications']
+        admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
+        writes = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ') or
+                  j.get('name') in {'Reconcile production schema before publication', 'Publish verified website routing'}]
+        migrations = [j for j in writes if j.get('name') == 'Reconcile production schema before publication']
+        publications = [j for j in writes if j not in migrations]
+        migration_steps = migrations[0].get('steps', []) if len(migrations) == 1 else []
+        mutation = [s for s in migration_steps if s.get('name') == 'Apply or reconcile the exact rehearsed migration bundle']
+        # A failed selector has no write authority. Carry its unshipped change
+        # only when every downstream admission and production owner was skipped.
+        selection_stopped = (len(selections) == 1 and selections[0].get('status') == 'completed'
+            and selections[0].get('conclusion') == 'failure'
+            and len(admissions) == 1 and admissions[0].get('conclusion') == 'skipped'
+            and all(j.get('conclusion') == 'skipped' for j in writes))
+        admission_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') in {'failure', 'cancelled'}
+            and all(j.get('conclusion') == 'skipped' for j in writes))
+        recovery_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
+            and len(migrations) == 1 and migrations[0].get('conclusion') in {'failure', 'cancelled'}
+            and len(mutation) == 1 and (mutation[0].get('conclusion') == 'skipped' or
+                attested_fast_track_migration_prewrite(repository, prior, jobs, token))
+            and all(j.get('conclusion') == 'skipped' for j in publications))
+        preflight_noentry = (attested_fast_track_two_attempt_no_sql_preflight(
+            repository, prior, token) if prior.get('id') == 38178839491 else False)
+        prewrite = (prior.get('run_attempt') == 1 and
+                    (selection_stopped or admission_stopped or recovery_stopped)) or preflight_noentry
+        completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
+            and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
+        if len(writes) < 3 or not (prewrite or completed_sql):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
+        pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
+        merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before
+            and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+            and p.get('head', {}).get('repo', {}).get('full_name') == repository]
+        parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', before], text=True).split()
+        if len(merged) != 1 or len(parents) != 3:
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_MERGE_UNPROVEN')
+        before = parents[1]
+    raise RuntimeError('FAST_TRACK_PREDECESSOR_CHAIN_UNPROVEN')
+
+
+def fast_track_source_admission():
+    """Require the merged exact source's existing checks before production access."""
+    run = assert_fast_track_release_execution()
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    revision = run['head_sha']
+    pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+    candidates = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
+        and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+        and p.get('head', {}).get('repo', {}).get('full_name') == repository]
+    if len(candidates) != 1:
+        raise RuntimeError('FAST_TRACK_MERGED_SOURCE_UNPROVEN')
+    candidate = candidates[0]['head']['sha']
+    if subprocess.run(['git', 'diff', '--quiet', candidate, revision], capture_output=True).returncode:
+        raise RuntimeError('FAST_TRACK_MERGE_TREE_DIFFERS_FROM_VALIDATED_SOURCE')
+    payload = api_get(repository, f'actions/runs?head_sha={candidate}&per_page=100', token)
+    rows = payload.get('workflow_runs')
+    if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+        raise RuntimeError('FAST_TRACK_VALIDATION_INVENTORY_INCOMPLETE')
+    required = {'approved-release-security-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'push'}
+    evidence = {}
+    for workflow, event in required.items():
+        matches = [r for r in rows if r.get('path') == '.github/workflows/' + workflow
+            and r.get('event') == event and r.get('head_sha') == candidate
+            and r.get('head_repository', {}).get('full_name') == repository
+            and r.get('head_branch') == candidates[0]['head']['ref']]
+        latest = max(matches, key=lambda r: r['id']) if matches else None
+        if latest is None or latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
+            raise RuntimeError('FAST_TRACK_REQUIRED_VALIDATION_UNPROVEN:' + workflow)
+        artifact = fast_track_validation_receipt(repository, latest, workflow, candidate, candidates[0]['number'], token)
+        evidence[workflow] = dict(runId=latest['id'], attempt=latest['run_attempt'], artifactId=artifact)
+    return dict(candidate=candidate, executionAuthority=revision, sourcePr=candidates[0]['number'], validation=evidence)
+
+
+def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
+    """Prove the candidate already contains the exact current approved head.
+
+    This is intentionally cheaper than validation planning. It is the first
+    merge-readiness check and may not infer freshness from the PR event's
+    possibly stale base SHA.
+    """
+    if base_branch not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError("Unsupported release base")
+    if not re.fullmatch(r"[0-9a-f]{40}", current_sha or ""):
+        raise ValueError("Malformed candidate revision")
+    if not token:
+        raise EvidenceLookupUnavailable(
+            "GitHub token unavailable for approved-head preflight",
+            endpoint="approved-head-preflight",
+        )
+    branch = api_get(
+        repository,
+        "branches/" + urllib.parse.quote(base_branch, safe=""),
+        token,
+    )
+    approved = (branch.get("commit") or {}).get("sha")
+    if not re.fullmatch(r"[0-9a-f]{40}", approved or ""):
+        raise EvidenceLookupUnavailable(
+            "Current approved head is unavailable",
+            endpoint="branches/" + base_branch,
+        )
+    if current_sha == approved:
+        return {
+            "schemaVersion": 1,
+            "candidateSha": current_sha,
+            "approvedHeadSha": approved,
+            "mergeBaseSha": approved,
+            "compareStatus": "identical",
+            "current": True,
+        }
+    compare = api_get(
+        repository,
+        "compare/" + urllib.parse.quote(approved, safe="") + "..." +
+        urllib.parse.quote(current_sha, safe=""),
+        token,
+    )
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    status = compare.get("status")
+    current = (
+        merge_base == approved and
+        status in {"ahead", "identical"}
+    )
+    return {
+        "schemaVersion": 1,
+        "candidateSha": current_sha,
+        "approvedHeadSha": approved,
+        "mergeBaseSha": merge_base,
+        "compareStatus": status,
+        "current": current,
+    }
+
+
+def cmd_approved_head_preflight(args):
+    base_branch = getattr(args, "base_branch", TRUSTED_PR_BASE)
+    if args.event != "pull_request":
+        result = {
+            "schemaVersion": 1,
+            "candidateSha": args.current_sha,
+            "approvedHeadSha": None,
+            "mergeBaseSha": None,
+            "compareStatus": "not_applicable",
+            "current": True,
+            "reason": "approved_head_preflight_applies_to_pull_requests_only",
+        }
+    else:
+        result = approved_head_preflight(
+            args.repository,
+            args.current_sha,
+            os.environ.get("GITHUB_TOKEN", ""),
+            base_branch=base_branch,
+        )
+    if args.output:
+        Path(args.output).write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n"
+        )
+    print(json.dumps(result, sort_keys=True))
+    if not result["current"]:
+        print(
+            "::error::Candidate is not based on the current "
+            f"{base_branch} head {result['approvedHeadSha']}. "
+            "Trusted lifecycle must sync the approved head before validation.",
+            file=sys.stderr,
+        )
+        raise SystemExit(78)
+
+
+class _StepEvidence(dict):
+    def __init__(self):
+        super().__init__()
+        self.producers = {}
+
+
+def _step_map(jobs):
+    evidence = _StepEvidence()
+    for job in jobs:
+        for step in job.get("steps") or []:
+            name = step.get("name")
+            if name:
+                evidence[name] = step.get("conclusion")
+                evidence.producers[name] = {
+                    "result": step.get("conclusion"), "jobId": job.get("id"),
+                    "runId": job.get("run_id"), "stepNumber": step.get("number"),
+                }
+    return evidence
+
+
+def _effective_steps(newest_to_oldest):
+    """Keep the newest executed result; skipped/missing later steps do not erase proof.
+
+    A later failure/cancellation always wins over an older success. A later run
+    that never reached a gate may inherit that gate's most recent executed result
+    from the exact same source SHA only.
+    """
+    effective = _StepEvidence()
+    for steps in newest_to_oldest:
+        for name, outcome in steps.items():
+            if name in effective or outcome in {None, "", "skipped"}:
+                continue
+            effective[name] = outcome
+            if name in getattr(steps, "producers", {}):
+                effective.producers[name] = steps.producers[name]
+    return effective
+
+
+def prior_evidence(args):
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return None, {}, "github_token_unavailable"
+
+    if args.run_attempt > 1:
+        histories = []
+        newest_attempt = args.run_attempt - 1
+        for attempt in range(newest_attempt, 0, -1):
+            payload = api_get(
+                args.repository,
+                f"actions/runs/{args.current_run_id}/attempts/{attempt}/jobs?per_page=100",
+                token,
+            )
+            histories.append(_step_map(payload.get("jobs", [])))
+        return {
+            "id": args.current_run_id,
+            "head_sha": args.current_sha,
+            "run_attempt": newest_attempt,
+            "event": args.event,
+            "head_branch": args.head_branch,
+        }, _effective_steps(histories), "prior_attempts"
+
+    workflow = urllib.parse.quote(args.workflow, safe="")
+    branch = urllib.parse.quote(args.head_branch, safe="")
+    event = urllib.parse.quote(args.event, safe="")
+    payload = api_get(
+        args.repository,
+        f"actions/workflows/{workflow}/runs?branch={branch}&event={event}&status=completed&per_page=100",
+        token,
+    )
+    runs = []
+    for run in payload.get("workflow_runs", []):
+        if (
+            int(run.get("id", 0)) == args.current_run_id
+            or run.get("head_branch") != args.head_branch
+            or run.get("event") != args.event
+            or not run.get("head_sha")
+        ):
+            continue
+        if args.event == "pull_request":
+            trusted = _trusted_lineage_run(
+                args.repository, run, WORKFLOW_PATHS[args.workflow], args.current_sha
+            )
+            if not trusted:
+                try:
+                    trusted = _trusted_pr_run(
+                        args.repository, run, WORKFLOW_PATHS[args.workflow], token
+                    )
+                except urllib.error.HTTPError:
+                    trusted = False
+            if not trusted:
+                continue
+        runs.append(run)
+    if not runs:
+        return None, {}, "no_prior_completed_run"
+
+    ordered = sorted(
+        runs,
+        key=lambda run: (run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    prior = ordered[0]
+    exact_head_runs = [run for run in ordered if run.get("head_sha") == prior.get("head_sha")][:10]
+    histories = []
+    for run in exact_head_runs:
+        steps = _historical_plan_steps(args, run, token)
+        if steps:
+            histories.append(steps)
+
+    return prior, _effective_steps(histories), "prior_exact_head_plan_artifacts"
+
+
+def _plan_against_prior(workflow, current_sha, prior, prior_steps, evidence_source):
+    """Build the same fail-closed gate plan against one exact historical source tree."""
+    changed = git_changed(prior["head_sha"], current_sha) if prior else []
+    changed_gate_steps = set()
+    workflow_structure_changed = False
+    workflow_path = WORKFLOW_PATHS.get(workflow)
+    if prior and workflow_path and workflow_path in changed:
+        prior_text = git_show_file(prior["head_sha"], workflow_path)
+        current_text = Path(workflow_path).read_text()
+        try:
+            prior_config = _historical_workflow_definition(workflow, prior["head_sha"])
+            changed_gate_steps = {
+                gate["step"] for key, gate in WORKFLOWS[workflow]["gates"].items()
+                if key not in prior_config["gates"] or
+                _gate_execution_contract(prior_text, prior_config, key) !=
+                _gate_execution_contract(current_text, WORKFLOWS[workflow], key)
+            }
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            workflow_structure_changed = True
+        changed = [path for path in changed if path != workflow_path]
+    plan = compute_plan(
+        workflow,
+        current_sha,
+        prior,
+        prior_steps,
+        changed,
+        evidence_source,
+        changed_gate_steps,
+        workflow_structure_changed,
+    )
+
+    if any(not gate.get("run") for gate in plan["gates"].values()):
+        try:
+            current_ids = gate_dependency_manifests(workflow, current_sha)
+            prior_ids = gate_dependency_manifests(workflow, prior["head_sha"],
+                _historical_workflow_definition(workflow, prior["head_sha"]))
+            for key, gate in plan["gates"].items():
+                if gate.get("run"):
+                    continue
+                if current_ids[key]["contentIdentity"] != prior_ids.get(key, {}).get("contentIdentity"):
+                    gate.update({"run": True, "reason": "dependency_identity_changed"})
+                else:
+                    gate["dependencyIdentity"] = current_ids[key]["contentIdentity"]
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            for gate in plan["gates"].values():
+                if not gate.get("run"):
+                    gate.update({"run": True, "reason": "dependency_identity_unproven"})
+        _enforce_runtime_requirements(plan)
+    for gate in plan["gates"].values():
+        if not gate.get("run"):
+            gate["producerReceipt"] = getattr(prior_steps, "producers", {}).get(gate["step"],
+                {"result": prior_steps.get(gate["step"]), "runId": prior["id"]})
+    return plan
+
+
+def _stamp_evidence(plan, prior, source):
+    if not prior:
+        return
+    for gate in plan.get("gates", {}).values():
+        if gate.get("run"):
+            continue
+        gate["evidenceRunId"] = (gate.get("producerReceipt") or {}).get("runId") or prior.get("id")
+        gate["evidenceHeadSha"] = prior.get("head_sha")
+        gate["evidenceSource"] = source
+
+
+def _enforce_runtime_requirements(plan):
+    """Preserved proof cannot replace a prerequisite needed by a gate executing now."""
+    gates = WORKFLOWS[plan["workflow"]]["gates"]
+    changed = True
+    while changed:
+        changed = False
+        for key, result in list(plan["gates"].items()):
+            invalidated = next((child for child in gates[key].get("consumes", ())
+                                if plan["gates"][child].get("run")), None)
+            if invalidated and not result.get("run"):
+                result.update({"run": True, "reason": f"evidence_dependency_invalidated:{invalidated}"})
+                changed = True
+            if not result.get("run"):
+                continue
+            for required in gates[key].get("requires", ()):
+                required_result = plan["gates"][required]
+                if required_result.get("run"):
+                    continue
+                required_result["run"] = True
+                required_result["reason"] = f"required_by:{key}"
+                required_result.pop("evidenceRunId", None)
+                required_result.pop("evidenceHeadSha", None)
+                required_result.pop("evidenceSource", None)
+                changed = True
+
+
+def merge_content_equivalent_evidence(plan, candidate_plan, run):
+    """Reuse only gates whose exact declared inputs and gate definition are unchanged."""
+    reused = False
+    for key, result in plan["gates"].items():
+        if not result.get("run"):
+            continue
+        candidate = candidate_plan["gates"].get(key)
+        if not candidate or candidate.get("run"):
+            continue
+        result["run"] = False
+        result["reason"] = "content_equivalent_success"
+        result["evidenceRunId"] = run.get("id")
+        result["evidenceHeadSha"] = run.get("head_sha")
+        result["evidenceSource"] = "trusted_pr_history"
+        result["producerReceipt"] = candidate.get("producerReceipt")
+        result["dependencyIdentity"] = candidate.get("dependencyIdentity")
+        reused = True
+    return reused
+
+
+def _trusted_lineage_run(repository, run, workflow_path, revision, *, require_completed=True):
+    """Authenticate an immutable producer already in the current candidate lineage.
+
+    This avoids a separate commit->pull API lookup for evidence whose producer
+    commit is already part of the exact candidate history. Workflow path, event,
+    completion, repository ownership and git ancestry must all agree.
+    """
+    if _VALIDATION_PR_BASE.get() == FAST_TRACK_PR_BASE and not any(
+        (pr.get("base") or {}).get("ref") == FAST_TRACK_PR_BASE
+        for pr in run.get("pull_requests") or []):
+        return False
+    head = run.get("head_sha") or ""
+    if (
+        run.get("path") != workflow_path
+        or run.get("event") != "pull_request"
+        or (require_completed and run.get("status") != "completed")
+        or not re.fullmatch(r"[0-9a-f]{40}", head)
+        or (run.get("head_repository") or {}).get("full_name") != repository
+        or not re.fullmatch(r"[0-9a-f]{40}", revision or "")
+    ):
+        return False
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", head, revision],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def _trusted_pr_run(repository, run, workflow_path, token):
+    """Authenticate a producer independently of its parent workflow conclusion."""
+    head = run.get("head_sha") or ""
+    if (run.get("path") != workflow_path or run.get("event") != "pull_request"
+            or run.get("status") != "completed"
+            or not re.fullmatch(r"[0-9a-f]{40}", head)
+            or (run.get("head_repository") or {}).get("full_name") != repository):
+        return False
+    def matches_pull(row):
+        return ((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
+                and (row.get("head") or {}).get("sha") == head
+                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository)
+    if any(matches_pull(row) for row in run.get("pull_requests") or []):
+        return True
+    # The commit-associated PR endpoint binds the immutable commit even after
+    # that PR advances to a repaired head; demanding its current head equal the
+    # old producer SHA would discard valid child evidence on every new commit.
+    return any((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
+               and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository
+               for row in api_get(repository, f"commits/{head}/pulls?per_page=100", token))
+
+
+VALIDATION_RESUME_ARTIFACT_PREFIX = {
+    "masterapp-platform-architecture-validation.yml": "validation-resume-architecture",
+    "approved-release-security-validation.yml": "validation-resume-security",
+    "parfait-isolated-validation.yml": "validation-resume-parfait",
+    "step6-openai-ads-execution-validation.yml": "validation-resume-step6",
+    "steps7-8-governed-advertising-validation.yml": "validation-resume-step78",
+}
+
+
+def _validation_resume_artifact_name(workflow, run):
+    prefix = VALIDATION_RESUME_ARTIFACT_PREFIX.get(workflow)
+    if not prefix:
+        return None
+    run_id = int(run.get("id") or 0)
+    attempt = int(run.get("run_attempt") or 1)
+    return f"{prefix}-{run_id}-{attempt}" if run_id else None
+
+
+def _parfait_unconditional_validation_generation(workflow, revision):
+    if workflow != 'parfait-isolated-validation.yml':
+        return False
+    source = git_show_file(revision, WORKFLOW_PATHS[workflow]).encode()
+    blob = hashlib.sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest()
+    # Reviewed original source: every named gate executes unconditionally.
+    # Authenticate actual successful steps, never infer proof from this hash.
+    return blob == '20b242ae2b01d1091c746801f6f0144428912cda'
+
+
+def _historical_plan_steps(args, run, token):
+    """Recover gate proof from the durable validation-plan artifact.
+
+    Successful parent completion proves gates the plan actually executed.
+    A failed parent requires an exact recorded child observation for executed
+    gates, or preserved proof from an older successful producer.
+    """
+    artifact = _validation_resume_artifact_name(args.workflow, run)
+    if artifact is None:
+        return None
+    run_id = int(run.get("id") or 0)
+    if artifact not in _run_artifact_names(args.repository, run_id, token):
+        if (run.get('path') == WORKFLOW_PATHS.get(args.workflow)
+            and run.get('head_repository', {}).get('full_name') == args.repository
+            and run.get('event') == 'push' and run.get('head_branch') == args.head_branch
+            and _parfait_unconditional_validation_generation(args.workflow, run['head_sha'])):
+            payload = api_get(args.repository, f"actions/runs/{run_id}/attempts/{run.get('run_attempt', 1)}/jobs?per_page=100", token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                return None
+            return _step_map(jobs)
+        return None
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="validation-plan-") as temporary:
+        directory = Path(temporary)
+        _download_run_artifact(args.repository, run_id, artifact, directory)
+        candidates = list(directory.rglob("validation-resume.json"))
+        if len(candidates) != 1:
+            return None
+        stored = json.loads(candidates[0].read_text())
+
+    if stored.get("workflow") != args.workflow:
+        return None
+    gates = stored.get("gates")
+    if not isinstance(gates, dict):
+        return None
+
+    steps = _StepEvidence()
+    parent_success = run.get("conclusion") == "success"
+    for gate in gates.values():
+        if not isinstance(gate, dict):
+            continue
+        step = gate.get("step")
+        if not isinstance(step, str) or not step:
+            continue
+        if gate.get("run") is True:
+            receipt = gate.get("receipt") or {}
+            job_id = receipt.get("producerJobId")
+            step_number = receipt.get("producerStepNumber")
+            if (
+                stored.get("receiptSchemaVersion") == 1
+                and stored.get("recordingRunId") == run_id
+                and receipt.get("producingRunId") == run_id
+                and receipt.get("reused") is False
+                and type(job_id) is int and job_id > 0
+                and receipt.get("recordingJobId") == job_id
+                and type(step_number) is int and step_number > 0
+                and receipt.get("stepNumber") == step_number
+                and receipt.get("result") in {"success", "failure", "cancelled", "timed_out"}
+            ):
+                steps[step] = receipt["result"]
+                steps.producers[step] = {
+                    "result": receipt["result"],
+                    "jobId": job_id,
+                    "runId": run_id,
+                    "stepNumber": step_number,
+                    "artifact": artifact,
+                }
+                continue
+            if not parent_success:
+                continue
+            steps[step] = "success"
+            steps.producers[step] = {
+                "result": "success",
+                "jobId": None,
+                "runId": run_id,
+                "stepNumber": None,
+                "artifact": artifact,
+            }
+            continue
+
+        producer = gate.get("receipt") or gate.get("producerReceipt") or {}
+        if producer.get("result") != "success":
+            continue
+        producer_run = (
+            producer.get("producingRunId")
+            or producer.get("runId")
+            or gate.get("evidenceRunId")
+        )
+        if not producer_run:
+            continue
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": producer.get("producerJobId") or producer.get("jobId"),
+            "runId": int(producer_run),
+            "stepNumber": producer.get("producerStepNumber") or producer.get("stepNumber"),
+            "artifact": artifact,
+        }
+    return steps
+
+
+def _trusted_historical_runs(args, token):
+    """Return trusted completed PR parents; each child proves its own success."""
+    if args.event != "pull_request":
+        return []
+    workflow = urllib.parse.quote(args.workflow, safe="")
+    payload = api_get(
+        args.repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    candidates = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    rows = []
+    for run in candidates:
+        if int(run.get("id", 0)) == args.current_run_id:
+            continue
+        trusted = _trusted_lineage_run(
+            args.repository, run, WORKFLOW_PATHS[args.workflow], args.current_sha
+        )
+        if not trusted:
+            try:
+                trusted = _trusted_pr_run(
+                    args.repository, run, WORKFLOW_PATHS[args.workflow], token
+                )
+            except urllib.error.HTTPError:
+                trusted = False
+        if not trusted:
+            continue
+        rows.append(run)
+        # Newer failed parents may salvage exact successful children. Once the
+        # nearest trusted successful parent is reached, it is the canonical
+        # content baseline; older generations cannot override newer source truth.
+        if run.get("conclusion") == "success":
+            break
+    return rows
+
+
+def _successful_parent_steps(workflow, run):
+    """A successful PR validator proves every gate in that exact parent envelope.
+
+    Individual artifacts are only needed to salvage green children from failed
+    parents. Avoiding artifact downloads for successful parents turns history
+    reuse into one content-identity comparison instead of an N-run network scan.
+    """
+    steps = _StepEvidence()
+    run_id = int(run.get("id") or 0)
+    if run.get("conclusion") != "success" or run_id < 1:
+        return steps
+    for gate in WORKFLOWS[workflow]["gates"].values():
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": run_id,
+            "stepNumber": None,
+            "artifact": None,
+        }
+    return steps
+
+
+def _apply_content_equivalent_evidence(args, plan):
+    """Fill unresolved gates from recent successful runs with identical gate inputs.
+
+    This is intentionally an optimization only. Any lookup/diff uncertainty keeps
+    the existing plan unchanged, so historical reuse can never weaken validation.
+    """
+    if args.event != "pull_request" or not any(row.get("run") for row in plan["gates"].values()):
+        return plan
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return plan
+
+    reused = False
+    examined = 0
+    try:
+        runs = _trusted_historical_runs(args, token)
+    except EvidenceLookupUnavailable:
+        raise
+    except Exception as exc:
+        plan["historicalEvidenceError"] = type(exc).__name__
+        return plan
+
+    for run in runs:
+        head_sha = run["head_sha"]
+        successful_parent = run.get("conclusion") == "success"
+        try:
+            steps = (
+                _successful_parent_steps(args.workflow, run)
+                if successful_parent
+                else _historical_plan_steps(args, run, token)
+            )
+            if not steps:
+                examined += 1
+                continue
+            prior = {
+                "id": run["id"],
+                "head_sha": head_sha,
+                "run_attempt": run.get("run_attempt", 1),
+                "event": run.get("event"),
+                "head_branch": run.get("head_branch"),
+            }
+            candidate_plan = _plan_against_prior(
+                args.workflow,
+                args.current_sha,
+                prior,
+                steps,
+                "trusted_successful_parent" if successful_parent else "trusted_plan_artifact_history",
+            )
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            examined += 1
+            continue
+        examined += 1
+        reused = merge_content_equivalent_evidence(plan, candidate_plan, run) or reused
+        if not any(row.get("run") for row in plan["gates"].values()):
+            break
+        # The nearest trusted successful parent is the canonical comparison
+        # baseline. Anything whose content identity changed from it is genuinely
+        # invalidated and must execute; older generations cannot make a current
+        # source change disappear.
+        if successful_parent:
+            break
+
+    _enforce_runtime_requirements(plan)
+    if reused:
+        plan["mode"] = "content-addressed"
+        plan["historicalEvidenceRunsExamined"] = examined
+    return plan
+
+
+def compute_plan(
+    workflow: str,
+    current_sha: str,
+    prior,
+    prior_steps,
+    changed_paths,
+    evidence_source,
+    changed_gate_steps=None,
+    workflow_structure_changed=False,
+):
+    config = WORKFLOWS[workflow]
+    gates = config["gates"]
+    plan = {
+        "schemaVersion": 1,
+        "workflow": workflow,
+        "currentSha": current_sha,
+        "priorRunId": prior.get("id") if prior else None,
+        "priorHeadSha": prior.get("head_sha") if prior else None,
+        "evidenceSource": evidence_source,
+        "changedPaths": changed_paths,
+        "mode": "full",
+        "gates": {},
+    }
+
+    if prior is None:
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": "no_prior_success_evidence",
+            }
+        return plan
+
+    if workflow_structure_changed:
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": "workflow_structure_changed",
+            }
+        return plan
+
+    changed_gate_steps = set(changed_gate_steps or ())
+    force_all = any(matches(path, config.get("force_all", ())) for path in changed_paths)
+    known = set()
+    neutral = set()
+    for path in changed_paths:
+        if matches(path, config.get("neutral", ())):
+            neutral.add(path)
+            continue
+        for key, gate in gates.items():
+            if gate_matches(path, gate):
+                known.add(path)
+                break
+
+    unknown = [] if config.get("unmatched_neutral") else [
+        path
+        for path in changed_paths
+        if path not in known
+        and path not in neutral
+        and not matches(path, config.get("force_all", ()))
+    ]
+    if force_all or unknown:
+        reason = "source_change_requires_full_validation" if force_all else "unclassified_change_requires_full_validation"
+        for key, gate in gates.items():
+            plan["gates"][key] = {
+                "step": gate["step"],
+                "run": True,
+                "reason": reason,
+            }
+        plan["unclassifiedPaths"] = unknown
+        return plan
+
+    run = set()
+    reasons = {}
+    for key, gate in gates.items():
+        step = gate["step"]
+        if step in changed_gate_steps:
+            run.add(key)
+            reasons[key] = "gate_definition_changed"
+            continue
+        if prior_steps.get(step) != "success":
+            run.add(key)
+            reasons[key] = "prior_gate_not_successful"
+            continue
+        if any(gate_matches(path, gate) for path in changed_paths):
+            run.add(key)
+            reasons[key] = "gate_inputs_changed"
+
+    # Close only real execution/evidence edges. "requires" is a runtime
+    # prerequisite and "consumes" is a semantic evidence dependency: both
+    # legitimately propagate invalidation. "materializes" is deliberately
+    # different; it means a child needs exact producer bytes locally, but a
+    # producer rematerialization alone must not invalidate otherwise-green
+    # sibling evidence.
+    changed = True
+    while changed:
+        changed = False
+        for key in list(run):
+            for required in gates[key].get("requires", ()):
+                if required not in run:
+                    run.add(required)
+                    reasons[required] = f"required_by:{key}"
+                    changed = True
+        for key, gate in gates.items():
+            if key in run:
+                continue
+            invalidated = next(
+                (dependency for dependency in gate.get("consumes", ()) if dependency in run),
+                None,
+            )
+            if invalidated:
+                run.add(key)
+                reasons[key] = f"evidence_dependency_invalidated:{invalidated}"
+                changed = True
+
+    for key, gate in gates.items():
+        should_run = key in run
+        plan["gates"][key] = {
+            "step": gate["step"],
+            "run": should_run,
+            "reason": reasons.get(key, "preserved_prior_success"),
+        }
+    plan["mode"] = "incremental"
+    return plan
+
+
+def _workflow_top_level_field(text, field):
+    """Include block and inline YAML forms in the execution envelope."""
+    lines = text.splitlines(keepends=True)
+    starts = [i for i, line in enumerate(lines) if re.match(r"^[A-Za-z_][A-Za-z0-9_-]*:", line)]
+    for index, start in enumerate(starts):
+        if lines[start].startswith(field + ":"):
+            end = starts[index + 1] if index + 1 < len(starts) else len(lines)
+            return "".join(lines[start:end])
+    return ""
+
+
+def _gate_execution_contract(workflow_text, config, key):
+    """Capture one gate's execution prefix and declared runtime prerequisites."""
+    gates = config["gates"]
+    step = gates[key]["step"]
+    owners = [job for job in _job_blocks(workflow_text).values() if step in named_step_blocks(job)]
+    if len(owners) != 1:
+        raise ValueError("Gate does not have one executable workflow owner")
+    job = owners[0]
+    lines, spans = _named_step_spans(job)
+    end = next(end for name, start, end in spans if name == step)
+    prefix = "".join(lines[:end])
+    dependencies = {key}
+    pending = [key]
+    while pending:
+        dependency = pending.pop()
+        for required in gates[dependency].get("requires", ()):
+            if required not in dependencies:
+                dependencies.add(required)
+                pending.append(required)
+    unrelated_steps = {gate["step"] for name, gate in gates.items() if name not in dependencies}
+    # Named independent gates are not execution inputs of this gate. Unknown
+    # setup/source-mutating commands and all unnamed steps remain fail closed.
+    prefix_lines, prefix_spans = _named_step_spans(prefix)
+    omitted = {index for name, start, finish in prefix_spans if name in unrelated_steps
+               for index in range(start, finish)}
+    prefix = "".join(line for index, line in enumerate(prefix_lines) if index not in omitted)
+    if config.get('resume_owner') == 'parfait-isolated-validation':
+        blocks = named_step_blocks(prefix)
+        planner = blocks.get('Plan exact validation resume', '')
+        if hashlib.sha256(planner.encode()).hexdigest() == config.get('resume_planner_sha256'):
+            prefix = prefix.replace(planner, '', 1)
+        # Fetch depth changes history availability, not the checked-out tree.
+        prefix = re.sub(r'^ +fetch-depth: 0\n', '', prefix, flags=re.M)
+        for name, definition in gates.items():
+            block = named_step_blocks(prefix).get(definition['step'])
+            if block is None: continue
+            normalized = block.replace('        id: gate_' + name.replace('-', '_') + '\n', '')
+            condition = "        if: ${{ fromJSON(steps.resume.outputs.plan).gates['" + name + "'].run }}\n"
+            normalized = normalized.replace(condition, '')
+            prefix = prefix.replace(block, normalized, 1)
+        prefix = prefix.rstrip() + '\n'
+    envelope = []
+    for field in ("env", "defaults"):
+        envelope.append(_workflow_top_level_field(workflow_text, field))
+    return "".join(envelope) + prefix
+
+
+def _historical_workflow_definition(workflow, revision):
+    """Read historical declarative gate data without executing historical code."""
+    values = {}
+    def data(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return values[node.id]
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            rows = [data(child) for child in node.elts]
+            return tuple(rows) if isinstance(node, ast.Tuple) else rows
+        if isinstance(node, ast.Dict):
+            return {data(key): data(value) for key, value in zip(node.keys, node.values)}
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return data(node.left) + data(node.right)
+        raise ValueError("Historical gate definition is not declarative")
+    module = ast.parse(git_show_file(revision, "scripts/validation-resume.py"))
+    for statement in module.body:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+            name = statement.targets[0].id
+            try:
+                values[name] = data(statement.value)
+            except (ValueError, KeyError, TypeError):
+                if name == "WORKFLOWS":
+                    raise ValueError("Cannot authenticate historical gate definition")
+    if workflow not in values.get('WORKFLOWS', {}) and _parfait_unconditional_validation_generation(workflow, revision):
+        return WORKFLOWS[workflow]
+    return values["WORKFLOWS"][workflow]
+
+
+def gate_dependency_manifests(workflow, revision, definition=None):
+    exact = subprocess.run(["git", "rev-parse", revision + "^{commit}"], check=True, capture_output=True, text=True).stdout.strip()
+    return _gate_dependency_manifests(workflow, exact, json.dumps(definition or WORKFLOWS[workflow], sort_keys=True))
+
+
+@functools.lru_cache(maxsize=128)
+def _gate_dependency_manifests(workflow, revision, definition_json):
+    """Materialize the existing gate model into auditable content identities.
+
+    These manifests accompany the canonical decision, never substitute a new
+    gate registry. Executable workflow/toolchain policy is recorded separately
+    from application content; commit identity is provenance, not invalidation.
+    """
+    config = json.loads(definition_json)
+    raw = subprocess.run(["git", "ls-tree", "-r", "-z", revision],
+        check=True, capture_output=True).stdout.decode()
+    tree = {}
+    for entry in raw.split("\0"):
+        if entry:
+            meta, path = entry.split("\t", 1)
+            mode, kind, oid = meta.split()
+            tree[path] = {"mode": mode, "kind": kind, "oid": oid}
+    workflow_text = git_show_file(revision, WORKFLOW_PATHS[workflow])
+    gate_steps = [gate["step"] for gate in config["gates"].values()]
+    import io
+    import tarfile
+    test_tokens = {}
+    test_file_patterns = {}
+    if any(path.startswith("AgentPortal.Tests/") for path in tree):
+        archive = subprocess.run(["git", "archive", revision, "AgentPortal.Tests"], check=True, capture_output=True).stdout
+        with tarfile.open(fileobj=io.BytesIO(archive)) as contents:
+            for entry in contents.getmembers():
+                if entry.isfile() and entry.name.endswith(".cs"):
+                    source = contents.extractfile(entry).read().decode("utf-8-sig")
+                    test_tokens[entry.name] = set(re.findall(r"[A-Za-z0-9_.-]+", source))
+                    test_file_patterns[entry.name] = _test_file_dependency_patterns(source)
+    import posixpath
+    import xml.etree.ElementTree as ET
+    copied_inputs = {}
+    project_path = "AgentPortal.Tests/AgentPortal.Tests.csproj"
+    if project_path in tree:
+        project = ET.fromstring(git_show_file(revision, project_path))
+        for node in project.iter():
+            include = node.get("Include", "").replace("\\", "/")
+            if include and (node.get("CopyToOutputDirectory") or node.find("CopyToOutputDirectory") is not None):
+                path = posixpath.normpath("AgentPortal.Tests/" + include)
+                link = node.get("Link") or node.findtext("Link") or posixpath.basename(path)
+                copied_inputs[path] = posixpath.basename(link)
+    result = {}
+    for key, gate in config["gates"].items():
+        inputs = {path: identity for path, identity in tree.items()
+                  if gate_matches(path, gate) or matches(path, config.get("force_all", ()))}
+        # Source-contract tests read copied and direct repository files. Preserve
+        # those content inputs alongside the C# fixture, even for neutral owners.
+        tokens = set()
+        dynamic_patterns = set()
+        if gate.get("runtime_file_dependencies", True):
+            for path in tuple(inputs):
+                if path.startswith("AgentPortal.Tests/") and path.endswith(".cs"):
+                    tokens.update(test_tokens.get(path, ()))
+                    dynamic_patterns.update(test_file_patterns.get(path, ()))
+            if tokens:
+                inputs.update({path: identity for path, identity in tree.items()
+                               if Path(path).name in tokens})
+                inputs.update({path: tree[path] for path, alias in copied_inputs.items()
+                               if path in tree and alias in tokens})
+            if dynamic_patterns:
+                inputs.update({path: identity for path, identity in tree.items() if matches(path, dynamic_patterns)})
+        source_digest = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+        control = _gate_execution_contract(workflow_text, config, key)
+        control_digest = hashlib.sha256(control.encode()).hexdigest()
+        definition_digest = hashlib.sha256(json.dumps(gate, sort_keys=True).encode()).hexdigest()
+        result[key] = {
+            "schemaVersion": 1, "unitId": workflow + ":" + key,
+            "parentId": workflow, "sourceRevision": revision,
+            "sourceInputs": inputs, "sourceIdentity": source_digest,
+            "controlPlanePath": WORKFLOW_PATHS[workflow],
+            "executionContractIdentity": control_digest,
+            "gateDefinitionIdentity": definition_digest,
+            "contentIdentity": hashlib.sha256((source_digest + control_digest + definition_digest).encode()).hexdigest(),
+            "requires": list(gate.get("requires", ())),
+            "consumes": list(gate.get("consumes", ())),
+            "materializes": list(gate.get("materializes", ())),
+            "toolchainPolicy": "producer-execution-contract",
+        }
+    return result
+
+
+def _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt):
+    if workflow not in WORKFLOWS or plan.get("workflow") != workflow:
+        raise ValueError("Validation cache workflow mismatch")
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha or "") or run_id < 1 or run_attempt < 1:
+        raise ValueError("Malformed validation cache identity")
+    gates = {}
+    for key, row in (plan.get("gates") or {}).items():
+        if key not in WORKFLOWS[workflow]["gates"] or not isinstance(row, dict):
+            continue
+        receipt = row.get("receipt") or row.get("producerReceipt") or {}
+        if receipt.get("result") == "success":
+            gates[key] = {"result": "success"}
+    return {
+        "schemaVersion": 2,
+        "workflow": workflow,
+        "headSha": head_sha,
+        "runId": run_id,
+        "runAttempt": run_attempt,
+        "validationBase": plan.get("validationBase", TRUSTED_PR_BASE),
+        "gates": gates,
+    }
+
+
+def _write_gate_cache(plan, workflow, head_sha, run_id, run_attempt, output):
+    payload = _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt)
+    path = Path(output)
+    if not payload["gates"]:
+        if path.exists():
+            path.unlink()
+        return payload
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
+    return payload
+
+
+def cmd_record_evidence(args):
+    """Enrich the plan and checkpoint successful children even if the parent later fails."""
+    plan = json.loads(Path(args.plan).read_text())
+    observed = {}
+    local_context = os.environ.get("VALIDATION_STEP_CONTEXT")
+
+    if local_context:
+        context = json.loads(local_context)
+        if not isinstance(context, dict):
+            raise ValueError("Validation step context must be an object")
+        for key in WORKFLOWS[plan["workflow"]]["gates"]:
+            step_id = "gate_" + key.replace("-", "_")
+            row = context.get(step_id) or {}
+            outcome = row.get("outcome") or row.get("conclusion")
+            if outcome:
+                observed[WORKFLOWS[plan["workflow"]]["gates"][key]["step"]] = {
+                    "result": outcome,
+                    "jobId": None,
+                    "stepNumber": None,
+                }
+    else:
+        token = os.environ.get("GITHUB_TOKEN", "")
+        if not token:
+            raise ValueError("Evidence recording requires authenticated producer observations")
+        try:
+            jobs = api_get(args.repository, f"actions/runs/{args.run_id}/jobs?filter=latest&per_page=100", token).get("jobs", [])
+        except (urllib.error.HTTPError, EvidenceLookupUnavailable) as exc:
+            if exc.code != 403:
+                raise
+            plan["receiptSchemaVersion"] = 1
+            plan["recordingRunId"] = args.run_id
+            plan["receiptRecordingDeferred"] = "current_run_actions_observation_forbidden"
+            Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+            print("Deferred current-run child receipt enrichment; completed-run evidence remains canonical.")
+            return
+        for job in jobs:
+            for step in job.get("steps", []):
+                if step.get("conclusion"):
+                    observed[step.get("name")] = {
+                        "result": step["conclusion"],
+                        "jobId": job.get("id"),
+                        "stepNumber": step.get("number"),
+                    }
+
+    runtime = {"python": sys.version.split()[0]}
+    for tool in ("dotnet", "node"):
+        try:
+            observation = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=20)
+            if observation.returncode == 0:
+                runtime[tool] = observation.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    plan["receiptSchemaVersion"] = 1
+    plan["recordingRunId"] = args.run_id
+    for key, gate in plan.get("gates", {}).items():
+        observation = observed.get(gate["step"], {})
+        producer = gate.get("producerReceipt") or {}
+        gate["receipt"] = {
+            "result": observation.get("result", "unproven") if gate.get("run") else producer.get("result", "unproven"),
+            "producerJobId": observation.get("jobId") if gate.get("run") else producer.get("jobId"),
+            "producerStepNumber": observation.get("stepNumber") if gate.get("run") else producer.get("stepNumber"),
+            "producingRunId": args.run_id if gate.get("run") else gate.get("evidenceRunId", plan.get("priorRunId")),
+            "recordingJobId": observation.get("jobId"),
+            "stepNumber": observation.get("stepNumber"),
+            "reused": not gate.get("run"),
+            "actualToolchain": runtime if gate.get("run") else None,
+            "toolchainPolicy": "observed-producer" if gate.get("run") else "preserved-producer-contract",
+        }
+
+    Path(args.output).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+    cache_output = getattr(args, "cache_output", None)
+    if cache_output:
+        payload = _write_gate_cache(
+            plan,
+            plan["workflow"],
+            plan["currentSha"],
+            args.run_id,
+            int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+            cache_output,
+        )
+        print(json.dumps({"cachedSuccessfulGates": sorted(payload["gates"])}, sort_keys=True))
+
+
+
+def _stop_unresolved_planning(args, exc):
+    """Non-evidence planner defects remain blocking; never invent success."""
+    record = {"schemaVersion": 2, "mode": "blocked",
+              "reason": "planner_unavailable_resume_planning_only",
+              "plannerError": type(exc).__name__}
+    if isinstance(exc, EvidenceLookupUnavailable):
+        record["evidenceHttpStatus"] = exc.code
+        record["evidenceEndpoint"] = exc.endpoint
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(record, sort_keys=True))
+    raise SystemExit(1)
+
+
+def _fresh_plan_when_evidence_unavailable(args, exc):
+    """Historical evidence is optional optimization; unavailable proof means run fresh."""
+    plan = compute_plan(
+        args.workflow,
+        args.current_sha,
+        None,
+        {},
+        [],
+        "evidence_unavailable_fresh_validation",
+    )
+    plan["schemaVersion"] = 2
+    plan["evidenceFallback"] = {
+        "reason": "historical_evidence_unavailable_run_fresh",
+        "error": type(exc).__name__,
+        "httpStatus": exc.code,
+        "endpoint": exc.endpoint,
+    }
+    plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    return plan
+
+
+def _cached_success_evidence(args):
+    """Use PR-local gate evidence before any remote history lookup.
+
+    Schema 1 is the older all-parent-success capsule. Schema 2 is the canonical
+    child ledger: only gates explicitly checkpointed successful are reusable.
+    Git ancestry plus _plan_against_prior still revalidates source, execution and
+    dependency identity before any cached success can suppress work.
+    """
+    raw = getattr(args, "resume_cache", None)
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    if (
+        data.get("workflow") != args.workflow
+        or not re.fullmatch(r"[0-9a-f]{40}", data.get("headSha") or "")
+        or type(data.get("runId")) is not int
+        or data["runId"] < 1
+    ):
+        raise ValueError("Malformed PR-local validation cache")
+    if data.get("validationBase", TRUSTED_PR_BASE) != _VALIDATION_PR_BASE.get():
+        return None
+    prior_sha = data["headSha"]
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode:
+        raise ValueError("PR-local validation cache is not in the current candidate lineage")
+
+    steps = _StepEvidence()
+    schema = data.get("schemaVersion")
+    if schema == 1:
+        successful = set(WORKFLOWS[args.workflow]["gates"])
+    elif schema == 2:
+        rows = data.get("gates")
+        if not isinstance(rows, dict):
+            raise ValueError("Malformed PR-local child gate ledger")
+        successful = {
+            key for key, row in rows.items()
+            if key in WORKFLOWS[args.workflow]["gates"]
+            and isinstance(row, dict)
+            and row.get("result") == "success"
+        }
+    else:
+        raise ValueError("Unsupported PR-local validation cache schema")
+
+    for key in successful:
+        gate = WORKFLOWS[args.workflow]["gates"][key]
+        step = gate["step"]
+        steps[step] = "success"
+        steps.producers[step] = {
+            "result": "success",
+            "jobId": None,
+            "runId": data["runId"],
+            "stepNumber": None,
+            "artifact": "pr-local-gate-cache",
+        }
+    if not steps:
+        return None
+    prior = {
+        "id": data["runId"],
+        "head_sha": prior_sha,
+        "run_attempt": int(data.get("runAttempt") or 1),
+        "event": args.event,
+        "head_branch": args.head_branch,
+    }
+    return prior, steps, "pr_local_gate_cache"
+
+
+def cmd_cache_success(args):
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+    plan = {
+        "workflow": args.workflow,
+        "currentSha": args.head_sha,
+        "gates": {
+            key: {"receipt": {"result": "success"}}
+            for key in WORKFLOWS[args.workflow]["gates"]
+        },
+    }
+    payload = _write_gate_cache(
+        plan,
+        args.workflow,
+        args.head_sha,
+        args.run_id,
+        args.run_attempt,
+        args.output,
+    )
+    print(json.dumps(payload, sort_keys=True))
+
+
+def _compute_validation_plan_once(args):
+    cached = _cached_success_evidence(args)
+    if cached is not None:
+        prior, steps, source = cached
+        plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+        _stamp_evidence(plan, prior, source)
+        # A failed parent can checkpoint only the children it observed successful.
+        # Missing cache entries are unknown, not invalidated. Backfill only those
+        # unresolved gates from trusted content-equivalent historical producers;
+        # changed inputs/definitions remain runnable and fail closed.
+        plan = _apply_content_equivalent_evidence(args, plan)
+    else:
+        prior, steps, source = prior_evidence(args)
+        if prior:
+            plan = _plan_against_prior(args.workflow, args.current_sha, prior, steps, source)
+            _stamp_evidence(plan, prior, source)
+        else:
+            plan = compute_plan(
+                args.workflow,
+                args.current_sha,
+                None,
+                {},
+                [],
+                source,
+            )
+        plan = _apply_content_equivalent_evidence(args, plan)
+    plan["schemaVersion"] = 2
+    plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
+    return plan
+
+
+def _evidence_retry_delay(exc, attempt):
+    rate = getattr(exc, "rate", {}) or {}
+    retry = rate.get("Retry-After")
+    reset = rate.get("X-RateLimit-Reset")
+    try:
+        if retry is not None:
+            return max(1, int(retry) + 2)
+        if reset is not None:
+            return max(1, int(reset) - int(time.time()) + 3)
+    except (TypeError, ValueError):
+        pass
+    return (15, 30, 60, 120)[min(attempt, 3)]
+
+
+# The lifecycle owns the one trusted production-readiness producer. Validation
+# only consumes its bounded data receipts; it never obtains production secrets.
+READINESS_SCHEMA = 1
+READINESS_MAX_AGE_SECONDS = 900
+READINESS_WAIT_SECONDS = 900
+
+
+def readiness_scope(candidate, approved):
+    """Scope production readiness using only the approved impact classifier.
+
+    This never grants release admission. Nonpublishing repairs still need every
+    exact-head integrity/security/validation gate. A changed release request,
+    application input, unknown impact, or missing baseline remains required.
+    """
+    result = {'state': 'required', 'reason': 'production_impact_unproven',
+              'candidate': candidate, 'approved': approved}
+    try:
+        if not all(re.fullmatch(r'[a-f0-9]{40}', value or '') for value in (candidate, approved)):
+            return result
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, candidate],
+                          capture_output=True, check=False).returncode:
+            return result
+        paths = subprocess.check_output(['git', 'diff', '--no-renames', '--name-only', '-z',
+                                         approved, candidate, '--']).decode().split('\0')
+        paths = sorted(path for path in paths if path)
+        if not paths or RELEASE_REQUEST_PATH in paths:
+            return dict(result, reason='release_request_or_empty_scope')
+        source = git_show_file(approved, 'scripts/validation-resume.py')
+        # Execute only this authenticated approved module, never candidate
+        # classifier code or candidate imports. It owns the existing path policy.
+        trusted = {'__name__': 'approved_readiness_impact', '__file__': __file__}
+        exec(compile(source, 'approved-validation-resume', 'exec'), trusted)
+        if not all(trusted['release_control_only_path'](path) for path in paths):
+            return dict(result, reason='application_or_unknown_input')
+        proof = dict(candidate=candidate, approved=approved, paths=paths,
+                     authorityDigest=hashlib.sha256(source.encode()).hexdigest())
+        return dict(proof, state='not-required', reason='approved_nonpublishing_control_scope',
+                    identity=hashlib.sha256(json.dumps(proof, sort_keys=True).encode()).hexdigest())
+    except (KeyError, ValueError, TypeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return result
+
+
+def readiness_targets(candidate, approved):
+    paths = git_changed(approved, candidate)
+    if 'Docs/releases/direct-release-request.json' not in paths:
+        return list(release_targets_for_paths(paths))
+    request = json.loads(git_show_file(candidate, 'Docs/releases/direct-release-request.json'))
+    if not isinstance(request, dict) or request.get('releaseMode') not in {'approved-only', 'validate-only'}:
+        raise ValueError('READINESS_RELEASE_REQUEST_INVALID')
+    if request['releaseMode'] == 'validate-only':
+        return list(release_targets_for_paths(paths))
+    targets = request.get('targets')
+    selected_release_target_keys(targets)
+    if any(type(request.get(key, False)) is not bool for key in ('cloudflareWebsiteRouting', 'preserveLiveTargets')):
+        raise ValueError('READINESS_RELEASE_REQUEST_INVALID')
+    return targets
+
+
+def readiness_policy_identity(approved):
+    paths = ('scripts/release-migration.py', 'scripts/release-prepublication.py',
+             'scripts/release-lifecycle.py', 'scripts/validation-resume.py', 'scripts/release-operation-evidence.py',
+             'scripts/MigrationReleaseProbe/Program.cs', 'scripts/MigrationReleaseProbe/CandidateContract.cs',
+             '.github/workflows/legend-release-lifecycle.yml', '.github/workflows/approved-release-security-validation.yml')
+    return hashlib.sha256(json.dumps({p: git_show_file(approved, p) for p in paths},
+                                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def readiness_identity(candidate, approved, targets):
+    probe = migration_probe_identity(candidate, candidate)
+    workflow = git_show_file(candidate, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW)
+    build = {path: git_show_file(candidate, path) for path in PACKAGE_AUTHORITY_PATHS
+             if path != PACKAGE_BUILD_WORKFLOW}
+    build['workflow'] = package_builder_workflow_contract(workflow)
+    jobs = _job_blocks(workflow)
+    rehearsal, prepare = jobs.get('migration-rehearsal'), jobs.get('migration-rehearsal-prepare')
+    if not rehearsal or not prepare:
+        raise ValueError('READINESS_REHEARSAL_AUTHORITY_MISSING')
+    payload = {'schemaVersion': READINESS_SCHEMA, 'migrationInputIdentity': probe['runtimeIdentity'],
+               'candidateContractIdentity': probe['toolIdentity'],
+               'probeExecutionIdentity': probe['executionIdentity'],
+               'rehearsalExecutionIdentity': hashlib.sha256((prepare + '\n' + rehearsal).encode()).hexdigest(),
+               'migrationBuildIdentity': hashlib.sha256(json.dumps(build, sort_keys=True).encode()).hexdigest(),
+               'policyIdentity': readiness_policy_identity(approved),
+               'targets': sorted(targets), 'environment': 'Production',
+               'resourceGroup': RELEASE_RESOURCE_GROUP}
+    return dict(payload, identity=hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                                         separators=(',', ':')).encode()).hexdigest())
+
+
+def migration_contract_static_styles_only(candidate, approved):
+    """Reviewed non-executable delta; retain full identities for build/package reuse."""
+    patterns = WORKFLOWS[PACKAGE_VALIDATION_WORKFLOW]['gates']['build-infrastructure']['paths']
+    patterns = tuple(p for p in patterns if p not in {'**/*.csproj', 'MASTERAPP.sln'})
+    def entries(revision):
+        rows = subprocess.check_output(['git', 'ls-tree', '-rz', '--full-tree', revision], text=True).split('\0')
+        return {name: metadata for row in rows if row
+                for metadata, name in [row.split('\t', 1)] if matches(name, patterns)}
+    before, after = entries(approved), entries(candidate)
+    changed = [p for p in before.keys() | after.keys() if before.get(p) != after.get(p)]
+    return bool(changed) and all(
+        p.startswith('SHARED/wwwroot/') and p.endswith('.css') and
+        before.get(p, '').startswith('100644 blob ') and after.get(p, '').startswith('100644 blob ')
+        for p in changed)
+
+
+def candidate_migration_contract_proven(candidate, approved, contract, approved_contract):
+    """Candidate metadata cannot declare its own completeness or safety.
+
+    The initial reviewed rule covers unchanged migration/runtime dependencies.
+    Unknown discovery changes (including attributes outside Migrations/) stop
+    before database observation. Add new shapes through reviewed extractor rules.
+    """
+    current = migration_probe_identity(candidate, candidate)
+    trusted = migration_probe_identity(approved, approved)
+    rule = 'approved-definitions-exact'
+    if current['runtimeIdentity'] != trusted['runtimeIdentity']:
+        if (current.get('toolIdentity') != trusted.get('toolIdentity') or
+            current.get('executionIdentity') != trusted.get('executionIdentity') or
+            not migration_contract_static_styles_only(candidate, approved)):
+            raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: migration/runtime dependency content changed; reviewed extraction rule required')
+        rule = 'approved-definitions-static-styles-only'
+    if not isinstance(contract, dict) or contract != approved_contract:
+        raise ValueError('CANDIDATE_MIGRATION_CONTRACT_UNPROVEN: candidate metadata differs from approved definitions')
+    return {'state': 'proven', 'rule': rule,
+            'runtimeIdentity': current['runtimeIdentity'],
+            'approvedRuntimeIdentity': trusted['runtimeIdentity']}
+
+
+def validate_readiness_receipt(receipt, expected, *, now=None, require_fresh=True):
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc) if now is None else now
+    if not isinstance(receipt, dict) or any(receipt.get(k) != v for k, v in expected.items()):
+        raise ValueError('READINESS_INPUTS_CHANGED')
+    if receipt.get('state') not in {'executed-success', 'reused-success'}:
+        raise ValueError('READINESS_NOT_SUCCESSFUL')
+    try:
+        observed = datetime.datetime.fromisoformat(receipt['observedUtc'].replace('Z', '+00:00'))
+        if observed.utcoffset() is None:
+            raise ValueError()
+    except (KeyError, AttributeError, TypeError, ValueError):
+        raise ValueError('READINESS_TIME_UNPROVEN') from None
+    age = (now - observed).total_seconds()
+    if age < -30 or (require_fresh and age > READINESS_MAX_AGE_SECONDS):
+        raise ValueError('READINESS_EXPIRED')
+    for key in ('databaseIdentity', 'baselineIdentity', 'schemaIdentity', 'contractDigest'):
+        if not isinstance(receipt.get(key), str) or not re.fullmatch('[a-f0-9]{64}', receipt[key]):
+            raise ValueError('READINESS_PROOF_INCOMPLETE')
+    if type(receipt.get('pendingCount')) is not int or not 0 <= receipt['pendingCount'] <= 10000:
+        raise ValueError('READINESS_PROOF_INCOMPLETE')
+    if receipt['pendingCount'] > 0:
+        rehearsal = receipt.get('rehearsal')
+        if (not isinstance(rehearsal, dict) or rehearsal.get('proven') is not True or
+            rehearsal.get('contractDigest') != receipt['contractDigest'] or
+            rehearsal.get('schemaIdentity') != receipt['schemaIdentity'] or
+            rehearsal.get('baselineIdentity') != receipt['baselineIdentity'] or
+            not isinstance(rehearsal.get('bundleDigest'), str) or
+            not re.fullmatch('[a-f0-9]{64}', rehearsal['bundleDigest'])):
+            raise ValueError('MIGRATION_REHEARSAL_MISSING')
+    admission = 'proven' if receipt['pendingCount'] else 'not-required'
+    if receipt.get('mutationAdmission') != admission or receipt.get('deploymentReadiness') != 'proven':
+        raise ValueError('READINESS_PREREQUISITES_UNPROVEN')
+    return receipt
+
+
+def trusted_readiness_run(repository, run, approved):
+    """PR-target head is candidate metadata; the base owns executed workflow code."""
+    if ((run.get('head_repository') or {}).get('full_name') != repository or
+        run.get('path') != '.github/workflows/legend-release-lifecycle.yml'):
+        return False
+    if run.get('event') == 'workflow_dispatch':
+        return run.get('head_branch') == TRUSTED_PR_BASE and run.get('head_sha') == approved
+    if run.get('event') != 'pull_request_target':
+        return False
+    prs = run.get('pull_requests')
+    if not isinstance(prs, list) or len(prs) != 1:
+        return False
+    head, base = prs[0].get('head', {}), prs[0].get('base', {})
+    expected_url = 'https://api.github.com/repos/' + repository
+    execution = base.get('sha')
+    if not isinstance(execution, str) or not re.fullmatch('[a-f0-9]{40}', execution):
+        return False
+    if execution != approved and subprocess.run(['git', 'merge-base', '--is-ancestor', execution, approved],
+                                                capture_output=True, check=False).returncode != 0:
+        return False
+    return (base.get('ref') == TRUSTED_PR_BASE and
+            head.get('sha') == run.get('head_sha') and head.get('ref') == run.get('head_branch') and
+            all(part.get('repo', {}).get('url') == expected_url for part in (head, base)))
+
+
+def readiness_execution_revision(run):
+    return run['pull_requests'][0]['base']['sha'] if run['event'] == 'pull_request_target' else run['head_sha']
+
+
+def trusted_rehearsal_run(repository, run, candidate, expected):
+    """Authenticate source/base and recompute inputs, never trust receipt claims."""
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, path, candidate, require_completed=False):
+        return False
+    pulls = run.get('pull_requests')
+    if pulls == []:
+        # Merged PR runs lose this mutable association. GitHub's existing
+        # commit-to-PR endpoint binds the immutable producer after merge.
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        if not token:
+            raise EvidenceLookupUnavailable('Package producer PR association credential unavailable')
+        associated = api_get(repository, f"commits/{run['head_sha']}/pulls?per_page=100", token)
+        if not isinstance(associated, list) or len(associated) >= 100:
+            raise EvidenceLookupUnavailable('Package producer PR association inventory incomplete')
+        pulls = [row for row in associated if
+            row.get('base', {}).get('ref') == TRUSTED_PR_BASE and
+            all(row.get(side, {}).get('repo', {}).get('url') == 'https://api.github.com/repos/' + repository
+                for side in ('head', 'base'))]
+    if not isinstance(pulls, list) or len(pulls) != 1:
+        return False
+    head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
+    url = 'https://api.github.com/repos/' + repository
+    approved = base.get('sha', '')
+    if (base.get('ref') != TRUSTED_PR_BASE or head.get('sha') != run.get('head_sha') or
+        not re.fullmatch('[a-f0-9]{40}', approved) or
+        any(part.get('repo', {}).get('url') != url for part in (head, base))):
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, run['head_sha']],
+                      capture_output=True, check=False).returncode != 0:
+        return False
+    try:
+        producer = readiness_identity(run['head_sha'], approved, expected['targets'])
+        approved_owner = readiness_identity(approved, approved, expected['targets'])
+    except (ValueError, KeyError):
+        return False
+    # Compatibility alone cannot authenticate a candidate-modified executor
+    # that fabricates counts. Install authority changes through reviewed
+    # bootstrap before that code may certify subsequent candidates.
+    if any(producer.get(key) != approved_owner.get(key) for key in (
+            'candidateContractIdentity', 'probeExecutionIdentity',
+            'rehearsalExecutionIdentity', 'migrationBuildIdentity')):
+        return False
+    return producer == expected
+
+
+def readiness_child_succeeded(repository, run, name, attempt, token):
+    # Parent retries do not invalidate a completed child from an earlier attempt.
+    if type(attempt) is not int or not 1 <= attempt <= run.get('run_attempt', 1):
+        return False
+    jobs = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+    child = [j for j in jobs.get('jobs', []) if j.get('name') == name]
+    return (jobs.get('total_count') == len(jobs.get('jobs', [])) and len(child) == 1 and
+            child[0].get('status') == 'completed' and child[0].get('conclusion') == 'success')
+
+
+def readiness_failure_kind(repository, run, approved, token):
+    if not trusted_readiness_run(repository, run, approved):
+        return 'untrusted'
+    attempt = run.get('run_attempt')
+    if type(attempt) is not int or attempt < 1:
+        return 'untrusted'
+    name = 'legend-readiness-failure-' + run['head_sha'] + '-a' + str(attempt)
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts', [])
+    if inventory.get('total_count') != len(artifacts):
+        raise EvidenceLookupUnavailable('Readiness failure inventory incomplete')
+    rows = [row for row in artifacts if row.get('name') == name and row.get('expired') is False]
+    if len(rows) != 1:
+        return 'unclassified'
+    artifact = rows[0]
+    if type(artifact.get('id')) is not int or artifact['id'] <= 0:
+        return 'untrusted'
+    jobs = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+    producers = [row for row in jobs.get('jobs', []) if row.get('name') == 'readiness-observe']
+    if jobs.get('total_count') != len(jobs.get('jobs', [])) or len(producers) != 1:
+        return 'untrusted'
+    producer = producers[0]
+    uploads = [step for step in producer.get('steps', []) if step.get('name') == 'Preserve classified readiness failure']
+    if (producer.get('status') != 'completed' or producer.get('conclusion') != 'failure' or
+            len(uploads) != 1 or uploads[0].get('status') != 'completed' or uploads[0].get('conclusion') != 'success'):
+        return 'untrusted'
+    failure = _release_history_json(repository, run['id'], rows[0], 'failure.json')
+    if (failure.get('schemaVersion') != 1 or failure.get('candidate') != run['head_sha'] or
+        failure.get('executionAuthority') != readiness_execution_revision(run) or
+        failure.get('producingRun') != run['id'] or failure.get('producingAttempt') != attempt):
+        raise ValueError('Readiness failure producer identity mismatch')
+    return failure.get('classification', 'unclassified')
+
+
+def readiness_refresh_intent(repository, operation, approved, token):
+    """Exact-name provider index, authenticated back to the approved lifecycle."""
+    if not re.fullmatch('[a-f0-9]{64}', operation):
+        raise ValueError('Invalid readiness recovery identity')
+    name = 'legend-readiness-recovery-' + operation
+    data = api_get(repository, 'actions/artifacts?name=' + name + '&per_page=100', token)
+    rows = data.get('artifacts')
+    if not isinstance(rows, list) or data.get('total_count') != len(rows):
+        raise EvidenceLookupUnavailable('Readiness recovery intent inventory incomplete')
+    if not rows:
+        return None
+    if len(rows) != 1 or rows[0].get('expired') is not False or rows[0].get('name') != name:
+        raise ValueError('Readiness recovery intent expired or ambiguous; no request authorized')
+    artifact = rows[0]
+    run_id = artifact.get('workflow_run', {}).get('id')
+    run = api_get(repository, f'actions/runs/{run_id}', token)
+    trusted = trusted_readiness_run(repository, run, approved)
+    if run.get('event') in {'workflow_run', 'schedule', 'push'}:
+        trusted = (run.get('head_repository', {}).get('full_name') == repository and
+            run.get('path') == '.github/workflows/legend-release-lifecycle.yml' and
+            run.get('head_branch') == TRUSTED_PR_BASE and
+            re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) and
+            subprocess.run(['git', 'merge-base', '--is-ancestor', run['head_sha'], approved], capture_output=True).returncode == 0)
+    if not trusted:
+        raise ValueError('Readiness recovery producer untrusted')
+    record = _release_history_json(repository, run_id, artifact, 'operation.json')
+    if (record.get('schemaVersion') != 1 or record.get('phase') != 'intent' or
+        record.get('operationId') != operation or record.get('producingRun') != run_id or
+        type(record.get('producingAttempt')) is not int or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 1)):
+        raise ValueError('Readiness recovery producer identity mismatch')
+    return record
+
+
+def readiness_artifact_candidates(repository, runs, prefix, identity, token, trusted):
+    for run in runs:
+        if not trusted(run):
+            continue
+        stem = prefix + identity + '-a'
+        data = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        rows = data.get('artifacts')
+        if not isinstance(rows, list) or data.get('total_count') != len(rows):
+            raise EvidenceLookupUnavailable('Readiness artifact inventory incomplete')
+        compatible = []
+        for row in rows:
+            name = row.get('name', '')
+            if row.get('expired') is not False or not name.startswith(stem):
+                continue
+            if (type(row.get('id')) is not int or row['id'] < 1 or
+                not name[len(stem):].isdigit() or not 1 <= int(name[len(stem):]) <= run.get('run_attempt', 1)):
+                raise ValueError('READINESS_ARTIFACT_IDENTITY_INVALID')
+            compatible.append(row)
+        if len({row['name'] for row in compatible}) != len(compatible):
+            raise ValueError('READINESS_ARTIFACT_IDENTITY_AMBIGUOUS')
+        for row in sorted(compatible, key=lambda value: int(value['name'][len(stem):]), reverse=True):
+            yield run, row
+
+
+def readiness_evidence(repository, candidate, approved, targets, token, *, require_fresh=True, baseline=None):
+    import tempfile
+    expected = readiness_identity(candidate, approved, targets)
+    workflow = 'legend-release-lifecycle.yml'
+    data = api_get(repository, 'actions/workflows/' + workflow + '/runs?per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-release-readiness-', expected['identity'], token, lambda run: trusted_readiness_run(repository, run, approved)):
+        with tempfile.TemporaryDirectory() as directory:
+            _download_run_artifact(repository, run['id'], artifact['name'], Path(directory), artifact_id=artifact['id'])
+            receipt = json.loads((Path(directory) / 'readiness.json').read_text())
+        try:
+            validate_readiness_receipt(receipt, expected, require_fresh=require_fresh)
+        except ValueError as exc:
+            if str(exc) == 'READINESS_EXPIRED':
+                continue
+            raise
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (receipt.get('producingRun') != run['id'] or
+            receipt.get('executionAuthority') != readiness_execution_revision(run) or receipt.get('candidate') != run.get('head_sha')):
+            raise ValueError('READINESS_PRODUCER_MISMATCH')
+        if not readiness_child_succeeded(repository, run, 'release-readiness', receipt.get('producingAttempt'), token):
+            continue
+        if baseline and any(receipt.get(key) != value for key, value in baseline.items()):
+            continue
+        return {'state': 'reused-success', 'sourceRun': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id'],
+                'compatibilityProof': expected, 'receipt': receipt}
+    return None
+
+
+def readiness_observation_evidence(repository, candidate, approved, targets, token):
+    import tempfile
+    expected = readiness_identity(candidate, approved, targets)
+    data = api_get(repository, 'actions/workflows/legend-release-lifecycle.yml/runs?event=pull_request_target&per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-readiness-observation-', expected['identity'], token, lambda run: trusted_readiness_run(repository, run, approved)):
+        with tempfile.TemporaryDirectory() as directory:
+            _download_run_artifact(repository, run['id'], artifact['name'], Path(directory), artifact_id=artifact['id'])
+            receipt = json.loads((Path(directory) / 'observation.json').read_text())
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (any(receipt.get(k) != v for k, v in expected.items()) or
+            receipt.get('producingRun') != run['id'] or
+            receipt.get('executionAuthority') != readiness_execution_revision(run) or receipt.get('candidate') != run.get('head_sha')):
+            raise ValueError('READINESS_OBSERVATION_IDENTITY_CHANGED')
+        if not readiness_child_succeeded(repository, run, 'readiness-observe', receipt.get('producingAttempt'), token):
+            continue
+        return receipt
+    return None
+
+
+def migration_rehearsal_evidence(repository, candidate, expected, token, *, baseline=None):
+    import tempfile
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    data = api_get(repository, 'actions/workflows/' + PACKAGE_VALIDATION_WORKFLOW + '/runs?event=pull_request&per_page=100', token)
+    for run, artifact in readiness_artifact_candidates(repository, data.get('workflow_runs', []),
+            'legend-migration-rehearsal-', expected['identity'], token, lambda run: trusted_rehearsal_run(repository, run, candidate, expected)):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _download_run_artifact(repository, run['id'], artifact['name'], root, artifact_id=artifact['id'])
+            receipt = json.loads((root / 'rehearsal.json').read_text())
+        if type(receipt.get('producingAttempt')) is not int or receipt['producingAttempt'] != int(artifact['name'].rsplit('-a', 1)[1]):
+            raise ValueError('READINESS_ARTIFACT_ATTEMPT_MISMATCH')
+        if (receipt.get('readinessIdentity') != expected['identity'] or receipt.get('proven') is not True or
+            receipt.get('producingRun') != run['id'] or
+            receipt.get('candidate') != run.get('head_sha') or
+            receipt.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}):
+            raise ValueError('READINESS_REHEARSAL_IDENTITY_CHANGED')
+        if not readiness_child_succeeded(repository, run, 'migration-rehearsal', receipt.get('producingAttempt'), token):
+            continue
+        if baseline and any(receipt.get(key) != baseline.get(key) for key in ('schemaIdentity', 'baselineIdentity', 'contractDigest')):
+            print('LEGEND_REHEARSAL:RETAINED_BUT_NOT_REUSED:observed_baseline_changed:source=' + str(run['id']))
+            continue
+        source = receipt.get('bundleSource')
+        if (not isinstance(source, dict) or source.get('runId') != run['id'] or
+            type(source.get('artifactId')) is not int or type(source.get('producingAttempt')) is not int or
+            source.get('artifact') != 'legend-rehearsal-bundle-' + expected['identity'] + '-a' + str(source['producingAttempt']) or
+            not readiness_child_succeeded(repository, run, 'migration-rehearsal-prepare', source['producingAttempt'], token)):
+            raise ValueError('READINESS_REHEARSED_BUNDLE_SOURCE_UNPROVEN')
+        # Read only immutable provider metadata here. The package owner downloads
+        # and hashes the bytes once when promoting this exact prepared bundle.
+        bundle = api_get(repository, f"actions/artifacts/{source['artifactId']}", token)
+        if (bundle.get('id') != source['artifactId'] or bundle.get('name') != source['artifact'] or
+            bundle.get('expired') is not False or bundle.get('workflow_run', {}).get('id') != run['id']):
+            raise ValueError('READINESS_REHEARSED_BUNDLE_SOURCE_UNPROVEN')
+        return {'receipt': receipt, 'runId': run['id'], 'artifact': artifact['name'], 'artifactId': artifact['id']}
+    return None
+
+
+def require_readiness(repository, candidate, *, event=None, clock=time.monotonic, sleep=time.sleep):
+    if os.environ.get('GITHUB_ACTIONS') != 'true' or (event or os.environ.get('GITHUB_EVENT_NAME')) != 'pull_request':
+        return {'state': 'not-required', 'reason': 'outside_pr_validation'}
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    preflight = approved_head_preflight(repository, candidate, token)
+    if not preflight['current']:
+        raise ValueError('READINESS_APPROVED_BASE_CHANGED')
+    approved = preflight['approvedHeadSha']
+    # The initial control-plane rollout cannot ask an older approved workflow to
+    # produce a receipt it does not implement. This is explicit bootstrap state,
+    # not readiness success, and disappears once the reviewed owner is approved.
+    approved_source = git_show_file(approved, 'scripts/validation-resume.py')
+    if not re.search(r'^READINESS_SCHEMA = 1$', approved_source, re.M):
+        return {'state': 'not-required', 'reason': 'initial_approved_authority_rollout', 'approved': approved}
+    scope = readiness_scope(candidate, approved)
+    if scope['state'] == 'not-required':
+        return scope
+    targets = readiness_targets(candidate, approved)
+    deadline = clock() + READINESS_WAIT_SECONDS
+    while True:
+        with evidence_lookup_budget(deadline, clock=clock):
+            proof = readiness_evidence(repository, candidate, approved, targets, token)
+        if proof:
+            print('LEGEND_READINESS:REUSED:' + str(proof['sourceRun']))
+            return proof
+        if clock() >= deadline:
+            raise RuntimeError('READINESS_BLOCKED: trusted lifecycle readiness receipt unavailable; no expensive work authorized')
+        sleep(min(10, max(0, deadline - clock())))
+
+
+def fast_track_source_validation_scope(args):
+    """Bind credential-free security validation to its live fast-track PR.
+
+    Source validation is not production readiness or mutation admission. The
+    fast-track release must separately require those proofs before publication.
+    No protected-branch source, baseline, or readiness producer is consulted.
+    """
+    if ((args.workflow, args.event) not in {('approved-release-security-validation.yml', 'pull_request'),
+        ('parfait-isolated-validation.yml', 'push')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    if not token:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
+    run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
+    if (run.get('id') != args.current_run_id or run.get('event') != args.event or
+        (args.event == 'push' and run.get('head_branch') != args.head_branch) or run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
+        run.get('head_repository', {}).get('full_name') != args.repository or
+        run.get('status') != 'in_progress'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+    pulls = [pr for pr in run.get('pull_requests', []) if
+        pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and pr.get('head', {}).get('sha') == args.current_sha]
+    if len(pulls) != 1:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_UNPROVEN')
+    pr = api_get(args.repository, f"pulls/{pulls[0]['number']}", token)
+    if (pr.get('state') != 'open' or pr.get('base', {}).get('ref') != FAST_TRACK_PR_BASE or
+        pr.get('head', {}).get('sha') != args.current_sha or
+        pr.get('head', {}).get('repo', {}).get('full_name') != args.repository):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_CHANGED')
+    preflight = approved_head_preflight(args.repository, args.current_sha, token, base_branch=FAST_TRACK_PR_BASE)
+    if not preflight['current']:
+        raise ValueError('FAST_TRACK_BASE_CHANGED')
+    return dict(phase='source-validation-only', releaseAdmission=False, baseBranch=FAST_TRACK_PR_BASE,
+        baseSha=preflight['approvedHeadSha'], candidate=args.current_sha, pullRequest=pr['number'])
+
+
+def cmd_plan(args):
+    base = getattr(args, 'validation_base', TRUSTED_PR_BASE)
+    if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError('Unsupported validation base')
+    scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None
+    with _validation_base_scope(base):
+        return _cmd_plan(args, source_scope=scope)
+
+
+@contextlib.contextmanager
+def _validation_base_scope(base):
+    token = _VALIDATION_PR_BASE.set(base)
+    try:
+        yield
+    finally:
+        _VALIDATION_PR_BASE.reset(token)
+
+
+def _cmd_plan(args, *, source_scope=None):
+    if source_scope is None:
+        require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
+    if args.workflow not in WORKFLOWS:
+        raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
+
+    plan = None
+    last_evidence_error = None
+    for attempt in range(4):
+        try:
+            plan = _compute_validation_plan_once(args)
+            break
+        except EvidenceLookupUnavailable as exc:
+            last_evidence_error = exc
+            if getattr(args, "event", None) != "pull_request":
+                plan = _fresh_plan_when_evidence_unavailable(args, exc)
+                break
+            if attempt == 3:
+                break
+            delay = _evidence_retry_delay(exc, attempt)
+            # The workflow timeout remains the outer safety bound. Do not turn a
+            # long provider reset into broad validation; preserve child proof and
+            # retry only the planning boundary.
+            if delay > 900:
+                break
+            print(
+                f"Validation evidence lookup unavailable; preserving known child proof "
+                f"and retrying planner boundary in {delay}s (attempt {attempt + 1}/4)."
+            )
+            time.sleep(delay)
+        except Exception as exc:
+            _stop_unresolved_planning(args, exc)
+
+    if plan is None:
+        _stop_unresolved_planning(args, last_evidence_error or RuntimeError("Validation planning unavailable"))
+
+    plan["validationBase"] = _VALIDATION_PR_BASE.get()
+    if source_scope is not None:
+        plan["sourceValidationScope"] = source_scope
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({key: value for key, value in plan.items() if key != "dependencyManifests"}, indent=2, sort_keys=True))
+
+
+
+def cmd_preserved(args):
+    plan = json.loads(Path(args.plan).read_text())
+    gate = plan.get("gates", {}).get(args.gate)
+    if gate is None:
+        print(f"Unknown gate {args.gate}; run it.", file=sys.stderr)
+        raise SystemExit(1)
+    if gate.get("run"):
+        print(f"RUN {args.gate}: {gate.get('reason')}")
+        raise SystemExit(1)
+    print(
+        f"PRESERVED {args.gate}: successful evidence from "
+        f"run {gate.get('evidenceRunId', plan.get('priorRunId'))} at "
+        f"{gate.get('evidenceHeadSha', plan.get('priorHeadSha'))} "
+        f"({gate.get('evidenceSource', plan.get('evidenceSource'))})"
+    )
+    raise SystemExit(0)
+
+
+
+MERGE_VALIDATION_NEUTRAL_PATHS = frozenset({
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    ".github/workflows/approved-release-security-validation.yml",
+    ".github/workflows/step5-isolated-conversion-mapping-validation.yml",
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    "Docs/releases/direct-release-request.json",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+    "scripts/test-validation-resume.py",
+    "scripts/release-lifecycle.py",
+    "scripts/test-release-policy.py",
+    "scripts/test-release-lifecycle.py",
+    "scripts/test-deploy-approved-app.py",
+    "tests/website/legend-public-cms.test.mjs",
+    "AgentPortal.Tests/WebsiteStudioV3ContractTests.cs",
+})
+
+STEP5_RELEASE_EVIDENCE_PATHS = frozenset({
+    ".github/workflows/all-intentional-direct-release-20260918.yml",
+    ".github/workflows/masterapp-platform-architecture-validation.yml",
+    "scripts/approved-release-baseline.py",
+    "scripts/release-package.py",
+    "scripts/validation-resume.py",
+})
+
+SECURITY_RELEASE_EVIDENCE_PATHS = frozenset({
+    "scripts/validation-resume.py",
+})
+
+PUBLIC_WEBSITE_EXACT_PATHS = frozenset({
+    "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs",
+    "AgentPortal.Tests/WebsiteSiteSourceV3Tests.cs",
+    "Legend-Design/legend-web-foundation.css",
+    "Legend-Website/scripts/build.mjs",
+    "Legend-Website/public/web.config",
+    "Protect-Website/Views/Shared/_Layout.cshtml",
+    "SHARED/WebsitePlatform/legend-public-cms.js",
+    "SHARED/WebsitePlatform/legend-public-web.css",
+    "Infrastructure/WebsiteEditing/WebsiteContentSanitizer.cs",
+    "Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs",
+    "Infrastructure/WebsiteEditing/WebsitePlatformController.cs",
+    "Infrastructure/WebsiteEditing/WebsiteSiteSource.cs",
+    "Infrastructure/WebsiteEditing/WebsiteStudioAgentContract.cs",
+    "Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs",
+})
+
+
+def validation_neutral_path(path: str) -> bool:
+    return path in MERGE_VALIDATION_NEUTRAL_PATHS or path.startswith("tests/")
+
+
+def _workflow_affected_by_path(workflow_name: str, path: str) -> bool:
+    config = WORKFLOWS[workflow_name]
+    if matches(path, config.get("force_all", ())):
+        return True
+    return any(gate_matches(path, gate) for gate in config["gates"].values())
+
+
+def required_validation_topology(changed_paths):
+    """Return the exact validation workflows required before integration.
+
+    This is the single merge-readiness topology. Release lifecycle consumes the
+    answer; it does not maintain subsystem path registries of its own.
+    """
+    names = tuple(dict.fromkeys(changed_paths))
+    architecture = ".github/workflows/masterapp-platform-architecture-validation.yml"
+    step5 = ".github/workflows/step5-isolated-conversion-mapping-validation.yml"
+    step6 = ".github/workflows/step6-openai-ads-execution-validation.yml"
+    step78 = ".github/workflows/steps7-8-governed-advertising-validation.yml"
+    security = ".github/workflows/approved-release-security-validation.yml"
+
+    required = {architecture}
+    release_control_authority_change = any(release_control_authority_path(name) for name in names)
+    step5_release_evidence_change = any(name in STEP5_RELEASE_EVIDENCE_PATHS for name in names)
+    security_release_evidence_change = any(name in SECURITY_RELEASE_EVIDENCE_PATHS for name in names)
+    release_evidence_change = (
+        release_control_authority_change
+        or step5_release_evidence_change
+        or security_release_evidence_change
+    )
+
+    scope_neutral = MERGE_VALIDATION_NEUTRAL_PATHS | {
+        "scripts/deploy-approved-app.py",
+        "scripts/release-package.py",
+    }
+    product_names = [
+        name for name in names
+        if name not in scope_neutral and not name.startswith("tests/")
+    ]
+    public_website_only = bool(product_names) and all(
+        name in PUBLIC_WEBSITE_EXACT_PATHS for name in product_names
+    )
+
+    if step5 in names or step5_release_evidence_change:
+        required.add(step5)
+
+    shared_resume_authority_change = "scripts/validation-resume.py" in names
+
+    step6_name = "step6-openai-ads-execution-validation.yml"
+    if (
+        shared_resume_authority_change
+        or step6 in names
+        or any(_workflow_affected_by_path(step6_name, name) for name in names)
+    ):
+        required.add(step6)
+
+    step78_name = "steps7-8-governed-advertising-validation.yml"
+    if (
+        not public_website_only
+        and (
+            shared_resume_authority_change
+            or step78 in names
+            or any(_workflow_affected_by_path(step78_name, name) for name in names)
+        )
+    ):
+        required.add(step78)
+
+    broad_product_change = any(
+        name.startswith((
+            "AgentPortal/",
+            "ClientApp/",
+            "Protect-Website/",
+            "ParfaitApp/",
+            "SHARED/",
+            "Infrastructure/",
+            "Domain/",
+        ))
+        or name == step5
+        for name in product_names
+    )
+    if broad_product_change and not public_website_only:
+        required.add(step5)
+        required.add(security)
+    if release_control_authority_change or security in names or security_release_evidence_change:
+        required.add(security)
+
+    return {
+        "required": tuple(sorted(required)),
+        "publicWebsiteOnly": public_website_only,
+        "releaseEvidenceChange": release_evidence_change,
+        "releaseControlAuthorityChange": release_control_authority_change,
+        "broadProductChange": broad_product_change,
+    }
+
+
+def _selected_release_targets(raw: str):
+    return selected_release_target_keys(json.loads(raw))
+
+
+def _read_provenance(host: str, target, revision: str):
+    path = target["provenancePath"]
+    request = urllib.request.Request(
+        f"https://{host}{path}?release={revision}",
+        headers={"Cache-Control": "no-cache", "User-Agent": "LEGEND-release-proof/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        if target["static"]:
+            return response.read().decode().strip()
+        payload = json.load(response)
+        return payload.get("sourceRevision")
+
+
+def cmd_gate_identity(args):
+    if args.workflow not in WORKFLOWS:
+        raise ValueError("Unknown validation workflow: " + args.workflow)
+    if args.gate not in WORKFLOWS[args.workflow]["gates"]:
+        raise ValueError("Unknown validation gate: " + args.gate)
+    identity = gate_dependency_manifests(args.workflow, args.revision)[args.gate]["contentIdentity"]
+    print(identity)
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            output.write(f"identity={identity}\n")
+
+
+def cmd_live_state(args):
+    keys = _selected_release_targets(args.selected_targets)
+    result = {
+        "schemaVersion": 1,
+        "revision": args.revision,
+        "targets": {},
+    }
+
+    def probe(key):
+        target = RELEASE_TARGETS[key]
+        try:
+            actual = _read_provenance(target["host"], target, args.revision)
+            return key, actual, actual == args.revision
+        except Exception as exc:
+            return key, type(exc).__name__, False
+
+    selected_results = {}
+    if keys:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+            selected_results = {
+                key: (actual, live)
+                for key, actual, live in pool.map(probe, keys)
+            }
+
+    # Preserve the canonical inventory order in receipts/GITHUB_OUTPUT even
+    # though independent network reads execute concurrently.
+    for key, target in RELEASE_TARGETS.items():
+        selected = key in keys
+        actual, live = selected_results.get(key, (None, False))
+        result["targets"][key] = {
+            "releaseName": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+        }
+        print(json.dumps({
+            "target": target["releaseName"],
+            "selected": selected,
+            "alreadyLive": live,
+            "actual": actual,
+            "expected": args.revision if selected else None,
+        }, sort_keys=True))
+    # Keep canonical RELEASE_TARGETS insertion order in the persisted receipt.
+    # Sorting nested object keys would alphabetize target names and destroy the
+    # deterministic inventory order even though the probes themselves are parallel.
+    Path(args.output).write_text(json.dumps(result, indent=2) + "\n")
+    if args.github_output:
+        with Path(args.github_output).open("a") as output:
+            for key in RELEASE_TARGETS:
+                output.write(f"{key}_live={str(result['targets'][key]['alreadyLive']).lower()}\n")
+
+
+def cmd_verify_live(args):
+    keys = _selected_release_targets(args.selected_targets)
+    desired = {key: dict(producerRevision=args.revision) for key in keys}
+    if getattr(args, 'transaction_plan', None):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('live_deployment_owner', Path(__file__).with_name('deploy-approved-app.py'))
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        plan = owner.read_transaction_plan(Path(args.transaction_plan), args.revision)
+        if set(keys) != {row['app'] for row in plan['targets']}:
+            raise ValueError('Live proof scope differs from prepared transaction')
+        desired = {row['app']: owner.transaction_target_material(plan, row, args.revision) for row in plan['targets']}
+    work = [
+        (key, host)
+        for key in keys
+        for host in RELEASE_TARGETS[key]["proofHosts"]
+    ]
+
+    def verify(item):
+        key, host = item
+        target = RELEASE_TARGETS[key]
+        producer = desired[key]['producerRevision']
+        end = time.monotonic() + args.timeout_seconds
+        actual = None
+        while time.monotonic() < end:
+            try:
+                actual = _read_provenance(host, target, producer)
+                if actual == producer:
+                    return {
+                        "target": target["releaseName"],
+                        "host": host,
+                        "passed": True,
+                        "actual": actual,
+                        "candidateRevision": args.revision,
+                        "targetMaterial": desired[key],
+                    }
+            except Exception as exc:
+                actual = type(exc).__name__
+            time.sleep(args.poll_seconds)
+        return {
+            "target": target["releaseName"],
+            "host": host,
+            "passed": False,
+            "actual": actual,
+        }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(work))) as pool:
+        rows = list(pool.map(verify, work))
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
+    for row in rows:
+        print(json.dumps(row, sort_keys=True))
+    if not rows or not all(row["passed"] for row in rows):
+        raise SystemExit("Final live provenance proof failed")
+
+
+def release_target_rows():
+    return tuple(
+        (
+            key,
+            row["host"],
+            row["project"],
+        )
+        for key, row in RELEASE_TARGETS.items()
+    )
+
+
+def lifecycle_authority_identity():
+    """Hash both present authority bytes and intentionally absent protected paths."""
+    digest = hashlib.sha256()
+    for path in LIFECYCLE_AUTHORITY_PATHS:
+        source = Path(path)
+        digest.update(path.encode())
+        digest.update(b"\0")
+        if source.is_file():
+            digest.update(b"present\0")
+            digest.update(hashlib.sha256(source.read_bytes()).digest())
+        elif source.exists():
+            raise RuntimeError(f"Lifecycle authority path is not a regular file: {path}")
+        else:
+            # Retired production bypasses remain in the protected authority set.
+            # Their required absence is therefore part of the canonical identity,
+            # and any future reintroduction changes the identity instead of
+            # crashing receipt generation or silently escaping protection.
+            digest.update(b"absent\0")
+    return digest.hexdigest()
+
+
+def compute_lifecycle_evidence(repository: str):
+    result = {
+        "schemaVersion": 1,
+        "identity": lifecycle_authority_identity(),
+        "artifact": None,
+        "runId": None,
+        "reusable": False,
+    }
+    result["artifact"] = f"legend-lifecycle-contracts-{result['identity']}"
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/legend-release-lifecycle.yml"
+    try:
+        artifacts = _artifact_rows(repository, result["artifact"], token)
+        for artifact in artifacts:
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id:
+                continue
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if (
+                run.get("path") == workflow_path
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+            ):
+                result.update({
+                    "runId": run_id,
+                    "reusable": True,
+                    "reason": "exact_lifecycle_authority_receipt",
+                })
+                return result
+    except Exception as exc:
+        # Evidence lookup failure must disable reuse, not erase the deterministic
+        # local lifecycle identity needed to run and retain fresh safety proof.
+        result.update({
+            "reason": "lifecycle_evidence_lookup_unavailable",
+            "plannerError": type(exc).__name__,
+        })
+        return result
+    result["reason"] = "no_exact_lifecycle_authority_receipt"
+    return result
+
+
+def cmd_lifecycle_evidence(args):
+    try:
+        result = compute_lifecycle_evidence(args.repository)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "identity": None,
+            "artifact": None,
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def package_identity_for_revision(revision: str) -> str:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("release-package.py")),
+            "identity",
+            "--revision",
+            revision,
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr or "package_identity_failed")
+    payload = json.loads(completed.stdout)
+    identity = payload.get("identity")
+    if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{64}", identity):
+        raise RuntimeError("package_identity_invalid")
+    return identity
+
+
+def component_index_name(component, content_identity):
+    if component not in RELEASE_TARGETS or not re.fullmatch('[a-f0-9]{64}', content_identity or ''):
+        raise ValueError('Invalid component evidence identity')
+    return 'validated-component-index-' + component + '-' + content_identity
+
+
+def component_attempt_name(component, content_identity, run_id, attempt, *, receipt=False):
+    component_index_name(component, content_identity)
+    if type(run_id) is not int or run_id < 1 or type(attempt) is not int or attempt < 1:
+        raise ValueError('Invalid component producer attempt')
+    return ('validated-component-receipt-' if receipt else 'validated-component-bytes-') + \
+        f'{component}-{content_identity}-{run_id}-a{attempt}'
+
+
+def trusted_component_run(repository, run, candidate):
+    """Use the real PR base as authority; candidate names never grant trust."""
+    workflow = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, workflow, candidate, require_completed=False):
+        return False
+    pulls = run.get('pull_requests')
+    if pulls == []:
+        # Merged PR runs lose this mutable association. GitHub's existing
+        # commit-to-PR endpoint binds the immutable producer after merge.
+        token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+        if not token:
+            raise EvidenceLookupUnavailable('Package producer PR association credential unavailable')
+        associated = api_get(repository, f"commits/{run['head_sha']}/pulls?per_page=100", token)
+        if not isinstance(associated, list) or len(associated) >= 100:
+            raise EvidenceLookupUnavailable('Package producer PR association inventory incomplete')
+        pulls = [row for row in associated if
+            row.get('base', {}).get('ref') == TRUSTED_PR_BASE and
+            all(row.get(side, {}).get('repo', {}).get('url') == 'https://api.github.com/repos/' + repository
+                for side in ('head', 'base'))]
+    if not isinstance(pulls, list) or len(pulls) != 1:
+        return False
+    head, base = pulls[0].get('head', {}), pulls[0].get('base', {})
+    url = 'https://api.github.com/repos/' + repository
+    approved, producer = base.get('sha', ''), run['head_sha']
+    if (base.get('ref') != TRUSTED_PR_BASE or not re.fullmatch('[a-f0-9]{40}', head.get('sha', '')) or
+            not re.fullmatch('[a-f0-9]{40}', approved) or
+            any(row.get('repo', {}).get('url') != url for row in (head, base))):
+        return False
+    # GitHub refreshes pull_requests[].head when the PR advances. The run's
+    # head_sha remains the immutable producer; require it in the reported lineage.
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', producer, head['sha']],
+                      capture_output=True, check=False).returncode:
+        return False
+    if subprocess.run(['git', 'merge-base', '--is-ancestor', approved, producer],
+                      capture_output=True, check=False).returncode:
+        # GitHub also refreshes the PR base SHA. Recover only an actual protected
+        # first-parent ancestor, never an arbitrary candidate branch ancestor.
+        history = subprocess.check_output(['git', 'rev-list', '--first-parent', approved], text=True).splitlines()
+        approved = next((sha for sha in history if re.fullmatch('[a-f0-9]{40}', sha) and sha != producer and
+            subprocess.run(['git', 'merge-base', '--is-ancestor', sha, producer],
+                           capture_output=True, check=False).returncode == 0), None)
+        if approved is None:
+            return False
+    # Includes the entire approved workflow so another candidate-controlled job
+    # cannot become an artifact writer. Authority changes use governed bootstrap.
+    paths = PACKAGE_AUTHORITY_PATHS | {'scripts/validation-resume.py'}
+    try:
+        return all(git_show_file(producer, path) == git_show_file(approved, path) for path in paths)
+    except (ValueError, RuntimeError):
+        return False
+
+
+def component_upload_proven(artifact, job, step_name, log):
+    """The exact producer log binds immutable IDs, even after artifact substitution."""
+    import datetime
+    def stamp(value):
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.utcoffset() is None:
+            raise ValueError('Component upload timestamp lacks timezone')
+        return parsed
+    steps = [step for step in job.get('steps', []) if step.get('name') == step_name]
+    if len(steps) != 1 or steps[0].get('conclusion') != 'success':
+        raise ValueError('Component upload step unproven')
+    start, end = stamp(steps[0]['started_at']), stamp(steps[0]['completed_at'])
+    # GitHub job step timestamps have second precision; logs retain fractions.
+    # Interpret that represented final second as a half-open interval.
+    if '.' not in steps[0]['completed_at']:
+        end += datetime.timedelta(seconds=1)
+    if not start <= stamp(artifact['created_at']) < end:
+        raise ValueError('Component artifact outside producing upload step')
+    expected = re.compile(r'Artifact ' + re.escape(artifact['name']) +
+        r' has been successfully uploaded! Final size is [0-9]+ bytes\. Artifact ID is ' + str(artifact['id']) + r'$')
+    matches = []
+    for line in log.splitlines():
+        parts = line.split(' ', 1)
+        if len(parts) != 2 or not expected.fullmatch(parts[1]):
+            continue
+        if start <= stamp(parts[0]) < end:
+            matches.append(line)
+    if len(matches) != 1:
+        raise ValueError('Component artifact not attested by its producing upload log')
+
+
+def compatible_component_evidence(repository, revision, component, token, *, current_run_id=None, expected_source=None):
+    """Indexed child recovery; parent failure never erases a successful producer.
+
+    Stable index artifacts locate runs only. They confer no success or authority.
+    Immutable attempt receipts and the actual successful child establish reuse.
+    Provider failure escapes to the existing planner's blocked boundary.
+    """
+    with evidence_lookup_budget(time.monotonic() + 180):
+        import importlib.util
+        desired = package_component_manifest(revision, component)
+        identity = desired['contentIdentity']
+        if expected_source is not None:
+            if not isinstance(expected_source, dict) or type(expected_source.get('runId')) is not int or expected_source['runId'] < 1:
+                raise ValueError('Exact historical component source required')
+            runs = {expected_source['runId']}
+        else:
+            name = component_index_name(component, identity)
+            data = api_get(repository, 'actions/artifacts?name=' + urllib.parse.quote(name, safe='') + '&per_page=100', token)
+            rows = data.get('artifacts')
+            if not isinstance(rows, list) or data.get('total_count') != len(rows):
+                raise EvidenceLookupUnavailable('Component evidence index incomplete')
+            runs = set()
+            for row in rows:
+                if row.get('name') != name:
+                    raise ValueError('Component index query identity mismatch')
+                run_id = row.get('workflow_run', {}).get('id')
+                if type(run_id) is int and run_id > 0 and row.get('expired') is False:
+                    runs.add(run_id)
+            if current_run_id is not None:
+                if type(current_run_id) is not int or current_run_id < 1:
+                    raise ValueError('Invalid current component run')
+                runs.add(current_run_id)  # Also recover a child whose locator acknowledgment was lost.
+            if len(runs) > 100:
+                raise EvidenceLookupUnavailable('Component evidence index exceeds reconciliation budget')
+        for run_id in sorted(runs, reverse=True):
+            run = api_get(repository, f'actions/runs/{run_id}', token)
+            if not trusted_component_run(repository, run, revision):
+                continue
+            if run.get('id') != run_id:
+                raise ValueError('Component producer run identity mismatch')
+            producer = run['head_sha']
+            original = package_component_manifest(producer, component)
+            if (original['contentIdentity'] != identity or
+                    (producer != revision and (not original['reusable'] or not desired['reusable']))):
+                continue
+            inventory = api_get(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+            artifacts = inventory.get('artifacts')
+            if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+                raise EvidenceLookupUnavailable('Component attempt inventory incomplete')
+            if (any(type(row.get('id')) is not int or row['id'] < 1 for row in artifacts) or
+                    len({row['id'] for row in artifacts}) != len(artifacts) or
+                    len({row.get('name') for row in artifacts}) != len(artifacts)):
+                raise ValueError('Component artifact inventory ambiguous')
+            pattern = re.compile(re.escape(f'validated-component-receipt-{component}-{identity}-{run_id}-a') + r'([1-9][0-9]*)$')
+            receipts = []
+            for artifact in artifacts:
+                match = pattern.fullmatch(artifact.get('name', ''))
+                if match and artifact.get('expired') is False:
+                    receipts.append((int(match.group(1)), artifact))
+            for attempt, artifact in sorted(receipts, key=lambda row: row[0], reverse=True):
+                if expected_source is not None and (attempt != expected_source.get('runAttempt') or artifact['id'] != expected_source.get('receiptArtifactId')):
+                    continue
+                if attempt > int(run.get('run_attempt') or 0):
+                    raise ValueError('Component receipt claims an unobserved attempt')
+                jobs = api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+                if not isinstance(jobs.get('jobs'), list) or jobs.get('total_count') != len(jobs['jobs']):
+                    raise EvidenceLookupUnavailable('Component producing jobs incomplete')
+                matches = [job for job in jobs['jobs'] if job.get('name') == f'validated-release-package-components ({component})']
+                if len(matches) != 1:
+                    continue
+                job = matches[0]
+                if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+                    continue
+                steps = {step.get('name'): step.get('conclusion') for step in job.get('steps', [])}
+                if not all(steps.get(step) == 'success' for step in (
+                        'Build immutable validated release package component',
+                        'Preserve immutable validated release package component',
+                        'Record immutable component source', 'Preserve immutable component source')):
+                    continue
+                receipt = _release_history_json(repository, run_id, artifact, 'component-source.json')
+                expected = dict(schemaVersion=1, component=component, contentIdentity=identity,
+                                producerRevision=producer, runId=run_id, runAttempt=attempt)
+                if any(receipt.get(key) != value for key, value in expected.items()):
+                    raise ValueError('Component source receipt producer mismatch')
+                source = receipt.get('artifact')
+                if (not isinstance(source, dict) or type(source.get('id')) is not int or source['id'] < 1 or
+                        source.get('name') != component_attempt_name(component, identity, run_id, attempt) or
+                        not re.fullmatch('sha256:[a-f0-9]{64}', source.get('digest', '')) or
+                        not re.fullmatch('[a-f0-9]{64}', receipt.get('sha256', '')) or
+                        not re.fullmatch('[a-f0-9]{64}', receipt.get('executionIdentity', ''))):
+                    raise ValueError('Component source artifact identity malformed')
+                payloads = [row for row in artifacts if row.get('id') == source['id']]
+                if len(payloads) != 1:
+                    continue  # Confirmed missing bytes invalidate only this component.
+                payload = payloads[0]
+                if expected_source is not None and (payload['id'] != expected_source.get('artifactId') or job['id'] != expected_source.get('producingJobId') or
+                        payload.get('name') != expected_source.get('artifactName') or payload.get('digest') != expected_source.get('artifactDigest')):
+                    raise ValueError('Historical component immutable identity mismatch')
+                if payload.get('expired') is True:
+                    continue
+                if (payload.get('expired') is not False or payload.get('name') != source['name'] or
+                        payload.get('digest') != source['digest']):
+                    raise ValueError('Component artifact substitution detected')
+                log = _release_job_log(repository, job['id'], token)
+                component_upload_proven(payload, job, 'Preserve immutable validated release package component', log)
+                component_upload_proven(artifact, job, 'Preserve immutable component source', log)
+                spec = importlib.util.spec_from_file_location('component_package_evidence', Path(__file__).with_name('release-package.py'))
+                package = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(package)
+                if (package.component_execution_identity(receipt.get('execution'), producer, component) != receipt['executionIdentity'] or
+                        receipt['execution']['sha256'] != receipt['sha256']):
+                    raise ValueError('Component execution identity mismatch')
+                return dict(state='reused-success', sourceReceipt=receipt,
+                            receiptArtifactId=artifact['id'], producingJobId=job['id'],
+                            compatibilityProof=dict(contentIdentity=identity, candidateRevision=revision,
+                                producerRevision=producer, executionIdentity=receipt['executionIdentity']),
+                            reason='authenticated_compatible_component_child')
+        return dict(state='required', reason='compatible_component_child_missing', contentIdentity=identity)
+
+
+def compute_package_canary_plan(repository, current_sha, base_sha, current_run_id, head_branch):
+    result = {"schemaVersion": 1, "needed": True, "currentSha": current_sha,
+              "evidenceRunId": None, "evidenceHeadSha": None, "changedInputs": [],
+              "reason": "compatible_immutable_package_missing"}
+    # Package production is driven by package-producing inputs, not artifact
+    # discovery. A control/test/lifecycle-only head has no new application bytes
+    # to stamp with the current commit and therefore must not manufacture a
+    # redundant immutable package merely because historical artifact lookup misses.
+    result['changedInputs'] = sorted(
+        path for path in git_changed(base_sha, current_sha)
+        if package_canary_input_path(path)
+    )
+    if not result['changedInputs']:
+        result.update({
+            "needed": False,
+            "reason": "no_package_producing_inputs_changed",
+        })
+        return result
+
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+    if token:
+        compatible = compatible_package_producer(repository, current_sha, token)
+        if compatible:
+            result.update({"needed": False, "reason": compatible['reason'],
+                           "evidenceRunId": compatible['runId'],
+                           "evidenceHeadSha": compatible['revision'],
+                           "packageIdentity": compatible['packageIdentity'],
+                           "exactPackageRunId": compatible['runId'],
+                           "exactPackageArtifact": compatible['artifact']})
+            return result
+    return result
+
+
+def component_protocol_ready(base, candidate):
+    """Activation requires the installed approved owner, never a rollout exemption."""
+    if 'CONTENT_PACKAGE_SCHEMA' not in git_show_file(base, 'scripts/release-package.py'):
+        return False
+    paths = PACKAGE_AUTHORITY_PATHS | {'scripts/validation-resume.py'}
+    return all(git_show_file(base, path) == git_show_file(candidate, path) for path in paths)
+
+
+def plan_component_children(repository, revision, run_id, token):
+    if not token:
+        raise EvidenceLookupUnavailable('Component evidence credential unavailable')
+    with evidence_lookup_budget(time.monotonic() + 180):
+        children = {key: compatible_component_evidence(repository, revision, key, token,
+                    current_run_id=run_id) for key in RELEASE_TARGETS}
+    return dict(componentProtocol=True, componentSources=children,
+                requiredComponents=[key for key, row in children.items() if row['state'] == 'required'],
+                reusedComponents=[key for key, row in children.items() if row['state'] == 'reused-success'])
+
+
+def cmd_component_sources(args):
+    """Reconstruct aggregate completion from authenticated successful children."""
+    result = plan_component_children(args.repository, args.revision, args.current_run_id,
+        os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
+    if result['requiredComponents']:
+        raise RuntimeError('COMPONENT_ASSEMBLY_BLOCKED:successful_children_missing:' + ','.join(result['requiredComponents']))
+    Path(args.output).write_text(json.dumps(result['componentSources'], sort_keys=True, indent=2) + '\n')
+    if getattr(args, 'github_output', None):
+        with open(args.github_output, 'a') as stream:
+            for key, selected in result['componentSources'].items():
+                source = selected['sourceReceipt']
+                stream.write(f"{key}_run_id={source['runId']}\n{key}_artifact_id={source['artifact']['id']}\n")
+
+
+def pinned_package_evidence(repository, candidate, selected, token):
+    """Authenticate one rehearsed immutable aggregate; never replace it with newer bytes."""
+    producer = selected.get('producerRevision')
+    if (not re.fullmatch('[a-f0-9]{40}', producer or '') or
+            not re.fullmatch('[a-f0-9]{64}', selected.get('packageIdentity', '')) or
+            not re.fullmatch('sha256:[a-f0-9]{64}', selected.get('artifactDigest', '')) or
+            any(type(selected.get(key)) is not int or selected[key] < 1 for key in ('runId','artifactId')) or
+            (producer != candidate and not package_inputs_compatible(producer, candidate))):
+        raise ValueError('Pinned package dependency or source identity invalid')
+    match = package_artifact_match(selected.get('artifact',''))
+    if not match or match.group(1) != selected['packageIdentity']:
+        raise ValueError('Pinned package artifact name disagrees with identity')
+    run = api_get(repository, f"actions/runs/{selected['runId']}", token)
+    path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    if not _trusted_lineage_run(repository, run, path, candidate) or run.get('head_sha') != producer:
+        raise ValueError('Pinned package producing authority unproven')
+    if match.group(2) is None and not _successful_package_child(repository, selected['runId'], token):
+        raise EvidenceLookupUnavailable('Pinned legacy package producing job unavailable')
+    artifact = api_get(repository, f"actions/artifacts/{selected['artifactId']}", token)
+    if (artifact.get('id') != selected['artifactId'] or artifact.get('expired') is not False or
+            artifact.get('name') != selected['artifact'] or artifact.get('digest') != selected['artifactDigest'] or
+            artifact.get('workflow_run', {}).get('id') != selected['runId']):
+        raise EvidenceLookupUnavailable('Pinned package immutable artifact unavailable or changed')
+    result = dict(schemaVersion=1, revision=producer, requestedRevision=candidate,
+        runId=selected['runId'], artifact=selected['artifact'], artifactId=selected['artifactId'],
+        artifactDigest=selected['artifactDigest'], packageIdentity=selected['packageIdentity'],
+        reusable=True, reason='exact_rehearsed_aggregate_preserved')
+    return attach_package_descriptor(repository, result, run, token)
+
+
+def bind_rehearsed_package_plan(repository, candidate, result, readiness, token):
+    """A pending migration's retained aggregate is the one actually rehearsed."""
+    receipt = readiness.get('receipt', {})
+    if not receipt.get('pendingCount'):
+        return result
+    rehearsal = receipt.get('rehearsal') or {}
+    selected = rehearsal.get('selectedPackage')
+    if selected is None:
+        if not result['needed']:
+            raise ValueError('Reused aggregate has no exact rehearsed migration binding')
+        return result  # Fresh assembly must promote the exact rehearsal child.
+    if (selected.get('schemaVersion') != 1 or not re.fullmatch('[a-f0-9]{40}', selected.get('candidateRevision', '')) or
+            selected.get('bundleDigest') != rehearsal.get('bundleDigest') or
+            not re.fullmatch('[a-f0-9]{64}', selected.get('bundleDigest', ''))):
+        raise ValueError('Rehearsed aggregate migration digest mismatch')
+    producer = selected.get('producerRevision')
+    if (not re.fullmatch('[a-f0-9]{40}', producer or '') or
+            (producer != candidate and not package_inputs_compatible(producer, candidate))):
+        raise ValueError('Rehearsed aggregate inputs changed')
+    pinned_package_evidence(repository, candidate, selected, token)
+    return dict(result, needed=False, reason='exact_rehearsed_aggregate_preserved',
+        evidenceRunId=selected['runId'], evidenceHeadSha=producer, packageIdentity=selected['packageIdentity'],
+        exactPackageRunId=selected['runId'], exactPackageArtifact=selected['artifact'])
+
+
+def cmd_package_canary_plan(args):
+    readiness = require_readiness(args.repository, args.current_sha)
+    try:
+        result = compute_package_canary_plan(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+        )
+        result = bind_rehearsed_package_plan(args.repository, args.current_sha, result, readiness,
+            os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
+        result.update(componentProtocol=False, requiredComponents=list(RELEASE_TARGETS) + ['migration'])
+        if result['needed'] and component_protocol_ready(args.base_sha, args.current_sha):
+            result.update(plan_component_children(args.repository, args.current_sha, args.current_run_id,
+                os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''))
+            result['requiredComponents'].append('migration')
+    except Exception as exc:
+        # Unavailable or untrusted evidence is not evidence that all children are
+        # missing. Preserve any existing plan/receipts and stop this boundary.
+        # api_get owns bounded provider retries; never add an outer retry here.
+        reason = ('package_evidence_lookup_unavailable' if isinstance(exc, EvidenceLookupUnavailable)
+                  else 'package_planner_state_unproven')
+        blocked = dict(schemaVersion=1, state='blocked', needed=False,
+            currentSha=args.current_sha, approvedBaseSha=args.base_sha,
+            runId=str(args.current_run_id), runAttempt=int(os.environ.get('GITHUB_RUN_ATTEMPT', '1')),
+            reason=reason, plannerError=type(exc).__name__,
+            resumeBoundary='validated-release-package-plan',
+            intervention=('Restore evidence-provider access, then rerun package planning.'
+                if isinstance(exc, EvidenceLookupUnavailable)
+                else 'Resolve the package planner error, then rerun package planning with retained receipts.'))
+        Path(str(args.output) + '.blocked.json').write_text(json.dumps(blocked, indent=2, sort_keys=True) + "\n")
+        raise RuntimeError('PACKAGE_PLANNING_BLOCKED:' + reason) from None
+    result['migrationReused'] = False
+    if result['needed'] and readiness.get('receipt', {}).get('rehearsalSource'):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('canonical_package', Path(__file__).with_name('release-package.py'))
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        receipt = package.promote_rehearsed_migration(args.current_sha,
+            Path(args.output).parent / 'validated-release-migration', readiness)
+        if receipt is None:
+            raise ValueError('Authenticated rehearsal component could not be promoted')
+        result['migrationReused'] = True
+        result['migrationSourceReceipt'] = readiness['receipt']['rehearsalSource']
+        result['migrationArtifact'] = package.promoted_migration_artifact(args.current_sha,
+            int(os.environ['GITHUB_RUN_ATTEMPT']))
+    if result['migrationReused'] and result['componentProtocol']:
+        result['requiredComponents'].remove('migration')
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def package_backfill_receipt_name(revision: str, package_identity: str) -> str:
+    return f"validated-package-backfill-{revision}-{package_identity}"
+
+
+def compute_package_backfill_plan(repository: str, revision: str, current_sha: str):
+    """Authorize package-only recovery for an already-green historical product head.
+
+    The current approved control plane may package the historical revision only when
+    the exact product head has a successful Architecture PR validation and every
+    change since that revision is release/test/control-only. Any application-source
+    drift fails closed.
+    """
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "currentSha": current_sha,
+        "allowed": False,
+        "requiredComponents": list(RELEASE_TARGETS) + ['migration'],
+        "validationRunId": None,
+        "changedApplicationInputs": [],
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", revision, current_sha],
+        text=True,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        result["reason"] = "revision_not_preserved_in_current_approved_history"
+        return result
+
+    changed = git_changed(revision, current_sha)
+    application_changes = sorted(
+        path for path in changed
+        if not release_control_only_path(path)
+    )
+    result["changedApplicationInputs"] = application_changes
+    if application_changes:
+        result["reason"] = "application_inputs_changed_since_validated_revision"
+        return result
+
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    encoded = urllib.parse.quote(revision, safe="")
+    payload = api_get(
+        repository,
+        f"actions/runs?head_sha={encoded}&event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = [
+        run for run in payload.get("workflow_runs", [])
+        if run.get("path") == workflow_path
+        and run.get("event") == "pull_request"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and run.get("head_sha") == revision
+        and (run.get("head_repository") or {}).get("full_name") == repository
+    ]
+    pulls = api_get(repository, f"commits/{revision}/pulls", token)
+    bound = [
+        pr for pr in pulls
+        if pr.get("merged_at")
+        and pr.get("base", {}).get("ref") == TRUSTED_PR_BASE
+        and pr.get("head", {}).get("sha") == revision
+        and pr.get("head", {}).get("repo", {}).get("full_name") == repository
+    ]
+    if not runs or len(bound) != 1:
+        result["reason"] = "exact_green_architecture_pr_evidence_missing"
+        return result
+
+    runs.sort(
+        key=lambda run: (run.get("updated_at") or run.get("created_at", ""), int(run.get("id", 0))),
+        reverse=True,
+    )
+    result.update({
+        "allowed": True,
+        "validationRunId": int(runs[0]["id"]),
+        "sourcePr": int(bound[0]["number"]),
+        "reason": "exact_green_revision_with_control_only_descendants",
+    })
+    return result
+
+
+def cmd_package_backfill_plan(args):
+    try:
+        result = compute_package_backfill_plan(
+            args.repository,
+            args.revision,
+            args.current_sha,
+        )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "currentSha": args.current_sha,
+            "allowed": False,
+            "validationRunId": None,
+            "changedApplicationInputs": [],
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+
+
+class MigrationProbeAuthorityMissing(ValueError):
+    """A revision predates the required probe child and cannot supply its evidence."""
+
+
+def migration_probe_identity(tool_revision, application_revision):
+    """One dependency model: derive the probe runtime from infrastructure build ownership."""
+    if not all(re.fullmatch(r'[0-9a-f]{40}', value or '') for value in (tool_revision, application_revision)):
+        raise ValueError('Exact probe and application source revisions required')
+    paths = WORKFLOWS[PACKAGE_VALIDATION_WORKFLOW]['gates']['build-infrastructure']['paths']
+    # Other projects' project files do not change this direct-reference closure.
+    runtime_patterns = tuple(path for path in paths if path not in {'**/*.csproj', 'MASTERAPP.sln'})
+    def content(revision, patterns):
+        rows = subprocess.check_output(['git', 'ls-tree', '-rz', '--full-tree', revision], text=True).split('\0')
+        selected = []
+        for row in rows:
+            if not row:
+                continue
+            metadata, name = row.split('\t', 1)
+            if matches(name, patterns):
+                selected.append(row)
+        return hashlib.sha256('\0'.join(sorted(selected)).encode()).hexdigest()
+    runtime = content(application_revision, runtime_patterns)
+    if runtime != content(tool_revision, runtime_patterns):
+        raise ValueError('Probe was compiled against different candidate migration/runtime inputs')
+    tooling = content(tool_revision, ('scripts/MigrationReleaseProbe/**', 'scripts/migration-probe-package.py'))
+    workflow = git_show_file(tool_revision, '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW)
+    job = _job_blocks(workflow).get('validated-migration-probe')
+    if not job:
+        raise MigrationProbeAuthorityMissing('Validated migration probe child authority missing')
+    payload = {'schemaVersion': 1, 'runtimeIdentity': runtime, 'toolIdentity': tooling,
+               'executionIdentity': hashlib.sha256(job.rstrip().encode()).hexdigest()}
+    identity = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return dict(payload, identity=identity, artifact='legend-migration-probe-' + identity)
+
+
+def migration_probe_artifact(repository, run, name, token):
+    """Bind a retained probe to its original successful job, not the latest rerun.
+
+    Legacy manifests lack an attempt field. GitHub's immutable artifact creation
+    time and complete job inventory supply that boundary without rewriting them.
+    """
+    import datetime
+    data = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    rows = data.get('artifacts')
+    if not isinstance(rows, list) or data.get('total_count') != len(rows):
+        raise EvidenceLookupUnavailable('Probe artifact inventory incomplete')
+    artifacts = [row for row in rows if row.get('name') == name and row.get('expired') is False]
+    if not artifacts:
+        return None
+    if len(artifacts) != 1 or type(artifacts[0].get('id')) is not int or artifacts[0]['id'] < 1:
+        raise ValueError('Probe immutable artifact identity ambiguous')
+    artifact = artifacts[0]
+    def stamp(value):
+        parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.utcoffset() is None:
+            raise ValueError('Probe provider timestamp lacks timezone')
+        return parsed
+    created = stamp(artifact['created_at'])
+    matches = []
+    seen = 0
+    for page in range(1, 11):
+        data = api_get(repository, f"actions/runs/{run['id']}/jobs?filter=all&per_page=100&page={page}", token)
+        jobs = data.get('jobs')
+        if not isinstance(jobs, list) or type(data.get('total_count')) is not int:
+            raise EvidenceLookupUnavailable('Probe job inventory incomplete')
+        seen += len(jobs)
+        for job in jobs:
+            if (job.get('name') == 'validated-migration-probe' and job.get('status') == 'completed' and
+                job.get('conclusion') == 'success' and type(job.get('run_attempt')) is int and
+                1 <= job['run_attempt'] <= run.get('run_attempt', 1) and
+                stamp(job['started_at']) <= created <= stamp(job['completed_at'])):
+                matches.append(job)
+        if seen >= data['total_count']:
+            break
+        if len(jobs) < 100:
+            raise EvidenceLookupUnavailable('Probe job inventory incomplete')
+    else:
+        raise EvidenceLookupUnavailable('Probe job inventory exceeded bounded lookup')
+    if len(matches) != 1:
+        return None
+    return {'artifactId': artifact['id'], 'producingAttempt': matches[0]['run_attempt'],
+            'producerJobId': matches[0]['id']}
+
+
+def migration_probe_evidence(repository, identity, *, include_active=False, candidate=None):
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or ''
+    if not token:
+        raise ValueError('Probe evidence authentication unavailable')
+    workflow_path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe='')
+    payload = api_get(repository,
+        f'actions/workflows/{workflow}/runs?event=pull_request&per_page=100' + ('' if include_active else '&status=completed'), token)
+    runs = sorted(payload.get('workflow_runs', []),
+        key=lambda row: (row.get('updated_at') or row.get('created_at', ''), int(row.get('id', 0))),
+        reverse=True)
+    for run in runs:
+        run_id = int(run.get('id') or 0)
+        current_revision = subprocess.check_output(
+            ['git', 'rev-parse', candidate or 'HEAD'], text=True).strip()
+        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, current_revision, require_completed=not include_active):
+            continue
+        try:
+            producer = migration_probe_identity(run['head_sha'], run['head_sha'])
+        except MigrationProbeAuthorityMissing:
+            # Historical runs before this child existed cannot prove probe reuse.
+            # Continue searching; without a compatible producer the caller builds.
+            continue
+        if producer != identity:
+            continue
+        artifact = migration_probe_artifact(repository, run, identity['artifact'], token)
+        if not artifact:
+            continue
+        # The canonical child uploads only after build + manifest verification.
+        # Exact execution/runtime/tool identity plus retained artifact presence is
+        # the durable success proof; release re-verifies the manifest after load.
+        return dict(artifact, reusable=True, runId=run_id, artifact=identity['artifact'], identity=identity['identity'])
+    return {'reusable': False, 'artifact': identity['artifact']}
+
+def package_inputs_compatible(prior: str, current: str) -> bool:
+    """Compare real package-producing inputs without relabeling producer bytes."""
+    import ast
+    identity_only = {'contract_hash', 'package_identity', 'artifact_name', 'verify_all'}
+    def observer_contract(node):
+        # Only the reviewed read/hash/compare grammar may be excluded from byte
+        # production. Unknown calls/syntax invalidate reuse; file-mode writes stay
+        # in the producing contract rather than being called read-only.
+        pure_names = {'normalize_revision', 'validate_revision', 'contract_hash', 'package_identity',
+                      'sha256_file', 'embedded_revision', 'ValueError', 'FileNotFoundError',
+                      'Path', 'set', 'isinstance', 'str', 'len', 'sorted'}
+        pure_methods = {'exists', 'encode', 'read_bytes', 'read_text', 'hexdigest', 'update',
+                        'get', 'items', 'split', 'splitlines', 'strip'}
+        qualified = {'json.dumps', 'json.loads', 'hashlib.sha256', 're.fullmatch', 'os.access',
+                     '_RELEASE_AUTHORITY.package_builder_workflow_contract',
+                     '_RELEASE_AUTHORITY.package_inputs_compatible'}
+        effects = []
+        for child in ast.walk(node):
+            if isinstance(child, (ast.Global, ast.Nonlocal, ast.Import, ast.ImportFrom, ast.With,
+                                  ast.AsyncWith, ast.Await, ast.Yield, ast.YieldFrom)):
+                return None
+            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                targets = child.targets if isinstance(child, ast.Assign) else [child.target]
+                if any(isinstance(target, ast.Attribute) for target in targets):
+                    return None
+            if not isinstance(child, ast.Call):
+                continue
+            function = ast.unparse(child.func)
+            if function == 'bundle.chmod':
+                effects.append(ast.dump(child, include_attributes=False))
+            elif function == 'subprocess.check_output':
+                command = child.args[0] if child.args else None
+                if (not isinstance(command, ast.List) or len(command.elts) < 2 or
+                        not all(isinstance(part, ast.Constant) for part in command.elts[:2]) or
+                        [part.value for part in command.elts[:2]] != ['git', 'rev-parse'] or
+                        any(keyword.arg not in {'cwd', 'text'} for keyword in child.keywords)):
+                    return None
+            elif function in pure_names or function in qualified:
+                continue
+            elif isinstance(child.func, ast.Attribute) and child.func.attr in pure_methods:
+                continue
+            else:
+                return None
+        return sorted(effects)
+
+    def builder(text):
+        tree = ast.parse(text)
+        rows = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in identity_only:
+                observer = observer_contract(node)
+                if observer is not None:
+                    rows.append(('observer', node.name, observer))
+                    continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                continue
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'CONTRACT_INPUTS' for t in node.targets):
+                continue
+            rows.append(ast.dump(node, include_attributes=False))
+        return rows
+    for path in git_changed(prior, current):
+        if path == 'scripts/release-package.py':
+            if builder(git_show_file(prior, path)) != builder(git_show_file(current, path)):
+                return False
+        elif path == PACKAGE_BUILD_WORKFLOW:
+            try:
+                prior_contract = package_builder_workflow_contract(git_show_file(prior, path))
+                current_contract = package_builder_workflow_contract(git_show_file(current, path))
+            except ValueError:
+                # A historical workflow that predates the current canonical
+                # builder shape is incompatible evidence, not a planner fault.
+                return False
+            if prior_contract != current_contract:
+                return False
+        elif path == 'scripts/validation-resume.py':
+            # Topology is literal canonical data, never execute historical code.
+            def topology(text):
+                wanted = {'RELEASE_TARGETS', 'MIGRATION_BUNDLE_NAME'}
+                data = {}
+                for node in ast.parse(text).body:
+                    if isinstance(node, ast.Assign):
+                        for target in node.targets:
+                            if isinstance(target, ast.Name) and target.id in wanted:
+                                data[target.id] = ast.literal_eval(node.value)
+                if set(data) != wanted:
+                    raise ValueError('Package topology missing')
+                data['RELEASE_TARGETS'] = {key: {field: row[field] for field in ('project', 'package', 'static', 'sourceRoot')}
+                                           for key, row in data['RELEASE_TARGETS'].items()}
+                return data
+            if topology(git_show_file(prior, path)) != topology(git_show_file(current, path)):
+                return False
+        elif path in PACKAGE_AUTHORITY_PATHS or not release_control_only_path(path):
+            return False
+    return True
+
+
+def _successful_package_child(repository, run_id, token):
+    jobs = api_get(repository, f'actions/runs/{run_id}/jobs?filter=latest&per_page=100', token).get('jobs', [])
+    children = [job for job in jobs if job.get('name') == 'validated-release-package']
+    if len(children) != 1:
+        return False
+    steps = {step.get('name'): step.get('conclusion') for step in children[0].get('steps', [])}
+    return all(steps.get(name) == 'success' for name in (
+        'Build immutable validated release package',
+        'Verify immutable validated release package',
+        'Preserve immutable validated release package',
+    ))
+
+
+def package_artifact_match(name):
+    return re.fullmatch(r'founder-diagnostics-packages-([a-f0-9]{64})(?:-([1-9][0-9]*)-a([1-9][0-9]*))?', name)
+
+
+class IncompletePackageAttempt(EvidenceLookupUnavailable):
+    """Authenticated terminal assembly failure; earlier children remain eligible."""
+
+
+def attach_package_descriptor(repository, result, run, token):
+    """Authenticate small aggregate metadata; never download application bytes here."""
+    match = package_artifact_match(result['artifact'])
+    if not match or match.group(1) != result['packageIdentity']:
+        raise ValueError('Package artifact identity malformed')
+    if match.group(2) is None:
+        return result  # Strict historical single-producer contract.
+    run_id, attempt = int(match.group(2)), int(match.group(3))
+    if (run_id != result['runId'] or run_id != run.get('id') or attempt > run.get('run_attempt', 0) or
+            not trusted_component_run(repository, run, result['revision'])):
+        raise ValueError('Package descriptor authority unproven')
+    with evidence_lookup_budget(time.monotonic() + 180):
+        inventory = api_get(repository,f'actions/runs/{run_id}/artifacts?per_page=100',token)
+        artifacts = inventory.get('artifacts')
+        if not isinstance(artifacts,list) or inventory.get('total_count') != len(artifacts):
+            raise EvidenceLookupUnavailable('Package descriptor inventory incomplete')
+        name=f"validated-package-source-{result['packageIdentity']}-{run_id}-a{attempt}"
+        descriptors=[row for row in artifacts if row.get('name')==name and row.get('expired') is False]
+        payloads=[row for row in artifacts if row.get('name')==result['artifact'] and row.get('expired') is False]
+        jobs=api_get(repository,f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100',token)
+        if not isinstance(jobs.get('jobs'),list) or jobs.get('total_count')!=len(jobs['jobs']):
+            raise EvidenceLookupUnavailable('Package descriptor job inventory incomplete')
+        owners=[row for row in jobs['jobs'] if row.get('name')=='validated-release-package']
+        if (len(owners)==1 and owners[0].get('status')=='completed' and
+                owners[0].get('conclusion') in {'failure','cancelled','skipped','timed_out'}):
+            raise IncompletePackageAttempt('Terminal assembly attempt did not produce successful evidence')
+        if len(owners)!=1 or owners[0].get('conclusion')!='success' or owners[0].get('status')!='completed':
+            raise EvidenceLookupUnavailable('Successful package descriptor owner unavailable')
+        if len(descriptors)!=1 or len(payloads)!=1:
+            raise EvidenceLookupUnavailable('Immutable package descriptor or bytes unavailable')
+        descriptor,payload=descriptors[0],payloads[0]
+        owner=owners[0]
+        steps={row.get('name'):row.get('conclusion') for row in owner.get('steps',[])}
+        if any(steps.get(name)!='success' for name in ('Build immutable validated release package',
+                'Verify immutable validated release package','Record immutable package source')):
+            raise ValueError('Package descriptor verification steps unproven')
+        log=_release_job_log(repository,owner['id'],token)
+        component_upload_proven(payload,owner,'Preserve immutable validated release package',log)
+        component_upload_proven(descriptor,owner,'Preserve immutable package source',log)
+        source=_release_history_json(repository,run_id,descriptor,'package-source.json')
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('descriptor_package_owner',Path(__file__).with_name('release-package.py'))
+        package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+        if (source.get('schemaVersion')!=1 or source.get('packageSchema')!=package.CONTENT_PACKAGE_SCHEMA or
+                source.get('revision')!=result['revision'] or source.get('packageIdentity')!=result['packageIdentity'] or
+                source.get('runId')!=run_id or source.get('runAttempt')!=attempt or
+                source.get('artifact')!={key:payload[key] for key in ('id','name','digest')} or
+                not re.fullmatch('sha256:[a-f0-9]{64}',payload.get('digest','')) or
+                not re.fullmatch('[a-f0-9]{64}',source.get('manifestSha256','')) or
+                set(source.get('targets',{}))!=set(RELEASE_TARGETS)):
+            raise ValueError('Package descriptor producer/material mismatch')
+        materials={key:package.validate_target_material(key,row) for key,row in source['targets'].items()}
+        return dict(result,artifactId=payload['id'],artifactDigest=payload['digest'],
+                    descriptorArtifactId=descriptor['id'],manifestSha256=source['manifestSha256'],targetMaterials=materials)
+
+
+def compatible_package_producer(repository, revision, token, *, exact_revision_only=False):
+    """Locate authenticated immutable bytes from a content-equivalent producer.
+
+    Enumerate trusted completed producer runs first, then inspect each run's own
+    artifacts. Repository-wide artifact listing is not required for provenance
+    and can be unavailable to an active PR token.
+    """
+    workflow_path = '.github/workflows/' + PACKAGE_VALIDATION_WORKFLOW
+    workflow = urllib.parse.quote(PACKAGE_VALIDATION_WORKFLOW, safe='')
+    payload = api_get(repository,
+        f'actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100', token)
+    runs = sorted(payload.get('workflow_runs', []),
+        key=lambda row: (row.get('updated_at') or row.get('created_at', ''), int(row.get('id', 0))),
+        reverse=True)
+    for run in runs:
+        run_id = int(run.get('id') or 0)
+        if not run_id or not _trusted_lineage_run(repository, run, workflow_path, revision):
+            continue
+        producer = run['head_sha']
+        if exact_revision_only and producer != revision:
+            continue
+        package_input_changes = [
+            path for path in git_changed(producer, revision)
+            if package_canary_input_path(path)
+        ]
+        if package_input_changes and not package_inputs_compatible(producer, revision):
+            continue
+        names = sorted((name for name in _run_artifact_names(repository, run_id, token)
+                       if package_artifact_match(name)), key=lambda name: int(package_artifact_match(name).group(3) or 0))
+        if not names:
+            continue
+        for name in reversed(names):
+            match = package_artifact_match(name)
+            if match.group(2) is None and not _successful_package_child(repository, run_id, token):
+                continue  # Preserve strict legacy evidence interpretation.
+            result = {'schemaVersion': 1, 'revision': producer, 'requestedRevision': revision,
+                    'packageIdentity': match.group(1),
+                    'artifact': name, 'runId': run_id, 'reusable': True,
+                    'reason': 'dependency_equivalent_immutable_package_producer'}
+            try:
+                return attach_package_descriptor(repository,result,run,token)
+            except IncompletePackageAttempt:
+                continue  # Only proven terminal failure permits earlier-attempt lookup.
+    return None
+
+def compute_validated_package_evidence(repository: str, revision: str, package_identity: str, *, allow_equivalent=True):
+    result = {
+        "schemaVersion": 1,
+        "revision": revision,
+        "packageIdentity": package_identity,
+        "artifact": f"founder-diagnostics-packages-{package_identity}",
+        "runId": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    workflow_path = ".github/workflows/" + PACKAGE_VALIDATION_WORKFLOW
+    for artifact in _artifact_rows(repository, result["artifact"], token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        run = api_get(repository, f"actions/runs/{run_id}", token)
+        common = (
+            run.get("path") == workflow_path
+            and run.get("status") == "completed"
+            and (run.get("head_repository") or {}).get("full_name") == repository
+        )
+        exact_pr = (
+            common
+            and run.get("event") == "pull_request"
+            and run.get("head_sha") == revision
+            and _trusted_pr_run(repository, run, workflow_path, token)
+        )
+        backfill = False
+        if (
+            common
+            and run.get("event") == "workflow_dispatch"
+            and run.get("head_branch") == TRUSTED_PR_BASE
+        ):
+            receipt = package_backfill_receipt_name(revision, package_identity)
+            backfill = receipt in _run_artifact_names(repository, run_id, token)
+        if (exact_pr or backfill) and _successful_package_child(repository, run_id, token):
+            result.update({
+                "runId": run_id,
+                "reusable": True,
+                "reason": (
+                    "exact_validated_application_package"
+                    if exact_pr
+                    else "validated_package_backfill_from_exact_green_revision"
+                ),
+            })
+            return result
+    compatible = (compatible_package_producer(repository, revision, token) if allow_equivalent
+                  else compatible_package_producer(repository, revision, token, exact_revision_only=True))
+    if compatible:
+        return compatible
+    result["reason"] = "exact_validated_package_missing"
+    return result
+
+
+def cmd_validated_package(args):
+    try:
+        if getattr(args, 'pinned_source_json', None):
+            result = pinned_package_evidence(args.repository, args.revision, json.loads(args.pinned_source_json),
+                os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN') or '')
+        else:
+            result = compute_validated_package_evidence(
+                args.repository,
+                args.revision,
+                args.package_identity,
+            )
+    except Exception as exc:
+        result = {
+            "schemaVersion": 1,
+            "revision": args.revision,
+            "packageIdentity": args.package_identity,
+            "artifact": f"founder-diagnostics-packages-{args.package_identity}",
+            "runId": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def _partial_release_rollback_evidence(repository, revision, app, result, token):
+    """Recover legacy exact bytes from a durable successful sibling publication.
+
+    A failed parent has no approved-release receipt. Its retained state, canonical
+    package verifier and durable operation success still bind the successful
+    target. This path never treats upload acceptance or a step label as success.
+    """
+    for run in _release_history_runs(repository, token):
+        if (run.get('path') != '.github/workflows/' + DIRECT_RELEASE_WORKFLOW or
+                run.get('head_branch') != TRUSTED_PR_BASE or run.get('event') != 'workflow_dispatch' or
+                run.get('status') != 'completed' or run.get('conclusion') not in {'failure', 'cancelled'} or
+                (run.get('head_repository') or {}).get('full_name') != repository):
+            continue
+        run_id = run['id']
+        inventory = _release_history_api(repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+        artifacts = inventory.get('artifacts')
+        if not isinstance(artifacts, list) or inventory.get('total_count') != len(artifacts):
+            raise EvidenceLookupUnavailable('Partial release rollback artifact inventory incomplete')
+        states = [row for row in artifacts if re.fullmatch(
+            rf'legend-release-step-state-{revision}-{run_id}-[1-9][0-9]*', row.get('name', ''))]
+        for artifact in states:
+            state = _release_history_json(repository, run_id, artifact, 'legend-release-step-state.json')
+            attempt = state.get('runAttempt')
+            if (type(attempt) is not int or attempt < 1 or
+                    artifact['name'] != f'legend-release-step-state-{revision}-{run_id}-{attempt}' or
+                    state.get('runId') != run_id or state.get('applicationReleaseSha') != revision):
+                raise ValueError('Partial release rollback state identity mismatch')
+            # Mixed-producer schema 3 requires its existing target-material receipt.
+            if state.get('schemaVersion') != 2 or 'targetMaterials' in state:
+                continue
+            if app not in selected_release_target_keys(state.get('selectedTargets', [])):
+                continue
+            identity = state.get('packageIdentity')
+            if not re.fullmatch('[a-f0-9]{64}', identity or ''):
+                raise ValueError('Partial release rollback package identity missing')
+            jobs = _release_history_api(repository,
+                f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+            rows = jobs.get('jobs')
+            if not isinstance(rows, list) or jobs.get('total_count') != len(rows):
+                raise EvidenceLookupUnavailable('Partial release rollback job inventory incomplete')
+            owners = [job for job in rows if job.get('name') == 'release']
+            if len(owners) != 1 or owners[0].get('status') != 'completed':
+                raise EvidenceLookupUnavailable('Partial release rollback publication owner unproven')
+            if _release_attempt_package_revision(repository, run, attempt, owners[0], token, app) != revision:
+                raise ValueError('Partial release rollback producer mismatch')
+            for success in artifacts:
+                match = re.fullmatch('legend-release-operation-success-([a-f0-9]{64})', success.get('name', ''))
+                if not match:
+                    continue
+                record = _release_history_json(repository, run_id, success, 'operation.json')
+                if record.get('target') != app or record.get('producingAttempt') != attempt:
+                    continue
+                if (record.get('schemaVersion') != 1 or record.get('phase') != 'success' or
+                        record.get('operationId') != match.group(1) or record.get('producingRun') != run_id or
+                        record.get('applicationRevision') != revision or
+                        not re.fullmatch('[a-f0-9]{64}', record.get('packageDigest', ''))):
+                    raise ValueError('Partial release rollback durable success mismatch')
+                proven = release_operation_history(repository, match.group(1), revision, app,
+                    run_id, attempt, token, phase='success')
+                if proven != record:
+                    raise ValueError('Partial release rollback success authority mismatch')
+                package = compute_validated_package_evidence(repository, revision, identity, allow_equivalent=False)
+                if (not package.get('reusable') or package.get('revision') != revision or
+                        package.get('packageIdentity') != identity or
+                        package.get('runId') != record.get('packageProducerRun')):
+                    raise EvidenceLookupUnavailable('Exact partial release rollback package unavailable')
+                return dict(result, reusable=True, runId=package['runId'], releaseRunId=run_id,
+                    packageArtifact=package['artifact'], packageIdentity=identity,
+                    packageDigest=record['packageDigest'],
+                    reason='exact_package_from_durable_successful_release_target')
+    return None
+
+
+def compute_rollback_evidence(repository: str, revision: str, app: str):
+    if app not in RELEASE_TARGETS:
+        raise ValueError(f"Unknown release target: {app}")
+    result = {
+        "schemaVersion": 2,
+        "revision": revision,
+        "app": app,
+        "packageName": RELEASE_TARGETS[app]["package"],
+        "runId": None,
+        "releaseRunId": None,
+        "packageArtifact": None,
+        "packageIdentity": None,
+        "reusable": False,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+    release_name = RELEASE_TARGETS[app]["releaseName"]
+    receipt_names = (
+        f"legend-approved-release-{revision}-{release_name}",
+        f"legend-approved-release-{revision}",
+    )
+    workflow_path = ".github/workflows/all-intentional-direct-release-20260918.yml"
+    seen_runs = set()
+    for receipt_name in receipt_names:
+        for artifact in _artifact_rows(repository, receipt_name, token):
+            run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+            if not run_id or run_id in seen_runs:
+                continue
+            seen_runs.add(run_id)
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if not (
+                run.get("path") == workflow_path
+                and run.get("head_branch") == TRUSTED_PR_BASE
+                and run.get("status") == "completed"
+                and run.get("conclusion") == "success"
+                and (run.get("head_repository") or {}).get("full_name") == repository
+            ):
+                continue
+            if receipt_name.endswith('-' + release_name):
+                receipt = _release_history_json(repository, run_id, artifact, 'target-release-receipt.json')
+                if receipt.get('schemaVersion') == 3:
+                    import importlib.util
+                    spec=importlib.util.spec_from_file_location('rollback_package_owner',Path(__file__).with_name('release-package.py'))
+                    package=importlib.util.module_from_spec(spec);spec.loader.exec_module(package)
+                    material=package.validate_target_material(app,receipt.get('targetMaterial'))
+                    if (material['producerRevision']!=revision or receipt.get('target')!=release_name or
+                            receipt.get('transaction')!='committed-or-preserved' or receipt.get('liveProven') is not True or
+                            receipt.get('authority')!='post-live-verification'):
+                        raise ValueError('Historical target receipt does not bind live-proven bytes')
+                    component=compatible_component_evidence(repository,revision,app,token,expected_source=material['source'])
+                    source=component.get('sourceReceipt',{})
+                    if component.get('state') == 'required':
+                        aggregate_revision=receipt.get('applicationReleaseSha')
+                        aggregate_identity=receipt.get('packageIdentity')
+                        if (not re.fullmatch('[a-f0-9]{40}',aggregate_revision or '') or
+                                not re.fullmatch('[a-f0-9]{64}',aggregate_identity or '')):
+                            raise EvidenceLookupUnavailable('Historical rollback aggregate binding unavailable')
+                        aggregate=compute_validated_package_evidence(repository,aggregate_revision,aggregate_identity,allow_equivalent=False)
+                        if (not aggregate.get('reusable') or aggregate.get('targetMaterials',{}).get(app)!=material or
+                                type(aggregate.get('artifactId')) is not int or aggregate['artifactId']<1):
+                            raise EvidenceLookupUnavailable('Identical retained rollback aggregate unavailable')
+                        return dict(result,reusable=True,runId=aggregate['runId'],releaseRunId=run_id,
+                            packageArtifact=aggregate['artifact'],artifactId=aggregate['artifactId'],
+                            packageDigest=material['packageDigest'],componentSource=True,
+                            reason='identical_target_bytes_restored_from_authenticated_aggregate')
+                    if (component.get('state')!='reused-success' or source.get('sha256')!=material['packageDigest'] or
+                            source.get('executionIdentity')!=material['executionIdentity'] or source.get('contentIdentity')!=material['contentIdentity']):
+                        raise EvidenceLookupUnavailable('Exact historical rollback component unavailable')
+                    return dict(result,reusable=True,runId=source['runId'],releaseRunId=run_id,
+                        packageArtifact=source['artifact']['name'],artifactId=source['artifact']['id'],
+                        packageDigest=source['sha256'],componentSource=True,reason='exact_live_target_component_receipt')
+                if receipt.get('schemaVersion') == 1:
+                    # Original target receipts predate component provenance.
+                    # Authenticate their exact format and original successful
+                    # live verification; do not restamp them as schema 2/3.
+                    if (type(receipt.get('schemaVersion')) is not int or
+                            receipt != dict(schemaVersion=1, applicationReleaseSha=revision,
+                                            target=release_name, transaction='committed-or-preserved')):
+                        raise ValueError('Legacy rollback target receipt binding mismatch')
+                    attempt = run.get('run_attempt')
+                    if type(attempt) is not int or attempt < 1 or run.get('event') != 'workflow_dispatch':
+                        raise ValueError('Legacy rollback release attempt unproven')
+                    inventory = _release_history_api(repository,
+                        f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+                    jobs = inventory.get('jobs')
+                    if (not isinstance(jobs, list) or type(inventory.get('total_count')) is not int
+                            or inventory['total_count'] != len(jobs)):
+                        raise EvidenceLookupUnavailable('Legacy rollback job inventory incomplete')
+                    owners = [job for job in jobs if job.get('name') == 'release']
+                    if (len(owners) != 1 or owners[0].get('status') != 'completed'
+                            or owners[0].get('conclusion') != 'success'):
+                        raise ValueError('Legacy rollback successful release unproven')
+                    owner = owners[0]
+                    for name in ('Verify every deployed target and collect all failures',
+                                 'Enforce complete direct deployment outcome'):
+                        steps = [step for step in owner.get('steps', []) if step.get('name') == name]
+                        if (len(steps) != 1 or steps[0].get('status') != 'completed'
+                                or steps[0].get('conclusion') != 'success'):
+                            raise ValueError('Legacy rollback live verification unproven')
+                    if _release_attempt_package_revision(repository, run, attempt, owner, token, app) != revision:
+                        raise ValueError('Legacy rollback original package producer mismatch')
+                elif receipt.get('schemaVersion') != 2 or 'targetMaterial' in receipt:
+                    raise ValueError('Historical target receipt schema unsupported')
+            artifact_names = _run_artifact_names(repository, run_id, token)
+            link_prefix = f"legend-approved-package-link-{revision}-"
+            package_links = sorted(
+                name for name in artifact_names
+                if name.startswith(link_prefix)
+            )
+            for link_name in package_links:
+                package_identity = link_name[len(link_prefix):]
+                if not re.fullmatch(r"[0-9a-f]{64}", package_identity):
+                    continue
+                validated = compute_validated_package_evidence(
+                    repository,
+                    revision,
+                    package_identity,
+                )
+                if not validated.get("reusable"):
+                    continue
+                result.update({
+                    "runId": int(validated["runId"]),
+                    "releaseRunId": run_id,
+                    "packageArtifact": validated["artifact"],
+                    "packageIdentity": package_identity,
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt_with_validated_package_link"
+                        if receipt_name.endswith("-" + release_name)
+                        else "legacy_release_receipt_with_validated_package_link"
+                    ),
+                })
+                return result
+
+            # Backward compatibility for releases created before package-link
+            # receipts existed. New releases do not duplicate validated package
+            # bytes into the release run.
+            names = sorted(
+                name for name in artifact_names
+                if name.startswith("founder-diagnostics-packages-")
+            )
+            if names:
+                package_identity = names[-1].removeprefix("founder-diagnostics-packages-")
+                result.update({
+                    "runId": run_id,
+                    "releaseRunId": run_id,
+                    "packageArtifact": names[-1],
+                    "packageIdentity": (
+                        package_identity
+                        if re.fullmatch(r"[0-9a-f]{64}", package_identity)
+                        else None
+                    ),
+                    "reusable": True,
+                    "reason": (
+                        "exact_target_release_receipt"
+                        if receipt_name.endswith("-" + release_name)
+                        else "legacy_exact_successful_release_receipt"
+                    ),
+                })
+                return result
+    partial = _partial_release_rollback_evidence(repository, revision, app, result, token)
+    if partial is not None:
+        return partial
+    result["reason"] = "no_exact_successful_release_package"
+    return result
+
+
+def cmd_rollback_evidence(args):
+    try:
+        result = compute_rollback_evidence(args.repository, args.revision, args.app)
+    except Exception as exc:
+        result = {
+            "schemaVersion": 2,
+            "revision": args.revision,
+            "app": args.app,
+            "packageName": RELEASE_TARGETS.get(args.app, {}).get("package"),
+            "runId": None,
+            "releaseRunId": None,
+            "packageArtifact": None,
+            "packageIdentity": None,
+            "reusable": False,
+            "reason": "planner_error_fail_closed",
+            "plannerError": type(exc).__name__,
+        }
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def _step5_execution_contract(text):
+    """Separate suite execution authority from artifact/planner orchestration."""
+    jobs = _job_blocks(text)
+    contract = {}
+    contract["environment"] = _workflow_top_level_field(text, "env")
+    contract["defaults"] = _workflow_top_level_field(text, "defaults")
+    for name in ("candidate", "baseline"):
+        if name not in jobs:
+            raise ValueError("Missing Step 5 execution job")
+        job = jobs[name]
+        header = job.split("    steps:", 1)[0]
+        # Only scheduling dependencies/conditions are outside execution identity.
+        header = re.sub(r"(?m)^    (?:if|needs):[^\n]*\n(?:      [^\n]*\n)*", "", header)
+        # Retain all executable steps, including unnamed/new steps. An unknown
+        # source mutation or environment write must never disappear from proof.
+        contract[name] = {"runtime": header, "steps": job.split("    steps:", 1)[1]}
+    return contract
+
+
+def _step5_child_contract(text, child):
+    contract = _step5_execution_contract(text)
+    return {key: contract[key] for key in ('environment', 'defaults', child)}
+
+
+def _step5_child_unchanged(prior_sha, workflow_path, child):
+    return _step5_child_contract(git_show_file(prior_sha, workflow_path), child) == _step5_child_contract(Path(workflow_path).read_text(), child)
+
+
+def _step5_merge_fingerprint(source):
+    import ast
+    module = ast.parse(source)
+    names = {'merge_step5_class_results', 'read_step5_results', 'cmd_step5_merge'}
+    nodes = [ast.dump(node, include_attributes=False) for node in module.body
+             if isinstance(node, ast.FunctionDef) and node.name in names]
+    if len(nodes) != len(names):
+        return None
+    return hashlib.sha256('\n'.join(nodes).encode()).hexdigest()
+
+
+def _step5_materialization_identity(workflow, source):
+    """Bind every validate step that can overwrite candidate artifacts and its parser."""
+    import ast
+    names = {'merge_step5_class_results', 'read_step5_results', 'cmd_step5_merge'}
+    nodes = {node.name: ast.dump(node, include_attributes=False)
+             for node in ast.parse(source).body
+             if isinstance(node, ast.FunctionDef) and node.name in names}
+    contract = {'validate': _job_blocks(workflow).get('validate'), 'helpers': nodes}
+    return hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+
+
+def _step5_materialization_compatible(prior_sha, workflow_path):
+    prior = _step5_materialization_identity(
+        git_show_file(prior_sha, workflow_path), git_show_file(prior_sha, 'scripts/validation-resume.py'))
+    current = _step5_materialization_identity(
+        Path(workflow_path).read_text(), Path('scripts/validation-resume.py').read_text())
+    # Candidate artifacts may have been overwritten with effective repaired TRX.
+    # Admit unchanged authority or only the exact reviewed directional upgrade;
+    # never infer that an artifact is raw from its name or its parent conclusion.
+    return prior == current or (prior, current) == (
+        '95fca8be2c095ce5c7720dc6276c09384521930cb6e93d985f1366ec3f8ffcad', '6b3bbec67ebdfa63dc9d05b18ecdfc3e32855fd9946682ea6adb6b708b5a91de')
+
+
+def _step5_candidate_producer_compatible(prior_sha, workflow_path):
+    return (_step5_child_unchanged(prior_sha, workflow_path, 'candidate')
+            and _step5_materialization_compatible(prior_sha, workflow_path))
+
+
+def _step5_baseline_producer_compatible(prior_sha, workflow_path):
+    if not _step5_materialization_compatible(prior_sha, workflow_path):
+        return False
+    prior = _step5_child_contract(git_show_file(prior_sha, workflow_path), 'baseline')
+    current = _step5_child_contract(Path(workflow_path).read_text(), 'baseline')
+    current_helper = _step5_merge_fingerprint(Path('scripts/validation-resume.py').read_text())
+    if prior == current:
+        return current_helper == _step5_merge_fingerprint(git_show_file(prior_sha, 'scripts/validation-resume.py'))
+    # Directional admission of the reviewed full-suite producer into this exact
+    # bounded replacement consumer. Identities remain distinct; unknown edits
+    # (including environment, checkout, SDK, restore, build or test) fail closed.
+    digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+    return current_helper == 'de5a902349eb7e3dbf8e2efd010489cba156f08d9424c626d13cb250224f5ed6' and (digest(prior), digest(current)) == (
+        '93bb34927ed933497128baeffc1e3bd61f7d692deb621e406a1986a1b9c7dc93', 'ae069422498edc792983b05eea46e9714d4a73bdd2c69ff15370eb195f028a01')
+
+
+def _step5_jobs_unchanged(prior_sha: str, workflow_path: str) -> bool:
+    return (_step5_execution_contract(git_show_file(prior_sha, workflow_path)) == _step5_execution_contract(Path(workflow_path).read_text())
+            and _step5_candidate_producer_compatible(prior_sha, workflow_path)
+            and _step5_baseline_producer_compatible(prior_sha, workflow_path))
+
+
+class ReleaseOperationHistoryUnproven(RuntimeError):
+    """No first-write proof; exact-candidate read-only reconciliation is allowed."""
+
+
+_RELEASE_HISTORY_SOURCES = {}
+_RELEASE_HISTORY_VERIFIED_PACKAGES = {}
+_RELEASE_HISTORY_API = {}
+_RELEASE_HISTORY_TERMINAL_RUNS = set()
+_RELEASE_HISTORY_RECEIPTS = {}
+_RELEASE_HISTORY_LOG_BINDINGS = {}
+_RELEASE_HISTORY_EXCLUSIONS = {}
+
+
+def export_release_history_snapshot(candidate_revision):
+    rows = _RELEASE_HISTORY_EXCLUSIONS.get(candidate_revision, {})
+    # Bound only the optimization payload, never the history search/proof.
+    entries = [dict(row, targets=sorted(row['targets'])) for _, row in sorted(rows.items())[-2000:]]
+    body = {'schemaVersion': 1, 'candidateRevision': candidate_revision, 'entries': entries}
+    body['digest'] = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return body
+
+
+def import_release_history_snapshot(snapshot, candidate_revision):
+    """Consume only the snapshot in an authenticated canonical transaction plan.
+
+    It excludes immutable terminal history, never active or newly retried runs.
+    release_operation_history still reads the fresh complete run inventory.
+    """
+    if not isinstance(snapshot, dict) or set(snapshot) != {'schemaVersion', 'candidateRevision', 'entries', 'digest'}:
+        raise RuntimeError('Malformed transaction history snapshot')
+    body = {key: value for key, value in snapshot.items() if key != 'digest'}
+    digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if snapshot['schemaVersion'] != 1 or snapshot['candidateRevision'] != candidate_revision or snapshot['digest'] != digest:
+        raise RuntimeError('Transaction history snapshot identity mismatch')
+    if not isinstance(snapshot['entries'], list) or len(snapshot['entries']) > 2000:
+        raise RuntimeError('Transaction history snapshot is unbounded')
+    rows = {}
+    for row in snapshot['entries']:
+        if (not isinstance(row, dict) or set(row) != {'runId', 'runAttempt', 'headSha', 'targets'} or
+                type(row['runId']) is not int or row['runId'] < 1 or row['runId'] in rows or
+                type(row['runAttempt']) is not int or row['runAttempt'] < 1 or
+                not re.fullmatch('[a-f0-9]{40}', row['headSha']) or
+                not isinstance(row['targets'], list) or not row['targets'] or
+                len(row['targets']) != len(set(row['targets'])) or any(key not in RELEASE_TARGETS for key in row['targets'])):
+            raise RuntimeError('Invalid terminal history exclusion')
+        rows[row['runId']] = dict(row, targets=set(row['targets']))
+    existing = _RELEASE_HISTORY_EXCLUSIONS.setdefault(candidate_revision, {})
+    for run_id, row in rows.items():
+        prior = existing.get(run_id)
+        if prior is None or prior['runAttempt'] < row['runAttempt']:
+            existing[run_id] = row
+        elif prior['runAttempt'] == row['runAttempt'] and prior['headSha'] == row['headSha']:
+            prior['targets'].update(row['targets'])
+
+
+def _remember_release_exclusion(candidate_revision, run, target):
+    if run.get('status') != 'completed':
+        return
+    rows = _RELEASE_HISTORY_EXCLUSIONS.setdefault(candidate_revision, {})
+    prior = rows.get(run['id'])
+    if prior is None or prior['runAttempt'] != run.get('run_attempt', 1) or prior['headSha'] != run['head_sha']:
+        prior = {'runId': run['id'], 'runAttempt': run.get('run_attempt', 1), 'headSha': run['head_sha'], 'targets': set()}
+        rows[run['id']] = prior
+    prior['targets'].add(target)
+
+
+def _release_history_api(repository, path, token):
+    """Share immutable terminal proof in one preparation process, not active state."""
+    key = (repository, path)
+    if key in _RELEASE_HISTORY_API:
+        return _RELEASE_HISTORY_API[key]
+    payload = api_get(repository, path, token)
+    runs = payload.get('workflow_runs') if isinstance(payload, dict) else None
+    if isinstance(runs, list):
+        _RELEASE_HISTORY_TERMINAL_RUNS.update((repository, row['id']) for row in runs if row.get('status') == 'completed')
+    run_path = re.fullmatch(r'actions/runs/(\d+)', path)
+    if run_path and payload.get('status') == 'completed':
+        _RELEASE_HISTORY_TERMINAL_RUNS.add((repository, int(run_path.group(1))))
+    artifact_path = re.fullmatch(r'actions/runs/(\d+)/artifacts\?per_page=100', path)
+    jobs = payload.get('jobs') if isinstance(payload, dict) else None
+    immutable = (
+        path.startswith('compare/') or
+        (run_path is not None and payload.get('status') == 'completed') or
+        (isinstance(jobs, list) and all(row.get('status') == 'completed' for row in jobs)) or
+        (artifact_path is not None and (repository, int(artifact_path.group(1))) in _RELEASE_HISTORY_TERMINAL_RUNS)
+    )
+    if immutable:
+        _RELEASE_HISTORY_API[key] = payload
+    return payload
+
+
+def _release_history_source(repository, revision, path, token):
+    """Read immutable public-safe source, never a runtime payload or log."""
+    import base64
+    key = (repository, revision, path)
+    if key in _RELEASE_HISTORY_SOURCES:
+        return _RELEASE_HISTORY_SOURCES[key]
+    try:
+        source = git_show_file(revision, path)
+    except subprocess.SubprocessError:
+        row = api_get(repository, f"contents/{path}?ref={revision}", token)
+        if row.get("encoding") != "base64" or row.get("size", 0) > 300000:
+            raise ReleaseOperationHistoryUnproven("Historical release source is unavailable")
+        source = base64.b64decode(row["content"]).decode()
+    _RELEASE_HISTORY_SOURCES[key] = source
+    return source
+
+
+def _release_history_json(repository, run_id, artifact, filename):
+    import tempfile
+    if artifact.get("expired"):
+        raise ReleaseOperationHistoryUnproven("Historical publication receipt expired")
+    key = (repository, artifact.get('id'), filename)
+    if artifact.get('id') and key in _RELEASE_HISTORY_RECEIPTS:
+        return _RELEASE_HISTORY_RECEIPTS[key]
+    with tempfile.TemporaryDirectory(prefix="legend-release-history-") as directory:
+        _download_run_artifact(repository, run_id, artifact["name"], Path(directory), artifact_id=artifact.get('id'))
+        file = Path(directory) / filename
+        if not file.is_file() or file.stat().st_size > 131072:
+            raise RuntimeError("Malformed historical publication receipt")
+        receipt = json.loads(file.read_text())
+        if artifact.get('id'):
+            _RELEASE_HISTORY_RECEIPTS[key] = receipt
+        return receipt
+
+
+def _historical_publication_names(target):
+    # Read-only recognition of retired workflow formats; current writers still
+    # have one canonical owner and never execute these historical actions.
+    labels = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect',
+              'parfait': 'Parfait', 'website': 'Website'}
+    label = labels[target]
+    return {'Publish selected head as one transaction', f'Publish canonical target ({target})',
+            f'Direct deploy {label}', f'Direct deploy {label} immutable ZIP'}
+
+
+def _legacy_inline_package_revision(workflow, release_job, target, checkout):
+    """Recognize the retired inline build -> exact local package -> upload path."""
+    release = _job_blocks(workflow).get('release', '')
+    blocks = named_step_blocks(release)
+    steps = {row['name']: row for row in release_job.get('steps', [])}
+    publications = [name for name in _historical_publication_names(target)
+                    if name.startswith('Direct deploy ') and name in blocks and name in steps]
+    if len(publications) != 1:
+        return None
+    if steps.get('Load exact preserved deployable package', {}).get('conclusion') == 'success':
+        return None  # Reused bytes require their independent producer proof.
+    package_name = 'Publish exact selected application packages'
+    if steps.get(package_name, {}).get('conclusion') != 'success':
+        return None
+    package = blocks.get(package_name, '')
+    publication = blocks[publications[0]]
+    if (release.index(package) >= release.index(publication) or
+            re.search(r'git (?:checkout|reset|switch)\b', release) or
+            re.search(r'(?m)^\s+RELEASE_SHA:', release)):
+        return None
+    if target == 'website':
+        output = 'Legend-Website/dist'
+        if ('"$RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt' not in package or
+                steps.get('Verify selected website catalog and build', {}).get('conclusion') != 'success'):
+            return None
+        filename = 'website.zip'
+    else:
+        project = re.escape(RELEASE_TARGETS[target]['project'])
+        match = re.search(r'dotnet publish ' + project +
+            r' -c Release --no-build --no-restore -o (/tmp/[a-z]+-publish) -p:SourceRevisionId="\$RELEASE_SHA"', package)
+        build = blocks.get('Build exact selected release candidate', '')
+        if (not match or steps.get('Build exact selected release candidate', {}).get('conclusion') != 'success' or
+                '-p:SourceRevisionId="$RELEASE_SHA"' not in build):
+            return None
+        output = match.group(1)
+        alias = output.removeprefix('/tmp/').removesuffix('-publish')
+        if 'apps+=(' + alias + ')' not in package:
+            return None
+        filename = alias + '.zip'
+    if (output not in publication and '/tmp/diagnostics-packages/' + filename not in publication and
+            'python3 scripts/deploy-approved-app.py --target ' + target not in publication):
+        return None
+    if ('zip -qr' not in package or 'sha256sum /tmp/diagnostics-packages/*.zip' not in package):
+        return None
+    return checkout
+
+
+class _ReleaseLogRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, url):
+        if urllib.parse.urlparse(url).scheme != 'https':
+            raise ReleaseOperationHistoryUnproven('Historical log redirect must use HTTPS')
+        redirected = super().redirect_request(request, response, code, message, headers, url)
+        if redirected is not None:
+            redirected.remove_header('Authorization')
+        return redirected
+
+
+def _release_job_log(repository, job_id, token):
+    """Read the authenticated log redirect with bounded, credential-safe transport."""
+    request = urllib.request.Request(
+        f'https://api.github.com/repos/{repository}/actions/jobs/{job_id}/logs',
+        headers={'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
+                 'User-Agent': 'legend-validation-resume/1.0'})
+    request.add_unredirected_header('Authorization', f'Bearer {token}')
+    opener = urllib.request.build_opener(_ReleaseLogRedirect())
+    limit = 32 * 1024 * 1024
+    for attempt in range(3):
+        try:
+            with opener.open(request, timeout=evidence_remaining(30)) as response:
+                body = response.read(limit + 1)
+            if len(body) > limit:
+                raise ReleaseOperationHistoryUnproven('Historical checkout log exceeds evidence limit')
+            return body.decode('utf-8')
+        except (OSError, urllib.error.URLError, UnicodeError) as exc:
+            status = getattr(exc, 'code', None)
+            retryable = not isinstance(exc, (urllib.error.HTTPError, UnicodeError)) or status in {408, 429, 500, 502, 503, 504}
+            if not retryable or attempt == 2:
+                reason = f'HTTP {status}' if isinstance(status, int) else type(exc).__name__
+                raise ReleaseOperationHistoryUnproven(
+                    f'Historical checkout log unavailable (job {job_id}; {reason})') from None
+            time.sleep(evidence_remaining(2 ** attempt))
+
+
+def _release_checkout_from_job_log(repository, release_job, application, token):
+    """Recover only revision metadata from authenticated retained Actions logs.
+
+    Raw logs stay in memory and are never returned, printed, or persisted. This
+    is checkout evidence only; source and immutable-package proof still follow.
+    """
+    job_id = release_job.get('id')
+    if (type(job_id) is not int or job_id < 1 or
+            not any(step.get('name') == 'Run actions/checkout@v4' and
+                    step.get('conclusion') == 'success' for step in release_job.get('steps', []))):
+        raise ReleaseOperationHistoryUnproven('Historical successful checkout job proof unavailable')
+    cache_key = (repository, job_id, application)
+    if release_job.get('status') == 'completed' and cache_key in _RELEASE_HISTORY_LOG_BINDINGS:
+        return _RELEASE_HISTORY_LOG_BINDINGS[cache_key]
+    raw = _release_job_log(repository, job_id, token)
+    lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+             for line in raw.splitlines()]
+    text = '\n'.join(lines)
+    heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', text))
+    authorities = set(re.findall(r'(?m)^  RELEASE_SHA: ([a-f0-9]{40})$', text))
+    packages = set(re.findall(r'(?m)^  APPLICATION_RELEASE_SHA: ([a-f0-9]{40})$', text))
+    if len(heads) != 1 or heads != authorities or packages != {application}:
+        raise ReleaseOperationHistoryUnproven('Historical checkout log revision binding is missing or contradictory')
+    checkout = heads.pop()
+    if release_job.get('status') == 'completed':
+        _RELEASE_HISTORY_LOG_BINDINGS[cache_key] = checkout
+    return checkout
+
+
+def _historical_publication_failed_before_first_write(repository, release_job, application_revision, target, checkout, token):
+    """Prove one historical canonical target attempt failed before any upload intent/write."""
+    import ast
+
+    job_id = release_job.get('id')
+    if (type(job_id) is not int or job_id < 1 or release_job.get('status') != 'completed'):
+        return False
+
+    # This negative proof is valid only for the exact write-ahead uploader
+    # contract: deployment reconciliation checks provider state first, then
+    # durably publishes/read-backs intent, and only then calls Azure submit.
+    historical_deploy = _release_history_source(
+        repository, checkout, 'scripts/deploy-approved-app.py', token)
+    historical_evidence = _release_history_source(
+        repository, checkout, 'scripts/release-operation-evidence.py', token)
+    current_deploy = Path(__file__).with_name('deploy-approved-app.py').read_text()
+    current_evidence = Path(__file__).with_name('release-operation-evidence.py').read_text()
+
+    def function_dump(source, name):
+        tree = ast.parse(source)
+        node = next((row for row in tree.body
+                     if isinstance(row, (ast.FunctionDef, ast.AsyncFunctionDef)) and row.name == name), None)
+        return ast.dump(node) if node is not None else None
+
+    def method_dump(source, class_name, method_name):
+        tree = ast.parse(source)
+        owner = next((row for row in tree.body if isinstance(row, ast.ClassDef) and row.name == class_name), None)
+        node = next((row for row in owner.body
+                     if isinstance(row, (ast.FunctionDef, ast.AsyncFunctionDef)) and row.name == method_name), None) if owner else None
+        return ast.dump(node) if node is not None else None
+
+    historical_reconcile = next((node for node in ast.parse(historical_deploy).body
+                                 if isinstance(node, ast.FunctionDef) and node.name == 'reconcile'), None)
+    # Retain the audited pre-upload negative proof from the prior write-ahead
+    # generation. Its later SHA-only success semantics are never executed here.
+    # Exact source hashing is independent of the reader's Python AST version.
+    prior_reconcile = (historical_reconcile is not None and hashlib.sha256(
+        ast.get_source_segment(historical_deploy, historical_reconcile).encode()).hexdigest() in {
+        'ab0084204d7623f5968fe18fb7b9f844a346e4c7d20a028c9dc350e7264d3502',
+        # Approved pre-diagnostic subtype generation; same pre-submit boundary.
+        '00dd0d2f2145617c3aa22dc5f44e0d4eef948303c8f691d7a887fb42e0eb2473'})
+    historical_journal = next((node for node in ast.parse(historical_evidence).body
+                               if isinstance(node, ast.ClassDef) and node.name == 'OperationJournal'), None)
+    historical_intent = next((node for node in historical_journal.body
+                              if isinstance(node, ast.FunctionDef) and node.name == 'before_submit'), None) if historical_journal else None
+    # Schema-2 adds provenance fields to the same intent-before-write protocol.
+    # Retain the exact approved schema-1 method for negative execution evidence;
+    # this never reconstructs a successful operation or permits ambiguous replay.
+    prior_intent = historical_intent is not None and hashlib.sha256(
+        ast.get_source_segment(historical_evidence, historical_intent).encode()).hexdigest() == \
+        '9fd5781cd54c10c9a5fb74af4bb005f172480583c9da0396387309888e953e26'
+    if ((function_dump(historical_deploy, 'reconcile') != function_dump(current_deploy, 'reconcile')
+         and not prior_reconcile) or
+            (method_dump(historical_evidence, 'OperationJournal', 'before_submit') !=
+             method_dump(current_evidence, 'OperationJournal', 'before_submit') and not prior_intent)):
+        return False
+
+    # Authenticated retained logs are only execution evidence after source
+    # contract identity is proven. Require the exact target/revision start,
+    # the fail-closed pre-upload exception, and no submit marker in that target
+    # execution segment.
+    raw = _release_job_log(repository, job_id, token)
+    lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line)
+             for line in raw.splitlines()]
+    text = '\n'.join(lines)
+    release_name = RELEASE_TARGETS[target]['releaseName']
+    start_marker = f'{release_name}: approved revision {application_revision}, ZIP sha256 '
+    starts = [match.start() for match in re.finditer(re.escape(start_marker), text)]
+    if len(starts) != 1:
+        return False
+    start = starts[0]
+    end_marker = '\n##[error]Process completed with exit code 1.'
+    end = text.find(end_marker, start)
+    if end < 0:
+        return False
+    segment = text[start:end + len(end_marker)]
+    expected = (
+        'DeploymentStatusUnavailable: Azure deployment status remained unavailable for 3 consecutive reads '
+        '(before any upload). No deployment or rollback write was replayed; resume by reconciling the exact revision.'
+    )
+    return expected in segment and 'Submitting the verified immutable ZIP once.' not in segment
+
+
+def _historical_parallel_verifier_compatible(functions, current_functions, source=None):
+    """Recognize bounded reviewed verifier generations, never historical success."""
+    import ast
+    names = ('publish_prepared_target', 'publish_prepared_targets_parallel')
+    if any(name not in functions or name not in current_functions for name in names):
+        return False
+    if all(ast.dump(functions[name]) == ast.dump(current_functions[name]) for name in names):
+        return True
+    # Preserve the jointly reviewed component-aware verifier/worker generation.
+    # This recognizes its contract, never its outcome; source, job, artifact and
+    # attempt authentication below remain mandatory. Source hashes are stable
+    # across Python versions and cannot accept a mix of independently approved parts.
+    if source is not None:
+        pair = tuple(hashlib.sha256(ast.get_source_segment(source, functions[name]).encode()).hexdigest()
+                     for name in names)
+        if pair == ('98b0a32ed17d70631bcb153ba6f01e6c7ac80c23ce1821ee2ffc466fe6b8d527',
+                    '4e0342f97a7b793a8c1f53b88dab568004b835f0bbf720607436ad402d270cc9'):
+            return True
+    fingerprints = tuple(hashlib.sha256(ast.dump(functions[name]).encode()).hexdigest() for name in names)
+    # Canonical Python 3.12 AST identities: the approved single-producer verifier
+    # and its two reviewed first-pass reporting generations. Neither certifies
+    # current live success or permits a mutation without durable intent.
+    return fingerprints in {
+        ('07f76c62c85f378b0db1627dac88be26a0438bb24e4181f455a2ab1b69b506b6',
+         'cb3f333f35a82e47bb8e6e2bf178399022451de69550923348d77252a1c35392'),
+        ('07f76c62c85f378b0db1627dac88be26a0438bb24e4181f455a2ab1b69b506b6',
+         '9c63956c377037597ee1c5480d8066090fce4ded791f7138dc3c05932129b22a'),
+    }
+
+
+def _release_attempt_package_revision(repository, run, attempt, release_job, token, target, *, aggregate=False):
+    """Bind legacy publication to the package's verified embedded revision.
+
+    Workflow event SHA is never substituted for checkout/package authority.
+    Existing state and package receipts remain the only evidence channel.
+    """
+    import ast
+    run_id = run['id']
+    cache_key = (repository, run_id, attempt, run['head_sha'], target, aggregate, json.dumps(release_job, sort_keys=True))
+    if cache_key in _RELEASE_HISTORY_VERIFIED_PACKAGES:
+        return _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key]
+    inventory = _release_history_api(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
+    artifacts = inventory.get('artifacts')
+    if not isinstance(artifacts, list) or inventory.get('total_count', 0) > len(artifacts):
+        raise ReleaseOperationHistoryUnproven('Incomplete historical receipt inventory')
+    states = [row for row in artifacts if re.fullmatch(
+        rf"legend-release-step-state-[a-f0-9]{{40}}-{run_id}-{attempt}", row.get('name', ''))]
+    if len(states) > 1:
+        raise ReleaseOperationHistoryUnproven('Historical state receipt names are ambiguous')
+    receipt = None
+    if len(states) == 1:
+        state = _release_history_json(repository, run_id, states[0], 'legend-release-step-state.json')
+        if state.get('schemaVersion') not in (2, 3) or state.get('runId') != run_id or state.get('runAttempt') != attempt:
+            raise RuntimeError('Historical release state producer identity mismatch')
+        # This state file's releaseHeadSha is the workflow event SHA, not checkout.
+        # Corroborate its step proof against independently retained Actions data.
+        actual = [(row.get('name'), row.get('status'), row.get('conclusion')) for row in release_job.get('steps', [])]
+        claimed = [(row.get('name'), row.get('status'), row.get('conclusion')) for row in state.get('steps', [])]
+        if actual != claimed or state.get('releaseJobConclusion') != release_job.get('conclusion'):
+            raise RuntimeError('Historical release state contradicts Actions execution proof')
+        receipt = state
+    elif attempt == 1 and run.get('run_attempt', 1) == 1:
+        approved = [row for row in artifacts if re.fullmatch(r'legend-approved-release-[a-f0-9]{40}', row.get('name', ''))]
+        if len(approved) == 1 and release_job.get('conclusion') == 'success':
+            receipt = _release_history_json(repository, run_id, approved[0], 'approved-release-receipt.json')
+            if receipt.get('schemaVersion') not in (2, 3):
+                # Older receipts are not interpreted as current proof. The
+                # independently verified RELEASE_SHA package contract below
+                # may still prove which bytes that legacy run published.
+                receipt = None
+            elif receipt.get('transaction') not in {'committed', 'preserved'}:
+                raise RuntimeError('Historical approved receipt contract mismatch')
+    if receipt is not None and not re.fullmatch('[a-f0-9]{40}', receipt.get('applicationReleaseSha', '')):
+        raise RuntimeError('Historical receipt package revision is malformed')
+    application = receipt['applicationReleaseSha'] if receipt else None
+    target_application = application
+    if receipt is not None and receipt.get('schemaVersion') == 3:
+        materials = receipt.get('targetMaterials')
+        keys = set(selected_release_target_keys(receipt.get('selectedTargets', [])))
+        if not isinstance(materials, dict) or set(materials) != keys or (not aggregate and target not in materials):
+            raise RuntimeError('Historical target material scope is incomplete')
+        release_transaction_identity(application, {key: row.get('packageDigest') for key,row in materials.items()}, materials)
+        target_application = application if aggregate else materials[target]['producerRevision']
+    elif receipt is not None and 'targetMaterials' in receipt:
+        raise RuntimeError('Legacy receipt has unversioned target material')
+    translations = {row['name'].removeprefix('translation-direct-release-') for row in artifacts
+                    if not row.get('expired') and re.fullmatch('translation-direct-release-[a-f0-9]{40}', row.get('name', ''))}
+    rollbacks = set()
+    for artifact in artifacts:
+        match = re.fullmatch(r'diagnostics-rollback-([a-z]+)-([a-f0-9]{40})', artifact.get('name', ''))
+        if match and not artifact.get('expired') and match.group(1) in RELEASE_TARGETS:
+            rollbacks.add(match.group(2))
+    checkouts = translations | rollbacks
+    from_log = not checkouts and receipt is not None
+    if from_log:
+        checkout = _release_checkout_from_job_log(repository, release_job, application, token)
+    elif len(checkouts) == 1:
+        checkout = checkouts.pop()
+    else:
+        raise ReleaseOperationHistoryUnproven('No authenticated legacy package checkout/producer revision (missing or ambiguous)')
+    workflow = _release_history_source(repository, run['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+    # Both existing artifact families bind the execution authority, not the
+    # rollback package's embedded revision. Package proof below remains required.
+    rollback_job = _job_blocks(workflow).get('preserve-rollback', '')
+    release = _job_blocks(workflow).get('release', '')
+    checkout_step = re.search(r'(?m)^      - uses: actions/checkout@v4\n((?:        [^\n]*\n|\n)*)', release)
+    event_checkout = (
+        'RELEASE_SHA: ${{ github.sha }}' in workflow and checkout == run['head_sha'] and
+        checkout_step is not None and (not re.search(r'(?m)^\s+ref:', checkout_step.group(1)) or
+            re.findall(r'(?m)^\s+ref: (.*)$', checkout_step.group(1)) == ['${{ github.sha }}']) and
+        not re.search(r'(?m)^\s+RELEASE_SHA:', release))
+    producer_binding = (
+        (event_checkout and bool(translations) and
+         'name: translation-direct-release-${{ github.sha }}' in release) or
+        (from_log and 'uses: actions/checkout@v4' in release and
+         'ref: ${{ env.RELEASE_SHA }}' in release) or
+        (bool(translations) and 'name: translation-direct-release-${{ env.RELEASE_SHA }}' in workflow) or
+        (bool(rollbacks) and 'name: diagnostics-rollback-${{ matrix.app }}-${{ env.RELEASE_SHA }}' in
+         rollback_job and not re.search(r'(?m)^\s+RELEASE_SHA:', rollback_job)))
+    if (('RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}' not in workflow and not event_checkout) or
+            not producer_binding or re.search(r'(?<![A-Z_])RELEASE_SHA\s*=', workflow)):
+        raise ReleaseOperationHistoryUnproven('Historical checkout receipt has no recognized producer binding')
+    release = _job_blocks(workflow).get('release', '')
+    inline_revision = _legacy_inline_package_revision(workflow, release_job, target, checkout)
+    if inline_revision is not None:
+        if receipt is not None and application != inline_revision:
+            raise RuntimeError('Historical inline package proof contradicts retained receipt')
+        if 'python3 scripts/deploy-approved-app.py --target ' + target in release:
+            deployment_source = _release_history_source(repository, checkout, 'scripts/deploy-approved-app.py', token)
+            tree = ast.parse(deployment_source)
+            functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+            current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
+            verifier = next(node for node in current.body if isinstance(node, ast.FunctionDef) and node.name == 'verify_package')
+            legacy_main = ast.parse('''def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--target', choices=TARGETS, required=True)
+    args = parser.parse_args()
+    app, filename, url = TARGETS[args.target]
+    revision = os.environ['RELEASE_SHA']
+    package = Path('/tmp/diagnostics-packages') / filename
+    digest = verify_package(package, revision, args.target == 'website')
+    print(f'{app}: approved revision {revision}, ZIP sha256 {digest}', flush=True)
+    result = reconcile(Azure(app, package, url, revision, args.target == 'website'))
+    print(f'{app}: {result}; exact revision healthy and no Azure deployment pending.', flush=True)
+''').body[0]
+            if (not all(name in functions for name in ('main', 'verify_package')) or
+                    ast.dump(functions['main']) != ast.dump(legacy_main) or
+                    ast.dump(functions['verify_package']) != ast.dump(verifier)):
+                raise ReleaseOperationHistoryUnproven('Historical inline uploader contract is incompatible')
+        if release_job.get('status') == 'completed':
+            _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key] = inline_revision
+        return inline_revision
+    if 'APPLICATION_RELEASE_SHA' in release:
+        if ('APPLICATION_RELEASE_SHA: ${{ needs.discover-live.outputs.application_release_sha }}' not in release or
+                release.count('APPLICATION_RELEASE_SHA:') != 1 or re.search(r'APPLICATION_RELEASE_SHA\s*=', release)):
+            raise ReleaseOperationHistoryUnproven('Historical package revision binding is unknown')
+        if application is None:
+            raise ReleaseOperationHistoryUnproven('No authenticated legacy package producer revision')
+        revision_variable = 'APPLICATION_RELEASE_SHA'
+    else:
+        # Prior to content-equivalent package reuse, the package's embedded SHA
+        # was exactly the checked-out RELEASE_SHA. The source + successful verify
+        # proof is required; a translation artifact name alone is never enough.
+        revision_variable = 'RELEASE_SHA'
+        if re.search(r'(?m)^\s+RELEASE_SHA:', release):
+            raise ReleaseOperationHistoryUnproven('Historical release overrides its verified checkout revision')
+        if application is not None and application != checkout:
+            raise RuntimeError('Legacy package receipt contradicts verified checkout revision')
+        application = checkout
+    lines, spans = _named_step_spans(release)
+    steps = {row['name']: row for row in release_job.get('steps', [])}
+    target_evidence_names = set(_historical_publication_names(target))
+    target_evidence_names.add(f'Confirm first-pass durable publication receipt ({target})')
+    publication = next(((name, start, end) for name, start, end in spans
+                        if name in target_evidence_names), None)
+    if publication is None:
+        raise ReleaseOperationHistoryUnproven('Historical publication source is unknown')
+    target_body = ''.join(lines[publication[1]:publication[2]])
+    publish_body = target_body
+    publication_start = publication[1]
+    parallel_mode = False
+    if 'python3 scripts/deploy-approved-app.py' not in publish_body:
+        parallel_names = {
+            'Publish canonical selected targets in parallel',
+            'Submit canonical selected targets in parallel',
+        }
+        parallel = next(((name, start, end) for name, start, end in spans
+                         if name in parallel_names), None)
+        release_name = RELEASE_TARGETS[target]['releaseName']
+        if (
+            parallel is None or parallel[1] >= publication[1] or
+            f'/tmp/release-target-results/{target}.json' not in target_body or
+            f"contains(fromJSON(env.SELECTED_TARGETS), '{release_name}')" not in target_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical publication does not use canonical immutable verifier')
+        parallel_body = ''.join(lines[parallel[1]:parallel[2]])
+        if (
+            'python3 scripts/deploy-approved-app.py' not in parallel_body or
+            '--publish-prepared-parallel' not in parallel_body or
+            '--targets-json "$SELECTED_TARGETS"' not in parallel_body or
+            '--transaction-plan /tmp/release-transaction.json' not in parallel_body
+        ):
+            raise ReleaseOperationHistoryUnproven('Historical parallel publication contract is incompatible')
+        publish_body = parallel_body
+        publication_start = parallel[1]
+        parallel_mode = True
+    verified = any(start < publication_start and steps.get(name, {}).get('conclusion') == 'success' and
+                   'scripts/release-package.py verify' in ''.join(lines[start:end]) and
+                   f'--revision "${revision_variable}"' in ''.join(lines[start:end])
+                   for name, start, end in spans)
+    if not verified:
+        raise ReleaseOperationHistoryUnproven('Legacy package did not pass embedded revision verification')
+    deployment_source = _release_history_source(repository, checkout, 'scripts/deploy-approved-app.py', token)
+    tree = ast.parse(deployment_source)
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    current = ast.parse(Path(__file__).with_name('deploy-approved-app.py').read_text())
+    current_functions = {node.name: node for node in current.body if isinstance(node, ast.FunctionDef)}
+    current_verify = current_functions['verify_package']
+    if parallel_mode and not _historical_parallel_verifier_compatible(functions, current_functions, deployment_source):
+        raise ReleaseOperationHistoryUnproven('Historical parallel publication verifier contract is incompatible')
+    if receipt is not None and receipt.get('schemaVersion') == 3:
+        for name in ('prepare_transaction', 'read_transaction_plan', 'transaction_target_material', 'publish_prepared_target'):
+            if name not in functions or ast.dump(functions[name]) != ast.dump(current_functions[name]):
+                raise ReleaseOperationHistoryUnproven('Historical mixed-producer verifier contract is incompatible')
+    expected = [ast.parse("revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')").body[0]]
+    if revision_variable == 'RELEASE_SHA':
+        expected.extend(ast.parse(text).body[0] for text in ("revision = os.environ['RELEASE_SHA']", "revision = os.environ.get('RELEASE_SHA')"))
+    main = functions.get('main')
+    if ('verify_package' not in functions or ast.dump(functions['verify_package']) != ast.dump(current_verify) or
+            main is None or not any(ast.dump(node) == ast.dump(binding) for node in main.body for binding in expected)):
+        raise ReleaseOperationHistoryUnproven('Historical deployment verifier contract is incompatible')
+    one = functions.get('deploy_one')
+    if one is None or not any(isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and
+                             isinstance(node.value.func, ast.Name) and node.value.func.id == 'verify_package'
+                             for node in one.body):
+        raise ReleaseOperationHistoryUnproven('Historical publication does not reverify immutable bytes')
+    resolved = target_application if receipt is not None and receipt.get('schemaVersion') == 3 and not aggregate else application
+    if release_job.get('status') == 'completed':
+        _RELEASE_HISTORY_VERIFIED_PACKAGES[cache_key] = resolved
+    return resolved
+
+
+def _release_history_runs(repository, token):
+    """Fresh complete unfiltered inventory; active/page movement is never cached."""
+    workflow = urllib.parse.quote(DIRECT_RELEASE_WORKFLOW, safe="")
+    page, seen, total = 1, set(), None
+    while True:
+        payload = _release_history_api(repository, f"actions/workflows/{workflow}/runs?per_page=100&page={page}", token)
+        rows, count = payload.get('workflow_runs'), payload.get('total_count')
+        if not isinstance(rows, list) or type(count) is not int or count < 0:
+            raise ReleaseOperationHistoryUnproven('Missing release execution history')
+        if total is None:
+            total = count
+        elif total != count:
+            raise ReleaseOperationHistoryUnproven('Release inventory changed during pagination; retry read-only discovery')
+        for row in rows:
+            if type(row.get('id')) is not int or row['id'] in seen:
+                raise ReleaseOperationHistoryUnproven('Release inventory pagination repeated a run')
+            seen.add(row['id'])
+            yield row
+        if len(rows) < 100:
+            if len(seen) != total:
+                raise ReleaseOperationHistoryUnproven('Release execution history is truncated')
+            return
+        page += 1
+
+
+def _release_nonentry_observers(jobs, source):
+    """Authenticate observers with no capability to publish within this attempt."""
+    names = {'release-state-receipt', 'target-release-receipts (${{ matrix.app }})',
+             'wake-release-lifecycle-after-terminal-release'}
+    present = [job for job in jobs if job.get('name') in names]
+    if not present:
+        return jobs
+    if (not isinstance(source, str) or {job['name'] for job in present} != names
+        or len(present) != len(names)):
+        return None
+    blocks = _job_blocks(source)
+    legacy_jobs = {'admission', 'discover-live', 'preserve-rollback', 'release',
+                   'release-state-receipt', 'target-release-receipts',
+                   'wake-release-lifecycle-after-terminal-release'}
+    if (set(blocks) not in (legacy_jobs, legacy_jobs | {'migration-readiness'})
+        or any(job.get('status') != 'completed' for job in jobs)):
+        return None
+    contract = {name: blocks.get(name) for name in (
+        'release-state-receipt', 'target-release-receipts',
+        'wake-release-lifecycle-after-terminal-release')}
+    contract.update(environment=_workflow_top_level_field(source, 'env'),
+                    defaults=_workflow_top_level_field(source, 'defaults'))
+    # Exact a07afe8 observer capability contract: inline state capture/upload,
+    # plus a scheduler wake with contents:read/actions:write only. The wake is
+    # not read-only, but has no Azure authentication, secrets or OIDC permission
+    # to publish here. Its protected checkout can dispatch another workflow;
+    # that separate run remains in complete release history and admission.
+    # Unknown permissions, commands or ambient env fail closed. A job name
+    # alone never grants this non-publication classification.
+    # Both reviewed generations retain receipt-only observer capabilities.
+    contracts = {
+        'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7': legacy_jobs,
+        'f49cf05a452c901b015e69a58697b108b24694cee0763448d3a3a3672e4d04c2': legacy_jobs | {'migration-readiness'},
+    }
+    if contracts.get(hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()) != set(blocks):
+        return None
+    for job in present:
+        if job.get('status') != 'completed' or job.get('conclusion') not in {'success', 'failure', 'cancelled', 'skipped'}:
+            return None
+        steps = job.get('steps')
+        if not isinstance(steps, list):
+            return None
+        if job['name'].startswith('target-release-receipts'):
+            if job['conclusion'] != 'skipped' or steps:
+                return None
+            continue
+        permitted = set(named_step_blocks(blocks[job['name']])) | {'Set up job', 'Complete job'}
+        if job['name'] == 'wake-release-lifecycle-after-terminal-release':
+            permitted.add('Post Checkout protected lifecycle wake authority')
+        step_names = []
+        for step in steps:
+            if (not isinstance(step, dict) or step.get('name') not in permitted
+                or step.get('status') != 'completed'
+                or step.get('conclusion') not in {'success', 'failure', 'cancelled', 'skipped'}):
+                return None
+            step_names.append(step['name'])
+        if len(step_names) != len(set(step_names)):
+            return None
+    return [job for job in jobs if job['name'] not in names]
+
+
+def release_attempt_never_entered(jobs, source=None):
+    """Recognize a complete trusted attempt whose downstream jobs never entered.
+
+    Callers own authenticated producer/source and complete attempt enumeration.
+    GitHub can omit both impossible downstream jobs after admission. Only its
+    exact admission plus skipped rollback wrapper shape proves that omission;
+    partial, duplicate, unknown, or entered job shapes remain unproven.
+    """
+    if not isinstance(jobs, list) or not jobs or any(not isinstance(job, dict) for job in jobs):
+        return False
+    jobs = _release_nonentry_observers(jobs, source)
+    if jobs is None:
+        return False
+    names = [job.get('name') for job in jobs]
+    if ('migration-readiness' in names or
+            (isinstance(source, str) and 'migration-readiness' in _job_blocks(source))):
+        # This generation requires an explicit complete skipped downstream DAG;
+        # never infer omission or classify an entered credentialed observer safe.
+        expected = {'admission', 'discover-live', 'migration-readiness', 'release', 'preserve-rollback'}
+        if set(names) != expected or len(names) != len(expected):
+            return False
+        readiness = next(job for job in jobs if job.get('name') == 'migration-readiness')
+        if (readiness.get('status') != 'completed' or readiness.get('conclusion') != 'skipped'
+                or readiness.get('steps') != []):
+            return False
+        jobs = [job for job in jobs if job is not readiness]
+        names = [job.get('name') for job in jobs]
+    allowed = {'admission', 'discover-live', 'release', 'preserve-rollback'}
+    if (any(name not in allowed for name in names) or
+            len(names) != len(set(names)) or names.count('admission') != 1):
+        return False
+    downstream = set(names) - {'admission', 'preserve-rollback'}
+    if downstream not in (set(), {'discover-live', 'release'}):
+        return False
+    if not downstream and set(names) != {'admission', 'preserve-rollback'}:
+        return False
+    if not downstream:
+        # Omission is meaningful only for this historical admission/needs
+        # generation. An evolved or unavailable source is not absence proof.
+        if not isinstance(source, str):
+            return False
+        blocks = _job_blocks(source)
+        if set(blocks) != {'admission', 'discover-live', 'preserve-rollback', 'release',
+                           'target-release-receipts', 'release-state-receipt',
+                           'wake-release-lifecycle-after-terminal-release'}:
+            return False
+        gates = {
+            'discover-live': {
+                'needs': 'admission',
+                'if': "needs.admission.outputs.admitted == 'true' && needs.admission.outputs.state == 'RELEASE_READY'",
+            },
+            'preserve-rollback': {
+                'needs': 'discover-live',
+                'if': "needs.discover-live.outputs.preserve_live_targets != 'true' && needs.discover-live.outputs.exact_live != 'true'",
+            },
+            'release': {
+                'needs': '[discover-live, preserve-rollback]',
+                'if': "${{ always() && needs.discover-live.result == 'success' && (needs.preserve-rollback.result == 'success' || needs.preserve-rollback.result == 'skipped') }}",
+            },
+        }
+        for name, fields in gates.items():
+            for field, expected in fields.items():
+                values = re.findall(r'^    ' + field + r': (.*)$', blocks[name], re.MULTILINE)
+                if values != [expected]:
+                    return False
+    for job in jobs:
+        if job['name'] == 'admission':
+            continue
+        if job.get('conclusion') != 'skipped':
+            return False
+        # Contradictory execution detail cannot be treated as non-entry.
+        steps = job.get('steps', [])
+        if not isinstance(steps, list) or any(
+                not isinstance(step, dict) or step.get('conclusion') != 'skipped'
+                for step in steps):
+            return False
+    return True
+
+
+def release_operation_history(repository, operation_id, application_revision, target, current_run, current_attempt, token, *, phase="intent"):
+    """Return retained write-ahead intent, or prove publication never started.
+
+    Absence/expiry is never negative deployment evidence. The independent Actions
+    execution history must show the target publication never started. Unknown or
+    truncated history is an error, not permission to upload again.
+    """
+    import tempfile
+    def read_api(path):
+        try:
+            return _release_history_api(repository, path, token)
+        except OSError as exc:
+            raise ReleaseOperationHistoryUnproven("Release evidence provider unavailable") from exc
+    if phase not in {"intent", "success"}:
+        raise ValueError("Unknown deployment evidence phase")
+    name = f"legend-release-operation-{phase}-" + operation_id
+    encoded = urllib.parse.quote(name, safe="")
+    payload = read_api(f"actions/artifacts?name={encoded}&per_page=100")
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list) or payload.get("total_count", 0) > len(artifacts):
+        raise ReleaseOperationHistoryUnproven("Incomplete deployment intent artifact inventory")
+    records = []
+    for artifact in artifacts:
+        if artifact.get("name") != name:
+            raise RuntimeError("Deployment intent artifact identity mismatch")
+        run_id = artifact.get("workflow_run", {}).get("id")
+        if not run_id:
+            raise RuntimeError("Deployment intent producer is missing")
+        run = read_api(f"actions/runs/{run_id}")
+        fast_track = is_fast_track_producer(repository, run)
+        if not fast_track and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
+                run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch" or
+                run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()):
+            raise RuntimeError("Deployment intent has an untrusted producer")
+        if artifact.get("expired"):
+            raise ReleaseOperationHistoryUnproven("Deployment intent expired; reconciliation required")
+        with tempfile.TemporaryDirectory(prefix="legend-operation-read-") as directory:
+            try:
+                _download_run_artifact(repository, run_id, name, Path(directory))
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ReleaseOperationHistoryUnproven("Deployment intent download unavailable") from exc
+            path = Path(directory) / "operation.json"
+            if path.stat().st_size > 32768:
+                raise RuntimeError("Oversized deployment intent")
+            record = json.loads(path.read_text())
+        if (record.get("operationId") != operation_id or record.get("target") != target or
+                record.get("applicationRevision") != application_revision or
+                record.get("producingRun") != run_id or record.get("phase") != phase):
+            raise RuntimeError("Deployment intent does not bind its producer and operation")
+        if fast_track and (record.get('applicationRevision') != run['head_sha']
+            or type(record.get('producingAttempt')) is not int
+            or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 0)):
+            raise RuntimeError('Fast-track deployment intent has unbound revision or attempt')
+        records.append(record)
+    if records:
+        identity_keys = ("operationId", "applicationRevision", "target", "packageDigest", "baseline")
+        if any(any(record.get(key) != records[0].get(key) for key in identity_keys) for record in records[1:]):
+            raise RuntimeError("Competing deployment intents require reconciliation")
+        if phase == "intent" and any(record != records[0] for record in records[1:]):
+            raise RuntimeError("Competing deployment intent producers require reconciliation")
+        return records[0]
+    if phase == "success":
+        return None
+
+    for run in fast_track_execution_history(repository, token):
+        if run['head_sha'] != application_revision:
+            continue
+        count = run.get('run_attempt')
+        if type(count) is not int or not 1 <= count <= 100:
+            raise ReleaseOperationHistoryUnproven('Fast-track deployment attempts incomplete')
+        saw_owner = False
+        for attempt in range(1, count + 1):
+            if run['id'] == current_run and attempt == current_attempt:
+                continue
+            payload = read_api(f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100")
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                raise ReleaseOperationHistoryUnproven('Fast-track deployment jobs incomplete')
+            if not jobs and (run.get('status') == 'completed' or attempt < count):
+                continue
+            label = RELEASE_TARGETS[target]['releaseName']
+            display = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect', 'parfait': 'Parfait', 'website': 'Website'}[target]
+            owners = [j for j in jobs if j.get('name') in {'Affected App Deploy — ' + display, 'UI Deploy — ' + display}]
+            if not owners and fast_track_skipped_matrix(jobs):
+                saw_owner = True
+                continue
+            if not owners and attempt > 1 and saw_owner:
+                continue
+            if len(owners) != 1:
+                raise ReleaseOperationHistoryUnproven('Fast-track deployment owner unproven: ' + label)
+            saw_owner = True
+            job = owners[0]
+            if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
+                continue
+            steps = [s for s in job.get('steps', []) if s.get('name') in {
+                'Submit one direct ZIP deployment', 'Publish or reconcile exact application bytes'}]
+            if len(steps) != 1 or (steps[0].get('status') != 'queued' and steps[0].get('conclusion') != 'skipped'):
+                raise ReleaseOperationHistoryUnproven('Fast-track publication entered without retained intent: ' + label)
+
+    for run in _release_history_runs(repository, token):
+        if run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch":
+            continue
+        run_id = run["id"]
+        if run_id == current_run and current_attempt == 1:
+            continue
+        if (run.get('path') != '.github/workflows/' + DIRECT_RELEASE_WORKFLOW or
+                run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+            raise RuntimeError('Release execution history has an untrusted producer')
+        prior_proof = _RELEASE_HISTORY_EXCLUSIONS.get(application_revision, {}).get(run_id)
+        if (prior_proof and run.get('status') == 'completed' and prior_proof['headSha'] == run.get('head_sha') and
+                prior_proof['runAttempt'] == run.get('run_attempt', 1) and target in prior_proof['targets']):
+            continue
+        # Modern titles bind actual checkout authority. Legacy receipts below
+        # bind the verified package producer instead of guessing event SHA.
+        title = re.fullmatch(r"LEGEND release pr=[0-9]+ candidate=[a-f0-9]{40} authority=([a-f0-9]{40})", run.get("display_title", ""))
+        if title:
+            comparison = read_api(f"compare/{application_revision}...{title.group(1)}")
+            if comparison.get("status") in {"behind", "diverged"}:
+                _remember_release_exclusion(application_revision, run, target)
+                continue
+            if comparison.get("status") not in {"ahead", "identical"}:
+                raise ReleaseOperationHistoryUnproven("Unknown candidate ancestry in release history")
+        attempts = run.get("run_attempt", 1)
+        if type(attempts) is not int or attempts < 1:
+            raise ReleaseOperationHistoryUnproven("Invalid prior deployment attempt inventory")
+        for attempt in range(1, attempts + 1):
+            if run_id == current_run and attempt == current_attempt:
+                continue
+            jobs_payload = read_api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+            jobs = jobs_payload.get("jobs")
+            count = jobs_payload.get("total_count")
+            if (not isinstance(jobs, list) or type(count) is not int or count != len(jobs)):
+                raise ReleaseOperationHistoryUnproven("Incomplete prior deployment job history")
+            if (not jobs and jobs_payload.get('total_count') == 0 and
+                    (run.get('status') == 'completed' or attempt < attempts)):
+                # Complete Actions enumeration proves this attempt never started a job.
+                continue
+            if release_attempt_never_entered(jobs):
+                continue
+            if (any(job.get('name') == 'admission' for job in jobs) and
+                    not any(job.get('name') in {'release', 'discover-live'} for job in jobs)):
+                source = _release_history_source(repository, run['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+                if release_attempt_never_entered(jobs, source):
+                    continue
+            owners = [job for job in jobs if job.get("name") in {"release", f"publish-target ({target})"}]
+            if len(owners) != 1:
+                raise ReleaseOperationHistoryUnproven("Release execution generation lacks one canonical publication owner")
+            job = owners[0]
+            if (job.get('conclusion') == 'skipped' or job.get('status') == 'queued' or
+                    (job.get('status') == 'completed' and job.get('conclusion') == 'cancelled' and
+                     job.get('steps') == [])):
+                continue
+            names = _historical_publication_names(target)
+            publication = [step for step in job.get('steps', []) if step.get('name') in names]
+            shared_fanout = [
+                step for step in job.get('steps', [])
+                if step.get('name') in {
+                    'Publish canonical selected targets in parallel',
+                    'Submit canonical selected targets in parallel',
+                }
+            ]
+            if len(shared_fanout) == 1 and (
+                shared_fanout[0].get('conclusion') == 'skipped'
+                or shared_fanout[0].get('status') == 'queued'
+            ):
+                # The shared mutation owner never entered, so none of its selected
+                # app targets can have written even if target receipt observers exist.
+                continue
+            if len(publication) == 1 and (publication[0].get('conclusion') == 'skipped' or publication[0].get('status') == 'queued'):
+                # Positive target execution proof works for retired target-owned
+                # publication formats even when old receipt artifacts expired.
+                continue
+            if job.get('name') != 'release':
+                raise ReleaseOperationHistoryUnproven('Target publication entered without retained intent')
+            try:
+                prior_revision = _release_attempt_package_revision(repository, run, attempt, job, token, target)
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ReleaseOperationHistoryUnproven('Historical package proof provider unavailable') from exc
+            if prior_revision == application_revision:
+                if _historical_publication_failed_before_first_write(
+                        repository, job, application_revision, target, prior_revision, token):
+                    # The exact historical source contract plus authenticated log
+                    # prove this target failed before durable intent and before Azure submit.
+                    continue
+                raise ReleaseOperationHistoryUnproven('Prior publication may have written this immutable package; missing intent is not absence proof')
+        _remember_release_exclusion(application_revision, run, target)
+    return None
+
+
+
+def _failed_transaction_preparation_without_writes(source, owner):
+    """A failed preflight is not a lost plan when every later effect was skipped."""
+    if owner.get('status') != 'completed' or owner.get('conclusion') != 'failure':
+        return False
+    blocks = named_step_blocks(_job_blocks(source).get('release', ''))
+    prepare = 'Prepare complete immutable release transaction'
+    if prepare not in blocks or '--prepare-only' not in blocks[prepare]:
+        return False
+    steps = owner.get('steps')
+    if not isinstance(steps, list):
+        return False
+    outcomes = {}
+    for step in steps:
+        outcomes.setdefault(step.get('name'), []).append(step)
+    failed = outcomes.get(prepare, [])
+    if len(failed) != 1 or failed[0].get('conclusion') != 'failure':
+        return False
+    # These observers may run after failure. Require their original bodies to
+    # match the canonical source before excluding them from execution proof.
+    observers = {'Refresh Azure OIDC before transactional publication',
+                 'Enforce complete direct deployment outcome'}
+    current = named_step_blocks(_job_blocks(
+        Path('.github/workflows/' + DIRECT_RELEASE_WORKFLOW).read_text()).get('release', ''))
+    later = list(blocks)[list(blocks).index(prepare) + 1:]
+    legacy_targets = {f'Publish canonical target ({key})' for key in RELEASE_TARGETS}
+    receipt_targets = {
+        f'Confirm first-pass durable publication receipt ({key})'
+        for key in RELEASE_TARGETS
+    }
+    legacy_shape = legacy_targets.issubset(set(later))
+    current_shape = (
+        'Submit canonical selected targets in parallel' in later
+        and receipt_targets.issubset(set(later))
+    )
+    if not (legacy_shape or current_shape):
+        return False
+    for name in later:
+        if name in observers and blocks[name] == current.get(name):
+            continue
+        matches = outcomes.get(name, [])
+        if len(matches) != 1 or matches[0].get('conclusion') != 'skipped':
+            return False
+    return True
+
+
+def release_transaction_identity(revision, target_digests, target_materials=None):
+    """Canonical plan identity: authorization candidate plus exact target material."""
+    if (not isinstance(revision, str) or not re.fullmatch('[a-f0-9]{40}', revision) or
+            not isinstance(target_digests, dict) or not target_digests or
+            any(key not in RELEASE_TARGETS or not re.fullmatch('[a-f0-9]{64}', digest)
+                for key, digest in target_digests.items())):
+        raise ValueError('Transaction plan scope/content identity mismatch')
+    identity = dict(candidateRevision=revision, packageDigests=dict(sorted(target_digests.items())))
+    if target_materials is not None:
+        import importlib.util
+        if not isinstance(target_materials, dict) or set(target_materials) != set(target_digests):
+            raise ValueError('Complete transaction target material required')
+        spec = importlib.util.spec_from_file_location('transaction_package_owner', Path(__file__).with_name('release-package.py'))
+        owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(owner)
+        material = {key: owner.validate_target_material(key, row) for key, row in target_materials.items()}
+        if any(row['packageDigest'] != target_digests[key] for key, row in material.items()):
+            raise ValueError('Transaction target material digest mismatch')
+        identity = dict(candidateRevision=revision, targetMaterials=material)
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def release_transaction_plan_history(repository, plan_id, revision, target_digests, run, attempt, token, *, target_materials=None):
+    """Restore the complete original transaction, including untouched targets.
+
+    None only means this exact plan artifact is absent. It is never first-write
+    authorization; per-target history and canonical admission still must pass.
+    """
+    expected = release_transaction_identity(revision, target_digests, target_materials)
+    if plan_id != expected or not target_digests or any(key not in RELEASE_TARGETS for key in target_digests):
+        raise ValueError('Transaction plan scope/content identity mismatch')
+    name = 'legend-release-transaction-plan-' + plan_id
+    inventory = _release_history_api(repository, f"actions/artifacts?name={name}&per_page=100", token)
+    artifacts = inventory.get('artifacts')
+    if not isinstance(artifacts, list) or inventory.get('total_count', 0) > len(artifacts):
+        raise ReleaseOperationHistoryUnproven('Incomplete transaction plan inventory')
+    retained = None
+    for artifact in artifacts:
+        if artifact.get('name') != name:
+            raise RuntimeError('Transaction plan artifact identity mismatch')
+        producer = artifact.get('workflow_run', {}).get('id')
+        if not producer:
+            raise RuntimeError('Transaction plan producer is missing')
+        producing_run = _release_history_api(repository, f'actions/runs/{producer}', token)
+        if (producing_run.get('path') != '.github/workflows/' + DIRECT_RELEASE_WORKFLOW or
+                producing_run.get('head_branch') != TRUSTED_PR_BASE or producing_run.get('event') != 'workflow_dispatch' or
+                producing_run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+            raise RuntimeError('Transaction plan producer is untrusted')
+        plan = _release_history_json(repository, producer, artifact, 'release-transaction.json')
+        if (plan.get('schemaVersion') != (2 if target_materials is not None else 1) or plan.get('planId') != plan_id or
+                plan.get('candidateRevision') != revision or plan.get('producingRun') != producer or
+                type(plan.get('producingAttempt')) is not int or plan['producingAttempt'] < 1 or
+                plan['producingAttempt'] > producing_run.get('run_attempt', 1)):
+            raise RuntimeError('Transaction plan does not bind immutable producer/scope')
+        rows = plan.get('targets')
+        if not isinstance(rows, list) or len(rows) != len(target_digests):
+            raise RuntimeError('Original transaction cannot be silently split')
+        seen = set()
+        for row in rows:
+            key = row.get('app')
+            if (key in seen or key not in target_digests or row.get('packageDigest') != target_digests[key] or
+                    not re.fullmatch('[a-f0-9]{40}', row.get('revision', ''))):
+                raise RuntimeError('Transaction original baseline/package binding is invalid')
+            seen.add(key)
+            if target_materials is not None and row.get('targetMaterial') != target_materials[key]:
+                raise RuntimeError('Transaction target producer/material binding is invalid')
+            rollback = row.get('rollbackEvidence')
+            desired = target_materials[key]['producerRevision'] if target_materials is not None else revision
+            if row['revision'] == desired:
+                if rollback is not None:
+                    raise RuntimeError('Candidate target has unexpected rollback evidence')
+            elif (not isinstance(rollback, dict) or set(rollback) not in ({'artifact', 'runId', 'revision', 'packageDigest'}, {'artifact', 'runId', 'revision', 'packageDigest', 'artifactId'}) or
+                  ('artifactId' in rollback and (type(rollback['artifactId']) is not int or rollback['artifactId'] < 1)) or
+                  rollback.get('revision') != row['revision'] or type(rollback.get('runId')) is not int or rollback['runId'] < 1 or
+                  not re.fullmatch('[a-zA-Z0-9_.-]{1,256}', rollback.get('artifact', '')) or
+                  not re.fullmatch('[a-f0-9]{64}', rollback.get('packageDigest', ''))):
+                raise RuntimeError('Transaction rollback package proof is invalid')
+        if retained is not None and retained.get('targets') != rows:
+            raise RuntimeError('Competing original transaction baselines require reconciliation')
+        retained = plan if retained is None else retained
+    if retained is not None:
+        if 'historySnapshot' not in retained:
+            raise RuntimeError('Transaction plan lacks authenticated history snapshot')
+        import_release_history_snapshot(retained['historySnapshot'], revision)
+        return retained
+    # A deleted full plan is not permission to bless reobserved live baselines
+    # for an untouched sibling. Prove no prior overlapping original transaction.
+    for prior in _release_history_runs(repository, token):
+        if prior.get('head_branch') != TRUSTED_PR_BASE or prior.get('event') != 'workflow_dispatch':
+            continue
+        if (prior.get('path') != '.github/workflows/' + DIRECT_RELEASE_WORKFLOW or
+                prior.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+            raise RuntimeError('Transaction execution history has an untrusted producer')
+        if prior['id'] == run and attempt == 1:
+            continue
+        source = _release_history_source(repository, prior['head_sha'], '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+        if 'Prepare complete immutable release transaction' not in named_step_blocks(_job_blocks(source).get('release', '')):
+            # This historical generation had no durable all-target plan to lose.
+            # Its writes remain governed by the operation history proof below.
+            continue
+        attempts = prior.get('run_attempt', 1)
+        if type(attempts) is not int or attempts < 1:
+            raise ReleaseOperationHistoryUnproven('Invalid original transaction attempt inventory')
+        for previous_attempt in range(1, attempts + 1):
+            if prior['id'] == run and previous_attempt == attempt:
+                continue
+            jobs = _release_history_api(repository, f"actions/runs/{prior['id']}/attempts/{previous_attempt}/jobs?per_page=100", token)
+            rows = jobs.get('jobs')
+            count = jobs.get('total_count')
+            if (not isinstance(rows, list) or type(count) is not int or count != len(rows)):
+                raise ReleaseOperationHistoryUnproven('Original transaction execution history is incomplete')
+            if (not rows and count == 0 and
+                    (prior.get('status') == 'completed' or previous_attempt < attempts)):
+                # Complete Actions enumeration proves this attempt started no jobs.
+                # Preserve the same proof used by release_operation_history.
+                continue
+            if release_attempt_never_entered(rows, source):
+                continue
+            owners = [row for row in rows if row.get('name') == 'release']
+            if len(owners) != 1:
+                raise ReleaseOperationHistoryUnproven(
+                    f"Original transaction publication owner is missing: run={prior['id']} attempt={previous_attempt}")
+            owner = owners[0]
+            if owner.get('conclusion') == 'skipped' or owner.get('status') == 'queued':
+                continue
+            prepared = [row for row in owner.get('steps', []) if row.get('name') == 'Prepare complete immutable release transaction']
+            if len(prepared) != 1:
+                raise ReleaseOperationHistoryUnproven('Original transaction preparation history is missing')
+            if prepared[0].get('conclusion') == 'skipped' or prepared[0].get('status') == 'queued':
+                continue
+            prior_revision = _release_attempt_package_revision(repository, prior, previous_attempt, owner, token, next(iter(target_digests)), aggregate=True)
+            if prior_revision != revision:
+                continue
+            artifacts = _release_history_api(repository, f"actions/runs/{prior['id']}/artifacts?per_page=100", token)
+            items = artifacts.get('artifacts')
+            if not isinstance(items, list) or artifacts.get('total_count', 0) > len(items):
+                raise ReleaseOperationHistoryUnproven('Original transaction artifact history is incomplete')
+            plans = [row for row in items if re.fullmatch('legend-release-transaction-plan-[a-f0-9]{64}', row.get('name', ''))]
+            if not plans and _failed_transaction_preparation_without_writes(source, owner):
+                continue
+            if not plans:
+                raise ReleaseOperationHistoryUnproven('Original transaction plan is missing; untouched target baseline cannot be replaced')
+            for item in plans:
+                original = _release_history_json(repository, prior['id'], item, 'release-transaction.json')
+                if original.get('candidateRevision') != revision:
+                    continue
+                if original.get('producingRun') != prior['id'] or original.get('producingAttempt') != previous_attempt:
+                    raise ReleaseOperationHistoryUnproven('Original transaction plan attempt is not bound')
+                previous_targets = {row.get('app') for row in original.get('targets', [])}
+                if not previous_targets or previous_targets.intersection(target_digests):
+                    raise ReleaseOperationHistoryUnproven('Overlapping original transaction scope cannot be silently split or replaced')
+    return None
+
+
+def _artifact_rows(repository: str, name: str, token: str):
+    encoded = urllib.parse.quote(name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/artifacts?name={encoded}&per_page=100",
+        token,
+    )
+    return [
+        row for row in payload.get("artifacts", [])
+        if not row.get("expired")
+    ]
+
+
+def _run_artifact_names(repository: str, run_id: int, token: str):
+    payload = api_get(
+        repository,
+        f"actions/runs/{run_id}/artifacts?per_page=100",
+        token,
+    )
+    return {
+        row.get("name")
+        for row in payload.get("artifacts", [])
+        if row.get("name") and not row.get("expired")
+    }
+
+
+def _download_run_artifact(repository: str, run_id: int, name: str, directory: Path, *, artifact_id=None):
+    """Retry only transient GitHub artifact GET failures, never a release mutation.
+
+    CLI stderr may contain signed download URLs. Consume it privately; expose
+    only fixed outcomes. Extraction still undergoes the existing caller's
+    immutable evidence identity/hash validation before it can grant authority.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    if env.get("GITHUB_TOKEN") and not env.get("GH_TOKEN"):
+        env["GH_TOKEN"] = env["GITHUB_TOKEN"]
+    command = [
+        "gh", "run", "download", str(run_id),
+        "--repo", repository,
+        "--name", name,
+        "--dir", str(directory),
+    ]
+    if artifact_id is not None:
+        if type(artifact_id) is not int or artifact_id < 1:
+            raise ValueError('Immutable artifact ID required')
+        command = ['gh', 'api', f'repos/{repository}/actions/artifacts/{artifact_id}/zip']
+    for attempt in range(3):
+        try:
+            if artifact_id is None:
+                result = subprocess.run(command, check=False, env=env, capture_output=True, text=True, timeout=evidence_remaining(120))
+            else:
+                import tempfile
+                import zipfile
+                import stat
+                with tempfile.TemporaryFile() as archive:
+                    result = subprocess.run(command, check=False, env=env, stdout=archive,
+                                            stderr=subprocess.PIPE, text=True, timeout=evidence_remaining(120))
+                    if result.returncode == 0:
+                        archive.seek(0)
+                        with zipfile.ZipFile(archive) as contents:
+                            entries = contents.infolist()
+                            root = directory.resolve()
+                            if (len(entries) > 10000 or sum(row.file_size for row in entries) > 2 * 1024**3 or
+                                len({row.filename for row in entries}) != len(entries) or
+                                any(stat.S_ISLNK(row.external_attr >> 16) or Path(row.filename).is_absolute() or
+                                    not (root / row.filename).resolve().is_relative_to(root) for row in entries)):
+                                raise ValueError('Immutable artifact archive contains unsafe entries')
+                            contents.extractall(directory)
+        except subprocess.TimeoutExpired:
+            raise EvidenceLookupUnavailable("Artifact evidence read unavailable", status=408) from None
+        except OSError:
+            raise EvidenceLookupUnavailable("Artifact evidence read unavailable") from None
+        if result.returncode == 0:
+            return
+        # HTTP failures are classified without reproducing provider text or URLs.
+        # Do not retry authentication, absent/expired artifacts, or unclassified
+        # errors. A 503 from the Actions download service is a safe GET retry.
+        messages = result.stderr or ""
+        transient = bool(re.search(r"\bHTTP (?:408|429|500|502|503|504)\b", messages))
+        if transient and attempt < 2:
+            time.sleep(evidence_remaining(2 ** attempt))
+            continue
+        raise EvidenceLookupUnavailable(
+            "Transient artifact evidence read exhausted bounded retries"
+            if transient else "Artifact evidence read unavailable"
+        )
+
+
+def read_step5_results(path):
+    """Reject incomplete, aborted or malformed TRX before using any child proof."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(path).getroot()
+    rows = [node for node in root.iter() if node.tag.endswith("UnitTestResult")]
+    counters = next((node for node in root.iter() if node.tag.endswith("Counters")), None)
+    summary = next((node for node in root.iter() if node.tag.endswith("ResultSummary")), None)
+    if summary is None or summary.get("outcome") not in {"Completed", "Passed", "Failed"}:
+        raise ValueError("Incomplete test evidence: run did not complete")
+    if not rows or counters is None or int(counters.get("total", "0")) != len(rows):
+        raise ValueError("Incomplete test evidence: missing results or mismatched total")
+    if any(int(counters.get(key, "0")) for key in ("error", "timeout", "aborted", "disconnected", "inProgress", "pending")):
+        raise ValueError("Incomplete test evidence: execution errors remain")
+    if any(node.get("outcome") not in {"Passed", "Failed", "NotExecuted"} or not node.get("testName") for node in rows):
+        raise ValueError("Incomplete test evidence: unknown test outcome or identity")
+    result = {}
+    for node in rows:
+        name = node.get("testName")
+        outcome = node.get("outcome")
+        previous = result.get(name)
+        if previous is None:
+            result[name] = outcome
+        elif previous != outcome:
+            # TRX may contain repeated rows for one logical test identity
+            # (for example framework retry/reporting duplication). Reusing the
+            # evidence is safe only when every terminal observation agrees.
+            raise ValueError("Ambiguous duplicate test identity")
+    return result
+
+
+def merge_step5_class_results(prior_path, repair_path, classes, output_path):
+    """Replace only complete affected class evidence; retain untouched rows."""
+    import copy
+    import xml.etree.ElementTree as ET
+    classes = sorted(set(classes))
+    if not classes:
+        raise ValueError('Bounded repair requires affected classes')
+    prior = read_step5_results(prior_path)
+    repair = read_step5_results(repair_path)
+    affected = lambda name: any(name.startswith(value + '.') for value in classes)
+    if any(not affected(name) for name in repair):
+        raise ValueError('Repair contains tests outside affected classes')
+    for value in classes:
+        if not any(name.startswith(value + '.') for name in repair):
+            raise ValueError('Repair omitted affected class: ' + value)
+    if any(affected(name) and name not in repair for name in prior):
+        raise ValueError('Repair omitted prior tests from affected class')
+    tree = ET.parse(prior_path)
+    root = tree.getroot()
+    results_node = next((node for node in root.iter() if node.tag.endswith('Results')), None)
+    if results_node is None:
+        raise ValueError('Prior TRX has no Results node')
+    for node in list(results_node):
+        if node.tag.endswith('UnitTestResult') and affected(node.get('testName', '')):
+            results_node.remove(node)
+    repair_root = ET.parse(repair_path).getroot()
+    for node in repair_root.iter():
+        if node.tag.endswith('UnitTestResult'):
+            results_node.append(copy.deepcopy(node))
+    rows = [node for node in root.iter() if node.tag.endswith('UnitTestResult')]
+    counters = next(node for node in root.iter() if node.tag.endswith('Counters'))
+    counters.set('total', str(len(rows)))
+    counters.set('executed', str(sum(node.get('outcome') != 'NotExecuted' for node in rows)))
+    for outcome in ('Passed', 'Failed', 'NotExecuted'):
+        counters.set(outcome[0].lower() + outcome[1:], str(sum(node.get('outcome') == outcome for node in rows)))
+    summary = next(node for node in root.iter() if node.tag.endswith('ResultSummary'))
+    summary.set('outcome', 'Failed' if any(node.get('outcome') != 'Passed' for node in rows) else 'Passed')
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tree.write(target, encoding='utf-8', xml_declaration=True)
+    read_step5_results(target)
+
+
+def cmd_step5_merge(args):
+    merge_step5_class_results(args.prior, args.repair, args.classes.split(';'), args.output)
+    Path(args.output + '.provenance.json').write_text(json.dumps({
+        'materializationAuthoritySha256': _step5_merge_fingerprint(Path(__file__).read_text()),
+        'sourceRunId': args.source_run, 'sourceArtifact': args.source_artifact,
+        'sourceRevision': args.source_revision, 'approvedRevision': args.approved_revision,
+        'replacedClasses': args.classes.split(';'),
+        'priorSha256': hashlib.sha256(Path(args.prior).read_bytes()).hexdigest(),
+        'repairSha256': hashlib.sha256(Path(args.repair).read_bytes()).hexdigest(),
+        'effectiveSha256': hashlib.sha256(Path(args.output).read_bytes()).hexdigest(),
+    }, sort_keys=True) + '\n')
+
+
+@functools.lru_cache(maxsize=128)
+def _step5_artifact_results(repository, run_id, artifact, kind, token):
+    """Authenticate the retained child by its artifact bytes, not parent status.
+
+    The canonical workflow uploads this artifact only after the child suite has
+    completed. Reuse additionally parses the TRX and rejects incomplete,
+    conflicting or malformed evidence, so a later parent failure cannot erase
+    the successful child and no jobs-API self-read is required.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="step5-child-") as temporary:
+        directory = Path(temporary)
+        _download_run_artifact(repository, run_id, artifact, directory)
+        return read_step5_results(directory / (kind + ".trx"))
+
+
+def _step5_artifact_complete(repository, run_id, artifact, kind, token):
+    return bool(_step5_artifact_results(repository, run_id, artifact, kind, token))
+
+
+def _step5_prior_candidate_evidence(
+    repository: str,
+    current_run_id: int,
+    head_branch: str,
+    token: str,
+    current_sha: str,
+):
+    """Find the newest compatible child artifact across trusted PR branches.
+
+    Parent failure never erases a completed candidate child. Compatibility is
+    checked before selection, so a newer incompatible run cannot hide an older
+    equivalent producer.
+    """
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    payload = api_get(repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100", token)
+    runs = sorted(payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True)
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        if not run_id or run_id == current_run_id:
+            continue
+        try:
+            head_sha = run["head_sha"]
+            if not _trusted_lineage_run(repository, run, workflow_path, current_sha):
+                if not _trusted_pr_run(repository, run, workflow_path, token):
+                    continue
+            impact = step5_dependency_change(head_sha, current_sha)
+            if impact is None or not _step5_candidate_producer_compatible(head_sha, workflow_path):
+                continue
+            artifact = f"step5-candidate-{head_sha}"
+            if artifact not in _run_artifact_names(repository, run_id, token):
+                continue
+            if not _step5_artifact_complete(repository, run_id, artifact, "candidate", token):
+                continue
+            rows = _step5_artifact_results(repository, run_id, artifact, "candidate", token)
+            return {"runId": run_id, "headSha": head_sha, "artifact": artifact,
+                    "testNames": tuple(rows)}
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            continue
+    return None
+
+
+def _test_file_dependency_patterns(source):
+    """Conservatively bind repository files actually read by source-contract tests.
+
+    Compile proof never consumes these runtime dependencies. For executing tests,
+    literal files/directories and copied AppContext fixtures are exact inputs.
+    Computed single-file paths are resolved by the existing literal-token and
+    copied-alias pass below instead of poisoning the gate with the whole repo.
+    Computed directory enumeration remains fail-closed because it can observe an
+    arbitrary repository subtree whose members are not statically enumerable.
+    """
+    calls = re.compile(r"\b(Directory\.(?:Get|Enumerate)(?:Files|Directories|FileSystemEntries)|File\.(?:Read\w*|Open\w*|Exists)|(?:new\s+)?(?:StreamReader|FileStream))\s*\(")
+    patterns = set()
+    for match in calls.finditer(source):
+        tail = source[match.end():]
+        literal = re.match(r'\s*(@?)"((?:[^"\\]|\\.)*)"\s*(?=[,)])', tail)
+        directory = match.group(1).startswith("Directory.")
+        if literal:
+            path = literal.group(2).replace("\\\\", "/").replace("\\", "/").strip("/")
+            if not path or path == "." or ".." in path.split("/"):
+                patterns.add("**")
+            else:
+                patterns.add(path.rstrip("/") + "/**" if directory else path)
+                # A relative runtime file can be a csproj Link alias; retain all
+                # matching source basenames as well as exact repository paths.
+                if not directory:
+                    patterns.add("**/" + Path(path).name)
+            continue
+        copied = re.match(r'\s*Path\.Combine\(\s*AppContext\.BaseDirectory\s*,\s*"([^"\r\n]+)"\s*\)', tail)
+        if copied and not directory:
+            patterns.add("**/" + Path(copied.group(1)).name)
+            continue
+        if directory:
+            patterns.add("**")
+    return tuple(sorted(patterns))
+
+
+def _step5_source_classes(source):
+    namespace = re.search(r"\bnamespace\s+([\w.]+)\s*[;{]", source)
+    classes = re.findall(r"\b(?:public|internal)\s+(?:(?:sealed|partial|abstract|static)\s+)*class\s+(\w+)", source)
+    if not namespace or not classes:
+        return set()
+    return {namespace.group(1) + "." + name for name in classes}
+
+
+_READONLY_FIXTURE_HELPER = re.compile(
+    r'private\s+static\s+string\s+\w+\s*\(\s*\)\s*=>\s*'
+    r'File\.ReadAllText\(Path\.Combine\(AppContext\.BaseDirectory,\s*"[^"\r\n]+"\)\);')
+
+
+def _step5_csharp_structure(source):
+    """Mask comments and literals while preserving C# declaration geometry."""
+    chars = list(source)
+    length = len(source)
+
+    def mask(begin, finish):
+        for index in range(begin, min(finish, length)):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+
+    i = 0
+    while i < length:
+        if source.startswith("//", i):
+            finish = source.find("\n", i + 2)
+            finish = length if finish < 0 else finish
+            mask(i, finish)
+            i = finish
+            continue
+        if source.startswith("/*", i):
+            finish = source.find("*/", i + 2)
+            finish = length if finish < 0 else finish + 2
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == '"':
+            quote_count = 1
+            while i + quote_count < length and source[i + quote_count] == '"':
+                quote_count += 1
+            if quote_count >= 3:
+                delimiter = '"' * quote_count
+                finish = source.find(delimiter, i + quote_count)
+                finish = length if finish < 0 else finish + quote_count
+                mask(i, finish)
+                i = finish
+                continue
+
+            verbatim = i > 0 and source[i - 1] == "@"
+            finish = i + 1
+            while finish < length:
+                if verbatim and source.startswith('""', finish):
+                    finish += 2
+                    continue
+                if source[finish] == '"' and (verbatim or source[finish - 1] != "\\"):
+                    finish += 1
+                    break
+                if not verbatim and source[finish] == "\\":
+                    finish += 2
+                else:
+                    finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        if source[i] == "'":
+            finish = i + 1
+            while finish < length:
+                if source[finish] == "\\":
+                    finish += 2
+                    continue
+                if source[finish] == "'":
+                    finish += 1
+                    break
+                finish += 1
+            mask(i, finish)
+            i = finish
+            continue
+        i += 1
+    return "".join(chars)
+
+
+def _step5_isolated_test_source(source):
+    """Admit only standalone test classes, never arbitrary C# dependency guesses.
+
+    Comments and literals are masked before structural analysis, so prose cannot
+    impersonate exported/static declarations while compact one-line C# remains
+    valid input. Exported helpers, inherited/partial fixtures, extension types,
+    static state and shared registrations still require full-suite proof.
+    """
+    source = _READONLY_FIXTURE_HELPER.sub("", source)
+    structure = _step5_csharp_structure(source)
+    if len(re.findall(r"\bclass\s+\w+", structure)) != 1:
+        return False
+    if re.search(
+        r"\[Collection(?:\(|Attribute)|\b(?:partial|abstract|static)\s+class|"
+        r"\bclass\s+\w+\s*[:<]|\b(?:record|struct|interface|enum|delegate)\s+\w+|"
+        r"\[\s*(?:assembly|module)\s*:|\bglobal\s+using|ModuleInitializer|"
+        r"CollectionDefinition|ICollectionFixture",
+        structure,
+    ):
+        return False
+
+    # Reject every static construct except a private static method declaration.
+    for marker in re.finditer(r"\bstatic\b", structure):
+        tail = structure[marker.start():]
+        line_start = structure.rfind("\n", 0, marker.start()) + 1
+        prefix = structure[line_start:marker.start()]
+        private_method = (
+            re.search(r"\bprivate\s*$", prefix) is not None
+            and re.match(
+                r"static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+\w+\s*(?:<[^>]+>)?\s*\(",
+                tail,
+            ) is not None
+        )
+        if not private_method:
+            return False
+
+    # Every exported member must be the test class or an attributed test method.
+    for visibility in re.finditer(r"\b(?:public|internal|protected)\b", structure):
+        tail = structure[visibility.start():]
+        if re.match(r"(?:public|internal)\s+(?:sealed\s+)?class\s+", tail):
+            continue
+        prefix = structure[:visibility.start()]
+        attributes = re.search(r"((?:\[[^\]]+\]\s*)+)$", prefix)
+        if not attributes or not re.search(r"\[(?:Fact|Theory)(?:\]|\()", attributes.group(1)):
+            return False
+        if not re.match(
+            r"public\s+(?:async\s+)?(?:void|Task(?:<[^>]+>)?|ValueTask(?:<[^>]+>)?)\s+\w+\s*\(",
+            tail,
+        ):
+            return False
+    return bool(re.search(r"\[(?:Fact|Theory)(?:\]|\()", structure))
+
+def _step5_extension_method_names(source):
+    # Ordinary calls follow their declaring type through the source closure.
+    # Only extension syntax can omit that type at its call site. A shared name
+    # on an unrelated override (e.g. SendAsync) is not a dependency edge.
+    return set(re.findall(
+        r"\b(?:public|internal)\s+static\s+(?:async\s+)?[\w.<>,?\[\]]+\s+"
+        r"(\w+)\s*(?:<[^>]+>)?\s*\(\s*this\s+", source))
+
+
+def step5_dependency_change(prior_sha, current_sha, *, stop_on_change=False):
+    """Return bounded invalidated classes, or None when suite proof is required.
+
+    Project-copied data is a real test dependency, even when its owning release
+    workflow is neutral to application binaries. Resolve consumers from source,
+    including partial files and references between fixture classes. Unknown
+    source/build inputs and unbounded helpers deliberately require full proof.
+    """
+    import posixpath
+    import xml.etree.ElementTree as ET
+    workflow = "step5-isolated-conversion-mapping-validation.yml"
+    config = WORKFLOWS[workflow]
+    changed = git_changed(prior_sha, current_sha)
+
+    # Fast path for exact reuse/control-plane continuation. Do not archive and
+    # analyze the entire AgentPortal.Tests graph when no Step 5 test/application
+    # input changed. Workflow execution compatibility is authenticated separately
+    # by _step5_jobs_unchanged before child evidence is reused.
+    if not changed:
+        return []
+    # Narrow control-only fast path. These files govern Step 5 planning and
+    # comparison, but are not runtime inputs to the AgentPortal.Tests suite.
+    # Candidate/baseline workflow execution compatibility is authenticated
+    # separately by _step5_jobs_unchanged. Other nominally "control" files
+    # (for example the direct-release workflow/request) may be copied/read by
+    # regression tests and therefore MUST continue through consumer discovery.
+    fast_neutral = {
+        WORKFLOW_PATHS[workflow],
+        "scripts/validation-resume.py",
+        "scripts/test-validation-resume.py",
+        "scripts/test-release-policy.py",
+    }
+    if all(path in fast_neutral for path in changed):
+        return []
+
+    # One archive read avoids hundreds of subprocesses per historical producer.
+    import io
+    import tarfile
+    archive = subprocess.run(["git", "archive", current_sha, "AgentPortal.Tests"],
+        check=True, capture_output=True).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tree:
+        contents = {entry.name: tree.extractfile(entry).read().decode("utf-8-sig")
+                    for entry in tree.getmembers() if entry.isfile()
+                    and (entry.name.endswith(".cs") or entry.name.endswith(".csproj"))}
+    sources = {path: source for path, source in contents.items() if path.endswith(".cs")}
+    classes = {path: _step5_source_classes(source) for path, source in sources.items()}
+    project = ET.fromstring(contents["AgentPortal.Tests/AgentPortal.Tests.csproj"])
+    copied = {}
+    for node in project.iter():
+        include = node.get("Include", "").replace("\\", "/")
+        if not include or not (node.get("CopyToOutputDirectory") or node.find("CopyToOutputDirectory") is not None):
+            continue
+        path = posixpath.normpath("AgentPortal.Tests/" + include)
+        link = node.get("Link") or node.findtext("Link") or posixpath.basename(path)
+        copied[path] = link
+    dynamic_inputs = {file: _test_file_dependency_patterns(source) for file, source in sources.items()}
+    affected = set()
+    for path in changed:
+        # These four files govern Step 5 planning/comparison only. They remain
+        # neutral even when mixed with a real test correction; otherwise one
+        # bounded test edit plus planner maintenance falsely escalates to a full
+        # AgentPortal suite. Other control files still flow through consumer
+        # discovery because tests may copy/read them directly.
+        if path in fast_neutral:
+            continue
+        if path in sources:
+            old = git_show_file(prior_sha, path)
+            own = classes[path]
+            if (_READONLY_FIXTURE_HELPER.findall(old) != _READONLY_FIXTURE_HELPER.findall(sources[path])
+                    or not own or own != _step5_source_classes(old)
+                    or not _step5_isolated_test_source(old)
+                    or not _step5_isolated_test_source(sources[path])):
+                return None
+            # A class referenced elsewhere is a shared fixture, not isolated.
+            if any(re.search(r"\b" + re.escape(name.rsplit(".", 1)[-1]) + r"\b", source)
+                   for file, source in sources.items() if file != path for name in own):
+                return None
+            affected.update(own)
+        elif gate_matches(path, config["gates"]["candidate-full"]):
+            return None
+        elif path not in copied and not (matches(path, config["neutral"])
+                or gate_matches(path, config["gates"]["comparison"])
+                or release_control_only_path(path)):
+            return None
+        # Tests also read repository files directly without csproj copying.
+        # Both forms share the same source-derived consumer closure.
+        link = copied.get(path, path)
+        consumers = [file for file, source in sources.items()
+                     if link in source or posixpath.basename(link) in source
+                     or matches(path, dynamic_inputs[file])]
+        if path in copied and not consumers:
+            return None
+        if any(not classes[file] for file in consumers):
+            return None
+        for file in consumers:
+            affected.update(classes[file])
+        # Baseline equivalence needs only a yes/no answer. Once any consumer is
+        # affected, no later path or transitive closure can restore equivalence.
+        if stop_on_change and affected:
+            return sorted(affected)
+    # Follow shared helpers' exported method names too: extension-method users
+    # need not spell the declaring static type at the call site.
+    test_classes = set().union(*(classes[file] for file, source in sources.items()
+        if re.search(r"\[(?:Fact|Theory)(?:\s|\]|\()", source)))
+    while True:
+        expanded = set(affected)
+        referenced = {name.rsplit(".", 1)[-1] for name in affected}
+        for file, source in sources.items():
+            if classes[file] & affected and not classes[file] & test_classes:
+                referenced.update(_step5_extension_method_names(source))
+        for file, source in sources.items():
+            if any(re.search(r"\b" + re.escape(name) + r"\b", source) for name in referenced):
+                if not classes[file]:
+                    return None
+                expanded.update(classes[file])
+        if expanded == affected:
+            bounded = affected & test_classes
+            return sorted(bounded) if bounded or not affected else None
+        affected = expanded
+
+
+def _step5_discovered_repair_classes(classes, test_names, changed_paths, source_revision=None):
+    """Use complete prior discovery to distinguish tests from co-located helpers.
+
+    Prior xUnit discovery is authoritative for unchanged source files, so helper
+    classes pulled in through a changed workflow/config consumer can be dropped.
+    Fail closed only when an undiscovered proposed class is declared by a C# file
+    that actually changed, because that edit could have introduced new tests.
+    """
+    discovered = [
+        name for name in classes
+        if any(test.startswith(name + ".") for test in test_names)
+    ]
+    undiscovered = set(classes) - set(discovered)
+    if not undiscovered:
+        return discovered
+
+    changed_declared = set()
+    for path in changed_paths:
+        if not path.endswith((".cs", ".csproj", ".props", ".targets")):
+            continue
+        if not path.endswith(".cs"):
+            # Project/build graph edits can alter discovery globally.
+            return None
+        source_path = Path(path)
+        if source_revision is not None:
+            try:
+                source = git_show_file(source_revision, path)
+            except Exception:
+                return None
+            changed_declared.update(_step5_source_classes(source))
+            continue
+        if not source_path.is_file():
+            # Added/deleted/renamed C# source cannot be narrowed from prior
+            # discovery alone.
+            return None
+        changed_declared.update(_step5_source_classes(source_path.read_text()))
+
+    if undiscovered & changed_declared:
+        return None
+    return discovered
+
+
+def _step5_cached_decision(current_sha: str, base_sha: str, resume_cache: str):
+    """Resolve PR-local child evidence through the same canonical Step 5 authority."""
+    capsule = Path(resume_cache)
+    required = (
+        capsule / "metadata.json",
+        capsule / "candidate.trx",
+        capsule / "baseline.trx",
+    )
+    if not all(path.is_file() for path in required):
+        return None, "resume_cache_incomplete"
+
+    try:
+        metadata = json.loads((capsule / "metadata.json").read_text())
+    except Exception:
+        return None, "resume_cache_metadata_invalid"
+
+    prior = metadata.get("headSha") or ""
+    prior_base = metadata.get("baseSha") or ""
+    run_id = metadata.get("runId")
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", prior)
+        or not re.fullmatch(r"[0-9a-f]{40}", prior_base)
+        or type(run_id) is not int
+        or run_id < 1
+    ):
+        return None, "resume_cache_identity_invalid"
+    if subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prior, current_sha],
+        capture_output=True,
+    ).returncode:
+        return None, "resume_cache_not_ancestor"
+
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    if not _step5_jobs_unchanged(prior, workflow_path):
+        return None, "resume_cache_execution_contract_changed"
+    if not _step5_baseline_inputs_equivalent(prior_base, base_sha):
+        return None, "resume_cache_baseline_inputs_changed"
+
+    try:
+        candidate = read_step5_results(capsule / "candidate.trx")
+        read_step5_results(capsule / "baseline.trx")
+    except Exception:
+        return None, "resume_cache_test_evidence_invalid"
+
+    changed = git_changed(prior, current_sha)
+    classes = step5_dependency_change(prior, current_sha)
+    if classes is None:
+        return None, "resume_cache_unbounded_dependency_change"
+    classes = _step5_discovered_repair_classes(classes, tuple(candidate), changed)
+    if classes is None:
+        return None, "resume_cache_test_discovery_changed"
+
+    return {
+        "schemaVersion": 4,
+        "mode": "repair" if classes else "reuse",
+        "priorRunId": run_id,
+        "priorHeadSha": prior,
+        "baselineEvidenceRunId": run_id,
+        "baselineEvidenceArtifact": None,
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+        "resumeCache": True,
+        "parentSuccessReuse": False,
+        "reason": "pr_local_cached_child_evidence",
+    }, None
+
+
+def _step5_graphql_parent_success_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    token: str,
+):
+    """Cheap control-only success proof using one check-rollup request.
+
+    This is an optimization inside the canonical planner, never a second workflow
+    decision implementation. It may prove exact reuse only; repair/full decisions
+    continue through retained child artifacts below.
+    """
+    owner, name = repository.split("/", 1)
+    query = r"""
+    query($owner:String!,$name:String!,$oid:GitObjectID!){
+      repository(owner:$owner,name:$name){
+        object(oid:$oid){
+          ... on Commit {
+            history(first:30) {
+              nodes {
+                oid
+                statusCheckRollup {
+                  contexts(first:100) {
+                    nodes {
+                      __typename
+                      ... on CheckRun { name conclusion detailsUrl }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }"""
+    payload = json.dumps({
+        "query": query,
+        "variables": {"owner": owner, "name": name, "oid": current_sha},
+    }).encode()
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "legend-step5-parent-proof/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+    except Exception:
+        return None
+
+    history = (((((body.get("data") or {}).get("repository") or {}).get("object") or {})
+                .get("history") or {}).get("nodes", []))
+    workflow_path = WORKFLOW_PATHS["step5-isolated-conversion-mapping-validation.yml"]
+    for row in history:
+        prior = row.get("oid") or ""
+        if prior == current_sha or not re.fullmatch(r"[0-9a-f]{40}", prior):
+            continue
+        nodes = ((row.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes", [])
+        success = next((
+            check for check in nodes
+            if check.get("__typename") == "CheckRun"
+            and check.get("name") == "step5-validation"
+            and check.get("conclusion") == "SUCCESS"
+        ), None)
+        if not success:
+            continue
+        if subprocess.run(
+            ["git", "merge-base", "--is-ancestor", base_sha, prior],
+            capture_output=True,
+        ).returncode:
+            continue
+        try:
+            if not _step5_jobs_unchanged(prior, workflow_path):
+                continue
+            if step5_dependency_change(prior, current_sha) != []:
+                continue
+        except Exception:
+            continue
+        run_id = None
+        match = re.search(r"/actions/runs/(\d+)", success.get("detailsUrl") or "")
+        if match:
+            run_id = int(match.group(1))
+        return {
+            "schemaVersion": 4,
+            "mode": "reuse",
+            "priorRunId": run_id,
+            "priorHeadSha": prior,
+            "baselineEvidenceRunId": None,
+            "baselineEvidenceArtifact": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "resumeCache": False,
+            "parentSuccessReuse": True,
+            "reason": "graphql_parent_success_dependency_equivalent",
+        }
+    return None
+
+
+def compute_step5_decision(
+    repository: str,
+    current_sha: str,
+    base_sha: str,
+    current_run_id: int,
+    head_branch: str,
+    resume_cache: str | None = None,
+):
+    """Choose only Step 5's cross-run comparison mode.
+
+    Candidate full-suite evidence and approved-baseline evidence are independent
+    canonical artifacts. A final-comparison repair therefore never requires both
+    artifacts to have originated from the same historical run. Bounded dependency
+    changes replace only affected test-class rows; all other child rows survive
+    comparison failures. A missing baseline is scheduled independently.
+    """
+    decision = {
+        "schemaVersion": 3,
+        "mode": "full",
+        "priorRunId": None,
+        "priorHeadSha": None,
+        "baselineEvidenceRunId": None,
+        "baselineEvidenceArtifact": None,
+        "repairClasses": [],
+        "repairFilter": None,
+    }
+    cache_fallback_reason = None
+    if resume_cache:
+        cached, cache_fallback_reason = _step5_cached_decision(
+            current_sha,
+            base_sha,
+            resume_cache,
+        )
+        if cached:
+            return cached
+        decision["cacheFallbackReason"] = cache_fallback_reason
+
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        decision["reason"] = "github_token_unavailable"
+        return decision
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    parent_success = _step5_graphql_parent_success_decision(
+        repository,
+        current_sha,
+        base_sha,
+        token,
+    )
+    if parent_success:
+        if cache_fallback_reason:
+            parent_success["cacheFallbackReason"] = cache_fallback_reason
+        return parent_success
+
+    candidate_evidence = _step5_prior_candidate_evidence(
+        repository,
+        current_run_id,
+        head_branch,
+        token,
+        current_sha,
+    )
+    if not candidate_evidence:
+        decision["reason"] = "no_reusable_candidate_evidence"
+        return decision
+
+    prior_run_id = int(candidate_evidence["runId"])
+    prior_head_sha = candidate_evidence["headSha"]
+    candidate_name = candidate_evidence["artifact"]
+
+    decision.update({
+        "priorRunId": prior_run_id,
+        "priorHeadSha": prior_head_sha,
+    })
+
+    # Reject incompatible candidate job definitions before any expensive
+    # historical baseline scan. The baseline is an independent child and will
+    # be produced by the baseline-evidence job when full proof is required.
+    if not _step5_candidate_producer_compatible(prior_head_sha, workflow_path):
+        decision["reason"] = "candidate_or_baseline_job_changed"
+        return decision
+
+    baseline_evidence = compute_step5_baseline_evidence(repository, base_sha)
+    # Candidate proof remains valid even when the independent baseline needs
+    # fresh execution. The workflow produces that missing child in this run.
+    if baseline_evidence.get("repairClasses"):
+        decision["baselineRepair"] = baseline_evidence
+    if not baseline_evidence.get("reusable"):
+        baseline_evidence = {
+            "evidenceRunId": current_run_id,
+            "evidenceArtifact": f"step5-baseline-{base_sha}",
+        }
+
+    baseline_run_id = int(baseline_evidence["evidenceRunId"])
+    baseline_name = baseline_evidence["evidenceArtifact"]
+
+    decision.update({
+        "baselineEvidenceRunId": baseline_run_id,
+        "baselineEvidenceArtifact": baseline_name,
+    })
+    classes = step5_dependency_change(prior_head_sha, current_sha)
+    if classes is None:
+        decision["reason"] = "changed_or_unproven_suite_dependencies"
+        return decision
+    if "testNames" in candidate_evidence:
+        classes = _step5_discovered_repair_classes(
+            classes, candidate_evidence["testNames"], git_changed(prior_head_sha, current_sha))
+        if classes is None:
+            decision["reason"] = "changed_test_discovery_requires_full_proof"
+            return decision
+    decision.update({
+        "mode": "repair" if classes else "reuse",
+        "repairClasses": classes,
+        "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes) or None,
+        "reason": "dependency_equivalent_child_evidence" if not classes else "replace_only_dependency_invalidated_classes",
+    })
+    return decision
+
+
+def cmd_step5_decision(args):
+    require_readiness(args.repository, args.current_sha)
+    try:
+        decision = compute_step5_decision(
+            args.repository,
+            args.current_sha,
+            args.base_sha,
+            args.current_run_id,
+            args.head_branch,
+            getattr(args, "resume_cache", None),
+        )
+    except EvidenceLookupUnavailable as exc:
+        decision = {
+            "schemaVersion": 3,
+            "mode": "full",
+            "priorRunId": None,
+            "priorHeadSha": None,
+            "baselineEvidenceRunId": None,
+            "baselineEvidenceArtifact": None,
+            "repairClasses": [],
+            "repairFilter": None,
+            "reason": "historical_evidence_unavailable_run_full_step5",
+            "evidenceFallback": {
+                "error": type(exc).__name__,
+                "httpStatus": exc.code,
+                "endpoint": exc.endpoint,
+            },
+        }
+    except Exception as exc:
+        _stop_unresolved_planning(args, exc)
+
+    Path(args.output).write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(decision, indent=2, sort_keys=True))
+
+
+def _step5_baseline_inputs_equivalent(prior_base_sha: str, current_base_sha: str) -> bool:
+    """Compare only inputs that can change the full Step 5 baseline result."""
+    if prior_base_sha == current_base_sha:
+        return True
+    return step5_dependency_change(prior_base_sha, current_base_sha, stop_on_change=True) == []
+
+
+def compute_step5_baseline_evidence(repository: str, base_sha: str):
+    result = {
+        "schemaVersion": 3,
+        "approvedBaseSha": base_sha,
+        "reusable": False,
+        "evidenceRunId": None,
+        "evidenceArtifact": None,
+        "evidenceBaseSha": None,
+    }
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
+        result["reason"] = "github_token_unavailable"
+        return result
+
+    workflow_name = "step5-isolated-conversion-mapping-validation.yml"
+    workflow_path = WORKFLOW_PATHS[workflow_name]
+
+    bounded = None
+
+    def accept(run, artifact_name, evidence_base_sha):
+        nonlocal bounded
+        run_id = int(run.get("id") or 0)
+        run_head = run.get("head_sha") or ""
+        if not run_id or not re.fullmatch(r"[0-9a-f]{40}", evidence_base_sha):
+            return False
+        if not _trusted_pr_run(repository, run, workflow_path, token):
+            return False
+        kind = "candidate" if artifact_name.startswith("step5-candidate-") else "baseline"
+        if kind == "candidate":
+            if evidence_base_sha != run_head or not _step5_candidate_producer_compatible(run_head, workflow_path):
+                return False
+        elif not _step5_baseline_producer_compatible(run_head, workflow_path):
+            return False
+        classes = step5_dependency_change(evidence_base_sha, base_sha)
+        if classes is None:
+            return False
+        rows = _step5_artifact_results(repository, run_id, artifact_name, kind, token)
+        if classes:
+            classes = _step5_discovered_repair_classes(classes, tuple(rows), git_changed(evidence_base_sha, base_sha), source_revision=base_sha)
+        if classes is None:
+            return False
+        evidence = {
+            "reusable": not bool(classes),
+            "evidenceRunId": run_id,
+            "evidenceArtifact": artifact_name,
+            "evidenceBaseSha": evidence_base_sha,
+            "repairClasses": classes,
+            "repairFilter": "|".join(f"FullyQualifiedName~{name}" for name in classes),
+            "reason": "bounded_approved_baseline_repair" if classes else (
+                "exact_approved_baseline_evidence" if evidence_base_sha == base_sha else "content_identical_step5_inputs"),
+        }
+        if classes:
+            if bounded is None:
+                bounded = evidence
+            return False
+        result.update(evidence)
+        return True
+
+    # Fast path: an artifact already keyed to the exact approved base.
+    exact_name = f"step5-baseline-{base_sha}"
+    for artifact in _artifact_rows(repository, exact_name, token):
+        run_id = int((artifact.get("workflow_run") or {}).get("id") or 0)
+        if not run_id:
+            continue
+        try:
+            run = api_get(repository, f"actions/runs/{run_id}", token)
+            if accept(run, exact_name, base_sha):
+                return result
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            continue
+
+    # Control-only commits must not invalidate a full baseline suite. Search recent
+    # completed Step 5 runs for a durable baseline artifact whose declared test
+    # inputs are tree-equivalent to the current approved base.
+    workflow = urllib.parse.quote(workflow_name, safe="")
+    payload = api_get(
+        repository,
+        f"actions/workflows/{workflow}/runs?event=pull_request&status=completed&per_page=100",
+        token,
+    )
+    runs = sorted(
+        payload.get("workflow_runs", []),
+        key=lambda row: (row.get("updated_at") or row.get("created_at", ""), int(row.get("id", 0))),
+        reverse=True,
+    )
+    for run in runs:
+        run_id = int(run.get("id") or 0)
+        if not run_id:
+            continue
+        try:
+            names = _run_artifact_names(repository, run_id, token)
+        except EvidenceLookupUnavailable:
+            raise
+        except Exception:
+            continue
+        for artifact_name in sorted(names):
+            prefix = next((value for value in ("step5-baseline-", "step5-candidate-") if artifact_name.startswith(value)), None)
+            if prefix is None:
+                continue
+            evidence_base_sha = artifact_name[len(prefix):]
+            if len(evidence_base_sha) != 40 or any(ch not in "0123456789abcdef" for ch in evidence_base_sha):
+                continue
+            try:
+                if accept(run, artifact_name, evidence_base_sha):
+                    return result
+            except EvidenceLookupUnavailable:
+                raise
+            except Exception:
+                continue
+
+    result["reason"] = "no_content_identical_baseline_artifact"
+    if bounded:
+        result.update(bounded)
+    return result
+
+
+def cmd_step5_baseline(args):
+    try:
+        result = compute_step5_baseline_evidence(args.repository, args.base_sha)
+    except EvidenceLookupUnavailable as exc:
+        result = {
+            "schemaVersion": 3,
+            "approvedBaseSha": args.base_sha,
+            "reusable": False,
+            "evidenceRunId": None,
+            "evidenceArtifact": None,
+            "evidenceBaseSha": None,
+            "reason": "historical_evidence_unavailable_run_fresh_baseline",
+            "evidenceFallback": {
+                "error": type(exc).__name__,
+                "httpStatus": exc.code,
+                "endpoint": exc.endpoint,
+            },
+        }
+    except Exception as exc:
+        _stop_unresolved_planning(args, exc)
+
+    Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def cmd_job_unchanged(args):
+    prior = git_show_file(args.prior_sha, args.workflow_path)
+    current = Path(args.workflow_path).read_text()
+    prior_jobs = _job_blocks(prior)
+    current_jobs = _job_blocks(current)
+    missing = [name for name in args.job if name not in prior_jobs or name not in current_jobs]
+    if missing:
+        print("Missing workflow jobs: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(1)
+    changed = [name for name in args.job if prior_jobs[name] != current_jobs[name]]
+    if changed:
+        print("Changed workflow jobs: " + ", ".join(changed), file=sys.stderr)
+        raise SystemExit(1)
+    print("Preserved workflow job definitions: " + ", ".join(args.job))
+
+
+def cmd_verify_release_coverage(args):
+    text = Path(args.workflow_path).read_text()
+    verify_release_policy_coverage(args.workflow, text)
+    print(f"Every named release step is classified: {args.workflow}")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    approved_preflight = sub.add_parser("approved-head-preflight")
+    approved_preflight.add_argument("--repository", required=True)
+    approved_preflight.add_argument("--current-sha", required=True)
+    approved_preflight.add_argument("--event", required=True)
+    approved_preflight.add_argument("--output")
+    approved_preflight.add_argument("--base-branch", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
+    approved_preflight.set_defaults(func=cmd_approved_head_preflight)
+
+    plan = sub.add_parser("plan")
+    plan.add_argument("--workflow", required=True)
+    plan.add_argument("--current-sha", required=True)
+    plan.add_argument("--current-run-id", required=True, type=int)
+    plan.add_argument("--run-attempt", required=True, type=int)
+    plan.add_argument("--head-branch", required=True)
+    plan.add_argument("--event", required=True)
+    plan.add_argument("--repository", required=True)
+    plan.add_argument("--output", required=True)
+    plan.add_argument("--resume-cache")
+    plan.add_argument("--validation-base", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
+    plan.set_defaults(func=cmd_plan)
+
+    cache_success = sub.add_parser("cache-success")
+    cache_success.add_argument("--workflow", required=True)
+    cache_success.add_argument("--head-sha", required=True)
+    cache_success.add_argument("--run-id", required=True, type=int)
+    cache_success.add_argument("--run-attempt", required=True, type=int)
+    cache_success.add_argument("--output", required=True)
+    cache_success.set_defaults(func=cmd_cache_success)
+
+    preserved = sub.add_parser("preserved")
+    preserved.add_argument("--plan", required=True)
+    preserved.add_argument("--gate", required=True)
+    preserved.set_defaults(func=cmd_preserved)
+
+    gate_identity = sub.add_parser("gate-identity")
+    gate_identity.add_argument("--workflow", required=True)
+    gate_identity.add_argument("--revision", required=True)
+    gate_identity.add_argument("--gate", required=True)
+    gate_identity.add_argument("--github-output")
+    gate_identity.set_defaults(func=cmd_gate_identity)
+
+    live_state = sub.add_parser("live-state")
+    live_state.add_argument("--revision", required=True)
+    live_state.add_argument("--selected-targets", required=True)
+    live_state.add_argument("--output", required=True)
+    live_state.add_argument("--github-output")
+    live_state.set_defaults(func=cmd_live_state)
+
+    verify_live = sub.add_parser("verify-live")
+    verify_live.add_argument("--revision", required=True)
+    verify_live.add_argument("--selected-targets", required=True)
+    verify_live.add_argument("--output", required=True)
+    verify_live.add_argument("--transaction-plan", type=Path)
+    verify_live.add_argument("--timeout-seconds", type=int, default=480)
+    verify_live.add_argument("--poll-seconds", type=int, default=5)
+    verify_live.set_defaults(func=cmd_verify_live)
+
+    lifecycle_evidence = sub.add_parser("lifecycle-evidence")
+    lifecycle_evidence.add_argument("--repository", required=True)
+    lifecycle_evidence.add_argument("--output", required=True)
+    lifecycle_evidence.set_defaults(func=cmd_lifecycle_evidence)
+
+    package_canary = sub.add_parser("package-canary-plan")
+    package_canary.add_argument("--repository", required=True)
+    package_canary.add_argument("--current-sha", required=True)
+    package_canary.add_argument("--base-sha", required=True)
+    package_canary.add_argument("--current-run-id", required=True, type=int)
+    package_canary.add_argument("--head-branch", required=True)
+    package_canary.add_argument("--output", required=True)
+    package_canary.set_defaults(func=cmd_package_canary_plan)
+
+    component_sources = sub.add_parser('component-sources')
+    component_sources.add_argument('--repository', required=True)
+    component_sources.add_argument('--revision', required=True)
+    component_sources.add_argument('--current-run-id', type=int, required=True)
+    component_sources.add_argument('--output', required=True)
+    component_sources.add_argument('--github-output')
+    component_sources.set_defaults(func=cmd_component_sources)
+
+    package_backfill = sub.add_parser("package-backfill-plan")
+    package_backfill.add_argument("--repository", required=True)
+    package_backfill.add_argument("--revision", required=True)
+    package_backfill.add_argument("--current-sha", required=True)
+    package_backfill.add_argument("--output", required=True)
+    package_backfill.set_defaults(func=cmd_package_backfill_plan)
+
+    validated_package = sub.add_parser("validated-package")
+    validated_package.add_argument("--repository", required=True)
+    validated_package.add_argument("--revision", required=True)
+    validated_package.add_argument("--package-identity", required=True)
+    validated_package.add_argument("--output", required=True)
+    validated_package.add_argument("--pinned-source-json")
+    validated_package.set_defaults(func=cmd_validated_package)
+
+    rollback_evidence = sub.add_parser("rollback-evidence")
+    rollback_evidence.add_argument("--repository", required=True)
+    rollback_evidence.add_argument("--revision", required=True)
+    rollback_evidence.add_argument("--app", required=True)
+    rollback_evidence.add_argument("--output", required=True)
+    rollback_evidence.set_defaults(func=cmd_rollback_evidence)
+
+    step5_decision = sub.add_parser("step5-decision")
+    step5_decision.add_argument("--current-sha", required=True)
+    step5_decision.add_argument("--base-sha", required=True)
+    step5_decision.add_argument("--current-run-id", required=True, type=int)
+    step5_decision.add_argument("--head-branch", required=True)
+    step5_decision.add_argument("--repository", required=True)
+    step5_decision.add_argument("--resume-cache")
+    step5_decision.add_argument("--output", required=True)
+    step5_decision.set_defaults(func=cmd_step5_decision)
+
+    step5_baseline = sub.add_parser("step5-baseline")
+    step5_baseline.add_argument("--base-sha", required=True)
+    step5_baseline.add_argument("--repository", required=True)
+    step5_baseline.add_argument("--output", required=True)
+    step5_baseline.set_defaults(func=cmd_step5_baseline)
+
+    merge = sub.add_parser('step5-merge')
+    for flag in ('prior', 'repair', 'classes', 'output', 'source-run', 'source-artifact', 'source-revision', 'approved-revision'):
+        merge.add_argument('--' + flag, required=True)
+    merge.set_defaults(func=cmd_step5_merge)
+
+    job_unchanged = sub.add_parser("job-unchanged")
+    job_unchanged.add_argument("--workflow-path", required=True)
+    job_unchanged.add_argument("--prior-sha", required=True)
+    job_unchanged.add_argument("--job", action="append", required=True)
+    job_unchanged.set_defaults(func=cmd_job_unchanged)
+
+    record = sub.add_parser("record-evidence")
+    record.add_argument("--plan", required=True)
+    record.add_argument("--output", required=True)
+    record.add_argument("--repository", required=True)
+    record.add_argument("--run-id", required=True, type=int)
+    record.add_argument("--cache-output")
+    record.set_defaults(func=cmd_record_evidence)
+
+    coverage = sub.add_parser("verify-release-coverage")
+    coverage.add_argument("--workflow", required=True)
+    coverage.add_argument("--workflow-path", required=True)
+    coverage.set_defaults(func=cmd_verify_release_coverage)
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
+, log)) != 1 or
+                'Schema ready; validated migration child applied.' in log or
+                'Schema ready; validated no-SQL migration child preserved.' in log):
+                return False
+        return True
+    except (ValueError, RuntimeError, KeyError, TypeError,
+            ReleaseOperationHistoryUnproven, EvidenceLookupUnavailable):
+        return False
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
