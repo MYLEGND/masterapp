@@ -3318,6 +3318,75 @@ def assert_release_execution():
     return assert_protected_release_execution()
 
 
+def fast_track_validation_receipt(repository, run, workflow, candidate, pr, token):
+    """Use retained source scope: GitHub removes PR links after a PR is merged."""
+    import tempfile
+    prefix = 'security' if workflow == 'approved-release-security-validation.yml' else 'parfait'
+    name = f"validation-resume-{prefix}-{run['id']}-{run['run_attempt']}"
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    rows = inventory.get('artifacts')
+    if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+        raise RuntimeError('FAST_TRACK_VALIDATION_ARTIFACT_INVENTORY_INCOMPLETE')
+    artifacts = [a for a in rows if a.get('name') == name and a.get('expired') is False]
+    if len(artifacts) != 1 or artifacts[0].get('workflow_run', {}).get('id') != run['id']:
+        raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_MISSING')
+    with tempfile.TemporaryDirectory(prefix='fast-track-source-') as tmp:
+        _download_run_artifact(repository, run['id'], name, Path(tmp), artifact_id=artifacts[0]['id'])
+        path = Path(tmp) / 'validation-resume.json'
+        if path.stat().st_size > 32 * 1024 * 1024:
+            raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_OVERSIZED')
+        receipt = json.loads(path.read_text())
+    scope = receipt.get('sourceValidationScope', {})
+    if (receipt.get('workflow') != workflow or receipt.get('currentSha') != candidate
+        or receipt.get('validationBase') != FAST_TRACK_PR_BASE
+        or scope.get('phase') != 'source-validation-only' or scope.get('releaseAdmission') is not False
+        or scope.get('baseBranch') != FAST_TRACK_PR_BASE or scope.get('candidate') != candidate
+        or scope.get('pullRequest') != pr):
+        raise RuntimeError('FAST_TRACK_VALIDATION_SOURCE_SCOPE_UNPROVEN')
+    return artifacts[0]['id']
+
+
+def fast_track_effective_baseline(before, revision):
+    """Carry unpublished scope through an admission repair, never through a write."""
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    for _ in range(8):
+        if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
+                ['git', 'merge-base', '--is-ancestor', before, revision], capture_output=True).returncode:
+            raise RuntimeError('FAST_TRACK_SCOPE_BASELINE_UNPROVEN')
+        payload = api_get(repository, f'actions/runs?head_sha={before}&event=push&per_page=100', token)
+        rows = payload.get('workflow_runs')
+        if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_INVENTORY_INCOMPLETE')
+        runs = [r for r in rows if is_fast_track_producer(repository, r)]
+        prior = max(runs, key=lambda r:r['id']) if runs else None
+        if prior is None or prior.get('conclusion') == 'success':
+            return before
+        if prior.get('status') != 'completed':
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_ACTIVE')
+        if len(runs) != 1 or prior.get('run_attempt') != 1 or prior.get('head_sha') != before:
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
+        payload = api_get(repository, f"actions/runs/{prior['id']}/jobs?filter=latest&per_page=100", token)
+        jobs = payload.get('jobs')
+        if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
+        admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
+        writes = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ') or
+                  j.get('name') in {'Reconcile production schema before publication', 'Publish verified website routing'}]
+        if (len(admissions) != 1 or admissions[0].get('conclusion') not in {'failure', 'cancelled'}
+            or len(writes) < 3 or any(j.get('conclusion') != 'skipped' for j in writes)):
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
+        pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
+        merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before
+            and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+            and p.get('head', {}).get('repo', {}).get('full_name') == repository]
+        parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', before], text=True).split()
+        if len(merged) != 1 or len(parents) != 3:
+            raise RuntimeError('FAST_TRACK_PREDECESSOR_MERGE_UNPROVEN')
+        before = parents[1]
+    raise RuntimeError('FAST_TRACK_PREDECESSOR_CHAIN_UNPROVEN')
+
+
 def fast_track_source_admission():
     """Require the merged exact source's existing checks before production access."""
     run = assert_fast_track_release_execution()
@@ -3343,12 +3412,12 @@ def fast_track_source_admission():
         matches = [r for r in rows if r.get('path') == '.github/workflows/' + workflow
             and r.get('event') == event and r.get('head_sha') == candidate
             and r.get('head_repository', {}).get('full_name') == repository
-            and any(p.get('number') == candidates[0]['number'] and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
-                    for p in r.get('pull_requests', []))]
+            and r.get('head_branch') == candidates[0]['head']['ref']]
         latest = max(matches, key=lambda r: r['id']) if matches else None
         if latest is None or latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
             raise RuntimeError('FAST_TRACK_REQUIRED_VALIDATION_UNPROVEN:' + workflow)
-        evidence[workflow] = dict(runId=latest['id'], attempt=latest['run_attempt'])
+        artifact = fast_track_validation_receipt(repository, latest, workflow, candidate, candidates[0]['number'], token)
+        evidence[workflow] = dict(runId=latest['id'], attempt=latest['run_attempt'], artifactId=artifact)
     return dict(candidate=candidate, executionAuthority=revision, sourcePr=candidates[0]['number'], validation=evidence)
 
 

@@ -77,6 +77,7 @@ jobs:
       commerce: ${{ steps.scope.outputs.commerce }}
       targets: ${{ steps.scope.outputs.targets }}
       routing: ${{ steps.scope.outputs.routing }}
+      baseline: ${{ steps.scope.outputs.baseline }}
     steps:
       - name: Check out exact fast-track source
         uses: actions/checkout@v4
@@ -88,6 +89,7 @@ jobs:
         shell: bash
         env:
           BEFORE: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -101,11 +103,13 @@ jobs:
           if before=='0'*40:
               changed=subprocess.check_output(['git','diff-tree','--root','--no-commit-id','--name-only','-r',head],text=True).splitlines()
           elif re.fullmatch('[0-9a-f]{40}',before):
+              before=authority.fast_track_effective_baseline(before,head)
               changed=subprocess.check_output(['git','diff','--name-only',before,head],text=True).splitlines()
           else:
               raise SystemExit('Invalid fast-track event baseline')
           scope=authority.fast_track_scope(changed)
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
+              stream.write('baseline='+before+'\n')
               stream.write('selected='+str(scope['selected']).lower()+'\n')
               stream.write('matrix='+json.dumps(scope['matrix'],separators=(',',':'))+'\n')
               stream.write('commerce='+str(scope['commerce']).lower()+'\n')
@@ -233,7 +237,7 @@ jobs:
     environment: Production
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      BEFORE: ${{ github.event.before }}
+      BEFORE: ${{ needs.select-targets.outputs.baseline }}
     strategy:
       fail-fast: false
       max-parallel: 2
