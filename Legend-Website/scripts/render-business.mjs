@@ -5,10 +5,21 @@ import {resolve} from 'node:path';
 import vm from 'node:vm';
 import {parseHTML} from 'linkedom';
 import {businessPages} from '../src/business-content.mjs';
-import {publicApiBase,publicRuntimeAssets} from '../src/runtime-config.mjs';
+import {pages as legendPages} from '../src/content.mjs';
+import {publicApiBase,publicRuntimeAssets,editorAuthorizationBase} from '../src/runtime-config.mjs';
 
 export async function compileBusiness(input, root=resolve(import.meta.dirname,'..')) {
   if (!input?.business?.id || !input.business.displayName || !input.document) throw new Error('A business and document are required.');
+  return compileWebsite({...input,siteKey:'business'},root);
+}
+
+export async function compileWebsite(input, root=resolve(import.meta.dirname,'..')) {
+  const siteKey=input?.siteKey||'business';
+  if(!['legend','business'].includes(siteKey) || !input?.document) throw new Error('Unsupported website publication.');
+  const company=siteKey==='legend';
+  if(!company && (!input.business?.id || !input.business.displayName)) throw new Error('A business and document are required.');
+  if(company && Number(input.document.version)!==3) throw new Error('Canonical published content is required.');
+  const displayName=company?'LEGEND®':input.business.displayName;
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
   const result={};
   const documents=input.document.pages||{};
@@ -18,7 +29,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const normalizeRoute=route=>(String(route||'').replace(/\/$/,'')||'/');
   const staticRoute=/^\/(?:[a-z0-9_-]+\/?)*$/;
   const dynamicPattern=/^\/(?:[a-z0-9_-]+\/)*\{item\}\/?$/;
-  const templateByRoute=new Map(businessPages.map(page=>[page.key==='home'?'/':'/'+page.key,page]));
+  const templateByRoute=new Map((company?Object.values(legendPages):businessPages).map(page=>[page.key==='home'?'/':'/'+page.key,page]));
   const descriptors=new Map();
 
   if(!canonicalV3)
@@ -97,7 +108,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const storeCartIcon=['cart','bag','basket'].includes(String(input.document?.store?.cartIcon||'').toLowerCase())
     ? String(input.document.store.cartIcon).toLowerCase()
     : 'cart';
-  const storeContext=storeEnabled?{
+  const storeContext=company?(input.store||null):storeEnabled?{
     enabled:true,label:storeLabel,cartIcon:storeCartIcon,commerceBusinessId:input.business.id,businessKey:input.business.key,
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
   }:null;
@@ -108,9 +119,10 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     const page=documents[sourceRoute]||{};
     const built=entry.templateRoute?templateByRoute.get(entry.templateRoute):null;
     const templateDirectory=built&&built.key!=='home'?built.key:'';
-    const template=await readFile(resolve(root,'dist/business-preview',templateDirectory,'index.html'),'utf8');
+    const template=await readFile(resolve(root,company?'dist':'dist/business-preview',templateDirectory,'index.html'),'utf8');
     const {window}=parseHTML(template);
     const doc=window.document;
+    if(company) doc.querySelector('script[src="/js/page-health.js"]')?.setAttribute('data-route',route);
     if(!built)doc.querySelector('main').replaceChildren();
 
     const primaryNav=doc.querySelector('[data-public-nav],#primary-nav,.nav');
@@ -137,21 +149,21 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       CSS:{escape:value=>String(value).replace(/[^a-zA-Z0-9_-]/g,c=>'\\'+c)},
       getComputedStyle:el=>new Proxy(el.style,{get:(style,name)=>name==='fontSize'?'16px':style[name]||''}),
       requestAnimationFrame:()=>0,cancelAnimationFrame(){},setTimeout:()=>0,clearTimeout(){}};
-    window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:publicApiBase,businessId:input.business.id};
+    window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:publicApiBase,businessId:input.business?.id};
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
-      business:input.business,collections:input.collections||[],
+      siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:input.collections||[],
       store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
     };
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
 
-    const title=dynamicItem?.fields?.name||page.title||`${input.business.displayName}${routeKey==='home'?'':' | '+(built?.label||routeKey)}`;
+    const title=dynamicItem?.fields?.name||page.title||`${displayName}${routeKey==='home'?'':' | '+(built?.label||routeKey)}`;
     const description=dynamicItem?.fields?.description||page.description||'';
     doc.title=String(title);
-    for(const [selector,value] of [['meta[name="description"]',description],['meta[property="og:title"]',title],['meta[property="og:description"]',description],['meta[property="og:site_name"]',input.business.displayName]])
+    for(const [selector,value] of [['meta[name="description"]',description],['meta[property="og:title"]',title],['meta[property="og:description"]',description],['meta[property="og:site_name"]',displayName]])
       doc.querySelector(selector)?.setAttribute('content',String(value||''));
     doc.querySelector('link[rel="canonical"]')?.setAttribute('href','__LEGEND_CANONICAL_URL__');
     doc.querySelector('meta[property="og:url"]')?.setAttribute('content','__LEGEND_CANONICAL_URL__');
@@ -166,7 +178,10 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       favicon?.remove();
     }
     doc.querySelectorAll('script').forEach(script=>{
-      if(!['/legend-public-web.js','/legend-public-cms.js'].some(path=>script.getAttribute('src')?.startsWith(path)))script.remove();
+      const src=script.getAttribute('src')||'';
+      const runtime=['/legend-public-web.js','/legend-public-cms.js'];
+      if(company)runtime.push('/legend-public-inquiry.js','/js/page-health.js','/js/legend-site-tools.js');
+      if(!runtime.some(path=>src.split('?')[0]===path) && !(company && script.type==='application/ld+json'))script.remove();
     });
     doc.querySelectorAll('a[href]').forEach(link=>{
       const href=link.getAttribute('href');
@@ -186,9 +201,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     renderInput.textContent=JSON.stringify({
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
-      business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
+      siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       pageKey:renderPageKey,pageCatalog,server:false,
-      runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
+      runtime:{apiBase:publicApiBase,...(company?{editorAuthorizationUrl:editorAuthorizationBase+'/Account/EditLegendWebsite'}:{}),trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
     const form=doc.querySelector('[data-website-inquiry]');

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  if (new URLSearchParams(location.search).has('legendEdit')) return;
+  if (window.LEGEND_WEBSITE_STUDIO_MODE === true || new URLSearchParams(location.search).has('legendEdit')) return;
 
   const context = window.LEGEND_PUBLIC_CMS_CONTEXT || {};
   const configuredBase = typeof context.apiBase === 'string' ? context.apiBase.trim() : '';

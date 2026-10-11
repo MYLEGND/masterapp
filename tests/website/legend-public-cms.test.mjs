@@ -3936,3 +3936,37 @@ test('public mobile navigation is one compact viewport-safe dropdown instead of 
   assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:nowrap/);
   assert.match(publicCss,/\.business-brand-banner strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
 });
+
+test('compiled LEGEND hydration uses its embedded publication without another public-content request',async()=>{
+  const document=canonicalDocument({title:'Published first response'});
+  const html='<!doctype html><html><head></head><body><main><h1>Published first response</h1></main><script type="application/json" id="legend-cms-published-document"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const {window:w}=dom; const calls=[];
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'legend',document,pageKey:'home',server:false,
+    pageCatalog:[{route:'/',label:'Home'}],
+    runtime:{apiBase:'https://protect.example.test',editorAuthorizationUrl:'https://portal.example.test/Account/EditLegendWebsite'}
+  });
+  w.CSS={escape:value=>String(value)};
+  w.fetch=async url=>{calls.push(String(url));return {ok:true,json:async()=>({})};};
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try {
+    assert.equal(w.document.querySelector('h1').textContent,'Published first response');
+    assert.equal(w.LEGEND_PUBLIC_CMS_CONTEXT.siteKey,'legend');
+    assert.equal(w.LEGEND_PUBLIC_CMS_CONTEXT.apiBase,'https://protect.example.test');
+    assert.ok(!calls.some(url=>new URL(url).pathname==='/api/website-content/public/legend'));
+  } finally {w.close();}
+});
+
+test('compiled publication does not short-circuit authorized editor loading',async()=>{
+  const live=canonicalDocument({title:'Published headline'});
+  const draft=canonicalDocument({title:'Editable draft headline'});
+  const html='<!doctype html><html><head></head><body><main></main><script type="application/json" id="legend-cms-published-document">'+JSON.stringify({siteKey:'legend',document:live,pageKey:'home',server:false,runtime:{apiBase:''}})+'</script></body></html>';
+  const f=await domFixture({doc:draft,html});
+  try {
+    assert.ok(f.calls.some(call=>new URL(call.url).pathname==='/api/website-content/manage'));
+    assert.equal(f.w.document.querySelector('h1').textContent,'Editable draft headline');
+    assert.ok(f.w.document.querySelector('.legend-cms-editor'));
+  } finally {f.w.close();}
+});

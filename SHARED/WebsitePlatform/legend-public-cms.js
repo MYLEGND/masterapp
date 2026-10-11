@@ -3,15 +3,19 @@
 
   const publishedData = document.getElementById('legend-cms-published-document');
   const renderInput = window.LEGEND_PUBLIC_CMS_RENDER_INPUT || (publishedData ? JSON.parse(publishedData.textContent) : null);
-  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || (renderInput?.business ? {
-    siteKey: 'business',
+  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || (renderInput?.siteKey || renderInput?.business ? {
+    siteKey: renderInput.siteKey || 'business',
     apiBase: renderInput.runtime?.apiBase || '',
-    businessId: renderInput.business.id,
+    businessId: renderInput.business?.id,
+    editorAuthorizationUrl: renderInput.runtime?.editorAuthorizationUrl,
+    pages: (renderInput.pageCatalog || []).map(page=>({path:page.route,label:page.label})),
     trackingAsset: renderInput.runtime?.trackingAsset || '/legend-public-tracking.js',
     metaSignalAsset: renderInput.runtime?.metaSignalAsset || '/legend-public-meta-signal-intelligence.js',
     openAiMeasurementAsset: renderInput.runtime?.openAiMeasurementAsset || '/legend-public-openai-measurement.js'
   } : null);
   if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
+  // Inquiry and measurement share this same canonical runtime context.
+  window.LEGEND_PUBLIC_CMS_CONTEXT ||= context;
 
   // Protect deliberately uses an empty base for its same-origin CMS authority.
   const API_BASE = (context.apiBase.trim() || location.origin).replace(/\/$/, '');
@@ -8462,7 +8466,8 @@
   });
   window.addEventListener('parfait-cart-updated', updateStoreCartCount);
 
-  if (renderInput) {
+  if (renderInput && !studioIsolationMode) {
+    ctaCatalog = Array.isArray(renderInput.ctaCatalog?.options) ? renderInput.ctaCatalog.options : [];
     bindBusiness(renderInput);
     storeContext = renderInput.store || null;
     legacyMigration = renderInput.legacyMigration || null;

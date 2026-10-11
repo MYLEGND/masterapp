@@ -176,6 +176,49 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
+    // The company site's HTML comes from the same public publication envelope as
+    // the CMS, rendered by the existing compiler before a visitor receives it.
+    [HttpGet("public/legend/page")]
+    [HttpHead("public/legend/page")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> LegendPage([FromQuery] string path = "/", CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length > 160 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/?)*$"))
+            return NotFound();
+        var route = path.TrimEnd('/');
+        if (route.Length == 0) route = "/";
+        var result = await Public(WebsiteEditorSiteKeys.Legend, cancellationToken: cancellationToken);
+        if (result is not OkObjectResult published) return result;
+        var payload = JsonSerializer.Serialize(published.Value, JsonOptions);
+        using var source = JsonDocument.Parse(payload);
+        var document = source.RootElement.GetProperty("document");
+        if (!document.TryGetProperty("pages", out var pages) || !pages.TryGetProperty(route, out var page) ||
+            page.TryGetProperty("navigation", out var navigation) &&
+            navigation.ValueKind == JsonValueKind.Object &&
+            navigation.TryGetProperty("isDeleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
+            return NotFound();
+        try
+        {
+            var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
+            using var compiled = JsonDocument.Parse(await compiler.CompileLegendAsync(payload, cancellationToken));
+            if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var rendered)) return NotFound();
+            var html = (rendered.GetProperty("html").GetString() ?? "")
+                .Replace("__LEGEND_CANONICAL_URL__", "https://www.mylegnd.com" + route, StringComparison.Ordinal);
+            Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+            Response.Headers.XContentTypeOptions = "nosniff";
+            return Content(HttpMethods.IsHead(Request.Method) ? "" : html, "text/html; charset=utf-8");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException or JsonException)
+        {
+            // Never turn a failed publication read/render into a successful old homepage.
+            Response.Headers.CacheControl = "no-store";
+            Response.Headers.RetryAfter = "30";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "Published website temporarily unavailable.");
+        }
+    }
+
     [HttpGet("public/{siteKey}/favicon")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> PublicFavicon(

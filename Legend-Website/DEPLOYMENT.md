@@ -58,3 +58,29 @@ Local verification: `node --test tests/layout/page-health.test.mjs`, followed by
 from the repository root. Server integration coverage lives in
 `RuntimeDiagnosticsPublicWebsiteTests`. Deployment and live browser delivery are
 separate verification steps.
+
+## Published company HTML
+
+The existing website-routing Worker now sends company document requests on
+`mylegnd.com` and `www.mylegnd.com` to Protect's
+`/api/website-content/public/legend/page?path=...` authority. That action reads
+exactly the public publication envelope and uses the shared website compiler to
+return complete HTML. It never reads the draft. The compiler retains at most one
+rendered LEGEND payload, keyed by its complete public-content hash; publication
+changes cannot reuse an older result. Concurrent compilation is serialized.
+
+The browser receives published content and metadata before JavaScript, then uses
+its embedded publication for responsive behavior and tracking. There is no second
+public-content fetch. Renderer/network failures return an error, never a successful
+old built-in homepage. Existing publications work without republishing or a database
+migration. Static assets and signed Studio entry routes retain the static website
+origin; Studio still authorizes through its existing API. Business domains,
+storefronts, portal and client traffic retain their current authorities.
+
+Release the Protect compiler/API and matching website runtime assets before the
+website-routing Worker through the existing approved release lifecycle. The Worker
+already owns the configured zone routes; no DNS or new routing service is required.
+This source change alone does not deploy any of those components. Verify the public
+response with JavaScript disabled, then verify mobile navigation, a test inquiry,
+editor access and runtime provenance. Direct Azure static-origin URLs remain build
+and editor templates, not the public company's published HTML authority.

@@ -74,6 +74,21 @@ export function buildBridgeRequest(request, env) {
   };
 }
 
+// Company documents use the canonical publication renderer. Static assets and
+// editor bootstrap pages stay at the website origin; authentication stays with
+// the existing Studio API. Commerce retains its existing routing below.
+function companyDocumentPath(url) {
+  return url.pathname.replace(/\/index\.html$/, '/');
+}
+
+function isCompanyDocument(url) {
+  const path=companyDocumentPath(url);
+  return (url.hostname === 'mylegnd.com' || url.hostname === 'www.mylegnd.com') &&
+    /^\/(?:[a-z0-9_-]+\/?)*$/.test(path) &&
+    !/^\/(?:api|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
+    !url.searchParams.has('legendEdit');
+}
+
 export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   const incoming = new URL(request.url);
   const hostname = incoming.hostname.toLowerCase();
@@ -82,6 +97,28 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   if (incoming.protocol !== "https:") {
     incoming.protocol = "https:";
     return Response.redirect(incoming.toString(), 308);
+  }
+
+  if (isCompanyDocument(incoming)) {
+    if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed.', { status: 405 });
+    const origin = validatedOrigin(env?.LEGEND_WEBSITE_ORIGIN, DEFAULT_WEBSITE_ORIGIN);
+    if (!origin) return new Response('Website routing is temporarily unavailable.', { status: 503 });
+    const target = new URL('/api/website-content/public/legend/page', origin);
+    target.searchParams.set('path', companyDocumentPath(incoming));
+    // Public HTML is anonymous. Do not forward cookies, authorization, editor
+    // tickets or tracking query data to the renderer, nor accept cached HTML.
+    try {
+      return await fetchImpl(new Request(target, {
+        method: request.method,
+        headers: { Accept: 'text/html', 'Cache-Control': 'no-cache' },
+        redirect: 'manual',
+        signal: request.signal
+      }), { cf: { cacheTtl: 0, cacheEverything: false } });
+    } catch {
+      return new Response('Published website temporarily unavailable.', {
+        status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '30' }
+      });
+    }
   }
 
   // Normal LEGEND-owned traffic retains its existing origins. The only first-party

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using System.Diagnostics;
 using System.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.WebsiteEditing;
@@ -29,6 +30,44 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collections,
         CancellationToken cancellationToken)
     {
+        var input = JsonSerializer.Serialize(new
+            {
+                document,
+                business = new { id = business.Id, key = business.Key, displayName = business.DisplayName, legalName = business.LegalName,
+                    businessType = business.BusinessType, contactEmail = facts.ContactEmail, contactPhone = facts.Phone,
+                    hours = facts.Hours, locations = facts.Locations, services = facts.Services },
+                commerce = new
+                {
+                    publicBaseUrl = (configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/')
+                },
+                collections = collections.Values
+            }, JsonOptions);
+        return await CompileInputAsync(input, cancellationToken);
+    }
+
+    // Only the most recent immutable public payload is retained. The serialized
+    // input is the cache identity, so a new publication cannot reuse old HTML.
+    private readonly SemaphoreSlim legendCompilation = new(1, 1);
+    private string? legendInputHash;
+    private string? legendCompiledPages;
+
+    public async Task<string> CompileLegendAsync(string publicPayload, CancellationToken cancellationToken)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(publicPayload)));
+        await legendCompilation.WaitAsync(cancellationToken);
+        try
+        {
+            if (legendInputHash == hash && legendCompiledPages is not null) return legendCompiledPages;
+            var compiled = await CompileInputAsync(publicPayload, cancellationToken);
+            legendInputHash = hash;
+            legendCompiledPages = compiled;
+            return compiled;
+        }
+        finally { legendCompilation.Release(); }
+    }
+
+    private async Task<string> CompileInputAsync(string input, CancellationToken cancellationToken)
+    {
         var root = configuration["WebsitePublishing:CompilerRoot"]
             ?? Path.Combine(environment.ContentRootPath, "WebsiteCompiler");
         var runner = Path.Combine(root, "scripts", "render-business-cli.mjs");
@@ -50,18 +89,6 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
             if (!process.Start()) throw new InvalidOperationException("website_compiler_not_available");
             var outputTask = ReadBoundedAsync(process.StandardOutput, MaxOutputCharacters, bounded.Token);
             var errorTask = ReadBoundedAsync(process.StandardError, 16_384, bounded.Token);
-            var input = JsonSerializer.Serialize(new
-            {
-                document,
-                business = new { id = business.Id, key = business.Key, displayName = business.DisplayName, legalName = business.LegalName,
-                    businessType = business.BusinessType, contactEmail = facts.ContactEmail, contactPhone = facts.Phone,
-                    hours = facts.Hours, locations = facts.Locations, services = facts.Services },
-                commerce = new
-                {
-                    publicBaseUrl = (configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/')
-                },
-                collections = collections.Values
-            }, JsonOptions);
             await process.StandardInput.WriteAsync(input.AsMemory(), bounded.Token);
             process.StandardInput.Close();
             await process.WaitForExitAsync(bounded.Token);
