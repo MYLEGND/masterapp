@@ -6,6 +6,7 @@ name: LEGEND Fast Track — Affected Web Apps
 # Migration admission retains terminal zero-job attempts as proven non-entry.
 # Older ambiguous SQL generations require fresh physical-prefix reconciliation.
 # Historical admission reads use this job's existing Actions credential.
+# Completed pre-reuse migration generations retain their original scoped receipts.
 
 on:
   push:
