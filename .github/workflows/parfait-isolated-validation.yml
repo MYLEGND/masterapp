@@ -8,6 +8,7 @@ on:
       - repair/fast-track-already-ready-no-sql-20261011
       - repair/fast-track-map-no-sql-regression-20261011
       - repair/fast-track-no-sql-activity-fence-20261011
+      - repair/fast-track-attested-preflight-two-attempt-20261011
       - isolation/parfait-live-cutover-20261011
       - isolation/business-scoped-payments-20261011
     paths:
