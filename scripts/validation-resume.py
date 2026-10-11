@@ -250,6 +250,68 @@ def attested_fast_track_migration_prewrite(repository, run, jobs, token):
         return False
 
 
+def attested_fast_track_router_prewrite(repository, run, jobs, token):
+    """Authenticate the original failed renderer before any router publication, never infer it from no receipt."""
+    import datetime
+    if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'):
+        return False
+    owners = [j for j in jobs if j.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0]]
+    if len(owners) != 1:
+        return False
+    job = owners[0]
+    steps = [x for x in job.get('steps', []) if x.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][1]]
+    if (job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+        or len(steps) != 1 or steps[0].get('status') != 'completed'
+        or steps[0].get('conclusion') != 'failure'):
+        return False
+    # Exact source calls company_render_ready before constructing its journal.
+    sources = {'.github/workflows/legend-fast-track-ui.yml': 'c69d65590746af9a8bea9e55b9e7c58547edd02182821353309e92f5cb27f09d', 'scripts/release-router.py': '9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62'}
+    try:
+        for path, digest in sources.items():
+            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+                return False
+        inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = inventory.get('artifacts')
+        if (not isinstance(artifacts, list) or type(inventory.get('total_count')) is not int
+            or inventory['total_count'] != len(artifacts)
+            or any(not isinstance(a, dict) or type(a.get('id')) is not int
+                   or a['id'] < 1 or not isinstance(a.get('name'), str) for a in artifacts)
+            or len({a['id'] for a in artifacts}) != len(artifacts)
+            or any(a['name'].startswith(('legend-release-child-intent-', 'legend-release-child-success-'))
+                   for a in artifacts)):
+            return False
+        start = datetime.datetime.fromisoformat(steps[0]['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(steps[0]['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+        if heads != {run['head_sha']}:
+            return False
+        marker = 'urllib.error.HTTPError: HTTP Error 500: Internal Server Error'
+        stamps = []
+        for line in log.splitlines():
+            date, sep, message = line.partition(' ')
+            if sep and message == marker:
+                stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
+        bounded = []
+        for line in log.splitlines():
+            date, sep, message = line.partition(' ')
+            if sep and re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', date):
+                stamp = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
+                if start <= stamp <= end + datetime.timedelta(seconds=2):
+                    bounded.append(message)
+        traces = '\n'.join(bounded).split('Traceback (most recent call last):\n')[1:]
+        return (len(stamps) == 1 and start <= stamps[0] <= end + datetime.timedelta(seconds=2)
+            and len(traces) == 1 and traces[0].count(marker) == 1
+            and '    company_render_ready(authority)\n' in traces[0].split(marker)[0]
+            and 'in company_render_ready\n' in traces[0].split(marker)[0])
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
@@ -293,6 +355,8 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
             if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
                 continue
             if child == 'migrations' and attested_fast_track_migration_prewrite(repository, run, jobs, token):
+                continue
+            if child == 'routing-cloudflare' and attested_fast_track_router_prewrite(repository, run, jobs, token):
                 continue
             attempts.append((run, attempt, job, steps[0]))
     return attempts
@@ -2268,7 +2332,8 @@ def fast_track_scope(paths):
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
         'Domain/Entities/WebsiteContentState.cs', 'Infrastructure/WebsiteEditing/WebsiteEventMapQuery.cs',
         'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
-        'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs'} for path in paths)
+        'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs',
+        'Protect-Website/ProtectWebsite.csproj'} for path in paths)
     return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend,
                 schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') for p in paths), impacts=impacts)
 
@@ -3617,6 +3682,51 @@ def fast_track_untriggered_repair_parent(repository, revision, token):
     return parents[1]
 
 
+def fast_track_completed_apps_pending_routing(repository, run, jobs, token):
+    """Keep completed app scope while retaining a proven unentered router job."""
+    expected = {'Affected App Deploy — ' + label for label in ('AgentPortal','ClientApp','Protect','Parfait','Website')}
+    apps = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ')]
+    prerequisites = [j for j in jobs if j.get('name') in {
+        'Admit exact validated fast-track source','Reconcile production schema before publication'}]
+    if not (len(apps) == 5 and {j.get('name') for j in apps} == expected
+        and len(prerequisites) == 2
+        and all(j.get('status') == 'completed' and j.get('conclusion') == 'success' for j in apps + prerequisites)
+        and attested_fast_track_router_prewrite(repository, run, jobs, token)):
+        return False
+    if type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100:
+        return False
+    for attempt in range(1, run['run_attempt'] + 1):
+        payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+        rows = payload.get('jobs')
+        if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+            return False
+        owners = [j for j in rows if j.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0]]
+        if len(owners) != 1:
+            return False
+        if owners[0].get('status') == 'completed' and owners[0].get('conclusion') == 'skipped':
+            continue
+        if not attested_fast_track_router_prewrite(repository, run, rows, token):
+            return False
+    return True
+
+
+def fast_track_pending_routing(revision):
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    payload = api_get(repository, f'actions/runs?head_sha={revision}&event=push&per_page=100', token)
+    rows = payload.get('workflow_runs')
+    if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+        raise RuntimeError('FAST_TRACK_ROUTING_PREDECESSOR_INCOMPLETE')
+    runs = [r for r in rows if is_fast_track_producer(repository, r)]
+    if len(runs) != 1 or runs[0].get('conclusion') != 'failure':
+        return False
+    payload = api_get(repository, f"actions/runs/{runs[0]['id']}/jobs?filter=latest&per_page=100", token)
+    jobs = payload.get('jobs')
+    if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+        raise RuntimeError('FAST_TRACK_ROUTING_JOBS_INCOMPLETE')
+    return fast_track_completed_apps_pending_routing(repository, runs[0], jobs, token)
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -3648,6 +3758,8 @@ def fast_track_effective_baseline(before, revision):
         jobs = payload.get('jobs')
         if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
+        if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):
+            return before
         admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
         writes = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ') or
                   j.get('name') in {'Reconcile production schema before publication', 'Publish verified website routing'}]

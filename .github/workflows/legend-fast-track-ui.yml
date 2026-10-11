@@ -119,6 +119,8 @@ jobs:
           else:
               raise SystemExit('Invalid fast-track event baseline')
           scope=authority.fast_track_scope(changed)
+          if authority.fast_track_pending_routing(before):
+              scope.update(routing=True,commerce=True)
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
               stream.write('baseline='+before+'\n')
               stream.write('selected='+str(scope['selected']).lower()+'\n')

@@ -460,4 +460,66 @@ class UntriggeredRepairTests(unittest.TestCase):
             self.assertIn('      - scripts/'+path+'\n',text)
 
 
+class RouterPrewriteRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.head='3017d7e7c5527b1f34dc3b120a7d166b90c2a053'
+        self.run=dict(id=17,head_sha=self.head,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository=dict(full_name='owner/repo'),status='completed',conclusion='failure',run_attempt=2)
+        self.job=dict(id=9,name=authority.FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0],status='completed',conclusion='failure',steps=[
+            dict(name=authority.FAST_TRACK_CHILD_STEPS['routing-cloudflare'][1],status='completed',conclusion='failure',
+                started_at='2026-10-11T18:00:00Z',completed_at='2026-10-11T18:01:00Z')])
+        self.log=('2026-10-11T17:59:00Z [command]/usr/bin/git log -1 --format=%H\n'
+            +'2026-10-11T17:59:01Z '+self.head+'\n'
+            +'2026-10-11T18:00:30Z Traceback (most recent call last):\n'
+            +'2026-10-11T18:00:30Z     company_render_ready(authority)\n'
+            +'2026-10-11T18:00:30Z   File "release-router.py", line 68, in company_render_ready\n'
+            +'2026-10-11T18:00:30Z urllib.error.HTTPError: HTTP Error 500: Internal Server Error\n')
+    def prove(self):
+        with patch.object(authority,'api_get',return_value=dict(total_count=0,artifacts=[])), \
+             patch.object(authority,'_release_job_log',return_value=self.log):
+            return authority.attested_fast_track_router_prewrite('owner/repo',self.run,[self.job],'fixture')
+    def test_original_renderer_failure_proves_no_router_write(self):
+        self.assertTrue(self.prove())
+    def test_unbound_frames_changed_source_or_other_error_cannot_prove_nonentry(self):
+        original=self.log
+        for changed in (original.replace('18:00:30Z     company','17:59:30Z     company'),
+                original.replace('in company_render_ready','in publish'),original.replace('Error 500','Error 403'),
+                original.replace(self.head,'a'*40)):
+            self.log=changed;self.assertFalse(self.prove())
+        self.log=original
+        with patch.object(authority,'_release_history_source',return_value='changed'):self.assertFalse(self.prove())
+    def test_scope_preserves_apps_only_when_every_router_attempt_never_wrote(self):
+        jobs=[dict(name='Affected App Deploy — '+label,status='completed',conclusion='success')
+            for label in ('AgentPortal','ClientApp','Protect','Parfait','Website')]
+        jobs += [dict(name=name,status='completed',conclusion='success') for name in
+            ('Admit exact validated fast-track source','Reconcile production schema before publication')]
+        jobs.append(self.job)
+        earlier=dict(self.job,conclusion='skipped')
+        def get(repo,path,token):
+            rows=[earlier] if '/attempts/1/' in path else [self.job]
+            return dict(total_count=len(rows),jobs=rows)
+        def attest(repo,run,rows,token):return rows[-1] is self.job
+        with patch.object(authority,'api_get',side_effect=get),patch.object(authority,'attested_fast_track_router_prewrite',side_effect=attest):
+            self.assertTrue(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+            earlier['conclusion']='success'
+            self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+
+class PublishedCompilerBrandingTests(unittest.TestCase):
+    def test_packaged_content_module_resolves_canonical_registry(self):
+        import shutil,xml.etree.ElementTree as ET,subprocess
+        project=ET.parse('Protect-Website/ProtectWebsite.csproj').getroot()
+        entries=[e for e in project.iter('Content') if e.get('Include')=='../SHARED/Branding/legend-brand.json']
+        self.assertEqual(1,len(entries));entry=entries[0]
+        self.assertEqual('PreserveNewest',entry.get('CopyToPublishDirectory'))
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);module=root/'WebsiteCompiler/src/content.mjs';module.parent.mkdir(parents=True)
+            shutil.copyfile('Legend-Website/src/content.mjs',module)
+            destination=root/entry.get('Link');destination.parent.mkdir(parents=True)
+            shutil.copyfile('SHARED/Branding/legend-brand.json',destination)
+            result=subprocess.run(['node','--input-type=module','-e',
+                'const m=await import('+json.dumps(module.as_uri())+');if(!m.pages)process.exit(1);'],capture_output=True,text=True)
+            self.assertEqual(0,result.returncode,result.stderr)
+
+
 if __name__ == '__main__':unittest.main()

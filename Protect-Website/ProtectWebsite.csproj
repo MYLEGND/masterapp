@@ -86,6 +86,10 @@
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="../SHARED/Branding/legend-brand.json" Link="SHARED/Branding/legend-brand.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- The publication compiler packages the exact shared website build and DOM
        dependencies. No independently maintained business HTML is checked in. -->
   <Target Name="RestoreBusinessWebsiteCompiler" BeforeTargets="BuildBusinessWebsiteCompiler"
