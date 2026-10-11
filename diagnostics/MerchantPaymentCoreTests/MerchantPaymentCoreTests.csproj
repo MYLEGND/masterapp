@@ -23,6 +23,7 @@
     <Compile Include="../../AgentPortal.Tests/CommerceCutoverStartupProofTests.cs" Link="CommerceCutoverStartupProofTests.cs" />
     <Compile Include="../../AgentPortal.Tests/CommerceLegacyTransferTests.cs" Link="CommerceLegacyTransferTests.cs" />
     <Compile Include="../../AgentPortal.Tests/MerchantPaymentsTests.cs" Link="MerchantPaymentsTests.cs" />
+    <Compile Include="../../AgentPortal.Tests/ParfaitCanonicalPresentationPreservationTests.cs" Link="ParfaitCanonicalPresentationPreservationTests.cs" />
     <Compile Include="../../AgentPortal.Tests/CommerceManagementCapabilityPolicyTests.cs" Link="CommerceManagementCapabilityPolicyTests.cs" />
   </ItemGroup>
 </Project>

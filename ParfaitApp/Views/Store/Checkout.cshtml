@@ -130,7 +130,7 @@
                             <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
                             <span id="spPayButtonLabel">Complete Purchase</span>
                         </span>
-                        <small class="sp-button-note">Secure encrypted checkout</small>
+                        <small class="sp-button-note">@(hosted ? "Secure encrypted checkout" : "Secure encrypted Square checkout")</small>
                     </button>
                 </div>
 
@@ -569,7 +569,7 @@
             });
 
             startSquare().catch(error => {
-                setError(error.message || "Checkout failed to initialize.");
+                setError(error.message || (hosted ? "Checkout failed to initialize." : "Square checkout failed to initialize."));
                 setPayButtonAvailability(false);
             });
         })();
