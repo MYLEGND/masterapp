@@ -60,7 +60,7 @@ class CurrentSchemaNoSqlTests(unittest.TestCase):
         self.assertFalse(self.published)
 
     def test_physical_identity_mismatch_rejected_without_receipt(self):
-        self.receipt=dict(self.before, databaseIdentity='d'*64)
+        self.receipt=dict(self.before, kind='current-schema-no-write', databaseIdentity='d'*64)
         with self.assertRaisesRegex(RuntimeError, 'readiness-identity'):
             self.invoke()
         self.assertFalse(self.records)
