@@ -21,6 +21,7 @@ on:
       - Domain/Models/Commerce/**
       - Infrastructure/Data/MasterAppDbContext.cs
       - Infrastructure/Migrations/**
+      - scripts/MigrationReleaseProbe/**
       - diagnostics/MerchantPaymentCoreTests/**
       - diagnostics/MerchantPaymentAdapterChecks/**
       - .github/workflows/parfait-isolated-validation.yml
@@ -71,6 +72,12 @@ jobs:
         run: |
           dotnet test diagnostics/MerchantPaymentCoreTests/MerchantPaymentCoreTests.csproj -c Release --nologo
           dotnet run --project diagnostics/MerchantPaymentAdapterChecks/MerchantPaymentAdapterChecks.csproj -c Release
+
+      - name: Verify canonical migration operation contract
+        run: |
+          dotnet build scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
+          dotnet build scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
+          dotnet run --project scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --no-build -- contract-test
 
       - name: Publish and inspect exact Parfait + Protect packages without deployment
         shell: bash

@@ -24,6 +24,7 @@ PROBE_TERMINAL_REASONS = {
     'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
     'MIGRATION_COMPATIBILITY_UNPROVEN': 'Pending migration compatibility and recovery require review',
     'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN': 'Candidate migration metadata differs from approved definitions',
+    'MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW': 'Existing merchant checkout identities are duplicated; reconciliation is required before migration',
     'PHYSICAL_SCHEMA_DRIFT': 'Production physical schema disagrees with validated EF history',
     'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
 }

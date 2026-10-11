@@ -60,3 +60,32 @@ Use the existing `Legend/fast-track-release` release authority after exact-head 
 ## Release scope and protection
 
 Work in an isolated branch; validate and merge through the pre-existing fast-track admission **only after** the above implementation is complete. CI must build and test impacted projects, prove no EF migration replay, preserve live Parfait/Protect revisions until approved cutover, and select only affected apps/Worker. Stop on identity, data, payment, tenant isolation, origin, or visual-parity mismatch. Do not disable any existing gate merely to advance release.
+
+## Combined-candidate migration verifier checkpoint — 2026-10-11
+
+PR #580 incorporates payment PR #581 and the Founder-approved operating contract at
+`ddb03578cf26c2e8076e0e34f03c271df5166bc6`. Continue on the same isolation branch;
+`Legend/fast-track-release` remains the only release authority for this task.
+
+The canonical migration contract now represents additive tables, primary and foreign
+keys, indexes, and the exact read-only duplicate-checkout precondition. The observer
+checks physical SQL metadata and rejects missing, disabled, untrusted, or mismatched
+constraints. Arbitrary SQL, destructive operations, unsupported annotations, and
+stale contract versions remain unsupported. No production observer executes SQL
+from the declarative candidate contract.
+
+Credential-free contract tests inspect the actual payment migration: three added
+columns, eight tables, fifteen indexes, and its checkout guard. They cover the
+complete historical contract round trip and negative operation/contract cases.
+Both probe projects compile locally; the contract tests and 14 existing migration
+probe retry tests pass. The existing isolated CI workflow now runs these checks.
+The existing SQL rehearsal fixture has been extended with two synthetic tenants
+sharing a checkout identity and preservation checks for their historical orders.
+That SQL fixture still requires execution against disposable SQL Server; local
+contract tests are not a claim that the SQL rehearsal passed.
+
+Remaining: disposable SQL rehearsal and adversarial schema checks; reviewed
+fast-track security/admission and migration orchestration; production plan-only
+identity/data/media reconciliation; selective deployment and live payment/runtime
+verification. No migration, Azure deployment, DNS cutover, or retirement is admitted
+by this source checkpoint. Preserve existing DNS preparation and live legacy service.
