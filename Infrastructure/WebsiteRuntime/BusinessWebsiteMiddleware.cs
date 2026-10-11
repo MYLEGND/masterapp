@@ -51,8 +51,9 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
 
             // Meta's callback carries a signed state instead of a direct
             // website ticket. The action validates that state and its owner.
-            var oauthCallback = string.Equals(path,
-                "/commerce/manage/analytics/meta-callback", StringComparison.OrdinalIgnoreCase) &&
+            var oauthCallback = (string.Equals(path,
+                "/commerce/manage/analytics/meta-callback", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(path, "/commerce/manage/payments/callback", StringComparison.OrdinalIgnoreCase)) &&
                 HttpMethods.IsGet(context.Request.Method);
             if (!oauthCallback)
             {

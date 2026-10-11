@@ -186,7 +186,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
     }
 
     [Fact]
-    public async Task Pay_WhenGatewayThrows_ReturnsGenericFailure_WithoutPersistingRawProviderError()
+    public async Task Pay_WhenGatewayThrows_PreservesPending_WithoutPersistingRawProviderError()
     {
         using var harness = new CheckoutHarness(
             configureGateway: gateway =>
@@ -207,9 +207,12 @@ public sealed class ParfaitCheckoutBillingCutoverTests
 
         Assert.False(response.Success);
         Assert.Equal("Payment could not be completed right now. Please try again.", response.Error);
-        Assert.Equal("Failed", order.PaymentStatus);
-        Assert.Equal("One-time payment failed before the provider returned a safe result.", order.SquareError);
-        Assert.DoesNotContain("4111111111111111", order.SquareError!, StringComparison.Ordinal);
+        Assert.Equal("Pending", order.PaymentStatus);
+        Assert.True(order.IsPaymentProcessing);
+        Assert.Null(order.SquareError);
+        // A provider exception does not prove the charge failed; duplicate checkout stays blocked.
+        var retry = await harness.Controller.Pay(harness.BuildPayRequest(), CancellationToken.None);
+        ReadResponse(retry, StatusCodes.Status409Conflict);
         Assert.Equal(SubscriptionPaymentStatus.Failed, payment.Status);
         Assert.Equal("UNHANDLED_BILLING_ERROR", payment.SafeFailureCode);
         Assert.Equal(3, inventory.StockQuantity);

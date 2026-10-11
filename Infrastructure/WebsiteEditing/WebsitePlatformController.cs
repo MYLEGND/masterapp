@@ -3703,7 +3703,8 @@ public class WebsitePlatformController : ControllerBase
                 storefrontUrl = (string?)null,
                 cartUrl = (string?)null,
                 previewUrl = (string?)null,
-                managerUrl = (string?)null
+                managerUrl = (string?)null,
+                paymentsUrl = (string?)null
             };
 
         var root = await ResolveCanonicalStoreRootAsync(siteKey, scope, cancellationToken);
@@ -3724,7 +3725,10 @@ public class WebsitePlatformController : ControllerBase
                 : managerBase + "/commerce/manage/preview?ticket=" + escapedTicket,
             managerUrl = escapedTicket is null
                 ? null
-                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket
+                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket,
+            paymentsUrl = escapedTicket is null
+                ? null
+                : managerBase + "/commerce/manage/payments?ticket=" + escapedTicket
         };
     }
 

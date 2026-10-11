@@ -28,6 +28,16 @@ public sealed class CommerceManagementCapabilityPolicyTests
     [InlineData("/commerce/manage/analytics/meta-callback", "GET", "settings")]
     [InlineData("/commerce/manage/analytics/openai-connect", "POST", "settings")]
     [InlineData("/commerce/manage/analytics/meta-disconnect", "POST", "settings")]
+    [InlineData("/commerce/manage/payments", "GET", "settings")]
+    [InlineData("/commerce/manage/payments/callback", "GET", "settings")]
+    [InlineData("/commerce/manage/payments/connect", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/resume", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/refund", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/reconcile", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/confirm", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/default", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/disconnect", "POST", "settings")]
+    [InlineData("/commerce/manage/payments/refresh", "POST", "settings")]
     public void ExistingSharedRoutesRequireAnExactCapability(string route, string verb, string expected)
     {
         Assert.Equal(expected, CommerceManagementCapabilityPolicy.ForRequest(
@@ -44,6 +54,13 @@ public sealed class CommerceManagementCapabilityPolicyTests
     [InlineData("/commerce/manage/automations/secret", "POST")]
     [InlineData("/commerce/manage/order", "PUT")]
     [InlineData("/store/cart", "GET")]
+    [InlineData("/commerce/manage/payments/connect", "GET")]
+    [InlineData("/commerce/manage/payments/resume", "GET")]
+    [InlineData("/commerce/manage/payments/refund", "GET")]
+    [InlineData("/commerce/manage/payments/reconcile", "GET")]
+    [InlineData("/commerce/manage/payments/default", "GET")]
+    [InlineData("/commerce/manage/payments/callback", "POST")]
+    [InlineData("/commerce/manage/payments/unregistered", "POST")]
     public void UnknownVerbOrOperationCannotInheritStoreOwnerPermission(string route, string verb)
     {
         Assert.Null(CommerceManagementCapabilityPolicy.ForRequest(new PathString(route), verb));

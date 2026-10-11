@@ -1,3 +1,5 @@
+using Infrastructure.Commerce.Payments;
+using System.Text.Json;
 using Domain.Billing;
 using Infrastructure.Billing.Square;
 using Infrastructure.Commerce;
@@ -13,6 +15,9 @@ namespace ParfaitApp.Controllers;
 public sealed class StoreCheckoutController : Controller
 {
     private const string CommerceCurrency = "USD";
+    private readonly MerchantCheckoutService? _merchantCheckout;
+    private readonly MerchantPaymentCompletionService? _completion;
+    private readonly IConfiguration? _configuration;
     private readonly SquareBillingOptions _squareOptions;
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
@@ -31,7 +36,10 @@ public sealed class StoreCheckoutController : Controller
         IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
         CommerceSignalService commerceSignals,
-        CommerceStoreContextService stores)
+        CommerceStoreContextService stores,
+        MerchantCheckoutService merchantCheckout,
+        MerchantPaymentCompletionService completion,
+        IConfiguration configuration)
     {
         _squareOptions = squareOptions;
         _products = products;
@@ -41,6 +49,9 @@ public sealed class StoreCheckoutController : Controller
         _mail = mail;
         _commerceSignals = commerceSignals;
         _stores = stores;
+        _merchantCheckout = merchantCheckout;
+        _completion = completion;
+        _configuration = configuration;
     }
 
     // Compatibility constructor for existing Parfait callers/tests. It preserves the
@@ -134,8 +145,9 @@ public sealed class StoreCheckoutController : Controller
         if (redirect is not null) return redirect;
 
         ApplyStoreContext(store);
-        ViewBag.SquareApplicationId = _squareOptions.ApplicationId;
-        ViewBag.SquareLocationId = _squareOptions.LocationId;
+        ViewBag.MerchantHostedCheckout = UseMerchantCheckout(store);
+        ViewBag.SquareApplicationId = UseMerchantCheckout(store) ? null : _squareOptions.ApplicationId;
+        ViewBag.SquareLocationId = UseMerchantCheckout(store) ? null : _squareOptions.LocationId;
         ViewBag.SquareEnvironment = _squareOptions.Environment.ToString();
         return View("~/Views/Store/Checkout.cshtml");
     }
@@ -191,7 +203,7 @@ public sealed class StoreCheckoutController : Controller
         if (!string.IsNullOrWhiteSpace(validationError))
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = validationError });
 
-        if (string.IsNullOrWhiteSpace(request.SourceId))
+        if (!UseMerchantCheckout(store) && string.IsNullOrWhiteSpace(request.SourceId))
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Missing payment token." });
 
         var quote = _products.QuoteCart(store.CommerceBusinessId, request.Items, request.DiscountCode);
@@ -230,6 +242,9 @@ public sealed class StoreCheckoutController : Controller
                 RedirectUrl = SuccessUrl(store, paymentStart.Order.OrderNumber)
             });
         }
+
+        if (UseMerchantCheckout(store))
+            return await BeginMerchantAsync(store, paymentStart.Order, ct);
 
         if (paymentStart.State == CheckoutPaymentStartState.AlreadyProcessing)
         {
@@ -279,7 +294,7 @@ public sealed class StoreCheckoutController : Controller
         }
         catch
         {
-            _orders.MarkPaymentFailed(store.CommerceBusinessId, order.OrderNumber, "Payment request could not be completed right now.");
+            // Transport failure is not evidence that a charge failed; preserve pending state.
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse
             {
                 Success = false,
@@ -292,7 +307,8 @@ public sealed class StoreCheckoutController : Controller
         {
             var failureSummary = paymentResult.SanitizedSummary ?? "Payment could not be completed right now. Please try again.";
             var failureStatusCode = ResolvePaymentFailureStatusCode(paymentResult);
-            _orders.MarkPaymentFailed(store.CommerceBusinessId, order.OrderNumber, failureSummary);
+            if (!paymentResult.Retryable && failureStatusCode != StatusCodes.Status503ServiceUnavailable)
+                _orders.MarkPaymentFailed(store.CommerceBusinessId, order.OrderNumber, failureSummary);
             return StatusCode(failureStatusCode, new ParfaitCheckoutPayResponse
             {
                 Success = false,
@@ -345,6 +361,59 @@ public sealed class StoreCheckoutController : Controller
         });
     }
 
+    private bool UseMerchantCheckout(CommerceStoreContext store) =>
+        !store.IsParfait || (_configuration?.GetValue<bool>("MerchantPayments:ParfaitCutoverEnabled") ?? false);
+
+    private async Task<IActionResult> BeginMerchantAsync(CommerceStoreContext store, ParfaitOrderRecord order, CancellationToken ct)
+    {
+        if (_merchantCheckout is null) return StatusCode(503, new { success = false, error = "Merchant payments are unavailable." });
+        try
+        {
+            var returnPath = $"{store.CheckoutPath}/return?orderNumber={Uri.EscapeDataString(order.OrderNumber)}&attempt={Uri.EscapeDataString(order.CheckoutAttemptId!)}";
+            var publicRoot = _stores is null ? null : await _stores.ResolveCanonicalPublicRootAsync(store, ct);
+            var returnUrl = string.IsNullOrWhiteSpace(publicRoot)
+                ? $"{Request.Scheme}://{Request.Host}{returnPath}"
+                : new Uri(new Uri(publicRoot), returnPath).AbsoluteUri;
+            var signal = BuildSignalContext(store) with { OrderId = order.CommerceOrderId, EventUtc = order.CreatedUtc, OrderValueCents = order.TotalCents };
+            if (_commerceSignals is not null)
+                await _commerceSignals.RecordAsync("InitiateCheckout", order.CheckoutAttemptId!, signal,
+                    order.Items.FirstOrDefault() is { } first ? ProductSignal(first) : null,
+                    new CommerceSignalCustomer(order.FirstName, order.LastName, order.Email, order.Phone, order.City, order.State, order.PostalCode),
+                    order.OrderNumber, order.Items.Select(ProductSignal).ToArray(), ct);
+            var evidence = await _merchantCheckout.BeginAsync(store.CommerceBusinessId, order.CommerceOrderId, returnUrl, JsonSerializer.Serialize(signal), ct);
+            if (evidence.State == "Captured")
+            {
+                var saved = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+                if (saved is not null && _completion is not null) await _completion.CompleteAsync(saved.Id, ct);
+                return Ok(new { success = true, redirectUrl = SuccessUrl(store, order.OrderNumber) });
+            }
+            return string.IsNullOrWhiteSpace(evidence.CheckoutUrl)
+                ? StatusCode(503, new { success = false, error = "Payment verification is pending. Retry this checkout to check its status." })
+                : Ok(new { success = true, redirectUrl = evidence.CheckoutUrl });
+        }
+        catch (MerchantPaymentException)
+        {
+            return StatusCode(503, new { success = false, error = "Payments are unavailable or verification is pending. Please retry this checkout later." });
+        }
+    }
+
+    [HttpGet("checkout/return")]
+    [HttpGet("s/{businessKey}/checkout/return")]
+    public async Task<IActionResult> MerchantReturn(string? businessKey, string orderNumber, string attempt, CancellationToken ct)
+    {
+        var store = await ResolveStoreAsync(businessKey, ct);
+        if (store is null || !UseMerchantCheckout(store) || _merchantCheckout is null) return NotFound();
+        var order = _orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (order is null || string.IsNullOrWhiteSpace(attempt) || order.CheckoutAttemptId != attempt) return NotFound();
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Cache-Control"] = "no-store";
+        var evidence = await _merchantCheckout.ReconcileAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+        if (evidence?.State != "Captured") return Content("Your payment is awaiting verification. Refresh this page to check again. Do not start a second payment.");
+        var saved = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+        if (saved is not null && _completion is not null) await _completion.CompleteAsync(saved.Id, ct);
+        return Redirect(SuccessUrl(store, orderNumber));
+    }
+
     private async Task<IActionResult> SuccessCoreAsync(
         string? businessKey,
         string orderNumber,
@@ -357,12 +426,12 @@ public sealed class StoreCheckoutController : Controller
         var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, suffix, ct);
         if (redirect is not null) return redirect;
 
+        var confirmed = string.IsNullOrWhiteSpace(orderNumber) ? null : _orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (confirmed is not null && !confirmed.IsPaid) return Content("Your payment has not been confirmed.");
         ApplyStoreContext(store);
         return View("~/Views/Store/Success.cshtml", new ParfaitOrderSuccessViewModel
         {
-            Order = string.IsNullOrWhiteSpace(orderNumber)
-                ? null
-                : _orders.GetOrder(store.CommerceBusinessId, orderNumber)
+            Order = confirmed
         });
     }
 

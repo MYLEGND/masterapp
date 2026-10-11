@@ -109,6 +109,7 @@
                     <div class="pf-nav-group">
                         <div class="pf-nav-section">Settings</div>
                         @if (canSettings) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/business-profile")">Business Profile</a> }
+                        @if (canSettings) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/payments")">Payments</a> }
                         @if (canTeam) { <a class="pf-route-link" href="@ScopedUrl("/commerce/manage/team")">Team</a> }
                     </div>
                 }

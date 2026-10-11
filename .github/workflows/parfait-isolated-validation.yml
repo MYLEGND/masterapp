@@ -5,6 +5,7 @@ on:
     branches:
       - isolation/parfait-canonical-commerce-20261010
       - isolation/canonical-scoped-commerce-internal-20261010
+      - isolation/business-scoped-payments-20261011
     paths:
       - CommerceCore/**
       - Infrastructure/Commerce/**
@@ -15,6 +16,13 @@ on:
       - Protect-Website/**
       - ParfaitApp/**
       - AgentPortal.Tests/**
+      - Domain/Entities/CommerceMerchant*.cs
+      - Domain/Entities/CommercePayment*.cs
+      - Domain/Models/Commerce/**
+      - Infrastructure/Data/MasterAppDbContext.cs
+      - Infrastructure/Migrations/**
+      - diagnostics/MerchantPaymentCoreTests/**
+      - diagnostics/MerchantPaymentAdapterChecks/**
       - .github/workflows/parfait-isolated-validation.yml
   workflow_dispatch:
 
@@ -58,6 +66,11 @@ jobs:
 
       - name: Verify selective Cloudflare commerce routing without deployment
         run: node --test Legend-Cloudflare/tests/website-routing/*.test.mjs
+
+      - name: Verify scoped payment ownership, replay safety and provider contracts
+        run: |
+          dotnet test diagnostics/MerchantPaymentCoreTests/MerchantPaymentCoreTests.csproj -c Release --nologo
+          dotnet run --project diagnostics/MerchantPaymentAdapterChecks/MerchantPaymentAdapterChecks.csproj -c Release
 
       - name: Publish and inspect exact Parfait + Protect packages without deployment
         shell: bash
