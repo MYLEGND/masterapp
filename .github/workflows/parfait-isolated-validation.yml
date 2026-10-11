@@ -12,11 +12,13 @@ on:
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py
       - scripts/release-operation-evidence.py
+      - scripts/release-migration.py
       - scripts/release-router.py
       - scripts/release-migration-history-audit.py
       - scripts/release-lifecycle.py
       - scripts/test-release-lifecycle.py
       - scripts/test-fast-track-release.py
+      - scripts/test-fast-track-ready-no-sql.py
       - CommerceCore/**
       - Infrastructure/Commerce/**
       - Infrastructure/Businesses/**
