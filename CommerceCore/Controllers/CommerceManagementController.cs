@@ -118,7 +118,7 @@ public sealed class CommerceManagementController(
         member.CanManageCatalog = input.CanManageCatalog && input.CanManageStorefront;
         member.CanManageOrders = input.CanManageOrders && input.CanManageStorefront;
         member.CanManageAnalytics = input.CanManageAnalytics;
-        member.CanManageTeam = input.CanManageTeam;
+        // Team administration remains controlled by canonical business ownership.
         member.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return RedirectToAction(nameof(Team), new { ticket });
@@ -810,9 +810,9 @@ public sealed class CommerceManagementController(
         var purchaseSessions = Sessions("purchase");
         var browser = dashboard.MetaHealth.PipelineHealth.MetaBrowserSentCount;
         var server = dashboard.MetaHealth.PipelineHealth.MetaServerSentCount;
-        var eligible = browser + server;
-        var matched = Math.Min(browser, server);
-        var missingFailures = dashboard.MetaHealth.FailureDetection.Sum(x => x.Count);
+        // Aggregate delivery counts cannot establish distinct eligible events,
+        // same-event browser/server matches, missing attribution, or order joins.
+        // Keep unavailable evidence distinct from a verified zero.
 
         return new
         {
@@ -827,20 +827,24 @@ public sealed class CommerceManagementController(
             },
             attributionHealth = new
             {
-                eligibleEvents = eligible,
+                eligibleEvents = (int?)null,
                 browserSentEvents = browser,
                 serverSentEvents = server,
-                matchedEvents = matched,
-                serverBrowserMatchRate = Rate(matched, eligible),
-                missingAttributionEvents = missingFailures,
-                missingAttributionRate = Rate(missingFailures, eligible)
+                matchedEvents = (int?)null,
+                serverBrowserMatchRate = (decimal?)null,
+                missingAttributionEvents = (int?)null,
+                missingAttributionRate = (decimal?)null,
+                evidenceStatus = "unavailable",
+                evidenceReason = "Aggregate delivery totals do not establish event identity, eligibility, or missing attribution."
             },
             reconciliation = new
             {
                 paidOrders = dashboard.PaidOrders,
                 purchaseEvents = Count("purchase"),
-                unmatchedPaidOrders = Math.Max(0, dashboard.PaidOrders - Count("purchase")),
-                revenueCents = dashboard.RevenueCents
+                unmatchedPaidOrders = (int?)null,
+                revenueCents = dashboard.RevenueCents,
+                evidenceStatus = "unavailable",
+                evidenceReason = "Paid orders and purchase-event totals have not been reconciled by order identity."
             },
             funnel = new[]
             {

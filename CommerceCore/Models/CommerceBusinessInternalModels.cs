@@ -19,7 +19,6 @@ public sealed class CommerceBusinessTeamPermissionsInput
     public bool CanManageCatalog { get; set; }
     public bool CanManageOrders { get; set; }
     public bool CanManageAnalytics { get; set; }
-    public bool CanManageTeam { get; set; }
 }
 
 public sealed record CommerceBusinessProfileViewModel(

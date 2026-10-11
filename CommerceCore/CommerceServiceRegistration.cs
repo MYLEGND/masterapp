@@ -95,8 +95,8 @@ public static class CommerceServiceRegistration
         }
     }
 
-    /// <summary>Full public storefront and checkout, but no merchant management
-    /// endpoints or independently started automation workers.</summary>
+    /// <summary>Full public storefront and checkout plus scoped merchant management,
+    /// without independently started automation workers.</summary>
     public static IMvcBuilder AddLegendCommerceCutoverMvc(this IMvcBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);

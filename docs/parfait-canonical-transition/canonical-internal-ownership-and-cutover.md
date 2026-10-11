@@ -4,6 +4,18 @@ Status: **IN PROGRESS — NO DOMAIN CUTOVER OR APP RETIREMENT AUTHORIZED BY THIS
 This is the required all-business contract, not a Parfait-specific duplicate.
 Use the existing `Legend/fast-track-release` release authority after exact-head validation.
 
+## 2026-10-11 verification checkpoint
+
+- Continue PR #580 on `isolation/canonical-scoped-commerce-internal-20261010`; inspected source head `f8a2aa5933ae97c63b7febdaaedbdd59864f0efa` is based on the current `Legend/fast-track-release` head `640a2fa3e44fe1b36ff9c12e44aa1bbd1a7f21f6`. Do not restart the consolidation.
+- `Legend/fast-track-release` is the exclusive integration, final validation-admission, deployment and rollback authority for this assignment. `legend/approved-changes` is excluded as a base, baseline, release source and rollback authority. Do not invoke or repair its lifecycle.
+- Existing run `38097642242` recorded 153 tests passed, zero failed/skipped, three builds and matching assets. These receipts apply to that validated source, not subsequent edits. The current analytics-evidence/team-presentation changes pass all 11 focused `CommerceCoreOwnershipContractTests` locally with .NET SDK 10.0.401, plus JavaScript syntax and actual-renderer checks distinguishing unavailable, zero and positive values. Exact-head fast-track CI admission remains required.
+- Read-only inventory run `38097602188` failed Azure identity admission with `AADSTS700213` for the isolation-branch subject. It did not establish live production inventory or migration readiness.
+- Governed repository inspection classifies `legend-fast-track-ui.yml` and the read-only inventory workflow as `INTEGRITY_PROTECTED`. Their bodies cannot be edited through the current source authority. Legitimate fast-track identity, security and production-mutation controls remain mandatory.
+- Aggregate delivery counts do not prove same-event browser/server matching, attribution completeness, or paid-order reconciliation. The shared health snapshot marks these unavailable until identity-based evidence exists; observed counts remain counts. Owner-only team administration is not a delegable checkbox in the scoped team editor.
+- The runtime still has legacy commerce fallback, and shared Razor presentation remains authored under `ParfaitApp`. Live migration inventory, client/internal-login parity, durable media transfer, payment/webhook validation, and two-tenant isolation/visual proof remain outstanding. Keep the Parfait domain and App Service functioning.
+- Live browser baseline: `https://www.shopparfait.com` redirects to `https://shopparfait.com/`; structural diagnostics identify `ParfaitApp` at revision `97555039d28fdeb4b2afe5c58d395ac70531d302` with empty issues/duplicate-assets lists. Home and Team login link render. This proves the legacy home responds, not checkout or migration.
+- Deploy only applications proven affected after fast-track admission; retain valid uploads/artifacts/receipts and resume only unresolved verification. Domain cutover and App Service retirement require independent completion of every acceptance item below.
+
 ## Canonical ownership rule
 
 - One `CommerceBusiness.Id` is the permanent tenant identity for catalog, inventory, orders, discounts, Square merchant linkage, analytics attribution, website publications, team/member capabilities, automations, customer lists, media, and billing. Never create a replacement Parfait business row.
@@ -18,8 +30,8 @@ Use the existing `Legend/fast-track-release` release authority after exact-head 
 - `CommerceCore/Controllers/CommerceManagementController.cs` is a single business-ID-scoped ticket adapter that already reuses dashboard, products, orders, automation, analytics, preview, and original Razor modal sources.
 - `ParfaitApp/Controllers/InternalController.cs`, `InternalModulesController.cs`, `InternalSettingsController.cs`, `InternalBusinessesController.cs`, `ParfaitTeamAccessService.cs`, and `ParfaitInternalPageRegistry.cs` remain Parfait-app-local legacy authorities. They are **not** the finished shared client internal login/authorization runtime.
 - `ParfaitTeamAccessService` stores Parfait team permissions in JSON and restricts legacy sign-in to approved `@mylegnd.com` emails. That cannot be reused as the login authority for unrelated business customers.
-- `Protect-Website/Program.cs` adds only preview/catalog controllers while cutover is OFF. When cutover is configured, it permits public storefront and checkout controllers, **not** full internal merchant management. Accordingly the old host still carries management.
-- `Legend-Cloudflare/src/website-routing/bridge.mjs` routes `/commerce/manage/`, `/parfait-analytics/`, and legacy commerce paths to the Parfait origin; its selected-host storefront cutover does **not** redirect private management automatically.
+- The shared MVC registration permits `CommerceManagementController` in both preview and cutover modes; the management-only registration excludes public storefront/cart/checkout controllers. Controller registration is not proof of routed production access or completed internal-login migration.
+- `Legend-Cloudflare/src/website-routing/bridge.mjs` includes `/commerce/manage/` and `/parfait-analytics/` in selected exact-domain cutover. Legacy commerce fallback remains for non-admitted tenants and platform domains; source routing does not prove those dependencies are retired.
 - `CommerceLegacyTransfer` has tested PlanOnly and CopyNoOverwrite behavior, but there is no recorded production cross-host media/JSON manifest readback or durable transfer authorization.
 - Source-level Razor/CSS asset preservation is not live desktop/mobile or checkout parity.
 

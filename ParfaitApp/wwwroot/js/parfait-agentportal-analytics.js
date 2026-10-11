@@ -427,7 +427,7 @@
     }
 
     function healthPercent(value) {
-        return `${Number(value || 0).toFixed(1)}%`;
+        return value == null ? "Unavailable" : `${Number(value).toFixed(1)}%`;
     }
 
     async function loadHealthMonitor() {
@@ -452,13 +452,19 @@
 
             const attribution = data?.attributionHealth || {};
             setHealthText("pf-health-match-rate", healthPercent(attribution.serverBrowserMatchRate));
-            setHealthText("pf-health-match-sub", `${formatInt(attribution.matchedEvents)} matched / ${formatInt(attribution.eligibleEvents)} eligible`);
+            setHealthText("pf-health-match-sub", attribution.matchedEvents == null || attribution.eligibleEvents == null
+                ? attribution.evidenceReason || "Event identity matching is unavailable."
+                : `${formatInt(attribution.matchedEvents)} matched / ${formatInt(attribution.eligibleEvents)} eligible`);
             setHealthText("pf-health-missing-rate", healthPercent(attribution.missingAttributionRate));
-            setHealthText("pf-health-missing-sub", `${formatInt(attribution.missingAttributionEvents)} issues / ${formatInt(attribution.eligibleEvents)} eligible`);
+            setHealthText("pf-health-missing-sub", attribution.missingAttributionEvents == null || attribution.eligibleEvents == null
+                ? attribution.evidenceReason || "Missing-attribution evidence is unavailable."
+                : `${formatInt(attribution.missingAttributionEvents)} issues / ${formatInt(attribution.eligibleEvents)} eligible`);
 
             const reconciliation = data?.reconciliation || {};
             setHealthText("pf-health-reconciliation", `${formatInt(reconciliation.paidOrders)} paid / ${formatInt(reconciliation.purchaseEvents)} purchase events`);
-            setHealthText("pf-health-reconciliation-sub", `${formatInt(reconciliation.unmatchedPaidOrders)} paid orders without matching purchase event`);
+            setHealthText("pf-health-reconciliation-sub", reconciliation.unmatchedPaidOrders == null
+                ? reconciliation.evidenceReason || "Order identity reconciliation is unavailable."
+                : `${formatInt(reconciliation.unmatchedPaidOrders)} paid orders without matching purchase event`);
 
             const funnelBody = document.getElementById("pf-health-funnel-body");
             const funnel = Array.isArray(data?.funnel) ? data.funnel : [];
