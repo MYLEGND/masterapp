@@ -123,7 +123,8 @@ $@"
     public async Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
         var senderUpn = ResolveSenderUpn();
-        var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
+        var merchant = ResolveMerchant(order);
+        var siteName = merchant.StoreName;
         // The platform-wide notification inbox is reserved for its legacy
         // Parfait tenant. Unrelated merchants receive orders only at their
         // own recorded owner address; never expose cross-tenant order details.
