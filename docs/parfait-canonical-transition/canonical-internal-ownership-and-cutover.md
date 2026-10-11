@@ -89,3 +89,11 @@ fast-track security/admission and migration orchestration; production plan-only
 identity/data/media reconciliation; selective deployment and live payment/runtime
 verification. No migration, Azure deployment, DNS cutover, or retirement is admitted
 by this source checkpoint. Preserve existing DNS preparation and live legacy service.
+
+The isolated workflow also exercises SQL Server through the existing disposable
+SQL owner. It applies the actual EF payment migration to synthetic legacy orders,
+checks preservation across two tenants, rejects duplicate checkout identities
+before mutation, and deliberately damages an index, foreign key, and column to
+verify physical-drift rejection. This test emits no production admission receipt.
+The SQL provider lifecycle has four passing local tests for loopback binding,
+cleanup on fixture failure, unsafe binding rejection, and failed startup.

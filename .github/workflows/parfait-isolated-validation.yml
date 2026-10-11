@@ -22,6 +22,8 @@ on:
       - Infrastructure/Data/MasterAppDbContext.cs
       - Infrastructure/Migrations/**
       - scripts/MigrationReleaseProbe/**
+      - scripts/migration-probe-package.py
+      - scripts/test-migration-probe-package.py
       - diagnostics/MerchantPaymentCoreTests/**
       - diagnostics/MerchantPaymentAdapterChecks/**
       - .github/workflows/parfait-isolated-validation.yml
@@ -75,9 +77,17 @@ jobs:
 
       - name: Verify canonical migration operation contract
         run: |
+          python3 scripts/test-migration-probe-package.py
+          python3 scripts/test-release-migration-probe-retry.py
           dotnet build scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet build scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet run --project scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --no-build -- contract-test
+
+      - name: Exercise payment migration and schema drift on disposable SQL Server
+        run: |
+          python3 scripts/migration-probe-package.py test-contract \
+            --tool-revision "${{ github.sha }}" --application-revision "${{ github.sha }}" \
+            --directory "$RUNNER_TEMP/payment-sql-contract"
 
       - name: Publish and inspect exact Parfait + Protect packages without deployment
         shell: bash

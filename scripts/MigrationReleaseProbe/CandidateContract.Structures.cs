@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
@@ -107,6 +108,7 @@ internal static partial class CandidateContract
         var command = db.Database.GetDbConnection().CreateCommand();
         command.CommandText = sql;
         command.CommandTimeout = 30;
+        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
         foreach (var (name, value) in parameters)
         { var p = command.CreateParameter(); p.ParameterName = name; p.Value = value; command.Parameters.Add(p); }
         return command;

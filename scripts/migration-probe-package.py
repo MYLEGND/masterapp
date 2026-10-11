@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate the read-only migration probe independently of immutable app ZIPs."""
 import argparse
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -118,10 +119,54 @@ def prepare_rehearsal_candidate(revision, directory, output):
     print('LEGEND_REHEARSAL:PREPARED:immutable_migration_component')
 
 
-def rehearse_candidate(revision, directory, output):
+@contextlib.contextmanager
+def isolated_sql():
+    """One disposable, loopback-only SQL owner for all migration rehearsals."""
     import secrets
     import time
     import uuid
+    nonce = uuid.uuid4().hex
+    name = 'legend-rehearsal-' + nonce
+    password = secrets.token_urlsafe(28) + 'Aa1!'
+    env = os.environ | {'MSSQL_SA_PASSWORD': password, 'SQLCMDPASSWORD': password}
+    def docker(*args, timeout=120):
+        result = subprocess.run(['docker', *args], env=env, capture_output=True, text=True,
+                                timeout=timeout, check=False)
+        if result.returncode:
+            raise RuntimeError('Isolated SQL provider command failed')
+        return result.stdout
+    started = False
+    try:
+        docker('run', '--detach', '--name', name, '--platform', 'linux/amd64',
+               '-p', '127.0.0.1::1433', '-e', 'ACCEPT_EULA=Y', '-e', 'MSSQL_PID=Developer',
+               '-e', 'MSSQL_SA_PASSWORD', SQL_REHEARSAL_IMAGE)
+        started = True
+        ports = json.loads(docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', name))
+        binding = ports['1433/tcp']
+        if len(binding) != 1 or binding[0]['HostIp'] != '127.0.0.1':
+            raise RuntimeError('Isolated SQL loopback binding unproven')
+        port = binding[0]['HostPort']
+        if not port.isdigit() or not 1024 <= int(port) <= 65535:
+            raise RuntimeError('Isolated SQL loopback port invalid')
+        connection = ('Server=127.0.0.1,' + port + ';Database=LegendRehearsal_' + nonce +
+                      ';User Id=sa;Password=' + password + ';Encrypt=True;TrustServerCertificate=True')
+        end = time.monotonic() + 90
+        while True:
+            ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
+                '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
+                env=env, capture_output=True, timeout=10, check=False)
+            if ready.returncode == 0:
+                break
+            if time.monotonic() >= end:
+                raise RuntimeError('Isolated SQL readiness deadline exceeded')
+            time.sleep(min(2, max(0, end - time.monotonic())))
+        yield connection
+    finally:
+        if started:
+            docker('rm', '--force', name, timeout=30)
+
+
+def rehearse_candidate(revision, directory, output):
     import tempfile
     repository = os.environ['GITHUB_REPOSITORY']
     baseline = json.loads((directory / 'observation.json').read_text())
@@ -175,46 +220,9 @@ def rehearse_candidate(revision, directory, output):
         subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
                         '-c', 'Release', '--nologo', '-o', str(root / 'fixture'), '-m:1', '-nr:false',
                         '-p:UseSharedCompilation=false'], check=True)
-        nonce = uuid.uuid4().hex
-        name = 'legend-rehearsal-' + nonce
-        password = secrets.token_urlsafe(28) + 'Aa1!'
-        env = os.environ | {'MSSQL_SA_PASSWORD': password, 'SQLCMDPASSWORD': password}
-        def docker(*args, timeout=120):
-            result = subprocess.run(['docker', *args], env=env, capture_output=True, text=True,
-                                    timeout=timeout, check=False)
-            if result.returncode:
-                raise RuntimeError('Isolated SQL provider command failed')
-            return result.stdout
-        started = False
-        try:
-            docker('run', '--detach', '--name', name, '--platform', 'linux/amd64',
-                   '-p', '127.0.0.1::1433', '-e', 'ACCEPT_EULA=Y', '-e', 'MSSQL_PID=Developer',
-                   '-e', 'MSSQL_SA_PASSWORD', SQL_REHEARSAL_IMAGE)
-            started = True
-            ports = json.loads(docker('inspect', '--format', '{{json .NetworkSettings.Ports}}', name))
-            binding = ports['1433/tcp']
-            if len(binding) != 1 or binding[0]['HostIp'] != '127.0.0.1':
-                raise RuntimeError('Isolated SQL loopback binding unproven')
-            port = binding[0]['HostPort']
-            if not port.isdigit() or not 1024 <= int(port) <= 65535:
-                raise RuntimeError('Isolated SQL loopback port invalid')
-            connection = ('Server=127.0.0.1,' + port + ';Database=LegendRehearsal_' + nonce +
-                          ';User Id=sa;Password=' + password + ';Encrypt=True;TrustServerCertificate=True')
-            end = time.monotonic() + 90
-            while True:
-                ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
-                    '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
-                    env=env, capture_output=True, timeout=10, check=False)
-                if ready.returncode == 0:
-                    break
-                if time.monotonic() >= end:
-                    raise RuntimeError('Isolated SQL readiness deadline exceeded')
-                time.sleep(min(2, max(0, end - time.monotonic())))
+        with isolated_sql() as connection:
             result = module('release-migration').rehearse(component / package.MIGRATION_BUNDLE,
                 root / 'probe/MigrationReleaseProbe.dll', root / 'fixture/MigrationRehearsal.dll', connection, baseline)
-        finally:
-            if started:
-                docker('rm', '--force', name, timeout=30)
     result.update(state='executed-success', executedMutations=result['counts']['mutations'])
     record_rehearsal_result(result, selected_package, baseline, bundle_source, expected, revision, directory, output)
 
@@ -233,14 +241,31 @@ def record_rehearsal_result(result, selected_package, baseline, bundle_source, e
     print(json.dumps(result, sort_keys=True))
 
 
+def test_schema_contract(directory):
+    subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
+        '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
+        '-p:UseSharedCompilation=false'], check=True)
+    with isolated_sql() as connection:
+        env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
+        env.update(LEGEND_ISOLATED_SQL=connection, LEGEND_REHEARSAL_PENDING_COUNT='1')
+        result = subprocess.run(['dotnet', str(directory / 'MigrationRehearsal.dll'), 'migration-test'],
+            env=env, capture_output=True, text=True, timeout=300, check=False)
+        if result.returncode:
+            raise RuntimeError('Synthetic payment migration SQL contract failed')
+    print('LEGEND_PAYMENT_SQL_CONTRACT:PASS:synthetic-only:not-release-admission')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse'])
+    parser.add_argument('command', choices=['build', 'plan', 'resolve', 'verify', 'prepare-rehearsal', 'rehearse', 'test-contract'])
     parser.add_argument('--tool-revision', required=True)
     parser.add_argument('--application-revision', required=True)
     parser.add_argument('--directory', required=True, type=Path)
     parser.add_argument('--output')
     args = parser.parse_args()
+    if args.command == 'test-contract':
+        test_schema_contract(args.directory)
+        return
     identity = AUTHORITY.migration_probe_identity(args.tool_revision, args.application_revision)
     if args.command == 'prepare-rehearsal':
         prepare_rehearsal_candidate(args.application_revision, args.directory, args.output)

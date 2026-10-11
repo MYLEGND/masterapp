@@ -82,6 +82,50 @@ internal static class RehearsalFixture
                 "20260329093000_ExecutionMvp", "20260330094500_RepairAgentProfilesSqlite" }))
                 await db.Database.ExecuteSqlRawAsync(history.GetInsertScript(new HistoryRow(id, "10.0.0")), timeout.Token);
         }
+        else if (operation == "precondition")
+        {
+            if (!payments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
+            await CandidateContract.Verify(db, contract, applied, timeout.Token);
+            await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE dbo.CommerceOrders SET CommerceBusinessId = (SELECT TOP (1) Id FROM dbo.CommerceBusinesses ORDER BY [Key])",
+                timeout.Token);
+            try
+            {
+                await CandidateContract.Verify(db, contract, applied, timeout.Token);
+                throw new InvalidOperationException("Duplicate checkout identity was accepted");
+            }
+            catch (ProbeObservationFailure error) when (error.Message == "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW") { }
+            await transaction.RollbackAsync(timeout.Token);
+        }
+        else if (operation == "migrate")
+        {
+            // Only this disposable, synthetic database can reach this branch.
+            await db.Database.MigrateAsync(timeout.Token);
+        }
+        else if (operation == "adversarial")
+        {
+            if (!payments) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            var applied = db.Database.GetMigrations().ToArray();
+            foreach (var mutation in new[] {
+                "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
+                "ALTER TABLE [dbo].[CommercePaymentEffects] NOCHECK CONSTRAINT [FK_CommercePaymentEffects_CommercePaymentAttempts_AttemptId]",
+                "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
+            })
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
+                await db.Database.ExecuteSqlRawAsync(mutation, timeout.Token);
+                try
+                {
+                    await CandidateContract.Verify(db, contract, applied, timeout.Token);
+                    throw new InvalidOperationException("Schema drift was accepted");
+                }
+                catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
+                await transaction.RollbackAsync(timeout.Token);
+            }
+            await CandidateContract.Verify(db, contract, applied, timeout.Token);
+        }
         else if (operation == "verify")
         {
             var row = await db.MobileProfileSettings.SingleAsync(timeout.Token);

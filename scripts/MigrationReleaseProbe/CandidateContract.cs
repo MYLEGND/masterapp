@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
@@ -70,6 +71,7 @@ internal static partial class CandidateContract
                     throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
                 await using var command = db.Database.GetDbConnection().CreateCommand();
                 command.CommandTimeout = 30;
+                command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
                 command.CommandText = """
                     SELECT t.object_id, c.column_id, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity
                     FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
