@@ -249,7 +249,7 @@ class ChildJournal:
                     phase=phase, observation=observation)
 
     def before_mutation(self, observation, *, first_pending_migration_id=None,
-                        last_applied_migration_id=None):
+                        last_applied_migration_id=None, historical_observation=None):
         if self.intent is not None or self.success is not None:
             raise RuntimeError('Retained release child requires read-only reconciliation; no mutation replay authorized')
         schema_fence = {}
@@ -257,6 +257,8 @@ class ChildJournal:
             schema_fence = dict(first_pending_migration_id=first_pending_migration_id,
                                 last_applied_migration_id=last_applied_migration_id,
                                 current_application_revision=self.revision)
+            if historical_observation is not None:
+                schema_fence['historical_observation'] = historical_observation
         self.authority.release_child_first_write_proven(self.repository, self.child,
             self.identity, self.material_identity, self.run, self.attempt, self.token,
             partition_identity=self.partition_identity, **schema_fence)

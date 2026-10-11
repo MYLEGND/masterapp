@@ -209,3 +209,29 @@ migrations, while production's existing compatibility verifier restores the prov
 original bytes. Monitor migration admission and all five affected apps plus routing,
 then verify runtime revisions and published HTML. Custom-host cutover and retirement
 remain separate; controlled lead/reporting reconciliation remains outstanding.
+
+### Approved reconciliation of older applied generations
+
+PR #586 merged at `b724b2276b5de63d7e2fa2be8a45eb2e54156b61`; run
+`38150112834` passed source admission and recovery verification, then stopped
+before SQL writes on historical run `37954422758`. The whole-history audit also
+identified `37926554448`. Both have authenticated retained admission/state evidence
+but unresolved historical migration outcomes. Neither is reclassified as success
+or nonentry. The Founder explicitly approved repairing this reconciliation flow.
+
+The canonical child-admission owner now permits only a positively separated older
+physical generation: exact reviewed original source, authenticated original package,
+no retained migration intent/success, unchanged older migration/Designer files,
+and fresh paired live prefix/catalog observations with settled activity, bound to
+the current run, attempt, and application revision. All original migrations must
+be applied and every pending migration must be strictly newer. Existing migration
+intent, missing evidence, changed old SQL, active or stale observations still block.
+The existing release journal continues to own first-write admission and receipts.
+
+Focused validation: 107 release-child, 54 operation-journal, 25 fast-track,
+16 history-audit, and 12 probe-package tests pass. Independent review found no
+blocking source issues; integration coverage proves observation forwarding and
+retained-intent rejection. Exact-head security and isolated CI remain required.
+Continue the same fast-track release with the preserved rehearsal bundle, verify
+SQL and all five apps plus routing, then verify live revision and public HTML.
+No production writes have occurred in the failed runs named above.

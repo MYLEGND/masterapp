@@ -624,6 +624,53 @@ def _legacy_migration_noop(repository, run, job, step, source, token):
 
 
 
+def _applied_migration_prefix_separate(prior, current_application_revision,
+                                       first_pending_migration_id, last_applied_migration_id):
+    """Only unchanged, fully applied older migration files may precede new SQL."""
+    if (not all(re.fullmatch('[a-f0-9]{40}', str(value)) for value in (prior, current_application_revision))
+        or prior == current_application_revision
+        or not all(re.fullmatch('[0-9]{8,14}_[A-Za-z0-9_]{1,128}', str(value))
+                   for value in (first_pending_migration_id, last_applied_migration_id))):
+        return False
+    try:
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', prior, current_application_revision],
+                          check=False, capture_output=True).returncode:
+            return False
+        def migration_files(revision):
+            result = subprocess.run(['git', 'ls-tree', '-r', '-z', revision, '--', 'Infrastructure/Migrations'],
+                                    check=True, capture_output=True)
+            files = {}
+            for entry in result.stdout.decode().split('\0'):
+                if not entry:
+                    continue
+                metadata, path = entry.split('\t', 1)
+                name = path.removeprefix('Infrastructure/Migrations/')
+                if re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name):
+                    files[name] = metadata.split()[2]
+            return files
+        before = migration_files(prior)
+        after = migration_files(current_application_revision)
+        if not before or any(after.get(name) != sha for name, sha in before.items()):
+            return False
+        prior_ids = sorted(name[:-3].removesuffix('.Designer')
+                           for name in before if not name.endswith('.Designer.cs'))
+        if not prior_ids:
+            return False
+        latest_prior = prior_ids[-1]
+        additions = sorted(set(after) - set(before))
+        pending_source = first_pending_migration_id + '.cs'
+        if (pending_source not in additions or not latest_prior < first_pending_migration_id
+            or last_applied_migration_id < latest_prior
+            or any(name.split('.', 1)[0] <= latest_prior for name in additions)
+            or any(not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name)
+                   for name in additions)):
+            return False
+        return True
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError, UnicodeError,
+            subprocess.SubprocessError):
+        return False
+
+
 def _legacy_completed_bundle_is_separate_from_pending_sql(
         repository, run, job, step, source, attempt, token, *,
         first_pending_migration_id=None, last_applied_migration_id=None,
@@ -738,39 +785,8 @@ def _legacy_completed_bundle_is_separate_from_pending_sql(
             return False
         if inline and prior != run['head_sha']:
             return False
-        if subprocess.run(['git', 'merge-base', '--is-ancestor', prior, current_application_revision],
-                          check=False, capture_output=True).returncode:
-            return False
-        def migration_files(revision):
-            result = subprocess.run(['git', 'ls-tree', '-r', '-z', revision, '--', 'Infrastructure/Migrations'],
-                                    check=True, capture_output=True)
-            files = {}
-            for entry in result.stdout.decode().split('\0'):
-                if not entry:
-                    continue
-                metadata, path = entry.split('\t', 1)
-                name = path.removeprefix('Infrastructure/Migrations/')
-                if re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name):
-                    files[name] = metadata.split()[2]
-            return files
-        before = migration_files(prior)
-        after = migration_files(current_application_revision)
-        if not before or any(after.get(name) != sha for name, sha in before.items()):
-            return False
-        prior_ids = sorted(name[:-3].removesuffix('.Designer')
-                           for name in before if not name.endswith('.Designer.cs'))
-        if not prior_ids:
-            return False
-        latest_prior = prior_ids[-1]
-        additions = sorted(set(after) - set(before))
-        pending_source = first_pending_migration_id + '.cs'
-        if (pending_source not in additions or not latest_prior < first_pending_migration_id
-            or last_applied_migration_id < latest_prior
-            or any(name.split('.', 1)[0] <= latest_prior for name in additions)
-            or any(not re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]+(?:\.Designer)?\.cs', name)
-                   for name in additions)):
-            return False
-        return True
+        return _applied_migration_prefix_separate(prior, current_application_revision,
+                                                 first_pending_migration_id, last_applied_migration_id)
     except (KeyError, TypeError, ValueError, OSError, RuntimeError, UnicodeError,
             subprocess.SubprocessError):
         return False
@@ -1531,10 +1547,68 @@ def legacy_migration_step_recognized(source, step):
                 and "python3 - <<'PYMIGRATE'" in block))
 
 
+def _reconciled_older_migration_generation(repository, run, job, step, attempt, token,
+                                          current_application_revision, observation, current_run, current_attempt):
+    """Reconcile an older physical generation without inventing historical success.
+
+    The canonical production observer authenticates all historical envelopes and
+    reads the live applied prefix/catalog twice with settled activity. This only
+    separates a reviewed older package from strictly newer pending migrations;
+    retained intent, changed old SQL, or an unobserved current database still deny.
+    """
+    import time
+    if not isinstance(observation, dict):
+        return False
+    stamp = observation.get('historicalObservedAt')
+    if (run.get('status') != 'completed' or run.get('conclusion') not in {'failure', 'cancelled'}
+        or job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+        or step.get('name') != DIRECT_RELEASE_CHILDREN['migrations']['step']
+        or step.get('status') != 'completed' or step.get('conclusion') != 'failure'
+        or observation.get('historicalRunId') != current_run
+        or observation.get('historicalRunAttempt') != current_attempt
+        or observation.get('historicalApplicationRevision') != current_application_revision
+        or observation.get('historicalExecution') != 'outcome-unknown'
+        or observation.get('mutationActivity') != 'settled' or observation.get('ready') is not False
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount'] < 1
+        or type(stamp) not in (int, float) or not 0 <= time.time() - stamp <= 900
+        or any(not re.fullmatch('[a-f0-9]{64}', str(observation.get(key, '')))
+               for key in ('historicalEvidenceIdentity', 'databaseIdentity', 'schemaIdentity', 'baselineIdentity'))):
+        return False
+    rows = observation.get('historicalReconciliationSources')
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        return False
+    matched = [row for row in rows if row.get('run') == run['id'] and row.get('attempt') == attempt]
+    if (len(matched) != 1 or matched[0].get('code') != 'HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION'
+        or matched[0].get('migrationRecords') != []
+        or type(matched[0].get('stateArtifactId')) is not int or matched[0]['stateArtifactId'] < 1
+        or not re.fullmatch('[a-f0-9]{64}', str(matched[0].get('admissionId', '')))):
+        return False
+    try:
+        _trusted_child_producer(repository, run)
+        paths = ('.github/workflows/' + DIRECT_RELEASE_WORKFLOW,
+                 'scripts/release-prepublication.py', 'scripts/release-migration.py')
+        blobs = []
+        for path in paths:
+            raw = _release_history_source(repository, run['head_sha'], path, token).encode()
+            blobs.append(hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest())
+        # Original October 9 producers. This is recognition, never nonentry.
+        if tuple(blobs) not in {
+            ('1b0ae6aa07a3ac05c132f0df4cfa2858531e2999', 'dd2b27981ad9ecec96e38adff176a97385f7eb42', '8314be265893acc2edef0f073da52ab6d1888a31'),
+            ('1b0ae6aa07a3ac05c132f0df4cfa2858531e2999', '7587632c2465da5569c0121e2aa11d7c76eab3ff', 'de20411ca5b25a75c7e94f77e762cd8193ae2adc'),
+        } or matched[0].get('sourceBlob') != blobs[0]:
+            return False
+        prior = _release_attempt_package_revision(repository, run, attempt, job, token, 'portal', aggregate=True)
+        return _applied_migration_prefix_separate(prior, current_application_revision,
+            observation.get('firstPendingMigrationId'), observation.get('lastAppliedMigrationId'))
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError, UnicodeError,
+            subprocess.SubprocessError):
+        return False
+
+
 def release_child_first_write_proven(repository, child, dependency_identity, material_identity,
                                      current_run, current_attempt, token, *, partition_identity=None,
                                      first_pending_migration_id=None, last_applied_migration_id=None,
-                                     current_application_revision=None):
+                                     current_application_revision=None, historical_observation=None):
     """Authorize first mutation only from complete positive execution evidence.
 
     Deleted/expired receipts never establish absence. A started historical child
@@ -1696,6 +1770,11 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 if (child == 'migrations'
                     and _historical_migration_prewrite_proven(
                         repository, run, job, steps[0], attempt, token)):
+                    continue
+                if (child == 'migrations' and _reconciled_older_migration_generation(
+                        repository, run, job, steps[0], attempt, token,
+                        current_application_revision, historical_observation, current_run, current_attempt)):
+                    print(f'LEGEND_MIGRATION_HISTORY:OLDER_APPLIED_GENERATION:run={run_id}:attempt={attempt}:historical-outcome-unknown')
                     continue
                 if inventory is None:
                     artifact_payload = api_get(repository, f"actions/runs/{run_id}/artifacts?per_page=100", token)
