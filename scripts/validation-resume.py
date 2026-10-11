@@ -2532,6 +2532,7 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
     "scripts/release-package.py",
     "scripts/validation-resume.py",
     "scripts/test-validation-resume.py",
+    "scripts/test-fast-track-ready-no-sql.py",
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
     "scripts/test-deploy-approved-app.py",
@@ -3887,6 +3888,7 @@ def fast_track_effective_baseline(before, revision):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
         if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):
             return before
+        selections = [j for j in jobs if j.get('name') == 'Select exact affected applications']
         admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
         writes = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ') or
                   j.get('name') in {'Reconcile production schema before publication', 'Publish verified website routing'}]
@@ -3894,6 +3896,12 @@ def fast_track_effective_baseline(before, revision):
         publications = [j for j in writes if j not in migrations]
         migration_steps = migrations[0].get('steps', []) if len(migrations) == 1 else []
         mutation = [s for s in migration_steps if s.get('name') == 'Apply or reconcile the exact rehearsed migration bundle']
+        # A failed selector has no write authority. Carry its unshipped change
+        # only when every downstream admission and production owner was skipped.
+        selection_stopped = (len(selections) == 1 and selections[0].get('status') == 'completed'
+            and selections[0].get('conclusion') == 'failure'
+            and len(admissions) == 1 and admissions[0].get('conclusion') == 'skipped'
+            and all(j.get('conclusion') == 'skipped' for j in writes))
         admission_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') in {'failure', 'cancelled'}
             and all(j.get('conclusion') == 'skipped' for j in writes))
         recovery_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
@@ -3901,7 +3909,7 @@ def fast_track_effective_baseline(before, revision):
             and len(mutation) == 1 and (mutation[0].get('conclusion') == 'skipped' or
                 attested_fast_track_migration_prewrite(repository, prior, jobs, token))
             and all(j.get('conclusion') == 'skipped' for j in publications))
-        prewrite = prior.get('run_attempt') == 1 and (admission_stopped or recovery_stopped)
+        prewrite = prior.get('run_attempt') == 1 and (selection_stopped or admission_stopped or recovery_stopped)
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
         if len(writes) < 3 or not (prewrite or completed_sql):

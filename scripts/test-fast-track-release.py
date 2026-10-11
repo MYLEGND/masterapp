@@ -200,7 +200,7 @@ class MergedSourceReceiptTests(unittest.TestCase):
 
 
 class AdmissionRepairScopeTests(unittest.TestCase):
-    def baseline(self, entered=False, attempt=1, duplicate=False, recovery=False, mutation="skipped"):
+    def baseline(self, entered=False, attempt=1, duplicate=False, recovery=False, mutation="skipped", selector=False):
         before='a'*40;head='b'*40;original='c'*40
         prior=dict(id=7,run_attempt=attempt,head_sha=before,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
             path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
@@ -209,8 +209,11 @@ class AdmissionRepairScopeTests(unittest.TestCase):
               dict(name='Reconcile production schema before publication',conclusion='failure' if entered else 'skipped'),
               dict(name='Affected App Deploy — ${{ matrix.target }}',conclusion='skipped'),
               dict(name='Publish verified website routing',conclusion='skipped')]
+        if selector:
+            jobs.insert(0,dict(name='Select exact affected applications',status='completed',conclusion='failure'))
+            jobs[1]['conclusion']='skipped'
         if recovery:
-            jobs[0]['conclusion']='success'
+            jobs[1 if selector else 0]['conclusion']='success'
             jobs[1].update(conclusion='failure',steps=[dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion=mutation)])
         def get(repo,path,token):
             if path.startswith('actions/runs?'):
@@ -265,6 +268,15 @@ class AdmissionRepairScopeTests(unittest.TestCase):
              patch.object(authority.subprocess,'check_output',side_effect=parents):
             self.assertEqual(original,authority.fast_track_effective_baseline(heads[0],head))
 
+
+    def test_failed_selector_with_all_downstream_writes_skipped_carries_unpublished_scope(self):
+        self.assertEqual('c'*40,self.baseline(selector=True))
+
+    def test_failed_selector_cannot_carry_scope_after_any_writer_or_rerun(self):
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):
+            self.baseline(selector=True,entered=True)
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):
+            self.baseline(selector=True,attempt=2)
 
     def test_prewrite_recovery_failure_preserves_unpublished_scope(self):
         self.assertEqual('c'*40,self.baseline(recovery=True))
@@ -671,6 +683,17 @@ class PublishedCompilerBrandingTests(unittest.TestCase):
             result=subprocess.run(['node','--input-type=module','-e',
                 'const m=await import('+json.dumps(module.as_uri())+');if(!m.pages)process.exit(1);'],capture_output=True,text=True)
             self.assertEqual(0,result.returncode,result.stderr)
+
+
+class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
+    def test_no_sql_regression_is_control_only_not_unmapped_or_runtime_owned(self):
+        path='scripts/test-fast-track-ready-no-sql.py'
+        self.assertTrue(authority.release_control_only_path(path))
+        scope=authority.fast_track_scope([path])
+        self.assertEqual([],scope['impacts'][path])
+        self.assertFalse(scope['selected'])
+        self.assertFalse(scope['commerce'])
+        self.assertFalse(scope['schema'])
 
 
 if __name__ == '__main__':unittest.main()
