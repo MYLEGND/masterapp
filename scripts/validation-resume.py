@@ -251,7 +251,7 @@ def attested_fast_track_migration_prewrite(repository, run, jobs, token):
 
 
 def attested_fast_track_router_prewrite(repository, run, jobs, token):
-    """Authenticate the original failed renderer before any router publication, never infer it from no receipt."""
+    """Prove an authenticated renderer/admission failure preceded durable intent and publication."""
     import datetime
     if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
         or run.get('conclusion') != 'failure'):
@@ -266,10 +266,14 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
         or steps[0].get('conclusion') != 'failure'):
         return False
     # Exact source calls company_render_ready before constructing its journal.
-    sources = {'.github/workflows/legend-fast-track-ui.yml': 'c69d65590746af9a8bea9e55b9e7c58547edd02182821353309e92f5cb27f09d', 'scripts/release-router.py': '9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62'}
+    sources = {
+        '.github/workflows/legend-fast-track-ui.yml': {
+            'c69d65590746af9a8bea9e55b9e7c58547edd02182821353309e92f5cb27f09d',
+            '74e9f65f99818f768f603bedc197b4360cd4c0f66a22dec2bd20319d7120f35c'},
+        'scripts/release-router.py': {'9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62'}}
     try:
         for path, digest in sources.items():
-            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() not in digest:
                 return False
         inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
         artifacts = inventory.get('artifacts')
@@ -290,12 +294,17 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
         heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
         if heads != {run['head_sha']}:
             return False
-        marker = 'urllib.error.HTTPError: HTTP Error 500: Internal Server Error'
+        renderer_markers = {
+            'urllib.error.HTTPError: HTTP Error 500: Internal Server Error',
+            'urllib.error.HTTPError: HTTP Error 503: Service Unavailable',
+            'TimeoutError: The read operation timed out'}
+        admission_marker = 'RuntimeError: Release child may have written; missing intent cannot authorize replay'
+        markers = renderer_markers | {admission_marker}
         stamps = []
         for line in log.splitlines():
             date, sep, message = line.partition(' ')
-            if sep and message == marker:
-                stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
+            if sep and message in markers:
+                stamps.append((datetime.datetime.fromisoformat(date.replace('Z', '+00:00')), message))
         bounded = []
         for line in log.splitlines():
             date, sep, message = line.partition(' ')
@@ -304,10 +313,35 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
                 if start <= stamp <= end + datetime.timedelta(seconds=2):
                     bounded.append(message)
         traces = '\n'.join(bounded).split('Traceback (most recent call last):\n')[1:]
-        return (len(stamps) == 1 and start <= stamps[0] <= end + datetime.timedelta(seconds=2)
-            and len(traces) == 1 and traces[0].count(marker) == 1
-            and '    company_render_ready(authority)\n' in traces[0].split(marker)[0]
-            and 'in company_render_ready\n' in traces[0].split(marker)[0])
+        if (len(stamps) != 1 or not start <= stamps[0][0] <= end + datetime.timedelta(seconds=2)
+            or len(traces) != 1):
+            return False
+        marker = stamps[0][1]
+        trace, separator, _ = traces[0].partition(marker)
+        if not separator or traces[0].count(marker) != 1:
+            return False
+        frames = re.findall(r'^  File "(?:[^"\n]*/)?([^/"\n]+)", line (\d+), in (\S+)\n', trace, re.M)
+        if marker in renderer_markers:
+            return (frames[:3] == [('release-router.py', '122', '<module>'),
+                    ('release-router.py', '98', 'fast_track'), ('release-router.py', '68', 'company_render_ready')]
+                and '    company_render_ready(authority)\n' in trace
+                and not any(file in {'release-operation-evidence.py', 'validation-resume.py'}
+                            or function in {'publish', 'reconcile_tagged_router', 'before_mutation'}
+                            for file, _, function in frames))
+        # This exception comes from the first-write guard BEFORE intent publication.
+        # Authenticate both owners too: the router source alone cannot prove that order.
+        for path, digest in {
+            'scripts/release-operation-evidence.py': '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b',
+            'scripts/validation-resume.py': '98cb5e3bcd89925cf5628ff9c7a938da07f8da468930099e9135c0797463ab51'
+        }.items():
+            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+                return False
+        return (frames == [('release-router.py', '122', '<module>'),
+                ('release-router.py', '111', 'fast_track'), ('release-router.py', '40', 'reconcile_tagged_router'),
+                ('release-operation-evidence.py', '262', 'before_mutation'),
+                ('validation-resume.py', '1819', 'release_child_first_write_proven')]
+            and "    journal.before_mutation({'providerVersion': version or 'absent'})\n" in trace
+            and "    raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)\n" in trace)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
         return False
 
@@ -3688,7 +3722,12 @@ def fast_track_completed_apps_pending_routing(repository, run, jobs, token):
     apps = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ')]
     prerequisites = [j for j in jobs if j.get('name') in {
         'Admit exact validated fast-track source','Reconcile production schema before publication'}]
-    if not (len(apps) == 5 and {j.get('name') for j in apps} == expected
+    # The authenticated workflow can enter routing only after its entire selected
+    # app matrix succeeds. Later package repairs may select fewer than five apps.
+    # Require every visible app to be canonical, unique and successful; the
+    # source-bound entered routing step proves no selected sibling is missing.
+    if not (apps and len({j.get('name') for j in apps}) == len(apps)
+        and {j.get('name') for j in apps} <= expected
         and len(prerequisites) == 2
         and all(j.get('status') == 'completed' and j.get('conclusion') == 'success' for j in apps + prerequisites)
         and attested_fast_track_router_prewrite(repository, run, jobs, token)):

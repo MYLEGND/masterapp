@@ -396,3 +396,26 @@ selects Protect only (schema=false), then carries the pending routing job. The
 other four apps and SQL are not redeployed. 48 fast-track, 16 identity/impact and
 108 release-child tests pass; independent review approved. PR #593 now includes
 this required package repair along with the queued-parent identity correction.
+
+
+### Routing recovery after PR #593
+
+Production revision `a9ced61b188dcad851fd9d1062ce8beaa77f135d` completed its
+Protect-only publication. Run `38166858582` attempt 3 timed out inside the
+company renderer before journal construction. Attempt 4 passed the renderer and
+stopped inside the first-write history guard, before publishing intent or calling
+Wrangler. The original run `38161033893` remains the completed five-app baseline.
+
+The canonical prewrite proof now recognizes the two authenticated workflow
+versions, bounded renderer timeout/503 traces, and the exact original admission
+denial. Admission proof additionally pins the journal and history authority
+source and requires the full call stack. Unknown source, wrong frames, incomplete
+artifact inventory, and any retained child intent/success remain fail-closed.
+Selected-app scope preservation follows the authenticated routing dependency on
+the entire successful matrix, including the later Protect-only repair. Routing
+may proceed with an explicitly empty app selection and skipped deployment matrix.
+
+Local validation: 53 fast-track regression tests and 108 release-child tests pass
+under Python 3.13. No application, SQL, storefront ownership or data changes are
+included. Remaining: exact-head required CI, integrity review, routing publication,
+and live endpoint verification through the authorized fast-track release path.

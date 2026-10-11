@@ -442,7 +442,7 @@ jobs:
   routing-cloudflare:
     name: Publish verified website routing
     needs: [select-targets, commerce-gates, migrations, deploy-ui]
-    if: ${{ !cancelled() && needs.select-targets.outputs.routing == 'true' && needs.commerce-gates.result == 'success' && needs.migrations.result == 'success' && needs.deploy-ui.result == 'success' }}
+    if: ${{ !cancelled() && needs.select-targets.outputs.routing == 'true' && needs.commerce-gates.result == 'success' && needs.migrations.result == 'success' && (needs.deploy-ui.result == 'success' || (needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     environment: Production
     timeout-minutes: 18
