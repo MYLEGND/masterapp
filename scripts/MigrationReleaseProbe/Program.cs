@@ -10,8 +10,12 @@ using Microsoft.EntityFrameworkCore;
 try
 {
     var inspectActivity = args.Count(arg => arg == "--activity") == 1;
-    if (args.Count(arg => arg == "--activity") > 1) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
-    args = args.Where(arg => arg != "--activity").ToArray();
+    var inspectSchemaOnly = args.Count(arg => arg == "--schema-only-activity") == 1;
+    if (args.Count(arg => arg == "--activity") > 1 ||
+        args.Count(arg => arg == "--schema-only-activity") > 1 ||
+        (inspectActivity && inspectSchemaOnly))
+        throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+    args = args.Where(arg => arg != "--activity" && arg != "--schema-only-activity").ToArray();
     var export = args.SequenceEqual(new[] { "--export-contract" });
     var contractPath = args.Length == 2 && args[0] == "--contract" ? args[1] : null;
     if (!export && contractPath is null && (args.Length > 1 || (args.Length == 1 && args[0] != "--inventory")))
@@ -30,7 +34,7 @@ try
     if (contractPath is not null && JsonSerializer.Serialize(contract, CandidateContract.Json) != CandidateContract.Export(db))
         throw new ProbeObservationFailure("CANDIDATE_MIGRATION_CONTRACT_UNPROVEN");
     var known = contract.Migrations.Select(m => m.Id).ToArray();
-    async Task VerifySettledActivity()
+    async Task VerifySettledActivity(bool schemaOnly = false)
     {
         await db.Database.OpenConnectionAsync(timeout.Token);
         // Only approved, fixed metadata queries. Never expose session identities,
@@ -57,10 +61,26 @@ try
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_UNPROVEN");
         if (Convert.ToInt32(migrationLock) != 1)
             throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
-        // Internal engine requests/transactions are not release workers. Exclude
-        // only positively classified system work; retain missing DMV mappings,
-        // user requests and user writes. Historical lockless execution remains
-        // uncertain, so an ordinary user write still needs a quiet interval.
+        if (schemaOnly)
+        {
+            // Source-only publication executes no SQL migration. Enforce the EF
+            // exclusive migration lock and absence of schema modification locks,
+            // while allowing independent live user requests/transactions. The
+            // caller also requires two identical physical schema observations.
+            // This is NEVER used for a release with pending EF/schema changes.
+            activityCommand.CommandText = """
+                SELECT COUNT_BIG(*) FROM sys.dm_tran_locks AS l
+                WHERE l.resource_database_id = DB_ID()
+                  AND l.request_session_id <> @@SPID
+                  AND l.request_mode = 'Sch-M'
+                  AND l.request_status IN ('GRANT','WAIT','CONVERT')
+                """;
+            if (Convert.ToInt64(await activityCommand.ExecuteScalarAsync(timeout.Token)) != 0)
+                throw new ProbeObservationFailure("MUTATION_ACTIVITY_ACTIVE");
+            return;
+        }
+        // SQL-mutating releases retain the existing strict full quiet-database
+        // evidence, including all user requests and open transactions.
         activityCommand.CommandText = """
             SELECT
               (SELECT COUNT_BIG(*) FROM sys.dm_exec_requests AS r
@@ -332,8 +352,8 @@ try
     identityCommand.CommandText = "SELECT CONCAT(CONVERT(nvarchar(256),SERVERPROPERTY('ServerName')),N'/',DB_NAME())";
     var databaseIdentity = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
         Convert.ToString(await identityCommand.ExecuteScalarAsync(timeout.Token)) ?? throw new InvalidOperationException())));
-    if (inspectActivity) await VerifySettledActivity();
-    var mutationActivity = inspectActivity ? "settled" : "not-observed";
+    if (inspectActivity || inspectSchemaOnly) await VerifySettledActivity(inspectSchemaOnly);
+    var mutationActivity = inspectActivity || inspectSchemaOnly ? "settled" : "not-observed";
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         schemaVersion = 1,
