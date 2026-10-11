@@ -32,7 +32,9 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("wwwroot/css/internal.css", "8945595525d5973c194367dc85bcb135abbd3fca")]
     [InlineData("wwwroot/css/parfait-agentportal-analytics.css", "a9801e8de3767e36e8fdfe287e4c26575f9700dd")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
-    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "b6e665f146f93ffdd49251d2fd5c27fbb79221bc")]
+    // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
+    // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
+    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "4ac3971da2b37538c87e1a513612f56169bd311f")]
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]
     public void ParfaitVisualAssets_MatchPreMigrationGitBlob(string path, string expectedBlobSha)
     {
