@@ -353,3 +353,46 @@ completed-SQL and unpublished-app proofs remain required for the preceding run.
 and identified the corrected canonical journal filename in the trigger filter.
 No SQL execution or rehearsal is restarted. All five unpublished apps and routing
 remain the only production work; required changed-source CI precedes the merge.
+
+### Parallel-run identity correction and targeted recovery
+
+PR #592 merged at `3017d7e7c5527b1f34dc3b120a7d166b90c2a053`; run
+`38161033893` selected the preserved five-app scope. Its schema stage reconciled
+ready state without SQL replay. GitHub exposed parent status `queued` while
+capped-matrix jobs were actively running, causing the strict parent-status check
+to reject four app restores. Website succeeded; targeted job resumes preserved
+it and SQL, then Agent Portal and Client App succeeded. Attempt 6 resumes only
+Protect and Parfait together, with routing still pending.
+
+The permanent identity correction accepts a queued parent only after authenticating
+exactly one active job on this runner, binding run, attempt, revision and canonical
+job name through complete GitHub job inventory. All original producer, branch,
+head and operation-admission checks remain. 16 focused identity/impact tests pass,
+including wrong runner, head, attempt, status, name and duplicate-owner rejection.
+These control-only changed paths select no apps or routing. Merge only after the
+active production run finishes; do not invalidate or redeploy completed packages.
+
+### Renderer package completion and routing-only remainder
+
+All five applications now serve `3017d7e7c5527b1f34dc3b120a7d166b90c2a053`
+with HTTP 200 and all five publication jobs succeeded in run `38161033893`.
+Parfait and Protect's upload timeouts were reconciled using retained packages and
+intents, without rebuilds or another upload. Parfait public homepage, store, cart,
+logo, and Website/Protect sitemaps passed live checks.
+
+Routing attempt 8 stopped before its journal because the company renderer returned
+HTTP 500. Read-only module loading proved an omitted package dependency:
+`WebsiteCompiler/src/content.mjs` resolves `../../SHARED/Branding/legend-brand.json`,
+but Protect's publish package did not include that canonical registry. The project
+now copies that existing file to the expected publish-relative path. A regression
+imports the real content module from the packaged directory layout.
+
+The scope reader preserves the five completed publications at baseline `3017...`.
+It authenticates the exact original workflow/router source, failed renderer
+traceback inside its step, checkout, complete artifact inventory and every original
+routing attempt. No entered or ambiguous router operation is reclassified.
+The same proof is used by routing child history. Real evidence passes; new scope
+selects Protect only (schema=false), then carries the pending routing job. The
+other four apps and SQL are not redeployed. 48 fast-track, 16 identity/impact and
+108 release-child tests pass; independent review approved. PR #593 now includes
+this required package repair along with the queued-parent identity correction.
