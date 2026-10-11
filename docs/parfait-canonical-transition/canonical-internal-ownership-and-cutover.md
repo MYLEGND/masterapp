@@ -415,7 +415,9 @@ Selected-app scope preservation follows the authenticated routing dependency on
 the entire successful matrix, including the later Protect-only repair. Routing
 may proceed with an explicitly empty app selection and skipped deployment matrix.
 
-Local validation: 53 fast-track regression tests and 108 release-child tests pass
+The no-SQL readiness observer accepts an empty application scope only for an
+already-ready fast-track database; pending schema and other release paths still
+reject it. Local validation: 54 fast-track regression tests and 108 release-child tests pass
 under Python 3.13. No application, SQL, storefront ownership or data changes are
 included. Remaining: exact-head required CI, integrity review, routing publication,
 and live endpoint verification through the authorized fast-track release path.

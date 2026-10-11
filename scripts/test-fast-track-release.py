@@ -570,6 +570,19 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
     def test_routing_only_resume_requires_explicit_empty_app_selection(self):
         source=Path('.github/workflows/legend-fast-track-ui.yml').read_text().split('  routing-cloudflare:')[1]
         self.assertIn("needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped'",source)
+    def test_empty_routing_scope_requires_ready_database_and_fast_track(self):
+        before=dict(ready=True,mutationActivity='settled',historicalExecution='outcome-unknown',historicalEvidenceIdentity='f'*64)
+        env=dict(GITHUB_REPOSITORY='owner/repo',RELEASE_CANDIDATE_SHA='a'*40,RELEASE_SHA='b'*40,
+                 SELECTED_TARGETS='[]',GH_TOKEN='fixture',GITHUB_REF='refs/heads/'+authority.FAST_TRACK_PR_BASE)
+        with patch.dict(os.environ,env),patch.object(migration,'release_authority',return_value=authority):
+            result=migration.production_readiness(before)
+            self.assertEqual([],result['targets'])
+            self.assertFalse(result['resolution']['sqlExecutionAuthorized'])
+            with self.assertRaises(ValueError):migration.production_readiness(dict(before,ready=False))
+            with patch.dict(os.environ,GITHUB_REF='refs/heads/'+authority.TRUSTED_PR_BASE):
+                with self.assertRaises(ValueError):migration.production_readiness(before)
+            with self.assertRaisesRegex(RuntimeError,'mutation-activity'):
+                migration.production_readiness(dict(before,mutationActivity='active'))
 
 class PublishedCompilerBrandingTests(unittest.TestCase):
     def test_packaged_content_module_resolves_canonical_registry(self):
