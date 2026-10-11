@@ -236,6 +236,8 @@ jobs:
           PYSCHEMA
 
       - name: Verify exact observed database recovery metadata without mutation
+        env:
+          RELEASE_DATABASE_SERVER_RESOURCE_ID: /subscriptions/a543b54e-8a42-4a4b-bd4d-bc13573b1c48/resourceGroups/MasterApp-Data-RG/providers/Microsoft.Sql/servers/masterapp-sql-prod-1221
         run: |
           python3 - <<'PYRECOVERY'
           import importlib.util,json,os,pathlib
