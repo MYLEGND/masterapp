@@ -3931,7 +3931,7 @@ def attested_fast_track_two_attempt_no_sql_preflight(repository, run, token):
             marker = 'Database mutation activity remains active; preserve prior evidence and reconcile without replay.'
             matched = [line for line in log.splitlines() if marker in line]
             if (len(matched) != 1 or
-                not re.fullmatch(r'\\d{4}-\\d{2}-\\d{2}T[^\\n]+Z ' + re.escape(marker), matched[0]) or
+                not re.fullmatch(r'\d{4}-\d{2}-\d{2}T[^\n]+Z ' + re.escape(marker), matched[0]) or
                 'Schema ready; validated migration child applied.' in log or
                 'Schema ready; validated no-SQL migration child preserved.' in log):
                 return False
