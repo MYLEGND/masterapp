@@ -421,3 +421,29 @@ reject it. Local validation: 54 fast-track regression tests and 108 release-chil
 under Python 3.13. No application, SQL, storefront ownership or data changes are
 included. Remaining: exact-head required CI, integrity review, routing publication,
 and live endpoint verification through the authorized fast-track release path.
+
+### Original standalone router history compatibility
+
+PR #594 merged at `fcb6cee99357d44b6449ebe5e9b9a6e326210743`. Run
+`38171915151` selected zero apps, restored the original rehearsal, confirmed
+`pending=0`, preserved SQL, and skipped the app matrix. The renderer passed and
+the prior fast-track failures reconciled. First-write history then stopped on
+run `37485742722`: its original standalone router step was skipped, but the reader
+only recognized the newer auxiliary-fanout name. No routing intent or write occurred.
+
+The same reader now authenticates skipped standalone publisher implementations,
+excluding the later same-named JSON observer. Original unscheduled jobs reuse the
+existing scheduler nonentry proof. Two completed September 26 router publications
+are separately proven by exact workflow source, checkout, bounded upload/version/
+all-host success output, and a different physical generation; neither is relabeled
+as nonentry or replayed. Unknown or failed publishers and same-generation replay
+remain blocked. The latest prewrite denial and an empty skipped app matrix retain
+the routing-only remainder.
+
+Read-only verification covered all 241 attempts from 225 retained approved-branch
+direct releases. The complete canonical first-write reader now returns true with
+current routing material represented by a non-secret test fingerprint, and the
+latest failed run passes both prewrite and scope proofs. 58 fast-track and 109
+release-child tests pass. Remaining: exact-head CI, merge through the existing
+fast-track path, and provider/live routing verification. All app packages and SQL
+remain preserved.

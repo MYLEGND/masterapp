@@ -269,7 +269,8 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
     sources = {
         '.github/workflows/legend-fast-track-ui.yml': {
             'c69d65590746af9a8bea9e55b9e7c58547edd02182821353309e92f5cb27f09d',
-            '74e9f65f99818f768f603bedc197b4360cd4c0f66a22dec2bd20319d7120f35c'},
+            '74e9f65f99818f768f603bedc197b4360cd4c0f66a22dec2bd20319d7120f35c',
+            'ae295e382e3c3dd2b8ff646853e851c752fabc33183ade4b6110bdc1f65561b1'},
         'scripts/release-router.py': {'9457386b4e9fc8f71e5c95cf3c0849439191faf877f71e52a2ccc198b07fbe62'}}
     try:
         for path, digest in sources.items():
@@ -298,8 +299,10 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
             'urllib.error.HTTPError: HTTP Error 500: Internal Server Error',
             'urllib.error.HTTPError: HTTP Error 503: Service Unavailable',
             'TimeoutError: The read operation timed out'}
-        admission_marker = 'RuntimeError: Release child may have written; missing intent cannot authorize replay'
-        markers = renderer_markers | {admission_marker}
+        admission_markers = {
+            'RuntimeError: Release child may have written; missing intent cannot authorize replay',
+            'RuntimeError: Release child execution detail unavailable'}
+        markers = renderer_markers | admission_markers
         stamps = []
         for line in log.splitlines():
             date, sep, message = line.partition(' ')
@@ -330,18 +333,26 @@ def attested_fast_track_router_prewrite(repository, run, jobs, token):
                             for file, _, function in frames))
         # This exception comes from the first-write guard BEFORE intent publication.
         # Authenticate both owners too: the router source alone cannot prove that order.
-        for path, digest in {
-            'scripts/release-operation-evidence.py': '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b',
-            'scripts/validation-resume.py': '98cb5e3bcd89925cf5628ff9c7a938da07f8da468930099e9135c0797463ab51'
-        }.items():
-            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
-                return False
+        journal_source = _release_history_source(repository, run['head_sha'], 'scripts/release-operation-evidence.py', token)
+        if hashlib.sha256(journal_source.encode()).hexdigest() != '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b':
+            return False
+        history_source = _release_history_source(repository, run['head_sha'], 'scripts/validation-resume.py', token)
+        denials = {
+            ('98cb5e3bcd89925cf5628ff9c7a938da07f8da468930099e9135c0797463ab51',
+             'RuntimeError: Release child may have written; missing intent cannot authorize replay'):
+                ('1819', "    raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)\n"),
+            ('61066f98d8bfccd68ae288e93a385bb3e87c16ca4b0eef7b4559988e2d572bb9',
+             'RuntimeError: Release child execution detail unavailable'):
+                ('1920', '    raise rejection("Release child execution detail unavailable", run_id, attempt)\n')}
+        denial = denials.get((hashlib.sha256(history_source.encode()).hexdigest(), marker))
+        if denial is None:
+            return False
         return (frames == [('release-router.py', '122', '<module>'),
                 ('release-router.py', '111', 'fast_track'), ('release-router.py', '40', 'reconcile_tagged_router'),
                 ('release-operation-evidence.py', '262', 'before_mutation'),
-                ('validation-resume.py', '1819', 'release_child_first_write_proven')]
+                ('validation-resume.py', denial[0], 'release_child_first_write_proven')]
             and "    journal.before_mutation({'providerVersion': version or 'absent'})\n" in trace
-            and "    raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)\n" in trace)
+            and denial[1] in trace)
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
         return False
 
@@ -1695,6 +1706,72 @@ def _attested_retired_unscheduled_release(repository, run, job, jobs, attempt, t
         return False
 
 
+def legacy_router_step_never_entered(source, step):
+    """Recognize the original publisher, never a later auxiliary-result observer."""
+    legacy = 'Deploy shared Cloudflare business website router'
+    if (step.get('name') != legacy or step.get('status') != 'completed'
+        or step.get('conclusion') != 'skipped'):
+        return False
+    block = named_step_blocks(_job_blocks(source).get('release', '')).get(legacy, '')
+    # Reviewed standalone Wrangler publishers. The later same-named steps that
+    # only read auxiliary JSON are deliberately excluded: skipping an observer
+    # cannot prove that the auxiliary publisher did not run.
+    return hashlib.sha256(block.encode()).hexdigest() in {
+        'c2f213e46c4a56342cc651ce97bfbd743ce874c19a1ef313d625dd8ab1ece92c',
+        '75ecc7720752358ff63c26c0a90db8654974fe03c1a7091eb7883ad43c0f0c4f',
+        '954daf22c88fe327f3aac39e37cc29e8556121190bdef67afe4bda7b8b59b124',
+        'f7fe0bba7b379e1396d455271b862e2fce11f45c3d8e95fce5955e929afc074a',
+        '57c37e55e5afb70d4fc310f46d1a0605b59e62dd72cff374f7f4b957ee43a852',
+        'bf78ad2ad5a5faf0bcf0994c46eb7e3cb8e222faf116134e04dab13c54e4595f',
+        '4db28ad9eea20bb9421936bf09e3788990650b41f8703312c4d2c4f4fa7ded19',
+        '965580c60c524ac8c333185e61f92d1257b66494a4a607f95f13faf573be8876',
+        '70877b6cd18ed3a4e0ea5b4d34e6add9ef71f3aa937b7e35704b6a4e57eb418d'}
+
+
+def legacy_router_completed_generation(repository, run, job, step, source, token,
+                                       dependency_identity, material_identity):
+    """Prove an older completed publication, never relabel it as nonentry."""
+    import datetime
+    if (run.get('status') != 'completed' or job.get('status') != 'completed'
+        or step.get('name') != 'Deploy shared Cloudflare business website router'
+        or step.get('status') != 'completed' or step.get('conclusion') != 'success'
+        or hashlib.sha256(source.encode()).hexdigest() != '2a9363f4b800d06d7af65f6e512d910b6a06fa667414d46f91f8378d01d9ac53'):
+        return False
+    try:
+        # New verifier revisions alone must never authorize the same operation.
+        if direct_child_operation_identity('routing-cloudflare', run['head_sha'], material_identity) == dependency_identity:
+            return False
+        start = datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(step['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+        if heads != {run['head_sha']}:
+            return False
+        bounded = []
+        for line in log.splitlines():
+            date, sep, message = line.partition(' ')
+            if sep and re.fullmatch(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z', date):
+                stamp = datetime.datetime.fromisoformat(date.replace('Z', '+00:00'))
+                if start <= stamp <= end + datetime.timedelta(seconds=2):
+                    bounded.append(message)
+        text = '\n'.join(bounded)
+        marker = 'Cloudflare website router deployed and LEGEND-owned host pass-through verified.'
+        return (bounded.count(marker) == 1
+            and len(re.findall(r'(?m)^Uploaded legend-business-website-router \([0-9.]+ sec\)$', text)) == 1
+            and len(re.findall(r'(?m)^Deployed legend-business-website-router triggers \([0-9.]+ sec\)$', text)) == 1
+            and len(re.findall(r'(?m)^Current Version ID: [a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$', text)) == 1
+            and all(re.search(r'(?m)^' + re.escape(host) + r' [1-6] [23][0-9]{2} [0-9]+$', text)
+                    for host in ROUTING_PASS_THROUGH_HOSTS)
+            and not any(line == 'Restored previous Cloudflare Worker version.'
+                        or line.startswith('::warning::Previous Worker version was unavailable; removed the LEGEND Worker route')
+                        for line in bounded))
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def legacy_migration_step_recognized(source, step):
     """Bind a historical step to original source before interpreting its outcome.
 
@@ -1901,11 +1978,21 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 job = owners[0]
                 if job.get("status") == "queued" or job.get("conclusion") == "skipped":
                     continue
-                if (child == 'migrations' and
+                if (child in {'migrations', 'routing-cloudflare'} and
                     _attested_retired_unscheduled_release(
                         repository, run, job, jobs, attempt, token)):
                     continue
                 steps = [step for step in job.get("steps", []) if step.get("name") == gate["step"]]
+                if not steps and child == 'routing-cloudflare':
+                    source = _release_history_source(repository, run['head_sha'],
+                        '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
+                    legacy = [step for step in job.get('steps', [])
+                              if step.get('name') == 'Deploy shared Cloudflare business website router']
+                    if len(legacy) == 1 and legacy_router_step_never_entered(source, legacy[0]):
+                        continue
+                    if len(legacy) == 1 and legacy_router_completed_generation(
+                            repository, run, job, legacy[0], source, token, dependency_identity, material_identity):
+                        continue
                 if not steps and child == 'migrations':
                     source = _release_history_source(repository, run['head_sha'],
                         '.github/workflows/' + DIRECT_RELEASE_WORKFLOW, token)
@@ -3726,10 +3813,11 @@ def fast_track_completed_apps_pending_routing(repository, run, jobs, token):
     # app matrix succeeds. Later package repairs may select fewer than five apps.
     # Require every visible app to be canonical, unique and successful; the
     # source-bound entered routing step proves no selected sibling is missing.
-    if not (apps and len({j.get('name') for j in apps}) == len(apps)
+    completed_apps = (apps and len({j.get('name') for j in apps}) == len(apps)
         and {j.get('name') for j in apps} <= expected
-        and len(prerequisites) == 2
-        and all(j.get('status') == 'completed' and j.get('conclusion') == 'success' for j in apps + prerequisites)
+        and all(j.get('status') == 'completed' and j.get('conclusion') == 'success' for j in apps))
+    if not ((completed_apps or fast_track_skipped_matrix(jobs)) and len(prerequisites) == 2
+        and all(j.get('status') == 'completed' and j.get('conclusion') == 'success' for j in prerequisites)
         and attested_fast_track_router_prewrite(repository, run, jobs, token)):
         return False
     if type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100:

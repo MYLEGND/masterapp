@@ -1946,6 +1946,22 @@ class ChildHistorySafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
                 self.check()
 
+    def test_legacy_router_publisher_skip_is_bound_to_original_step_source(self):
+        source = self.authority.git_show_file('d406e911417e0e9348ddebfb7e24117bb5dd22ca',
+            '.github/workflows/' + self.authority.DIRECT_RELEASE_WORKFLOW)
+        self.child = 'routing-cloudflare'
+        self.step.update(name='Deploy shared Cloudflare business website router',status='completed',conclusion='skipped')
+        with patch.object(self.authority, '_release_history_source', return_value=source):
+            self.assertTrue(self.check())
+            for conclusion in ('success','failure','cancelled'):
+                self.step['conclusion'] = conclusion
+                with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                    self.check()
+        self.step['conclusion'] = 'skipped'
+        with patch.object(self.authority, '_release_history_source', return_value=source.replace('npx wrangler deploy','npx unknown deploy')):
+            with self.assertRaisesRegex(RuntimeError, 'execution detail unavailable'):
+                self.check()
+
     def test_deleted_artifact_after_started_child_cannot_authorize_replay(self):
         with self.assertRaisesRegex(RuntimeError, 'missing intent'):
             self.check()
