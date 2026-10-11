@@ -3568,6 +3568,30 @@ def fast_track_completed_sql_unpublished(repository, run, latest_jobs, token):
         and all(intent.get(key) == success.get(key) for key in keys))
 
 
+def fast_track_untriggered_repair_parent(repository, revision, token):
+    """Recover scope across a merged control-only repair excluded by old paths."""
+    parents = subprocess.check_output(['git', 'rev-list', '--parents', '-n', '1', revision], text=True).split()
+    if len(parents) != 3:
+        return None
+    paths = subprocess.check_output(['git', 'diff', '--name-only', parents[1], revision], text=True).splitlines()
+    allowed = {'scripts/validation-resume.py', 'scripts/deploy-approved-app.py',
+        'scripts/migration-probe-package.py', 'scripts/test-fast-track-release.py',
+        'scripts/test-migration-probe-package.py',
+        'docs/parfait-canonical-transition/canonical-internal-ownership-and-cutover.md'}
+    if not paths or not set(paths) <= allowed:
+        return None
+    source = _release_history_source(repository, revision, '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+    if hashlib.sha256(source.encode()).hexdigest() != '5ab1bab0315385c56838c2e0ffdc7cb78da00a34b734e716f25d0f26e5de6f51':
+        return None
+    pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+    merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
+        and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+        and p.get('head', {}).get('repo', {}).get('full_name') == repository]
+    if len(merged) != 1:
+        raise RuntimeError('FAST_TRACK_UNTRIGGERED_REPAIR_MERGE_UNPROVEN')
+    return parents[1]
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -3583,7 +3607,13 @@ def fast_track_effective_baseline(before, revision):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_INVENTORY_INCOMPLETE')
         runs = [r for r in rows if is_fast_track_producer(repository, r)]
         prior = max(runs, key=lambda r:r['id']) if runs else None
-        if prior is None or prior.get('conclusion') == 'success':
+        if prior is None:
+            repair_parent = fast_track_untriggered_repair_parent(repository, before, token)
+            if repair_parent is None:
+                return before
+            before = repair_parent
+            continue
+        if prior.get('conclusion') == 'success':
             return before
         if prior.get('status') != 'completed':
             raise RuntimeError('FAST_TRACK_PREDECESSOR_ACTIVE')

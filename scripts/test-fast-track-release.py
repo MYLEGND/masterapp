@@ -255,7 +255,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
             return [dict(merged_at='time',merge_commit_sha=candidate,base=dict(ref=authority.FAST_TRACK_PR_BASE),
                 head=dict(repo=dict(full_name='owner/repo')))]
         def parents(args,**kwargs):
-            candidate=args[-1];i=heads.index(candidate)
+            candidate=args[-1]
+            if candidate==original:return original
+            i=heads.index(candidate)
             return candidate+' '+(heads[i+1] if i+1<len(heads) else original)+' '+head
         with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
              patch.object(authority,'api_get',side_effect=get), \
@@ -406,7 +408,7 @@ class CompletedSqlScopeTests(unittest.TestCase):
             executionAuthority='a'*40,applicationRevision='a'*40)
         self.success=dict(self.intent,producingAttempt=3)
         self.inventory=dict(total_count=1,artifacts=[dict(name='legend-release-child-intent-'+'b'*64,expired=False)])
-        self.source=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        self.source=authority.subprocess.check_output(['git','show','39fc10572cb8ffc7de812d3b50eb26992367c2d1:.github/workflows/legend-fast-track-ui.yml'],text=True)
     def prove(self):
         def get(repo,path,token):
             if '/artifacts?' in path:return self.inventory
@@ -435,6 +437,27 @@ class CompletedSqlScopeTests(unittest.TestCase):
         original=self.source;self.source+='\n# changed';self.assertFalse(self.prove());self.source=original
         self.inventory['total_count']=2;self.assertFalse(self.prove());self.inventory['total_count']=1
         self.routing['conclusion']='success';self.assertFalse(self.prove())
+
+
+class UntriggeredRepairTests(unittest.TestCase):
+    def prove(self,paths=None,source_changed=False,merged=True):
+        revision='a'*40;parent='b'*40
+        source=authority.subprocess.check_output(['git','show','39fc10572cb8ffc7de812d3b50eb26992367c2d1:.github/workflows/legend-fast-track-ui.yml'],text=True)
+        pull=dict(merged_at='time',merge_commit_sha=revision,base=dict(ref=authority.FAST_TRACK_PR_BASE),head=dict(repo=dict(full_name='owner/repo')))
+        with patch.object(authority.subprocess,'check_output',side_effect=[revision+' '+parent+' '+'c'*40,paths or 'scripts/validation-resume.py']), \
+             patch.object(authority,'_release_history_source',return_value=source+('changed' if source_changed else '')), \
+             patch.object(authority,'api_get',return_value=[pull] if merged else []):
+            return authority.fast_track_untriggered_repair_parent('owner/repo',revision,'fixture')
+    def test_control_only_untriggered_merge_carries_parent_scope(self):
+        self.assertEqual('b'*40,self.prove())
+    def test_application_change_unknown_source_or_unmerged_commit_cannot_be_skipped(self):
+        self.assertIsNone(self.prove(paths='ParfaitApp/Program.cs'))
+        self.assertIsNone(self.prove(source_changed=True))
+        with self.assertRaisesRegex(RuntimeError,'MERGE_UNPROVEN'):self.prove(merged=False)
+    def test_canonical_trigger_watches_release_owners(self):
+        text=Path('.github/workflows/legend-fast-track-ui.yml').read_text().split('permissions:')[0]
+        for path in ('validation-resume.py','deploy-approved-app.py','migration-probe-package.py','release-migration.py','release-router.py','release-operation-evidence.py'):
+            self.assertIn('      - scripts/'+path+'\n',text)
 
 
 if __name__ == '__main__':unittest.main()

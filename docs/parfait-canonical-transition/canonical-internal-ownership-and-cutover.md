@@ -338,3 +338,18 @@ artifact; original rehearsal provenance remains unchanged. Production still
 performs its fresh schema/activity verification. Focused checks: 41 fast-track,
 17 migration-probe, and 108 release-child tests pass. Remaining work is exact-head
 source validation, canonical deployment of all five apps/routing, and live verification.
+
+### Trigger-only repair after PR #591
+
+PR #591 source `1562bc1a26829c4d3db75c548c2d756cadf71ba1` passed security
+`38159832216`, isolated `38159813212`, and read-only `38159813209`, then merged
+at `c325428a4159bc4948bf396f81f938b6d53069c4`. Its script-only changes were
+excluded by the existing push path filter, so no production run was created.
+The filter now includes canonical deployment/recovery owners. Scope recovery
+can traverse only an authenticated control-only merge with that exact old
+workflow and a complete inventory proving no matching run. All existing
+completed-SQL and unpublished-app proofs remain required for the preceding run.
+44 focused fast-track tests pass; independent review approved the scope proof
+and identified the corrected canonical journal filename in the trigger filter.
+No SQL execution or rehearsal is restarted. All five unpublished apps and routing
+remain the only production work; required changed-source CI precedes the merge.
