@@ -3,6 +3,8 @@
 import hashlib
 import importlib.util
 import os
+import json
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -166,6 +168,69 @@ class FastTrackHistoryTests(unittest.TestCase):
                  patch.object(authority,'api_get',return_value=dict(total_count=len(artifacts),artifacts=artifacts)), \
                  self.assertRaises(RuntimeError):
                 authority.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,11,1,'fixture')
+
+
+class MergedSourceReceiptTests(unittest.TestCase):
+    def setUp(self):
+        self.run=dict(id=71,run_attempt=1,pull_requests=[])
+        self.workflow='approved-release-security-validation.yml'
+        self.name='validation-resume-security-71-1'
+        self.artifact=dict(id=81,name=self.name,expired=False,workflow_run=dict(id=71))
+        self.receipt=dict(workflow=self.workflow,currentSha='a'*40,validationBase=authority.FAST_TRACK_PR_BASE,
+            sourceValidationScope=dict(phase='source-validation-only',releaseAdmission=False,
+                baseBranch=authority.FAST_TRACK_PR_BASE,candidate='a'*40,pullRequest=580))
+    def verify(self):
+        def download(repo,run,name,path,**kwargs):
+            self.assertEqual(81,kwargs['artifact_id'])
+            (path/'validation-resume.json').write_text(json.dumps(self.receipt))
+        with patch.object(authority,'api_get',return_value=dict(total_count=1,artifacts=[self.artifact])), \
+             patch.object(authority,'_download_run_artifact',side_effect=download):
+            return authority.fast_track_validation_receipt('owner/repo',self.run,self.workflow,'a'*40,580,'fixture')
+    def test_merge_cleared_pr_links_are_replaced_by_original_bound_receipt(self):
+        self.assertEqual(81,self.verify())
+    def test_wrong_pr_base_or_candidate_cannot_relabel_validation(self):
+        for key,value in [('pullRequest',581),('baseBranch','legend/approved-changes'),('candidate','b'*40),('releaseAdmission',True)]:
+            original=dict(self.receipt['sourceValidationScope'])
+            self.receipt['sourceValidationScope'][key]=value
+            with self.subTest(key=key),self.assertRaises(RuntimeError):self.verify()
+            self.receipt['sourceValidationScope']=original
+    def test_expired_receipt_is_not_replaced_by_empty_pr_links(self):
+        self.artifact['expired']=True
+        with self.assertRaisesRegex(RuntimeError,'MISSING'):self.verify()
+
+
+class AdmissionRepairScopeTests(unittest.TestCase):
+    def baseline(self, entered=False, attempt=1, duplicate=False):
+        before='a'*40;head='b'*40;original='c'*40
+        prior=dict(id=7,run_attempt=attempt,head_sha=before,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
+            path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'},status='completed',conclusion='failure')
+        jobs=[dict(name='Admit exact validated fast-track source',conclusion='failure'),
+              dict(name='Reconcile production schema before publication',conclusion='failure' if entered else 'skipped'),
+              dict(name='Affected App Deploy — ${{ matrix.target }}',conclusion='skipped'),
+              dict(name='Publish verified website routing',conclusion='skipped')]
+        def get(repo,path,token):
+            if path.startswith('actions/runs?'):
+                runs=([prior,dict(prior,id=8)] if duplicate else [prior]) if before in path else []
+                return dict(total_count=len(runs),workflow_runs=runs)
+            if '/jobs?' in path:return dict(total_count=len(jobs),jobs=jobs)
+            if path.startswith('commits/'):
+                return [dict(merged_at='time',merge_commit_sha=before,base=dict(ref=authority.FAST_TRACK_PR_BASE),head=dict(repo=dict(full_name='owner/repo')))]
+            raise AssertionError(path)
+        with patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GITHUB_TOKEN='fixture'), \
+             patch.object(authority,'api_get',side_effect=get), \
+             patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority.subprocess,'check_output',return_value=before+' '+original+' '+head):
+            return authority.fast_track_effective_baseline(before,head)
+    def test_repair_inherits_only_proven_unpublished_predecessor_scope(self):
+        self.assertEqual('c'*40,self.baseline())
+    def test_any_entered_writer_requires_operation_reconciliation(self):
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(entered=True)
+
+    def test_rerun_predecessor_requires_operation_reconciliation(self):
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(attempt=2)
+    def test_multiple_runs_require_operation_reconciliation(self):
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(duplicate=True)
 
 
 class RecoveryWindowTests(unittest.TestCase):
