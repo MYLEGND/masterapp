@@ -24,9 +24,12 @@ internal static class RehearsalFixture
             .UseSqlServer(connection, provider => provider.CommandTimeout(60)).Options;
         await using var db = new MasterAppDbContext(options);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-        if (!int.TryParse(Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT"), out var count) || count is < 1 or > 1000)
-            throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var contract = CandidateContract.Current(db);
+        var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
+        if (requestedCount == "payment-and-successors")
+            requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();
+        if (!int.TryParse(requestedCount, out var count) || count is < 1 or > 1000)
+            throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
         var pending = contract.Migrations.TakeLast(count).ToArray();
         // Reusable operation shape, with an explicit representative row fixture.
         // Other tables require a reviewed fixture; empty tables are not proof

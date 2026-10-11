@@ -374,7 +374,7 @@ def test_schema_contract(directory):
         '-p:UseSharedCompilation=false'], check=True)
     with isolated_sql() as connection:
         env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOTNET_ROOT') if key in os.environ}
-        env.update(LEGEND_ISOLATED_SQL=connection, LEGEND_REHEARSAL_PENDING_COUNT='1')
+        env.update(LEGEND_ISOLATED_SQL=connection, LEGEND_REHEARSAL_PENDING_COUNT='payment-and-successors')
         result = subprocess.run(['dotnet', str(directory / 'MigrationRehearsal.dll'), 'migration-test'],
             env=env, capture_output=True, text=True, timeout=300, check=False)
         if result.returncode:
