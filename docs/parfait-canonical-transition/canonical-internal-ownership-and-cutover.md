@@ -107,3 +107,18 @@ and historical producers. Existing production mutation guards are unchanged.
 The validation-resume regression suite passed 256 tests, with two additional
 fast-track cache/fork tests passing afterward. Source validation can proceed before
 production reconciliation, but no publication or migration is authorized by it.
+
+GitHub run `38126624681` passed the actual disposable SQL migration and adversarial
+schema tests at candidate `c84a97230c45e94d34a3ec277481129c326f3265`.
+Security run `38126987829` passed its fast-track head preflight, validation plan,
+and security/database gates at `00693123cfc92ddfdf0d0b403f307e9e397ba306`.
+
+The existing production read-only workflow now waits for successful exact-candidate
+fast-track source/security checks, builds the canonical observer in a credential-free
+job, and observes both live applications using the existing Production Azure identity.
+It reports only sanitized schema/database fingerprints and pending migration metadata,
+with a durable read-only receipt and explicit `authorizesMutation=false`. Failed
+physical proof remains failed even when a fallback metadata inventory is available.
+Private provider responses are excluded from uploads and removed afterward.
+This adds SQL schema evidence only; tenant ownership and file reconciliation remain
+separate required stages. The source gate has five passing local rejection/identity tests.

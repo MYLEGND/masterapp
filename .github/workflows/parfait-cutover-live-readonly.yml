@@ -10,15 +10,94 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
+  validated-observer:
+    name: Validate exact source and build read-only schema observer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require completed fast-track source validation for this exact candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYVALIDATE'
+          import json,os,time,urllib.request
+          repository=os.environ['GITHUB_REPOSITORY']
+          candidate=os.environ['GITHUB_SHA']
+          required={'.github/workflows/parfait-isolated-validation.yml':'push',
+                    '.github/workflows/approved-release-security-validation.yml':'pull_request'}
+          deadline=time.monotonic()+1800
+          while True:
+              request=urllib.request.Request(
+                  f'https://api.github.com/repos/{repository}/actions/runs?head_sha={candidate}&per_page=100',
+                  headers={'Authorization':'Bearer '+os.environ['GITHUB_TOKEN'],
+                           'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=30) as response:
+                  runs=json.load(response)['workflow_runs']
+              complete=True
+              for path,event in required.items():
+                  matches=[r for r in runs if r.get('path')==path and r.get('event')==event
+                      and r.get('head_sha')==candidate and r.get('head_repository',{}).get('full_name')==repository]
+                  if not matches:
+                      complete=False
+                      continue
+                  run=max(matches,key=lambda r:r['id'])
+                  if run['status']!='completed':
+                      complete=False
+                  elif run['conclusion']!='success':
+                      raise SystemExit('EXACT_SOURCE_VALIDATION_FAILED: '+path)
+                  elif event=='pull_request' and not any(
+                      pr.get('base',{}).get('ref')=='Legend/fast-track-release' for pr in run.get('pull_requests',[])):
+                      raise SystemExit('FAST_TRACK_VALIDATION_SOURCE_UNPROVEN')
+              if complete:
+                  print('EXACT_FAST_TRACK_SOURCE_VALIDATION: PROVEN')
+                  break
+              if time.monotonic()>=deadline:
+                  raise SystemExit('EXACT_SOURCE_VALIDATION_NOT_READY: resume this read-only workflow after validation')
+              time.sleep(15)
+          PYVALIDATE
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build canonical schema observer without production credentials
+        run: |
+          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
+            -m:1 -nr:false -p:UseSharedCompilation=false -o "$RUNNER_TEMP/parfait-schema-observer"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parfait-readonly-schema-observer-${{ github.sha }}
+          path: ${{ runner.temp }}/parfait-schema-observer
+          retention-days: 3
+          if-no-files-found: error
+
   production-readback:
-    name: Non-mutating Azure and public runtime inventory
+    name: Non-mutating Azure, SQL schema and public runtime inventory
+    needs: validated-observer
     runs-on: ubuntu-24.04
     environment: Production
     timeout-minutes: 12
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: parfait-readonly-schema-observer-${{ github.sha }}
+          path: ${{ runner.temp }}/parfait-schema-observer
       - name: Azure production sign-in (read-only queries only)
         uses: azure/login@v2
         with:
@@ -100,3 +179,74 @@ jobs:
           if not all(v["ok"] for v in outcomes.values()):
               raise SystemExit("Original live runtime readback incomplete; do not authorize cutover.")
           PY
+
+      - name: Reconcile canonical SQL schema without mutation or release admission
+        env:
+          RELEASE_RESOURCE_GROUP: masterapp-rg
+        run: |
+          python3 - <<'PYSCHEMA'
+          import importlib.util,json,os,pathlib,re,subprocess
+          spec=importlib.util.spec_from_file_location('migration', 'scripts/release-migration.py')
+          migration=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(migration)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          results={}
+          for app in ('masterapp-parfait','masterapp-protect'):
+              os.environ['DATABASE_AUTHORITY']=app
+              connection=None
+              try:
+                  connection=migration.connection_string()
+                  observed=migration.observe(root/'parfait-schema-observer/MigrationReleaseProbe.dll',connection)
+                  fields={key:observed[key] for key in (
+                      'databaseIdentity','schemaIdentity','baselineIdentity','ready','pendingCount',
+                      'firstPendingMigrationId','lastAppliedMigrationId')}
+                  results[app]=dict(fields,observed=True)
+              except Exception as error:
+                  # Emit only locally authored codes, never provider text or values.
+                  reasons={value:key for key,value in migration.PROBE_TERMINAL_REASONS.items()}
+                  reasons.update({'Database configuration observation unavailable':'AZURE_CONFIGURATION_READ_UNAVAILABLE',
+                                  'Production SQL connection unavailable':'SQL_CONFIGURATION_UNAVAILABLE'})
+                  code=reasons.get(str(error),'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN') if type(error) is RuntimeError else 'CANONICAL_SCHEMA_OBSERVATION_UNPROVEN'
+                  results[app]={'observed':False,'reason':code}
+                  if connection:
+                      try:
+                          inventory=subprocess.run(['dotnet',str(root/'parfait-schema-observer/MigrationReleaseProbe.dll'),'--inventory'],
+                              env=os.environ|{'LEGEND_RELEASE_DB_CONNECTION':connection},capture_output=True,text=True,timeout=60,check=False)
+                          if inventory.returncode==0:
+                              data=json.loads(inventory.stdout)
+                              for field in ('pendingMigrationIds','unrecognizedAppliedMigrationIds'):
+                                  ids=data[field]
+                                  if isinstance(ids,list) and len(ids)<=10000 and all(
+                                      isinstance(value,str) and re.fullmatch(r'[0-9]{8,14}_[A-Za-z0-9_]{1,128}',value) for value in ids):
+                                      results[app][field]=ids
+                      except Exception:
+                          pass  # Keep the original classified failure; never turn inventory into readiness.
+          report=dict(schemaVersion=1,purpose='read-only-schema-plan',authorizesMutation=False,
+              candidate=os.environ['GITHUB_SHA'],runId=os.environ['GITHUB_RUN_ID'],applications=results,
+              sharedDatabase=(results['masterapp-parfait']['databaseIdentity']==results['masterapp-protect']['databaseIdentity'])
+                  if all(row['observed'] for row in results.values()) else None)
+          (root/'parfait-proof/sanitized-schema.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('COMMERCE_READONLY_SCHEMA',json.dumps(report,sort_keys=True))
+          if not all(row['observed'] for row in results.values()):
+              raise SystemExit('SQL_SCHEMA_PLAN_INCOMPLETE: preserve source proof; reconcile this stage only')
+          PYSCHEMA
+
+      - name: Preserve sanitized read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parfait-readonly-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/parfait-proof/sanitized-azure.json
+            ${{ runner.temp }}/parfait-proof/sanitized-schema.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Remove private temporary provider responses
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/parfait-proof/masterapp-parfait-settings.json" \
+                "$RUNNER_TEMP/parfait-proof/masterapp-protect-settings.json" \
+                "$RUNNER_TEMP/parfait-proof/masterapp-parfait-webapp.json" \
+                "$RUNNER_TEMP/parfait-proof/masterapp-protect-webapp.json"
