@@ -170,6 +170,26 @@ class ReleaseChildTests(unittest.TestCase):
         self.assertEqual(calls, ['migration'])
         self.assertEqual(len(self.published), 2)
 
+    def test_fresh_historical_observation_reaches_admission_but_never_erases_intent(self):
+        before = dict(self.schema(False), historicalExecution='outcome-unknown',
+            firstPendingMigrationId='20261011064911_AddBusinessScopedMerchantPayments',
+            lastAppliedMigrationId='20261007134500_AddFounderAssistantRules')
+        with patch.object(self.authority, 'release_child_first_write_proven', return_value=True) as admission:
+            states = iter([before, self.schema(True)])
+            calls = []
+            self.assertEqual('applied', migration.reconcile(self.bundle, self.path, 'opaque',
+                observer=lambda *args: next(states), journal_factory=self.journal,
+                execute=lambda *args: calls.append('migration')))
+            self.assertIs(before, admission.call_args.kwargs['historical_observation'])
+            self.assertEqual(before['firstPendingMigrationId'], admission.call_args.kwargs['first_pending_migration_id'])
+            self.assertEqual(['migration'], calls)
+        # Even fresh history proof cannot replay the same material after intent.
+        with patch.object(self.authority, 'release_child_first_write_proven') as admission:
+            with self.assertRaisesRegex(RuntimeError, 'mutation-admission'):
+                migration.reconcile(self.bundle, self.path, 'opaque', observer=lambda *args: before,
+                    journal_factory=self.journal, execute=lambda *args: self.fail('Repeated SQL'))
+            admission.assert_not_called()
+
     def test_ambiguous_migration_reconciles_ready_without_resubmission(self):
         def interrupted(*args):
             raise TimeoutError()
@@ -2117,6 +2137,80 @@ class MigrationProbeDeadlineTests(unittest.TestCase):
         self.assertEqual([2,2],[call.args[0] for call in sleep.call_args_list])
 
 
+class OlderMigrationGenerationReconciliationTests(unittest.TestCase):
+    def setUp(self):
+        import time, subprocess
+        self.auth = load('validation-resume')
+        self.revision = 'b724b2276b5de63d7e2fa2be8a45eb2e54156b61'
+        self.prior = 'eef141ee45befc2eadcd42ddf1b529d0b9a90d36'
+        self.run = dict(id=7, head_sha='095683908ee939b03c07ddfac850b72549b36efe',
+            head_branch=self.auth.TRUSTED_PR_BASE, event='workflow_dispatch',
+            path='.github/workflows/' + self.auth.DIRECT_RELEASE_WORKFLOW,
+            head_repository={'full_name':'owner/repo'}, status='completed', conclusion='failure', run_attempt=1)
+        self.job = dict(id=17, status='completed', conclusion='failure')
+        self.step = dict(name=self.auth.DIRECT_RELEASE_CHILDREN['migrations']['step'],
+                         status='completed', conclusion='failure')
+        self.evidence = dict(run=7, attempt=1, code='HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION',
+            sourceBlob='1b0ae6aa07a3ac05c132f0df4cfa2858531e2999', stateArtifactId=21,
+            admissionId='a'*64, migrationRecords=[])
+        self.observation = dict(historicalObservedAt=time.time(), historicalRunId=9, historicalRunAttempt=1,
+            historicalApplicationRevision=self.revision, historicalExecution='outcome-unknown',
+            mutationActivity='settled', ready=False, pendingCount=2, historicalEvidenceIdentity='b'*64,
+            databaseIdentity='c'*64, schemaIdentity='d'*64, baselineIdentity='e'*64,
+            firstPendingMigrationId='20261011064911_AddBusinessScopedMerchantPayments',
+            lastAppliedMigrationId='20261007134500_AddFounderAssistantRules',
+            historicalReconciliationSources=[self.evidence])
+        def source(repo, sha, path, token):
+            return subprocess.check_output(['git','show',sha+':'+path],text=True)
+        for patcher in (patch.object(self.auth,'_release_history_source',side_effect=source),
+                        patch.object(self.auth,'_release_attempt_package_revision',return_value=self.prior)):
+            patcher.start();self.addCleanup(patcher.stop)
+
+    def proven(self):
+        return self.auth._reconciled_older_migration_generation('owner/repo',self.run,self.job,
+            self.step,1,'fixture',self.revision,self.observation,9,1)
+
+    def test_original_generations_only_reconcile_fully_applied_immutable_prefix(self):
+        for sha in ('095683908ee939b03c07ddfac850b72549b36efe','799565c044cac5fb3c3e7340da433492157f60a3'):
+            self.run['head_sha']=sha
+            self.assertTrue(self.proven())
+            self.assertEqual('outcome-unknown',self.observation['historicalExecution'])
+        with patch.object(self.auth,'_release_history_source',return_value='unknown source'):
+            self.assertFalse(self.proven())
+
+    def test_stale_active_wrong_run_or_incomplete_physical_observation_cannot_admit(self):
+        import time
+        for key,value in [('historicalObservedAt',time.time()-901),('historicalObservedAt',time.time()+60),
+                ('historicalRunId',10),('historicalRunAttempt',2),('historicalApplicationRevision','f'*40),
+                ('mutationActivity','active'),('historicalEvidenceIdentity',None),('databaseIdentity',None),
+                ('schemaIdentity',None),('baselineIdentity',None),('pendingCount',0),('ready',True),
+                ('firstPendingMigrationId','20261007134500_AddFounderAssistantRules'),
+                ('lastAppliedMigrationId','20261001070000_AddLegendEngineeringControlPlane')]:
+            with self.subTest(key=key,value=value):
+                original=self.observation[key];self.observation[key]=value
+                self.assertFalse(self.proven());self.observation[key]=original
+
+    def test_authenticated_original_envelope_and_no_retained_migration_are_required(self):
+        for key,value in [('migrationRecords',[dict(phase='intent')]),('migrationRecords',None),
+                          ('stateArtifactId',None),('admissionId',None),('attempt',2),('sourceBlob','0'*40)]:
+            with self.subTest(key=key):
+                original=self.evidence[key];self.evidence[key]=value
+                self.assertFalse(self.proven());self.evidence[key]=original
+        self.observation['historicalReconciliationSources'].append(dict(self.evidence))
+        self.assertFalse(self.proven())
+        self.observation['historicalReconciliationSources']=[]
+        self.assertFalse(self.proven())
+
+    def test_unproven_or_overlapping_original_package_cannot_authorize_new_sql(self):
+        for prior in (None,self.revision,'0'*40):
+            with patch.object(self.auth,'_release_attempt_package_revision',return_value=prior):
+                self.assertFalse(self.proven())
+        with patch.object(self.auth,'_applied_migration_prefix_separate',return_value=False):
+            self.assertFalse(self.proven())
+        self.run['status']='in_progress'
+        self.assertFalse(self.proven())
+
+
 class MigrationProductionObservationTests(unittest.TestCase):
     def setUp(self):
         import os, contextlib
@@ -2134,7 +2228,7 @@ class MigrationProductionObservationTests(unittest.TestCase):
             evidence_lookup_budget=lambda *args:contextlib.nullcontext())
         def observe(*args,**kwargs):
             self.assertTrue(kwargs['activity']);self.events.append('bracketed-observation');return dict(self.before)
-        for patcher in [patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GH_TOKEN='fixture',GITHUB_RUN_ATTEMPT='2'),
+        for patcher in [patch.dict(os.environ,GITHUB_REPOSITORY='owner/repo',GH_TOKEN='fixture',GITHUB_RUN_ATTEMPT='2',APPLICATION_RELEASE_SHA='d'*40),
                         patch.object(migration,'release_authority',return_value=self.auth),
                         patch.object(migration,'history_audit',return_value=self.audit),
                         patch.object(migration,'observe',side_effect=observe)]:

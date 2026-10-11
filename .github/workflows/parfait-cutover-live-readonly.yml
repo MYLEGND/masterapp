@@ -312,15 +312,17 @@ jobs:
           name: ${{ steps.observation.outputs.artifact }}
           path: ${{ runner.temp }}/parfait-proof
       - name: Prepare and rehearse exact migration bytes against the observed baseline
+        id: rehearsal
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/migration-probe-package.py fast-track-rehearse \
+          python3 scripts/migration-probe-package.py fast-track-prepare \
             --tool-revision "$GITHUB_SHA" --application-revision "$GITHUB_SHA" \
             --observation "$RUNNER_TEMP/parfait-proof/sanitized-schema.json" \
             --probe-directory "$RUNNER_TEMP/parfait-schema-observer" \
             --directory "$RUNNER_TEMP/parfait-fast-track-migration"
       - name: Preserve exact rehearsed bytes and recovery evidence
+        if: ${{ steps.rehearsal.outputs.reused != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: parfait-fast-track-migration-${{ github.sha }}-${{ github.run_attempt }}

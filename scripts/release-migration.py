@@ -301,10 +301,14 @@ def production_observation(probe, connection, *, clock=time.monotonic, sleep=tim
     for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity', 'ready', 'pendingCount'):
         if key not in first or first[key] != second.get(key):
             raise RuntimeError('Migration stage unresolved: readiness-drift')
+    second['historicalObservedAt'] = time.time()
+    second['historicalRunId'] = current['id']
+    second['historicalRunAttempt'] = current['run_attempt']
+    second['historicalApplicationRevision'] = os.environ['APPLICATION_RELEASE_SHA']
     second['historicalExecution'] = history
     second['historicalReconciliationSources'] = [
         dict({key: row[key] for key in ('run', 'attempt', 'code', 'sourceBlob') if key in row},
-             **({key: row['evidence'][key] for key in ('stateArtifactId', 'admissionId')} if 'evidence' in row else {}))
+             **({key: row['evidence'][key] for key in ('stateArtifactId', 'admissionId', 'migrationRecords')} if 'evidence' in row else {}))
         for row in report['records'] if row['code'] in uncertain]
     second['historicalEvidenceIdentity'] = hashlib.sha256(
         json.dumps(report, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
@@ -470,6 +474,8 @@ def reconcile(bundle, probe, connection, *, observer=observe, journal_factory=No
             first_pending_migration_id=before['firstPendingMigrationId'],
             last_applied_migration_id=before['lastAppliedMigrationId'],
         )
+    if before.get('historicalExecution') == 'outcome-unknown':
+        migration_fence['historical_observation'] = before
     migration_stage('mutation-admission', journal.before_mutation, observation,
                     **migration_fence)
     if execute is None:
@@ -514,7 +520,7 @@ def mutation_admission(before, bundle_digest=None):
     migration_stage('mutation-admission', journal.authority.release_child_first_write_proven,
         journal.repository, journal.child, journal.identity, journal.material_identity,
         journal.run, journal.attempt, journal.token, partition_identity=journal.partition_identity,
-        current_application_revision=journal.revision, **fence)
+        current_application_revision=journal.revision, historical_observation=before, **fence)
     return {'state': 'proven', 'materialIdentity': material, 'partitionIdentity': partition}
 
 
@@ -651,7 +657,8 @@ if __name__ == '__main__':
             raise RuntimeError('Validated migration bundle or read-only probe unavailable')
         if is_preflight:
             retained = os.environ.get('MIGRATION_READINESS_OBSERVATION')
-            observation = load_preflight_observation(Path(retained)) if retained else None
+            observation = (load_preflight_observation(Path(retained)) if retained else
+                           production_observation(probe, connection_string()))
             result = preflight(bundle if bundle.is_file() else None, probe,
                                None if observation is not None else connection_string(), observation=observation)
         else:

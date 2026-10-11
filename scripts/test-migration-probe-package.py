@@ -13,6 +13,59 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+class ObservedRehearsalReuseTests(unittest.TestCase):
+    def setUp(self):
+        import os, tempfile
+        self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name);self.observation=self.root/'observation.json'
+        self.observation.write_text(json.dumps(dict(producingAttempt=2)))
+        self.revision='a'*40;self.baseline=dict(databaseIdentity='b'*64,pendingCount=2)
+        self.run=dict(id=17,run_attempt=2,head_sha=self.revision,
+            path='.github/workflows/parfait-cutover-live-readonly.yml',
+            head_branch='isolation/canonical-scoped-commerce-internal-20261010',event='push',
+            status='in_progress',head_repository=dict(full_name='owner/repo'))
+        for patcher in (patch.dict(os.environ,dict(GITHUB_SHA=self.revision,GITHUB_REPOSITORY='owner/repo',
+                GITHUB_RUN_ID='17',GITHUB_RUN_ATTEMPT='2',GITHUB_TOKEN='fixture'),clear=True),
+                patch.object(m.subprocess,'check_output',return_value=self.revision),
+                patch.object(m.AUTHORITY,'api_get',return_value=self.run),
+                patch.object(m,'fast_track_observation_source',return_value=dict(attempt=2)),
+                patch.object(m,'fast_track_baseline',return_value=self.baseline)):
+            patcher.start();self.addCleanup(patcher.stop)
+
+    def prepare(self):
+        return m.prepare_observed_fast_track(self.revision,self.root/'bundle',self.observation,self.root/'probe')
+
+    def test_compatible_original_proof_executes_no_new_rehearsal(self):
+        proof=dict(candidate='c'*40,baseline=self.baseline)
+        with patch.object(m,'restore_fast_track',return_value=proof),patch.object(m,'rehearse_fast_track') as build:
+            self.assertTrue(self.prepare());build.assert_not_called()
+        self.assertEqual('c'*40,proof['candidate'])
+
+    def test_changed_live_baseline_or_damaged_evidence_never_falls_back_to_build(self):
+        with patch.object(m,'restore_fast_track',return_value=dict(candidate='c'*40,baseline={})), \
+             patch.object(m,'rehearse_fast_track') as build:
+            with self.assertRaisesRegex(ValueError,'BASELINE_CHANGED'):self.prepare()
+            build.assert_not_called()
+        with patch.object(m,'restore_fast_track',side_effect=ValueError('FAST_TRACK_EXACT_REHEARSAL_BYTES_UNPROVEN')), \
+             patch.object(m,'rehearse_fast_track') as build:
+            with self.assertRaisesRegex(ValueError,'BYTES_UNPROVEN'):self.prepare()
+            build.assert_not_called()
+
+    def test_only_missing_compatible_rehearsal_uses_original_rehearsal_owner(self):
+        with patch.object(m,'restore_fast_track',side_effect=ValueError('FAST_TRACK_COMPATIBLE_REHEARSAL_MISSING')), \
+             patch.object(m,'rehearse_fast_track') as build:
+            self.assertFalse(self.prepare());build.assert_called_once()
+
+    def test_wrong_producer_or_observation_never_restores(self):
+        with patch.object(m,'restore_fast_track') as restore:
+            self.run['head_sha']='d'*40
+            with self.assertRaisesRegex(ValueError,'PRODUCER_UNPROVEN'):self.prepare()
+            self.run['head_sha']=self.revision
+            self.observation.write_text(json.dumps(dict(producingAttempt=1)))
+            with self.assertRaisesRegex(ValueError,'ATTEMPT_MISMATCH'):self.prepare()
+            restore.assert_not_called()
+
+
 class IsolatedSqlTests(unittest.TestCase):
     def command(self, args, **kwargs):
         self.calls.append(args)
