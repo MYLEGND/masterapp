@@ -3466,10 +3466,33 @@ def assert_fast_track_release_execution():
         raise RuntimeError('FAST_TRACK_EXECUTION_IDENTITY_INCOMPLETE')
     run = api_get(repository, f'actions/runs/{run_id}', token)
     expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
-                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision, status='in_progress')
-    if (any(run.get(key) != value for key, value in expected.items())
+                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision)
+    if (run.get('status') not in {'in_progress', 'queued'}
+        or any(run.get(key) != value for key, value in expected.items())
         or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
         raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
+    if run.get('status') == 'queued':
+        # GitHub may mark the parent queued while a capped matrix has active
+        # runners. Authenticate this exact live job instead of treating the
+        # aggregate scheduling label as execution identity.
+        runner = env.get('RUNNER_NAME', '')
+        job_key = env.get('GITHUB_JOB', '')
+        names = {'select-targets': 'Select exact affected applications',
+            'commerce-gates': 'Admit exact validated fast-track source',
+            'migrations': 'Reconcile production schema before publication',
+            'routing-cloudflare': 'Publish verified website routing'}
+        payload = api_get(repository, f'actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100', token)
+        jobs = payload.get('jobs')
+        if not isinstance(jobs, list) or payload.get('total_count') != len(jobs) or not runner:
+            raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+        active = [job for job in jobs if job.get('run_id') == int(run_id)
+            and job.get('run_attempt') == int(attempt) and job.get('head_sha') == revision
+            and job.get('status') == 'in_progress' and job.get('runner_name') == runner
+            and (job.get('name') == names.get(job_key) if job_key != 'deploy-ui' else
+                job.get('name') in {'Affected App Deploy — ' + label for label in
+                    ('AgentPortal','ClientApp','Protect','Parfait','Website')})]
+        if len(active) != 1:
+            raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
     current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
     if current.get('object', {}).get('sha') != revision:
         raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
