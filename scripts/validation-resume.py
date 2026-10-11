@@ -1630,6 +1630,10 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
                 if (not isinstance(jobs, list) or type(count) is not int or count != len(jobs)
                     or any(not isinstance(job, dict) for job in jobs)):
                     raise rejection("Release child execution history incomplete", run_id, attempt)
+                if not jobs and count == 0 and (run.get('status') == 'completed' or attempt < attempts):
+                    # Match release_operation_history: complete terminal attempt
+                    # enumeration proves no job entered, not a missing receipt.
+                    continue
                 if release_attempt_never_entered(jobs):
                     continue
                 if any(job.get('name') == 'admission' for job in jobs):

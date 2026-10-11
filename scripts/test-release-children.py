@@ -1562,6 +1562,43 @@ class ChildHistorySafetyTests(unittest.TestCase):
             self.assertFalse(self.authority._legacy_migration_noop('owner/repo', run, job, step,
                 source.replace('python3 scripts/release-migration.py', 'python3 scripts/unknown.py'), 'fixture'))
 
+    def test_child_empty_terminal_attempt_matches_publication_nonentry(self):
+        original = self.api
+        def api(repo, path, token):
+            if '/jobs?' in path:
+                return dict(jobs=[], total_count=0)
+            return original(repo, path, token)
+        self.api = api
+        self.run['conclusion'] = 'cancelled'
+        self.assertTrue(self.check())
+        self.run['status'] = 'in_progress'
+        with self.assertRaisesRegex(RuntimeError, 'owner unproven'):
+            self.check()
+        self.run['run_attempt'] = 2
+        self.assertTrue(self.check(current_run=7, attempt=2))
+
+    def test_child_empty_attempt_cannot_hide_entered_prior_attempt(self):
+        original = self.api
+        def api(repo, path, token):
+            if '/attempts/2/jobs?' in path:
+                return dict(jobs=[], total_count=0)
+            return original(repo, path, token)
+        self.api = api
+        self.run['run_attempt'] = 2
+        with self.assertRaisesRegex(RuntimeError, 'missing intent'):
+            self.check()
+
+    def test_child_empty_attempt_requires_complete_count(self):
+        original = self.api
+        for count in (None, True, 1):
+            def api(repo, path, token):
+                if '/jobs?' in path:
+                    return dict(jobs=[], total_count=count)
+                return original(repo, path, token)
+            self.api = api
+            with self.assertRaisesRegex(RuntimeError, 'history incomplete'):
+                self.check()
+
     def test_child_nonentry_requires_complete_exact_attempt_inventory(self):
         original = self.api
         for count in (None, True, 0, 2):

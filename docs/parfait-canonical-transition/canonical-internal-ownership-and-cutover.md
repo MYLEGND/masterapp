@@ -183,3 +183,29 @@ workflow and 13 new fast-track rejection/recovery tests passed. Earlier combined
 browser/rendering/routing checks passed 226 tests. These are source tests, not live
 lead attribution evidence. Production deployment and the controlled website → CRM →
 scoped analytics → correct Meta destination → reporting reconciliation remain pending.
+
+### SQL access repair and terminal-attempt recovery (2026-10-11)
+
+The existing GitHub Production service principal now has Reader on the canonical
+SQL server in MasterApp-Data-RG. Read-only run `38135862488`, attempt 2, verified
+the observed database and recovery window. PR #585 merged at
+`3fefd3ca5dd1a4431b1238f65ba0803d9aa0ef51` on `Legend/fast-track-release`.
+Its production run `38149343837` admitted the exact source, restored the preserved
+bundle from successful rehearsal `38132299439`, and verified recovery. The bundle
+digest remains `5aff41a0bfcf1a731eef424315501c8e74318bdcc12ac0704d0eb50f050148a7`;
+the fresh observed database/schema/baseline identities match the rehearsal.
+
+Production still stopped before writes: migration admission rejected historical
+run `37960039867`, attempt 2, although authenticated GitHub enumeration reports a
+completed cancelled attempt with exactly zero jobs. Child admission now uses the
+same complete terminal-empty-attempt proof as application operation history.
+Incomplete counts, an active latest attempt, and entered earlier attempts remain
+blocking. No migration, app, or routing write occurred in `38149343837`.
+
+Validate this repair through exact-source security and isolated checks, then merge
+through the same fast-track branch. Preserve the original rehearsal; the source
+read-only workflow's redundant new rehearsal rejects a repair-only delta without
+migrations, while production's existing compatibility verifier restores the proven
+original bytes. Monitor migration admission and all five affected apps plus routing,
+then verify runtime revisions and published HTML. Custom-host cutover and retirement
+remain separate; controlled lead/reporting reconciliation remains outstanding.

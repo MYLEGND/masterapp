@@ -3,6 +3,7 @@ name: LEGEND Fast Track — Affected Web Apps
 # One affected-app fast track. Backend publication requires exact source checks,
 # an authenticated rehearsal, fresh database/recovery evidence and the canonical
 # durable migration and upload journals. Routing follows verified app publication.
+# Migration admission retains terminal zero-job attempts as proven non-entry.
 
 on:
   push:
