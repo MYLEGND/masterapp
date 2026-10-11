@@ -67,6 +67,56 @@ class CurrentSchemaNoSqlTests(unittest.TestCase):
         self.assertFalse(self.published)
 
 
+
+class SchemaOnlyActivityFenceTests(unittest.TestCase):
+    def test_no_sql_keeps_history_audit_and_double_observation(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from contextlib import nullcontext
+        import os
+        original=dict(databaseIdentity='a'*64, schemaIdentity='b'*64,
+                      baselineIdentity='c'*64, ready=True, pendingCount=0,
+                      mutationActivity='settled')
+        owner=SimpleNamespace(
+            evidence_lookup_budget=lambda *args, **kwargs:nullcontext(),
+            assert_release_execution=lambda:dict(id=11,run_attempt=1))
+        audit=SimpleNamespace(
+            audit=lambda *args, **kwargs:dict(completeHistory=True,records=[]),
+            BLOCKED_CODES=set(),STATUS_CODES={'OK'})
+        with patch.dict(os.environ, dict(GITHUB_REPOSITORY='owner/repo',
+                GITHUB_TOKEN='fixture', GITHUB_RUN_ATTEMPT='1',
+                APPLICATION_RELEASE_SHA='f'*40)), \
+             patch.object(m,'release_authority',return_value=owner), \
+             patch.object(m,'history_audit',return_value=audit), \
+             patch.object(m,'observe',side_effect=[dict(original),dict(original)]) as observe:
+            result=m.production_observation('probe','connection',schema_only=True)
+            self.assertTrue(result['ready'])
+            self.assertEqual(2,observe.call_count)
+            for call in observe.call_args_list:
+                self.assertTrue(call.kwargs.get('schema_only_activity'))
+                self.assertNotIn('activity',call.kwargs)
+        with patch.dict(os.environ, dict(GITHUB_REPOSITORY='owner/repo',
+                GITHUB_TOKEN='fixture', GITHUB_RUN_ATTEMPT='1',
+                APPLICATION_RELEASE_SHA='f'*40)), \
+             patch.object(m,'release_authority',return_value=owner), \
+             patch.object(m,'history_audit',return_value=audit), \
+             patch.object(m,'observe',side_effect=[dict(original),dict(original)]) as observe:
+            m.production_observation('probe','connection')
+            for call in observe.call_args_list:
+                self.assertTrue(call.kwargs.get('activity'))
+                self.assertNotIn('schema_only_activity',call.kwargs)
+
+    def test_probe_keeps_exclusive_migration_and_schema_modification_lock_checks(self):
+        source=(ROOT/'scripts/MigrationReleaseProbe/Program.cs').read_text()
+        self.assertIn("APPLOCK_TEST('public','__EFMigrationsLock','Exclusive','Session')",source)
+        self.assertIn('sys.dm_tran_locks AS l',source)
+        self.assertIn("l.request_mode = 'Sch-M'",source)
+        self.assertIn("l.request_status IN ('GRANT','WAIT','CONVERT')",source)
+        self.assertIn('if (schemaOnly)',source)
+        self.assertIn('sys.dm_exec_requests AS r',source)
+        self.assertIn('if (inspectActivity || inspectSchemaOnly)',source)
+
+
 class CanonicalWorkflowNoSqlGateTests(unittest.TestCase):
     def test_original_rehearsed_migration_and_no_sql_are_exclusive(self):
         workflow=(ROOT/'.github/workflows/legend-fast-track-ui.yml').read_text()
