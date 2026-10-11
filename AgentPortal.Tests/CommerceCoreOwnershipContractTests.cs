@@ -74,7 +74,7 @@ public sealed class CommerceCoreOwnershipContractTests
     }
 
     [Fact]
-    public void WebsiteRuntimeConsumesOnlySharedCatalogWithoutEnablingCommerceRoutes()
+    public void WebsiteRuntimeSeparatesCatalogReadsFromAuthenticatedManagementAndGuardedCheckout()
     {
         var services = new ServiceCollection();
         var builder = services.AddControllersWithViews().AddLegendCommerceMvc()
@@ -89,8 +89,10 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(ParfaitCustomerAutomationService));
 
         var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
-        Assert.Contains("AddLegendCommerceCatalogReadOnly()", protect, StringComparison.Ordinal);
-        Assert.Contains("ExcludeLegendCommerceMvc()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceCore()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceManagementMvc()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<CommerceCutoverStartupProof>()", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExcludeLegendCommerceMvc()", protect, StringComparison.Ordinal);
         Assert.DoesNotContain("AddLegendCommerceMvc()", protect, StringComparison.Ordinal);
     }
 
@@ -111,7 +113,7 @@ public sealed class CommerceCoreOwnershipContractTests
     }
 
     [Fact]
-    public void MerchantManagementViews_LinkOriginalTemplatesWithoutEnablingRoutes()
+    public void MerchantManagementViews_UseOneSharedHostWithGuardedRuntime()
     {
         var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "ProtectWebsite.csproj"));
         Assert.Contains("../ParfaitApp/Views/InternalModules/*.cshtml", protect, StringComparison.Ordinal);
@@ -119,7 +121,9 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.Contains("wwwroot/css/internal.css", protect, StringComparison.Ordinal);
         Assert.Contains("wwwroot/js/parfait-agentportal-analytics.js", protect, StringComparison.Ordinal);
         var host = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
-        Assert.Contains("ExcludeLegendCommerceMvc()", host, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceManagementMvc()", host, StringComparison.Ordinal);
+        Assert.Contains("CommerceSharedHostCutoverGate.IsConfigured", host, StringComparison.Ordinal);
+        Assert.Contains("Canonical*.cshtml", protect, StringComparison.Ordinal);
         var layout = File.ReadAllText(Path.Combine(Root(), "ParfaitApp", "Views", "Shared", "_InternalLayout.cshtml"));
         Assert.Contains("GetRequiredService<ParfaitApp.Services.IParfaitTeamAccessService>()", layout, StringComparison.Ordinal);
     }
