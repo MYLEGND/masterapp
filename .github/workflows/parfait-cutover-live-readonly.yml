@@ -16,6 +16,7 @@ jobs:
   production-readback:
     name: Non-mutating Azure and public runtime inventory
     runs-on: ubuntu-24.04
+    environment: Production
     timeout-minutes: 12
     steps:
       - name: Azure production sign-in (read-only queries only)
