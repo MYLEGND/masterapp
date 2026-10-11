@@ -248,9 +248,11 @@ class RecoveryWindowTests(unittest.TestCase):
         calls=[]
         def read(*args):
             calls.append(args)
-            self.assertIn('data-group', args)
             self.assertNotIn('app-group', args)
-            if args[:3]==('sql','server','list'):return [dict(name='server')]
+            if args[:3]==('sql','server','list'):
+                self.assertEqual(args, ('sql','server','list'))
+                return [dict(name='server',resourceGroup='data-group')]
+            self.assertIn('data-group', args)
             if args[:3]==('sql','db','list'):return [dict(name='db',status='Online',earliestRestoreDate='2026-10-01T00:00:00Z')]
             return dict(retentionDays=7)
         identity=hashlib.sha256(b'server/db').hexdigest()

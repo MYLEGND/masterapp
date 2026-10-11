@@ -362,15 +362,20 @@ def production_recovery(database_identity, *, read=None, now=None):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
         return json.loads(result.stdout)
     read = read or azure
-    group = os.environ['RELEASE_DATABASE_RESOURCE_GROUP']
-    servers = read('sql', 'server', 'list', '-g', group)
+    # The database may live outside the application resource group. Discover
+    # authorized SQL resources, then bind recovery to the exact observed hash.
+    servers = read('sql', 'server', 'list')
     if not isinstance(servers, list):
         raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
     matches = []
+    candidate_identities = []
     for server in servers:
         name = server.get('name')
         if not isinstance(name, str) or not re.fullmatch('[A-Za-z0-9-]{1,128}', name):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+        group = server.get('resourceGroup')
+        if not isinstance(group, str) or not re.fullmatch(r'[A-Za-z0-9_.() -]{1,90}', group):
+            raise RuntimeError('FAST_TRACK_DATABASE_RESOURCE_GROUP_UNPROVEN')
         databases = read('sql', 'db', 'list', '-g', group, '-s', name)
         if not isinstance(databases, list):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
@@ -379,6 +384,7 @@ def production_recovery(database_identity, *, read=None, now=None):
             if not isinstance(db_name, str):
                 raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
             identity = hashlib.sha256((name + '/' + db_name).encode()).hexdigest()
+            candidate_identities.append(identity)
             if identity != database_identity:
                 continue
             earliest = datetime.fromisoformat(str(database.get('earliestRestoreDate', '')).replace('Z', '+00:00'))
@@ -392,6 +398,9 @@ def production_recovery(database_identity, *, read=None, now=None):
                 retentionDays=policy['retentionDays'], restoreWindowVerified=True,
                 restoreExecuted=False, authorizesMutation=False))
     if len(matches) != 1:
+        print('FAST_TRACK_DATABASE_RECOVERY_INVENTORY:' + json.dumps(dict(
+            observedIdentity=database_identity, serverCount=len(servers),
+            databaseCount=len(candidate_identities), candidateIdentities=candidate_identities[:100]), sort_keys=True))
         raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_IDENTITY_UNPROVEN')
     return matches[0]
 

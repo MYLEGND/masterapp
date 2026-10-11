@@ -168,7 +168,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
       RELEASE_RESOURCE_GROUP: masterapp-rg
-      RELEASE_DATABASE_RESOURCE_GROUP: MasterApp-Data-RG
       DATABASE_AUTHORITY: masterapp-protect
       RELEASE_SHA: ${{ github.sha }}
       APPLICATION_RELEASE_SHA: ${{ github.sha }}
