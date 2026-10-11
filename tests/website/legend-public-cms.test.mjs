@@ -3970,3 +3970,60 @@ test('compiled publication does not short-circuit authorized editor loading',asy
     assert.ok(f.w.document.querySelector('.legend-cms-editor'));
   } finally {f.w.close();}
 });
+
+test('publication is only verified when the visitor document returns the matching identity', async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    let expected;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')){
+        expected=JSON.parse(options.body).requestId;
+        return {ok:true,json:async()=>({revision:2,publishedRevision:2,versionId:expected})};
+      }
+      if(options.method==='HEAD'){
+        assert.equal(options.credentials,'omit');
+        assert.equal(new URL(url).search,'');
+        return {ok:true,headers:{get:()=>expected}};
+      }
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish');
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/public version verified/);
+  } finally {f.close();}
+});
+test('uncertain publication reconciles the same request without a second POST',async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    let expected;let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')){
+        posts++;expected=JSON.parse(options.body).requestId;
+        throw new Error('response lost after commit');
+      }
+      if(String(url).includes('/manage/publication-status')){
+        assert.equal(new URL(url).searchParams.get('requestId'),expected);
+        return {ok:true,json:async()=>({found:true,isCurrent:true,revision:2,publication:{versionId:expected,publishedRevision:2}})};
+      }
+      if(options.method==='HEAD') return {ok:true,headers:{get:()=>null}};
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(posts,1);
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/verification pending/);
+  }finally{f.close();}
+});
+test('HTTP success without the requested publication identity stays unconfirmed',async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    f.w.fetch=async(url,options={})=>String(url).endsWith('/manage/publish')
+      ? {ok:true,json:async()=>({})} : original(url,options);
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
+  }finally{f.close();}
+});

@@ -101,11 +101,13 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             {
                 var eventName = behavior?.EventName ?? binding?.EventName ?? "unresolved";
                 var sources = stateEvents.Where(e => e.WebsiteContentVersionId == version?.Id &&
-                    (binding is not null ? e.WebsiteBindingId == binding.Id : automatic
+                    (binding is not null ? e.WebsiteBindingId == binding.Id &&
+                        ((string.IsNullOrWhiteSpace(e.ElementKey) ? e.ElementId : e.ElementKey) == element) &&
+                        (page == "*" || page.StartsWith("@shell/", StringComparison.Ordinal) || e.Path == page || e.PageKey == page) : automatic
                         ? AnalyticsEventCatalog.TryGetBehavior(e.EventType, out var b) && b.Key == behavior?.Key
                         : action is not null && CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "actionKey") == action &&
-                          (e.ElementKey == element || e.ElementId == element) &&
-                          (page == "*" || e.Path == page || e.PageKey == page))).ToArray();
+                          ((string.IsNullOrWhiteSpace(e.ElementKey) ? e.ElementId : e.ElementKey) == element) &&
+                          (page == "*" || page.StartsWith("@shell/", StringComparison.Ordinal) || e.Path == page || e.PageKey == page))).ToArray();
                 var selectedIds = sources.Select(e => e.Id).ToHashSet();
                 var deliveries = receipts.Where(r => r.OwnerKey == stateOwner?.Key && r.AnalyticsEventId.HasValue && selectedIds.Contains(r.AnalyticsEventId.Value))
                     .Concat(historicalReceipts.Where(pair => selectedIds.Contains(pair.Key)).Select(pair => pair.Value).Where(r => r.OwnerKey == stateOwner?.Key)).ToArray();
@@ -147,12 +149,34 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     Add(page, key, label, action, null, behavior, false);
                 }
             }
-            void Composition(string page, IEnumerable<WebsiteCompositionNode> nodes)
+            void Composition(string page, IEnumerable<WebsiteCompositionNode> nodes,
+                string? instancePrefix = null, HashSet<string>? componentPath = null)
             {
                 foreach (var node in nodes ?? [])
                 {
-                    Element(page, node.Id, node.Text ?? node.Title, node.ActionKey, node.Signals);
-                    Composition(page, node.Children);
+                    var key = instancePrefix is null ? node.Id : instancePrefix + "." + node.Id;
+                    // The renderer prefixes definition children and strips their
+                    // custom bindings; their managed CTA actions still render.
+                    Element(page, key, node.Text ?? node.Title, node.ActionKey,
+                        instancePrefix is null ? node.Signals : []);
+                    var fields = (instancePrefix is null ? node.FieldSignals.Keys.AsEnumerable() : [])
+                        .Concat(node.Experience?.Controls.Where(control => !string.IsNullOrWhiteSpace(control.Action?.ActionKey))
+                            .Select(control => control.Key) ?? []).Distinct(StringComparer.OrdinalIgnoreCase);
+                    foreach (var field in fields)
+                    {
+                        var action = node.Experience?.Controls.SingleOrDefault(control =>
+                            string.Equals(control.Key, field, StringComparison.OrdinalIgnoreCase))?.Action?.ActionKey;
+                        var bindings = instancePrefix is null && node.FieldSignals.TryGetValue(field, out var configured) ? configured : [];
+                        Element(page, key + ":field:" + field, field, action, bindings);
+                    }
+                    if (node.Type != "reusable") Composition(page, node.Children, instancePrefix, componentPath);
+                    if (node.Type == "reusable" && node.SyncSourceId is { } componentId &&
+                        document.ReusableComponents.TryGetValue(componentId, out var component) &&
+                        !(componentPath?.Contains(componentId) ?? false))
+                    {
+                        var path = new HashSet<string>(componentPath ?? [], StringComparer.Ordinal) { componentId };
+                        Composition(page, component.Composition, key, path);
+                    }
                 }
             }
 
@@ -176,8 +200,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                 Composition("@shell/footer", document.Shell.Footer);
                 foreach (var page in document.Pages)
                     Composition(page.Key, page.Value.Composition);
-                foreach (var component in document.ReusableComponents)
-                    Composition("@component/" + component.Key, component.Value.Composition);
+                // Only components reachable from the rendered page/shell participate.
             }
             foreach (var behavior in AnalyticsEventCatalog.Behaviors.Where(b => !string.IsNullOrWhiteSpace(b.AutomaticTrigger)))
                 Add("*", "automatic:" + behavior.Key, behavior.DisplayLabel, behavior.Key, null, behavior, true);

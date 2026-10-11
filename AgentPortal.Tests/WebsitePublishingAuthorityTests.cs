@@ -128,6 +128,28 @@ public sealed class WebsitePublishingAuthorityTests
 
 
     [Fact]
+    public async Task PublicationRequestReconcilesWithoutCreatingAnotherVersion()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Publication"));
+        var requestId = Guid.NewGuid();
+        var first = Body(await f.Controller.Publish(new(token, 1, requestId)));
+        Assert.Equal(requestId, first.GetProperty("versionId").GetGuid());
+        var count = await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync();
+        var retry = Body(await f.Controller.Publish(new(token, 1, requestId)));
+        Assert.True(retry.GetProperty("alreadyPublished").GetBoolean());
+        Assert.Equal(count, await f.Db.Set<Domain.Entities.WebsiteContentVersion>().CountAsync());
+        var status = Body(await f.Controller.PublicationStatus(token, requestId));
+        Assert.True(status.GetProperty("found").GetBoolean());
+        Assert.True(status.GetProperty("isCurrent").GetBoolean());
+        Assert.False(Body(await f.Controller.PublicationStatus(token, Guid.NewGuid())).GetProperty("found").GetBoolean());
+        Assert.IsType<UnauthorizedResult>(await f.Controller.PublicationStatus("invalid", requestId));
+        var published = Body(await f.Controller.Public("legend"));
+        Assert.Equal(requestId, published.GetProperty("publication").GetProperty("versionId").GetGuid());
+    }
+
+    [Fact]
     public async Task AgentContractBootstrapsCompact_AndLoadsCompleteScopedCatalogsOnDemand()
     {
         using var f = new Fixture();

@@ -5962,6 +5962,48 @@
     return normalizeDocument(next);
   }
 
+  let pendingPublicationKey = null;
+  let pendingPublication = null;
+  function restorePublication() {
+    // Management resolves the business/agent scope after initial bootstrap.
+    const key = 'legend-publication:' + SITE_KEY + ':' + BUSINESS_ID + ':' + AGENT_SLUG;
+    if (key === pendingPublicationKey) return;
+    pendingPublicationKey = key;
+    pendingPublication = null;
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(key) || 'null');
+      if (stored && typeof stored.requestId === 'string' && Number.isSafeInteger(stored.expectedRevision)) pendingPublication = stored;
+    } catch {}
+  }
+  function rememberPublication(value) {
+    pendingPublication = value;
+    try {
+      if (value) sessionStorage.setItem(pendingPublicationKey, JSON.stringify(value));
+      else sessionStorage.removeItem(pendingPublicationKey);
+    } catch {}
+  }
+  async function publicationRequest(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(url, {...options, cache:'no-store', signal:controller.signal});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Publication request failed ('+response.status+').')), {status:response.status,payload});
+      return payload;
+    } finally { clearTimeout(timeout); }
+  }
+  async function verifyPublishedPage(versionId) {
+    // Verify the visitor document, not just a successful management/API write.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const url = new URL(location.pathname, location.origin);
+      const response = await fetch(url, {method:'HEAD', cache:'no-store', credentials:'omit', signal:controller.signal});
+      return response.ok && response.headers.get('X-Legend-Publication-Id') === versionId;
+    } catch { return false; }
+    finally { clearTimeout(timeout); }
+  }
+
   let saving = false;
   async function save(publish = false, namedDraft = null) {
     if (saving) return false;
@@ -5988,14 +6030,35 @@
     let captureHistory=false;
     try {
       if(publish) {
+        restorePublication();
         if(status) status.textContent='Publishing…';
-        const response=await fetch(API_BASE+'/api/website-content/manage/publish',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ticket:editorTicket,expectedRevision:revision})
-        });
-        const payload=await response.json().catch(()=>({}));
-        if(!response.ok) throw Object.assign(new Error(payload.message || payload.error || ('Publish failed ('+response.status+').')),{status:response.status,payload});
+        let payload;
+        if (pendingPublication) {
+          const url = new URL(API_BASE+'/api/website-content/manage/publication-status');
+          url.searchParams.set('ticket', editorTicket);
+          url.searchParams.set('requestId', pendingPublication.requestId);
+          const outcome = await publicationRequest(url);
+          if (outcome.found) {
+            payload = {...outcome.publication, revision:outcome.revision, alreadyPublished:true, isCurrent:outcome.isCurrent};
+          } else if (outcome.revision !== pendingPublication.expectedRevision) {
+            rememberPublication(null);
+            throw new Error('The website changed while publication was being confirmed. Reload Website Studio before publishing again.');
+          }
+        }
+        if (!payload) {
+          if (!pendingPublication) rememberPublication({requestId:crypto.randomUUID(), expectedRevision:revision});
+          payload=await publicationRequest(API_BASE+'/api/website-content/manage/publish',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ticket:editorTicket,...pendingPublication})
+          });
+        }
+        if (payload.versionId !== pendingPublication?.requestId || !Number.isSafeInteger(payload.publishedRevision))
+          throw new Error('The publication response did not confirm the requested version.');
+        rememberPublication(null);
+        if (payload.alreadyPublished && (payload.isCurrent !== true || payload.revision !== payload.publishedRevision)) {
+          if(status) status.textContent='Publication confirmed, but newer changes exist. Reload Website Studio to review the current version.';
+          return false;
+        }
         revision=payload.revision ?? revision;
         if(payload.document){
           documentState=normalizeDocument(payload.document);
@@ -6004,7 +6067,9 @@
         }
         dirty=false;
         saved=true;
-        if(status) status.textContent='Published';
+        if(status) status.textContent='Publication saved; checking the public page…';
+        const verified=await verifyPublishedPage(payload.versionId);
+        if(status) status.textContent=verified ? 'Published — public version verified' : 'Publication saved — public page verification pending';
         return true;
       }
 
@@ -6079,7 +6144,9 @@
       const payload=error?.payload || {};
       if(payload.canonicalProtectionViolation===true)
         showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
-      if(status) status.textContent=payload.message || error?.message || 'Save failed';
+      if(status) status.textContent=publish && pendingPublication && !error?.status
+        ? 'Publication could not be confirmed. Retry to reconcile request '+pendingPublication.requestId+' before any new publication.'
+        : payload.message || error?.message || 'Save failed';
     } finally {
       saving=false;
       if(saved && dirty){

@@ -21,9 +21,35 @@ public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<We
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            try { await RunDueAsync(stoppingToken); }
+            try { await RunDueAsync(stoppingToken); await RetireSnapshotsAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception) { logger.LogError(exception, "Scheduled website publish scan failed."); }
+        }
+    }
+
+    public async Task RetireSnapshotsAsync(CancellationToken cancellationToken)
+    {
+        using var scan = scopes.CreateScope();
+        var database = scan.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var ids = await database.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(v => v.SnapshotRetiredUtc == null).GroupBy(v => v.StateId)
+            .Where(group => group.Count() > WebsiteSnapshotRetention.Limit)
+            .OrderBy(group => group.Key).Select(group => group.Key).Take(20).ToListAsync(cancellationToken);
+        foreach (var id in ids)
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            var state = await db.Set<WebsiteContentState>().SingleAsync(s => s.Id == id, cancellationToken);
+            try
+            {
+                await WebsiteSnapshotRetention.StageAsync(db, state, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) { /* Re-evaluate against fresh publication on the next scan. */ }
+            catch (InvalidOperationException exception)
+            {
+                logger.LogWarning(exception, "Website snapshot retirement requires reconciliation for state {StateId}.", id);
+            }
         }
     }
 

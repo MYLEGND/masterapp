@@ -56,7 +56,9 @@ public static class PublishedWebsiteBindingResolver
             var page = document.Pages.FirstOrDefault(pair =>
                 string.Equals(NormalizeRoute(siteKey, pair.Key), route, StringComparison.OrdinalIgnoreCase)).Value;
             if (page is null) return null;
-            Walk(page.Composition, node =>
+            // Shared shell is rendered on this route. Reusable definition children
+            // deliberately carry no signals in the renderer; only instances do.
+            Walk(document.Shell.Header.Concat(page.Composition).Concat(document.Shell.Footer), node =>
             {
                 Add(matches, node.Id, null, node.ActionKey, node.Signals, bindingId);
                 foreach (var (fieldKey, bindings) in node.FieldSignals ?? new())
@@ -174,7 +176,7 @@ public static class PublishedWebsiteBindingResolver
         foreach (var node in nodes ?? [])
         {
             visit(node);
-            Walk(node.Children, visit);
+            if (node.Type != "reusable") Walk(node.Children, visit);
         }
     }
 

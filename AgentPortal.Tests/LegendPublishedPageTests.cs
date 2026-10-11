@@ -78,6 +78,7 @@ public sealed class LegendPublishedPageTests
         await f.Publish("First publication");
         var first = Assert.IsType<ContentResult>(await f.Controller.LegendPage());
         Assert.Contains("First publication", first.Content);
+        Assert.Equal(f.State.PublishedVersionId.ToString(), f.Controller.Response.Headers["X-Legend-Publication-Id"].ToString());
         Assert.DoesNotContain("Unpublished draft", first.Content);
         Assert.DoesNotContain("BUILD A LIFE WORTHY OF YOUR LEGACY", first.Content);
         Assert.Contains("https://www.mylegnd.com/", first.Content);
@@ -85,6 +86,7 @@ public sealed class LegendPublishedPageTests
         await f.Publish("Second publication");
         var second = Assert.IsType<ContentResult>(await f.Controller.LegendPage());
         Assert.Contains("Second publication", second.Content);
+        Assert.Equal(f.State.PublishedVersionId.ToString(), f.Controller.Response.Headers["X-Legend-Publication-Id"].ToString());
         Assert.DoesNotContain("First publication", second.Content);
     }
 

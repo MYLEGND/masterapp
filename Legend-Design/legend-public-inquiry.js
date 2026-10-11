@@ -30,10 +30,12 @@
     form.dataset.legendInquiryBound = 'true';
     let submissionId = null;
     let pendingPayload = null;
+    let pendingFingerprint = null;
+    let inFlight = false;
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (!form.reportValidity()) return;
+      if (inFlight || !form.reportValidity()) return;
 
       // The shared tracker owns browser form telemetry. This AJAX runtime only
       // reports the attempt into that existing lifecycle; it does not emit a
@@ -106,12 +108,28 @@
         measurementConsent: measurementConsent?.state || null
       };
 
-      const fingerprint = JSON.stringify(values);
-      if (pendingPayload !== fingerprint) {
+      // Attribution can change after an uncertain response. Keep the original
+      // request and identity for retries of the same visitor-entered inquiry.
+      const fingerprint = JSON.stringify([
+        values.firstName, values.lastName, values.phone, values.email, values.message,
+        values.sourcePath, values.sourceFormElementId, values.consent,
+        values.experienceId, values.answers
+      ]);
+      if (pendingFingerprint !== fingerprint) {
         submissionId = crypto.randomUUID();
-        pendingPayload = fingerprint;
+        pendingFingerprint = fingerprint;
+        pendingPayload = { submissionId, ...values };
       }
 
+      pendingPayload.measurementConsent = values.measurementConsent;
+      if (!measurementAllowed) {
+        pendingPayload.obref = null;
+        pendingPayload.fbp = null;
+        pendingPayload.fbc = null;
+      }
+      inFlight = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       button.disabled = true;
       status.textContent = 'Sending your inquiry…';
       try {
@@ -119,7 +137,8 @@
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ submissionId, ...values })
+          body: JSON.stringify(pendingPayload),
+          signal: controller.signal
         });
         const result = await response.json().catch(() => null);
         if (!response.ok || !result?.accepted) throw new Error('inquiry_failed');
@@ -139,9 +158,12 @@
         form.reset();
         submissionId = null;
         pendingPayload = null;
+        pendingFingerprint = null;
       } catch {
-        status.textContent = 'Your inquiry could not be confirmed. Please try again.';
+        status.textContent = 'Your inquiry could not be confirmed. Retry without changing your details to safely reuse request ' + submissionId + '.';
       } finally {
+        clearTimeout(timeout);
+        inFlight = false;
         button.disabled = false;
       }
     });
