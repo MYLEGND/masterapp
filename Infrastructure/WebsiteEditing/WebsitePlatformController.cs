@@ -3725,9 +3725,6 @@ public class WebsitePlatformController : ControllerBase
         return profile is null ? null : NormalizeOwner(profile.AgentUserId);
     }
 
-    private string CommercePublicBaseUrl() =>
-        (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
-
     private async Task<string?> ResolveCanonicalStoreRootAsync(
         string siteKey,
         WebsiteCommerceScope scope,
@@ -3791,7 +3788,9 @@ public class WebsitePlatformController : ControllerBase
             };
 
         var root = await ResolveCanonicalStoreRootAsync(siteKey, scope, cancellationToken);
-        var managerBase = CommercePublicBaseUrl();
+        // Private management is served by the shared website API even before
+        // the customer domain has completed its public storefront cutover.
+        var managerBase = WebsiteContentApiBaseUrl();
         var escapedTicket = string.IsNullOrWhiteSpace(ticket) ? null : Uri.EscapeDataString(ticket);
         return new
         {
