@@ -2532,6 +2532,7 @@ RELEASE_CONTROL_ONLY_EXACT = frozenset({
     "scripts/release-package.py",
     "scripts/validation-resume.py",
     "scripts/test-validation-resume.py",
+    "scripts/test-fast-track-ready-no-sql.py",
     "scripts/test-release-policy.py",
     "scripts/test-release-lifecycle.py",
     "scripts/test-deploy-approved-app.py",
