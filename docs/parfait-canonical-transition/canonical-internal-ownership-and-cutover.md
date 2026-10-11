@@ -152,3 +152,34 @@ retried. Full live physical proof must still pass on the corrected observer.
 - Retain artifact `11698628566` (`parfait-fast-track-migration-3c1277a9b14c9ebc583ae890ef24f18c90a9bb05-1`), digest `sha256:45fc755e24d09f01aaf3043e375633ccaee44853a8fb7e6198400f5ffda96127`. Do not rebuild compatible bytes or repeat completed production operations. This is rehearsal evidence, not production mutation admission.
 - The isolated workflow now participates in the existing `validation-resume.py` gate model. Reuse requires authenticated successful producer steps and matching source/execution dependencies. The previously unconditional workflow generation is content-attested; its actual GitHub step results remain mandatory. Unknown planner commands, changed checkout refs, incorrect skip conditions, failed checks, or dependency changes invalidate reuse.
 - Fast-track execution identity now has an explicit exact-run/current-head verifier. It does not independently authorize deployment or SQL. Production admission, migration journal integration, tenant/media reconciliation, deployment, live functional verification, and cutover remain incomplete.
+
+### Combined published website/reporting release and recovery wiring
+
+PR #580 now includes the entire `fix/legend-published-first-response-20261011`
+branch at `4085e87ae637564cdeaa670b57412a501f48035e`, integrated at
+`5157b57cdb782cc021245c9daa6e01e54d19ab10`. The additional snapshot-retirement
+migration invalidates the payment-only bundle above; that artifact remains preserved.
+Commit `a862a6c303b46ecf538a8c3e234222a68ab357bc` corrects the disposable SQL
+fixture to exercise payment and all successor migrations together.
+
+The existing fast-track workflow now admits exact validated merged source, restores
+compatible rehearsed migration bytes and their matching observer, verifies a fresh
+managed SQL restore window, and invokes the canonical migration journal. A managed
+restore-window check is not a performed restore. Application ZIPs are retained before
+upload; retries restore those bytes and reconcile durable provider operations.
+Successful siblings remain intact. Unknown or missing mutation history never permits
+blind replay. Historical protected-workflow reads reconcile shared-resource activity;
+they do not make that branch a release source or execution authority.
+
+Routing runs only after all affected applications succeed. It preserves the existing
+zone/routes, variables and bridge secret; tags Worker publication with its durable
+operation identity and reconciles the exact live version after ambiguous responses.
+Runtime provenance, favicon and sitemap checks remain required. No DNS or commerce
+cutover flags are changed by this publication path.
+
+Local focused recovery checks: 99 release-child, 54 operation-journal, 122 application
+reconciliation, 16 history-audit, 30 fast-track validation, 12 probe-package, 5 read-only
+workflow and 13 new fast-track rejection/recovery tests passed. Earlier combined
+browser/rendering/routing checks passed 226 tests. These are source tests, not live
+lead attribution evidence. Production deployment and the controlled website → CRM →
+scoped analytics → correct Meta destination → reporting reconciliation remain pending.

@@ -138,7 +138,7 @@ class ReleaseChildTests(unittest.TestCase):
         self.published = []
         self.env = dict(APPLICATION_RELEASE_SHA='a' * 40, RELEASE_SHA='b' * 40,
                         GITHUB_REPOSITORY='owner/repo', GITHUB_RUN_ID='8', GITHUB_RUN_ATTEMPT='1', GH_TOKEN='fixture')
-        self.authority = type('Authority', (), {})()
+        self.authority = type('Authority', (), {'FAST_TRACK_PR_BASE': 'Legend/fast-track-release'})()
         self.authority.direct_child_identity = lambda child, revision, material: material
         self.authority.direct_child_operation_identity = lambda child, revision, material: material
         self.authority.release_child_history = lambda repo, child, identity, token, phase: self.records.get((phase, identity))
@@ -697,6 +697,8 @@ class ChildHistorySafetyTests(unittest.TestCase):
         self.total = 1
 
     def api(self, repo, path, token):
+        if path.startswith('actions/runs?branch=Legend%2Ffast-track-release&'):
+            return dict(workflow_runs=[], total_count=0)
         if path.startswith('actions/runs?branch=legend%2Fapproved-changes&event=workflow_dispatch&per_page=100&page='):
             return dict(workflow_runs=[self.run], total_count=self.total)
         if '/jobs?' in path:
@@ -2025,8 +2027,8 @@ class MigrationBoundaryResolutionTests(unittest.TestCase):
     def authority(self, runs):
         import contextlib
         from types import SimpleNamespace
-        return SimpleNamespace(selected_release_target_keys=lambda targets: targets,
-            assert_protected_release_execution=lambda: None,
+        return SimpleNamespace(FAST_TRACK_PR_BASE='Legend/fast-track-release', selected_release_target_keys=lambda targets: targets,
+            assert_release_execution=lambda: None,
             evidence_lookup_budget=lambda deadline: contextlib.nullcontext(),
             _release_history_runs=lambda *args: iter(runs),
             readiness_evidence=lambda *args, **kwargs: self.fail('No obsolete-policy lookup for fresh no-write proof'))
@@ -2091,7 +2093,7 @@ class MigrationProductionObservationTests(unittest.TestCase):
             self.events.append('settle-workers-and-history');return self.report
         self.audit=SimpleNamespace(audit=settle,BLOCKED_CODES={'INVALID'},
             STATUS_CODES={'INVALID','HISTORICAL_EXECUTION_REQUIRES_RECONCILIATION'})
-        self.auth=SimpleNamespace(assert_protected_release_execution=lambda:self.current,
+        self.auth=SimpleNamespace(assert_release_execution=lambda:self.current,
             evidence_lookup_budget=lambda *args:contextlib.nullcontext())
         def observe(*args,**kwargs):
             self.assertTrue(kwargs['activity']);self.events.append('bracketed-observation');return dict(self.before)

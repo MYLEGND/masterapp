@@ -97,12 +97,15 @@ jobs:
         if: ${{ fromJSON(steps.resume.outputs.plan).gates['contracts'].run }}
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo \
-            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests|FullyQualifiedName~CommerceLegacyTransferTests|FullyQualifiedName~ParfaitOriginalPublicPagesTests|FullyQualifiedName~CommerceAutomationDispatcherLeaseTests|FullyQualifiedName~CommercePreviewMediaTests|FullyQualifiedName~CommerceSharedHostCutoverTests|FullyQualifiedName~CommerceCutoverStartupProofTests|FullyQualifiedName~CommerceCanonicalInternalBrandIsolationTests|FullyQualifiedName~CommerceManagementCapabilityPolicyTests|FullyQualifiedName~CommerceOrderMailTenantIsolationTests'
+            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests|FullyQualifiedName~CommerceLegacyTransferTests|FullyQualifiedName~ParfaitOriginalPublicPagesTests|FullyQualifiedName~CommerceAutomationDispatcherLeaseTests|FullyQualifiedName~CommercePreviewMediaTests|FullyQualifiedName~CommerceSharedHostCutoverTests|FullyQualifiedName~CommerceCutoverStartupProofTests|FullyQualifiedName~CommerceCanonicalInternalBrandIsolationTests|FullyQualifiedName~CommerceManagementCapabilityPolicyTests|FullyQualifiedName~CommerceOrderMailTenantIsolationTests|FullyQualifiedName~AdversarialReportingTruthTests|FullyQualifiedName~Meta|FullyQualifiedName~Analytics|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteSnapshotRetentionTests|FullyQualifiedName~LeadSnapshotAttributionTests'
 
       - name: Verify selective Cloudflare commerce routing without deployment
         id: gate_routing
         if: ${{ fromJSON(steps.resume.outputs.plan).gates['routing'].run }}
-        run: node --test Legend-Cloudflare/tests/website-routing/*.test.mjs
+        run: |
+          npm ci --prefix tests/website --ignore-scripts --no-audit --no-fund
+          npm ci --prefix Legend-Website --ignore-scripts --no-audit --no-fund
+          node --test Legend-Cloudflare/tests/website-routing/*.test.mjs Legend-Website/scripts/*.test.mjs tests/website/legend-public-cms.test.mjs tests/website/legend-public-inquiry.test.mjs tests/website/public-first-paint.test.mjs
 
       - name: Verify scoped payment ownership, replay safety and provider contracts
         id: gate_payments
@@ -119,6 +122,9 @@ jobs:
           python3 scripts/test-parfait-readonly-workflow.py
           python3 scripts/test-migration-probe-package.py
           python3 scripts/test-release-migration-probe-retry.py
+          python3 scripts/test-release-children.py
+          python3 scripts/test-release-migration-history-audit.py
+          python3 scripts/test-fast-track-release.py
           dotnet build scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet build scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet run --project scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --no-build -- contract-test

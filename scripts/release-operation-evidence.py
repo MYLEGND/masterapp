@@ -219,7 +219,10 @@ class ChildJournal:
         self.revision = env['APPLICATION_RELEASE_SHA']
         self.execution_revision = env.get('RELEASE_SHA') or self.revision
         self.identity = self.authority.direct_child_operation_identity(child, self.execution_revision, material_identity)
-        self.evidence_identity = self.authority.direct_child_identity(child, self.execution_revision, material_identity)
+        identity_options = {}
+        if env.get('GITHUB_REF') == 'refs/heads/' + self.authority.FAST_TRACK_PR_BASE:
+            identity_options['workflow'] = self.authority.FAST_TRACK_RELEASE_WORKFLOW
+        self.evidence_identity = self.authority.direct_child_identity(child, self.execution_revision, material_identity, **identity_options)
         self.repository = env['GITHUB_REPOSITORY']
         self.token = env.get('GH_TOKEN') or env['GITHUB_TOKEN']
         self.run = int(env['GITHUB_RUN_ID'])

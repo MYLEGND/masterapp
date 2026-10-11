@@ -308,7 +308,7 @@ def audit(auth, repo, token, *, current_execution=None):
         raise RuntimeError('RELEASE_HISTORY_TRUNCATED')
     if len({run['id'] for run in runs}) != len(runs):
         raise RuntimeError('RELEASE_HISTORY_INVENTORY_INCOMPLETE')
-    if current_execution is not None:
+    if current_execution is not None and not auth.is_fast_track_producer(repo, current_execution):
         # Only runtime may supply this API-authenticated current execution. Its
         # earlier attempts remain in scope; the in-flight attempt has no result.
         current = [r for r in runs if r['id'] == current_execution['id']]
@@ -336,6 +336,13 @@ def audit(auth, repo, token, *, current_execution=None):
         futures = [pool.submit(contextvars.copy_context().run, classify_attempt, auth, repo, token, run, attempt)
                    for run, attempt in tasks]
         rows = [f.result() for f in futures]
+    for run, attempt, job, step in auth.fast_track_child_attempts(repo, 'migrations', token,
+            current_run=current_execution['id'] if current_execution else None,
+            current_attempt=current_execution['run_attempt'] if current_execution else None):
+        source = auth._release_history_source(repo, run['head_sha'],
+            '.github/workflows/' + auth.FAST_TRACK_RELEASE_WORKFLOW, token)
+        rows.append(dict(run=run['id'], attempt=attempt, parent=run.get('conclusion'),
+            sourceBlob=blob_sha(source), code='POSSIBLE_SQL_WRITE_REQUIRES_LIVE_FENCE'))
     rows.sort(key=lambda x: (-x['run'], x['attempt']))
     return {'schemaVersion': 1, 'scope': 'READ_ONLY_HISTORICAL_MIGRATION',
             'completeHistory': True, 'historicalRuns': len(runs),

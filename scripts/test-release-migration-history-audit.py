@@ -25,6 +25,7 @@ class AuditTests(unittest.TestCase):
                 return {'total_count': 1, 'jobs': [job]}
             raise AssertionError('unexpected remote read')
         auth = SimpleNamespace(
+            is_fast_track_producer=lambda *args: False, fast_track_child_attempts=lambda *args, **kwargs: [],
             _trusted_child_producer=lambda repo, run: None,
             api_get=get,
             release_attempt_never_entered=lambda jobs: False,
@@ -92,6 +93,7 @@ class AuditTests(unittest.TestCase):
 
     def test_incomplete_history_fails_not_skips(self):
         auth = SimpleNamespace(
+            is_fast_track_producer=lambda *args: False, fast_track_child_attempts=lambda *args, **kwargs: [],
             TRUSTED_PR_BASE='legend/approved-changes',
             DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml',
             api_get=lambda *args: {'workflow_runs': [], 'total_count': 1})
@@ -108,6 +110,7 @@ class AuditTests(unittest.TestCase):
                  path='.github/workflows/all-intentional-direct-release-20260918.yml'),
         ]
         auth = SimpleNamespace(
+            is_fast_track_producer=lambda *args: False, fast_track_child_attempts=lambda *args, **kwargs: [],
             TRUSTED_PR_BASE='legend/approved-changes',
             DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml',
             api_get=lambda *args: {'workflow_runs': runs, 'total_count': 2})
@@ -126,7 +129,7 @@ class AuditTests(unittest.TestCase):
         def get(repo,path,token):
             if path=='actions/runs/8/attempts/1':return dict(run,run_attempt=1,status='completed')
             return dict(workflow_runs=[run],total_count=1)
-        auth=SimpleNamespace(TRUSTED_PR_BASE='legend/approved-changes',DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml',api_get=get)
+        auth=SimpleNamespace(is_fast_track_producer=lambda *args: False, fast_track_child_attempts=lambda *args, **kwargs: [], TRUSTED_PR_BASE='legend/approved-changes',DIRECT_RELEASE_WORKFLOW='all-intentional-direct-release-20260918.yml',api_get=get)
         calls=[]
         def classify(auth,repo,token,attempt_run,attempt):
             calls.append((attempt,attempt_run['status']));return dict(run=8,attempt=attempt,code='MODERN_NOOP_PROVEN')

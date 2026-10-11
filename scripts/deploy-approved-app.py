@@ -732,11 +732,99 @@ def transaction_disposition(plan, package_root, revision):
     observations = [by_target[row['app']] for row in plan['targets']]
     return {'schemaVersion': 1, 'candidateRevision': revision, 'terminal': True, 'targets': observations}
 
+def verify_fast_track_favicon(key):
+    paths = {'website': ('/favicon.jpg', 'image/jpeg', bytes([255,216,255])),
+             'protect': ('/images/favicon/legend-favicon.jpg', 'image/jpeg', bytes([255,216,255])),
+             'parfait': ('/images/favicon/parfait-logo.png', 'image/png', bytes([137,80,78,71]))}
+    if key not in paths:
+        return
+    path, mime, signature = paths[key]
+    request = urllib.request.Request('https://' + TARGETS[key]['host'] + path,
+        headers={'Cache-Control': 'no-cache'})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        if response.status != 200 or mime not in response.headers.get('Content-Type', '') or not response.read(64).startswith(signature):
+            raise ValueError('FAST_TRACK_LIVE_FAVICON_UNPROVEN:' + key)
+    print('FAST_TRACK_LIVE_FAVICON_VERIFIED:' + key)
+
+
+def fast_track_restore_package(key, directory):
+    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    name = 'fast-track-package-' + run['head_sha'] + '-' + key
+    payload = _RELEASE_AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    rows = payload.get('artifacts')
+    if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+        raise ValueError('FAST_TRACK_PACKAGE_INVENTORY_UNPROVEN')
+    matches = [r for r in rows if r.get('name') == name]
+    if len(matches) > 1 or any(r.get('expired') is not False for r in matches):
+        raise ValueError('FAST_TRACK_PACKAGE_EXPIRED_OR_AMBIGUOUS')
+    if matches:
+        _RELEASE_AUTHORITY._download_run_artifact(repository, run['id'], name, directory, artifact_id=matches[0]['id'])
+        verify_package(directory / 'deploy.zip', run['head_sha'], TARGETS[key]['static'])
+        return True
+    if run['run_attempt'] > 1:
+        display = TARGETS[key]['sourceRoot'] if key in {'portal', 'client'} else key.title()
+        for attempt in range(1, run['run_attempt']):
+            jobs = _RELEASE_AUTHORITY.api_get(repository,
+                f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+            if jobs.get('total_count') != len(jobs.get('jobs', [])):
+                raise ValueError('FAST_TRACK_PACKAGE_PRIOR_ATTEMPT_UNPROVEN')
+            owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Affected App Deploy — ' + display]
+            if len(owners) != 1:
+                raise ValueError('FAST_TRACK_PACKAGE_PRIOR_OWNER_UNPROVEN')
+            if owners[0].get('conclusion') == 'skipped' or owners[0].get('status') == 'queued':
+                continue
+            steps = [s for s in owners[0].get('steps', []) if s.get('name') == 'Publish or reconcile exact application bytes']
+            if len(steps) != 1 or steps[0].get('conclusion') != 'skipped':
+                raise ValueError('FAST_TRACK_RETAINED_PACKAGE_MISSING_NO_REBUILD')
+    return False
+
+
+def fast_track_deploy(key, package_root):
+    """Use the canonical one-upload reconciler from the existing fast-track lane."""
+    run = _RELEASE_AUTHORITY.assert_fast_track_release_execution()
+    revision = run['head_sha']
+    before = os.environ.get('BEFORE', '')
+    if not re.fullmatch('[a-f0-9]{40}', before):
+        raise ValueError('FAST_TRACK_BASELINE_UNPROVEN')
+    changed = subprocess.check_output(['git', 'diff', '--name-only', before, revision], text=True).splitlines()
+    scope = _RELEASE_AUTHORITY.fast_track_scope(changed)
+    if TARGETS[key]['releaseName'] not in {r['azure_app'] for r in scope['matrix']['include']}:
+        raise ValueError('FAST_TRACK_TARGET_OUTSIDE_SCOPE')
+    if scope['commerce']:
+        _RELEASE_AUTHORITY.fast_track_source_admission()
+        jobs = _RELEASE_AUTHORITY.api_get(os.environ['GITHUB_REPOSITORY'],
+            f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100",
+            os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN'])
+        owners = [j for j in jobs.get('jobs', []) if j.get('name') == 'Reconcile production schema before publication']
+        if (jobs.get('total_count') != len(jobs.get('jobs', [])) or len(owners) != 1
+            or owners[0].get('conclusion') != 'success'):
+            raise ValueError('FAST_TRACK_SCHEMA_RELEASE_GATE_UNPROVEN')
+    package = package_root / 'deploy.zip'
+    digest = verify_package(package, revision, TARGETS[key]['static'])
+    azure = target_azure(key, package, revision)
+    baseline = azure.observed_revision()
+    if baseline is None:
+        raise DeploymentReconciliationRequired('FAST_TRACK_LIVE_BASELINE_UNAVAILABLE')
+    os.environ['PACKAGE_PRODUCER_RUN'] = str(run['id'])
+    journal = operation_journal(key, revision, digest, baseline)
+    # Raw current provenance alone cannot erase an unknown earlier upload.
+    if journal.history_error is not None:
+        raise journal.history_error
+    result = reconcile(azure, baseline=journal.baseline, journal=journal,
+        timeout=PUBLICATION_RECONCILE_TIMEOUT_SECONDS, require_receipt=True)
+    verify_fast_track_favicon(key)
+    print('FAST_TRACK_CANONICAL_PUBLICATION:' + key + ':' + result)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--target', choices=TARGETS)
     mode.add_argument('--targets-json')
+    mode.add_argument('--fast-track-target', choices=TARGETS)
     parser.add_argument('--baselines-json')
     parser.add_argument('--package-root', default='/tmp/diagnostics-packages')
     parser.add_argument('--rollback-root', default='/tmp/rollback-packages')
@@ -749,6 +837,9 @@ def main():
                         help='Publish all prepared canonical targets concurrently after the all-target preflight barrier')
     parser.add_argument('--target-results-dir', type=Path, default=Path('/tmp/release-target-results'))
     args = parser.parse_args()
+    if args.fast_track_target:
+        fast_track_deploy(args.fast_track_target, Path(args.package_root))
+        return
     _RELEASE_AUTHORITY.assert_protected_release_execution()
 
     revision = os.environ.get('APPLICATION_RELEASE_SHA') or os.environ.get('RELEASE_SHA')

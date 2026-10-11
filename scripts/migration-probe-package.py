@@ -368,6 +368,114 @@ def rehearse_fast_track(revision, directory, observation_path, probe_directory):
     print('FAST_TRACK_EXACT_BUNDLE_REHEARSAL:PASS:lost-receipt-recovery-without-repeat-sql')
 
 
+def fast_track_probe_compatible(source, revision):
+    """Bundle identity and observer/rehearsal implementation are separate proofs."""
+    import ast
+    probe_paths = ['scripts/MigrationReleaseProbe', 'Directory.Build.props', 'Directory.Packages.props', 'global.json']
+    if subprocess.run(['git', 'diff', '--quiet', source, revision, '--', *probe_paths], capture_output=True).returncode:
+        return False
+    if AUTHORITY.migration_probe_identity(source, source)['runtimeIdentity'] != AUTHORITY.migration_probe_identity(revision, revision)['runtimeIdentity']:
+        return False
+    def function_contract(ref, path, name):
+        parsed = ast.parse(AUTHORITY.git_show_file(ref, path))
+        selected = [n for n in parsed.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name]
+        return ast.dump(selected[0], include_attributes=False) if len(selected) == 1 else None
+    for path, name in (('scripts/release-migration.py', 'rehearse'),
+                       ('scripts/migration-probe-package.py', 'rehearse_fast_track'),
+                       ('scripts/migration-probe-package.py', 'isolated_sql')):
+        prior = function_contract(source, path, name)
+        if prior is None or prior != function_contract(revision, path, name):
+            return False
+    return True
+
+
+def restore_fast_track(revision, directory, probe_directory):
+    """Restore positively proven compatible bytes; never build or rehearse again."""
+    import tempfile
+    import shutil
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    expected = AUTHORITY.package_component_manifest(revision, 'migration')
+    if not expected['reusable']:
+        raise ValueError('FAST_TRACK_MIGRATION_DEPENDENCIES_UNPROVEN')
+    branch = 'isolation%2Fcanonical-scoped-commerce-internal-20261010'
+    for page in range(1, 11):
+        payload = AUTHORITY.api_get(repository, f'actions/runs?branch={branch}&per_page=100&page={page}', token)
+        runs = payload.get('workflow_runs')
+        if not isinstance(runs, list):
+            raise ValueError('FAST_TRACK_REHEARSAL_HISTORY_UNAVAILABLE')
+        for run in runs:
+            source = run.get('head_sha', '')
+            if (run.get('path') != '.github/workflows/parfait-cutover-live-readonly.yml'
+                or run.get('event') not in {'push', 'workflow_dispatch'}
+                or run.get('head_repository', {}).get('full_name') != repository
+                or run.get('status') != 'completed' or run.get('conclusion') != 'success'):
+                continue
+            if subprocess.run(['git', 'merge-base', '--is-ancestor', source, revision], capture_output=True).returncode:
+                continue
+            prior = AUTHORITY.package_component_manifest(source, 'migration')
+            if not prior['reusable'] or prior['contentIdentity'] != expected['contentIdentity']:
+                continue
+            if not fast_track_probe_compatible(source, revision):
+                continue
+            inventory = AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+            rows = inventory.get('artifacts')
+            if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+                raise ValueError('FAST_TRACK_REHEARSAL_ARTIFACTS_INCOMPLETE')
+            retained = []
+            for artifact in rows:
+                match = re.fullmatch('parfait-fast-track-migration-' + source + r'-([1-9][0-9]*)', artifact.get('name', ''))
+                if match and artifact.get('expired') is False:
+                    original_attempt = int(match[1])
+                    if original_attempt > run['run_attempt']:
+                        raise ValueError('FAST_TRACK_REHEARSAL_ATTEMPT_UNPROVEN')
+                    retained.append((original_attempt, artifact))
+            if not retained:
+                continue
+            attempt = max(item[0] for item in retained)
+            name = f'parfait-fast-track-migration-{source}-{attempt}'
+            matches = [a for original_attempt, a in retained if original_attempt == attempt]
+            observers = [a for a in rows if a.get('name') == 'parfait-readonly-schema-observer-' + source and a.get('expired') is False]
+            if len(matches) != 1 or len(observers) != 1:
+                continue
+            jobs_payload = AUTHORITY.api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+            jobs = jobs_payload.get('jobs')
+            if not isinstance(jobs, list) or jobs_payload.get('total_count') != len(jobs):
+                raise ValueError('FAST_TRACK_REHEARSAL_JOBS_INCOMPLETE')
+            owners = [j for j in jobs if j.get('name') == 'Rehearse exact migration bundle and recovery without production credentials']
+            if len(owners) != 1 or owners[0].get('conclusion') != 'success':
+                continue
+            with tempfile.TemporaryDirectory(prefix='legend-rehearsal-restore-') as temporary:
+                restored = Path(temporary)
+                AUTHORITY._download_run_artifact(repository, run['id'], name, restored, artifact_id=matches[0]['id'])
+                receipt = json.loads((restored / 'rehearsal.json').read_text())
+                if receipt.get('state') == 'not-required':
+                    continue
+                component = json.loads((restored / 'migration.component.json').read_text())
+                bundle = restored / AUTHORITY.MIGRATION_BUNDLE_NAME
+                if (receipt.get('purpose') != 'fast-track-migration-rehearsal' or receipt.get('proven') is not True
+                    or receipt.get('isolated') is not True or receipt.get('syntheticDataOnly') is not True
+                    or receipt.get('authorizesMutation') is not False or receipt.get('releaseAdmission') is not False
+                    or receipt.get('candidate') != source or receipt.get('producingRun') != run['id']
+                    or receipt.get('producingAttempt') != attempt or receipt.get('sqlImage') != SQL_REHEARSAL_IMAGE
+                    or receipt.get('counts') != {'mutations': 1, 'intents': 1, 'successReceipts': 2}
+                    or component.get('applicationReleaseSha') != source or component.get('component') != 'migration'
+                    or digest(bundle) != receipt.get('bundleDigest') or component.get('sha256') != receipt.get('bundleDigest')):
+                    raise ValueError('FAST_TRACK_EXACT_REHEARSAL_BYTES_UNPROVEN')
+                directory.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(bundle, directory / bundle.name)
+                (directory / bundle.name).chmod(0o700)
+                shutil.copyfile(restored / 'rehearsal.json', directory / 'rehearsal.json')
+                receipt['source'] = dict(runId=run['id'], runAttempt=attempt, artifactId=matches[0]['id'],
+                    contentIdentity=expected['contentIdentity'], producerRevision=source)
+                (directory / 'source.json').write_text(json.dumps(receipt, sort_keys=True) + '\n')
+            AUTHORITY._download_run_artifact(repository, run['id'], observers[0]['name'], probe_directory, artifact_id=observers[0]['id'])
+            return receipt
+        if len(runs) < 100:
+            break
+    raise ValueError('FAST_TRACK_COMPATIBLE_REHEARSAL_MISSING')
+
+
 def test_schema_contract(directory):
     subprocess.run(['dotnet', 'publish', 'scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj',
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
