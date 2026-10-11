@@ -1229,6 +1229,88 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class ParfaitValidationResumeTests(unittest.TestCase):
+    workflow='parfait-isolated-validation.yml'
+
+    def test_control_fix_preserves_application_and_sql_evidence(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,
+            ['scripts/validation-resume.py','scripts/test-validation-resume.py'], 'authenticated-prior')
+        self.assertEqual({key for key,row in plan['gates'].items() if row['run']},{'migration-contract'})
+
+    def test_application_change_invalidates_actual_consumers(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,
+            ['CommerceCore/Controllers/StoreCheckoutController.cs'],'authenticated-prior')
+        self.assertTrue(plan['gates']['build']['run'])
+        self.assertTrue(plan['gates']['payments']['run'])
+        self.assertTrue(plan['gates']['publish']['run'])
+        self.assertFalse(plan['gates']['routing']['run'])
+
+    def test_failed_gate_is_never_preserved(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        steps['Verify selective Cloudflare commerce routing without deployment']='failure'
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,[],'authenticated-prior')
+        self.assertTrue(plan['gates']['routing']['run'])
+
+    def test_planner_instrumentation_does_not_hide_source_mutation(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        safe=m._gate_execution_contract(source,config,'build')
+        altered=source.replace("          PYPLAN", "          PYPLAN\n          echo source-mutation >> CommerceCore/Controllers/StoreCheckoutController.cs",1)
+        self.assertNotEqual(safe,m._gate_execution_contract(altered,config,'build'))
+
+    def test_wrong_gate_skip_condition_invalidates_execution_contract(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        changed=source.replace(".gates['build'].run", ".gates['routing'].run",1)
+        self.assertNotEqual(m._gate_execution_contract(source,config,'build'),
+                            m._gate_execution_contract(changed,config,'build'))
+
+    def test_checkout_ref_change_invalidates_execution_contract(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        changed=source.replace('          fetch-depth: 0','          fetch-depth: 0\n          ref: other-branch',1)
+        self.assertNotEqual(m._gate_execution_contract(source,config,'build'),
+                            m._gate_execution_contract(changed,config,'build'))
+
+
+class FastTrackExecutionIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',
+            GITHUB_REF='refs/heads/Legend/fast-track-release',GITHUB_REPOSITORY='owner/repo',
+            GITHUB_TOKEN='test-token',GITHUB_SHA='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
+            GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/legend-fast-track-ui.yml@refs/heads/Legend/fast-track-release')
+        self.run=dict(id=123,run_attempt=2,path='.github/workflows/legend-fast-track-ui.yml',
+            head_branch='Legend/fast-track-release',event='push',head_sha='a'*40,status='in_progress',
+            head_repository=dict(full_name='owner/repo'))
+
+    def invoke(self, run=None, head=None):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=[
+            self.run if run is None else run,dict(object=dict(sha=head or 'a'*40))]):
+            return m.assert_fast_track_release_execution()
+
+    def test_exact_current_fast_track_run_authenticated(self):
+        self.assertEqual(self.invoke(),self.run)
+        self.assertNotIn('releaseAdmission',self.invoke())
+
+    def test_other_branch_event_or_workflow_rejected_before_provider_read(self):
+        for key,value in [('GITHUB_REF','refs/heads/legend/approved-changes'),
+            ('GITHUB_EVENT_NAME','workflow_dispatch'),('GITHUB_WORKFLOW_REF','owner/repo/.github/workflows/untrusted.yml@refs/heads/Legend/fast-track-release'),
+            ('GITHUB_ACTIONS','false'),('GITHUB_RUN_ATTEMPT','0')]:
+            with self.subTest(key=key),patch.dict(os.environ,self.env|{key:value},clear=True),patch.object(m,'api_get') as api:
+                with self.assertRaisesRegex(RuntimeError,'IDENTITY_INCOMPLETE'):
+                    m.assert_fast_track_release_execution()
+                api.assert_not_called()
+
+    def test_remote_revision_attempt_event_and_fork_cannot_be_forged(self):
+        for key,value in [('head_sha','b'*40),('run_attempt',1),('event','pull_request'),
+                          ('head_repository',dict(full_name='fork/repo')),('status','completed')]:
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):
+                self.invoke(self.run|{key:value})
+
+    def test_advanced_release_head_stops_stale_execution(self):
+        with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):
+            self.invoke(head='b'*40)
+
+
 class FastTrackImpactTests(unittest.TestCase):
     def scope(self, *paths):
         return m.fast_track_scope(paths)
@@ -1298,6 +1380,11 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             result = m.fast_track_source_validation_scope(self.args)
             preflight.assert_called_once_with('owner/repo', self.sha, 'test-token', base_branch=m.FAST_TRACK_PR_BASE)
             return result
+
+    def test_authenticated_isolated_push_uses_same_fast_track_source_authority(self):
+        self.args.workflow='parfait-isolated-validation.yml';self.args.event='push';self.args.head_branch='isolation/task'
+        self.run.update(event='push',path='.github/workflows/'+self.args.workflow,head_branch=self.args.head_branch)
+        self.assertFalse(self.scope()['releaseAdmission'])
 
     def test_authenticated_fast_track_source_proof_is_not_release_admission(self):
         result = self.scope()

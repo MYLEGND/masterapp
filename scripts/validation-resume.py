@@ -31,6 +31,7 @@ import contextvars
 
 TRUSTED_PR_BASE = "legend/approved-changes"
 FAST_TRACK_PR_BASE = "Legend/fast-track-release"
+FAST_TRACK_RELEASE_WORKFLOW = "legend-fast-track-ui.yml"
 _VALIDATION_PR_BASE = contextvars.ContextVar("validation_pr_base", default=TRUSTED_PR_BASE)
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
 PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
@@ -2317,6 +2318,7 @@ WORKFLOW_PATHS = {
         "step6-openai-ads-execution-validation.yml",
         "steps7-8-governed-advertising-validation.yml",
         "approved-release-security-validation.yml",
+        "parfait-isolated-validation.yml",
     )
 }
 
@@ -2409,6 +2411,24 @@ DIAGNOSTICS_TESTS = (
 )
 
 WORKFLOWS = {
+    "parfait-isolated-validation.yml": {
+        "resume_owner": "parfait-isolated-validation",
+        "resume_planner_sha256": "e4df879e7250a1bc0a665eff022a154cbed88f05736d2b3f0424f5af90844c75",
+        "force_all": (),
+        "neutral": ("Docs/**", "docs/**", "*.md", ".github/workflows/**", "scripts/validation-resume.py", "scripts/test-validation-resume.py"),
+        "gates": {
+            "restore": {"step": "Restore isolated commerce and Parfait projects", "paths": GLOBAL_DOTNET_INPUTS},
+            "build": {"step": "Compile shared commerce and Parfait host", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**",) + GLOBAL_DOTNET_INPUTS, "requires": ("restore",)},
+            "test-restore": {"step": "Restore contract tests", "paths": GLOBAL_DOTNET_INPUTS},
+            "contracts": {"step": "Run focused Parfait commerce and canonical parity tests", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**", "AgentPortal.Tests/**") + GLOBAL_DOTNET_INPUTS, "requires": ("test-restore",)},
+            "routing": {"step": "Verify selective Cloudflare commerce routing without deployment", "paths": ("Legend-Cloudflare/**",)},
+            "payments": {"step": "Verify scoped payment ownership, replay safety and provider contracts", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**", "diagnostics/MerchantPaymentCoreTests/**", "diagnostics/MerchantPaymentAdapterChecks/**") + GLOBAL_DOTNET_INPUTS},
+            "migration-contract": {"step": "Verify canonical migration operation contract", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("scripts/MigrationReleaseProbe/**", "scripts/migration-probe-package.py", "scripts/test-migration-probe-package.py", "scripts/test-parfait-readonly-workflow.py", "scripts/release-migration.py", "scripts/test-release-migration-probe-retry.py", "scripts/validation-resume.py", "scripts/test-validation-resume.py", ".github/workflows/**")},
+            "sql-contract": {"step": "Exercise payment migration and schema drift on disposable SQL Server", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("scripts/MigrationReleaseProbe/**", "scripts/migration-probe-package.py")},
+            "publish": {"step": "Publish and inspect exact Parfait + Protect packages without deployment", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("CommerceCore/**", "Legend-Website/**", "Legend-Design/**"), "requires": ("restore",)},
+        },
+    },
+
     "masterapp-platform-architecture-validation.yml": {
         "force_all": (),
         "neutral": (
@@ -3112,6 +3132,36 @@ def assert_protected_release_execution():
     return run
 
 
+def assert_fast_track_release_execution():
+    """Authenticate the existing fast-track producer, without granting admission.
+
+    The caller must still prove package, schema, history and operation admission.
+    This identity check does not delegate execution to another release branch.
+    """
+    env = os.environ
+    repository = env.get('GITHUB_REPOSITORY', '')
+    token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
+    revision = env.get('GITHUB_SHA', '')
+    reference = 'refs/heads/' + FAST_TRACK_PR_BASE
+    run_id, attempt = env.get('GITHUB_RUN_ID', ''), env.get('GITHUB_RUN_ATTEMPT', '')
+    if (env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_EVENT_NAME') != 'push'
+        or env.get('GITHUB_REF') != reference or not repository or not token
+        or not re.fullmatch('[a-f0-9]{40}', revision) or not run_id.isdigit() or int(run_id) < 1
+        or not attempt.isdigit() or int(attempt) < 1
+        or env.get('GITHUB_WORKFLOW_REF') != repository + '/.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW + '@' + reference):
+        raise RuntimeError('FAST_TRACK_EXECUTION_IDENTITY_INCOMPLETE')
+    run = api_get(repository, f'actions/runs/{run_id}', token)
+    expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
+                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision, status='in_progress')
+    if (any(run.get(key) != value for key, value in expected.items())
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+        raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
+    current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+    if current.get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
+    return run
+
+
 def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
     """Prove the candidate already contains the exact current approved head.
 
@@ -3484,6 +3534,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
 VALIDATION_RESUME_ARTIFACT_PREFIX = {
     "masterapp-platform-architecture-validation.yml": "validation-resume-architecture",
     "approved-release-security-validation.yml": "validation-resume-security",
+    "parfait-isolated-validation.yml": "validation-resume-parfait",
     "step6-openai-ads-execution-validation.yml": "validation-resume-step6",
     "steps7-8-governed-advertising-validation.yml": "validation-resume-step78",
 }
@@ -3498,6 +3549,16 @@ def _validation_resume_artifact_name(workflow, run):
     return f"{prefix}-{run_id}-{attempt}" if run_id else None
 
 
+def _parfait_unconditional_validation_generation(workflow, revision):
+    if workflow != 'parfait-isolated-validation.yml':
+        return False
+    source = git_show_file(revision, WORKFLOW_PATHS[workflow]).encode()
+    blob = hashlib.sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest()
+    # Reviewed original source: every named gate executes unconditionally.
+    # Authenticate actual successful steps, never infer proof from this hash.
+    return blob == '20b242ae2b01d1091c746801f6f0144428912cda'
+
+
 def _historical_plan_steps(args, run, token):
     """Recover gate proof from the durable validation-plan artifact.
 
@@ -3510,6 +3571,15 @@ def _historical_plan_steps(args, run, token):
         return None
     run_id = int(run.get("id") or 0)
     if artifact not in _run_artifact_names(args.repository, run_id, token):
+        if (run.get('path') == WORKFLOW_PATHS.get(args.workflow)
+            and run.get('head_repository', {}).get('full_name') == args.repository
+            and run.get('event') == 'push' and run.get('head_branch') == args.head_branch
+            and _parfait_unconditional_validation_generation(args.workflow, run['head_sha'])):
+            payload = api_get(args.repository, f"actions/runs/{run_id}/attempts/{run.get('run_attempt', 1)}/jobs?per_page=100", token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                return None
+            return _step_map(jobs)
         return None
     import tempfile
     with tempfile.TemporaryDirectory(prefix="validation-plan-") as temporary:
@@ -3890,6 +3960,21 @@ def _gate_execution_contract(workflow_text, config, key):
     omitted = {index for name, start, finish in prefix_spans if name in unrelated_steps
                for index in range(start, finish)}
     prefix = "".join(line for index, line in enumerate(prefix_lines) if index not in omitted)
+    if config.get('resume_owner') == 'parfait-isolated-validation':
+        blocks = named_step_blocks(prefix)
+        planner = blocks.get('Plan exact validation resume', '')
+        if hashlib.sha256(planner.encode()).hexdigest() == config.get('resume_planner_sha256'):
+            prefix = prefix.replace(planner, '', 1)
+        # Fetch depth changes history availability, not the checked-out tree.
+        prefix = re.sub(r'^ +fetch-depth: 0\n', '', prefix, flags=re.M)
+        for name, definition in gates.items():
+            block = named_step_blocks(prefix).get(definition['step'])
+            if block is None: continue
+            normalized = block.replace('        id: gate_' + name.replace('-', '_') + '\n', '')
+            condition = "        if: ${{ fromJSON(steps.resume.outputs.plan).gates['" + name + "'].run }}\n"
+            normalized = normalized.replace(condition, '')
+            prefix = prefix.replace(block, normalized, 1)
+        prefix = prefix.rstrip() + '\n'
     envelope = []
     for field in ("env", "defaults"):
         envelope.append(_workflow_top_level_field(workflow_text, field))
@@ -3921,6 +4006,8 @@ def _historical_workflow_definition(workflow, revision):
             except (ValueError, KeyError, TypeError):
                 if name == "WORKFLOWS":
                     raise ValueError("Cannot authenticate historical gate definition")
+    if workflow not in values.get('WORKFLOWS', {}) and _parfait_unconditional_validation_generation(workflow, revision):
+        return WORKFLOWS[workflow]
     return values["WORKFLOWS"][workflow]
 
 
@@ -4775,15 +4862,15 @@ def fast_track_source_validation_scope(args):
     fast-track release must separately require those proofs before publication.
     No protected-branch source, baseline, or readiness producer is consulted.
     """
-    if (args.workflow != 'approved-release-security-validation.yml' or args.event != 'pull_request' or
-        os.environ.get('GITHUB_ACTIONS') != 'true'):
+    if ((args.workflow, args.event) not in {('approved-release-security-validation.yml', 'pull_request'),
+        ('parfait-isolated-validation.yml', 'push')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
     if not token:
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
     run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
-    if (run.get('id') != args.current_run_id or run.get('event') != 'pull_request' or
-        run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
+    if (run.get('id') != args.current_run_id or run.get('event') != args.event or
+        (args.event == 'push' and run.get('head_branch') != args.head_branch) or run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
         run.get('head_repository', {}).get('full_name') != args.repository or
         run.get('status') != 'in_progress'):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')

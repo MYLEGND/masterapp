@@ -144,3 +144,11 @@ retried. Full live physical proof must still pass on the corrected observer.
 - The fast-track selector now derives linked-file consumers from existing application projects and uses the canonical target inventory. Shared business authorization/schema changes affect all four .NET hosts; the changed shared CMS bundle also affects Website. This is a dependency-derived scope, not blanket application selection.
 - Unknown source paths still stop selection. Schema publication remains blocked until canonical migration admission, exact bundle rehearsal/readiness, durable mutation receipts, and safe deployment resume are integrated. Passing read-only observation is not mutation admission.
 - No domain traffic cutover, data transfer, application deployment, or legacy retirement has occurred at this checkpoint.
+
+### Exact bundle and resume checkpoint
+
+- Candidate `3c1277a9b14c9ebc583ae890ef24f18c90a9bb05` passed source/security validation and production read-only workflow `38129417384`.
+- The same workflow built the canonical migration component and rehearsed those exact bytes against the observed schema baseline in disposable SQL. The recovery test proves one SQL execution, one intent, and recovery after a lost success receipt without a second SQL execution.
+- Retain artifact `11698628566` (`parfait-fast-track-migration-3c1277a9b14c9ebc583ae890ef24f18c90a9bb05-1`), digest `sha256:45fc755e24d09f01aaf3043e375633ccaee44853a8fb7e6198400f5ffda96127`. Do not rebuild compatible bytes or repeat completed production operations. This is rehearsal evidence, not production mutation admission.
+- The isolated workflow now participates in the existing `validation-resume.py` gate model. Reuse requires authenticated successful producer steps and matching source/execution dependencies. The previously unconditional workflow generation is content-attested; its actual GitHub step results remain mandatory. Unknown planner commands, changed checkout refs, incorrect skip conditions, failed checks, or dependency changes invalidate reuse.
+- Fast-track execution identity now has an explicit exact-run/current-head verifier. It does not independently authorize deployment or SQL. Production admission, migration journal integration, tenant/media reconciliation, deployment, live functional verification, and cutover remain incomplete.
