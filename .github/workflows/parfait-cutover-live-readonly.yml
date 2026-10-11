@@ -1,0 +1,101 @@
+name: Parfait canonical cutover read-only production evidence
+
+on:
+  push:
+    branches:
+      - isolation/canonical-scoped-commerce-internal-20261010
+    paths:
+      - .github/workflows/parfait-cutover-live-readonly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  production-readback:
+    name: Non-mutating Azure and public runtime inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Azure production sign-in (read-only queries only)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Read Azure current app status and safety configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/parfait-proof"
+          for app in masterapp-parfait masterapp-protect; do
+            az webapp show --resource-group masterapp-rg --name "$app" --only-show-errors -o json > "$RUNNER_TEMP/parfait-proof/$app-webapp.json"
+            az webapp config appsettings list --resource-group masterapp-rg --name "$app" --only-show-errors -o json > "$RUNNER_TEMP/parfait-proof/$app-settings.json"
+          done
+          python3 - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"parfait-proof"
+          evidence={}
+          for app in ("masterapp-parfait","masterapp-protect"):
+              site=json.loads((root/(app+"-webapp.json")).read_text())
+              settings=json.loads((root/(app+"-settings.json")).read_text())
+              rows={r["name"].lower().replace(":","__"):str(r.get("value","")).strip()
+                    for r in settings if isinstance(r,dict) and isinstance(r.get("name"),str)}
+              def enabled(name):
+                  return rows.get(name.lower().replace(":","__"),"").lower()=="true"
+              # Values, secret names, customer data, storage paths and connection
+              # strings are deliberately never printed or stored in the artifact.
+              fields={
+                 "azureState":site.get("state"),
+                 "httpsOnly":site.get("httpsOnly"),
+                 "cutoverFlagEnabled":enabled("Commerce__SharedHostCutover__Enabled"),
+                 "previewFlagEnabled":enabled("Commerce__SharedHostPreview__Enabled"),
+                 "storageRootPresent":any(k in rows for k in ("parfait__storageroot","parfait_storage_root")),
+                 "cutoverManifestPresent":any(k in rows for k in ("commerce__sharedhostcutover__reconciledmanifestsha256",)),
+                 "isRunning":site.get("state")=="Running"
+              }
+              evidence[app]=fields
+              print("COMMERCE_READONLY_AZURE",app,json.dumps(fields,sort_keys=True))
+          (root/"sanitized-azure.json").write_text(json.dumps(evidence,indent=2))
+          # This is a source/config inventory, NOT production SQL/media/payment proof.
+          if not all(v["isRunning"] for v in evidence.values()):
+              raise SystemExit("One baseline host is not running; cutover NOT READY.")
+          PY
+
+      - name: Compare live source revisions, assets and original public storefront routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error
+          targets=[
+             ("parfait-revision","https://masterapp-parfait.azurewebsites.net/api/runtime-provenance","application/json"),
+             ("protect-revision","https://masterapp-protect.azurewebsites.net/api/runtime-provenance","application/json"),
+             ("parfait-home","https://shopparfait.com/","text/html"),
+             ("parfait-store","https://shopparfait.com/store","text/html"),
+             ("parfait-cart","https://shopparfait.com/store/cart","text/html"),
+             ("parfait-favicon","https://masterapp-parfait.azurewebsites.net/images/favicon/parfait-logo.png","image/")]
+          outcomes={}
+          for name,url,expected in targets:
+              try:
+                  req=urllib.request.Request(url,headers={"Cache-Control":"no-cache","User-Agent":"LegendParfaitReadOnlyVerifier/1"})
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      raw=response.read(1024*1024)
+                      mime=response.headers.get("Content-Type","")
+                      status=response.status
+                  valid=status==200 and expected in mime and len(raw)>0
+                  revision=None
+                  if "revision" in name and valid:
+                      revision=json.loads(raw).get("sourceRevision")
+                      valid=bool(revision)
+                  result={"ok":valid,"status":status,"contentTypeValid":expected in mime,
+                          "revision":revision if "revision" in name else None}
+              except Exception as e:
+                  result={"ok":False,"failureType":type(e).__name__}
+              outcomes[name]=result
+              print("COMMERCE_READONLY_RUNTIME",name,json.dumps(result,sort_keys=True))
+          if not all(v["ok"] for v in outcomes.values()):
+              raise SystemExit("Original live runtime readback incomplete; do not authorize cutover.")
+          PY

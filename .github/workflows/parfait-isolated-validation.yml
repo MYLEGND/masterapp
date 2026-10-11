@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - isolation/parfait-canonical-commerce-20261010
+      - isolation/canonical-scoped-commerce-internal-20261010
     paths:
       - CommerceCore/**
       - Infrastructure/Commerce/**
+      - Infrastructure/Businesses/**
       - Infrastructure/WebsiteRuntime/**
       - Legend-Cloudflare/src/website-routing/**
       - Legend-Cloudflare/tests/website-routing/**
@@ -52,7 +54,7 @@ jobs:
       - name: Run focused Parfait commerce and canonical parity tests
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo \
-            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests|FullyQualifiedName~CommerceLegacyTransferTests|FullyQualifiedName~ParfaitOriginalPublicPagesTests|FullyQualifiedName~CommerceAutomationDispatcherLeaseTests|FullyQualifiedName~CommercePreviewMediaTests|FullyQualifiedName~CommerceSharedHostCutoverTests|FullyQualifiedName~CommerceCutoverStartupProofTests'
+            --filter 'FullyQualifiedName~ParfaitCanonicalPresentationPreservationTests|FullyQualifiedName~ParfaitCanonicalCutoverSafetyTests|FullyQualifiedName~ScopedParfaitCommerceAuthorityTests|FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~CentralizedWebsiteCommerceTests|FullyQualifiedName~MarketingScopeParityContractTests|FullyQualifiedName~AnalyticsCanonicalArchitectureTests|FullyQualifiedName~CommerceCoreOwnershipContractTests|FullyQualifiedName~CommerceCutoverInventoryTests|FullyQualifiedName~CommerceSharedHostPreviewGateTests|FullyQualifiedName~CommerceTenantBrandIsolationTests|FullyQualifiedName~CommerceLegacyTransferTests|FullyQualifiedName~ParfaitOriginalPublicPagesTests|FullyQualifiedName~CommerceAutomationDispatcherLeaseTests|FullyQualifiedName~CommercePreviewMediaTests|FullyQualifiedName~CommerceSharedHostCutoverTests|FullyQualifiedName~CommerceCutoverStartupProofTests|FullyQualifiedName~CommerceCanonicalInternalBrandIsolationTests|FullyQualifiedName~CommerceManagementCapabilityPolicyTests|FullyQualifiedName~CommerceOrderMailTenantIsolationTests'
 
       - name: Verify selective Cloudflare commerce routing without deployment
         run: node --test Legend-Cloudflare/tests/website-routing/*.test.mjs

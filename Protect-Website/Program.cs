@@ -47,7 +47,10 @@ else if (Infrastructure.WebsiteRuntime.CommerceSharedHostPreviewGate.IsConfigure
 }
 else
 {
-    mvcBuilder.ExcludeLegendCommerceMvc();
+    // Internal management is the same shared tenant-scoped controller used by
+    // the legacy host. Expose no checkout/cart or public commerce action while
+    // the independently verified production cutover gate remains disabled.
+    mvcBuilder.AddLegendCommerceManagementMvc();
 }
 if (builder.Environment.IsDevelopment())
 {
@@ -70,17 +73,23 @@ builder.Services.AddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
 builder.Services.AddScoped<ParfaitApp.Services.CommerceStoreContextService>();
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
+// Every opted-in store uses exactly these shared catalog, management,
+// analytics and automation services; only the proven live checkout and the
+// single SQL-leased automation dispatcher depend on the cutover gate.
+builder.Services.AddLegendCommerceCore();
+builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
+builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
+builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
+builder.Services.AddScoped<IGraphMailService, GraphMailService>();
+builder.Services.AddMemoryCache();
+
 if (Infrastructure.WebsiteRuntime.CommerceSharedHostCutoverGate.IsConfigured(builder.Configuration))
 {
-    builder.Services.AddLegendCommerceCore();
     builder.Services.AddMasterAppBilling(builder.Configuration);
     builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
-    builder.Services.AddScoped<IGraphMailService, GraphMailService>();
+    builder.Services.AddLegendCommerceAutomationWorker();
     builder.Services.AddHostedService<CommerceCutoverStartupProof>();
-}
-else
-{
-    builder.Services.AddLegendCommerceCatalogReadOnly();
 }
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();

@@ -181,15 +181,25 @@ test('A malformed or disabled cutover host list never moves commerce traffic', (
   }
 });
 
-test('Parfait management and analytics remain on the legacy authority during storefront handoff', () => {
+test('Approved Parfait cutover also migrates private management and stale analytics transport', () => {
   const staged = {
     ...env, LEGEND_COMMERCE_CUTOVER_ENABLED: 'true',
     LEGEND_COMMERCE_CUTOVER_HOSTS: 'shopparfait.com'
   };
   for (const path of ['/commerce/manage/products?ticket=original', '/parfait-analytics/summary']) {
     const result = buildBridgeRequest(new Request('https://shopparfait.com' + path), staged);
-    assert.equal(result.sharedCommerce, false);
-    assert.equal(result.request.url, 'https://masterapp-parfait.azurewebsites.net' + path);
+    assert.equal(result.sharedCommerce, true);
+    assert.equal(result.request.url, 'https://masterapp-protect.azurewebsites.net' + path);
   }
+
+  for (const path of ['/commerce/manage/products?ticket=original', '/parfait-analytics/summary']) {
+    const other = buildBridgeRequest(new Request('https://camoexterior.com' + path), staged);
+    assert.equal(other.sharedCommerce, false);
+    assert.equal(other.request.url, 'https://masterapp-parfait.azurewebsites.net' + path);
+  }
+
+  const disabled = buildBridgeRequest(new Request('https://shopparfait.com/commerce/manage/dashboard'), env);
+  assert.equal(disabled.sharedCommerce, false);
+  assert.equal(disabled.request.url, 'https://masterapp-parfait.azurewebsites.net/commerce/manage/dashboard');
 });
 

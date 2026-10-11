@@ -1,4 +1,7 @@
 using Domain.Entities;
+using Infrastructure.Businesses;
+using Legend.Commerce;
+using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
@@ -36,6 +39,91 @@ public sealed class CommerceManagementController(
     IMetaAdsService metaAds,
     IGraphMailService mail) : Controller
 {
+    [HttpGet("business-profile")]
+    public async Task<IActionResult> BusinessProfile([FromQuery] string ticket,
+        CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var business = await db.CommerceBusinesses.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == store.CommerceBusinessId && x.IsActive && x.Status == "Active", ct);
+        if (business is null) return NotFound();
+        ApplyManagementViewData(store, ticket, "business-profile");
+        return View("~/Views/InternalSettings/CanonicalBusinessProfile.cshtml",
+            new CommerceBusinessProfileViewModel(business.Id, business.DisplayName,
+                business.BusinessType, business.OwnerEmail, business.PrimaryDomain));
+    }
+
+    [HttpPost("business-profile")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessProfile([FromQuery] string ticket,
+        [FromForm] CommerceBusinessProfileInput input, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        if (!ModelState.IsValid) return BadRequest(ModelState);
+
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var business = await db.CommerceBusinesses.SingleOrDefaultAsync(x =>
+            x.Id == store.CommerceBusinessId && x.IsActive && x.Status == "Active", ct);
+        if (business is null) return NotFound();
+        business.DisplayName = input.Name.Trim();
+        business.BusinessType = input.BusinessType.Trim();
+        business.UpdatedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return RedirectToAction(nameof(BusinessProfile), new { ticket });
+    }
+
+    [HttpGet("team")]
+    public async Task<IActionResult> Team([FromQuery] string ticket, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var members = await db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == store.CommerceBusinessId)
+            .OrderBy(x => x.DisplayName).ThenBy(x => x.Email)
+            .Select(x => new CommerceBusinessTeamMember(x.Id, x.Email, x.DisplayName,
+                x.RoleKey, x.Status, x.ClientProfileId.HasValue,
+                x.CanManageStorefront, x.CanManageCatalog, x.CanManageOrders,
+                x.CanManageAnalytics, x.CanManageTeam, x.UpdatedUtc.Ticks))
+            .ToListAsync(ct);
+        ApplyManagementViewData(store, ticket, "team");
+        return View("~/Views/InternalSettings/CanonicalTeam.cshtml",
+            new CommerceBusinessTeamViewModel(store.CommerceBusinessId, store.StoreName, members));
+    }
+
+    [HttpPost("team/permissions")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveTeamPermissions([FromQuery] string ticket,
+        [FromForm] CommerceBusinessTeamPermissionsInput input, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        if (input.MemberId == Guid.Empty || input.ExpectedUpdatedTicks <= 0)
+            return BadRequest("A complete member update receipt is required.");
+
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var member = await db.CommerceBusinessMembers.SingleOrDefaultAsync(x =>
+            x.Id == input.MemberId && x.CommerceBusinessId == store.CommerceBusinessId, ct);
+        if (member is null) return NotFound();
+        if (member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase))
+            return Forbid();
+        if (member.UpdatedUtc.Ticks != input.ExpectedUpdatedTicks)
+            return Conflict("Team access changed in another session. Reload to review permissions.");
+
+        member.CanManageStorefront = input.CanManageStorefront;
+        member.CanManageCatalog = input.CanManageCatalog && input.CanManageStorefront;
+        member.CanManageOrders = input.CanManageOrders && input.CanManageStorefront;
+        member.CanManageAnalytics = input.CanManageAnalytics;
+        member.CanManageTeam = input.CanManageTeam;
+        member.UpdatedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return RedirectToAction(nameof(Team), new { ticket });
+    }
+
     [HttpGet("workspace")]
     public async Task<IActionResult> Workspace(
         [FromQuery] string ticket,
@@ -799,8 +887,51 @@ public sealed class CommerceManagementController(
         return url;
     }
 
-    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct) =>
-        await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+    private async Task<CommerceStoreContext?> ResolveAsync(string ticket, CancellationToken ct)
+    {
+        // Resolve the signed website-editor ticket and its live business/website
+        // state first, exactly as before. This is not a second login authority.
+        var store = await stores.ResolveForWebsiteTicketAsync(ticket, tickets, configuration, ct);
+        if (store is null) return null;
+
+        var actor = tickets.TryUnprotect(ticket);
+        if (actor is null) return null;
+
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
+        {
+            // Storefront permission alone is insufficient to mutate orders,
+            // products, ads or automation. Use the SAME canonical membership
+            // evaluator as AgentPortal and ClientApp, not a Parfait role mirror.
+            if (!actor.ActorClientProfileId.HasValue ||
+                actor.CommerceBusinessId != store.CommerceBusinessId)
+                return null;
+
+            var capability = CommerceManagementCapabilityPolicy.ForRequest(Request.Path, Request.Method);
+            if (capability is null) return null;
+
+            var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+            var authorized = await BusinessWorkspaceAccess.ResolveAsync(
+                db, store.CommerceBusinessId, actor.ActorClientProfileId.Value,
+                actor.ActorUserId, actor.ActorEmail, capability, ct);
+            if (authorized is null) return null;
+
+            var member = await db.CommerceBusinessMembers.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.CommerceBusinessId == store.CommerceBusinessId &&
+                    x.ClientProfileId == actor.ActorClientProfileId.Value && x.Status == "Active", ct);
+            if (member is null) return null;
+
+            var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+                member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
+            ViewData["CommerceCanCatalog"] = member.CanManageStorefront && member.CanManageCatalog;
+            ViewData["CommerceCanOrders"] = member.CanManageStorefront && member.CanManageOrders;
+            ViewData["CommerceCanAutomations"] = member.CanManageStorefront && member.CanManageOrders;
+            ViewData["CommerceCanAnalytics"] = member.CanManageAnalytics;
+            ViewData["CommerceCanSettings"] = owner;
+            ViewData["CommerceCanTeam"] = owner && member.CanManageTeam;
+        }
+
+        return store;
+    }
 
     private void ApplyManagementViewData(CommerceStoreContext store, string ticket, string activePage)
     {

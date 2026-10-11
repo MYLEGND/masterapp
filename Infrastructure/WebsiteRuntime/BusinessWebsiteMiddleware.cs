@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -36,6 +37,53 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         if (binding is null) { await Unavailable(context, bridged, "binding"); return; }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context, bridged, "publication"); return; }
+        // The production shared commerce manager is private, not part of the
+        // public website compiler. Only an explicitly admitted business/domain
+        // cutover may reach it on a customer hostname. Every operation is
+        // subsequently re-authorized by the single CommerceCore controller.
+        if (path.StartsWith("/commerce/manage/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!CommerceSharedHostCutoverGate.IsAdmitted(configuration, binding.Value, host))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            // Meta's callback carries a signed state instead of a direct
+            // website ticket. The action validates that state and its owner.
+            var oauthCallback = string.Equals(path,
+                "/commerce/manage/analytics/meta-callback", StringComparison.OrdinalIgnoreCase) &&
+                HttpMethods.IsGet(context.Request.Method);
+            if (!oauthCallback)
+            {
+                var ticketText = context.Request.Query["ticket"].ToString();
+                var protector = context.RequestServices.GetRequiredService<WebsiteEditorTicketProtector>();
+                var actor = await WebsiteTicketAuthorization.ResolveAsync(
+                    db, protector, configuration, ticketText, context.RequestAborted);
+                if (actor?.SiteKey != WebsiteEditorSiteKeys.Business ||
+                    actor.CommerceBusinessId != binding.Value)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+            }
+
+            await next(context);
+            return;
+        }
+
+        // The exact same internal CSS/JS package is linked into the shared host.
+        // Keep static assets read-only and available on the admitted hostname.
+        if (CommerceSharedHostCutoverGate.IsAdmitted(configuration, binding.Value, host) &&
+            (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+            (path is "/css/internal.css" or "/css/parfait-agentportal-analytics.css" or
+                     "/js/parfait-agentportal-analytics.js" or "/images/favicon/parfait-logo.png" ||
+             path.StartsWith("/lib/bootstrap/", StringComparison.OrdinalIgnoreCase)))
+        {
+            await next(context);
+            return;
+        }
+
         // Preview the tenant's original public editorial pages only after the
         // verified domain and immutable published website admission above.
         if (CommerceSharedHostPreviewGate.TryMapPublicPage(

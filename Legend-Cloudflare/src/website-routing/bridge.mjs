@@ -39,7 +39,12 @@ function isApprovedCommerceCutover(hostname, env) {
 function isSharedStorefrontPath(pathname) {
   return pathname === "/store" || pathname.startsWith("/store/") ||
     pathname.startsWith("/store-assets/") ||
-    pathname.startsWith("/uploads/parfait-products/");
+    pathname.startsWith("/uploads/parfait-products/") ||
+    // The same exact-domain cutover moves signed-ticket merchant management
+    // and obsolete legacy analytics transport. No selected tenant may retain
+    // a private operational dependency on the app being retired.
+    pathname.startsWith("/commerce/manage/") ||
+    pathname.startsWith("/parfait-analytics/");
 }
 
 function validatedOrigin(raw, fallback) {

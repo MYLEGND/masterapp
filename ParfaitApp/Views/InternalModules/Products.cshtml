@@ -4,6 +4,13 @@
     ViewData["Title"] = "Products";
     Layout = "_InternalLayout";
     var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
+    var scopedStoreContext = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var productImageFallback = scopedStoreContext is not null && !scopedStoreContext.IsParfait
+        ? (!string.IsNullOrWhiteSpace(scopedStoreContext.LogoUrl)
+            ? scopedStoreContext.LogoUrl
+            : "https://www.mylegnd.com/favicon.jpg")
+        : "/images/favicon/parfait-logo.png";
+    var productSkuFallback = scopedStoreContext?.BusinessKey?.ToUpperInvariant() ?? "PARFAIT";
     var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
     string CommerceAction(string internalPath, string scopedPath) =>
         isScopedCommerceManager
@@ -350,7 +357,7 @@
                 var product = Model.Products[productIndex];
                 var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
                 var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
-                var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+                var primaryUrl = primaryImage?.ImageUrl ?? productImageFallback;
                 var modalId = $"editProduct{product.Id}";
                 var liveSizeCount = product.InventoryBySize.Count(size => size.IsEnabled);
                 var inventoryNotes = new List<string>();
@@ -444,7 +451,7 @@
 {
     var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
     var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
-    var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+    var primaryUrl = primaryImage?.ImageUrl ?? productImageFallback;
     var modalId = $"editProduct{product.Id}";
     var inventoryTargetId = $"{modalId}InventoryRows";
     var discountTargetId = $"{modalId}DiscountRows";
@@ -807,7 +814,7 @@
             .toUpperCase()
             .replace(/[^A-Z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "")
-            .slice(0, 10) || "PARFAIT";
+            .slice(0, 10) || @Html.Raw(System.Text.Json.JsonSerializer.Serialize(productSkuFallback));
 
         const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
         const inventoryTemplate = document.getElementById("pfInventoryRowTemplate");
