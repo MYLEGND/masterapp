@@ -673,4 +673,15 @@ class PublishedCompilerBrandingTests(unittest.TestCase):
             self.assertEqual(0,result.returncode,result.stderr)
 
 
+class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
+    def test_no_sql_regression_is_control_only_not_unmapped_or_runtime_owned(self):
+        path='scripts/test-fast-track-ready-no-sql.py'
+        self.assertTrue(authority.release_control_only_path(path))
+        scope=authority.fast_track_scope([path])
+        self.assertEqual([],scope['impacts'][path])
+        self.assertFalse(scope['selected'])
+        self.assertFalse(scope['commerce'])
+        self.assertFalse(scope['schema'])
+
+
 if __name__ == '__main__':unittest.main()
