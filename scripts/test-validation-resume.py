@@ -1229,6 +1229,76 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class FastTrackSourceValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'b' * 40
+        self.args = SimpleNamespace(workflow='approved-release-security-validation.yml',
+            event='pull_request', repository='owner/repo', current_run_id=91, current_sha=self.sha)
+        self.run = dict(id=91, event='pull_request', path='.github/workflows/' + self.args.workflow,
+            head_sha=self.sha, head_repository=dict(full_name='owner/repo'), status='in_progress',
+            pull_requests=[dict(number=580, base=dict(ref=m.FAST_TRACK_PR_BASE), head=dict(sha=self.sha))])
+        self.pr = dict(number=580, state='open', base=dict(ref=m.FAST_TRACK_PR_BASE),
+            head=dict(sha=self.sha, repo=dict(full_name='owner/repo')))
+
+    def scope(self):
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_TOKEN': 'test-token'}), \
+             patch.object(m, 'api_get', side_effect=[self.run, self.pr]), \
+             patch.object(m, 'approved_head_preflight', return_value={'current': True, 'approvedHeadSha': 'a' * 40}) as preflight:
+            result = m.fast_track_source_validation_scope(self.args)
+            preflight.assert_called_once_with('owner/repo', self.sha, 'test-token', base_branch=m.FAST_TRACK_PR_BASE)
+            return result
+
+    def test_authenticated_fast_track_source_proof_is_not_release_admission(self):
+        result = self.scope()
+        self.assertFalse(result['releaseAdmission'])
+        self.assertEqual('source-validation-only', result['phase'])
+
+    def test_changed_pr_head_is_rejected(self):
+        self.pr['head']['sha'] = 'c' * 40
+        with self.assertRaisesRegex(ValueError, 'PR_CHANGED'):
+            self.scope()
+
+    def test_other_base_is_rejected(self):
+        self.run['pull_requests'][0]['base']['ref'] = m.TRUSTED_PR_BASE
+        with self.assertRaisesRegex(ValueError, 'PR_UNPROVEN'):
+            self.scope()
+
+    def test_unrelated_workflow_identity_is_rejected(self):
+        self.run['path'] = '.github/workflows/unrelated.yml'
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+            self.scope()
+
+    def test_fast_track_preflight_never_queries_protected_base(self):
+        with patch.object(m, 'api_get', side_effect=[{'commit': {'sha': 'a'*40}},
+                {'status': 'ahead', 'merge_base_commit': {'sha': 'a'*40}}]) as api:
+            result = m.approved_head_preflight('owner/repo', self.sha, 'token', base_branch=m.FAST_TRACK_PR_BASE)
+        self.assertTrue(result['current'])
+        self.assertEqual('branches/Legend%2Ffast-track-release', api.call_args_list[0].args[1])
+
+    def test_fork_source_is_rejected(self):
+        self.pr['head']['repo']['full_name'] = 'other/repo'
+        with self.assertRaisesRegex(ValueError, 'PR_CHANGED'):
+            self.scope()
+
+    def test_protected_base_cache_is_not_reused_for_fast_track(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cache.json'
+            path.write_text(m.json.dumps(dict(workflow=self.args.workflow, headSha=self.sha, runId=80,
+                schemaVersion=2, validationBase=m.TRUSTED_PR_BASE, gates={})))
+            self.args.resume_cache = str(path)
+            with m._validation_base_scope(m.FAST_TRACK_PR_BASE), patch.object(m.subprocess, 'run') as git:
+                self.assertIsNone(m._cached_success_evidence(self.args))
+                git.assert_not_called()
+
+    def test_validation_base_scope_cannot_change_production_authority(self):
+        with m._validation_base_scope(m.FAST_TRACK_PR_BASE):
+            self.assertEqual(m.FAST_TRACK_PR_BASE, m._VALIDATION_PR_BASE.get())
+            self.assertEqual('legend/approved-changes', m.TRUSTED_PR_BASE)
+            self.assertFalse(m._trusted_lineage_run('owner/repo', dict(self.run,
+                pull_requests=[dict(base=dict(ref=m.TRUSTED_PR_BASE))]), self.run['path'], self.sha))
+        self.assertEqual(m.TRUSTED_PR_BASE, m._VALIDATION_PR_BASE.get())
+
+
 class GitHubEvidenceTransportTests(unittest.TestCase):
     def test_transient_remote_disconnect_is_retried_without_restarting_evidence_flow(self):
         class Response:

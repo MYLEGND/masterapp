@@ -30,6 +30,8 @@ import contextvars
 
 
 TRUSTED_PR_BASE = "legend/approved-changes"
+FAST_TRACK_PR_BASE = "Legend/fast-track-release"
+_VALIDATION_PR_BASE = contextvars.ContextVar("validation_pr_base", default=TRUSTED_PR_BASE)
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
 PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
@@ -3014,13 +3016,15 @@ def assert_protected_release_execution():
     return run
 
 
-def approved_head_preflight(repository: str, current_sha: str, token: str):
+def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
     """Prove the candidate already contains the exact current approved head.
 
     This is intentionally cheaper than validation planning. It is the first
     merge-readiness check and may not infer freshness from the PR event's
     possibly stale base SHA.
     """
+    if base_branch not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError("Unsupported release base")
     if not re.fullmatch(r"[0-9a-f]{40}", current_sha or ""):
         raise ValueError("Malformed candidate revision")
     if not token:
@@ -3030,14 +3034,14 @@ def approved_head_preflight(repository: str, current_sha: str, token: str):
         )
     branch = api_get(
         repository,
-        "branches/" + urllib.parse.quote(TRUSTED_PR_BASE, safe=""),
+        "branches/" + urllib.parse.quote(base_branch, safe=""),
         token,
     )
     approved = (branch.get("commit") or {}).get("sha")
     if not re.fullmatch(r"[0-9a-f]{40}", approved or ""):
         raise EvidenceLookupUnavailable(
             "Current approved head is unavailable",
-            endpoint="branches/" + TRUSTED_PR_BASE,
+            endpoint="branches/" + base_branch,
         )
     if current_sha == approved:
         return {
@@ -3071,6 +3075,7 @@ def approved_head_preflight(repository: str, current_sha: str, token: str):
 
 
 def cmd_approved_head_preflight(args):
+    base_branch = getattr(args, "base_branch", TRUSTED_PR_BASE)
     if args.event != "pull_request":
         result = {
             "schemaVersion": 1,
@@ -3086,6 +3091,7 @@ def cmd_approved_head_preflight(args):
             args.repository,
             args.current_sha,
             os.environ.get("GITHUB_TOKEN", ""),
+            base_branch=base_branch,
         )
     if args.output:
         Path(args.output).write_text(
@@ -3095,7 +3101,7 @@ def cmd_approved_head_preflight(args):
     if not result["current"]:
         print(
             "::error::Candidate is not based on the current "
-            f"{TRUSTED_PR_BASE} head {result['approvedHeadSha']}. "
+            f"{base_branch} head {result['approvedHeadSha']}. "
             "Trusted lifecycle must sync the approved head before validation.",
             file=sys.stderr,
         )
@@ -3336,6 +3342,10 @@ def _trusted_lineage_run(repository, run, workflow_path, revision, *, require_co
     commit is already part of the exact candidate history. Workflow path, event,
     completion, repository ownership and git ancestry must all agree.
     """
+    if _VALIDATION_PR_BASE.get() == FAST_TRACK_PR_BASE and not any(
+        (pr.get("base") or {}).get("ref") == FAST_TRACK_PR_BASE
+        for pr in run.get("pull_requests") or []):
+        return False
     head = run.get("head_sha") or ""
     if (
         run.get("path") != workflow_path
@@ -3362,7 +3372,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
             or (run.get("head_repository") or {}).get("full_name") != repository):
         return False
     def matches_pull(row):
-        return ((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+        return ((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
                 and (row.get("head") or {}).get("sha") == head
                 and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository)
     if any(matches_pull(row) for row in run.get("pull_requests") or []):
@@ -3370,7 +3380,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
     # The commit-associated PR endpoint binds the immutable commit even after
     # that PR advances to a repaired head; demanding its current head equal the
     # old producer SHA would discard valid child evidence on every new commit.
-    return any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+    return any((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository
                for row in api_get(repository, f"commits/{head}/pulls?per_page=100", token))
 
@@ -3924,6 +3934,7 @@ def _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt):
         "headSha": head_sha,
         "runId": run_id,
         "runAttempt": run_attempt,
+        "validationBase": plan.get("validationBase", TRUSTED_PR_BASE),
         "gates": gates,
     }
 
@@ -4085,6 +4096,8 @@ def _cached_success_evidence(args):
         or data["runId"] < 1
     ):
         raise ValueError("Malformed PR-local validation cache")
+    if data.get("validationBase", TRUSTED_PR_BASE) != _VALIDATION_PR_BASE.get():
+        return None
     prior_sha = data["headSha"]
     if subprocess.run(
         ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
@@ -4659,8 +4672,62 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
         sleep(min(10, max(0, deadline - clock())))
 
 
+def fast_track_source_validation_scope(args):
+    """Bind credential-free security validation to its live fast-track PR.
+
+    Source validation is not production readiness or mutation admission. The
+    fast-track release must separately require those proofs before publication.
+    No protected-branch source, baseline, or readiness producer is consulted.
+    """
+    if (args.workflow != 'approved-release-security-validation.yml' or args.event != 'pull_request' or
+        os.environ.get('GITHUB_ACTIONS') != 'true'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    if not token:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
+    run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
+    if (run.get('id') != args.current_run_id or run.get('event') != 'pull_request' or
+        run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
+        run.get('head_repository', {}).get('full_name') != args.repository or
+        run.get('status') != 'in_progress'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+    pulls = [pr for pr in run.get('pull_requests', []) if
+        pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and pr.get('head', {}).get('sha') == args.current_sha]
+    if len(pulls) != 1:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_UNPROVEN')
+    pr = api_get(args.repository, f"pulls/{pulls[0]['number']}", token)
+    if (pr.get('state') != 'open' or pr.get('base', {}).get('ref') != FAST_TRACK_PR_BASE or
+        pr.get('head', {}).get('sha') != args.current_sha or
+        pr.get('head', {}).get('repo', {}).get('full_name') != args.repository):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_CHANGED')
+    preflight = approved_head_preflight(args.repository, args.current_sha, token, base_branch=FAST_TRACK_PR_BASE)
+    if not preflight['current']:
+        raise ValueError('FAST_TRACK_BASE_CHANGED')
+    return dict(phase='source-validation-only', releaseAdmission=False, baseBranch=FAST_TRACK_PR_BASE,
+        baseSha=preflight['approvedHeadSha'], candidate=args.current_sha, pullRequest=pr['number'])
+
+
 def cmd_plan(args):
-    require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
+    base = getattr(args, 'validation_base', TRUSTED_PR_BASE)
+    if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError('Unsupported validation base')
+    scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None
+    with _validation_base_scope(base):
+        return _cmd_plan(args, source_scope=scope)
+
+
+@contextlib.contextmanager
+def _validation_base_scope(base):
+    token = _VALIDATION_PR_BASE.set(base)
+    try:
+        yield
+    finally:
+        _VALIDATION_PR_BASE.reset(token)
+
+
+def _cmd_plan(args, *, source_scope=None):
+    if source_scope is None:
+        require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
 
@@ -4694,6 +4761,9 @@ def cmd_plan(args):
     if plan is None:
         _stop_unresolved_planning(args, last_evidence_error or RuntimeError("Validation planning unavailable"))
 
+    plan["validationBase"] = _VALIDATION_PR_BASE.get()
+    if source_scope is not None:
+        plan["sourceValidationScope"] = source_scope
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
@@ -8566,6 +8636,7 @@ def build_parser():
     approved_preflight.add_argument("--current-sha", required=True)
     approved_preflight.add_argument("--event", required=True)
     approved_preflight.add_argument("--output")
+    approved_preflight.add_argument("--base-branch", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
     approved_preflight.set_defaults(func=cmd_approved_head_preflight)
 
     plan = sub.add_parser("plan")
@@ -8578,6 +8649,7 @@ def build_parser():
     plan.add_argument("--repository", required=True)
     plan.add_argument("--output", required=True)
     plan.add_argument("--resume-cache")
+    plan.add_argument("--validation-base", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
     plan.set_defaults(func=cmd_plan)
 
     cache_success = sub.add_parser("cache-success")

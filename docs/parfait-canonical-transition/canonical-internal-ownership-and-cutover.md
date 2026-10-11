@@ -97,3 +97,13 @@ before mutation, and deliberately damages an index, foreign key, and column to
 verify physical-drift rejection. This test emits no production admission receipt.
 The SQL provider lifecycle has four passing local tests for loopback binding,
 cleanup on fixture failure, unsafe binding rejection, and failed startup.
+
+The existing security validator is extended to accept fast-track PRs. Its preflight
+reads the current fast-track head, and source-validation planning authenticates the
+live GitHub run, exact candidate, repository, open PR, and target branch. Its result
+explicitly says `source-validation-only` and `releaseAdmission=false`; it cannot
+replace production readiness. Fast-track planning excludes protected-branch caches
+and historical producers. Existing production mutation guards are unchanged.
+The validation-resume regression suite passed 256 tests, with two additional
+fast-track cache/fork tests passing afterward. Source validation can proceed before
+production reconciliation, but no publication or migration is authorized by it.

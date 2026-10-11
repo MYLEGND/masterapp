@@ -24,6 +24,9 @@ on:
       - scripts/MigrationReleaseProbe/**
       - scripts/migration-probe-package.py
       - scripts/test-migration-probe-package.py
+      - scripts/validation-resume.py
+      - scripts/test-validation-resume.py
+      - .github/workflows/approved-release-security-validation.yml
       - diagnostics/MerchantPaymentCoreTests/**
       - diagnostics/MerchantPaymentAdapterChecks/**
       - .github/workflows/parfait-isolated-validation.yml
@@ -77,6 +80,7 @@ jobs:
 
       - name: Verify canonical migration operation contract
         run: |
+          python3 scripts/test-validation-resume.py FastTrackSourceValidationTests ApprovedHeadPreflightTests
           python3 scripts/test-migration-probe-package.py
           python3 scripts/test-release-migration-probe-retry.py
           dotnet build scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
