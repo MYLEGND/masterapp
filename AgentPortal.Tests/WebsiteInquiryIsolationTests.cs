@@ -28,6 +28,32 @@ namespace AgentPortal.Tests;
 // In-process controller/EF coverage; does not substitute for SQL uniqueness or live CORS proof.
 public sealed class WebsiteInquiryIsolationTests
 {
+    [Fact]
+    public async Task AdversarialReplayStormPreservesOneInquiryCrmLeadConversionAndScopedReport()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+        var request = f.Request();
+        for (var attempt = 0; attempt < 500; attempt++)
+        {
+            Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
+            Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Message = "forged-" + attempt }, CancellationToken.None));
+        }
+        Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync());
+        var source = Assert.Single(await f.Db.AnalyticsEvents.Where(e => e.EventType == "website_lead_submitted").ToListAsync());
+        Assert.True(CanonicalAdvertisingEventProjection.CanProjectServer(source));
+        Assert.Equal(f.BusinessId, source.CommerceBusinessId);
+        var reporting = new AnalyticsQueryService(f.Db, new ConfigurationBuilder().Build());
+        var range = new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddHours(-1), ToUtc = DateTime.UtcNow.AddMinutes(1), QualityMode = TrafficQualityMode.AllTraffic };
+        Assert.Equal(1, (await reporting.GetSummaryAsync(range, ScopeContext.ForBusiness(f.BusinessId))).VerifiedLeads);
+        Assert.Equal(1, (await reporting.GetConversionsAsync(range, ScopeContext.ForBusiness(f.BusinessId))).TotalConversions);
+        Assert.Equal(1, (await reporting.GetLeadsAsync(range, ScopeContext.ForBusiness(f.BusinessId))).Total);
+        Assert.Equal(0, (await reporting.GetSummaryAsync(range, ScopeContext.ForBusiness(Guid.NewGuid()))).VerifiedLeads);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("http://business.example")]

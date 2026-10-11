@@ -14,6 +14,47 @@ namespace AgentPortal.Tests;
 public class MetaConversionsApiServiceTests
 {
     [Theory]
+    [InlineData(200, "{\"events_received\":1}", true, false)]
+    [InlineData(200, "{\"events_received\":0}", false, false)]
+    [InlineData(200, "{\"events_received\":-1}", false, false)]
+    [InlineData(200, "{\"events_received\":\"1\"}", false, false)]
+    [InlineData(200, "{}", false, false)]
+    [InlineData(200, "not-json", false, false)]
+    [InlineData(204, "", false, false)]
+    [InlineData(400, "{\"error\":{\"message\":\"synthetic rejection\"}}", false, false)]
+    [InlineData(429, "{}", false, true)]
+    [InlineData(503, "{\"events_received\":1}", false, true)]
+    public async Task AdversarialProviderAcknowledgementCannotTurnHttpSuccessIntoConversionTruth(int status, string body, bool accepted, bool retryable)
+    {
+        var authority = new Mock<IMetaSendAuthority>();
+        authority.Setup(x => x.TrySendAsync(It.IsAny<MetaSendAuthorityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaSendAuthorityDecision(true,"Lead",null,MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService,"stable-key","reservation","allowed",null));
+        using var handler = new SyntheticResponseHandler(status,body);
+        var service = new MetaConversionsApiService(new HttpClient(handler), Options.Create(new MetaOptions()),
+            authority.Object,NullLogger<MetaConversionsApiService>.Instance);
+        var result = await service.SendEventAsync(new MetaConversionsApiEventRequest {
+            EventName="Lead", EventId="stable-canonical-id", PixelOwnerType="business", PixelId="synthetic-pixel", AccessToken="synthetic-token",
+            AuthoritySource=MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService
+        });
+        Assert.True(result.Attempted);
+        Assert.Equal(accepted,result.Sent);
+        Assert.Equal(retryable,result.Retryable);
+        Assert.Equal("synthetic-pixel",result.PixelId);
+        Assert.Contains("synthetic-pixel/events",handler.Uri);
+        authority.Verify(x=>x.Complete(It.IsAny<MetaSendAuthorityDecision>(),accepted),Times.Once);
+    }
+
+    private sealed class SyntheticResponseHandler(int status,string body) : HttpMessageHandler
+    {
+        public string Uri {get;private set;} = "";
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
+        {
+            Uri=request.RequestUri!.ToString();
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) {Content=new StringContent(body)});
+        }
+    }
+
+    [Theory]
     [InlineData("business", null, null)]
     [InlineData("business", "business-pixel", null)]
     [InlineData("business", null, "business-token")]

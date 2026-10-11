@@ -128,6 +128,31 @@ public sealed class WebsitePublishingAuthorityTests
 
 
     [Fact]
+    public async Task AdversarialConversionTraceRejectsMislinkedAndBrowserReceipts()
+    {
+        using var f = new Fixture(); var token = f.Token;
+        await SeedCanonicalDraftAsync(f, token, WebsiteEditorSiteKeys.Legend, Document("Published"));
+        var publication = Body(await f.Controller.Publish(new(token,1)));
+        var source = Infrastructure.Analytics.UnifiedEventMapper.ToAnalytics(new Infrastructure.Analytics.UnifiedEventContext {
+            SiteKey = "legend", Host = "www.mylegnd.com", EventName = "Lead", IsServerAuthority = true,
+            EventUtc = DateTime.UtcNow, WebsiteContentVersionId = publication.GetProperty("versionId").GetGuid()
+        });
+        Infrastructure.Analytics.UnifiedAnalyticsWriter.Write(f.Db, source); await f.Db.SaveChangesAsync();
+        foreach (var (channel, canonicalSource) in new[] {("server","AnalyticsEvent"),("browser","AnalyticsEvent"),("server","unrelated_source")})
+            f.Db.Add(new Domain.Entities.MarketingDestinationDelivery {
+                OwnerKey = Shared.Analytics.MarketingOwnerScope.Founder.Key, AnalyticsEventId = source.Id,
+                Channel=channel, CanonicalSource=canonicalSource, Provider="openai", Status="sent", LastHttpStatusCode=200,
+                CanonicalEventId=source.EventId.ToString("N")
+            });
+        await f.Db.SaveChangesAsync();
+        var trace = Body(await f.Controller.CreativeConversionTrace(token));
+        var entry = Assert.Single(trace.GetProperty("events").EnumerateArray());
+        var receipt = Assert.Single(entry.GetProperty("openai").GetProperty("receipts").EnumerateArray());
+        Assert.True(receipt.GetProperty("httpAccepted").GetBoolean());
+        Assert.Equal("AnalyticsEvent", receipt.GetProperty("canonicalSource").GetString());
+    }
+
+    [Fact]
     public async Task PublicationRequestReconcilesWithoutCreatingAnotherVersion()
     {
         using var f = new Fixture();

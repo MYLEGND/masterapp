@@ -12,6 +12,30 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsiteEventMapTests
 {
+    [Theory]
+    [InlineData("browser", "AnalyticsEvent", "not_observed")]
+    [InlineData("server", "unrelated_source", "not_observed")]
+    [InlineData("server", "AnalyticsEvent", "http_accepted")]
+    public async Task AdversarialReceiptCannotClaimServerDeliveryFromWrongChannelOrSource(string channel, string canonicalSource, string expected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile { AgentUserId = "agent", AgentUpn = "agent@example.test", Slug = "agent" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect };
+        var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = "{}" };
+        state.PublishedVersionId = version.Id;
+        var source = new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "website_lead_submitted", EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow, AgentTrackingProfileId = profile.Id, WebsiteContentVersionId = version.Id };
+        db.AddRange(profile, state, version, source);
+        await db.SaveChangesAsync();
+        db.Add(new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(profile.Id).Key, AgentTrackingProfileId = profile.Id,
+            AnalyticsEventId = source.Id, CanonicalSource = canonicalSource, Channel = channel, Provider = "openai",
+            Status = "sent", LastHttpStatusCode = 200, CanonicalEventId = source.EventId.ToString("N") });
+        await db.SaveChangesAsync();
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        var map = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadTicketAsync(ticket);
+        Assert.Equal(expected, Assert.Single(map.Where(row => row.Element == "automatic:lead_created")).OpenAiStatus);
+    }
+
     [Fact]
     public async Task ReusableMapIncludesOnlyRenderedInstanceActionsWithoutDefinitionSignals()
     {
@@ -233,6 +257,12 @@ public sealed class WebsiteEventMapTests
         var receipt = new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(profile.Id).Key, Provider = MarketingDestinationKeys.OpenAi,
             Channel = "server", CanonicalSource = nameof(MetaSignalEvent), CanonicalEventId = meta.EventId,
             ProviderEventName = OpenAiMeasurementEventNames.LeadCreated, Status = "sent" };
+        // A foreign legacy receipt with a colliding provider event ID must
+        // neither lend acceptance nor hide this owner's actual receipt.
+        db.Add(new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(Guid.NewGuid()).Key,
+            Provider = MarketingDestinationKeys.OpenAi, Channel = "server", CanonicalSource = nameof(MetaSignalEvent),
+            CanonicalEventId = meta.EventId, Status = "sent", LastHttpStatusCode = 200 });
+        await db.SaveChangesAsync();
         db.AddRange(meta, receipt);
         await db.SaveChangesAsync();
         var ticket = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));

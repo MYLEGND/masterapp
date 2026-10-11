@@ -69,18 +69,22 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
         var versionIds = states.Where(s => s.PublishedVersionId.HasValue).Select(s => s.PublishedVersionId!.Value).ToArray();
         var versions = await db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => versionIds.Contains(v.Id)).ToListAsync(ct);
         var sourceIds = events.Select(e => e.Id).ToArray();
-        var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
+        var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) &&
+                r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
         var meta = await db.MetaSignalEvents.AsNoTracking().Where(m => m.WebsiteContentVersionId.HasValue && versionIds.Contains(m.WebsiteContentVersionId.Value)).ToListAsync(ct);
         var historicalReceipts = new Dictionary<long, MarketingDestinationDelivery>();
         var legacyEventIds = meta.Select(m => m.EventId).ToArray();
         var legacyReceipts = await db.MarketingDestinationDeliveries.AsNoTracking()
-            .Where(r => r.CanonicalSource == nameof(MetaSignalEvent) && r.Provider == MarketingDestinationKeys.OpenAi && legacyEventIds.Contains(r.CanonicalEventId))
+            .Where(r => r.Channel == "server" && r.CanonicalSource == nameof(MetaSignalEvent) && r.Provider == MarketingDestinationKeys.OpenAi && legacyEventIds.Contains(r.CanonicalEventId))
             .ToListAsync(ct);
         foreach (var m in meta)
             if (CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
                 events.Any(e => e.Id == id && e.AgentTrackingProfileId == m.AgentTrackingProfileId && e.CommerceBusinessId == m.CommerceBusinessId))
             {
-                var receipt = legacyReceipts.FirstOrDefault(r => r.CanonicalEventId == m.EventId);
+                var source = events.Single(e => e.Id == id);
+                var sourceOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
+                if (sourceOwner is null) continue;
+                var receipt = legacyReceipts.FirstOrDefault(r => r.CanonicalEventId == m.EventId && r.OwnerKey == sourceOwner.Key);
                 if (receipt is not null) historicalReceipts[id] = receipt;
             }
         var result = new List<Entry>();
@@ -109,7 +113,8 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                           ((string.IsNullOrWhiteSpace(e.ElementKey) ? e.ElementId : e.ElementKey) == element) &&
                           (page == "*" || page.StartsWith("@shell/", StringComparison.Ordinal) || e.Path == page || e.PageKey == page))).ToArray();
                 var selectedIds = sources.Select(e => e.Id).ToHashSet();
-                var deliveries = receipts.Where(r => r.OwnerKey == stateOwner?.Key && r.AnalyticsEventId.HasValue && selectedIds.Contains(r.AnalyticsEventId.Value))
+                var deliveries = receipts.Where(r => r.OwnerKey == stateOwner?.Key && r.AgentTrackingProfileId == stateOwner?.AgentTrackingProfileId &&
+                    r.CommerceBusinessId == stateOwner?.CommerceBusinessId && r.AnalyticsEventId.HasValue && selectedIds.Contains(r.AnalyticsEventId.Value))
                     .Concat(historicalReceipts.Where(pair => selectedIds.Contains(pair.Key)).Select(pair => pair.Value).Where(r => r.OwnerKey == stateOwner?.Key)).ToArray();
                 var requiresReconciliation = sources.Any(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "providerCorrectionStatus") != null);
                 string Status(string provider)

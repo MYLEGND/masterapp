@@ -1221,6 +1221,9 @@ public class WebsitePlatformController : ControllerBase
             : await _db.MarketingDestinationDeliveries.AsNoTracking()
                 .Where(row =>
                     row.OwnerKey == owner.Key &&
+                    row.AgentTrackingProfileId == owner.AgentTrackingProfileId &&
+                    row.CommerceBusinessId == owner.CommerceBusinessId &&
+                    row.Channel == "server" && row.CanonicalSource == nameof(AnalyticsEvent) &&
                     row.Provider == Shared.Analytics.MarketingDestinationKeys.OpenAi &&
                     row.AnalyticsEventId.HasValue &&
                     selectedIds.Contains(row.AnalyticsEventId.Value) &&
