@@ -82,7 +82,7 @@ jobs:
 
       - name: Verify canonical migration operation contract
         run: |
-          python3 scripts/test-validation-resume.py FastTrackSourceValidationTests ApprovedHeadPreflightTests
+          python3 scripts/test-validation-resume.py FastTrackImpactTests FastTrackSourceValidationTests ApprovedHeadPreflightTests
           python3 scripts/test-parfait-readonly-workflow.py
           python3 scripts/test-migration-probe-package.py
           python3 scripts/test-release-migration-probe-retry.py

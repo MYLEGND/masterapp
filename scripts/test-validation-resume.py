@@ -1229,6 +1229,57 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class FastTrackImpactTests(unittest.TestCase):
+    def scope(self, *paths):
+        return m.fast_track_scope(paths)
+
+    def targets(self, *paths):
+        return {row['target'] for row in self.scope(*paths)['matrix']['include']}
+
+    def test_finance_changes_select_only_finance_consumers(self):
+        self.assertEqual(self.targets('SHARED/wwwroot/js/finance-shell.js'), {'AgentPortal', 'ClientApp'})
+
+    def test_linked_storefront_asset_selects_both_runtime_hosts(self):
+        self.assertEqual(self.targets('ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js'), {'Parfait', 'Protect'})
+
+    def test_reincluded_company_icon_selects_original_presentation_host(self):
+        self.assertEqual(self.targets('ParfaitApp/wwwroot/images/company-icons/sample.svg'), {'Parfait', 'Protect'})
+
+    def test_single_star_view_link_does_not_include_nested_directory(self):
+        self.assertEqual(self.targets('ParfaitApp/Views/Store/Unlinked/Nested.cshtml'), {'Parfait'})
+
+    def test_shared_business_authorization_selects_four_dotnet_consumers(self):
+        result = self.scope('Infrastructure/Businesses/BusinessWorkspaceAccess.cs')
+        self.assertTrue(result['commerce'])
+        self.assertEqual({r['target'] for r in result['matrix']['include']}, {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+
+    def test_payment_schema_impact_is_explicit_and_grants_no_admission(self):
+        result = self.scope('Infrastructure/Migrations/20261011064911_AddBusinessScopedMerchantPayments.cs')
+        self.assertTrue(result['schema'])
+        self.assertTrue(result['commerce'])
+        self.assertNotIn('releaseAdmission', result)
+        self.assertEqual(len(result['matrix']['include']), 4)
+
+    def test_cms_bundle_selects_only_its_two_consumers(self):
+        self.assertEqual(self.targets('SHARED/WebsitePlatform/legend-public-cms.js'), {'Protect', 'Website'})
+
+    def test_routing_is_explicit_without_application_upload(self):
+        result = self.scope('Legend-Cloudflare/src/website-routing/bridge.mjs')
+        self.assertTrue(result['routing'])
+        self.assertTrue(result['commerce'])
+        self.assertFalse(result['selected'])
+
+    def test_test_and_documentation_only_select_no_applications(self):
+        self.assertFalse(self.scope('docs/parfait-canonical-transition/business-scoped-payments.sql',
+            'diagnostics/MerchantPaymentCoreTests/ControllerTestHelpers.cs',
+            'Legend-Cloudflare/tests/website-routing/bridge.test.mjs',
+            'scripts/test-parfait-readonly-workflow.py')['selected'])
+
+    def test_unknown_shared_source_blocks_instead_of_blanket_deploy(self):
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/UnreviewedDependency.cs')
+
+
 class FastTrackSourceValidationTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'b' * 40

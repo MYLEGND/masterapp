@@ -35,7 +35,11 @@ on:
       - CommerceCore/**
       - Infrastructure/Commerce/**
       - Infrastructure/WebsiteRuntime/**
-      - Domain/Entities/CommerceProduct.cs
+      - Domain/Entities/Commerce*.cs
+      - Infrastructure/Data/Configurations/CommercePaymentModel.cs
+      - Infrastructure/Data/MasterAppDbContext.cs
+      - Infrastructure/Migrations/**
+      - Infrastructure/Businesses/BusinessWorkspaceAccess.cs
       - Legend-Cloudflare/src/website-routing/**
       - Legend-Cloudflare/tests/website-routing/**
       - Protect-Website/Program.cs
@@ -79,55 +83,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,os,re,subprocess
-          catalog={
-              'AgentPortal': {'target':'AgentPortal','project':'AgentPortal/AgentPortal.csproj','azure_app':'masterapp-portal','host':'portal.mylegnd.com'},
-              'ClientApp': {'target':'ClientApp','project':'ClientApp/ClientApp.csproj','azure_app':'masterapp-client','host':'client.mylegnd.com'},
-              'Protect': {'target':'Protect','project':'Protect-Website/ProtectWebsite.csproj','azure_app':'masterapp-protect','host':'masterapp-protect.azurewebsites.net'},
-              'Parfait': {'target':'Parfait','project':'ParfaitApp/ParfaitApp.csproj','azure_app':'masterapp-parfait','host':'masterapp-parfait.azurewebsites.net'},
-              'Website': {'target':'Website','project':'static','azure_app':'masterapp-website','host':'masterapp-website.azurewebsites.net'}
-          }
-          def impacts(path):
-              if path.startswith('CommerceCore/'): return {'Parfait','Protect'}
-              if path.startswith('Infrastructure/Commerce/'): return {'Parfait','Protect'}
-              if path.startswith('Infrastructure/WebsiteRuntime/'): return {'Protect'}
-              if path == 'Domain/Entities/CommerceProduct.cs': return {'Parfait','Protect'}
-              if path.startswith('Legend-Cloudflare/src/website-routing/') or path.startswith('Legend-Cloudflare/tests/website-routing/'): return set()
-              if path.startswith('AgentPortal.Tests/') or path.startswith('docs/'): return set()
-              if path in ('MASTERAPP.sln','MasterApp.slnx'): return set()
-              if path.startswith('AgentPortal/'): return {'AgentPortal'}
-              if path.startswith('ClientApp/'): return {'ClientApp'}
-              if path.startswith('Protect-Website/'): return {'Protect'}
-              if path.startswith('ParfaitApp/'): return {'Parfait'}
-              if path.startswith('Legend-Website/'):
-                  # The Protect business-website compiler consumes this shared source.
-                  return {'Website'} if path=='Legend-Website/scripts/check.mjs' else {'Website','Protect'}
-              if path.startswith('SHARED/wwwroot/js/finance-') or path in (
-                  'SHARED/wwwroot/js/legend-living-balance-sheet.js',
-                  'SHARED/wwwroot/js/expense-lens-projection.js',
-                  'SHARED/wwwroot/css/legend-finance-shared.css',
-              ): return {'AgentPortal','ClientApp'}
-              if path.startswith('SHARED/wwwroot/'): return {'AgentPortal','ClientApp','Protect','Parfait','Website'}
-              if path.startswith('SHARED/WebsitePlatform/'): return {'Website','Protect'}
-              if path.startswith('SHARED/Views/'): return {'AgentPortal','ClientApp','Protect'}
-              if path.startswith('SHARED/Branding/'): return {'AgentPortal','ClientApp','Protect','Website'}
-              if path=='SHARED/Shared.csproj': return {'AgentPortal','ClientApp','Protect'}
-              if path=='Legend-Design/legend-public-inquiry.js': return {'Website','Protect'}
-              if path.startswith('Legend-Design/'): return set(catalog)
-              if path=='Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs': return {'AgentPortal','ClientApp','Protect'}
-              if path=='Infrastructure/WebsiteEditing/WebsitePlatformController.cs': return {'Protect'}
-              if path=='Infrastructure/WebsiteRuntime/BusinessWebsiteMiddleware.cs': return {'Protect'}
-              # Workflow changes and test-only changes never trigger an app upload.
-              if path.startswith('.github/workflows/') or path.startswith('tests/') or path=='scripts/test-public-brand-canonical.mjs': return set()
-              raise SystemExit('Unmapped fast-track source path: '+path)
-          assert impacts('SHARED/wwwroot/js/finance-tools.js')=={'AgentPortal','ClientApp'}
-          assert impacts('Legend-Website/scripts/check.mjs')=={'Website'}
-          assert impacts('Legend-Design/legend-public-inquiry.js')=={'Website','Protect'}
-          assert impacts('SHARED/Branding/legend-brand.json')=={'AgentPortal','ClientApp','Protect','Website'}
-          assert impacts('SHARED/Shared.csproj')=={'AgentPortal','ClientApp','Protect'}
-          assert impacts('Protect-Website/Views/Shared/_Layout.cshtml')=={'Protect'}
-          assert impacts('Infrastructure/WebsiteEditing/WebsitePlatformController.cs')=={'Protect'}
-          assert impacts('.github/workflows/legend-fast-track-ui.yml')==set()
+          import importlib.util,json,os,re,subprocess
+          spec=importlib.util.spec_from_file_location('release_authority','scripts/validation-resume.py')
+          authority=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(authority)
           before=os.environ['BEFORE']
           head=os.environ['GITHUB_SHA']
           if not re.fullmatch('[0-9a-f]{40}',head): raise SystemExit('Invalid exact fast-track commit')
@@ -137,23 +96,14 @@ jobs:
               changed=subprocess.check_output(['git','diff','--name-only',before,head],text=True).splitlines()
           else:
               raise SystemExit('Invalid fast-track event baseline')
-          impacted=set()
-          for path in changed: impacted.update(impacts(path))
-          backend=any(
-              path.startswith(('CommerceCore/','Infrastructure/Commerce/','Infrastructure/WebsiteRuntime/',
-                  'Legend-Cloudflare/src/website-routing/','Legend-Cloudflare/tests/website-routing/')) or
-              path in ('Domain/Entities/CommerceProduct.cs','ParfaitApp/Program.cs','Protect-Website/Program.cs')
-              for path in changed)
-          if backend and any(x not in {'Parfait','Protect'} for x in impacted):
-              raise SystemExit('Mixed fast-track backend release would affect unrelated applications; split release')
-          selected=[catalog[name] for name in catalog if name in impacted]
-          output=json.dumps({'include':selected},separators=(',',':'))
+          scope=authority.fast_track_scope(changed)
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
-              stream.write('selected='+str(bool(selected)).lower()+'\n')
-              stream.write('matrix='+output+'\n')
-              stream.write('commerce='+str(backend).lower()+'\n')
+              stream.write('selected='+str(scope['selected']).lower()+'\n')
+              stream.write('matrix='+json.dumps(scope['matrix'],separators=(',',':'))+'\n')
+              stream.write('commerce='+str(scope['commerce']).lower()+'\n')
           print('LEGEND_FAST_TRACK_CHANGED_FILES='+json.dumps(changed))
-          print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in selected]))
+          print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in scope['matrix']['include']]))
+          print('LEGEND_FAST_TRACK_OWNERSHIP='+json.dumps(scope['impacts'],sort_keys=True))
           PY
 
   commerce-gates:
@@ -288,7 +238,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Fail closed if a shared-host cutover is already enabled in Azure
-        if: ${{ needs.select-targets.outputs.commerce == 'true' }}
+        if: ${{ needs.select-targets.outputs.commerce == 'true' && (matrix.target == 'Protect' || matrix.target == 'Parfait') }}
         shell: bash
         env:
           APP: ${{ matrix.azure_app }}

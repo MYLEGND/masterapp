@@ -1863,6 +1863,102 @@ def release_targets_for_paths(paths):
         if key in selected
     )
 
+def fast_track_scope(paths):
+    """Exact fast-track impact using the canonical inventory and project links.
+
+    Unknown application paths stop admission; they never silently expand into
+    a blanket deployment. This function grants no schema mutation permission.
+    """
+    import posixpath
+    import xml.etree.ElementTree as ET
+    paths = tuple(dict.fromkeys(paths))
+    dotnet = {key for key, row in RELEASE_TARGETS.items() if not row['static']}
+    commerce = {'protect', 'parfait'}
+    linked = {}
+    for key, row in RELEASE_TARGETS.items():
+        if row['static']:
+            continue
+        project = Path(row['project'])
+        root = ET.fromstring((Path(__file__).resolve().parents[1] / project).read_text())
+        items = []
+        for node in root.iter():
+            if node.tag not in {'Content', 'None', 'Compile'} or not node.get('Include'):
+                continue
+            def patterns(value):
+                return [posixpath.normpath(str(project.parent) + '/' + part.replace('\\', '/'))
+                        for part in value.split(';') if part and '$(' not in part and '@(' not in part]
+            items.append((patterns(node.get('Include', '')), patterns(node.get('Exclude', ''))))
+        linked[key] = items
+    def match(path, pattern):
+        # MSBuild * stays within one directory; ** spans zero or more.
+        expression = re.escape(pattern).replace(r'\*\*/', '(?:.*/)?')
+        expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
+        return re.fullmatch(expression, path) is not None
+    def owners(path):
+        if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
+            return set(commerce)
+        if path.startswith('Infrastructure/WebsiteRuntime/'):
+            return {'protect'}
+        if path.startswith('Domain/Entities/Commerce') or path in {
+            'Infrastructure/Data/MasterAppDbContext.cs',
+            'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
+            'Infrastructure/Businesses/BusinessWorkspaceAccess.cs'} or path.startswith('Infrastructure/Migrations/'):
+            return set(dotnet)
+        if path.startswith(('Legend-Cloudflare/src/website-routing/', 'Legend-Cloudflare/tests/website-routing/')):
+            return set()
+        if path.startswith('SHARED/wwwroot/js/finance-') or path in {
+            'SHARED/wwwroot/js/legend-living-balance-sheet.js',
+            'SHARED/wwwroot/js/expense-lens-projection.js',
+            'SHARED/wwwroot/css/legend-finance-shared.css'}:
+            return {'portal', 'client'}
+        if path.startswith('SHARED/wwwroot/'):
+            return set(RELEASE_TARGETS)
+        if path.startswith('SHARED/WebsitePlatform/'):
+            return {'website', 'protect'}
+        if path.startswith('SHARED/Views/') or path == 'SHARED/Shared.csproj':
+            return {'portal', 'client', 'protect'}
+        if path.startswith('SHARED/Branding/'):
+            return {'portal', 'client', 'protect', 'website'}
+        if path == 'Legend-Design/legend-public-inquiry.js':
+            return {'website', 'protect'}
+        if path.startswith('Legend-Design/'):
+            return set(RELEASE_TARGETS)
+        if path == 'Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs':
+            return {'portal', 'client', 'protect'}
+        if path == 'Infrastructure/WebsiteEditing/WebsitePlatformController.cs':
+            return {'protect'}
+        if path.startswith('Legend-Website/'):
+            return {'website'} if path == 'Legend-Website/scripts/check.mjs' else {'website', 'protect'}
+        direct = {key for key, row in RELEASE_TARGETS.items() if path.startswith(row['sourceRoot'] + '/')}
+        if direct:
+            return direct
+        if release_control_only_path(path) or path.startswith(('docs/',
+            'diagnostics/MerchantPaymentCoreTests/', 'diagnostics/MerchantPaymentAdapterChecks/')) or path in {
+            'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
+            'scripts/test-parfait-readonly-workflow.py'}:
+            return set()
+        raise ValueError('Unmapped fast-track source path: ' + path)
+    impacts = {}
+    for path in paths:
+        selected = owners(path)
+        for key, items in linked.items():
+            if any(any(match(path, pat) for pat in includes) and not any(match(path, pat) for pat in excludes)
+                   for includes, excludes in items):
+                selected.add(key)
+        impacts[path] = sorted(selected)
+    selected = set().union(*map(set, impacts.values())) if impacts else set()
+    names = dict(portal='AgentPortal', client='ClientApp', protect='Protect', parfait='Parfait', website='Website')
+    matrix = [dict(target=names[key], project=row['project'], azure_app=row['releaseName'], host=row['host'])
+              for key, row in RELEASE_TARGETS.items() if key in selected]
+    schema = any(path.startswith('Infrastructure/Migrations/') or path in {
+        'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs'} for path in paths)
+    backend = schema or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
+        'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
+        'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs'} for path in paths)
+    return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend,
+                schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') for p in paths), impacts=impacts)
+
+
 LIFECYCLE_AUTHORITY_PATHS = (
     "AGENTS.md",
     "DEPLOYMENT.md",

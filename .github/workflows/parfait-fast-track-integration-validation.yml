@@ -55,7 +55,7 @@ jobs:
             'COMMERCE_PRODUCTION_FLAGS_OFF_AND_TARGET_AUTHORIZED:',
             "needs.select-targets.outputs.commerce == 'true'",
             "needs.commerce-gates.result == 'success'",
-            "Unmapped fast-track source path",
+            "authority.fast_track_scope(changed)",
             'LEGEND_FAST_TRACK_SELECTED=',
           )
           for token in required:

@@ -136,3 +136,11 @@ and index queries for pending new tables already proven absent. This preserves
 all physical checks while reducing remote SQL round trips. Read deadlines remain
 bounded and now return explicit timeout classifications; they are never silently
 retried. Full live physical proof must still pass on the corrected observer.
+
+### Fast-track production observation and impact checkpoint
+
+- Candidate `0b01da40f528f812a027611b4ce0f0091ca1f686` passed source validation, security validation, and read-only production workflow run `38128215802`.
+- Physical SQL observation proves Parfait and Protect share the same database, baseline, and schema identities. Exactly one migration is pending: `20261011064911_AddBusinessScopedMerchantPayments`. No SQL was applied.
+- The fast-track selector now derives linked-file consumers from existing application projects and uses the canonical target inventory. Shared business authorization/schema changes affect all four .NET hosts; the changed shared CMS bundle also affects Website. This is a dependency-derived scope, not blanket application selection.
+- Unknown source paths still stop selection. Schema publication remains blocked until canonical migration admission, exact bundle rehearsal/readiness, durable mutation receipts, and safe deployment resume are integrated. Passing read-only observation is not mutation admission.
+- No domain traffic cutover, data transfer, application deployment, or legacy retirement has occurred at this checkpoint.
