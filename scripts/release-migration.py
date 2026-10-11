@@ -359,19 +359,36 @@ def production_recovery(database_identity, *, read=None, now=None):
         result = subprocess.run(['az', *args, '--only-show-errors', '-o', 'json'],
             capture_output=True, text=True, timeout=60, check=False)
         if result.returncode:
+            if any(code in result.stderr for code in ('AuthorizationFailed', 'Authorization_RequestDenied', 'Forbidden')):
+                raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_AZURE_READ_DENIED')
+            if any(code in result.stderr for code in ('SubscriptionNotFound', 'ResourceGroupNotFound', 'ResourceNotFound')):
+                raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_RESOURCE_UNAVAILABLE')
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
         return json.loads(result.stdout)
     read = read or azure
-    group = os.environ['RELEASE_DATABASE_RESOURCE_GROUP']
-    servers = read('sql', 'server', 'list', '-g', group)
-    if not isinstance(servers, list):
-        raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+    # SQL and web apps can live in different subscriptions. Use the configured
+    # canonical SQL resource, then independently match the live physical hash.
+    resource = os.environ.get('RELEASE_DATABASE_SERVER_RESOURCE_ID', '')
+    parts = re.fullmatch(r'/subscriptions/([a-fA-F0-9-]{36})/resourceGroups/([A-Za-z0-9_.() -]{1,90})/providers/Microsoft.Sql/servers/([A-Za-z0-9-]{1,128})', resource)
+    if parts is None:
+        raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_RESOURCE_UNPROVEN')
+    subscription, resource_group, server_name = parts.groups()
+    server = read('sql', 'server', 'show', '--ids', resource)
+    if (not isinstance(server, dict) or str(server.get('id', '')).lower() != resource.lower()
+        or str(server.get('resourceGroup', '')).lower() != resource_group.lower()
+        or str(server.get('name', '')).lower() != server_name.lower()):
+        raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_RESOURCE_UNPROVEN')
+    servers = [server]
     matches = []
+    candidate_identities = []
     for server in servers:
         name = server.get('name')
         if not isinstance(name, str) or not re.fullmatch('[A-Za-z0-9-]{1,128}', name):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
-        databases = read('sql', 'db', 'list', '-g', group, '-s', name)
+        group = server.get('resourceGroup')
+        if not isinstance(group, str) or not re.fullmatch(r'[A-Za-z0-9_.() -]{1,90}', group):
+            raise RuntimeError('FAST_TRACK_DATABASE_RESOURCE_GROUP_UNPROVEN')
+        databases = read('sql', 'db', 'list', '-g', group, '-s', name, '--subscription', subscription)
         if not isinstance(databases, list):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
         for database in databases:
@@ -379,12 +396,13 @@ def production_recovery(database_identity, *, read=None, now=None):
             if not isinstance(db_name, str):
                 raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
             identity = hashlib.sha256((name + '/' + db_name).encode()).hexdigest()
+            candidate_identities.append(identity)
             if identity != database_identity:
                 continue
             earliest = datetime.fromisoformat(str(database.get('earliestRestoreDate', '')).replace('Z', '+00:00'))
             if database.get('status') != 'Online' or not earliest <= point < now:
                 raise RuntimeError('FAST_TRACK_DATABASE_RESTORE_WINDOW_UNPROVEN')
-            policy = read('sql', 'db', 'str-policy', 'show', '-g', group, '-s', name, '-n', db_name)
+            policy = read('sql', 'db', 'str-policy', 'show', '-g', group, '-s', name, '-n', db_name, '--subscription', subscription)
             if type(policy.get('retentionDays')) is not int or policy['retentionDays'] < 7:
                 raise RuntimeError('FAST_TRACK_DATABASE_RESTORE_WINDOW_UNPROVEN')
             matches.append(dict(databaseIdentity=database_identity, observedUtc=now.isoformat(),
@@ -392,6 +410,9 @@ def production_recovery(database_identity, *, read=None, now=None):
                 retentionDays=policy['retentionDays'], restoreWindowVerified=True,
                 restoreExecuted=False, authorizesMutation=False))
     if len(matches) != 1:
+        print('FAST_TRACK_DATABASE_RECOVERY_INVENTORY:' + json.dumps(dict(
+            observedIdentity=database_identity, serverCount=len(servers),
+            databaseCount=len(candidate_identities), candidateIdentities=candidate_identities[:100]), sort_keys=True))
         raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_IDENTITY_UNPROVEN')
     return matches[0]
 

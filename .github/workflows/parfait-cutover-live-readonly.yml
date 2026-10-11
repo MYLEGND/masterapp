@@ -235,6 +235,23 @@ jobs:
               raise SystemExit('SQL_SCHEMA_PLAN_INCOMPLETE: preserve source proof; reconcile this stage only')
           PYSCHEMA
 
+      - name: Verify exact observed database recovery metadata without mutation
+        env:
+          RELEASE_DATABASE_SERVER_RESOURCE_ID: /subscriptions/a543b54e-8a42-4a4b-bd4d-bc13573b1c48/resourceGroups/MasterApp-Data-RG/providers/Microsoft.Sql/servers/masterapp-sql-prod-1221
+        run: |
+          python3 - <<'PYRECOVERY'
+          import importlib.util,json,os,pathlib
+          spec=importlib.util.spec_from_file_location('migration','scripts/release-migration.py')
+          owner=importlib.util.module_from_spec(spec);spec.loader.exec_module(owner)
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'parfait-proof'
+          report=json.loads((root/'sanitized-schema.json').read_text())
+          if report.get('sharedDatabase') is not True:
+              raise SystemExit('RECOVERY_SHARED_DATABASE_UNPROVEN')
+          proof=owner.production_recovery(report['applications']['masterapp-protect']['databaseIdentity'])
+          (root/'sanitized-recovery.json').write_text(json.dumps(proof,sort_keys=True)+'\n')
+          print('COMMERCE_READONLY_RECOVERY:VERIFIED_WITHOUT_MUTATION')
+          PYRECOVERY
+
       - name: Preserve sanitized read-only evidence
         if: always()
         uses: actions/upload-artifact@v4

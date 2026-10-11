@@ -246,18 +246,28 @@ class RecoveryWindowTests(unittest.TestCase):
         from datetime import datetime,timezone
         now=datetime(2026,10,11,tzinfo=timezone.utc)
         calls=[]
+        subscription='11111111-1111-1111-1111-111111111111'
+        resource='/subscriptions/'+subscription+'/resourceGroups/data-group/providers/Microsoft.Sql/servers/server'
         def read(*args):
             calls.append(args)
-            self.assertIn('data-group', args)
             self.assertNotIn('app-group', args)
-            if args[:3]==('sql','server','list'):return [dict(name='server')]
+            if args[:3]==('sql','server','show'):
+                self.assertEqual(args, ('sql','server','show','--ids',resource))
+                return dict(id=resource,name='server',resourceGroup='data-group')
+            self.assertEqual(args[-2:], ('--subscription',subscription))
+            self.assertIn('data-group', args)
             if args[:3]==('sql','db','list'):return [dict(name='db',status='Online',earliestRestoreDate='2026-10-01T00:00:00Z')]
             return dict(retentionDays=7)
         identity=hashlib.sha256(b'server/db').hexdigest()
-        with patch.dict(os.environ,RELEASE_DATABASE_RESOURCE_GROUP='data-group',RELEASE_RESOURCE_GROUP='app-group'):
+        with patch.dict(os.environ,RELEASE_DATABASE_SERVER_RESOURCE_ID=resource,RELEASE_RESOURCE_GROUP='app-group'):
             proof=migration.production_recovery(identity,read=read,now=now)
             self.assertFalse(proof['restoreExecuted']);self.assertFalse(proof['authorizesMutation'])
             self.assertTrue(proof['restoreWindowVerified'])
+            with self.assertRaisesRegex(RuntimeError,'RESOURCE_UNPROVEN'):
+                migration.production_recovery(identity,read=lambda *args:dict(id=resource+'/wrong',name='server',resourceGroup='data-group'),now=now)
+            with patch.object(migration.subprocess,'run',return_value=SimpleNamespace(returncode=1,stderr='AuthorizationFailed',stdout='')):
+                with self.assertRaisesRegex(RuntimeError,'AZURE_READ_DENIED'):
+                    migration.production_recovery(identity,now=now)
             with self.assertRaisesRegex(RuntimeError,'IDENTITY'):
                 migration.production_recovery('a'*64,read=read,now=now)
         self.assertTrue(all('list' in c or 'show' in c for c in calls))

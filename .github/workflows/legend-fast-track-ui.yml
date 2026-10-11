@@ -168,7 +168,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
       RELEASE_RESOURCE_GROUP: masterapp-rg
-      RELEASE_DATABASE_RESOURCE_GROUP: MasterApp-Data-RG
+      RELEASE_DATABASE_SERVER_RESOURCE_ID: /subscriptions/a543b54e-8a42-4a4b-bd4d-bc13573b1c48/resourceGroups/MasterApp-Data-RG/providers/Microsoft.Sql/servers/masterapp-sql-prod-1221
       DATABASE_AUTHORITY: masterapp-protect
       RELEASE_SHA: ${{ github.sha }}
       APPLICATION_RELEASE_SHA: ${{ github.sha }}
