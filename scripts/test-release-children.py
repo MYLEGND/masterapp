@@ -2346,7 +2346,7 @@ class MigrationObservationReceiptTests(unittest.TestCase):
         receipt=dict(candidate='a'*40,executionAuthority='b'*40,databaseIdentity='c'*64,
             schemaIdentity='d'*64,baselineIdentity='e'*64,observedUtc='2026-10-09T12:00:00Z',
             pendingCount=0,mutationActivity='settled',historicalExecution='outcome-unknown',
-            historicalEvidenceIdentity='f'*64,historicalReconciliationSources=[dict(run=7,attempt=1)])
+            historicalEvidenceIdentity='f'*64,historicalReconciliationSources=[dict(run=7,attempt=1,migrationRecords=[])])
         calls=[]
         def publish(name,record,**kwargs):
             calls.append((name,record));return dict(artifactId=123)
@@ -2358,6 +2358,8 @@ class MigrationObservationReceiptTests(unittest.TestCase):
             self.assertEqual('outcome-unknown',calls[0][1]['historicalExecution'])
             self.assertEqual('0'*64,calls[0][1]['bundleDigest'])
             self.assertEqual(2,calls[0][1]['producingAttempt'])
+            self.assertNotIn('migrationRecords',calls[0][1]['historicalReconciliationSources'][0])
+            self.assertIn('migrationRecords',receipt['historicalReconciliationSources'][0])
             with self.assertRaises(TimeoutError):
                 migration.retain_current_observation(receipt,'0'*64,publisher=lambda *a,**k: (_ for _ in ()).throw(TimeoutError()))
         self.assertEqual(1,len(calls))

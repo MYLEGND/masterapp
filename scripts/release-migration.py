@@ -427,6 +427,10 @@ def retain_current_observation(receipt, bundle_digest, *, publisher=None):
         'candidate', 'executionAuthority', 'databaseIdentity', 'schemaIdentity',
         'baselineIdentity', 'observedUtc', 'pendingCount', 'mutationActivity',
         'historicalExecution', 'historicalEvidenceIdentity', 'historicalReconciliationSources')}
+    # Internal admission records are not part of the public observation schema.
+    record['historicalReconciliationSources'] = [
+        {key: value for key, value in row.items() if key != 'migrationRecords'}
+        for row in record['historicalReconciliationSources']]
     record.update(schemaVersion=1, phase='observation', kind='current-schema-no-write',
                   bundleDigest=bundle_digest, sqlExecutionAuthorized=False,
                   producingRun=int(os.environ['GITHUB_RUN_ID']),

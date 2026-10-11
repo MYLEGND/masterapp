@@ -189,6 +189,67 @@ def fast_track_execution_history(repository, token):
     return runs
 
 
+
+def attested_fast_track_migration_prewrite(repository, run, jobs, token):
+    """Authenticate a terminal pre-bundle failure, never infer it from no receipt."""
+    import datetime
+    if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure' or run.get('run_attempt') != 1):
+        return False
+    owners = [j for j in jobs if j.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][0]]
+    publications = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ')
+                    or j.get('name') == FAST_TRACK_CHILD_STEPS['routing-cloudflare'][0]]
+    if (len(owners) != 1 or len(publications) < 2 or
+        any(j.get('conclusion') != 'skipped' for j in publications)):
+        return False
+    job = owners[0]
+    steps = [x for x in job.get('steps', []) if x.get('name') == FAST_TRACK_CHILD_STEPS['migrations'][1]]
+    if (job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+        or len(steps) != 1 or steps[0].get('status') != 'completed'
+        or steps[0].get('conclusion') != 'failure'):
+        return False
+    # This source labels exceptions from journal.before_mutation before entering
+    # the bundle subprocess. Its fixed terminal marker is positive nonentry.
+    sources = {
+        '.github/workflows/legend-fast-track-ui.yml': 'bb46f6d524b073cbd61f84e53361452a3ed2a370273939098b1d18f8b1df4a64',
+        'scripts/release-migration.py': '8e35c1834e2107991051fef5153a9e3dd045838668d0118de27e9d76045c36de',
+        'scripts/release-operation-evidence.py': '05192d3b67903f7091d5131960572a6d8f7c9bcea82ec0fb833ca27a71f4493b',
+        'scripts/release-artifacts/transport.cjs': 'f0958ce152d4afe79e71956fba1519376352c6d44ba3a98366db761b4cbf80a0',
+    }
+    try:
+        for path, digest in sources.items():
+            if hashlib.sha256(_release_history_source(repository, run['head_sha'], path, token).encode()).hexdigest() != digest:
+                return False
+        inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = inventory.get('artifacts')
+        if (not isinstance(artifacts, list) or type(inventory.get('total_count')) is not int
+            or inventory['total_count'] != len(artifacts)
+            or any(not isinstance(a, dict) or type(a.get('id')) is not int
+                   or a['id'] < 1 or not isinstance(a.get('name'), str) for a in artifacts)
+            or len({a['id'] for a in artifacts}) != len(artifacts)
+            or any(a['name'].startswith(('legend-release-child-intent-', 'legend-release-child-success-'))
+                   for a in artifacts)):
+            return False
+        start = datetime.datetime.fromisoformat(steps[0]['started_at'].replace('Z', '+00:00'))
+        end = datetime.datetime.fromisoformat(steps[0]['completed_at'].replace('Z', '+00:00'))
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            return False
+        log = _release_job_log(repository, job['id'], token)
+        clean = '\n'.join(re.sub(r'^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ', '', line) for line in log.splitlines())
+        heads = set(re.findall(r'(?m)^\[command\]/usr/bin/git log -1 --format=%H\n([a-f0-9]{40})$', clean))
+        if heads != {run['head_sha']}:
+            return False
+        marker = 'Migration stage unresolved: mutation-admission; preserve prior evidence and reconcile without replay.'
+        stamps = []
+        for line in log.splitlines():
+            date, sep, message = line.partition(' ')
+            if sep and message == marker:
+                stamps.append(datetime.datetime.fromisoformat(date.replace('Z', '+00:00')))
+        return len(stamps) == 1 and start <= stamps[0] <= end + datetime.timedelta(seconds=2)
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+
+
 def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
     if child not in FAST_TRACK_CHILD_STEPS:
         return []
@@ -230,6 +291,8 @@ def fast_track_child_attempts(repository, child, token, *, current_run=None, cur
             if len(steps) != 1:
                 raise RuntimeError('FAST_TRACK_CHILD_STEP_UNPROVEN')
             if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
+                continue
+            if child == 'migrations' and attested_fast_track_migration_prewrite(repository, run, jobs, token):
                 continue
             attempts.append((run, attempt, job, steps[0]))
     return attempts
@@ -3452,7 +3515,8 @@ def fast_track_effective_baseline(before, revision):
     """Carry unpublished scope through an admission repair, never through a write."""
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    for _ in range(8):
+    # Keep a bounded chain while carrying successive positively proven prewrite repairs.
+    for _ in range(16):
         if not re.fullmatch('[a-f0-9]{40}', before) or subprocess.run(
                 ['git', 'merge-base', '--is-ancestor', before, revision], capture_output=True).returncode:
             raise RuntimeError('FAST_TRACK_SCOPE_BASELINE_UNPROVEN')
@@ -3483,7 +3547,8 @@ def fast_track_effective_baseline(before, revision):
             and all(j.get('conclusion') == 'skipped' for j in writes))
         recovery_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and len(migrations) == 1 and migrations[0].get('conclusion') in {'failure', 'cancelled'}
-            and len(mutation) == 1 and mutation[0].get('conclusion') == 'skipped'
+            and len(mutation) == 1 and (mutation[0].get('conclusion') == 'skipped' or
+                attested_fast_track_migration_prewrite(repository, prior, jobs, token))
             and all(j.get('conclusion') == 'skipped' for j in publications))
         if len(writes) < 3 or not (admission_stopped or recovery_stopped):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
