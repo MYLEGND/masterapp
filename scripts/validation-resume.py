@@ -3373,8 +3373,17 @@ def fast_track_effective_baseline(before, revision):
         admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
         writes = [j for j in jobs if j.get('name', '').startswith('Affected App Deploy — ') or
                   j.get('name') in {'Reconcile production schema before publication', 'Publish verified website routing'}]
-        if (len(admissions) != 1 or admissions[0].get('conclusion') not in {'failure', 'cancelled'}
-            or len(writes) < 3 or any(j.get('conclusion') != 'skipped' for j in writes)):
+        migrations = [j for j in writes if j.get('name') == 'Reconcile production schema before publication']
+        publications = [j for j in writes if j not in migrations]
+        migration_steps = migrations[0].get('steps', []) if len(migrations) == 1 else []
+        mutation = [s for s in migration_steps if s.get('name') == 'Apply or reconcile the exact rehearsed migration bundle']
+        admission_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') in {'failure', 'cancelled'}
+            and all(j.get('conclusion') == 'skipped' for j in writes))
+        recovery_stopped = (len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
+            and len(migrations) == 1 and migrations[0].get('conclusion') in {'failure', 'cancelled'}
+            and len(mutation) == 1 and mutation[0].get('conclusion') == 'skipped'
+            and all(j.get('conclusion') == 'skipped' for j in publications))
+        if len(writes) < 3 or not (admission_stopped or recovery_stopped):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
         pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
         merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before

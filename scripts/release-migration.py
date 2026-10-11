@@ -362,7 +362,7 @@ def production_recovery(database_identity, *, read=None, now=None):
             raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
         return json.loads(result.stdout)
     read = read or azure
-    group = os.environ['RELEASE_RESOURCE_GROUP']
+    group = os.environ['RELEASE_DATABASE_RESOURCE_GROUP']
     servers = read('sql', 'server', 'list', '-g', group)
     if not isinstance(servers, list):
         raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')

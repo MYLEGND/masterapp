@@ -200,7 +200,7 @@ class MergedSourceReceiptTests(unittest.TestCase):
 
 
 class AdmissionRepairScopeTests(unittest.TestCase):
-    def baseline(self, entered=False, attempt=1, duplicate=False):
+    def baseline(self, entered=False, attempt=1, duplicate=False, recovery=False, mutation="skipped"):
         before='a'*40;head='b'*40;original='c'*40
         prior=dict(id=7,run_attempt=attempt,head_sha=before,head_branch=authority.FAST_TRACK_PR_BASE,event='push',
             path='.github/workflows/'+authority.FAST_TRACK_RELEASE_WORKFLOW,
@@ -209,6 +209,9 @@ class AdmissionRepairScopeTests(unittest.TestCase):
               dict(name='Reconcile production schema before publication',conclusion='failure' if entered else 'skipped'),
               dict(name='Affected App Deploy — ${{ matrix.target }}',conclusion='skipped'),
               dict(name='Publish verified website routing',conclusion='skipped')]
+        if recovery:
+            jobs[0]['conclusion']='success'
+            jobs[1].update(conclusion='failure',steps=[dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion=mutation)])
         def get(repo,path,token):
             if path.startswith('actions/runs?'):
                 runs=([prior,dict(prior,id=8)] if duplicate else [prior]) if before in path else []
@@ -232,6 +235,11 @@ class AdmissionRepairScopeTests(unittest.TestCase):
     def test_multiple_runs_require_operation_reconciliation(self):
         with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(duplicate=True)
 
+    def test_prewrite_recovery_failure_preserves_unpublished_scope(self):
+        self.assertEqual('c'*40,self.baseline(recovery=True))
+    def test_entered_migration_cannot_inherit_scope(self):
+        with self.assertRaisesRegex(RuntimeError,'RECONCILIATION'):self.baseline(recovery=True,mutation='failure')
+
 
 class RecoveryWindowTests(unittest.TestCase):
     def test_exact_database_with_managed_restore_window_is_read_only_proof(self):
@@ -240,11 +248,13 @@ class RecoveryWindowTests(unittest.TestCase):
         calls=[]
         def read(*args):
             calls.append(args)
+            self.assertIn('data-group', args)
+            self.assertNotIn('app-group', args)
             if args[:3]==('sql','server','list'):return [dict(name='server')]
             if args[:3]==('sql','db','list'):return [dict(name='db',status='Online',earliestRestoreDate='2026-10-01T00:00:00Z')]
             return dict(retentionDays=7)
         identity=hashlib.sha256(b'server/db').hexdigest()
-        with patch.dict(os.environ,RELEASE_RESOURCE_GROUP='group'):
+        with patch.dict(os.environ,RELEASE_DATABASE_RESOURCE_GROUP='data-group',RELEASE_RESOURCE_GROUP='app-group'):
             proof=migration.production_recovery(identity,read=read,now=now)
             self.assertFalse(proof['restoreExecuted']);self.assertFalse(proof['authorizesMutation'])
             self.assertTrue(proof['restoreWindowVerified'])
