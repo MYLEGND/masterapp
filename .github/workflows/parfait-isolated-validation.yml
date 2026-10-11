@@ -5,17 +5,20 @@ on:
     branches:
       - isolation/parfait-canonical-commerce-20261010
       - isolation/canonical-scoped-commerce-internal-20261010
+      - repair/fast-track-already-ready-no-sql-20261011
       - isolation/parfait-live-cutover-20261011
       - isolation/business-scoped-payments-20261011
     paths:
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py
       - scripts/release-operation-evidence.py
+      - scripts/release-migration.py
       - scripts/release-router.py
       - scripts/release-migration-history-audit.py
       - scripts/release-lifecycle.py
       - scripts/test-release-lifecycle.py
       - scripts/test-fast-track-release.py
+      - scripts/test-fast-track-ready-no-sql.py
       - CommerceCore/**
       - Infrastructure/Commerce/**
       - Infrastructure/Businesses/**
@@ -134,6 +137,7 @@ jobs:
           python3 scripts/test-release-children.py
           python3 scripts/test-release-migration-history-audit.py
           python3 scripts/test-fast-track-release.py
+          python3 scripts/test-fast-track-ready-no-sql.py
           dotnet build scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet build scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false
           dotnet run --project scripts/MigrationReleaseProbe/Rehearsal/MigrationRehearsal.csproj -c Release --no-build -- contract-test

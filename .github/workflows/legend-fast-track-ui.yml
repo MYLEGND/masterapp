@@ -88,6 +88,7 @@ jobs:
       commerce: ${{ steps.scope.outputs.commerce }}
       targets: ${{ steps.scope.outputs.targets }}
       routing: ${{ steps.scope.outputs.routing }}
+      schema: ${{ steps.scope.outputs.schema }}
       baseline: ${{ steps.scope.outputs.baseline }}
     steps:
       - name: Check out exact fast-track source
@@ -127,6 +128,7 @@ jobs:
               stream.write('matrix='+json.dumps(scope['matrix'],separators=(',',':'))+'\n')
               stream.write('commerce='+str(scope['commerce']).lower()+'\n')
               stream.write('routing='+str(scope['routing']).lower()+'\n')
+              stream.write('schema='+str(scope['schema']).lower()+'\n')
               stream.write('targets='+json.dumps([r['azure_app'] for r in scope['matrix']['include']])+'\n')
           print('LEGEND_FAST_TRACK_CHANGED_FILES='+json.dumps(changed))
           print('LEGEND_FAST_TRACK_SELECTED='+json.dumps([x['target'] for x in scope['matrix']['include']]))
@@ -187,6 +189,8 @@ jobs:
       APPLICATION_RELEASE_SHA: ${{ github.sha }}
       RELEASE_CANDIDATE_SHA: ${{ needs.commerce-gates.outputs.candidate }}
       SELECTED_TARGETS: ${{ needs.select-targets.outputs.targets }}
+      FAST_TRACK_SCHEMA_CHANGED: ${{ needs.select-targets.outputs.schema }}
+      FAST_TRACK_RELEASE_BASELINE: ${{ needs.select-targets.outputs.baseline }}
       FAST_TRACK_MIGRATION_DIRECTORY: /tmp/fast-track-migration
       MIGRATION_BUNDLE: /tmp/fast-track-migration/masterapp-migrations
       MIGRATION_PROBE_DLL: /tmp/fast-track-probe/MigrationReleaseProbe.dll
@@ -201,7 +205,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Build current read-only schema observer for source-only release
+        if: ${{ needs.select-targets.outputs.schema == 'false' }}
+        run: |
+          dotnet publish scripts/MigrationReleaseProbe/MigrationReleaseProbe.csproj -c Release --nologo \
+            -m:1 -nr:false -p:UseSharedCompilation=false -o /tmp/fast-track-probe
       - name: Restore authenticated compatible rehearsal without rebuilding
+        if: ${{ needs.select-targets.outputs.schema == 'true' }}
         run: |
           python3 - <<'PY'
           import importlib.util,os,pathlib
@@ -242,7 +252,11 @@ jobs:
       - name: Check migration admission without entering a write step
         run: python3 scripts/release-migration.py --preflight
       - name: Apply or reconcile the exact rehearsed migration bundle
+        if: ${{ needs.select-targets.outputs.schema == 'true' }}
         run: python3 scripts/release-migration.py
+      - name: Reconcile fresh already-ready schema without SQL bundle or mutation
+        if: ${{ needs.select-targets.outputs.schema == 'false' }}
+        run: python3 scripts/release-migration.py --no-sql
 
   deploy-ui:
     name: Affected App Deploy — ${{ matrix.target }}
