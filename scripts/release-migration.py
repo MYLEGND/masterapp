@@ -461,7 +461,7 @@ def reconcile_current_schema_no_sql(probe, connection, *, observer=None, readine
     before = migration_stage('schema-observation', observer, probe, connection)
     if before.get('ready') is not True or type(before.get('pendingCount')) is not int or before['pendingCount'] != 0:
         raise RuntimeError('Migration stage unresolved: readiness-drift')
-    receipt = migration_stage('readiness', readiness, before)
+    receipt = migration_stage('readiness-missing', readiness, before)
     if receipt.get('kind') != 'current-schema-no-write' or receipt.get('pendingCount') != 0:
         raise RuntimeError('Migration stage unresolved: readiness-missing')
     # No executable migration component exists on this branch. This distinct
@@ -476,8 +476,8 @@ def reconcile_current_schema_no_sql(probe, connection, *, observer=None, readine
                                   partition_identity=partition)
     else:
         journal = migration_stage('child-history', journal_factory, 'migrations', material)
-    migration_stage('readiness', bind_readiness, before, no_sql_digest, receipt,
-                    completed_intent=journal.intent is not None)
+    bind_readiness(before, no_sql_digest, receipt,
+                   completed_intent=journal.intent is not None)
     migration_stage('observation-receipt', publisher or retain_current_observation, receipt, no_sql_digest)
     observation = dict(schemaIdentity=before['schemaIdentity'], providerVersion='schema-ready-no-write')
     migration_stage('success-receipt', journal.record_success, observation)
