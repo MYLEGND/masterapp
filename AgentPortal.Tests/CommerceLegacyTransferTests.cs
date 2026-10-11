@@ -48,6 +48,8 @@ public sealed class CommerceLegacyTransferTests
             Assert.Equal(0, plan.VerifiedDestinationFiles);
             Assert.Equal(64, plan.ManifestSha256.Length);
             Assert.False(Directory.Exists(target.RootPath));
+            Assert.Equal(plan.ManifestSha256,
+                await migration.ReadManifestAsync(business.Id, "parfait", source));
 
             var copied = await migration.ReconcileAsync(business.Id, "parfait",
                 source, target, CommerceTransferMode.CopyNoOverwrite);
@@ -82,6 +84,35 @@ public sealed class CommerceLegacyTransferTests
                     CommerceTransferMode.PlanOnly));
             Assert.True(File.Exists(sourceFile));
             Assert.NotEqual(original, await File.ReadAllBytesAsync(sourceFile));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ManifestBindsIdenticalFilesToTheirBusinessIdentity()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var first = new CommerceBusiness { Key = "first", DisplayName = "First", IsActive = true };
+        var second = new CommerceBusiness { Key = "second", DisplayName = "Second", IsActive = true };
+        foreach (var business in new[] { first, second })
+        {
+            var product = new CommerceProduct { CommerceBusinessId = business.Id, Name = "Test" };
+            db.CommerceBusinesses.Add(business);
+            db.CommerceProducts.Add(product);
+            db.CommerceProductImages.Add(new CommerceProductImage
+                { CommerceProductId = product.Id, ImageUrl = "/uploads/parfait-products/shared/image.png" });
+        }
+        await db.SaveChangesAsync();
+        var root = Path.Combine(Path.GetTempPath(), "commerce-identity-" + Guid.NewGuid().ToString("N"));
+        var storage = Paths(root);
+        try
+        {
+            var image = Path.Combine(storage.UploadRoot, "shared", "image.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(image)!);
+            await File.WriteAllBytesAsync(image, new byte[] { 1, 2, 3, 4 });
+            var migration = new CommerceLegacyTransfer(db);
+            Assert.NotEqual(await migration.ReadManifestAsync(first.Id, first.Key, storage),
+                await migration.ReadManifestAsync(second.Id, second.Key, storage));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
