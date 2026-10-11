@@ -199,6 +199,85 @@ class MergedSourceReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'MISSING'):self.verify()
 
 
+class TwoAttemptNoSqlPreflightHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=38178839491,
+            head_sha='910f93fc6bd247f826fffb9d9701676cf4d33112',
+            run_attempt=2, status='completed', conclusion='failure')
+        self.names=['Select exact affected applications',
+            'Admit exact validated fast-track source',
+            'Reconcile production schema before publication',
+            'Affected App Deploy — ${{ matrix.target }}',
+            'Publish verified website routing']
+        self.artifacts=[dict(name=n,id=k,expired=False,
+            workflow_run=dict(id=38178839491)) for n,k in (
+            ('fast-track-admission-38178839491-1',11716507721),
+            ('fast-track-database-recovery-38178839491-1',11716567678),
+            ('fast-track-database-recovery-38178839491-2',11716923766))]
+        self.steps=[dict(name=n, conclusion=result) for n,result in (
+            ('Run actions/checkout@v4','success'),
+            ('Build current read-only schema observer for source-only release','success'),
+            ('Verify current database recovery window before retention readers','success'),
+            ('Preserve recovery evidence before SQL or retention publication','success'),
+            ('Check migration admission without entering a write step','failure'),
+            ('Apply or reconcile the exact rehearsed migration bundle','skipped'),
+            ('Reconcile fresh already-ready schema without SQL bundle or mutation','skipped'))]
+        self.jobs={}
+        for attempt in (1,2):
+            rows=[dict(name=name,id=attempt*100+i,run_attempt=attempt,status='completed',
+                conclusion=('failure' if i==2 else 'skipped' if i>=3 else 'success'),
+                steps=[dict(row) for row in self.steps] if i==2 else [])
+                for i,name in enumerate(self.names)]
+            self.jobs[attempt]=rows
+        self.log=('2026-10-11T22:12:01.001Z Database mutation activity remains active; '
+                  'preserve prior evidence and reconcile without replay.\n')
+        self.workflow=('Check migration admission without entering a write step\n'
+                       'Apply or reconcile the exact rehearsed migration bundle\n'
+                       'Reconcile fresh already-ready schema without SQL bundle or mutation\n')
+
+    def prove(self):
+        def api(repository,path,token):
+            if '/artifacts?' in path:
+                return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+            for attempt in (1,2):
+                if '/attempts/'+str(attempt)+'/jobs?' in path:
+                    return dict(total_count=len(self.jobs[attempt]),jobs=self.jobs[attempt])
+            raise AssertionError(path)
+        with patch.object(authority,'is_fast_track_producer',return_value=True), \
+             patch.object(authority,'api_get',side_effect=api), \
+             patch.object(authority,'_release_history_source',return_value=self.workflow), \
+             patch.object(authority,'_release_job_log',return_value=self.log):
+            return authority.attested_fast_track_two_attempt_no_sql_preflight(
+                'owner/repo',self.run,'token')
+
+    def test_exact_two_attempts_are_nonentry(self):
+        self.assertTrue(self.prove())
+
+    def test_entered_sql_step_or_app_publication_blocks_proof(self):
+        self.jobs[2][2]['steps'][-1]['conclusion']='success'
+        self.assertFalse(self.prove())
+        self.jobs[2][2]['steps'][-1]['conclusion']='skipped'
+        self.jobs[1][3]['conclusion']='success'
+        self.assertFalse(self.prove())
+
+    def test_missing_artifact_log_or_attempt_blocks_proof(self):
+        self.artifacts.pop()
+        self.assertFalse(self.prove())
+        self.setUp()
+        self.log='read-only check failed without authenticated classification\n'
+        self.assertFalse(self.prove())
+        self.setUp()
+        self.jobs[2][0]['status']='in_progress'
+        self.assertFalse(self.prove())
+
+    def test_changed_sha_or_unreviewed_attempt_blocks_proof(self):
+        self.run['head_sha']='a'*40
+        self.assertFalse(self.prove())
+        self.run['head_sha']='910f93fc6bd247f826fffb9d9701676cf4d33112'
+        self.run['run_attempt']=3
+        self.assertFalse(self.prove())
+
+
 class AdmissionRepairScopeTests(unittest.TestCase):
     def baseline(self, entered=False, attempt=1, duplicate=False, recovery=False, mutation="skipped", selector=False):
         before='a'*40;head='b'*40;original='c'*40

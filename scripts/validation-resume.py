@@ -3855,6 +3855,92 @@ def fast_track_pending_routing(revision):
     return fast_track_completed_apps_pending_routing(repository, runs[0], jobs, token)
 
 
+def attested_fast_track_two_attempt_no_sql_preflight(repository, run, token):
+    """Authenticate one pinned two-attempt preflight-only failure; never permit SQL replay."""
+    source = '910f93fc6bd247f826fffb9d9701676cf4d33112'
+    if (run.get('id') != 38178839491 or run.get('head_sha') != source
+        or run.get('run_attempt') != 2 or run.get('status') != 'completed'
+        or run.get('conclusion') != 'failure'
+        or not is_fast_track_producer(repository, run)):
+        return False
+    names = {'Select exact affected applications',
+             'Admit exact validated fast-track source',
+             'Reconcile production schema before publication',
+             'Affected App Deploy — ${{ matrix.target }}',
+             'Publish verified website routing'}
+    retained = {'fast-track-admission-38178839491-1': 11716507721,
+                'fast-track-database-recovery-38178839491-1': 11716567678,
+                'fast-track-database-recovery-38178839491-2': 11716923766}
+    try:
+        workflow = _release_history_source(repository, source,
+            '.github/workflows/legend-fast-track-ui.yml', token)
+        if not all(name in workflow for name in (
+            'Check migration admission without entering a write step',
+            'Apply or reconcile the exact rehearsed migration bundle',
+            'Reconcile fresh already-ready schema without SQL bundle or mutation')):
+            return False
+        response = api_get(repository, 'actions/runs/38178839491/artifacts?per_page=100', token)
+        artifacts = response.get('artifacts')
+        if (not isinstance(artifacts, list) or response.get('total_count') != 3
+            or len(artifacts) != 3
+            or {a.get('name'): a.get('id') for a in artifacts if isinstance(a, dict)} != retained
+            or any(a.get('expired') is not False or
+                   a.get('workflow_run', {}).get('id') != run['id'] for a in artifacts)):
+            return False
+        for attempt in (1, 2):
+            payload = api_get(repository,
+                f'actions/runs/{run["id"]}/attempts/{attempt}/jobs?per_page=100', token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != 5 or len(jobs) != 5:
+                return False
+            indexed = {j.get('name'): j for j in jobs if isinstance(j, dict)}
+            if set(indexed) != names or any(j.get('run_attempt') != attempt or
+                j.get('status') != 'completed' for j in jobs):
+                return False
+            for job_name in ('Select exact affected applications',
+                             'Admit exact validated fast-track source'):
+                if indexed[job_name].get('conclusion') != 'success':
+                    return False
+            for job_name in ('Affected App Deploy — ${{ matrix.target }}',
+                             'Publish verified website routing'):
+                if indexed[job_name].get('conclusion') != 'skipped':
+                    return False
+            owner = indexed['Reconcile production schema before publication']
+            if owner.get('conclusion') != 'failure' or type(owner.get('id')) is not int:
+                return False
+            steps = owner.get('steps')
+            if not isinstance(steps, list):
+                return False
+            keyed = {step.get('name'): step for step in steps if isinstance(step, dict)}
+            required = {
+                'Run actions/checkout@v4': 'success',
+                'Build current read-only schema observer for source-only release': 'success',
+                'Verify current database recovery window before retention readers': 'success',
+                'Preserve recovery evidence before SQL or retention publication': 'success',
+                'Check migration admission without entering a write step': 'failure',
+                'Apply or reconcile the exact rehearsed migration bundle': 'skipped',
+                'Reconcile fresh already-ready schema without SQL bundle or mutation': 'skipped'}
+            if any(keyed.get(name, {}).get('conclusion') != result
+                   for name, result in required.items()):
+                return False
+            if [step.get('name') for step in steps
+                if step.get('conclusion') == 'failure'] != [
+                    'Check migration admission without entering a write step']:
+                return False
+            log = _release_job_log(repository, owner['id'], token)
+            marker = 'Database mutation activity remains active; preserve prior evidence and reconcile without replay.'
+            matched = [line for line in log.splitlines() if marker in line]
+            if (len(matched) != 1 or
+                not re.fullmatch(r'\d{4}-\d{2}-\d{2}T[^\n]+Z ' + re.escape(marker), matched[0]) or
+                'Schema ready; validated migration child applied.' in log or
+                'Schema ready; validated no-SQL migration child preserved.' in log):
+                return False
+        return True
+    except (ValueError, RuntimeError, KeyError, TypeError,
+            ReleaseOperationHistoryUnproven, EvidenceLookupUnavailable):
+        return False
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -3909,7 +3995,10 @@ def fast_track_effective_baseline(before, revision):
             and len(mutation) == 1 and (mutation[0].get('conclusion') == 'skipped' or
                 attested_fast_track_migration_prewrite(repository, prior, jobs, token))
             and all(j.get('conclusion') == 'skipped' for j in publications))
-        prewrite = prior.get('run_attempt') == 1 and (selection_stopped or admission_stopped or recovery_stopped)
+        preflight_noentry = (attested_fast_track_two_attempt_no_sql_preflight(
+            repository, prior, token) if prior.get('id') == 38178839491 else False)
+        prewrite = (prior.get('run_attempt') == 1 and
+                    (selection_stopped or admission_stopped or recovery_stopped)) or preflight_noentry
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
         if len(writes) < 3 or not (prewrite or completed_sql):
