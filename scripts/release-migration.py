@@ -16,6 +16,8 @@ import time
 PROBE_TERMINAL_REASONS = {
     'MUTATION_ACTIVITY_UNPROVEN': 'Database mutation activity visibility unproven',
     'MUTATION_ACTIVITY_ACTIVE': 'Database mutation activity remains active',
+    'SQL_QUERY_TIMEOUT': 'Schema metadata query exceeded its bounded SQL timeout',
+    'SQL_READ_DEADLINE': 'Schema observation exceeded its bounded read deadline',
     'SQL_AUTH': 'Schema probe database authentication rejected',
     'SCHEMA_DRIFT': 'Schema probe detected migration schema drift',  # historical probe
     'INPUT_UNAVAILABLE': 'Schema probe input unavailable',
@@ -24,6 +26,7 @@ PROBE_TERMINAL_REASONS = {
     'HISTORY_SEQUENCE_DRIFT': 'Applied database migration history is not in validated sequence',
     'MIGRATION_COMPATIBILITY_UNPROVEN': 'Pending migration compatibility and recovery require review',
     'CANDIDATE_MIGRATION_CONTRACT_UNPROVEN': 'Candidate migration metadata differs from approved definitions',
+    'MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW': 'Existing merchant checkout identities are duplicated; reconciliation is required before migration',
     'PHYSICAL_SCHEMA_DRIFT': 'Production physical schema disagrees with validated EF history',
     'RUNTIME_INVALID_OPERATION': 'Schema probe runtime invalid operation; history status unknown',
 }
@@ -266,7 +269,7 @@ def production_observation(probe, connection, *, clock=time.monotonic, sleep=tim
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
     audit = history_audit()
     with authority.evidence_lookup_budget(time.monotonic() + 120):
-        current = authority.assert_protected_release_execution()
+        current = authority.assert_release_execution()
         if current.get('run_attempt') != int(os.environ['GITHUB_RUN_ATTEMPT']):
             raise RuntimeError('Migration stage unresolved: mutation-activity')
         report = audit.audit(authority, repository, token, current_execution=current)
@@ -332,12 +335,65 @@ def production_readiness(before):
     # Expensive proof need not expire with a database observation. The caller
     # performs a new observation and exact database/baseline comparison before
     # any mutation, preserving compatible builds and rehearsals across queues.
+    if os.environ.get('GITHUB_REF') == 'refs/heads/' + authority.FAST_TRACK_PR_BASE:
+        source = json.loads((Path(os.environ['FAST_TRACK_MIGRATION_DIRECTORY']) / 'source.json').read_text())
+        if (source.get('proven') is not True or source.get('releaseAdmission') is not False
+            or source.get('authorizesMutation') is not False or not isinstance(source.get('baseline'), dict)
+            or source.get('source', {}).get('contentIdentity') != authority.package_component_manifest(approved, 'migration')['contentIdentity']):
+            raise RuntimeError('Migration stage unresolved: readiness-missing')
+        return dict(source['baseline'], rehearsal={'bundleDigest': source['bundleDigest']})
     with authority.evidence_lookup_budget(time.monotonic() + 120):
         scope = {key: before[key] for key in ('databaseIdentity', 'schemaIdentity', 'baselineIdentity')} if not before['ready'] else None
         proof = authority.readiness_evidence(repository, candidate, approved, targets, token, require_fresh=False, baseline=scope)
     if not proof:
         raise RuntimeError('Migration stage unresolved: readiness-missing')
     return proof['receipt']
+
+
+def production_recovery(database_identity, *, read=None, now=None):
+    """Verify Azure's managed restore window for the observed database, without writes."""
+    from datetime import datetime, timezone, timedelta
+    now = now or datetime.now(timezone.utc)
+    point = now - timedelta(minutes=15)
+    def azure(*args):
+        result = subprocess.run(['az', *args, '--only-show-errors', '-o', 'json'],
+            capture_output=True, text=True, timeout=60, check=False)
+        if result.returncode:
+            raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+        return json.loads(result.stdout)
+    read = read or azure
+    group = os.environ['RELEASE_RESOURCE_GROUP']
+    servers = read('sql', 'server', 'list', '-g', group)
+    if not isinstance(servers, list):
+        raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+    matches = []
+    for server in servers:
+        name = server.get('name')
+        if not isinstance(name, str) or not re.fullmatch('[A-Za-z0-9-]{1,128}', name):
+            raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+        databases = read('sql', 'db', 'list', '-g', group, '-s', name)
+        if not isinstance(databases, list):
+            raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+        for database in databases:
+            db_name = database.get('name')
+            if not isinstance(db_name, str):
+                raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_UNAVAILABLE')
+            identity = hashlib.sha256((name + '/' + db_name).encode()).hexdigest()
+            if identity != database_identity:
+                continue
+            earliest = datetime.fromisoformat(str(database.get('earliestRestoreDate', '')).replace('Z', '+00:00'))
+            if database.get('status') != 'Online' or not earliest <= point < now:
+                raise RuntimeError('FAST_TRACK_DATABASE_RESTORE_WINDOW_UNPROVEN')
+            policy = read('sql', 'db', 'str-policy', 'show', '-g', group, '-s', name, '-n', db_name)
+            if type(policy.get('retentionDays')) is not int or policy['retentionDays'] < 7:
+                raise RuntimeError('FAST_TRACK_DATABASE_RESTORE_WINDOW_UNPROVEN')
+            matches.append(dict(databaseIdentity=database_identity, observedUtc=now.isoformat(),
+                restorePointUtc=point.isoformat(), earliestRestoreUtc=earliest.isoformat(),
+                retentionDays=policy['retentionDays'], restoreWindowVerified=True,
+                restoreExecuted=False, authorizesMutation=False))
+    if len(matches) != 1:
+        raise RuntimeError('FAST_TRACK_DATABASE_RECOVERY_IDENTITY_UNPROVEN')
+    return matches[0]
 
 
 def retain_current_observation(receipt, bundle_digest, *, publisher=None):
@@ -563,7 +619,7 @@ def rehearse(bundle, probe, fixture, connection, baseline, *, execute=None):
 
 if __name__ == '__main__':
     try:
-        release_authority().assert_protected_release_execution()
+        release_authority().assert_release_execution()
         import sys
         is_preflight = sys.argv[1:] == ['--preflight']
         if sys.argv[1:] and not is_preflight:

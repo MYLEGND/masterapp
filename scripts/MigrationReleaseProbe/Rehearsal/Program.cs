@@ -1,7 +1,16 @@
 try
 {
     if (args.Length != 1) throw new InvalidOperationException();
-    await RehearsalFixture.Run(args[0]);
+    if (args[0] == "contract-test") CandidateContractTests.Run();
+    else if (args[0] == "migration-test")
+    {
+        await RehearsalFixture.Run("initialize");
+        await RehearsalFixture.Run("precondition");
+        await RehearsalFixture.Run("migrate");
+        await RehearsalFixture.Run("verify");
+        await RehearsalFixture.Run("adversarial");
+    }
+    else await RehearsalFixture.Run(args[0]);
 }
 catch
 {

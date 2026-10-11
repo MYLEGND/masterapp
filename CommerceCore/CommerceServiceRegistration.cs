@@ -1,3 +1,4 @@
+using Infrastructure.Commerce.Payments;
 using Infrastructure.Commerce;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using ParfaitApp.Controllers;
@@ -40,12 +41,36 @@ public static class CommerceServiceRegistration
     }
 
     /// <summary>
-    /// Excludes commerce endpoints from hosts consuming catalog reads only.
-    /// Routes are registered later through explicit AddLegendCommerceMvc.
+    /// Serves the exact shared commerce internal controller and its existing
+    /// modal/view sources. A valid signed scoped website ticket and the canonical
+    /// business member capabilities are required for every action. No storefront
+    /// payment, public cart, or independent automation worker is registered.
     /// </summary>
+    public static IMvcBuilder AddLegendCommerceManagementMvc(this IMvcBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.AddLegendCommerceMvc();
+        builder.Services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.Conventions.Add(new CommerceManagementControllerConvention()));
+        return builder;
+    }
+
+    private sealed class CommerceManagementControllerConvention :
+        Microsoft.AspNetCore.Mvc.ApplicationModels.IApplicationModelConvention
+    {
+        public void Apply(Microsoft.AspNetCore.Mvc.ApplicationModels.ApplicationModel application)
+        {
+            var assembly = typeof(StoreController).Assembly;
+            foreach (var controller in application.Controllers.Where(c =>
+                c.ControllerType.Assembly == assembly &&
+                c.ControllerType.AsType() != typeof(CommerceManagementController)).ToArray())
+                application.Controllers.Remove(controller);
+        }
+    }
+
     /// <summary>
-    /// Registers GET-only storefront MVC actions. Never include checkout,
-    /// cart writes, payment capture, or merchant management in preview.
+    /// Registers read-only public preview plus the same signed-ticket internal
+    /// management controller. Never enables checkout or public cart writes.
     /// </summary>
     public static IMvcBuilder AddLegendCommercePreviewMvc(this IMvcBuilder builder)
     {
@@ -65,13 +90,14 @@ public static class CommerceServiceRegistration
             foreach (var controller in application.Controllers
                 .Where(c => c.ControllerType.Assembly == assembly &&
                     c.ControllerType.AsType() != typeof(StoreController) &&
-                    c.ControllerType.AsType() != typeof(ParfaitPublicPreviewController)).ToArray())
+                    c.ControllerType.AsType() != typeof(ParfaitPublicPreviewController) &&
+                    c.ControllerType.AsType() != typeof(CommerceManagementController)).ToArray())
                 application.Controllers.Remove(controller);
         }
     }
 
-    /// <summary>Full public storefront and checkout, but no merchant management
-    /// endpoints or independently started automation workers.</summary>
+    /// <summary>Full public storefront and checkout plus scoped merchant management,
+    /// without independently started automation workers.</summary>
     public static IMvcBuilder AddLegendCommerceCutoverMvc(this IMvcBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -88,7 +114,8 @@ public static class CommerceServiceRegistration
         {
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
-                typeof(StoreCheckoutController), typeof(ParfaitPublicPreviewController)
+                typeof(StoreCheckoutController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
+                typeof(CommerceManagementController)
             };
             var assembly = typeof(StoreController).Assembly;
             foreach (var controller in application.Controllers.Where(c =>
@@ -117,6 +144,7 @@ public static class CommerceServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddScoped<ICommerceAutomationDispatchLease, SqlCommerceAutomationDispatchLease>();
         services.AddHostedService<ParfaitCustomerAutomationHostedService>();
+        services.AddHostedService<MerchantPaymentReconciliationWorker>();
         return services;
     }
 
@@ -125,6 +153,9 @@ public static class CommerceServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddLegendCommerceCatalogReadOnly();
+        services.AddMerchantPayments();
+        services.AddScoped<MerchantCheckoutService>();
+        services.AddScoped<MerchantPaymentCompletionService>();
         services.AddScoped<ParfaitOrderService>();
         services.AddScoped<ParfaitCustomerAutomationService>();
         services.AddScoped<CommerceSignalService>();

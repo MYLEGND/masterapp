@@ -1,6 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using ParfaitApp.Models;
+using Shared.Analytics;
 using Legend.Commerce;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -74,7 +78,7 @@ public sealed class CommerceCoreOwnershipContractTests
     }
 
     [Fact]
-    public void WebsiteRuntimeConsumesOnlySharedCatalogWithoutEnablingCommerceRoutes()
+    public void WebsiteRuntimeSeparatesCatalogReadsFromAuthenticatedManagementAndGuardedCheckout()
     {
         var services = new ServiceCollection();
         var builder = services.AddControllersWithViews().AddLegendCommerceMvc()
@@ -89,8 +93,10 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(ParfaitCustomerAutomationService));
 
         var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
-        Assert.Contains("AddLegendCommerceCatalogReadOnly()", protect, StringComparison.Ordinal);
-        Assert.Contains("ExcludeLegendCommerceMvc()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceCore()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceManagementMvc()", protect, StringComparison.Ordinal);
+        Assert.Contains("AddHostedService<CommerceCutoverStartupProof>()", protect, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExcludeLegendCommerceMvc()", protect, StringComparison.Ordinal);
         Assert.DoesNotContain("AddLegendCommerceMvc()", protect, StringComparison.Ordinal);
     }
 
@@ -111,7 +117,7 @@ public sealed class CommerceCoreOwnershipContractTests
     }
 
     [Fact]
-    public void MerchantManagementViews_LinkOriginalTemplatesWithoutEnablingRoutes()
+    public void MerchantManagementViews_UseOneSharedHostWithGuardedRuntime()
     {
         var protect = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "ProtectWebsite.csproj"));
         Assert.Contains("../ParfaitApp/Views/InternalModules/*.cshtml", protect, StringComparison.Ordinal);
@@ -119,9 +125,52 @@ public sealed class CommerceCoreOwnershipContractTests
         Assert.Contains("wwwroot/css/internal.css", protect, StringComparison.Ordinal);
         Assert.Contains("wwwroot/js/parfait-agentportal-analytics.js", protect, StringComparison.Ordinal);
         var host = File.ReadAllText(Path.Combine(Root(), "Protect-Website", "Program.cs"));
-        Assert.Contains("ExcludeLegendCommerceMvc()", host, StringComparison.Ordinal);
+        Assert.Contains("AddLegendCommerceManagementMvc()", host, StringComparison.Ordinal);
+        Assert.Contains("CommerceSharedHostCutoverGate.IsConfigured", host, StringComparison.Ordinal);
+        Assert.Contains("Canonical*.cshtml", protect, StringComparison.Ordinal);
         var layout = File.ReadAllText(Path.Combine(Root(), "ParfaitApp", "Views", "Shared", "_InternalLayout.cshtml"));
         Assert.Contains("GetRequiredService<ParfaitApp.Services.IParfaitTeamAccessService>()", layout, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 0, 0)]
+    [InlineData(5, 5, 5, 5)]
+    [InlineData(8, 3, 10, 2)]
+    public void HealthSnapshot_DoesNotInferIdentityEvidenceFromAggregateCounts(
+        int browser, int server, int paidOrders, int purchases)
+    {
+        var dashboard = new ParfaitInternalAnalyticsViewModel { PaidOrders = paidOrders };
+        dashboard.MetaHealth.PipelineHealth.MetaBrowserSentCount = browser;
+        dashboard.MetaHealth.PipelineHealth.MetaServerSentCount = server;
+        dashboard.MetaHealth.FailureDetection.Add(new MetaSignalHealthIssueDto
+            { Key = "dispatcher-failed", Count = 7 });
+        dashboard.ActionBreakdowns.Add(new ParfaitAnalyticsActionBreakdownViewModel
+            { Key = "purchase", Count = purchases });
+        var method = typeof(CommerceManagementController).GetMethod("BuildHealthPayload",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        var payload = method.Invoke(null, new object[] { dashboard, "Test business" })!;
+        var json = JsonSerializer.SerializeToElement(payload);
+        var attribution = json.GetProperty("attributionHealth");
+        Assert.Equal(browser, attribution.GetProperty("browserSentEvents").GetInt32());
+        Assert.Equal(server, attribution.GetProperty("serverSentEvents").GetInt32());
+        foreach (var key in new[] { "eligibleEvents", "matchedEvents", "serverBrowserMatchRate",
+            "missingAttributionEvents", "missingAttributionRate" })
+            Assert.Equal(JsonValueKind.Null, attribution.GetProperty(key).ValueKind);
+        Assert.Equal("unavailable", attribution.GetProperty("evidenceStatus").GetString());
+        var reconciliation = json.GetProperty("reconciliation");
+        Assert.Equal(paidOrders, reconciliation.GetProperty("paidOrders").GetInt32());
+        Assert.Equal(purchases, reconciliation.GetProperty("purchaseEvents").GetInt32());
+        Assert.Equal(JsonValueKind.Null, reconciliation.GetProperty("unmatchedPaidOrders").ValueKind);
+    }
+
+    [Fact]
+    public void TeamPermissionsInput_CannotBindOwnerOnlyTeamAuthority()
+    {
+        Assert.Null(typeof(CommerceBusinessTeamPermissionsInput).GetProperty("CanManageTeam"));
+        var controller = File.ReadAllText(Path.Combine(Root(), "CommerceCore", "Controllers", "CommerceManagementController.cs"));
+        Assert.DoesNotContain("member.CanManageTeam =", controller, StringComparison.Ordinal);
+        var view = File.ReadAllText(Path.Combine(Root(), "ParfaitApp", "Views", "InternalSettings", "CanonicalTeam.cshtml"));
+        Assert.DoesNotContain("name=\"CanManageTeam\"", view, StringComparison.Ordinal);
     }
 
     private static string Root()

@@ -1,5 +1,22 @@
 # Parfait → LEGEND fast-track release handoff (NOT authorized)
 
+## Current continuation supersedes the historical checkpoint below
+
+The Founder has authorized completing PR #580 on
+`isolation/canonical-scoped-commerce-internal-20261010` through the existing
+`Legend/fast-track-release` path. LEGEND governed tools are not prerequisites; use
+authorized GitHub access and the existing Actions interface directly. Preserve
+required reviews, integrity/security checks, Production approvals, migration proof,
+and rollback requirements. `legend/approved-changes` remains out of scope.
+
+Rechecked 2026-10-11: candidate `659e2ed58fa223fd05a5b81e190f5b8b1fe34a46`,
+fast-track `640a2fa3e44fe1b36ff9c12e44aa1bbd1a7f21f6`. Recheck again before merge.
+Preserve `8cceef5` Production authentication, successful compatible validation,
+uploads/receipts, and completed apex/www certificate preparation. Tool independence
+does not establish reconciliation, deployment, cutover, or retirement success.
+
+The remaining text is historical, not a current branch or approval instruction.
+
 Verified 2026-10-10 from current GitHub branches and workflow definitions.
 
 ## Approval invariant

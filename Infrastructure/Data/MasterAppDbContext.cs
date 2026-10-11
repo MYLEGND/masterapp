@@ -85,6 +85,14 @@ public class MasterAppDbContext : DbContext
     public DbSet<CommerceProductImage> CommerceProductImages => Set<CommerceProductImage>();
     public DbSet<CommerceProductInventoryItem> CommerceProductInventoryItems => Set<CommerceProductInventoryItem>();
     public DbSet<CommerceProductDiscount> CommerceProductDiscounts => Set<CommerceProductDiscount>();
+    public DbSet<CommerceMerchantConnection> CommerceMerchantConnections => Set<CommerceMerchantConnection>();
+    public DbSet<CommerceMerchantConnectionRevision> CommerceMerchantConnectionRevisions => Set<CommerceMerchantConnectionRevision>();
+    public DbSet<CommerceMerchantConfiguration> CommerceMerchantConfigurations => Set<CommerceMerchantConfiguration>();
+    public DbSet<CommerceMerchantAuthorization> CommerceMerchantAuthorizations => Set<CommerceMerchantAuthorization>();
+    public DbSet<CommercePaymentAttempt> CommercePaymentAttempts => Set<CommercePaymentAttempt>();
+    public DbSet<CommercePaymentReceipt> CommercePaymentReceipts => Set<CommercePaymentReceipt>();
+    public DbSet<CommercePaymentEffect> CommercePaymentEffects => Set<CommercePaymentEffect>();
+    public DbSet<CommercePaymentRefund> CommercePaymentRefunds => Set<CommercePaymentRefund>();
     public DbSet<CommerceOrder> CommerceOrders => Set<CommerceOrder>();
     public DbSet<CommerceOrderLine> CommerceOrderLines => Set<CommerceOrderLine>();
     public DbSet<ClientSubscriptionOffer> ClientSubscriptionOffers => Set<ClientSubscriptionOffer>();
@@ -759,6 +767,8 @@ public class MasterAppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        CommercePaymentModel.Configure(modelBuilder);
+
         modelBuilder.Entity<CommerceOrder>(e =>
         {
             e.HasKey(x => x.Id);
@@ -768,6 +778,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.FulfillmentStatus).IsRequired().HasMaxLength(40);
             e.Property(x => x.ReturnStatus).IsRequired().HasMaxLength(40);
             e.Property(x => x.CheckoutAttemptId).HasMaxLength(120);
+            e.Property(x => x.PaymentProvider).HasMaxLength(40);
+            e.Property(x => x.PaymentReference).HasMaxLength(200);
+            e.Property(x => x.PaymentEnvironment).HasMaxLength(40);
             e.Property(x => x.SquarePaymentId).HasMaxLength(160);
             e.Property(x => x.SquareError).HasMaxLength(1000);
             e.Property(x => x.TrackingCarrier).HasMaxLength(120);

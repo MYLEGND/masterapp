@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -27,6 +30,9 @@ public sealed class CommerceCutoverStartupProofTests
         db.CommerceProductImages.Add(new CommerceProductImage {
             CommerceProductId = product.Id, ImageUrl = "/uploads/parfait-products/shirt/cover.png"
         });
+        db.CommerceProductImages.Add(new CommerceProductImage {
+            CommerceProductId = product.Id, ImageUrl = "/uploads/parfait-products/shirt/detail.png"
+        });
         db.SaveChanges();
 
         var root = Path.Combine(Path.GetTempPath(), "commerce-startup-" + Guid.NewGuid().ToString("N"));
@@ -36,6 +42,8 @@ public sealed class CommerceCutoverStartupProofTests
             Directory.CreateDirectory(target);
             var image = Path.Combine(target, "cover.png");
             await File.WriteAllBytesAsync(image, new byte[]{ 1, 2, 3, 4 });
+            var detail = Path.Combine(target, "detail.png");
+            await File.WriteAllBytesAsync(detail, new byte[]{ 4, 3, 2, 1 });
             var env = new Mock<IWebHostEnvironment>();
             env.SetupGet(e => e.ContentRootPath).Returns(root);
             env.SetupGet(e => e.WebRootPath).Returns(root);
@@ -58,7 +66,19 @@ public sealed class CommerceCutoverStartupProofTests
             var gate = new CommerceCutoverStartupProof(provider.GetRequiredService<IServiceScopeFactory>(), config);
             await gate.StartAsync(default);
 
-            await File.WriteAllBytesAsync(image, new byte[]{ 1, 2, 3, 5 });
+            // A pre-v2 receipt proved only an unordered collection of bytes.
+            var oldEntries = new[] { image, detail }.Select(path =>
+                Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant() + ":4")
+                .OrderBy(x => x, StringComparer.Ordinal);
+            config["Commerce:SharedHostCutover:ReconciledManifestSha256"] =
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\\n", oldEntries)))).ToLowerInvariant();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => gate.StartAsync(default));
+            config["Commerce:SharedHostCutover:ReconciledManifestSha256"] = digest;
+
+            // The same file count, lengths and content-hash multiset must not
+            // admit images whose bytes have moved to the wrong catalog URLs.
+            await File.WriteAllBytesAsync(image, new byte[]{ 4, 3, 2, 1 });
+            await File.WriteAllBytesAsync(detail, new byte[]{ 1, 2, 3, 4 });
             await Assert.ThrowsAsync<InvalidOperationException>(() => gate.StartAsync(default));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

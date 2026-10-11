@@ -167,3 +167,18 @@
         </div>
     </div>
 </section>
+
+@section Scripts {
+    @if (Model.Order?.IsPaid == true)
+    {
+        <script>
+            (() => {
+                const store = window.ParfaitStorefront;
+                const key = store?.storageKey || "parfaitCart";
+                window.sessionStorage.removeItem(key === "parfaitCart" ? "parfaitCheckoutAttemptId" : key + ":checkoutAttemptId");
+                store?.clearCart();
+                store?.clearDiscountCode();
+            })();
+        </script>
+    }
+}

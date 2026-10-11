@@ -2,7 +2,7 @@ name: LEGEND approved release security validation
 
 on:
   pull_request:
-    branches: [legend/approved-changes]
+    branches: [legend/approved-changes, Legend/fast-track-release]
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -31,6 +31,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
+            --base-branch "${{ github.base_ref }}" \
             --output "$RUNNER_TEMP/approved-head-preflight.json"
 
   validation_plan:
@@ -63,6 +64,7 @@ jobs:
           plan="$RUNNER_TEMP/validation-resume.json"
           python3 scripts/validation-resume.py plan \
             --workflow approved-release-security-validation.yml \
+            --validation-base "${{ github.base_ref }}" \
             --current-sha "${{ github.event.pull_request.head.sha }}" \
             --current-run-id "${{ github.run_id }}" \
             --run-attempt "${{ github.run_attempt }}" \

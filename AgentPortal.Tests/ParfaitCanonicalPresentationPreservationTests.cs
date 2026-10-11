@@ -24,15 +24,20 @@ public sealed class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Store/Index.cshtml", "25ef81c066dd246e5b192b85bedd1381a3390ae5")]
     [InlineData("Views/Store/Cart.cshtml", "a635fd5d545607201878271fd5697fd667e745be")]
     [InlineData("Views/Store/Product.cshtml", "d320b04f64562136f6cd0e2dee5855d7c67c541c")]
-    [InlineData("Views/Store/Checkout.cshtml", "49f11898cbdc507ae356741e88b7e8e9b8e70d61")]
-    [InlineData("Views/Store/Success.cshtml", "7b1c36703db8aef40b34b7e5e54cad04e7761262")]
+    // Reviewed payment-flow changes only: hosted-provider handoff retains the
+    // original form/layout and legacy Square wording; cart clearing waits for
+    // server-confirmed payment on success. All other visual pins stay unchanged.
+    [InlineData("Views/Store/Checkout.cshtml", "03b27c18a80995da240c3bbbacd86387cd183bf5")]
+    [InlineData("Views/Store/Success.cshtml", "7e56736764ae474b5a07ef21debea631df67c58d")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
     [InlineData("wwwroot/css/storefront.css", "eae71bcaef491f7d0f4ff0957b6e6b625fb034b2")]
     [InlineData("wwwroot/css/internal.css", "8945595525d5973c194367dc85bcb135abbd3fca")]
     [InlineData("wwwroot/css/parfait-agentportal-analytics.css", "a9801e8de3767e36e8fdfe287e4c26575f9700dd")]
     [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
-    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "b6e665f146f93ffdd49251d2fd5c27fbb79221bc")]
+    // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
+    // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
+    [InlineData("wwwroot/js/parfait-agentportal-analytics.js", "4ac3971da2b37538c87e1a513612f56169bd311f")]
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]
     public void ParfaitVisualAssets_MatchPreMigrationGitBlob(string path, string expectedBlobSha)
     {

@@ -1229,6 +1229,220 @@ class ApprovedHeadPreflightTests(unittest.TestCase):
             self.assertEqual("not_applicable", result["compareStatus"])
 
 
+class ParfaitValidationResumeTests(unittest.TestCase):
+    workflow='parfait-isolated-validation.yml'
+
+    def test_control_fix_preserves_application_and_sql_evidence(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,
+            ['scripts/validation-resume.py','scripts/test-validation-resume.py'], 'authenticated-prior')
+        self.assertEqual({key for key,row in plan['gates'].items() if row['run']},{'migration-contract'})
+
+    def test_application_change_invalidates_actual_consumers(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,
+            ['CommerceCore/Controllers/StoreCheckoutController.cs'],'authenticated-prior')
+        self.assertTrue(plan['gates']['build']['run'])
+        self.assertTrue(plan['gates']['payments']['run'])
+        self.assertTrue(plan['gates']['publish']['run'])
+        self.assertFalse(plan['gates']['routing']['run'])
+
+    def test_failed_gate_is_never_preserved(self):
+        steps={row['step']:'success' for row in m.WORKFLOWS[self.workflow]['gates'].values()}
+        steps['Verify selective Cloudflare commerce routing without deployment']='failure'
+        plan=m.compute_plan(self.workflow,'b'*40,dict(id=1,head_sha='a'*40),steps,[],'authenticated-prior')
+        self.assertTrue(plan['gates']['routing']['run'])
+
+    def test_planner_instrumentation_does_not_hide_source_mutation(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        safe=m._gate_execution_contract(source,config,'build')
+        altered=source.replace("          PYPLAN", "          PYPLAN\n          echo source-mutation >> CommerceCore/Controllers/StoreCheckoutController.cs",1)
+        self.assertNotEqual(safe,m._gate_execution_contract(altered,config,'build'))
+
+    def test_wrong_gate_skip_condition_invalidates_execution_contract(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        changed=source.replace(".gates['build'].run", ".gates['routing'].run",1)
+        self.assertNotEqual(m._gate_execution_contract(source,config,'build'),
+                            m._gate_execution_contract(changed,config,'build'))
+
+    def test_checkout_ref_change_invalidates_execution_contract(self):
+        source=(ROOT/m.WORKFLOW_PATHS[self.workflow]).read_text();config=m.WORKFLOWS[self.workflow]
+        changed=source.replace('          fetch-depth: 0','          fetch-depth: 0\n          ref: other-branch',1)
+        self.assertNotEqual(m._gate_execution_contract(source,config,'build'),
+                            m._gate_execution_contract(changed,config,'build'))
+
+
+class FastTrackExecutionIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',
+            GITHUB_REF='refs/heads/Legend/fast-track-release',GITHUB_REPOSITORY='owner/repo',
+            GITHUB_TOKEN='test-token',GITHUB_SHA='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
+            GITHUB_WORKFLOW_REF='owner/repo/.github/workflows/legend-fast-track-ui.yml@refs/heads/Legend/fast-track-release')
+        self.run=dict(id=123,run_attempt=2,path='.github/workflows/legend-fast-track-ui.yml',
+            head_branch='Legend/fast-track-release',event='push',head_sha='a'*40,status='in_progress',
+            head_repository=dict(full_name='owner/repo'))
+
+    def invoke(self, run=None, head=None):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(m,'api_get',side_effect=[
+            self.run if run is None else run,dict(object=dict(sha=head or 'a'*40))]):
+            return m.assert_fast_track_release_execution()
+
+    def test_exact_current_fast_track_run_authenticated(self):
+        self.assertEqual(self.invoke(),self.run)
+        self.assertNotIn('releaseAdmission',self.invoke())
+
+    def test_other_branch_event_or_workflow_rejected_before_provider_read(self):
+        for key,value in [('GITHUB_REF','refs/heads/legend/approved-changes'),
+            ('GITHUB_EVENT_NAME','workflow_dispatch'),('GITHUB_WORKFLOW_REF','owner/repo/.github/workflows/untrusted.yml@refs/heads/Legend/fast-track-release'),
+            ('GITHUB_ACTIONS','false'),('GITHUB_RUN_ATTEMPT','0')]:
+            with self.subTest(key=key),patch.dict(os.environ,self.env|{key:value},clear=True),patch.object(m,'api_get') as api:
+                with self.assertRaisesRegex(RuntimeError,'IDENTITY_INCOMPLETE'):
+                    m.assert_fast_track_release_execution()
+                api.assert_not_called()
+
+    def test_remote_revision_attempt_event_and_fork_cannot_be_forged(self):
+        for key,value in [('head_sha','b'*40),('run_attempt',1),('event','pull_request'),
+                          ('head_repository',dict(full_name='fork/repo')),('status','completed')]:
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'PRODUCER_UNPROVEN'):
+                self.invoke(self.run|{key:value})
+
+    def test_advanced_release_head_stops_stale_execution(self):
+        with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):
+            self.invoke(head='b'*40)
+
+
+class FastTrackImpactTests(unittest.TestCase):
+    def scope(self, *paths):
+        return m.fast_track_scope(paths)
+
+    def targets(self, *paths):
+        return {row['target'] for row in self.scope(*paths)['matrix']['include']}
+
+    def test_finance_changes_select_only_finance_consumers(self):
+        self.assertEqual(self.targets('SHARED/wwwroot/js/finance-shell.js'), {'AgentPortal', 'ClientApp'})
+
+    def test_linked_storefront_asset_selects_both_runtime_hosts(self):
+        self.assertEqual(self.targets('ParfaitApp/wwwroot/js/parfait-agentportal-analytics.js'), {'Parfait', 'Protect'})
+
+    def test_reincluded_company_icon_selects_original_presentation_host(self):
+        self.assertEqual(self.targets('ParfaitApp/wwwroot/images/company-icons/sample.svg'), {'Parfait', 'Protect'})
+
+    def test_single_star_view_link_does_not_include_nested_directory(self):
+        self.assertEqual(self.targets('ParfaitApp/Views/Store/Unlinked/Nested.cshtml'), {'Parfait'})
+
+    def test_shared_business_authorization_selects_four_dotnet_consumers(self):
+        result = self.scope('Infrastructure/Businesses/BusinessWorkspaceAccess.cs')
+        self.assertTrue(result['commerce'])
+        self.assertEqual({r['target'] for r in result['matrix']['include']}, {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+
+    def test_payment_schema_impact_is_explicit_and_grants_no_admission(self):
+        result = self.scope('Infrastructure/Migrations/20261011064911_AddBusinessScopedMerchantPayments.cs')
+        self.assertTrue(result['schema'])
+        self.assertTrue(result['commerce'])
+        self.assertNotIn('releaseAdmission', result)
+        self.assertEqual(len(result['matrix']['include']), 4)
+
+    def test_cms_bundle_selects_only_its_two_consumers(self):
+        self.assertEqual(self.targets('SHARED/WebsitePlatform/legend-public-cms.js'), {'Protect', 'Website'})
+
+    def test_reporting_and_retention_changes_select_all_shared_server_consumers(self):
+        for path in ('Infrastructure/Analytics/MarketingMeasurementEvidenceService.cs',
+                     'Infrastructure/WebsitePublishing/WebsiteSnapshotRetention.cs',
+                     'Domain/Entities/WebsiteContentState.cs'):
+            self.assertEqual(self.targets(path), {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
+
+    def test_routing_is_explicit_without_application_upload(self):
+        result = self.scope('Legend-Cloudflare/src/website-routing/bridge.mjs')
+        self.assertTrue(result['routing'])
+        self.assertTrue(result['commerce'])
+        self.assertFalse(result['selected'])
+
+    def test_test_and_documentation_only_select_no_applications(self):
+        self.assertFalse(self.scope('docs/parfait-canonical-transition/business-scoped-payments.sql',
+            'diagnostics/MerchantPaymentCoreTests/ControllerTestHelpers.cs',
+            'Legend-Cloudflare/tests/website-routing/bridge.test.mjs',
+            'scripts/test-parfait-readonly-workflow.py')['selected'])
+
+    def test_unknown_shared_source_blocks_instead_of_blanket_deploy(self):
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/UnreviewedDependency.cs')
+
+
+class FastTrackSourceValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.sha = 'b' * 40
+        self.args = SimpleNamespace(workflow='approved-release-security-validation.yml',
+            event='pull_request', repository='owner/repo', current_run_id=91, current_sha=self.sha)
+        self.run = dict(id=91, event='pull_request', path='.github/workflows/' + self.args.workflow,
+            head_sha=self.sha, head_repository=dict(full_name='owner/repo'), status='in_progress',
+            pull_requests=[dict(number=580, base=dict(ref=m.FAST_TRACK_PR_BASE), head=dict(sha=self.sha))])
+        self.pr = dict(number=580, state='open', base=dict(ref=m.FAST_TRACK_PR_BASE),
+            head=dict(sha=self.sha, repo=dict(full_name='owner/repo')))
+
+    def scope(self):
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_TOKEN': 'test-token'}), \
+             patch.object(m, 'api_get', side_effect=[self.run, self.pr]), \
+             patch.object(m, 'approved_head_preflight', return_value={'current': True, 'approvedHeadSha': 'a' * 40}) as preflight:
+            result = m.fast_track_source_validation_scope(self.args)
+            preflight.assert_called_once_with('owner/repo', self.sha, 'test-token', base_branch=m.FAST_TRACK_PR_BASE)
+            return result
+
+    def test_authenticated_isolated_push_uses_same_fast_track_source_authority(self):
+        self.args.workflow='parfait-isolated-validation.yml';self.args.event='push';self.args.head_branch='isolation/task'
+        self.run.update(event='push',path='.github/workflows/'+self.args.workflow,head_branch=self.args.head_branch)
+        self.assertFalse(self.scope()['releaseAdmission'])
+
+    def test_authenticated_fast_track_source_proof_is_not_release_admission(self):
+        result = self.scope()
+        self.assertFalse(result['releaseAdmission'])
+        self.assertEqual('source-validation-only', result['phase'])
+
+    def test_changed_pr_head_is_rejected(self):
+        self.pr['head']['sha'] = 'c' * 40
+        with self.assertRaisesRegex(ValueError, 'PR_CHANGED'):
+            self.scope()
+
+    def test_other_base_is_rejected(self):
+        self.run['pull_requests'][0]['base']['ref'] = m.TRUSTED_PR_BASE
+        with self.assertRaisesRegex(ValueError, 'PR_UNPROVEN'):
+            self.scope()
+
+    def test_unrelated_workflow_identity_is_rejected(self):
+        self.run['path'] = '.github/workflows/unrelated.yml'
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+            self.scope()
+
+    def test_fast_track_preflight_never_queries_protected_base(self):
+        with patch.object(m, 'api_get', side_effect=[{'commit': {'sha': 'a'*40}},
+                {'status': 'ahead', 'merge_base_commit': {'sha': 'a'*40}}]) as api:
+            result = m.approved_head_preflight('owner/repo', self.sha, 'token', base_branch=m.FAST_TRACK_PR_BASE)
+        self.assertTrue(result['current'])
+        self.assertEqual('branches/Legend%2Ffast-track-release', api.call_args_list[0].args[1])
+
+    def test_fork_source_is_rejected(self):
+        self.pr['head']['repo']['full_name'] = 'other/repo'
+        with self.assertRaisesRegex(ValueError, 'PR_CHANGED'):
+            self.scope()
+
+    def test_protected_base_cache_is_not_reused_for_fast_track(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cache.json'
+            path.write_text(m.json.dumps(dict(workflow=self.args.workflow, headSha=self.sha, runId=80,
+                schemaVersion=2, validationBase=m.TRUSTED_PR_BASE, gates={})))
+            self.args.resume_cache = str(path)
+            with m._validation_base_scope(m.FAST_TRACK_PR_BASE), patch.object(m.subprocess, 'run') as git:
+                self.assertIsNone(m._cached_success_evidence(self.args))
+                git.assert_not_called()
+
+    def test_validation_base_scope_cannot_change_production_authority(self):
+        with m._validation_base_scope(m.FAST_TRACK_PR_BASE):
+            self.assertEqual(m.FAST_TRACK_PR_BASE, m._VALIDATION_PR_BASE.get())
+            self.assertEqual('legend/approved-changes', m.TRUSTED_PR_BASE)
+            self.assertFalse(m._trusted_lineage_run('owner/repo', dict(self.run,
+                pull_requests=[dict(base=dict(ref=m.TRUSTED_PR_BASE))]), self.run['path'], self.sha))
+        self.assertEqual(m.TRUSTED_PR_BASE, m._VALIDATION_PR_BASE.get())
+
+
 class GitHubEvidenceTransportTests(unittest.TestCase):
     def test_transient_remote_disconnect_is_retried_without_restarting_evidence_flow(self):
         class Response:

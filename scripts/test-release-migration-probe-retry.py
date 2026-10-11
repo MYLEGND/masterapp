@@ -29,6 +29,8 @@ class ProbeObservationTests(TestCase):
     def test_auth_and_drift_never_retry(self):
         for marker in (
             'LEGEND_SCHEMA_PROBE:SQL_AUTH',
+            'LEGEND_SCHEMA_PROBE:SQL_QUERY_TIMEOUT',
+            'LEGEND_SCHEMA_PROBE:SQL_READ_DEADLINE',
             'LEGEND_SCHEMA_PROBE:SCHEMA_DRIFT',
             'LEGEND_SCHEMA_PROBE:INPUT_UNAVAILABLE',
             'LEGEND_SCHEMA_PROBE:MIGRATIONS_MISSING',

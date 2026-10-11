@@ -12,6 +12,95 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsiteEventMapTests
 {
+    [Theory]
+    [InlineData("browser", "AnalyticsEvent", "not_observed")]
+    [InlineData("server", "unrelated_source", "not_observed")]
+    [InlineData("server", "AnalyticsEvent", "http_accepted")]
+    public async Task AdversarialReceiptCannotClaimServerDeliveryFromWrongChannelOrSource(string channel, string canonicalSource, string expected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile { AgentUserId = "agent", AgentUpn = "agent@example.test", Slug = "agent" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect };
+        var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = "{}" };
+        state.PublishedVersionId = version.Id;
+        var source = new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "website_lead_submitted", EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow, AgentTrackingProfileId = profile.Id, WebsiteContentVersionId = version.Id };
+        db.AddRange(profile, state, version, source);
+        await db.SaveChangesAsync();
+        db.Add(new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(profile.Id).Key, AgentTrackingProfileId = profile.Id,
+            AnalyticsEventId = source.Id, CanonicalSource = canonicalSource, Channel = channel, Provider = "openai",
+            Status = "sent", LastHttpStatusCode = 200, CanonicalEventId = source.EventId.ToString("N") });
+        await db.SaveChangesAsync();
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        var map = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadTicketAsync(ticket);
+        Assert.Equal(expected, Assert.Single(map.Where(row => row.Element == "automatic:lead_created")).OpenAiStatus);
+    }
+
+    [Fact]
+    public async Task ReusableMapIncludesOnlyRenderedInstanceActionsWithoutDefinitionSignals()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile { AgentUserId = "agent", AgentUpn = "agent@example.test", Slug = "agent" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect };
+        var binding = new WebsiteSignalBinding { EventName = "cta_click", Trigger = "click", DeliveryMode = "analytics" };
+        var document = WebsiteContentSanitizer.Sanitize(new WebsiteContentDocument
+        {
+            Pages = new() { ["/contact"] = new() { Composition = [new() { Id = "instance", Type = "reusable", SyncSourceId = "used" }] } },
+            ReusableComponents = new()
+            {
+                ["used"] = new() { Id = "used", Name = "Used", Composition = [new() { Id = "button", Type = "cta", Tag = "a", Text = "Book", ActionKey = "protect_schedule", Signals = [binding] }] },
+                ["unused"] = new() { Id = "unused", Name = "Unused", Composition = [new() { Id = "unused.button", Type = "cta", Tag = "a", Text = "Unused", ActionKey = "protect_schedule" }] }
+            }
+        });
+        var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(profile, state, version);
+        await db.SaveChangesAsync();
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        var rows = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadTicketAsync(ticket);
+        Assert.Single(rows.Where(r => r.Element == "instance.button" && r.ActionKey == "protect_schedule"));
+        Assert.DoesNotContain(rows, r => r.Element == "unused.button" || r.Binding == binding.Id);
+        Assert.Null(PublishedWebsiteBindingResolver.Resolve(version, state.SiteKey, "/contact", binding.Id));
+    }
+
+    [Fact]
+    public async Task SharedBindingsResolveAndFieldReportingRequiresExactElementIdentity()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentTrackingProfile { AgentUserId = "agent", AgentUpn = "agent@example.test", Slug = "agent" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = WebsiteEditorSiteKeys.Protect };
+        var binding = new WebsiteSignalBinding { EventName = "cta_click", Trigger = "click", DeliveryMode = "analytics" };
+        var fieldBinding = new WebsiteSignalBinding { EventName = "form_start", Trigger = "form_started", DeliveryMode = "analytics" };
+        var document = new WebsiteContentDocument
+        {
+            Shell = new() { Header = [new() { Id = "shared", Type = "cta", Tag = "a", Signals = [binding] }] },
+            Pages = new() { ["/contact"] = new() { Composition = [new() {
+                Id = "form", Type = "experience", Tag = "form",
+                Experience = new() { Kind = "calculator", Controls = [
+                    new() { Key = "email", Type = "text", Label = "Email" },
+                    new() { Key = "phone", Type = "text", Label = "Phone" },
+                    new() { Key = "schedule", Type = "button", Label = "Book", Action = new() { Type = "cta", ActionKey = "protect_schedule" } }
+                ] },
+                FieldSignals = new() { ["email"] = [fieldBinding], ["phone"] = [fieldBinding] }
+            }] } }
+        };
+        document = WebsiteContentSanitizer.Sanitize(document);
+        var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        state.PublishedVersionId = version.Id;
+        db.AddRange(profile, state, version);
+        db.Add(new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "form_start", EventUtc = DateTime.UtcNow, ReceivedUtc = DateTime.UtcNow,
+            AgentTrackingProfileId = profile.Id, WebsiteContentVersionId = version.Id, WebsiteBindingId = fieldBinding.Id,
+            Path = "/contact", ElementKey = "form:field:email", ElementId = "form:field:phone" });
+        await db.SaveChangesAsync();
+        Assert.Equal("shared", PublishedWebsiteBindingResolver.Resolve(version, state.SiteKey, "/contact", binding.Id)?.ElementId);
+        Assert.Null(PublishedWebsiteBindingResolver.Resolve(version, state.SiteKey, "/missing", binding.Id));
+        var ticket = new WebsiteEditorTicket(state.SiteKey, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));
+        var rows = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build()).ReadTicketAsync(ticket);
+        Assert.Equal("observed", Assert.Single(rows.Where(r => r.Element == "form:field:email")).AnalyticsStatus);
+        Assert.Equal("not_observed", Assert.Single(rows.Where(r => r.Element == "form:field:phone")).AnalyticsStatus);
+        Assert.Equal("protect_schedule", Assert.Single(rows.Where(r => r.Element == "form:field:schedule")).ActionKey);
+    }
+
     [Fact]
     public async Task PublishedMapSeparatesLabelsFromIdentityAndDoesNotReadDraftOrOtherOwner()
     {
@@ -168,6 +257,12 @@ public sealed class WebsiteEventMapTests
         var receipt = new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(profile.Id).Key, Provider = MarketingDestinationKeys.OpenAi,
             Channel = "server", CanonicalSource = nameof(MetaSignalEvent), CanonicalEventId = meta.EventId,
             ProviderEventName = OpenAiMeasurementEventNames.LeadCreated, Status = "sent" };
+        // A foreign legacy receipt with a colliding provider event ID must
+        // neither lend acceptance nor hide this owner's actual receipt.
+        db.Add(new MarketingDestinationDelivery { OwnerKey = MarketingOwnerScope.Agent(Guid.NewGuid()).Key,
+            Provider = MarketingDestinationKeys.OpenAi, Channel = "server", CanonicalSource = nameof(MetaSignalEvent),
+            CanonicalEventId = meta.EventId, Status = "sent", LastHttpStatusCode = 200 });
+        await db.SaveChangesAsync();
         db.AddRange(meta, receipt);
         await db.SaveChangesAsync();
         var ticket = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Protect, profile.AgentUserId, profile.Slug, false, DateTime.UtcNow.AddMinutes(5));

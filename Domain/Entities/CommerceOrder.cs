@@ -21,6 +21,10 @@ public sealed class CommerceOrder
     public bool IsPaymentProcessing { get; set; }
     public DateTime? PaymentProcessingStartedUtc { get; set; }
 
+    public string? PaymentProvider { get; set; }
+    public string? PaymentReference { get; set; }
+    public string? PaymentEnvironment { get; set; }
+
     public string? SquarePaymentId { get; set; }
     public string? SquareError { get; set; }
     public string? TrackingCarrier { get; set; }

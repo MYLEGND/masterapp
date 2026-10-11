@@ -24,6 +24,29 @@ namespace AgentPortal.Tests;
 public sealed class ScopedMarketingMeasurementTests
 {
     [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdversarialSentFlagCannotBorrowAcceptanceFromAnotherPixel(bool? attempted)
+    {
+        using var f = new Fixture(); await f.SeedAsync(); var owner = f.Expected("agent-a");
+        var source = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext {
+            EventName = "Purchase", AgentTrackingProfileId = owner.AgentTrackingProfileId, IsServerAuthority = true,
+            EventUtc = DateTime.UtcNow, Host = "protect.mylegnd.com" });
+        UnifiedAnalyticsWriter.Write(f.Db, source); await f.Db.SaveChangesAsync();
+        for (var index = 0; index < 200; index++)
+            f.Db.MetaSignalEvents.Add(new() { EventId = "poisoned-pixel-" + index, EventName = "Purchase",
+                AgentTrackingProfileId = owner.AgentTrackingProfileId, CreatedUtc = DateTime.UtcNow, MetaServerSent = true,
+                MetadataJson = JsonSerializer.Serialize(new { sourceAnalyticsEventId = source.Id,
+                    metaServerAttempted = attempted, metaServerEventsReceived = 1, metaServerPixelId = "foreign-pixel" }) });
+        await f.Db.SaveChangesAsync();
+        var result = await new MarketingMeasurementEvidenceService(f.Db, f.Configuration, f.Meta, f.OpenAi).GetAsync(owner);
+        Assert.True(result.ReceivingEvents);
+        Assert.Equal(0, result.Meta.Accepted);
+        Assert.Equal("not_observed", result.Meta.AcceptanceEvidence);
+    }
+
+    [Theory]
     [InlineData("founder-protect")]
     [InlineData("founder-legend")]
     [InlineData("agent-a")]

@@ -141,7 +141,8 @@ public class WebsitePlatformController : ControllerBase
                 ? NotFound(new { error = "business_website_not_found" })
                 : Ok(new { siteKey, document = new WebsiteContentDocument() });
 
-        var document = await LoadAsync(ownerKey, siteKey, cancellationToken);
+        var publication = await LoadPublicationAsync(ownerKey, siteKey, cancellationToken);
+        var document = publication.Document;
         if (document is null)
         {
             if (siteKey == WebsiteEditorSiteKeys.Business)
@@ -165,6 +166,7 @@ public class WebsitePlatformController : ControllerBase
         return Ok(new
         {
             siteKey,
+            publication = publication.VersionId.HasValue ? new { versionId = publication.VersionId, revision = publication.Revision } : null,
             business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
             businessName = business?.DisplayName,
             facts = publicFacts,
@@ -174,6 +176,51 @@ public class WebsitePlatformController : ControllerBase
             document,
             legacyMigration = document.LegacyMigration
         });
+    }
+
+    // The company site's HTML comes from the same public publication envelope as
+    // the CMS, rendered by the existing compiler before a visitor receives it.
+    [HttpGet("public/legend/page")]
+    [HttpHead("public/legend/page")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> LegendPage([FromQuery] string path = "/", CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length > 160 ||
+            !System.Text.RegularExpressions.Regex.IsMatch(path, @"^/(?:[a-z0-9_-]+/?)*$"))
+            return NotFound();
+        var route = path.TrimEnd('/');
+        if (route.Length == 0) route = "/";
+        var result = await Public(WebsiteEditorSiteKeys.Legend, cancellationToken: cancellationToken);
+        if (result is not OkObjectResult published) return result;
+        var payload = JsonSerializer.Serialize(published.Value, JsonOptions);
+        using var source = JsonDocument.Parse(payload);
+        var document = source.RootElement.GetProperty("document");
+        if (!document.TryGetProperty("pages", out var pages) || !pages.TryGetProperty(route, out var page) ||
+            page.TryGetProperty("navigation", out var navigation) &&
+            navigation.ValueKind == JsonValueKind.Object &&
+            navigation.TryGetProperty("isDeleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
+            return NotFound();
+        try
+        {
+            var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
+            using var compiled = JsonDocument.Parse(await compiler.CompileLegendAsync(payload, cancellationToken));
+            if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var rendered)) return NotFound();
+            var html = (rendered.GetProperty("html").GetString() ?? "")
+                .Replace("__LEGEND_CANONICAL_URL__", "https://www.mylegnd.com" + route, StringComparison.Ordinal);
+            Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+            Response.Headers.XContentTypeOptions = "nosniff";
+            if (source.RootElement.TryGetProperty("publication", out var identity) && identity.ValueKind == JsonValueKind.Object)
+                Response.Headers["X-Legend-Publication-Id"] = identity.GetProperty("versionId").GetString();
+            return Content(HttpMethods.IsHead(Request.Method) ? "" : html, "text/html; charset=utf-8");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException or JsonException)
+        {
+            // Never turn a failed publication read/render into a successful old homepage.
+            Response.Headers.CacheControl = "no-store";
+            Response.Headers.RetryAfter = "30";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "Published website temporarily unavailable.");
+        }
     }
 
     [HttpGet("public/{siteKey}/favicon")]
@@ -359,9 +406,9 @@ public class WebsitePlatformController : ControllerBase
         }
 
         var history = await _db.Set<WebsiteContentVersion>().AsNoTracking()
-            .Where(v => v.StateId == state.Id)
+            .Where(v => v.StateId == state.Id && v.SnapshotRetiredUtc == null)
             .OrderByDescending(v => v.Revision)
-            .Take(20)
+            .Take(Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit)
             .Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc })
             .ToListAsync(cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken, draft);
@@ -400,7 +447,8 @@ public class WebsitePlatformController : ControllerBase
             {
                 mediaBytes = mediaUsage?.MediaBytes ?? 0,
                 mediaCount = mediaUsage?.MediaCount ?? 0,
-                publishedVersions = history.Count
+                publishedVersions = history.Count,
+                publishedVersionLimit = Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.Limit
             },
             importReport = string.IsNullOrEmpty(state.ImportReportJson)
                 ? (JsonElement?)null
@@ -1193,6 +1241,9 @@ public class WebsitePlatformController : ControllerBase
             : await _db.MarketingDestinationDeliveries.AsNoTracking()
                 .Where(row =>
                     row.OwnerKey == owner.Key &&
+                    row.AgentTrackingProfileId == owner.AgentTrackingProfileId &&
+                    row.CommerceBusinessId == owner.CommerceBusinessId &&
+                    row.Channel == "server" && row.CanonicalSource == nameof(AnalyticsEvent) &&
                     row.Provider == Shared.Analytics.MarketingDestinationKeys.OpenAi &&
                     row.AnalyticsEventId.HasValue &&
                     selectedIds.Contains(row.AnalyticsEventId.Value) &&
@@ -1757,7 +1808,7 @@ public class WebsitePlatformController : ControllerBase
         { return BadRequest(new { error = "invalid_profile_settings", message = ex.Message }); }
         return Ok(await service.GetAsync(actor.CommerceBusinessId.Value, cancellationToken));
     }
-    public sealed record PublishRequest(string Ticket, long ExpectedRevision);
+    public sealed record PublishRequest(string Ticket, long ExpectedRevision, Guid? RequestId = null);
     public sealed record DeleteWebsiteRequest(string Ticket, long ExpectedRevision);
     public sealed record RollbackRequest(string Ticket, long ExpectedRevision, Guid VersionId);
 
@@ -2193,6 +2244,23 @@ public class WebsitePlatformController : ControllerBase
         });
     }
 
+    [HttpGet("manage/publication-status")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PublicationStatus([FromQuery] string ticket, [FromQuery] Guid requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await _db.Set<WebsiteContentState>().AsNoTracking()
+            .SingleOrDefaultAsync(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey &&
+                s.CommerceBusinessId == actor.CommerceBusinessId, cancellationToken);
+        var version = state is null ? null : await _db.Set<WebsiteContentVersion>().AsNoTracking()
+            .Where(v => v.StateId == state.Id && v.Id == requestId)
+            .Select(v => new { versionId = v.Id, publishedRevision = v.Revision }).SingleOrDefaultAsync(cancellationToken);
+        return Ok(new { found = version is not null, publication = version, revision = state?.Revision,
+            isCurrent = version is not null && state?.PublishedVersionId == version.versionId });
+    }
+
     [HttpPost("manage/publish")]
     public async Task<IActionResult> Publish([FromBody] PublishRequest request, CancellationToken cancellationToken = default)
     {
@@ -2200,13 +2268,22 @@ public class WebsitePlatformController : ControllerBase
         if (actor is null) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
         var state = await StateAsync(actor, cancellationToken);
+        if (request.RequestId == Guid.Empty) return BadRequest(new { error = "invalid_request_id" });
+        if (request.RequestId.HasValue)
+        {
+            var prior = await _db.Set<WebsiteContentVersion>().AsNoTracking()
+                .SingleOrDefaultAsync(v => v.Id == request.RequestId && v.StateId == state.Id, cancellationToken);
+            if (prior is not null)
+                return Ok(new { revision = state.Revision, publishedRevision = prior.Revision, versionId = prior.Id,
+                    alreadyPublished = true, isCurrent = state.PublishedVersionId == prior.Id });
+        }
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
-        return await PublishDocumentAsync(actor, state, Read(state.DraftJson), state.ImportReportJson, cancellationToken);
+        return await PublishDocumentAsync(actor, state, Read(state.DraftJson), state.ImportReportJson, cancellationToken, request.RequestId);
     }
 
     private async Task<IActionResult> PublishDocumentAsync(
         WebsiteEditorTicket actor, WebsiteContentState state, WebsiteContentDocument document,
-        string? importReportJson, CancellationToken cancellationToken)
+        string? importReportJson, CancellationToken cancellationToken, Guid? requestId = null)
     {
         WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
         CommerceBusiness? business = null;
@@ -2232,7 +2309,7 @@ public class WebsitePlatformController : ControllerBase
         var ctaError = WebsiteCallToActionCatalog.PrepareForPublish(document, ctaOptions);
         if (ctaError is not null) return BadRequest(new { error = "button_destination_required", message = ctaError });
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
-        var version = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
+        var version = new WebsiteContentVersion { Id = requestId ?? Guid.NewGuid(), StateId = state.Id, Revision = state.Revision + 1,
             DocumentJson = state.DraftJson, ImportReportJson = importReportJson, ActorUserId = actor.ActorUserId! };
         if (business is not null)
         {
@@ -2250,6 +2327,7 @@ public class WebsitePlatformController : ControllerBase
         state.ScheduleError = null;
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
+        await Infrastructure.WebsitePublishing.WebsiteSnapshotRetention.StageAsync(_db, state, cancellationToken);
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id, document });
@@ -2263,7 +2341,7 @@ public class WebsitePlatformController : ControllerBase
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
         var state = await StateAsync(actor, cancellationToken);
         if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
-        var previous = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.Id == request.VersionId && v.StateId == state.Id, cancellationToken);
+        var previous = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.Id == request.VersionId && v.StateId == state.Id && v.SnapshotRetiredUtc == null, cancellationToken);
         if (previous is null) return NotFound();
         return await PublishDocumentAsync(actor, state, Read(previous.DocumentJson), previous.ImportReportJson, cancellationToken);
     }
@@ -3602,16 +3680,21 @@ public class WebsitePlatformController : ControllerBase
     private static WebsiteContentDocument Read(string json) => WebsiteContentSanitizer.ReadPersisted(json, JsonOptions);
 
     private async Task<WebsiteContentDocument?> LoadAsync(string ownerUserId, string siteKey, CancellationToken cancellationToken)
+        => (await LoadPublicationAsync(ownerUserId, siteKey, cancellationToken)).Document;
+
+    private async Task<(WebsiteContentDocument? Document, Guid? VersionId, long? Revision)> LoadPublicationAsync(
+        string ownerUserId, string siteKey, CancellationToken cancellationToken)
     {
         var state = await _db.Set<WebsiteContentState>().AsNoTracking().SingleOrDefaultAsync(s => s.OwnerKey == ownerUserId && s.SiteKey == siteKey, cancellationToken);
         if (state is not null)
         {
-            if (!state.PublishedVersionId.HasValue) return null;
+            if (!state.PublishedVersionId.HasValue) return (null, null, null);
             var version = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(v => v.Id == state.PublishedVersionId && v.StateId == state.Id, cancellationToken);
-            return Read(version.DocumentJson);
+            if (version.SnapshotRetiredUtc.HasValue) throw new InvalidOperationException("Active publication snapshot is unavailable.");
+            return (Read(version.DocumentJson), version.Id, version.Revision);
         }
         var legacy = await _db.AgentFinanceToolStates.AsNoTracking().SingleOrDefaultAsync(s => s.AgentUserId == ownerUserId && s.ToolId == ToolId(siteKey), cancellationToken);
-        return legacy is null ? (siteKey == WebsiteEditorSiteKeys.Business ? null : new WebsiteContentDocument()) : Read(legacy.JsonState);
+        return (legacy is null ? (siteKey == WebsiteEditorSiteKeys.Business ? null : new WebsiteContentDocument()) : Read(legacy.JsonState), null, null);
     }
 
     private async Task<string?> ResolveProtectOwnerKeyAsync(
@@ -3703,7 +3786,8 @@ public class WebsitePlatformController : ControllerBase
                 storefrontUrl = (string?)null,
                 cartUrl = (string?)null,
                 previewUrl = (string?)null,
-                managerUrl = (string?)null
+                managerUrl = (string?)null,
+                paymentsUrl = (string?)null
             };
 
         var root = await ResolveCanonicalStoreRootAsync(siteKey, scope, cancellationToken);
@@ -3724,7 +3808,10 @@ public class WebsitePlatformController : ControllerBase
                 : managerBase + "/commerce/manage/preview?ticket=" + escapedTicket,
             managerUrl = escapedTicket is null
                 ? null
-                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket
+                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket,
+            paymentsUrl = escapedTicket is null
+                ? null
+                : managerBase + "/commerce/manage/payments?ticket=" + escapedTicket
         };
     }
 

@@ -950,10 +950,9 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
-test('Protect hides only canonical published-document pages before hydration',()=>{
-  assert.match(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding \? "hidden" : null\)"/);
-  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
-  assert.match(protectLayoutSource,/@if \(!isStandaloneQuoteLanding\)[\s\S]*html\[hidden\]\{display:block!important\}/);
+test('Protect keeps public content visible before hydration',()=>{
+  assert.doesNotMatch(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding/);
+  assert.doesNotMatch(protectLayoutSource,/data-legend-canonical-pending/);
 });
 
 test('canonical responsive hierarchy resets inherited desktop geometry on mobile but preserves explicit mobile intent',async()=>{
@@ -1831,12 +1830,12 @@ test('published business rendering activates the shared inquiry path without inj
   assert.equal(businessRenderSource.includes("script.src='/business-inquiry.js'"),false);
 });
 
-test('business compiler keeps Founder's JSON inquiry runtime instead of native form POST',()=>{
+test("business compiler keeps Founder's JSON inquiry runtime instead of native form POST",()=>{
   const filter=businessRenderSource.match(/doc\.querySelectorAll\('script'\)\.forEach\(script=>\{[\s\S]*?\}\);/);
   assert.ok(filter);
   assert.match(filter[0], /'\/legend-public-inquiry\.js'/);
   assert.match(publicInquirySource,/headers: \{ 'Content-Type': 'application\/json' \}/);
-  assert.match(publicInquirySource,/body: JSON\.stringify\(\{ submissionId, \.\.\.values \}\)/);
+  assert.match(publicInquirySource,/body: JSON\.stringify\(pendingPayload\)/);
   assert.doesNotMatch(businessRenderSource,/script\.src='\/business-inquiry\.js'/);
 });
 
@@ -3975,4 +3974,95 @@ test('public mobile navigation is one compact viewport-safe dropdown instead of 
   assert.match(publicCss,/\.nav\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:nowrap/);
   assert.match(publicCss,/\.business-brand-banner strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+});
+
+test('compiled LEGEND hydration uses its embedded publication without another public-content request',async()=>{
+  const document=canonicalDocument({title:'Published first response'});
+  const html='<!doctype html><html><head></head><body><main><h1>Published first response</h1></main><script type="application/json" id="legend-cms-published-document"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const {window:w}=dom; const calls=[];
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'legend',document,pageKey:'home',server:false,
+    pageCatalog:[{route:'/',label:'Home'}],
+    runtime:{apiBase:'https://protect.example.test',editorAuthorizationUrl:'https://portal.example.test/Account/EditLegendWebsite'}
+  });
+  w.CSS={escape:value=>String(value)};
+  w.fetch=async url=>{calls.push(String(url));return {ok:true,json:async()=>({})};};
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  try {
+    assert.equal(w.document.querySelector('h1').textContent,'Published first response');
+    assert.equal(w.LEGEND_PUBLIC_CMS_CONTEXT.siteKey,'legend');
+    assert.equal(w.LEGEND_PUBLIC_CMS_CONTEXT.apiBase,'https://protect.example.test');
+    assert.ok(!calls.some(url=>new URL(url).pathname==='/api/website-content/public/legend'));
+  } finally {w.close();}
+});
+
+test('compiled publication does not short-circuit authorized editor loading',async()=>{
+  const live=canonicalDocument({title:'Published headline'});
+  const draft=canonicalDocument({title:'Editable draft headline'});
+  const html='<!doctype html><html><head></head><body><main></main><script type="application/json" id="legend-cms-published-document">'+JSON.stringify({siteKey:'legend',document:live,pageKey:'home',server:false,runtime:{apiBase:''}})+'</script></body></html>';
+  const f=await domFixture({doc:draft,html});
+  try {
+    assert.ok(f.calls.some(call=>new URL(call.url).pathname==='/api/website-content/manage'));
+    assert.equal(f.w.document.querySelector('h1').textContent,'Editable draft headline');
+    assert.ok(f.w.document.querySelector('.legend-cms-editor'));
+  } finally {f.w.close();}
+});
+
+test('publication is only verified when the visitor document returns the matching identity', async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    let expected;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')){
+        expected=JSON.parse(options.body).requestId;
+        return {ok:true,json:async()=>({revision:2,publishedRevision:2,versionId:expected})};
+      }
+      if(options.method==='HEAD'){
+        assert.equal(options.credentials,'omit');
+        assert.equal(new URL(url).search,'');
+        return {ok:true,headers:{get:()=>expected}};
+      }
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish');
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/public version verified/);
+  } finally {f.close();}
+});
+test('uncertain publication reconciles the same request without a second POST',async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    let expected;let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')){
+        posts++;expected=JSON.parse(options.body).requestId;
+        throw new Error('response lost after commit');
+      }
+      if(String(url).includes('/manage/publication-status')){
+        assert.equal(new URL(url).searchParams.get('requestId'),expected);
+        return {ok:true,json:async()=>({found:true,isCurrent:true,revision:2,publication:{versionId:expected,publishedRevision:2}})};
+      }
+      if(options.method==='HEAD') return {ok:true,headers:{get:()=>null}};
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(posts,1);
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/verification pending/);
+  }finally{f.close();}
+});
+test('HTTP success without the requested publication identity stays unconfirmed',async()=>{
+  const f=await domFixture();
+  try {
+    const original=f.w.fetch;
+    f.w.fetch=async(url,options={})=>String(url).endsWith('/manage/publish')
+      ? {ok:true,json:async()=>({})} : original(url,options);
+    f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
+  }finally{f.close();}
 });

@@ -7,7 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <Compile Include="../CandidateContract.cs" Link="CandidateContract.cs" />
+    <Compile Include="../CandidateContract*.cs" Link="%(Filename)%(Extension)" />
     <ProjectReference Include="../../../Infrastructure/Infrastructure.csproj" />
   </ItemGroup>
 </Project>

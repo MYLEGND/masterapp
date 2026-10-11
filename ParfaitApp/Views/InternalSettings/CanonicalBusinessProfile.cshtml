@@ -1,0 +1,28 @@
+@model Legend.Commerce.CommerceBusinessProfileViewModel
+@{
+    Layout = "_InternalLayout";
+    ViewData["Title"] = "Business Profile";
+    var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
+    var saveUrl = "/commerce/manage/business-profile?ticket=" + Uri.EscapeDataString(ticket);
+}
+<section class="pf-command-page">
+    <div class="pf-command-heading">
+        <h1>Business profile</h1>
+        <p>Shared LEGEND® business identity and storefront settings.</p>
+    </div>
+    <div class="pf-command-panel">
+        <form method="post" action="@saveUrl" class="pf-command-form">
+            @Html.AntiForgeryToken()
+            <label>Business name
+                <input name="Name" required minlength="2" maxlength="160" value="@Model.Name" class="form-control" />
+            </label>
+            <label>Business type
+                <input name="BusinessType" required minlength="2" maxlength="160" value="@Model.BusinessType" class="form-control" />
+            </label>
+            <p><strong>Account owner:</strong> @Model.OwnerEmail</p>
+            <p><strong>Domain:</strong> @(Model.PrimaryDomain ?? "Not configured")</p>
+            <p>Domain verification and website publication are managed through the canonical Website Studio.</p>
+            <button type="submit" class="pf-action">Save business profile</button>
+        </form>
+    </div>
+</section>

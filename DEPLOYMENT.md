@@ -1,5 +1,23 @@
 # LEGEND Production Deployment
 
+## Founder-authorized fast-track path
+
+For the existing PR #580 work, `Legend/fast-track-release` is the sole integration,
+admission, and release authority; `legend/approved-changes` is out of scope. Continue
+`isolation/canonical-scoped-commerce-internal-20261010` and the existing
+`.github/workflows/legend-fast-track-ui.yml` workflow. Do not restart integration.
+
+LEGEND governed tools are not prerequisites. Use authorized GitHub access, isolated
+checkouts, Actions, and provider readback directly. Preserve actual access controls,
+required reviews, integrity/security checks, and Production approvals. Preserve
+`8cceef5` Production authentication and compatible successful evidence. This access
+clarification neither proves migration readiness nor authorizes skipping a gate.
+
+The historical lifecycle below describes the separate approved-changes path; it
+must not redirect this fast-track task or introduce an additional release authority.
+
+## Historical approved-changes lifecycle (outside this fast-track task)
+
 The protected `legend/approved-changes` lifecycle is the **sole production deployment authority** for MASTERAPP.
 
 Production application publication must flow through:

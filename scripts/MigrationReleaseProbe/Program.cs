@@ -367,6 +367,16 @@ catch (SqlException ex) when (ex.Number is 18456 or 4060)
     Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_AUTH");
     Environment.ExitCode = 1;
 }
+catch (SqlException ex) when (ex.Number == -2)
+{
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_QUERY_TIMEOUT");
+    Environment.ExitCode = 1;
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("LEGEND_SCHEMA_PROBE:SQL_READ_DEADLINE");
+    Environment.ExitCode = 1;
+}
 catch (ProbeObservationFailure ex)
 {
     // Fixed classification and tightly filtered schema metadata only.

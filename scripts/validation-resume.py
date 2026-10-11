@@ -30,6 +30,24 @@ import contextvars
 
 
 TRUSTED_PR_BASE = "legend/approved-changes"
+FAST_TRACK_PR_BASE = "Legend/fast-track-release"
+FAST_TRACK_RELEASE_WORKFLOW = "legend-fast-track-ui.yml"
+FAST_TRACK_CHILD_STEPS = {
+    'migrations': ('Reconcile production schema before publication', 'Apply or reconcile the exact rehearsed migration bundle'),
+    'routing-cloudflare': ('Publish verified website routing', 'Publish or reconcile canonical website routing'),
+}
+# Reviewed UI-only generations: Azure ZIP publication and read-only probes;
+# none owns a SQL or routing write. Unknown source generations are not inferred.
+FAST_TRACK_PRE_MIGRATION_SOURCES = frozenset({
+    '009caa30172a0876256d73fe5d65da7b78e0d0a3', 'a4dc70671ffc1c6831aaac08c0ecd174b2977399',
+    '754bbd32ad17db693acbd9347828c738e27ac3f8', '3c17ce177b365f341f1e341bb57dbce6e9efea73',
+    '3c24505f36f40d1771a177a6fde557739001b42a', 'e8b844209b0eab795c0261682a999e96de035fee',
+    '16c8e432d5f8d70ec62b56e0b45724baeaea4a12', 'e9c28127fa54cecf2be26ea1d029462d7fd297a0',
+    'afa578e0a2cff0964281d197f48e2bf01e26b07b', 'ebcfe155cd5fed20f3e422b5ce6c8cf995930ff0',
+    'ef527573a0a22c5b4ebf78254fbd2a26228d7cc7', '86b4e0a179d2588e07eaf1db260360279abf9190',
+    'f6bc9aac6a6142b225162f0096396be7447df1e3', '624e1495285ec8778675029b05d3cfb51657ef9b',
+})
+_VALIDATION_PR_BASE = contextvars.ContextVar("validation_pr_base", default=TRUSTED_PR_BASE)
 DIRECT_RELEASE_WORKFLOW = "all-intentional-direct-release-20260918.yml"
 PACKAGE_VALIDATION_WORKFLOW = "masterapp-platform-architecture-validation.yml"
 RELEASE_REQUEST_PATH = "Docs/releases/direct-release-request.json"
@@ -107,7 +125,7 @@ def direct_child_operation_matches(child, path):
             not any(includes(prefix) for prefix in gate.get("operation_exclusions", ())))
 
 
-def direct_child_identity(child, revision, material_identity):
+def direct_child_identity(child, revision, material_identity, *, workflow=None):
     """Bind a child to its inputs and owning executable block, not its SHA.
 
     material_identity is a public immutable package/schema/provider resource
@@ -126,13 +144,95 @@ def direct_child_identity(child, revision, material_identity):
         if any(path == prefix or (prefix.endswith("/") and path.startswith(prefix))
                for prefix in gate["paths"]):
             inputs[path] = meta
-    text = git_show_file(revision, ".github/workflows/" + DIRECT_RELEASE_WORKFLOW)
-    block = named_step_blocks(text).get(gate["step"])
+    workflow = workflow or DIRECT_RELEASE_WORKFLOW
+    if workflow not in {DIRECT_RELEASE_WORKFLOW, FAST_TRACK_RELEASE_WORKFLOW}:
+        raise ValueError('Unknown child execution authority')
+    text = git_show_file(revision, ".github/workflows/" + workflow)
+    step = FAST_TRACK_CHILD_STEPS[child][1] if workflow == FAST_TRACK_RELEASE_WORKFLOW else gate['step']
+    block = named_step_blocks(text).get(step)
     if not block:
         raise ValueError("Canonical release child owner missing")
     contract = dict(child=child, definition=gate, inputs=inputs,
                     executionContract=block, materialIdentity=material_identity)
     return hashlib.sha256(json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def is_fast_track_producer(repository, run):
+    return (run.get('path') == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW
+        and run.get('head_branch') == FAST_TRACK_PR_BASE and run.get('event') == 'push'
+        and run.get('head_repository', {}).get('full_name', '').lower() == repository.lower()
+        and type(run.get('id')) is int and run['id'] > 0
+        and re.fullmatch('[a-f0-9]{40}', run.get('head_sha', '')) is not None)
+
+
+def fast_track_execution_history(repository, token):
+    """Complete bounded inventory; a missing page can never authorize a write."""
+    runs, expected, seen = [], None, 0
+    branch = urllib.parse.quote(FAST_TRACK_PR_BASE, safe='')
+    for page in range(1, 11):
+        payload = api_get(repository, f'actions/runs?branch={branch}&event=push&per_page=100&page={page}', token)
+        rows, total = payload.get('workflow_runs'), payload.get('total_count')
+        if (not isinstance(rows, list) or type(total) is not int or total < 0
+            or (expected is not None and total != expected)):
+            raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+        expected = total
+        seen += len(rows)
+        for run in rows:
+            if run.get('path', '').split('@')[0] == '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW:
+                if not is_fast_track_producer(repository, run):
+                    raise RuntimeError('FAST_TRACK_HISTORY_PRODUCER_UNPROVEN')
+                runs.append(run)
+        if len(rows) < 100:
+            break
+    if seen != expected or len({r['id'] for r in runs}) != len(runs):
+        raise RuntimeError('FAST_TRACK_HISTORY_INCOMPLETE')
+    return runs
+
+
+def fast_track_child_attempts(repository, child, token, *, current_run=None, current_attempt=None):
+    if child not in FAST_TRACK_CHILD_STEPS:
+        return []
+    attempts = []
+    owner_name, step_name = FAST_TRACK_CHILD_STEPS[child]
+    for run in fast_track_execution_history(repository, token):
+        if run['id'] != current_run and run.get('status') != 'completed':
+            raise RuntimeError('FAST_TRACK_RESOURCE_WORKER_ACTIVE')
+        source = _release_history_source(repository, run['head_sha'], '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+        raw = source.encode()
+        blob = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+        if blob in FAST_TRACK_PRE_MIGRATION_SOURCES:
+            continue
+        if step_name not in named_step_blocks(source):
+            raise RuntimeError('FAST_TRACK_CHILD_SOURCE_UNPROVEN')
+        count = run.get('run_attempt')
+        if type(count) is not int or not 1 <= count <= 100:
+            raise RuntimeError('FAST_TRACK_ATTEMPTS_INCOMPLETE')
+        saw_owner = False
+        for attempt in range(1, count + 1):
+            if run['id'] == current_run and attempt == current_attempt:
+                continue
+            payload = api_get(repository, f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100", token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                raise RuntimeError('FAST_TRACK_JOBS_INCOMPLETE')
+            if not jobs and (run.get('status') == 'completed' or attempt < count):
+                continue
+            owners = [j for j in jobs if j.get('name') == owner_name]
+            if not owners and attempt > 1 and saw_owner:
+                continue  # Complete attempt inventory proves this sibling was not rerun.
+            if len(owners) != 1:
+                raise RuntimeError('FAST_TRACK_CHILD_OWNER_UNPROVEN')
+            saw_owner = True
+            job = owners[0]
+            if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
+                continue
+            steps = [s for s in job.get('steps', []) if s.get('name') == step_name]
+            if len(steps) != 1:
+                raise RuntimeError('FAST_TRACK_CHILD_STEP_UNPROVEN')
+            if steps[0].get('conclusion') == 'skipped' or steps[0].get('status') == 'queued':
+                continue
+            attempts.append((run, attempt, job, steps[0]))
+    return attempts
 
 
 def release_child_history(repository, child, dependency_identity, token, phase):
@@ -153,7 +253,7 @@ def release_child_history(repository, child, dependency_identity, token, phase):
             raise RuntimeError("Release child evidence missing or expired")
         run_id = artifact.get("workflow_run", {}).get("id")
         run = api_get(repository, f"actions/runs/{run_id}", token)
-        if (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
+        if not is_fast_track_producer(repository, run) and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
                 run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch" or
                 run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()):
             raise RuntimeError("Untrusted release child producer")
@@ -175,6 +275,8 @@ def release_child_history(repository, child, dependency_identity, token, phase):
 
 
 def _trusted_child_producer(repository, run):
+    if is_fast_track_producer(repository, run):
+        return
     if (type(run.get("id")) is not int or run["id"] < 1
             or run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW
             or run.get("head_branch") != TRUSTED_PR_BASE
@@ -200,6 +302,14 @@ def _validate_child_generation(repository, run, artifact, record, child, token, 
             or not re.fullmatch(r"[a-f0-9]{40}", execution)
             or artifact.get("name") != f"legend-release-child-{phase}-" + identity):
         raise RuntimeError("Historical release child generation is malformed")
+    if is_fast_track_producer(repository, run):
+        if child not in FAST_TRACK_CHILD_STEPS or execution != run['head_sha'] or record.get('applicationRevision') != execution:
+            raise RuntimeError('Fast-track child authority does not match its exact producer')
+        if direct_child_operation_identity(child, execution, material) != identity:
+            raise RuntimeError('Historical release child physical identity is inconsistent')
+        if record.get('evidenceIdentity') != direct_child_identity(child, execution, material, workflow=FAST_TRACK_RELEASE_WORKFLOW):
+            raise RuntimeError('Fast-track child execution contract is inconsistent')
+        return identity
     title = re.fullmatch(r"LEGEND release pr=[0-9]+ candidate=[a-f0-9]{40} authority=([a-f0-9]{40})", run.get("display_title", ""))
     if title is None or title.group(1) != execution:
         raise RuntimeError("Historical release child generation lacks bound checkout authority")
@@ -1453,6 +1563,40 @@ def release_child_first_write_proven(repository, child, dependency_identity, mat
             or type(current_run) is not int or current_run < 1
             or type(current_attempt) is not int or current_attempt < 1):
         raise ValueError("Invalid release child mutation identity")
+    for run, attempt, job, step in fast_track_child_attempts(repository, child, token,
+            current_run=current_run, current_attempt=current_attempt):
+        payload = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = payload.get('artifacts')
+        if not isinstance(artifacts, list) or payload.get('total_count') != len(artifacts):
+            raise rejection('Release child original generation inventory incomplete', run['id'], attempt)
+        intents, observations = [], []
+        for artifact in artifacts:
+            match = re.fullmatch(r'legend-release-child-(intent|success)-[a-f0-9]{64}', artifact.get('name', ''))
+            if not match:
+                continue
+            if artifact.get('expired') is not False:
+                raise rejection('Release child original intent expired; no replay authorized', run['id'], attempt)
+            record = _release_history_json(repository, run['id'], artifact, 'operation.json')
+            if record.get('child') != child or record.get('producingAttempt') != attempt:
+                continue
+            generation = _validate_child_generation(repository, run, artifact, record, child, token, match[1])
+            if match[1] == 'success' and record.get('observation', {}).get('providerVersion') == 'schema-ready-no-write':
+                observations.append(record)
+            if match[1] != 'intent':
+                continue
+            intents.append(record)
+            if generation == dependency_identity:
+                raise rejection('Release child physical operation already entered; reconcile without replay', run['id'], attempt)
+            partition = record.get('partitionIdentity')
+            if not re.fullmatch('[a-f0-9]{64}', str(partition)):
+                raise rejection('Release child historical partition unproven; no replay authorized', run['id'], attempt)
+            if partition == partition_identity:
+                completed = release_child_history(repository, child, generation, token, 'success')
+                if (completed is None or completed.get('materialIdentity') != record.get('materialIdentity')
+                    or completed.get('partitionIdentity') != partition):
+                    raise rejection('Release child prior partition operation unresolved; no replay authorized', run['id'], attempt)
+        if not intents and not (child == 'migrations' and len(observations) == 1 and step.get('conclusion') == 'success'):
+            raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)
     # The workflow-specific inventory returns 403 to the trusted release token.
     # Query the same canonical Actions authority through its repository run
     # inventory and authenticate the exact workflow on every retained row.
@@ -1861,6 +2005,109 @@ def release_targets_for_paths(paths):
         if key in selected
     )
 
+def fast_track_scope(paths):
+    """Exact fast-track impact using the canonical inventory and project links.
+
+    Unknown application paths stop admission; they never silently expand into
+    a blanket deployment. This function grants no schema mutation permission.
+    """
+    import posixpath
+    import xml.etree.ElementTree as ET
+    paths = tuple(dict.fromkeys(paths))
+    dotnet = {key for key, row in RELEASE_TARGETS.items() if not row['static']}
+    commerce = {'protect', 'parfait'}
+    linked = {}
+    for key, row in RELEASE_TARGETS.items():
+        if row['static']:
+            continue
+        project = Path(row['project'])
+        root = ET.fromstring((Path(__file__).resolve().parents[1] / project).read_text())
+        items = []
+        for node in root.iter():
+            if node.tag not in {'Content', 'None', 'Compile'} or not node.get('Include'):
+                continue
+            def patterns(value):
+                return [posixpath.normpath(str(project.parent) + '/' + part.replace('\\', '/'))
+                        for part in value.split(';') if part and '$(' not in part and '@(' not in part]
+            items.append((patterns(node.get('Include', '')), patterns(node.get('Exclude', ''))))
+        linked[key] = items
+    def match(path, pattern):
+        # MSBuild * stays within one directory; ** spans zero or more.
+        expression = re.escape(pattern).replace(r'\*\*/', '(?:.*/)?')
+        expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
+        return re.fullmatch(expression, path) is not None
+    def owners(path):
+        if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
+            return set(commerce)
+        if path.startswith('Infrastructure/WebsiteRuntime/'):
+            return {'protect'}
+        if path.startswith('Domain/Entities/Commerce') or path in {
+            'Infrastructure/Data/MasterAppDbContext.cs',
+            'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
+            'Infrastructure/Businesses/BusinessWorkspaceAccess.cs'} or path.startswith('Infrastructure/Migrations/'):
+            return set(dotnet)
+        if path.startswith(('Legend-Cloudflare/src/website-routing/', 'Legend-Cloudflare/tests/website-routing/')):
+            return set()
+        if path.startswith('SHARED/wwwroot/js/finance-') or path in {
+            'SHARED/wwwroot/js/legend-living-balance-sheet.js',
+            'SHARED/wwwroot/js/expense-lens-projection.js',
+            'SHARED/wwwroot/css/legend-finance-shared.css'}:
+            return {'portal', 'client'}
+        if path.startswith('SHARED/wwwroot/'):
+            return set(RELEASE_TARGETS)
+        if path.startswith('SHARED/WebsitePlatform/'):
+            return {'website', 'protect'}
+        if path.startswith('SHARED/Views/') or path == 'SHARED/Shared.csproj':
+            return {'portal', 'client', 'protect'}
+        if path.startswith('SHARED/Branding/'):
+            return {'portal', 'client', 'protect', 'website'}
+        if path == 'Legend-Design/legend-public-inquiry.js':
+            return {'website', 'protect'}
+        if path.startswith('Legend-Design/'):
+            return set(RELEASE_TARGETS)
+        if path == 'Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs':
+            return {'portal', 'client', 'protect'}
+        if path == 'Infrastructure/WebsiteEditing/WebsitePlatformController.cs':
+            return {'protect'}
+        if path.startswith(('Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/',
+                            'Infrastructure/WebsiteEditing/')) or path == 'Domain/Entities/WebsiteContentState.cs':
+            # These shared server owners are compiled into all four managed apps.
+            return set(dotnet)
+        if path.startswith('Legend-Website/'):
+            return {'website'} if path == 'Legend-Website/scripts/check.mjs' else {'website', 'protect'}
+        direct = {key for key, row in RELEASE_TARGETS.items() if path.startswith(row['sourceRoot'] + '/')}
+        if direct:
+            return direct
+        if release_control_only_path(path) or path.startswith(('docs/',
+            'diagnostics/MerchantPaymentCoreTests/', 'diagnostics/MerchantPaymentAdapterChecks/')) or path in {
+            'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
+            'scripts/test-parfait-readonly-workflow.py'}:
+            return set()
+        raise ValueError('Unmapped fast-track source path: ' + path)
+    impacts = {}
+    for path in paths:
+        selected = owners(path)
+        for key, items in linked.items():
+            if any(any(match(path, pat) for pat in includes) and not any(match(path, pat) for pat in excludes)
+                   for includes, excludes in items):
+                selected.add(key)
+        impacts[path] = sorted(selected)
+    selected = set().union(*map(set, impacts.values())) if impacts else set()
+    names = dict(portal='AgentPortal', client='ClientApp', protect='Protect', parfait='Parfait', website='Website')
+    matrix = [dict(key=key, target=names[key], project=row['project'], azure_app=row['releaseName'], host=row['host'])
+              for key, row in RELEASE_TARGETS.items() if key in selected]
+    schema = any(path.startswith('Infrastructure/Migrations/') or path in {
+        'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs'} for path in paths)
+    backend = schema or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
+        'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
+        'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
+        'Domain/Entities/WebsiteContentState.cs', 'Infrastructure/WebsiteEditing/WebsiteEventMapQuery.cs',
+        'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs'} for path in paths)
+    return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend,
+                schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') for p in paths), impacts=impacts)
+
+
 LIFECYCLE_AUTHORITY_PATHS = (
     "AGENTS.md",
     "DEPLOYMENT.md",
@@ -1891,6 +2138,7 @@ LIFECYCLE_AUTHORITY_PATHS = (
 )
 
 RELEASE_EXECUTION_CONTROL_INPUTS = (
+    "scripts/test-fast-track-release.py",
     "scripts/PackageRestoreProbe/PackageRestoreProbe.csproj",
     "scripts/PackageRestoreProbe/Program.cs",
     "scripts/release-migration-history-audit.py",
@@ -2219,6 +2467,7 @@ WORKFLOW_PATHS = {
         "step6-openai-ads-execution-validation.yml",
         "steps7-8-governed-advertising-validation.yml",
         "approved-release-security-validation.yml",
+        "parfait-isolated-validation.yml",
     )
 }
 
@@ -2311,6 +2560,24 @@ DIAGNOSTICS_TESTS = (
 )
 
 WORKFLOWS = {
+    "parfait-isolated-validation.yml": {
+        "resume_owner": "parfait-isolated-validation",
+        "resume_planner_sha256": "e4df879e7250a1bc0a665eff022a154cbed88f05736d2b3f0424f5af90844c75",
+        "force_all": (),
+        "neutral": ("Docs/**", "docs/**", "*.md", ".github/workflows/**", "scripts/validation-resume.py", "scripts/test-validation-resume.py"),
+        "gates": {
+            "restore": {"step": "Restore isolated commerce and Parfait projects", "paths": GLOBAL_DOTNET_INPUTS},
+            "build": {"step": "Compile shared commerce and Parfait host", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**",) + GLOBAL_DOTNET_INPUTS, "requires": ("restore",)},
+            "test-restore": {"step": "Restore contract tests", "paths": GLOBAL_DOTNET_INPUTS},
+            "contracts": {"step": "Run focused Parfait commerce and canonical parity tests", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**", "AgentPortal.Tests/**") + GLOBAL_DOTNET_INPUTS, "requires": ("test-restore",)},
+            "routing": {"step": "Verify selective Cloudflare commerce routing without deployment", "paths": ("Legend-Cloudflare/**", "Legend-Website/**", "Legend-Design/**", "SHARED/WebsitePlatform/**", "tests/website/**")},
+            "payments": {"step": "Verify scoped payment ownership, replay safety and provider contracts", "paths": WEB_DOTNET_SOURCE + ("CommerceCore/**", "diagnostics/MerchantPaymentCoreTests/**", "diagnostics/MerchantPaymentAdapterChecks/**") + GLOBAL_DOTNET_INPUTS},
+            "migration-contract": {"step": "Verify canonical migration operation contract", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("scripts/MigrationReleaseProbe/**", "scripts/migration-probe-package.py", "scripts/test-migration-probe-package.py", "scripts/test-parfait-readonly-workflow.py", "scripts/release-migration.py", "scripts/test-release-migration-probe-retry.py", "scripts/test-release-children.py", "scripts/test-release-migration-history-audit.py", "scripts/test-fast-track-release.py", "scripts/release-operation-evidence.py", "scripts/release-router.py", "scripts/deploy-approved-app.py", "scripts/release-migration-history-audit.py", "scripts/validation-resume.py", "scripts/test-validation-resume.py", ".github/workflows/**")},
+            "sql-contract": {"step": "Exercise payment migration and schema drift on disposable SQL Server", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("scripts/MigrationReleaseProbe/**", "scripts/migration-probe-package.py")},
+            "publish": {"step": "Publish and inspect exact Parfait + Protect packages without deployment", "paths": WEB_DOTNET_SOURCE + GLOBAL_DOTNET_INPUTS + ("CommerceCore/**", "Legend-Website/**", "Legend-Design/**"), "requires": ("restore",)},
+        },
+    },
+
     "masterapp-platform-architecture-validation.yml": {
         "force_all": (),
         "neutral": (
@@ -3014,13 +3281,86 @@ def assert_protected_release_execution():
     return run
 
 
-def approved_head_preflight(repository: str, current_sha: str, token: str):
+def assert_fast_track_release_execution():
+    """Authenticate the existing fast-track producer, without granting admission.
+
+    The caller must still prove package, schema, history and operation admission.
+    This identity check does not delegate execution to another release branch.
+    """
+    env = os.environ
+    repository = env.get('GITHUB_REPOSITORY', '')
+    token = env.get('GH_TOKEN') or env.get('GITHUB_TOKEN')
+    revision = env.get('GITHUB_SHA', '')
+    reference = 'refs/heads/' + FAST_TRACK_PR_BASE
+    run_id, attempt = env.get('GITHUB_RUN_ID', ''), env.get('GITHUB_RUN_ATTEMPT', '')
+    if (env.get('GITHUB_ACTIONS') != 'true' or env.get('GITHUB_EVENT_NAME') != 'push'
+        or env.get('GITHUB_REF') != reference or not repository or not token
+        or not re.fullmatch('[a-f0-9]{40}', revision) or not run_id.isdigit() or int(run_id) < 1
+        or not attempt.isdigit() or int(attempt) < 1
+        or env.get('GITHUB_WORKFLOW_REF') != repository + '/.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW + '@' + reference):
+        raise RuntimeError('FAST_TRACK_EXECUTION_IDENTITY_INCOMPLETE')
+    run = api_get(repository, f'actions/runs/{run_id}', token)
+    expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
+                    head_branch=FAST_TRACK_PR_BASE, event='push', head_sha=revision, status='in_progress')
+    if (any(run.get(key) != value for key, value in expected.items())
+        or run.get('head_repository', {}).get('full_name', '').lower() != repository.lower()):
+        raise RuntimeError('FAST_TRACK_EXECUTION_PRODUCER_UNPROVEN')
+    current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
+    if current.get('object', {}).get('sha') != revision:
+        raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
+    return run
+
+
+def assert_release_execution():
+    """Select a configured producer; each lane retains its own exact identity checks."""
+    if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:
+        return assert_fast_track_release_execution()
+    return assert_protected_release_execution()
+
+
+def fast_track_source_admission():
+    """Require the merged exact source's existing checks before production access."""
+    run = assert_fast_track_release_execution()
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
+    revision = run['head_sha']
+    pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
+    candidates = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
+        and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+        and p.get('head', {}).get('repo', {}).get('full_name') == repository]
+    if len(candidates) != 1:
+        raise RuntimeError('FAST_TRACK_MERGED_SOURCE_UNPROVEN')
+    candidate = candidates[0]['head']['sha']
+    if subprocess.run(['git', 'diff', '--quiet', candidate, revision], capture_output=True).returncode:
+        raise RuntimeError('FAST_TRACK_MERGE_TREE_DIFFERS_FROM_VALIDATED_SOURCE')
+    payload = api_get(repository, f'actions/runs?head_sha={candidate}&per_page=100', token)
+    rows = payload.get('workflow_runs')
+    if not isinstance(rows, list) or payload.get('total_count') != len(rows):
+        raise RuntimeError('FAST_TRACK_VALIDATION_INVENTORY_INCOMPLETE')
+    required = {'approved-release-security-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'push'}
+    evidence = {}
+    for workflow, event in required.items():
+        matches = [r for r in rows if r.get('path') == '.github/workflows/' + workflow
+            and r.get('event') == event and r.get('head_sha') == candidate
+            and r.get('head_repository', {}).get('full_name') == repository
+            and any(p.get('number') == candidates[0]['number'] and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
+                    for p in r.get('pull_requests', []))]
+        latest = max(matches, key=lambda r: r['id']) if matches else None
+        if latest is None or latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
+            raise RuntimeError('FAST_TRACK_REQUIRED_VALIDATION_UNPROVEN:' + workflow)
+        evidence[workflow] = dict(runId=latest['id'], attempt=latest['run_attempt'])
+    return dict(candidate=candidate, executionAuthority=revision, sourcePr=candidates[0]['number'], validation=evidence)
+
+
+def approved_head_preflight(repository: str, current_sha: str, token: str, *, base_branch=TRUSTED_PR_BASE):
     """Prove the candidate already contains the exact current approved head.
 
     This is intentionally cheaper than validation planning. It is the first
     merge-readiness check and may not infer freshness from the PR event's
     possibly stale base SHA.
     """
+    if base_branch not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError("Unsupported release base")
     if not re.fullmatch(r"[0-9a-f]{40}", current_sha or ""):
         raise ValueError("Malformed candidate revision")
     if not token:
@@ -3030,14 +3370,14 @@ def approved_head_preflight(repository: str, current_sha: str, token: str):
         )
     branch = api_get(
         repository,
-        "branches/" + urllib.parse.quote(TRUSTED_PR_BASE, safe=""),
+        "branches/" + urllib.parse.quote(base_branch, safe=""),
         token,
     )
     approved = (branch.get("commit") or {}).get("sha")
     if not re.fullmatch(r"[0-9a-f]{40}", approved or ""):
         raise EvidenceLookupUnavailable(
             "Current approved head is unavailable",
-            endpoint="branches/" + TRUSTED_PR_BASE,
+            endpoint="branches/" + base_branch,
         )
     if current_sha == approved:
         return {
@@ -3071,6 +3411,7 @@ def approved_head_preflight(repository: str, current_sha: str, token: str):
 
 
 def cmd_approved_head_preflight(args):
+    base_branch = getattr(args, "base_branch", TRUSTED_PR_BASE)
     if args.event != "pull_request":
         result = {
             "schemaVersion": 1,
@@ -3086,6 +3427,7 @@ def cmd_approved_head_preflight(args):
             args.repository,
             args.current_sha,
             os.environ.get("GITHUB_TOKEN", ""),
+            base_branch=base_branch,
         )
     if args.output:
         Path(args.output).write_text(
@@ -3095,7 +3437,7 @@ def cmd_approved_head_preflight(args):
     if not result["current"]:
         print(
             "::error::Candidate is not based on the current "
-            f"{TRUSTED_PR_BASE} head {result['approvedHeadSha']}. "
+            f"{base_branch} head {result['approvedHeadSha']}. "
             "Trusted lifecycle must sync the approved head before validation.",
             file=sys.stderr,
         )
@@ -3336,6 +3678,10 @@ def _trusted_lineage_run(repository, run, workflow_path, revision, *, require_co
     commit is already part of the exact candidate history. Workflow path, event,
     completion, repository ownership and git ancestry must all agree.
     """
+    if _VALIDATION_PR_BASE.get() == FAST_TRACK_PR_BASE and not any(
+        (pr.get("base") or {}).get("ref") == FAST_TRACK_PR_BASE
+        for pr in run.get("pull_requests") or []):
+        return False
     head = run.get("head_sha") or ""
     if (
         run.get("path") != workflow_path
@@ -3362,7 +3708,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
             or (run.get("head_repository") or {}).get("full_name") != repository):
         return False
     def matches_pull(row):
-        return ((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+        return ((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
                 and (row.get("head") or {}).get("sha") == head
                 and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository)
     if any(matches_pull(row) for row in run.get("pull_requests") or []):
@@ -3370,7 +3716,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
     # The commit-associated PR endpoint binds the immutable commit even after
     # that PR advances to a repaired head; demanding its current head equal the
     # old producer SHA would discard valid child evidence on every new commit.
-    return any((row.get("base") or {}).get("ref") == TRUSTED_PR_BASE
+    return any((row.get("base") or {}).get("ref") == _VALIDATION_PR_BASE.get()
                and ((row.get("head") or {}).get("repo") or {}).get("full_name") == repository
                for row in api_get(repository, f"commits/{head}/pulls?per_page=100", token))
 
@@ -3378,6 +3724,7 @@ def _trusted_pr_run(repository, run, workflow_path, token):
 VALIDATION_RESUME_ARTIFACT_PREFIX = {
     "masterapp-platform-architecture-validation.yml": "validation-resume-architecture",
     "approved-release-security-validation.yml": "validation-resume-security",
+    "parfait-isolated-validation.yml": "validation-resume-parfait",
     "step6-openai-ads-execution-validation.yml": "validation-resume-step6",
     "steps7-8-governed-advertising-validation.yml": "validation-resume-step78",
 }
@@ -3392,6 +3739,16 @@ def _validation_resume_artifact_name(workflow, run):
     return f"{prefix}-{run_id}-{attempt}" if run_id else None
 
 
+def _parfait_unconditional_validation_generation(workflow, revision):
+    if workflow != 'parfait-isolated-validation.yml':
+        return False
+    source = git_show_file(revision, WORKFLOW_PATHS[workflow]).encode()
+    blob = hashlib.sha1(b'blob ' + str(len(source)).encode() + b'\0' + source).hexdigest()
+    # Reviewed original source: every named gate executes unconditionally.
+    # Authenticate actual successful steps, never infer proof from this hash.
+    return blob == '20b242ae2b01d1091c746801f6f0144428912cda'
+
+
 def _historical_plan_steps(args, run, token):
     """Recover gate proof from the durable validation-plan artifact.
 
@@ -3404,6 +3761,15 @@ def _historical_plan_steps(args, run, token):
         return None
     run_id = int(run.get("id") or 0)
     if artifact not in _run_artifact_names(args.repository, run_id, token):
+        if (run.get('path') == WORKFLOW_PATHS.get(args.workflow)
+            and run.get('head_repository', {}).get('full_name') == args.repository
+            and run.get('event') == 'push' and run.get('head_branch') == args.head_branch
+            and _parfait_unconditional_validation_generation(args.workflow, run['head_sha'])):
+            payload = api_get(args.repository, f"actions/runs/{run_id}/attempts/{run.get('run_attempt', 1)}/jobs?per_page=100", token)
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                return None
+            return _step_map(jobs)
         return None
     import tempfile
     with tempfile.TemporaryDirectory(prefix="validation-plan-") as temporary:
@@ -3784,6 +4150,21 @@ def _gate_execution_contract(workflow_text, config, key):
     omitted = {index for name, start, finish in prefix_spans if name in unrelated_steps
                for index in range(start, finish)}
     prefix = "".join(line for index, line in enumerate(prefix_lines) if index not in omitted)
+    if config.get('resume_owner') == 'parfait-isolated-validation':
+        blocks = named_step_blocks(prefix)
+        planner = blocks.get('Plan exact validation resume', '')
+        if hashlib.sha256(planner.encode()).hexdigest() == config.get('resume_planner_sha256'):
+            prefix = prefix.replace(planner, '', 1)
+        # Fetch depth changes history availability, not the checked-out tree.
+        prefix = re.sub(r'^ +fetch-depth: 0\n', '', prefix, flags=re.M)
+        for name, definition in gates.items():
+            block = named_step_blocks(prefix).get(definition['step'])
+            if block is None: continue
+            normalized = block.replace('        id: gate_' + name.replace('-', '_') + '\n', '')
+            condition = "        if: ${{ fromJSON(steps.resume.outputs.plan).gates['" + name + "'].run }}\n"
+            normalized = normalized.replace(condition, '')
+            prefix = prefix.replace(block, normalized, 1)
+        prefix = prefix.rstrip() + '\n'
     envelope = []
     for field in ("env", "defaults"):
         envelope.append(_workflow_top_level_field(workflow_text, field))
@@ -3815,6 +4196,8 @@ def _historical_workflow_definition(workflow, revision):
             except (ValueError, KeyError, TypeError):
                 if name == "WORKFLOWS":
                     raise ValueError("Cannot authenticate historical gate definition")
+    if workflow not in values.get('WORKFLOWS', {}) and _parfait_unconditional_validation_generation(workflow, revision):
+        return WORKFLOWS[workflow]
     return values["WORKFLOWS"][workflow]
 
 
@@ -3924,6 +4307,7 @@ def _gate_cache_payload(plan, workflow, head_sha, run_id, run_attempt):
         "headSha": head_sha,
         "runId": run_id,
         "runAttempt": run_attempt,
+        "validationBase": plan.get("validationBase", TRUSTED_PR_BASE),
         "gates": gates,
     }
 
@@ -4085,6 +4469,8 @@ def _cached_success_evidence(args):
         or data["runId"] < 1
     ):
         raise ValueError("Malformed PR-local validation cache")
+    if data.get("validationBase", TRUSTED_PR_BASE) != _VALIDATION_PR_BASE.get():
+        return None
     prior_sha = data["headSha"]
     if subprocess.run(
         ["git", "merge-base", "--is-ancestor", prior_sha, args.current_sha],
@@ -4659,8 +5045,62 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
         sleep(min(10, max(0, deadline - clock())))
 
 
+def fast_track_source_validation_scope(args):
+    """Bind credential-free security validation to its live fast-track PR.
+
+    Source validation is not production readiness or mutation admission. The
+    fast-track release must separately require those proofs before publication.
+    No protected-branch source, baseline, or readiness producer is consulted.
+    """
+    if ((args.workflow, args.event) not in {('approved-release-security-validation.yml', 'pull_request'),
+        ('parfait-isolated-validation.yml', 'push')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    if not token:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
+    run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
+    if (run.get('id') != args.current_run_id or run.get('event') != args.event or
+        (args.event == 'push' and run.get('head_branch') != args.head_branch) or run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
+        run.get('head_repository', {}).get('full_name') != args.repository or
+        run.get('status') != 'in_progress'):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+    pulls = [pr for pr in run.get('pull_requests', []) if
+        pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and pr.get('head', {}).get('sha') == args.current_sha]
+    if len(pulls) != 1:
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_UNPROVEN')
+    pr = api_get(args.repository, f"pulls/{pulls[0]['number']}", token)
+    if (pr.get('state') != 'open' or pr.get('base', {}).get('ref') != FAST_TRACK_PR_BASE or
+        pr.get('head', {}).get('sha') != args.current_sha or
+        pr.get('head', {}).get('repo', {}).get('full_name') != args.repository):
+        raise ValueError('FAST_TRACK_SOURCE_VALIDATION_PR_CHANGED')
+    preflight = approved_head_preflight(args.repository, args.current_sha, token, base_branch=FAST_TRACK_PR_BASE)
+    if not preflight['current']:
+        raise ValueError('FAST_TRACK_BASE_CHANGED')
+    return dict(phase='source-validation-only', releaseAdmission=False, baseBranch=FAST_TRACK_PR_BASE,
+        baseSha=preflight['approvedHeadSha'], candidate=args.current_sha, pullRequest=pr['number'])
+
+
 def cmd_plan(args):
-    require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
+    base = getattr(args, 'validation_base', TRUSTED_PR_BASE)
+    if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError('Unsupported validation base')
+    scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None
+    with _validation_base_scope(base):
+        return _cmd_plan(args, source_scope=scope)
+
+
+@contextlib.contextmanager
+def _validation_base_scope(base):
+    token = _VALIDATION_PR_BASE.set(base)
+    try:
+        yield
+    finally:
+        _VALIDATION_PR_BASE.reset(token)
+
+
+def _cmd_plan(args, *, source_scope=None):
+    if source_scope is None:
+        require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))
     if args.workflow not in WORKFLOWS:
         raise SystemExit(f"Unsupported validation workflow: {args.workflow}")
 
@@ -4694,6 +5134,9 @@ def cmd_plan(args):
     if plan is None:
         _stop_unresolved_planning(args, last_evidence_error or RuntimeError("Validation planning unavailable"))
 
+    plan["validationBase"] = _VALIDATION_PR_BASE.get()
+    if source_scope is not None:
+        plan["sourceValidationScope"] = source_scope
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
@@ -7157,7 +7600,8 @@ def release_operation_history(repository, operation_id, application_revision, ta
         if not run_id:
             raise RuntimeError("Deployment intent producer is missing")
         run = read_api(f"actions/runs/{run_id}")
-        if (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
+        fast_track = is_fast_track_producer(repository, run)
+        if not fast_track and (run.get("path") != ".github/workflows/" + DIRECT_RELEASE_WORKFLOW or
                 run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch" or
                 run.get("head_repository", {}).get("full_name", "").lower() != repository.lower()):
             raise RuntimeError("Deployment intent has an untrusted producer")
@@ -7176,6 +7620,10 @@ def release_operation_history(repository, operation_id, application_revision, ta
                 record.get("applicationRevision") != application_revision or
                 record.get("producingRun") != run_id or record.get("phase") != phase):
             raise RuntimeError("Deployment intent does not bind its producer and operation")
+        if fast_track and (record.get('applicationRevision') != run['head_sha']
+            or type(record.get('producingAttempt')) is not int
+            or not 1 <= record['producingAttempt'] <= run.get('run_attempt', 0)):
+            raise RuntimeError('Fast-track deployment intent has unbound revision or attempt')
         records.append(record)
     if records:
         identity_keys = ("operationId", "applicationRevision", "target", "packageDigest", "baseline")
@@ -7186,6 +7634,38 @@ def release_operation_history(repository, operation_id, application_revision, ta
         return records[0]
     if phase == "success":
         return None
+
+    for run in fast_track_execution_history(repository, token):
+        if run['head_sha'] != application_revision:
+            continue
+        count = run.get('run_attempt')
+        if type(count) is not int or not 1 <= count <= 100:
+            raise ReleaseOperationHistoryUnproven('Fast-track deployment attempts incomplete')
+        saw_owner = False
+        for attempt in range(1, count + 1):
+            if run['id'] == current_run and attempt == current_attempt:
+                continue
+            payload = read_api(f"actions/runs/{run['id']}/attempts/{attempt}/jobs?per_page=100")
+            jobs = payload.get('jobs')
+            if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
+                raise ReleaseOperationHistoryUnproven('Fast-track deployment jobs incomplete')
+            if not jobs and (run.get('status') == 'completed' or attempt < count):
+                continue
+            label = RELEASE_TARGETS[target]['releaseName']
+            display = {'portal': 'AgentPortal', 'client': 'ClientApp', 'protect': 'Protect', 'parfait': 'Parfait', 'website': 'Website'}[target]
+            owners = [j for j in jobs if j.get('name') in {'Affected App Deploy — ' + display, 'UI Deploy — ' + display}]
+            if not owners and attempt > 1 and saw_owner:
+                continue
+            if len(owners) != 1:
+                raise ReleaseOperationHistoryUnproven('Fast-track deployment owner unproven: ' + label)
+            saw_owner = True
+            job = owners[0]
+            if job.get('conclusion') == 'skipped' or job.get('status') == 'queued':
+                continue
+            steps = [s for s in job.get('steps', []) if s.get('name') in {
+                'Submit one direct ZIP deployment', 'Publish or reconcile exact application bytes'}]
+            if len(steps) != 1 or (steps[0].get('status') != 'queued' and steps[0].get('conclusion') != 'skipped'):
+                raise ReleaseOperationHistoryUnproven('Fast-track publication entered without retained intent: ' + label)
 
     for run in _release_history_runs(repository, token):
         if run.get("head_branch") != TRUSTED_PR_BASE or run.get("event") != "workflow_dispatch":
@@ -8566,6 +9046,7 @@ def build_parser():
     approved_preflight.add_argument("--current-sha", required=True)
     approved_preflight.add_argument("--event", required=True)
     approved_preflight.add_argument("--output")
+    approved_preflight.add_argument("--base-branch", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
     approved_preflight.set_defaults(func=cmd_approved_head_preflight)
 
     plan = sub.add_parser("plan")
@@ -8578,6 +9059,7 @@ def build_parser():
     plan.add_argument("--repository", required=True)
     plan.add_argument("--output", required=True)
     plan.add_argument("--resume-cache")
+    plan.add_argument("--validation-base", choices=[TRUSTED_PR_BASE, FAST_TRACK_PR_BASE], default=TRUSTED_PR_BASE)
     plan.set_defaults(func=cmd_plan)
 
     cache_success = sub.add_parser("cache-success")

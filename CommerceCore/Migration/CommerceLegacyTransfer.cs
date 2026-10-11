@@ -30,8 +30,8 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
 
         // Perform complete preflight *before* any write. A conflict aborts the
         // entire operation without changing target contents or source files.
-        var preflight = new List<(string Source, string Destination, string Hash, long Length, bool Existing)>();
-        foreach (var (sourcePath, destinationPath) in pairs)
+        var preflight = new List<(string Identity, string Source, string Destination, string Hash, long Length, bool Existing)>();
+        foreach (var (identity, sourcePath, destinationPath) in pairs)
         {
             ct.ThrowIfCancellationRequested();
             var sourceBytes = await ReadBoundedAsync(sourcePath, ct);
@@ -39,8 +39,11 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
             var existing = File.Exists(destinationPath);
             if (existing && Sha256(await ReadBoundedAsync(destinationPath, ct)) != hash)
                 throw new InvalidOperationException("Destination contains different commerce data. No overwrite authorized.");
-            preflight.Add((sourcePath, destinationPath, hash, sourceBytes.LongLength, existing));
+            preflight.Add((identity, sourcePath, destinationPath, hash, sourceBytes.LongLength, existing));
         }
+
+        var manifest = ManifestSha256(businessId,
+            preflight.Select(x => (x.Identity, x.Hash, x.Length)));
 
         if (mode == CommerceTransferMode.CopyNoOverwrite)
         {
@@ -98,10 +101,6 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
 
         // The digest deliberately excludes raw customer JSON, media bytes,
         // email, physical paths, and provider/payment identities.
-        var manifest = Sha256(System.Text.Encoding.UTF8.GetBytes(
-            string.Join("\\n", preflight.Select(x => x.Hash + ":" +
-                x.Length.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .OrderBy(x => x, StringComparer.Ordinal))));
         return new CommerceTransferReport(
             businessId, preflight.Count,
             preflight.Count(x => x.Existing),
@@ -124,19 +123,33 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
         var pairs = await ResolveScopedFilePairsAsync(businessId, businessKey, storage, storage, ct);
         if (pairs.Count == 0)
             throw new InvalidOperationException("Commerce storage proof contains no files.");
-        var checks = new List<string>(pairs.Count);
+        var checks = new List<(string Identity, string Hash, long Length)>(pairs.Count);
         foreach (var pair in pairs)
         {
             ct.ThrowIfCancellationRequested();
             var bytes = await ReadBoundedAsync(pair.Source, ct);
-            checks.Add(Sha256(bytes) + ":" +
-                bytes.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            checks.Add((pair.Identity, Sha256(bytes), bytes.LongLength));
         }
-        return Sha256(System.Text.Encoding.UTF8.GetBytes(
-            string.Join("\\n", checks.OrderBy(x => x, StringComparer.Ordinal))));
+        return ManifestSha256(businessId, checks);
     }
 
-    private async Task<List<(string Source, string Destination)>> ResolveScopedFilePairsAsync(
+    private static string ManifestSha256(Guid businessId,
+        IEnumerable<(string Identity, string Hash, long Length)> files)
+    {
+        // Versioned logical identities bind bytes to the correct media URL or
+        // state role, independently of host storage roots. Old content-only
+        // receipts must be reconciled again; never silently accept them.
+        var ordered = files.OrderBy(x => x.Identity, StringComparer.Ordinal).ToArray();
+        if (ordered.Select(x => x.Identity).Distinct(StringComparer.Ordinal).Count() != ordered.Length)
+            throw new InvalidOperationException("Commerce manifest contains duplicate logical file identities.");
+        var entries = ordered
+            .Select(x => x.Identity + ":" + x.Hash + ":" +
+                x.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return Sha256(System.Text.Encoding.UTF8.GetBytes(
+            "commerce-files-v2:" + businessId.ToString("N") + "\n" + string.Join("\n", entries)));
+    }
+
+    private async Task<List<(string Identity, string Source, string Destination)>> ResolveScopedFilePairsAsync(
         Guid businessId, string businessKey, ParfaitStoragePaths legacy,
         ParfaitStoragePaths canonical, CancellationToken ct)
     {
@@ -153,7 +166,7 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
             .Where(x => ids.Contains(x.CommerceProductId)).Select(x => x.ImageUrl)
             .Distinct().ToListAsync(ct);
 
-        var pairs = new List<(string Source, string Destination)>();
+        var pairs = new List<(string Identity, string Source, string Destination)>();
         foreach (var url in urls)
         {
             if (string.IsNullOrWhiteSpace(url) ||
@@ -168,16 +181,16 @@ public sealed class CommerceLegacyTransfer(MasterAppDbContext db)
             var sourcePath = legacy.ResolveImagePhysicalPaths(url).FirstOrDefault(File.Exists)
                 ?? throw new InvalidOperationException("A catalog image is missing from legacy storage.");
             var targetPath = Constrain(canonical.UploadRoot, Path.Combine(segments));
-            pairs.Add((sourcePath, targetPath));
+            pairs.Add(("media/" + relative, sourcePath, targetPath));
         }
 
         var automation = legacy.GetCustomerAutomationsPath(businessKey);
         if (File.Exists(automation))
-            pairs.Add((automation, canonical.GetCustomerAutomationsPath(businessKey)));
+            pairs.Add(("state/customer-automations", automation, canonical.GetCustomerAutomationsPath(businessKey)));
 
         if (string.Equals(businessKey, "parfait", StringComparison.OrdinalIgnoreCase) &&
             File.Exists(legacy.TeamAccessPath))
-            pairs.Add((legacy.TeamAccessPath, canonical.TeamAccessPath));
+            pairs.Add(("state/legacy-team", legacy.TeamAccessPath, canonical.TeamAccessPath));
         return pairs;
     }
 

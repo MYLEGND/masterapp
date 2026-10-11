@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Collections;
+using System.Linq;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
@@ -13,6 +14,43 @@ namespace AgentPortal.Tests;
 
 public class MetaSendAuthorityTests
 {
+    [Fact]
+    public async Task AdversarialThirtyTwoConcurrentDispatchersGetOnlyOneDurableClaim()
+    {
+        var database = System.IO.Path.Combine(System.IO.Path.GetTempPath(),"legend-meta-stress-"+Guid.NewGuid().ToString("N")+".db");
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite("Data Source="+database+";Pooling=False").Options;
+        var eventId="stress-"+Guid.NewGuid().ToString("N");
+        var key="Lead:"+Guid.NewGuid().ToString("N");
+        try
+        {
+            await using(var seed=new MasterAppDbContext(options))
+            {
+                await seed.Database.EnsureCreatedAsync();
+                seed.MetaSignalEvents.Add(new Domain.Entities.MetaSignalEvent {
+                    EventId=eventId,EventName="Lead",CreatedUtc=DateTime.UtcNow,MetaDeduplicationKey=key
+                });
+                await seed.SaveChangesAsync();
+            }
+            var start=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tasks=Enumerable.Range(0,32).Select(async _=>{
+                await start.Task;
+                await using var db=new MasterAppDbContext(options);
+                return await new MetaSendAuthority(db,NullLogger<MetaSendAuthority>.Instance).TrySendAsync(new MetaSendAuthorityRequest {
+                    EventType="Lead",EventId=eventId,DeduplicationKey=key,EventUtc=DateTime.UtcNow,
+                    Source=MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService
+                });
+            }).ToArray();
+            start.SetResult();
+            var results=await Task.WhenAll(tasks);
+            Assert.Single(results.Where(result=>result.Allowed));
+            await using var verify=new MasterAppDbContext(options);
+            var row=await verify.MetaSignalEvents.SingleAsync();
+            Assert.Equal(results.Single(result=>result.Allowed).ReservationToken,row.MetaDispatchClaimToken);
+            Assert.False(row.MetaServerSent);
+        }
+        finally {System.IO.File.Delete(database);}
+    }
+
     [Fact]
     public async Task BusinessOwnersDoNotShareMetaDeduplicationReservations()
     {

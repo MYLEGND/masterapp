@@ -13,6 +13,40 @@ namespace AgentPortal.Tests;
 public sealed class AnalyticsCanonicalReconciliationTests
 {
     [Fact]
+    public async Task AdversarialCrossBusinessSessionCollisionsCannotContaminateCounts()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var owners = Enumerable.Range(0, 12).Select(_ => Guid.NewGuid()).ToArray();
+        var now = DateTime.UtcNow;
+        for (var ownerIndex = 0; ownerIndex < owners.Length; ownerIndex++)
+            for (var visit = 0; visit <= ownerIndex; visit++)
+            {
+                var session = "shared-session-" + visit;
+                var visitor = "shared-visitor-" + visit;
+                db.AnalyticsEvents.AddRange(
+                    Event(owners[ownerIndex], now.AddMinutes(-3), "page_view", session, visitor, "/"),
+                    Event(owners[ownerIndex], now.AddMinutes(-2), "page_engaged_15s", session, visitor, "/", strongHuman:true),
+                    Event(owners[ownerIndex], now.AddMinutes(-1), "cta_click", session, visitor, "/", elementKey:"same-button"));
+            }
+        await db.SaveChangesAsync();
+        var query = new AnalyticsQueryService(db, new ConfigurationBuilder().Build());
+        var range = new TimeRangeRequest { FromUtc = now.AddHours(-1), ToUtc = now.AddMinutes(1), QualityMode = TrafficQualityMode.RealHumanTraffic };
+        for (var index = 0; index < owners.Length; index++)
+        {
+            var scope = ScopeContext.ForBusiness(owners[index]);
+            var summary = await query.GetSummaryAsync(range, scope);
+            Assert.Equal(index + 1, summary.PageViews);
+            Assert.Equal(index + 1, summary.Sessions);
+            Assert.Equal(index + 1, summary.UniqueVisitors);
+            Assert.Equal(index + 1, (await query.GetTrafficAsync(range, scope)).PageViewTrend.Sum(row => row.Value));
+            var page = Assert.Single((await query.GetPagePerformanceAsync(range, scope)).Rows);
+            Assert.Equal(index + 1, page.Views);
+            Assert.Equal(index + 1, page.CtaClicks);
+            Assert.Equal(index + 1, Assert.Single((await query.GetCtaPerformanceAsync(range, scope)).Rows).Clicks);
+        }
+    }
+
+    [Fact]
     public async Task BusinessRealHumanSessionCarriesOneQualityStoryAcrossCoreReporting()
     {
         using var db = ControllerTestHelpers.BuildDb();

@@ -213,6 +213,8 @@ class CanonicalHistoryTests(unittest.TestCase):
         self.artifacts = []
 
     def api(self, repository, path, token):
+        if path.startswith('actions/runs?branch=Legend%2Ffast-track-release&'):
+            return dict(workflow_runs=[], total_count=0)
         if path.startswith('actions/artifacts?'):
             return dict(artifacts=self.artifacts, total_count=len(self.artifacts))
         if path.startswith('actions/workflows/'):
