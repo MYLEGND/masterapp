@@ -167,9 +167,9 @@ jobs:
       APPLICATION_RELEASE_SHA: ${{ github.sha }}
       RELEASE_CANDIDATE_SHA: ${{ needs.commerce-gates.outputs.candidate }}
       SELECTED_TARGETS: ${{ needs.select-targets.outputs.targets }}
-      FAST_TRACK_MIGRATION_DIRECTORY: ${{ runner.temp }}/fast-track-migration
-      MIGRATION_BUNDLE: ${{ runner.temp }}/fast-track-migration/masterapp-migrations
-      MIGRATION_PROBE_DLL: ${{ runner.temp }}/fast-track-probe/MigrationReleaseProbe.dll
+      FAST_TRACK_MIGRATION_DIRECTORY: /tmp/fast-track-migration
+      MIGRATION_BUNDLE: /tmp/fast-track-migration/masterapp-migrations
+      MIGRATION_PROBE_DLL: /tmp/fast-track-probe/MigrationReleaseProbe.dll
     steps:
       - uses: actions/checkout@v4
         with:
