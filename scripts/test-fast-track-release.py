@@ -525,6 +525,19 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
             with patch.object(authority,'_release_history_source',side_effect=lambda repo,head,path,token:
                     'changed' if path==changed_path else source(repo,head,path,token)):
                 self.assertFalse(self.prove())
+    def test_original_legacy_history_denial_precedes_publication(self):
+        self.admission_failure()
+        old='a9ced61b188dcad851fd9d1062ce8beaa77f135d'
+        head='fcb6cee99357d44b6449ebe5e9b9a6e326210743'
+        self.run['head_sha']=head
+        self.log=self.log.replace(old,head).replace('line 1819,','line 1920,').replace(
+            "raise rejection('Release child may have written; missing intent cannot authorize replay', run['id'], attempt)",
+            'raise rejection("Release child execution detail unavailable", run_id, attempt)').replace(
+            'RuntimeError: Release child may have written; missing intent cannot authorize replay',
+            'RuntimeError: Release child execution detail unavailable')
+        self.assertTrue(self.prove())
+        self.log=self.log.replace('line 1920,','line 1921,')
+        self.assertFalse(self.prove())
     def test_incomplete_inventory_or_retained_write_never_proves_nonentry(self):
         self.admission_failure()
         for inventory in (dict(total_count=1,artifacts=[]),
@@ -567,6 +580,16 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
             self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
             jobs[0]['conclusion']='success'; jobs.append(jobs[0])
             self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+    def test_empty_selected_matrix_preserves_routing_only_remainder(self):
+        jobs=[dict(name='Affected App Deploy — ${{ matrix.target }}',status='completed',conclusion='skipped',steps=[])]
+        jobs += [dict(name=name,status='completed',conclusion='success') for name in
+            ('Admit exact validated fast-track source','Reconcile production schema before publication')]
+        jobs.append(self.job)
+        with patch.object(authority,'api_get',return_value=dict(total_count=len(jobs),jobs=jobs)), \
+             patch.object(authority,'attested_fast_track_router_prewrite',return_value=True):
+            self.assertTrue(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
+            jobs[0]['steps']=[dict(name='unexpected',conclusion='success')]
+            self.assertFalse(authority.fast_track_completed_apps_pending_routing('owner/repo',self.run,jobs,'fixture'))
     def test_routing_only_resume_requires_explicit_empty_app_selection(self):
         source=Path('.github/workflows/legend-fast-track-ui.yml').read_text().split('  routing-cloudflare:')[1]
         self.assertIn("needs.select-targets.outputs.selected == 'false' && needs.deploy-ui.result == 'skipped'",source)
@@ -583,6 +606,55 @@ class RouterPrewriteRecoveryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):migration.production_readiness(before)
             with self.assertRaisesRegex(RuntimeError,'mutation-activity'):
                 migration.production_readiness(dict(before,mutationActivity='active'))
+
+class LegacyRouterHistoryTests(unittest.TestCase):
+    def source(self, revision):
+        return authority.git_show_file(revision,'.github/workflows/'+authority.DIRECT_RELEASE_WORKFLOW)
+    def test_skipped_original_publishers_are_recognized_but_observers_are_not(self):
+        step=dict(name='Deploy shared Cloudflare business website router',status='completed',conclusion='skipped')
+        for revision in ('d71f45d35976e24f358a4d68ef2f1e90e6422b1b','d406e911417e0e9348ddebfb7e24117bb5dd22ca',
+                         'ea4ec1a0126947f4d7e19a29f5a225484a1547ef','ce0e812ad2e399ae99021de72964b842a87dc56f',
+                         'a31e7ca5c1f6537ec5b55a5b1f655ac18d592739','b4a62141b57fb1e2c03e927fb25972dc76ef7006',
+                         '1322a49e84d861980a971b549fc9237c4f2ffc6b','f2b426791e6820a94331f5e72f9a042cd360d2af',
+                         '74df7397d71ce695f6e6033c9a03682a96d83922'):
+            source=self.source(revision)
+            self.assertTrue(authority.legacy_router_step_never_entered(source,step))
+            self.assertFalse(authority.legacy_router_step_never_entered(source.replace('npx wrangler deploy','npx unknown deploy'),step))
+            for conclusion in ('success','failure','cancelled',None):
+                self.assertFalse(authority.legacy_router_step_never_entered(source,dict(step,conclusion=conclusion)))
+        for revision in ('2412d6c2d9a6a973b3e99e5c542c6f43d35eb776','289924832b5c2f8d32e4081890a2ac07709556b1'):
+            self.assertFalse(authority.legacy_router_step_never_entered(self.source(revision),step))
+    def completed(self):
+        head='f2b426791e6820a94331f5e72f9a042cd360d2af'
+        run=dict(status='completed',head_sha=head)
+        job=dict(id=7,status='completed')
+        step=dict(name='Deploy shared Cloudflare business website router',status='completed',conclusion='success',
+                  started_at='2026-09-26T01:02:00Z',completed_at='2026-09-26T01:03:00Z')
+        lines=['[command]/usr/bin/git log -1 --format=%H',head,
+               'Uploaded legend-business-website-router (1.41 sec)',
+               'Deployed legend-business-website-router triggers (1.43 sec)',
+               'Current Version ID: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']
+        lines += [host+' 1 200 1025' for host in authority.ROUTING_PASS_THROUGH_HOSTS]
+        lines += ['Cloudflare website router deployed and LEGEND-owned host pass-through verified.']
+        log=''.join('2026-09-26T01:02:30Z '+line+'\n' for line in lines)
+        return run,job,step,self.source(head),log
+    def prove(self,run,job,step,source,log,generation='a'*64):
+        with patch.object(authority,'_release_job_log',return_value=log), \
+             patch.object(authority,'direct_child_operation_identity',return_value=generation):
+            return authority.legacy_router_completed_generation('owner/repo',run,job,step,source,'fixture','b'*64,'c'*64)
+    def test_completed_older_generation_requires_bound_provider_and_host_proof(self):
+        values=self.completed();self.assertTrue(self.prove(*values))
+        self.assertFalse(self.prove(*values,generation='b'*64))
+        run,job,step,source,log=values
+        for changed in (log.replace(run['head_sha'],'e'*40),log.replace('Current Version ID:','Missing version:'),
+                        log.replace('portal.mylegnd.com 1 200','portal.mylegnd.com 1 503'),
+                        log.replace('01:02:30Z Cloudflare','01:04:30Z Cloudflare'),
+                        log+'2026-09-26T01:02:31Z Restored previous Cloudflare Worker version.\n'):
+            self.assertFalse(self.prove(run,job,step,source,changed))
+        self.assertFalse(self.prove(run,job,step,source+'changed',log))
+        for conclusion in ('skipped','failure','cancelled'):
+            self.assertFalse(self.prove(run,job,dict(step,conclusion=conclusion),source,log))
+
 
 class PublishedCompilerBrandingTests(unittest.TestCase):
     def test_packaged_content_module_resolves_canonical_registry(self):
