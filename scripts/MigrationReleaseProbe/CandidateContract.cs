@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
@@ -62,57 +61,62 @@ internal static partial class CandidateContract
         await db.Database.OpenConnectionAsync(cancellation);
         foreach (var migration in relevant)
         {
-            await VerifyStructures(db, migration, applied.Contains(migration.Id, StringComparer.Ordinal), cancellation);
-            foreach (var column in migration.Columns.Concat(migration.Tables.SelectMany(t => t.Columns)))
+            var isApplied = applied.Contains(migration.Id, StringComparer.Ordinal);
+            await VerifyStructures(db, migration, isApplied, cancellation);
+            // Pending new tables were proven absent as whole objects. Querying
+            // every column of a nonexistent table adds no evidence. Applied
+            // columns are read once per table, not once per field/network trip.
+            var columns = migration.Columns.Concat(isApplied
+                ? migration.Tables.SelectMany(t => t.Columns) : Enumerable.Empty<Column>());
+            foreach (var group in columns.GroupBy(c => (c.Schema, c.Table)))
+                await VerifyColumns(db, group.ToArray(), isApplied, cancellation);
+        }
+    }
+
+    private static async Task VerifyColumns(MasterAppDbContext db, Column[] columns,
+        bool applied, CancellationToken cancellation)
+    {
+        if (columns.Length == 0 || columns.Any(c => !ValidColumn(c)))
+            throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        var expected = columns.ToDictionary(c => c.Name, StringComparer.Ordinal);
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        await using var command = Query(db, """
+            SELECT c.name, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity
+            FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
+            LEFT JOIN sys.columns c ON c.object_id=t.object_id
+            LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id
+            LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id
+            WHERE s.name=@schema AND t.name=@table
+            """, ("@schema", columns[0].Schema), ("@table", columns[0].Table));
+        await using var reader = await command.ExecuteReaderAsync(cancellation);
+        var tableFound = false;
+        while (await reader.ReadAsync(cancellation))
+        {
+            tableFound = true;
+            if (reader.IsDBNull(0) || !expected.TryGetValue(reader.GetString(0), out var column)) continue;
+            if (!applied || !found.Add(column.Name)) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            var type = reader.GetString(1);
+            var length = Convert.ToInt32(reader.GetValue(2));
+            var actual = type is "nvarchar" or "varchar" ? type + "(" + (length == -1 ? "max" :
+                (length / (type == "nvarchar" ? 2 : 1)).ToString()) + ")" : type;
+            if (actual != column.Type || reader.GetBoolean(3) != column.Nullable ||
+                (actual == "datetime2" && reader.GetByte(5) != 7) || reader.GetBoolean(6) || reader.GetBoolean(7))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            if (column.Default.ValueKind == JsonValueKind.Null && !reader.IsDBNull(4))
+                throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            if (column.Default.ValueKind != JsonValueKind.Null)
             {
-                if (new[] { column.Schema, column.Table, column.Name }.Any(n =>
-                        string.IsNullOrWhiteSpace(n) || n.Length > 128) ||
-                    !Regex.IsMatch(column.Type, @"^(?:nvarchar|varchar)\((?:max|[1-9][0-9]{0,4})\)$|^(?:int|bigint|bit|uniqueidentifier|datetime2)$"))
-                    throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
-                await using var command = db.Database.GetDbConnection().CreateCommand();
-                command.CommandTimeout = 30;
-                command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
-                command.CommandText = """
-                    SELECT t.object_id, c.column_id, ty.name, c.max_length, c.is_nullable, dc.definition, c.scale, c.is_computed, c.is_identity
-                    FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
-                    LEFT JOIN sys.columns c ON c.object_id=t.object_id AND c.name=@column
-                    LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id
-                    LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id
-                    WHERE s.name=@schema AND t.name=@table
-                    """;
-                foreach (var (key, value) in new[] { ("@column", column.Name), ("@schema", column.Schema), ("@table", column.Table) })
-                { var parameter = command.CreateParameter(); parameter.ParameterName = key; parameter.Value = value; command.Parameters.Add(parameter); }
-                await using var reader = await command.ExecuteReaderAsync(cancellation);
-                if (!await reader.ReadAsync(cancellation))
-                {
-                    if (!applied.Contains(migration.Id, StringComparer.Ordinal) &&
-                        migration.Tables.Any(t => t.Schema == column.Schema && t.Name == column.Table)) continue;
-                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                }
-                var exists = !reader.IsDBNull(1);
-                if (!applied.Contains(migration.Id, StringComparer.Ordinal))
-                { if (exists) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT"); continue; }
-                if (!exists) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                var type = reader.GetString(2);
-                var length = Convert.ToInt32(reader.GetValue(3));
-                var actual = type is "nvarchar" or "varchar" ? type + "(" + (length == -1 ? "max" : (length / (type == "nvarchar" ? 2 : 1)).ToString()) + ")" : type;
-                if (actual != column.Type || reader.GetBoolean(4) != column.Nullable ||
-                    (actual == "datetime2" && reader.GetByte(6) != 7) || reader.GetBoolean(7) || reader.GetBoolean(8))
-                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                if (column.Default.ValueKind == JsonValueKind.Null && !reader.IsDBNull(5))
-                    throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                if (column.Default.ValueKind != JsonValueKind.Null)
-                {
-                    var expected = column.Default.ValueKind switch {
-                        JsonValueKind.String => "'" + column.Default.GetString()!.Replace("'", "''") + "'",
-                        JsonValueKind.True => "1", JsonValueKind.False => "0",
-                        JsonValueKind.Number => column.Default.GetRawText(), _ => throw new InvalidOperationException() };
-                    var definition = reader.IsDBNull(5) ? "" : reader.GetString(5);
-                    while (definition.StartsWith('(') && definition.EndsWith(')')) definition=definition[1..^1];
-                    if (definition.StartsWith("N'")) definition=definition[1..];
-                    if (definition != expected) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                }
+                var defaultValue = column.Default.ValueKind switch {
+                    JsonValueKind.String => "'" + column.Default.GetString()!.Replace("'", "''") + "'",
+                    JsonValueKind.True => "1", JsonValueKind.False => "0",
+                    JsonValueKind.Number => column.Default.GetRawText(), _ => throw new InvalidOperationException() };
+                var definition = reader.IsDBNull(4) ? "" : reader.GetString(4);
+                while (definition.StartsWith('(') && definition.EndsWith(')')) definition = definition[1..^1];
+                if (definition.StartsWith("N'")) definition = definition[1..];
+                if (definition != defaultValue) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
         }
+        if (!tableFound || (applied && found.Count != columns.Length))
+            throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
     }
 }

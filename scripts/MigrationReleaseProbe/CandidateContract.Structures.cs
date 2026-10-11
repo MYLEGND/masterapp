@@ -159,7 +159,9 @@ internal static partial class CandidateContract
                 if (n != f.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
         }
-        foreach (var i in m.Indexes) await VerifyIndex(db, i, applied, false, cancellation);
+        foreach (var i in m.Indexes.Where(i => applied ||
+            !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table)))
+            await VerifyIndex(db, i, applied, false, cancellation);
     }
 
     private static async Task VerifyIndex(MasterAppDbContext db, Index i, bool applied, bool primary, CancellationToken cancellation)

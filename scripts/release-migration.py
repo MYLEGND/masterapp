@@ -16,6 +16,8 @@ import time
 PROBE_TERMINAL_REASONS = {
     'MUTATION_ACTIVITY_UNPROVEN': 'Database mutation activity visibility unproven',
     'MUTATION_ACTIVITY_ACTIVE': 'Database mutation activity remains active',
+    'SQL_QUERY_TIMEOUT': 'Schema metadata query exceeded its bounded SQL timeout',
+    'SQL_READ_DEADLINE': 'Schema observation exceeded its bounded read deadline',
     'SQL_AUTH': 'Schema probe database authentication rejected',
     'SCHEMA_DRIFT': 'Schema probe detected migration schema drift',  # historical probe
     'INPUT_UNAVAILABLE': 'Schema probe input unavailable',

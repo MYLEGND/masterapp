@@ -6,6 +6,8 @@ on:
       - isolation/canonical-scoped-commerce-internal-20261010
     paths:
       - .github/workflows/parfait-cutover-live-readonly.yml
+      - scripts/MigrationReleaseProbe/**
+      - scripts/release-migration.py
   workflow_dispatch:
 
 permissions:

@@ -122,3 +122,17 @@ physical proof remains failed even when a fallback metadata inventory is availab
 Private provider responses are excluded from uploads and removed afterward.
 This adds SQL schema evidence only; tenant ownership and file reconciliation remain
 separate required stages. The source gate has five passing local rejection/identity tests.
+
+Production read-only run `38127401607` authenticated successfully and preserved the
+healthy Parfait/Protect runtime at `97555039d28fdeb4b2afe5c58d395ac70531d302`.
+Both hosts remain running with HTTPS and cutover/preview disabled. Canonical SQL
+metadata inventory succeeded for both hosts and reports exactly one pending
+migration: `20261011064911_AddBusinessScopedMerchantPayments`. The four historical
+manual migration stamps remain the existing audited compatibility set; they were
+not rewritten. Full physical-schema observation did not yield usable proof.
+
+The observer now reads column metadata once per table and avoids redundant column
+and index queries for pending new tables already proven absent. This preserves
+all physical checks while reducing remote SQL round trips. Read deadlines remain
+bounded and now return explicit timeout classifications; they are never silently
+retried. Full live physical proof must still pass on the corrected observer.
