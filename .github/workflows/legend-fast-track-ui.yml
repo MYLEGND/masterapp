@@ -14,6 +14,13 @@ on:
       - Legend/fast-track-release
     paths:
       - .github/workflows/legend-fast-track-ui.yml
+      - scripts/validation-resume.py
+      - scripts/deploy-approved-app.py
+      - scripts/migration-probe-package.py
+      - scripts/release-migration.py
+      - scripts/release-router.py
+      - scripts/release-operation-evidence.py
+      - scripts/release-artifacts/**
       - SHARED/Branding/**
       - SHARED/Shared.csproj
       - SHARED/Views/**
