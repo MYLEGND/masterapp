@@ -21,6 +21,9 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
   if(company && Number(input.document.version)!==3) throw new Error('Canonical published content is required.');
   const displayName=company?'LEGEND®':input.business.displayName;
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
+  // Parse the single canonical CMS runtime once per publication, not once per
+  // page. Each page still executes in its own isolated fresh DOM context.
+  const compiledCms=new vm.Script(cms,{filename:'legend-public-cms.js'});
   const result={};
   const documents=input.document.pages||{};
   const canonicalV3=Number(input.document?.version)===3;
@@ -157,7 +160,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:input.collections||[],
       store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true
     };
-    vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
+    compiledCms.runInNewContext(sandbox,{timeout:3000});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
 
     const title=dynamicItem?.fields?.name||page.title||`${displayName}${routeKey==='home'?'':' | '+(built?.label||routeKey)}`;

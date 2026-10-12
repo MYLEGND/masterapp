@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parseHTML} from 'linkedom';
 import {compileBusiness} from './render-business.mjs';
@@ -318,4 +319,11 @@ test('compiled immutable pages contain the single authoritative DOM hydration co
   assert.equal(input.publishedMarkupReady,true);
   assert.equal(input.server,false);
   assert.ok(page.querySelector('main h1'));
+});
+
+test('multi-page publication parses the shared CMS program once and executes in isolated page contexts',()=>{
+  const src=readFileSync(new URL('./render-business.mjs',import.meta.url),'utf8');
+  assert.match(src,/const compiledCms=new vm\.Script\(cms,\{filename:'legend-public-cms\.js'\}\)/);
+  assert.match(src,/compiledCms\.runInNewContext\(sandbox,\{timeout:3000\}\)/);
+  assert.doesNotMatch(src,/vm\.runInNewContext\(cms,sandbox/);
 });

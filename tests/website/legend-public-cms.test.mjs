@@ -4139,3 +4139,11 @@ test('new Website Studio page edits cannot remove a protected native header when
     assert.equal(f.w.document.querySelector('main h1').textContent,'Updated page');
   } finally {f.close();}
 });
+
+
+test('publish allows bounded immutable compilation before client cancellation while preserving request reconciliation',()=>{
+  assert.match(source,/const method=String\(options\.method \|\| 'GET'\)\.toUpperCase\(\)/);
+  assert.match(source,/const deadlineMs=method==='POST' \? 70000 : 20000/);
+  assert.match(source,/url\.searchParams\.set\('requestId', pendingPublication\.requestId\)/);
+  assert.match(source,/if \(!pendingPublication\) rememberPublication\(\{requestId:crypto\.randomUUID\(\), expectedRevision:revision\}\)/);
+});

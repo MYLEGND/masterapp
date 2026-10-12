@@ -6057,7 +6057,13 @@
   }
   async function publicationRequest(url, options = {}) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    // Publishing performs bounded immutable compilation before committing the
+    // version. The browser must not abort at the compiler's own 30-second
+    // ceiling and cancel an otherwise valid publication mid-flight.
+    // Status reconciliation remains read-only and independently bounded.
+    const method=String(options.method || 'GET').toUpperCase();
+    const deadlineMs=method==='POST' ? 70000 : 20000;
+    const timeout = setTimeout(() => controller.abort(), deadlineMs);
     try {
       const response = await fetch(url, {...options, cache:'no-store', signal:controller.signal});
       const payload = await response.json().catch(() => ({}));
