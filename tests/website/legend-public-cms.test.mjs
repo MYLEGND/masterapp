@@ -4069,7 +4069,7 @@ test('HTTP success without the requested publication identity stays unconfirmed'
     assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
   }finally{f.close();}
 });
- 
+
 
 test('public mobile nav stays interactive after an authored Studio shell replacement',()=>{
   const html='<!doctype html><html><body><header class="site-header"><button class="nav-toggle" type="button" data-public-nav-toggle aria-expanded="false">Menu</button><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main></main></body></html>';
