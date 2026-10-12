@@ -136,12 +136,22 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
     // Public HTML is anonymous. Do not forward cookies, authorization, editor
     // tickets or tracking query data to the renderer, nor accept cached HTML.
     try {
-      return await fetchImpl(new Request(target, {
+      const response = await fetchImpl(new Request(target, {
         method: request.method,
         headers: { Accept: 'text/html', 'Cache-Control': 'no-cache' },
         redirect: 'manual',
         signal: request.signal
       }), { cf: { cacheTtl: 0, cacheEverything: false } });
+      // A 200 from a static fallback is not publication proof. The canonical
+      // compiler stamps only HTML backed by the immutable published version.
+      if (response.status === 200 &&
+          (!response.headers.get('X-Legend-Publication-Id') ||
+           !response.headers.get('Content-Type')?.toLowerCase().includes('text/html'))) {
+        return new Response('Current published website is unavailable.', {
+          status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '30' }
+        });
+      }
+      return response;
     } catch {
       return new Response('Published website temporarily unavailable.', {
         status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '30' }

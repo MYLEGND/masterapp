@@ -8,6 +8,12 @@ const env = {
   LEGEND_WEBSITE_ORIGIN: 'https://masterapp-protect.azurewebsites.net',
   LEGEND_COMMERCE_ORIGIN: 'https://masterapp-parfait.azurewebsites.net'
 };
+const publishedPage = (html = '<main><h1>Current publication</h1></main>') =>
+  new Response(html, {status:200,headers:{
+    'Content-Type':'text/html; charset=utf-8',
+    'X-Legend-Publication-Id':'11111111-2222-4333-8444-555555555555',
+    'Cache-Control':'no-store'
+  }});
 
 test('external SaaS hostname is bridged to the single Protect origin with authenticated original host', async () => {
   const request = new Request('https://camoexterior.com/services?utm_source=test', {
@@ -73,7 +79,7 @@ test('LEGEND storefront retains Parfait while company HTML uses the publication 
   let homeSeen;
   await handleWebsiteRouting(home, env, async forwarded => {
     homeSeen = forwarded;
-    return new Response('home');
+    return publishedPage();
   });
   assert.equal(homeSeen.url, 'https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/page?path=%2F');
   assert.equal(homeSeen.headers.get('X-Legend-Original-Host'), null);
@@ -209,11 +215,27 @@ test('company HTML transports only its route, never visitor credentials or campa
     let seen;
     const response=await handleWebsiteRouting(new Request(`https://${hostname}/contact/?utm_source=test`, {
       headers:{Cookie:'private=value',Authorization:'Bearer test','X-Legend-Original-Host':'spoof.example'}
-    }),env,async request=>{seen=request;return new Response('<h1>Published</h1>');});
+    }),env,async request=>{seen=request;return publishedPage('<h1>Published</h1>');});
     assert.equal(await response.text(),'<h1>Published</h1>');
     assert.equal(seen.url,'https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/page?path=%2Fcontact%2F');
     for(const header of ['Cookie','Authorization','X-Legend-Original-Host']) assert.equal(seen.headers.get(header),null);
   }
+});
+
+test('a 200 without an immutable published version or HTML body is never treated as the current website',async()=>{
+  const home=new Request('https://www.mylegnd.com/');
+  const stale=await handleWebsiteRouting(home,env,async()=>new Response('<h1>Static fallback</h1>',{
+    status:200,headers:{'Content-Type':'text/html'}
+  }));
+  assert.equal(stale.status,503);
+  assert.equal(stale.headers.get('Cache-Control'),'no-store');
+  const invalid=await handleWebsiteRouting(home,env,async()=>new Response('not html',{
+    status:200,headers:{'X-Legend-Publication-Id':'valid','Content-Type':'text/plain'}
+  }));
+  assert.equal(invalid.status,503);
+  const fresh=await handleWebsiteRouting(home,env,async()=>publishedPage());
+  assert.equal(fresh.status,200);
+  assert.equal(fresh.headers.get('X-Legend-Publication-Id'),'11111111-2222-4333-8444-555555555555');
 });
 
 test('Studio, static assets, business previews and other applications retain their origins',async()=>{
@@ -237,7 +259,7 @@ test('company renderer failure cannot fall back to stale static HTML',async()=>{
 
 test('HEAD remains HEAD and company page writes are not proxied',async()=>{
   let seen;
-  await handleWebsiteRouting(new Request('https://www.mylegnd.com/',{method:'HEAD'}),env,async request=>{seen=request;return new Response(null);});
+  await handleWebsiteRouting(new Request('https://www.mylegnd.com/',{method:'HEAD'}),env,async request=>{seen=request;return publishedPage('');});
   assert.equal(seen.method,'HEAD');
   const response=await handleWebsiteRouting(new Request('https://www.mylegnd.com/',{method:'POST'}),env,async()=>{throw new Error('unexpected');});
   assert.equal(response.status,405);
@@ -247,7 +269,7 @@ test('HEAD remains HEAD and company page writes are not proxied',async()=>{
 test('explicit index files cannot expose the old static homepage',async()=>{
   for(const [path,route] of [['/index.html','/'],['/contact/index.html','/contact/']]) {
     let seen;
-    await handleWebsiteRouting(new Request('https://www.mylegnd.com'+path),env,async request=>{seen=request;return new Response('published');});
+    await handleWebsiteRouting(new Request('https://www.mylegnd.com'+path),env,async request=>{seen=request;return publishedPage();});
     assert.equal(new URL(seen.url).pathname,'/api/website-content/public/legend/page');
     assert.equal(new URL(seen.url).searchParams.get('path'),route);
   }
