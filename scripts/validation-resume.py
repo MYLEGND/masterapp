@@ -3945,6 +3945,100 @@ def attested_fast_track_two_attempt_no_sql_preflight(repository, run, token):
         return False
 
 
+
+def attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, token):
+    """One source-pinned recovery: a denied DNS write was completed externally.
+
+    This authorizes only carrying already-validated source scope into the next
+    fast-track candidate. It never authorizes replaying SQL, Worker or DNS writes.
+    """
+    if (prior.get('id') != 38276359453 or
+        prior.get('head_sha') != '1f08cd5a2518a4d206ecf4bccdad4024b7cba26e' or
+        prior.get('status') != 'completed' or prior.get('conclusion') != 'failure' or
+        prior.get('run_attempt') != 2 or not is_fast_track_producer(repository, prior)):
+        return False
+    names = {'Select exact affected applications': 'success',
+             'Admit exact validated fast-track source': 'success',
+             'Reconcile production schema before publication': 'success',
+             'Affected App Deploy — ${{ matrix.target }}': 'skipped',
+             'Publish verified website routing': 'failure'}
+    indexed = {row.get('name'): row for row in jobs if isinstance(row, dict)}
+    if len(indexed) != len(names) or any(
+        indexed.get(name, {}).get('conclusion') != outcome or
+        indexed.get(name, {}).get('status') != 'completed'
+        for name, outcome in names.items()):
+        return False
+    try:
+        # Attempt 1 proved a preserved Worker and a rejected DNS PATCH, not a
+        # successful or ambiguous provider write. Attempt 2 was stopped by the
+        # changed release HEAD before any provider operation.
+        history = api_get(repository,
+            'actions/runs/38276359453/attempts/1/jobs?per_page=100', token)
+        h = history.get('jobs')
+        if not isinstance(h, list) or history.get('total_count') != len(h):
+            return False
+        router = [row for row in h if row.get('name') == 'Publish verified website routing']
+        if len(router) != 1 or router[0].get('id') != 114904843387 or
+            router[0].get('conclusion') != 'failure':
+            return False
+        first_log = _release_job_log(repository, 114904843387, token)
+        second_log = _release_job_log(repository, 114926219880, token)
+        if (not all(fragment in first_log for fragment in (
+                'FAST_TRACK_ROUTER:preserved',
+                'FAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only',
+                'returned HTTP 403',
+                'Website DNS proxy requires DNS Edit authority or recovery: mylegnd.com'))
+            or 'FAST_TRACK_DNS_PROXY_RECONCILIATION:readback_complete' in first_log
+            or 'FAST_TRACK_RELEASE_HEAD_CHANGED' not in second_log
+            or 'FAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only' in second_log):
+            return False
+
+        # Independent read-only evidence after manual proxy activation proves
+        # both hostnames actually returned the same current published HTML.
+        diagnostic = api_get(repository,
+            'actions/runs/38272435954/attempts/3/jobs?per_page=100', token)
+        dj = diagnostic.get('jobs')
+        if not isinstance(dj, list) or diagnostic.get('total_count') != len(dj) or
+            not any(row.get('id') == 114910241289 and
+                row.get('name') == 'Read live publication routes and proxied DNS without writes' and
+                row.get('status') == 'completed' and row.get('conclusion') == 'success'
+                for row in dj):
+            return False
+        log = _release_job_log(repository, 114910241289, token)
+        pages, dns, routes = [], [], []
+        for line in log.splitlines():
+            for label, rows in (('PUBLIC_ROUTE_DIAGNOSTIC=', pages),
+                                ('CLOUDFLARE_PUBLIC_DNS=', dns),
+                                ('CLOUDFLARE_WORKER_ROUTES=', routes)):
+                if label not in line or line.lstrip().find('print(') >= 0:
+                    continue
+                rows.append(json.loads(line.split(label, 1)[1]))
+        hosts = {'https://mylegnd.com/', 'https://www.mylegnd.com/'}
+        observed = [row for row in pages if row.get('url') in hosts]
+        if (len(observed) != 2 or {row.get('url') for row in observed} != hosts or
+            len({row.get('publicationId') for row in observed}) != 1 or
+            not all(row.get('status') == 200 and row.get('publicationId') and
+                row.get('containsPublishedDocument') is True and
+                row.get('containsLoadingMarker') is False and
+                row.get('cfRayPresent') is True for row in observed)):
+            return False
+        if len(dns) != 1 or len(routes) != 1:
+            return False
+        address = [row for row in dns[0] if row.get('type') in ('A', 'AAAA', 'CNAME')]
+        if (len(address) != 3 or
+            sum(row.get('type') == 'A' and row.get('name') == 'mylegnd.com'
+                and row.get('proxied') is True for row in address) != 2 or
+            sum(row.get('type') == 'CNAME' and row.get('name') == 'www.mylegnd.com'
+                and row.get('proxied') is True for row in address) != 1 or
+            not any(row.get('pattern') == '*/*' and
+                row.get('script') == 'legend-business-website-router' for row in routes[0])):
+            return False
+        return True
+    except (KeyError, TypeError, ValueError, RuntimeError,
+            ReleaseOperationHistoryUnproven, EvidenceLookupUnavailable):
+        return False
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -3977,6 +4071,8 @@ def fast_track_effective_baseline(before, revision):
         if not isinstance(jobs, list) or payload.get('total_count') != len(jobs):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_JOBS_INCOMPLETE')
         if fast_track_completed_apps_pending_routing(repository, prior, jobs, token):
+            return before
+        if attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, token):
             return before
         selections = [j for j in jobs if j.get('name') == 'Select exact affected applications']
         admissions = [j for j in jobs if j.get('name') == 'Admit exact validated fast-track source']
