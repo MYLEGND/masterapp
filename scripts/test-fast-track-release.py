@@ -75,7 +75,7 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
              'status':'completed','conclusion':'success'}]}
         def read_api(repo,path,token):
             return history if '/38276359453/' in path else diagnostic
-        first='FAST_TRACK_ROUTER:preserved\\nFAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only\\nreturned HTTP 403\\nWebsite DNS proxy requires DNS Edit authority or recovery: mylegnd.com'
+        first='FAST_TRACK_ROUTER:preserved\nFAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only\nreturned HTTP 403\nWebsite DNS proxy requires DNS Edit authority or recovery: mylegnd.com'
         second='FAST_TRACK_RELEASE_HEAD_CHANGED'
         records=[{'type':'A','name':'mylegnd.com','proxied':True},
                  {'type':'A','name':'mylegnd.com','proxied':True},
@@ -90,10 +90,10 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
             lines.append('CLOUDFLARE_PUBLIC_DNS='+json.dumps(records))
             lines.append('CLOUDFLARE_WORKER_ROUTES='+json.dumps([
                 {'pattern':'*/*','script':'legend-business-website-router'}]))
-            return '\\n'.join(lines)
+            return '\n'.join(lines)
         logs={114904843387:first,114926219880:second,114910241289:diagnostic_log(records)}
-        with patch.object(authority,'is_fast_track_producer',return_value=True), \\
-             patch.object(authority,'api_get',side_effect=read_api), \\
+        with patch.object(authority,'is_fast_track_producer',return_value=True), \
+             patch.object(authority,'api_get',side_effect=read_api), \
              patch.object(authority,'_release_job_log',side_effect=lambda repo,id,token:logs[id]):
             self.assertTrue(authority.attested_fast_track_manual_dns_proxy_completion('owner/repo',prior,jobs,'token'))
             records[0]['proxied']=False
