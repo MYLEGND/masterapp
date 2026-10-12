@@ -447,6 +447,68 @@ class TwoAttemptNoSqlPreflightHistoryTests(unittest.TestCase):
         self.assertFalse(self.prove())
 
 
+class ExactBrandPreuploadRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.run = dict(id=38318950445,head_sha='bdc87f64cb9150bfeac26b26044c826b835cbb13',
+            run_attempt=1,status='completed',conclusion='failure')
+        self.apps = []
+        for name in ('AgentPortal','ClientApp','Protect','Website'):
+            self.apps.append(dict(name='Affected App Deploy — '+name,status='completed',conclusion='failure',
+                steps=[dict(name='Verify canonical brand registry and four-app identity',conclusion='failure')] +
+                [dict(name=step,conclusion='skipped') for step in (
+                    'Restore existing immutable package on resumed attempts',
+                    'Compile application and produce ZIP',
+                    'Preserve immutable application bytes before upload',
+                    'Sign in to Azure Production',
+                    'Publish or reconcile exact application bytes')]))
+        self.migration = dict(name='Reconcile production schema before publication',
+            status='completed',conclusion='success',steps=[
+                dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion='skipped'),
+                dict(name='Reconcile fresh already-ready schema without SQL bundle or mutation',conclusion='success')])
+        self.jobs = [dict(name='Select exact affected applications',status='completed',conclusion='success'),
+            dict(name='Admit exact validated fast-track source',status='completed',conclusion='success'),
+            self.migration,*self.apps,
+            dict(name='Publish verified website routing',status='completed',conclusion='skipped')]
+        self.artifacts = [
+            dict(name='legend-migration-observation-a96af08e6b3f871ff92be084434b4b576278cfe09630fd751ae3a03c6f47c37f',
+                 id=11778505571,expired=False),
+            dict(name='fast-track-database-recovery-38318950445-1',id=11776974677,expired=False),
+            dict(name='fast-track-admission-38318950445-1',id=11776869414,expired=False)]
+    def prove(self):
+        with patch.object(authority,'is_fast_track_producer',return_value=True), \
+             patch.object(authority,'api_get',return_value=dict(
+                 total_count=len(self.artifacts),artifacts=self.artifacts)):
+            return authority.attested_fast_track_brand_preupload(
+                'owner/repo',self.run,self.jobs,'fixture')
+
+    def test_exact_source_no_sql_brand_preupload_is_recoverable(self):
+        self.assertTrue(self.prove())
+    def test_changed_revision_or_second_attempt_never_inherits_scope(self):
+        self.run['head_sha']='b'*40
+        self.assertFalse(self.prove())
+        self.run['head_sha']='bdc87f64cb9150bfeac26b26044c826b835cbb13'
+        self.run['run_attempt']=2
+        self.assertFalse(self.prove())
+    def test_missing_app_or_entered_upload_fails_closed(self):
+        removed=self.jobs.pop()
+        self.assertFalse(self.prove())
+        self.jobs.append(removed)
+        self.apps[0]['steps'][-1]['conclusion']='failure'
+        self.assertFalse(self.prove())
+    def test_sql_entry_or_router_entry_fails_closed(self):
+        self.migration['steps'][0]['conclusion']='success'
+        self.assertFalse(self.prove())
+        self.migration['steps'][0]['conclusion']='skipped'
+        self.jobs[-1]['conclusion']='success'
+        self.assertFalse(self.prove())
+    def test_missing_retained_artifact_or_ambiguous_brand_result_fails_closed(self):
+        self.artifacts.pop()
+        self.assertFalse(self.prove())
+        self.setUp()
+        self.apps[0]['steps'][0]['conclusion']='success'
+        self.assertFalse(self.prove())
+
+
 class AdmissionRepairScopeTests(unittest.TestCase):
     def baseline(self, entered=False, attempt=1, duplicate=False, recovery=False, mutation="skipped", selector=False):
         before='a'*40;head='b'*40;original='c'*40

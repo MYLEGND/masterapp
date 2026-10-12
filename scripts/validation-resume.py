@@ -4175,6 +4175,77 @@ def website_only_recovery_scope(scope):
               "azure_app":row["releaseName"],"host":row["host"]}
     return {**scope,"matrix":{"include":[selected]},"selected":True}
 
+def attested_fast_track_brand_preupload(repository, run, jobs, token):
+    """Carry source after one authenticated no-SQL run failed before any app package/upload.
+
+    This is not a generic 'failed means safe' rule. The immutable, exact release
+    and its retained artifact inventory must positively prove no SQL or app write
+    step was entered. Any changed/missing evidence fails closed.
+    """
+    if (run.get('id') != 38318950445 or
+        run.get('head_sha') != 'bdc87f64cb9150bfeac26b26044c826b835cbb13' or
+        run.get('run_attempt') != 1 or
+        run.get('status') != 'completed' or run.get('conclusion') != 'failure' or
+        not is_fast_track_producer(repository, run)):
+        return False
+    expected_apps = {'Affected App Deploy — ' + key for key in
+                     ('AgentPortal', 'ClientApp', 'Protect', 'Website')}
+    prerequisites = {'Select exact affected applications',
+                     'Admit exact validated fast-track source',
+                     'Reconcile production schema before publication'}
+    routing = 'Publish verified website routing'
+    expected = prerequisites | expected_apps | {routing}
+    if (len(jobs) != len(expected) or
+        {j.get('name') for j in jobs} != expected or
+        any(j.get('status') != 'completed' for j in jobs)):
+        return False
+    indexed = {j['name']: j for j in jobs}
+    if (any(indexed[name].get('conclusion') != 'success' for name in prerequisites) or
+        indexed[routing].get('conclusion') != 'skipped'):
+        return False
+    migration_steps = {s.get('name'): s.get('conclusion') for s in
+                       indexed['Reconcile production schema before publication'].get('steps', [])}
+    if (migration_steps.get('Apply or reconcile the exact rehearsed migration bundle') != 'skipped' or
+        migration_steps.get('Reconcile fresh already-ready schema without SQL bundle or mutation') != 'success'):
+        return False
+    no_entry_steps = {
+        'Restore existing immutable package on resumed attempts',
+        'Compile application and produce ZIP',
+        'Preserve immutable application bytes before upload',
+        'Sign in to Azure Production',
+        'Publish or reconcile exact application bytes'
+    }
+    for name in expected_apps:
+        owner = indexed[name]
+        steps = owner.get('steps')
+        if owner.get('conclusion') != 'failure' or not isinstance(steps, list):
+            return False
+        by_name = {s.get('name'): s for s in steps}
+        if (len(by_name) != len(steps) or
+            by_name.get('Verify canonical brand registry and four-app identity', {}).get('conclusion') != 'failure' or
+            any(by_name.get(step, {}).get('conclusion') != 'skipped' for step in no_entry_steps)):
+            return False
+        failed = [s for s in steps if s.get('conclusion') == 'failure']
+        if len(failed) != 1 or failed[0].get('name') != 'Verify canonical brand registry and four-app identity':
+            return False
+    try:
+        inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = inventory.get('artifacts')
+        expected_artifacts = {
+            'legend-migration-observation-a96af08e6b3f871ff92be084434b4b576278cfe09630fd751ae3a03c6f47c37f': 11778505571,
+            'fast-track-database-recovery-38318950445-1': 11776974677,
+            'fast-track-admission-38318950445-1': 11776869414
+        }
+        if (not isinstance(artifacts, list) or inventory.get('total_count') != len(expected_artifacts)
+            or len(artifacts) != len(expected_artifacts) or
+            {a.get('name'): a.get('id') for a in artifacts if isinstance(a, dict)} != expected_artifacts or
+            any(a.get('expired') is not False for a in artifacts)):
+            return False
+    except (KeyError, TypeError, ValueError, RuntimeError, OSError):
+        return False
+    return True
+
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']
@@ -4233,8 +4304,9 @@ def fast_track_effective_baseline(before, revision):
             and all(j.get('conclusion') == 'skipped' for j in publications))
         preflight_noentry = (attested_fast_track_two_attempt_no_sql_preflight(
             repository, prior, token) if prior.get('id') == 38178839491 else False)
+        brand_preupload = attested_fast_track_brand_preupload(repository, prior, jobs, token)
         prewrite = (prior.get('run_attempt') == 1 and
-                    (selection_stopped or admission_stopped or recovery_stopped)) or preflight_noentry
+                    (selection_stopped or admission_stopped or recovery_stopped or brand_preupload)) or preflight_noentry
         completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
         if len(writes) < 3 or not (prewrite or completed_sql):
