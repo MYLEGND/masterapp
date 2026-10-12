@@ -313,16 +313,8 @@ main :is(img,video)[data-legend-content-role="media"]{
     gap:var(--public-flow-gap);
     align-items:stretch;
   }
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="kicker"]{order:10}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="heading"]{order:20}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="narrative"]{order:25}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="copy"],
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="proof"]{order:30}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="actions"],
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="action"],
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="form"]{order:40}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="media"]{order:50}
-  main [data-legend-responsive-flow="true"]>[data-legend-content-role="collection"]{order:60}
+  /* Preserve the authored composition order at every viewport. Semantic
+     role markers describe nodes; they must not silently rearrange them. */
   main [data-legend-content-role="action"]{
     width:100%;
     min-width:0;

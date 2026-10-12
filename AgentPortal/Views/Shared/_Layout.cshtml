@@ -49,8 +49,8 @@
     var layoutBodyClass = "legend-app d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
-    // AgentPortal is the shared LEGEND® shell: its icon follows the published
-    // main Protect website, never an individual agent's scoped website.
+    // The shared portal shell follows the published Protect favicon authority,
+    // never the favicon belonging to an individual agent's scoped website.
     var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
         WebsiteConfiguration,
         Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
