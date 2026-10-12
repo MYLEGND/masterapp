@@ -699,6 +699,65 @@ class CompletedSqlScopeTests(unittest.TestCase):
         self.routing['conclusion']='success';self.assertFalse(self.prove())
 
 
+class NoSqlBrandPreuploadRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.run=dict(id=38318950445,head_sha='a'*40,run_attempt=1,
+                      status='completed',conclusion='failure')
+        self.selector=dict(name='Select exact affected applications',status='completed',conclusion='success')
+        self.admission=dict(name='Admit exact validated fast-track source',status='completed',conclusion='success')
+        self.migration=dict(name='Reconcile production schema before publication',
+            status='completed',conclusion='success',steps=[
+                dict(name='Check migration admission without entering a write step',conclusion='success'),
+                dict(name='Apply or reconcile the exact rehearsed migration bundle',conclusion='skipped'),
+                dict(name='Reconcile fresh already-ready schema without SQL bundle or mutation',conclusion='success')])
+        self.router=dict(name='Publish verified website routing',status='completed',conclusion='skipped')
+        self.apps=[dict(name='Affected App Deploy — '+label,status='completed',conclusion='failure',steps=[
+            dict(name='Verify canonical brand registry and four-app identity',conclusion='failure'),
+            dict(name='Publish or reconcile exact application bytes',conclusion='skipped')])
+            for label in ('AgentPortal','ClientApp','Protect','Website')]
+        self.jobs=[self.selector,self.admission,self.migration,self.router]+self.apps
+        self.names=['legend-migration-observation-'+'f'*64,
+                    'fast-track-database-recovery-38318950445-1',
+                    'fast-track-admission-38318950445-1']
+        self.source=authority.subprocess.check_output(
+            ['git','show','39fc10572cb8ffc7de812d3b50eb26992367c2d1:.github/workflows/legend-fast-track-ui.yml'],
+            text=True)
+    def prove(self):
+        inventory=dict(total_count=len(self.names),artifacts=[
+            dict(name=name,expired=False,
+                workflow_run=dict(id=self.run['id'],head_sha=self.run['head_sha']))
+            for name in self.names])
+        with patch.object(authority,'_release_history_source',return_value=self.source), \\
+             patch.object(authority,'api_get',return_value=inventory):
+            return authority.attested_fast_track_no_sql_brand_preupload(
+                'owner/repo',self.run,self.jobs,'fixture')
+    def test_bounded_preupload_failure_carries_only_unpublished_scope(self):
+        self.assertTrue(self.prove())
+        # The predicate does not require unrelated Parfait to be in the matrix.
+        self.jobs.remove(self.apps[1]);self.apps.remove(self.apps[1])
+        self.assertTrue(self.prove())
+    def test_entered_upload_or_non_brand_failure_must_fail_closed(self):
+        self.apps[0]['steps'][1]['conclusion']='failure';self.assertFalse(self.prove())
+        self.apps[0]['steps'][1]['conclusion']='skipped'
+        self.apps[0]['steps'][0]['name']='Compile application and produce ZIP';self.assertFalse(self.prove())
+        self.apps[0]['steps'][0]['name']='Verify canonical brand registry and four-app identity'
+        self.apps[0]['conclusion']='success';self.assertFalse(self.prove())
+    def test_any_sql_write_or_routing_entry_blocks_recovery(self):
+        self.migration['steps'][1]['conclusion']='success';self.assertFalse(self.prove())
+        self.migration['steps'][1]['conclusion']='skipped'
+        self.migration['steps'][2]['conclusion']='skipped';self.assertFalse(self.prove())
+        self.migration['steps'][2]['conclusion']='success'
+        self.router['conclusion']='success';self.assertFalse(self.prove())
+    def test_incomplete_provenance_unexpected_scope_or_source_blocks(self):
+        self.names.pop();self.assertFalse(self.prove())
+        self.names.append('fast-track-admission-38318950445-1')
+        self.source+='\\n# modified';self.assertFalse(self.prove())
+        self.source=self.source.rsplit('\\n# modified',1)[0]
+        self.apps[0]['name']='Affected App Deploy — Unknown';self.assertFalse(self.prove())
+        self.apps[0]['name']='Affected App Deploy — AgentPortal'
+        self.run['run_attempt']=2;self.assertFalse(self.prove())
+
+
 class UntriggeredRepairTests(unittest.TestCase):
     def prove(self,paths=None,source_changed=False,merged=True):
         revision='a'*40;parent='b'*40
