@@ -950,9 +950,8 @@ test('business header navigation projects one canonical page catalog without pre
   }finally{f.close();}
 });
 
-test('Protect keeps public content visible before hydration',()=>{
-  assert.doesNotMatch(protectLayoutSource,/hidden="@\(!isStandaloneQuoteLanding/);
-  assert.doesNotMatch(protectLayoutSource,/data-legend-canonical-pending/);
+test('Protect suppresses old native content until the published revision is applied',()=>{
+  assert.match(protectLayoutSource,/data-legend-canonical-pending="@\(!isStandaloneQuoteLanding \? "true" : null\)"/);
 });
 
 test('canonical responsive hierarchy resets inherited desktop geometry on mobile but preserves explicit mobile intent',async()=>{
@@ -3233,13 +3232,15 @@ test('duplicate canonical link has independent stable identity and one unsaved c
   } finally { f.close(); }
 });
 
-test('public publication paints its initial server content while canonical CMS synchronization continues',()=>{
-  assert.match(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}"><head>/);
-  assert.doesNotMatch(businessBuildSource,/<html lang="en" data-legend-site="\$\{siteKey\}" hidden>/);
-  assert.match(protectLayoutSource,/<html lang="en">\s*<head>/);
-  assert.doesNotMatch(protectLayoutSource,/data-legend-canonical-pending|hidden="@\(!isStandaloneQuoteLanding/);
+test('published site first paint waits for the authoritative snapshot, never a stale local template',()=>{
+  assert.match(businessBuildSource,/data-legend-canonical-pending="true"/);
+  assert.match(businessBuildSource,/<main id="main">\$\{businessMode\?body:''\}<\/main>/);
+  assert.match(protectLayoutSource,/data-legend-canonical-pending/);
+  assert.match(source,/function revealPublishedWebsite\(\)/);
+  assert.match(source,/An older version will not be shown/);
   assert.match(source,/await loadPublic\(\);\s*\/\/ Published content is independent of measurement\/provider startup\.\s*void startPublicRuntime\(\);/);
-  assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
+  assert.match(source,/function unavailable\(error\) \{[\s\S]*revealPublishedWebsite\(\);/);
+  assert.match(source,/function revealPublishedWebsite\(\) \{[\s\S]*document\.documentElement\.hidden = false;/);
   assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
   assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);
   assert.match(legendWebConfigSource,/name="Do not cache published HTML"/);

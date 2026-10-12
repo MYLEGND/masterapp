@@ -27,10 +27,13 @@ for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
   if(!html.includes(`href="${publicApiBase}/api/website-content/public/legend/favicon"`)) throw new Error('Static route must use stable published favicon authority: '+route);
 }
-// All published entrypoints must paint even if CMS/analytics fetches stall.
+// Static public HTML must never expose an authoring-template page as a published revision.
+// The shared CMS releases the visible surface only after reading canonical publication.
 for(const route of routes){
   const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
-  if(!/<html lang="en" data-legend-site="legend"><head>/.test(html)) throw new Error('Website initial render is hidden: '+route);
+  if(!html.includes('<html lang="en" data-legend-site="legend" data-legend-canonical-pending="true"><head>') ||
+     !html.includes('<main id="main"></main>'))
+    throw new Error('An unverified static fallback could appear as published content: '+route);
 }
 const index=await readFile(resolve(root,'dist','index.html'),'utf8');
 for(const required of ['legend-public-web.js','legend-public-cms.js','instagram.com/legend.vault','apps.apple.com/us/app/legend/id6798419225'])if(!index.includes(required))throw new Error(`dist/index.html missing ${required}`);

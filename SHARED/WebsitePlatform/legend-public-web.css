@@ -446,3 +446,42 @@ main :is(img,video)[data-legend-content-role="media"]{
   .legend-recipe-bento-lead,.legend-recipe-bento-tail{grid-column:auto;min-height:0}
   .legend-capability-slot{max-width:100%}
 }
+
+/* Canonical public publication gate: never show an older template while reading the published revision. */
+html[data-legend-canonical-pending="true"] body { visibility: hidden !important; }
+html[data-legend-canonical-pending="true"] body::before {
+  content: "Loading the latest published website…";
+  visibility: visible !important;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483640;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: #081a32;
+  color: #f7f6f2;
+  font: 600 16px/1.5 system-ui, sans-serif;
+  text-align: center;
+}
+.legend-canonical-unavailable {
+  min-height: 75dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 20px;
+  text-align: center;
+  background: #081a32;
+  color: #f7f6f2;
+}
+.legend-canonical-unavailable button {
+  padding: 12px 20px;
+  border: 1px solid #bc8e10;
+  border-radius: 10px;
+  background: #bc8e10;
+  color: #081a32;
+  font: 700 15px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+}
