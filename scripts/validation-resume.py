@@ -3753,7 +3753,7 @@ def attested_fast_track_no_sql_brand_preupload(repository, run, jobs, token):
     try:
         source = _release_history_source(repository, run['head_sha'],
             '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
-        if hashlib.sha256(source.encode()).hexdigest() != '5ab1bab0315385c56838c2e0ffdc7cb78da00a34b734e716f25d0f26e5de6f51':
+        if hashlib.sha256(source.encode()).hexdigest() != '71103d171f46492c026ed3b87552bd67352c161aec155bc239ea8590e4bdbfca':
             return False
         names = ('Select exact affected applications',
                  'Admit exact validated fast-track source',
