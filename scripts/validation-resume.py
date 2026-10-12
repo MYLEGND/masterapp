@@ -2413,6 +2413,10 @@ def fast_track_scope(paths):
             return {'portal', 'client', 'protect', 'website'}
         if path == 'Legend-Design/legend-public-inquiry.js':
             return {'website', 'protect'}
+        if path == 'Legend-Design/legend-web-foundation.css':
+            # Exact shared-file consumers: Founder public, Protect, Portal, Client.
+            # Parfait does not link or publish this foundation asset.
+            return {'website', 'protect', 'portal', 'client'}
         if path.startswith('Legend-Design/'):
             return set(RELEASE_TARGETS)
         if path == 'Infrastructure/WebsiteEditing/WebsiteFaviconParity.cs':

@@ -106,6 +106,16 @@ class HistoricManualProxyReadbackTests(unittest.TestCase):
 
 
 
+class FoundationCssImpactTests(unittest.TestCase):
+    def test_shared_foundation_targets_only_actual_public_and_authenticated_consumers(self):
+        scope=authority.fast_track_scope(['Legend-Design/legend-web-foundation.css'])
+        self.assertEqual(set(scope['impacts']['Legend-Design/legend-web-foundation.css']),
+                         {'website','protect','portal','client'})
+        self.assertEqual({row['key'] for row in scope['matrix']['include']},
+                         {'website','protect','portal','client'})
+        self.assertNotIn('parfait', scope['impacts']['Legend-Design/legend-web-foundation.css'])
+
+
 class RouterRecoveryTests(unittest.TestCase):
     def journal(self):
         j=SimpleNamespace(identity='a'*64, intent=None, success=None)
