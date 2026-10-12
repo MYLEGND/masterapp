@@ -55,5 +55,5 @@ test('Published LEGEND HTML uses the same studio icon authority as ClientApp and
 
 test('Business compilation uses one crawlable icon URL and structured data', () => {
   assert.match(business, /structured\.setAttribute\('type','application\/ld\+json'\)/);
-  assert.match(business, /favicon\.setAttribute\('href','\/favicon\.jpg'\)/);
+  assert.match(business, /company \? publicApiBase \+ '\/api\/website-content\/public\/legend\/favicon' : '\/favicon\.jpg'/);
 });
