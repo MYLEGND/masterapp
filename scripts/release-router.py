@@ -118,7 +118,9 @@ def fast_track():
     # run Worker routes until the exact apex and www address records are proxied.
     # Reuse the single Cloudflare control-plane authority; never touch MX/TXT.
     dns_authority = load('cloudflare-routing-authority')
+    print('FAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only', flush=True)
     dns_authority.reconcile_public_web_proxy(os.environ['CLOUDFLARE_API_TOKEN'], zone)
+    print('FAST_TRACK_DNS_PROXY_RECONCILIATION:readback_complete', flush=True)
     os.environ['ROUTING_PASS_THROUGH_HOSTS'] = json.dumps(['mylegnd.com', 'www.mylegnd.com', 'protect.mylegnd.com', 'portal.mylegnd.com', 'client.mylegnd.com'])
     load('release-auxiliary').first_party_router_proof()
     # Read back both public hostnames, not only the code deployed to Cloudflare.

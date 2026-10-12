@@ -47,6 +47,17 @@ class ObserverCompatibilityTests(unittest.TestCase):
         self.assertTrue(self.compatible())
 
 
+class RouterOnlyAdmissionTests(unittest.TestCase):
+    def test_canonical_router_control_change_requires_gates_without_app_deploy(self):
+        scope=authority.fast_track_scope(['scripts/release-router.py'])
+        self.assertEqual(scope['matrix']['include'],[])
+        self.assertFalse(scope['selected'])
+        self.assertFalse(scope['schema'])
+        self.assertTrue(scope['routing'])
+        self.assertTrue(scope['commerce'])
+
+
+
 class RouterRecoveryTests(unittest.TestCase):
     def journal(self):
         j=SimpleNamespace(identity='a'*64, intent=None, success=None)
