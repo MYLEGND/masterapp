@@ -2455,9 +2455,12 @@ def fast_track_scope(paths):
         'Infrastructure/WebsiteEditing/WebsitePlatformController.cs',
         'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs',
         'Protect-Website/ProtectWebsite.csproj'} for path in paths)
-    return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend,
-                schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') or
-                    p == 'scripts/release-router.py' for p in paths), impacts=impacts)
+    routing = any(p.startswith('Legend-Cloudflare/src/website-routing/') or
+                  p == 'scripts/release-router.py' for p in paths)
+    # Router-only operations still require authenticated source admission and
+    # no-SQL schema readiness. The router job must never be silently skipped.
+    return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend or routing,
+                schema=schema, routing=routing, impacts=impacts)
 
 
 LIFECYCLE_AUTHORITY_PATHS = (
