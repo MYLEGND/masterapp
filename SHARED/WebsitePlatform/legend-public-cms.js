@@ -8744,11 +8744,27 @@
   });
   window.addEventListener('parfait-cart-updated', updateStoreCartCount);
 
-  // A published HTML snapshot is compiled for one desktop-sized DOM. That
-  // DOM must remain immutable, but its mobile/tablet presentation must not.
-  // Apply only the canonical authored breakpoint style/layout to existing
-  // nodes: no DOM replacement, text rewrite, protected binding, or event replay.
-  // Crucially, this runs on initial mobile load as well as width changes.
+  // Compiled v3 markup already contains desktop inline geometry from the
+  // canonical renderer. Those declarations are the OUTPUT, not the baseline:
+  // restoring them on mobile overrides missing breakpoint fields and creates
+  // overlapping desktop widths, offsets and grid layouts. Rebuild presentation
+  // from the saved model while preserving element identity and protected inputs.
+  const compiledPresentationBaselines = new WeakSet();
+  function applyCompiledResponsivePresentation(el, model) {
+    if(Number(renderInput?.document?.version)===3 && !compiledPresentationBaselines.has(el)){
+      const original=rememberOriginal(el);
+      // Only authored composition presentation is regenerated. Keep markup,
+      // classes, state, form controls, bindings and non-style attributes intact.
+      styleProperties.forEach(key=>{original.style[key]='';});
+      compiledPresentationBaselines.add(el);
+    }
+    applyCanonicalResponsiveAttributes(el,model);
+    applyStyle(el,effectiveStyle(model,el));
+    applyLayout(el,effectiveLayout(model,el));
+  }
+
+  // The same canonical model drives the editor and the immutable public DOM.
+  // Re-evaluate at the real visitor width without ever remounting the page.
   function refreshCompiledResponsivePresentation() {
     const canonicalNodes=new Map();
     for(const root of allCanonicalRootSets())
@@ -8756,18 +8772,13 @@
     document.querySelectorAll('[data-cms-composition-id]').forEach(el=>{
       const model=canonicalNodes.get(el.dataset.cmsCompositionId);
       if(!model || el.dataset.cmsSignalOnly) return;
-      applyCanonicalResponsiveAttributes(el,model);
-      applyStyle(el,effectiveStyle(model,el));
-      applyLayout(el,effectiveLayout(model,el));
+      applyCompiledResponsivePresentation(el,model);
     });
     // These two native commerce actions share canonical responsive controls.
     for(const kind of ['store','cart']){
       const model=kind==='store' ? documentState.store?.storeNavigation : documentState.store?.cartNavigation;
       const el=document.querySelector('[data-legend-store-nav="'+kind+'"]');
-      if(el && model){
-        applyStyle(el,effectiveStyle(model,el));
-        applyLayout(el,effectiveLayout(model,el));
-      }
+      if(el && model) applyCompiledResponsivePresentation(el,model);
     }
     refreshScaledElements();
   }

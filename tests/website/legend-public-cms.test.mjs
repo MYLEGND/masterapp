@@ -1153,7 +1153,9 @@ test('desktop preserves authored geometry while mobile uses conversion-first sem
     assert.equal(a.dataset.legendContentRole,'action');
   }finally{desktop.close();}
   assert.match(publicCss,/\[data-legend-content-role="action"\][\s\S]*min-inline-size:min\(100%,var\(--public-action-min\)\)/);
-  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\[data-legend-content-role="heading"\]\{order:20\}[\s\S]*\[data-legend-content-role="action"\][\s\S]*order:40[\s\S]*\[data-legend-content-role="media"\]\{order:50\}/);
+  // Published mobile must preserve the page's authored order, not semantic sorting.
+  assert.equal(publicCss.includes('main [data-legend-responsive-flow="true"]>[data-legend-content-role="heading"]{order:'),false);
+  assert.equal(publicCss.includes('main [data-legend-responsive-flow="true"]>[data-legend-content-role="media"]{order:'),false);
 });
 
 test('business banner and shell typography derive from shared tokens and server shell authority',()=>{
@@ -4100,6 +4102,82 @@ test('public mobile nav stays interactive after an authored Studio shell replace
   }finally{w.close();}
 });
 
+
+test('compiled published mobile clears desktop geometry and preserves canonical flow across page and footer',async()=>{
+  const doc=canonicalDocument({title:'Compiled publication mobile parity'});
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:3,gapPx:32};
+  section.breakpointLayouts={mobile:{mode:'stack',gapPx:12}};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:35,offsetXPercent:58,offsetYPx:160,heightPx:130,fontSize:44};
+  heading.breakpointStyles={mobile:{widthPercent:100,fontSize:22}};
+  doc.shell.footer=[canonicalNode('shell.footer','container','footer',{className:'site-footer',children:[]})];
+  const footer=doc.shell.footer[0];
+  footer.style={offsetYPx:-220};
+  footer.breakpointStyles={mobile:{offsetYPx:0}};
+  footer.layout={mode:'grid',columns:3,gapPx:32};
+  footer.breakpointLayouts={mobile:{mode:'stack',gapPx:10}};
+  const html=`<!doctype html><html><head></head><body><main>
+    <section data-cms-id="home.section.1" data-cms-composition-id="home.section.1"
+      data-cms-section="home.section.1"
+      style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px">
+      <h1 data-cms-id="home.h1.node.1" data-cms-composition-id="home.h1.node.1"
+        style="position:relative;left:58%;top:160px;width:35%;height:130px;font-size:44px;max-width:42%">Mobile heading</h1>
+    </section></main>
+    <footer class="site-footer" data-cms-id="shell.footer"
+      data-cms-composition-id="shell.footer"
+      style="position:relative;top:-220px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px">
+      <span>Shared footer</span>
+    </footer>
+    <script id="legend-cms-published-document" type="application/json"></script></body></html>`;
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const w=dom.window;
+  const sectionEl=w.document.querySelector('main section');
+  const headingEl=w.document.querySelector('main h1');
+  const footerEl=w.document.querySelector('footer');
+  w.innerWidth=390;
+  w.CSS={escape:value=>String(value)};
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'legend',document:doc,pageKey:'home',server:false,publishedMarkupReady:true,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.eval(source);
+  try{
+    assert.equal(sectionEl.style.display,'flex');
+    assert.equal(sectionEl.style.flexDirection,'column');
+    assert.equal(sectionEl.style.gridTemplateColumns,'');
+    assert.equal(sectionEl.style.gap,'12px');
+    assert.equal(headingEl.style.width,'100%');
+    assert.equal(headingEl.style.maxWidth,'100%');
+    assert.equal(headingEl.style.left,'0%');
+    assert.equal(headingEl.style.top,'0px');
+    assert.equal(headingEl.style.height,'');
+    assert.equal(headingEl.style.fontSize,'22px');
+    assert.equal(footerEl.style.top,'0px');
+    assert.equal(footerEl.style.display,'flex');
+    assert.equal(footerEl.style.gridTemplateColumns,'');
+    assert.equal(footerEl.style.gap,'10px');
+    assert.equal(w.document.querySelector('footer'),footerEl);
+    w.innerWidth=1440;
+    w.dispatchEvent(new w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(sectionEl.style.display,'grid');
+    assert.equal(sectionEl.style.gridTemplateColumns,'repeat(3,minmax(0,1fr))');
+    assert.equal(headingEl.style.left,'58%');
+    assert.equal(headingEl.style.top,'160px');
+    assert.equal(headingEl.style.height,'130px');
+    assert.equal(headingEl.style.fontSize,'44px');
+    assert.equal(footerEl.style.top,'-220px');
+    w.innerWidth=390;
+    w.dispatchEvent(new w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(headingEl.style.top,'0px');
+    assert.equal(footerEl.style.top,'0px');
+    assert.equal(w.document.querySelector('main section'),sectionEl);
+    assert.equal(w.document.querySelector('main h1'),headingEl);
+    assert.equal(w.document.querySelector('footer'),footerEl);
+  }finally{w.close();}
+});
 
 test('compiled publication retains the same DOM while applying authored mobile, tablet and desktop layouts',async()=>{
   const doc=canonicalDocument({title:'Mobile and desktop are independent'});
