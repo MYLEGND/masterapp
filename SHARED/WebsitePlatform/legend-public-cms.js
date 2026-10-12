@@ -2495,6 +2495,11 @@
       const existing=document.querySelector(selector);
       const rendered=(nodes || []).map(buildCompositionNode).filter(Boolean);
       if(rendered.length===0){
+        // A publication without custom shared-shell nodes still needs its
+        // protected native header, navigation and footer. Studio may edit page
+        // content without supplying a replacement shell; absence of authored
+        // shell nodes is not an instruction to erase required site controls.
+        if(requiredClass==='site-header' || requiredClass==='site-footer') return;
         existing?.remove();
         return;
       }

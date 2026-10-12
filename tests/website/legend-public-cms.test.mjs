@@ -4121,3 +4121,21 @@ test('compiled published mobile HTML keeps the first-render DOM during hydration
     assert.match(foundationCss,/html\{scroll-behavior:auto\}/);
   }finally{w.close();}
 });
+
+
+test('new Website Studio page edits cannot remove a protected native header when shell content is absent',async()=>{
+  const doc=canonicalDocument({title:'Updated page'});
+  const html='<!doctype html><html><head></head><body><header class="site-header"><a class="brand" href="/">Brand</a><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main><h1>Original</h1></main><footer class="site-footer">Protected footer</footer></body></html>';
+  const f=await domFixture({siteKey:'legend',doc,search:'',html});
+  try{
+    const header=f.w.document.querySelector('.site-header');
+    const footer=f.w.document.querySelector('.site-footer');
+    assert.ok(header);
+    assert.equal(f.w.document.querySelectorAll('.site-header').length,1);
+    assert.ok(header.querySelector('[data-public-nav]'));
+    assert.ok(header.querySelector('[data-public-nav-toggle]'));
+    assert.equal(header.querySelector('[data-public-nav-toggle]').getAttribute('aria-expanded'),'false');
+    assert.equal(footer.textContent,'Protected footer');
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Updated page');
+  } finally {f.close();}
+});
