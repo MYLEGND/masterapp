@@ -4162,7 +4162,7 @@ test('Website Studio exposes original-request publication recovery with read-onl
   assert.match(checking,/outcome\.revision===request\.expectedRevision/);
   assert.match(source,/publicationRecoveryMode!=='not_found' \|\| dirty \|\| sourceEditorDirty/);
   assert.match(source,/\(publish && pendingPublication && !resumePending\) return retryPublicationConfirmation\(\)/);
-  assert.match(source,/\(pendingPublication && resumePending/);
+  assert.match(source,/publish && pendingPublication && resumePending/);
   assert.match(source,/publicationRecoveryMode='conflict';\s*throw new Error\('The website changed while publication/);
   assert.match(source,/document\.getElementById\('legend-cms-publication-check'\)\?\.addEventListener/);
   assert.match(source,/document\.getElementById\('legend-cms-publication-resume'\)\?\.addEventListener/);
