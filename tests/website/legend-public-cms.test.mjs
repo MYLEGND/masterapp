@@ -3239,7 +3239,8 @@ test('published site first paint waits for the authoritative snapshot, never a s
   assert.match(source,/function revealPublishedWebsite\(\)/);
   assert.match(source,/An older version will not be shown/);
   assert.match(source,/await loadPublic\(\);\s*\/\/ Published content is independent of measurement\/provider startup\.\s*void startPublicRuntime\(\);/);
-  assert.match(source,/function unavailable\(error\) \{[\s\S]*document\.documentElement\.hidden = false;/);
+  assert.match(source,/function unavailable\(error\) \{[\s\S]*revealPublishedWebsite\(\);/);
+  assert.match(source,/function revealPublishedWebsite\(\) \{[\s\S]*document\.documentElement\.hidden = false;/);
   assert.match(source,/fetch\(url, \{ cache: 'no-store' \}\)/);
   assert.match(businessMiddlewareSource,/CacheControl = "no-store,no-cache,must-revalidate,max-age=0"/);
   assert.match(legendWebConfigSource,/name="Do not cache published HTML"/);
