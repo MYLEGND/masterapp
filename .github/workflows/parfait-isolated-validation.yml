@@ -16,6 +16,7 @@ on:
       - fix/legend-public-dns-proxy-canonical-20261012
       - fix/router-only-fast-track-admission-20261012
       - fix/legend-immutable-first-byte-20261012
+      - fix/canonical-mobile-navigation-scroll-hydration-20261012
       - repair/fast-track-manual-dns-proof-20261012
     paths:
       - .github/workflows/legend-fast-track-ui.yml

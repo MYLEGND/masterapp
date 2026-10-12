@@ -2471,15 +2471,23 @@
       toggle.textContent='Menu';
       header.insertBefore(toggle,nav);
     }
-    if(toggle.dataset.legendRuntimeBound==='true') return;
-    toggle.dataset.legendRuntimeBound='true';
-    const close=()=>{nav.dataset.open='false';toggle.setAttribute('aria-expanded','false');};
-    toggle.addEventListener('click',()=>{
-      const open=nav.dataset.open==='true';
-      nav.dataset.open=open?'false':'true';
-      toggle.setAttribute('aria-expanded',open?'false':'true');
-    });
-    nav.addEventListener('click',event=>{if(event.target.closest?.('a')) close();});
+    // Public navigation is controlled only by the shared delegated
+    // document listener. Replacing a Studio shell cannot orphan or double-bind it.
+    toggle.type='button';
+    toggle.classList.add('nav-toggle');
+    toggle.hidden=false;
+    toggle.setAttribute('aria-controls','primary-nav');
+    toggle.textContent='Menu';
+    nav.classList.add('nav');
+    nav.id='primary-nav';
+    nav.setAttribute('data-public-nav','');
+    nav.hidden=false;
+    nav.style.removeProperty('display');
+    nav.style.removeProperty('opacity');
+    nav.style.removeProperty('visibility');
+    nav.dataset.open='false';
+    toggle.setAttribute('aria-expanded','false');
+    window.LegendPublicNavigation?.sync?.(header);
   }
 
   function renderCanonicalShell() {
@@ -2487,6 +2495,11 @@
       const existing=document.querySelector(selector);
       const rendered=(nodes || []).map(buildCompositionNode).filter(Boolean);
       if(rendered.length===0){
+        // A publication without custom shared-shell nodes still needs its
+        // protected native header, navigation and footer. Studio may edit page
+        // content without supplying a replacement shell; absence of authored
+        // shell nodes is not an instruction to erase required site controls.
+        if(requiredClass==='site-header' || requiredClass==='site-footer') return;
         existing?.remove();
         return;
       }
@@ -8072,8 +8085,7 @@
       .legend-store-cart .pf-cart-count{position:absolute;right:-8px;top:-8px;display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--web-gold,#d4ad45);color:var(--web-navy-deep,#07152d);font:800 10px/1 Inter,system-ui,sans-serif}
       .legend-store-cart-icon{display:block}
       @media(max-width:767px){
-        html,body{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
-        body{touch-action:pan-y pinch-zoom}
+        html,body{width:100%;max-width:100%;overflow-x:clip}
         main,main>section,main>.section,main>.page-hero,main>.cta,main>.legal-page-wrap,main>.quote-page,main>.container-narrow,main>.training-page{width:100%;max-width:100%;min-width:0;overflow-x:clip}
         main *{max-width:100%;box-sizing:border-box}
         .cms-layout-frame>*{grid-column:1 / -1}
@@ -8593,19 +8605,69 @@
   });
   window.addEventListener('parfait-cart-updated', updateStoreCartCount);
 
+  // The canonical compiler has already composed this immutable published
+  // markup. Rebuilding it on the client interrupts touch scroll and remounts
+  // menu buttons as visitors interact with the page.
+  function hydrateCompiledPublication(payload) {
+    documentState=normalizeDocument(payload.document || {});
+    applyRuntimeActionContracts();
+    ensureCanonicalPublicInquiry();
+    updateStoreCartCount();
+    try {
+      window.dispatchEvent(new CustomEvent('legend:website-content-rendered', {
+        detail:{siteKey:SITE_KEY,page:currentPageRoute(),editor:false,materialize:false}
+      }));
+    } catch {}
+    const attachMotion=()=>{
+      for(const root of allCanonicalRootSets())
+        walkComposition(root.nodes,node=>{
+          if(Array.isArray(node.animations) && node.animations.length)
+            applyAnimations(findEditableElement(node.id),node.animations);
+        });
+    };
+    if(typeof window.requestAnimationFrame==='function')
+      window.requestAnimationFrame(attachMotion);
+    else setTimeout(attachMotion,0);
+  }
+
+  let responsiveFrameQueued=false;
+  function installResponsiveResize() {
+    let previousWidth=Math.round(responsiveViewportWidth());
+    window.addEventListener('resize',()=>{
+      const width=Math.round(responsiveViewportWidth());
+      // iOS browser chrome alters viewport height during scroll. A height-only
+      // resize must not trigger an expensive website composition DOM traversal.
+      if(Math.abs(width-previousWidth)<2) return;
+      previousWidth=width;
+      if(responsiveFrameQueued) return;
+      responsiveFrameQueued=true;
+      const update=()=>{
+        responsiveFrameQueued=false;
+        refreshResponsiveComposition();
+      };
+      if(typeof window.requestAnimationFrame==='function')
+        window.requestAnimationFrame(update);
+      else setTimeout(update,0);
+    },{passive:true});
+  }
+
   if (renderInput && !studioIsolationMode) {
     ctaCatalog = Array.isArray(renderInput.ctaCatalog?.options) ? renderInput.ctaCatalog.options : [];
     bindBusiness(renderInput);
     storeContext = renderInput.store || null;
     legacyMigration = renderInput.legacyMigration || null;
-    prepareDom();
-    injectContentStyles();
-    applyDocument(renderInput.document || {});
+    if (renderInput.publishedMarkupReady === true && renderInput.server === false && !editorMode && !materializeMode) {
+      hydrateCompiledPublication(renderInput);
+    } else {
+      prepareDom();
+      injectContentStyles();
+      applyDocument(renderInput.document || {});
+    }
     revealPublishedWebsite();
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshResponsiveComposition);
+      installResponsiveResize();
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
@@ -8630,7 +8692,7 @@
         void startPublicRuntime();
       } catch (error) { unavailable(error); }
     }
-    window.addEventListener('resize', refreshResponsiveComposition);
+    installResponsiveResize();
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();
