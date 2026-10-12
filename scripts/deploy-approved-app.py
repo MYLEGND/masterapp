@@ -153,10 +153,16 @@ class Azure:
         # replaced by exact-revision checks below, not waived. Status preflight
         # already warmed SCM; disabling CLI warmup prevents its exception fallback
         # from replaying a POST. A subprocess timeout leaves Azure running untouched.
+        # Website OneDeploy requires a provider-acknowledged operation, not an
+        # untracked async CLI acceptance. The exact historical no-entry recovery
+        # is separately source-pinned and gated before this method can run.
+        tracked = self.static and self.app == "masterapp-website"
         command = ['az', 'webapp', 'deploy', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
                    '--src-path', str(self.package), '--type', 'zip', '--clean', 'true',
-                   '--restart', 'true', '--async', 'true', '--track-status', 'false',
-                   '--enable-kudu-warmup', 'false', '--timeout', '120000',
+                   '--restart', 'true', '--async', 'false' if tracked else 'true',
+                   '--track-status', 'true' if tracked else 'false',
+                   '--enable-kudu-warmup', 'true' if tracked else 'false',
+                   '--timeout', '120000',
                    '--enriched-errors', 'true', '--only-show-errors', '-o', 'json']
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=180)
@@ -823,6 +829,9 @@ def fast_track_deploy(key, package_root):
         raise ValueError('FAST_TRACK_BASELINE_UNPROVEN')
     changed = subprocess.check_output(['git', 'diff', '--name-only', before, revision], text=True).splitlines()
     scope = _RELEASE_AUTHORITY.fast_track_scope(changed)
+    recovering = _RELEASE_AUTHORITY.attested_website_only_recovery_scope(before,revision,changed)
+    if recovering:
+        scope = _RELEASE_AUTHORITY.website_only_recovery_scope(scope)
     if TARGETS[key]['releaseName'] not in {r['azure_app'] for r in scope['matrix']['include']}:
         raise ValueError('FAST_TRACK_TARGET_OUTSIDE_SCOPE')
     if scope['commerce']:
@@ -832,6 +841,22 @@ def fast_track_deploy(key, package_root):
     digest = verify_package(package, revision, TARGETS[key]['static'])
     azure = target_azure(key, package, revision)
     baseline = azure.observed_revision()
+    if recovering:
+        # Fresh Azure readback, after the source-pinned GitHub diagnosis. Never
+        # authorize a second write when any newer deployment is even possible.
+        if key!='website' or baseline != _RELEASE_AUTHORITY.WEBSITE_MISSING_UPLOAD_BASELINE:
+            raise DeploymentReconciliationRequired('WEBSITE_RECOVERY_LIVE_BASELINE_DRIFT')
+        from datetime import datetime, timezone
+        started=datetime.fromisoformat(_RELEASE_AUTHORITY.WEBSITE_MISSING_UPLOAD_AFTER)
+        previous=read_deployments_bounded(azure,phase='Website historical no-entry preflight')
+        for row in previous:
+            try:
+                received=datetime.fromisoformat(str(row['received_time']).replace('Z','+00:00'))
+            except (KeyError,TypeError,ValueError) as exc:
+                raise DeploymentReconciliationRequired('WEBSITE_RECOVERY_AZURE_HISTORY_UNPROVEN') from exc
+            if received.tzinfo is None or received>=started:
+                raise DeploymentReconciliationRequired('WEBSITE_RECOVERY_PRIOR_OPERATION_MAY_HAVE_ENTERED')
+        print('WEBSITE_SOURCE_PINNED_NONENTRY_RECONFIRMED: live original revision, no post-intent Azure deployment',flush=True)
     if baseline is None:
         raise DeploymentReconciliationRequired('FAST_TRACK_LIVE_BASELINE_UNAVAILABLE')
     os.environ['PACKAGE_PRODUCER_RUN'] = str(run['id'])

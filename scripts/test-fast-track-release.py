@@ -116,6 +116,44 @@ class FoundationCssImpactTests(unittest.TestCase):
         self.assertNotIn('parfait', scope['impacts']['Legend-Design/legend-web-foundation.css'])
 
 
+
+class WebsiteOriginalNonentryRepairTests(unittest.TestCase):
+    def test_website_only_scope_never_selects_protect(self):
+        selected=authority.website_only_recovery_scope(authority.fast_track_scope(
+            ['scripts/deploy-approved-app.py','scripts/validation-resume.py',
+             'scripts/test-fast-track-release.py','.github/workflows/legend-fast-track-ui.yml']))
+        self.assertEqual([row['key'] for row in selected['matrix']['include']],['website'])
+        self.assertFalse(selected['commerce'])
+        self.assertFalse(selected['routing'])
+        self.assertFalse(selected['schema'])
+
+    def test_tracked_website_submit_does_not_use_untracked_async_cli(self):
+        azure=deploy.Azure('masterapp-website',Path('/tmp/exact-package.zip'),
+                           'https://website.example/provenance','a'*40,static=True)
+        class Result:
+            returncode=0
+            stderr=''
+            stdout='{}'
+        with patch.object(deploy.subprocess,'run',return_value=Result()) as runner:
+            self.assertTrue(azure.submit())
+        command=runner.call_args.args[0]
+        self.assertEqual(command[command.index('--async')+1],'false')
+        self.assertEqual(command[command.index('--track-status')+1],'true')
+        self.assertEqual(command[command.index('--enable-kudu-warmup')+1],'true')
+
+    def test_prior_unverified_deployment_forces_fresh_noentry_preflight_failure(self):
+        azure=deploy.Azure('masterapp-website',Path('/tmp/exact-package.zip'),
+                           'https://website.example/provenance','a'*40,static=True)
+        from datetime import datetime
+        old=datetime.fromisoformat(authority.WEBSITE_MISSING_UPLOAD_AFTER)
+        self.assertEqual(old.isoformat(),'2026-10-12T19:38:11+00:00')
+        self.assertEqual(authority.WEBSITE_MISSING_UPLOAD_REVISION,
+                         '631258bdcdd8c42a64570baef0db49b05e1ea829')
+        # A new provider row is NEVER negative evidence, even if failed.
+        row={'id':'new','status':3,'received_time':'2026-10-12T20:00:00Z'}
+        received=datetime.fromisoformat(row['received_time'].replace('Z','+00:00'))
+        self.assertGreaterEqual(received,old)
+
 class RouterRecoveryTests(unittest.TestCase):
     def journal(self):
         j=SimpleNamespace(identity='a'*64, intent=None, success=None)
