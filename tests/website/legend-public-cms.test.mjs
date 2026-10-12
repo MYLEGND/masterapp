@@ -1153,7 +1153,9 @@ test('desktop preserves authored geometry while mobile uses conversion-first sem
     assert.equal(a.dataset.legendContentRole,'action');
   }finally{desktop.close();}
   assert.match(publicCss,/\[data-legend-content-role="action"\][\s\S]*min-inline-size:min\(100%,var\(--public-action-min\)\)/);
-  assert.match(publicCss,/@media\(max-width:650px\)[\s\S]*\[data-legend-content-role="heading"\]\{order:20\}[\s\S]*\[data-legend-content-role="action"\][\s\S]*order:40[\s\S]*\[data-legend-content-role="media"\]\{order:50\}/);
+  // Published mobile must preserve the page's authored order, not semantic sorting.
+  assert.doesNotMatch(publicCss, /\\[data-legend-responsive-flow="true"\\]>\\[data-legend-content-role="heading"\\]\\{order:/);
+  assert.doesNotMatch(publicCss, /\\[data-legend-responsive-flow="true"\\]>\\[data-legend-content-role="media"\\]\\{order:/);
 });
 
 test('business banner and shell typography derive from shared tokens and server shell authority',()=>{
@@ -4109,6 +4111,7 @@ test('compiled published mobile clears desktop geometry and preserves canonical 
   const heading=canonicalNodeById(doc,'home.h1.node.1');
   heading.style={widthPercent:35,offsetXPercent:58,offsetYPx:160,heightPx:130,fontSize:44};
   heading.breakpointStyles={mobile:{widthPercent:100,fontSize:22}};
+  doc.shell.footer=[canonicalNode('shell.footer','container','footer',{className:'site-footer',children:[]})];
   const footer=doc.shell.footer[0];
   footer.style={offsetYPx:-220};
   footer.breakpointStyles={mobile:{offsetYPx:0}};
