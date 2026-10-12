@@ -30,6 +30,9 @@ on:
       - Legend-Cloudflare/src/website-routing/**
       - Legend-Cloudflare/tests/website-routing/**
       - Protect-Website/**
+      - SHARED/WebsitePlatform/**
+      - Legend-Website/scripts/**
+      - tests/website/**
       - ParfaitApp/**
       - AgentPortal.Tests/**
       - Domain/Entities/CommerceMerchant*.cs
