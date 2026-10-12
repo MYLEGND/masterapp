@@ -190,27 +190,58 @@ public class WebsitePlatformController : ControllerBase
             return NotFound();
         var route = path.TrimEnd('/');
         if (route.Length == 0) route = "/";
-        var result = await Public(WebsiteEditorSiteKeys.Legend, cancellationToken: cancellationToken);
-        if (result is not OkObjectResult published) return result;
-        var payload = JsonSerializer.Serialize(published.Value, JsonOptions);
-        using var source = JsonDocument.Parse(payload);
-        var document = source.RootElement.GetProperty("document");
-        if (!document.TryGetProperty("pages", out var pages) || !pages.TryGetProperty(route, out var page) ||
-            page.TryGetProperty("navigation", out var navigation) &&
-            navigation.ValueKind == JsonValueKind.Object &&
-            navigation.TryGetProperty("isDeleted", out var deleted) && deleted.ValueKind == JsonValueKind.True)
-            return NotFound();
+        // Resolve exactly one immutable published snapshot. The visitor path must
+        // never rebuild the entire public API envelope or launch a Node compiler.
+        var publication = await (
+            from state in _db.Set<WebsiteContentState>().AsNoTracking()
+            join version in _db.Set<WebsiteContentVersion>().AsNoTracking()
+                on state.PublishedVersionId equals version.Id
+            where state.SiteKey == WebsiteEditorSiteKeys.Legend &&
+                  state.OwnerKey == WebsiteEditorSiteKeys.GlobalOwnerKey &&
+                  version.StateId == state.Id &&
+                  version.SnapshotRetiredUtc == null
+            select new { version.Id, version.StateId, version.CompiledPagesJson }
+        ).SingleOrDefaultAsync(cancellationToken);
+        if (publication is null) return NotFound();
+
         try
         {
-            var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
-            using var compiled = JsonDocument.Parse(await compiler.CompileLegendAsync(payload, cancellationToken));
+            var compiledPages = publication.CompiledPagesJson;
+            if (string.IsNullOrWhiteSpace(compiledPages))
+            {
+                // One-time materialization for historical immutable publications.
+                // Derived compiled HTML can fill a missing slot without changing
+                // the authored DocumentJson, publication ID, or published pointer.
+                var result = await Public(WebsiteEditorSiteKeys.Legend, cancellationToken: cancellationToken);
+                if (result is not OkObjectResult published) return StatusCode(503);
+                var payload = JsonSerializer.Serialize(published.Value, JsonOptions);
+                using var envelope = JsonDocument.Parse(payload);
+                if (!envelope.RootElement.TryGetProperty("publication", out var identity) ||
+                    identity.ValueKind != JsonValueKind.Object ||
+                    !identity.TryGetProperty("versionId", out var value) ||
+                    value.GetGuid() != publication.Id)
+                    return StatusCode(503);
+
+                var compiler = HttpContext.RequestServices
+                    .GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
+                compiledPages = await compiler.CompileLegendAsync(payload, cancellationToken);
+                await _db.Set<WebsiteContentVersion>()
+                    .Where(version => version.Id == publication.Id &&
+                                      version.StateId == publication.StateId &&
+                                      version.CompiledPagesJson == null &&
+                                      version.SnapshotRetiredUtc == null)
+                    .ExecuteUpdateAsync(updates => updates
+                        .SetProperty(version => version.CompiledPagesJson, compiledPages),
+                        cancellationToken);
+            }
+
+            using var compiled = JsonDocument.Parse(compiledPages);
             if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var rendered)) return NotFound();
             var html = (rendered.GetProperty("html").GetString() ?? "")
                 .Replace("__LEGEND_CANONICAL_URL__", "https://www.mylegnd.com" + route, StringComparison.Ordinal);
             Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
             Response.Headers.XContentTypeOptions = "nosniff";
-            if (source.RootElement.TryGetProperty("publication", out var identity) && identity.ValueKind == JsonValueKind.Object)
-                Response.Headers["X-Legend-Publication-Id"] = identity.GetProperty("versionId").GetString();
+            Response.Headers["X-Legend-Publication-Id"] = publication.Id.ToString("D");
             return Content(HttpMethods.IsHead(Request.Method) ? "" : html, "text/html; charset=utf-8");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -2317,6 +2348,33 @@ public class WebsitePlatformController : ControllerBase
                 .LoadAsync(document, business.Id, cancellationToken);
             var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
             version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, collections, cancellationToken);
+        }
+        else if (actor.SiteKey == WebsiteEditorSiteKeys.Legend)
+        {
+            // Compile before the published pointer is committed, as scoped
+            // business sites already do. Readers never see an incomplete version.
+            var compiler = HttpContext.RequestServices?
+                .GetService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
+            if (compiler is null && _db.Database.IsRelational())
+                throw new InvalidOperationException("website_compiler_not_configured");
+            if (compiler is not null)
+            {
+                var scope = await PublishedStoreScopeAsync(actor.OwnerUserId, actor.SiteKey, document, cancellationToken);
+                var publicPayload = JsonSerializer.Serialize(new
+                {
+                    siteKey = WebsiteEditorSiteKeys.Legend,
+                    publication = new { versionId = version.Id, revision = version.Revision },
+                    business = (object?)null,
+                    businessName = (string?)null,
+                    facts = (object?)null,
+                    collections = Array.Empty<object>(),
+                    store = await StorePayloadAsync(actor.SiteKey, document, scope, ticket: null, cancellationToken),
+                    ctaCatalog = new { options = ctaOptions },
+                    document,
+                    legacyMigration = (object?)null
+                }, JsonOptions);
+                version.CompiledPagesJson = await compiler.CompileLegendAsync(publicPayload, cancellationToken);
+            }
         }
         _db.Set<WebsiteContentVersion>().Add(version);
         state.ImportReportJson = importReportJson;
