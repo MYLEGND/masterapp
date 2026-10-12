@@ -58,6 +58,54 @@ class RouterOnlyAdmissionTests(unittest.TestCase):
 
 
 
+class HistoricManualProxyReadbackTests(unittest.TestCase):
+    def test_exact_source_pinned_manual_proxy_resolution_requires_all_evidence(self):
+        prior = {'id':38276359453,'head_sha':'1f08cd5a2518a4d206ecf4bccdad4024b7cba26e',
+                 'status':'completed','conclusion':'failure','run_attempt':2}
+        outcomes = {'Select exact affected applications':'success',
+                    'Admit exact validated fast-track source':'success',
+                    'Reconcile production schema before publication':'success',
+                    'Affected App Deploy — ${{ matrix.target }}':'skipped',
+                    'Publish verified website routing':'failure'}
+        jobs=[{'name':name,'conclusion':outcome,'status':'completed'} for name,outcome in outcomes.items()]
+        history={'total_count':1,'jobs':[{'id':114904843387,'name':'Publish verified website routing',
+                                         'conclusion':'failure'}]}
+        diagnostic={'total_count':1,'jobs':[{'id':114910241289,
+             'name':'Read live publication routes and proxied DNS without writes',
+             'status':'completed','conclusion':'success'}]}
+        def read_api(repo,path,token):
+            return history if '/38276359453/' in path else diagnostic
+        first='FAST_TRACK_ROUTER:preserved\\nFAST_TRACK_DNS_PROXY_RECONCILIATION:apex_and_www_only\\nreturned HTTP 403\\nWebsite DNS proxy requires DNS Edit authority or recovery: mylegnd.com'
+        second='FAST_TRACK_RELEASE_HEAD_CHANGED'
+        records=[{'type':'A','name':'mylegnd.com','proxied':True},
+                 {'type':'A','name':'mylegnd.com','proxied':True},
+                 {'type':'CNAME','name':'www.mylegnd.com','proxied':True}]
+        def diagnostic_log(records):
+            lines=[]
+            for host in ('mylegnd.com','www.mylegnd.com'):
+                entry={'url':'https://'+host+'/','status':200,'publicationId':'v1',
+                       'containsPublishedDocument':True,'containsLoadingMarker':False,
+                       'cfRayPresent':True}
+                lines.append('PUBLIC_ROUTE_DIAGNOSTIC='+json.dumps(entry))
+            lines.append('CLOUDFLARE_PUBLIC_DNS='+json.dumps(records))
+            lines.append('CLOUDFLARE_WORKER_ROUTES='+json.dumps([
+                {'pattern':'*/*','script':'legend-business-website-router'}]))
+            return '\\n'.join(lines)
+        logs={114904843387:first,114926219880:second,114910241289:diagnostic_log(records)}
+        with patch.object(authority,'is_fast_track_producer',return_value=True), \\
+             patch.object(authority,'api_get',side_effect=read_api), \\
+             patch.object(authority,'_release_job_log',side_effect=lambda repo,id,token:logs[id]):
+            self.assertTrue(authority.attested_fast_track_manual_dns_proxy_completion('owner/repo',prior,jobs,'token'))
+            records[0]['proxied']=False
+            logs[114910241289]=diagnostic_log(records)
+            self.assertFalse(authority.attested_fast_track_manual_dns_proxy_completion('owner/repo',prior,jobs,'token'))
+            records[0]['proxied']=True
+            logs[114910241289]=diagnostic_log(records)
+            altered=dict(prior,head_sha='f'*40)
+            self.assertFalse(authority.attested_fast_track_manual_dns_proxy_completion('owner/repo',altered,jobs,'token'))
+
+
+
 class RouterRecoveryTests(unittest.TestCase):
     def journal(self):
         j=SimpleNamespace(identity='a'*64, intent=None, success=None)
