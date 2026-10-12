@@ -4043,6 +4043,138 @@ def attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, tok
         return False
 
 
+
+# Exact-source historical Website recovery. This is a narrowly scoped
+# non-entry attestation; it does not itself grant an upload permission.
+WEBSITE_MISSING_UPLOAD_RUN = 38298499476
+WEBSITE_MISSING_UPLOAD_REVISION = "631258bdcdd8c42a64570baef0db49b05e1ea829"
+WEBSITE_MISSING_UPLOAD_DIAGNOSTIC = 38302622805
+WEBSITE_MISSING_UPLOAD_DIAGNOSTIC_SHA = "1e52f3b245d56710e1c914677ed7c5acf69bfc1e"
+WEBSITE_MISSING_UPLOAD_BASELINE = "7140313682a7aba20c0a7abf73fe13b215bda043"
+WEBSITE_MISSING_UPLOAD_AFTER = "2026-10-12T19:38:11+00:00"
+
+
+def attested_website_one_deploy_nonentry(repository, token):
+    """Require authenticated original run, retained intent and later Azure proof.
+
+    The one old async ZIP submission was not accompanied by a Kudu operation,
+    even after three read-only reconciliations. This source-pinned exception
+    NEVER treats an ambiguous success as a replay authorization.
+    """
+    try:
+        old = api_get(repository, f"actions/runs/{WEBSITE_MISSING_UPLOAD_RUN}", token)
+        if (old.get("id") != WEBSITE_MISSING_UPLOAD_RUN or
+            old.get("head_sha") != WEBSITE_MISSING_UPLOAD_REVISION or
+            old.get("status") != "completed" or old.get("conclusion") != "failure" or
+            old.get("run_attempt") != 3 or not is_fast_track_producer(repository, old)):
+            return False
+        expected = {1:114975435448, 2:114979430606, 3:114983198708}
+        for attempt, job_id in expected.items():
+            inventory = api_get(repository,
+                f"actions/runs/{WEBSITE_MISSING_UPLOAD_RUN}/attempts/{attempt}/jobs?per_page=100", token)
+            jobs=inventory.get("jobs")
+            if (not isinstance(jobs,list) or inventory.get("total_count") != len(jobs)):
+                return False
+            website=[j for j in jobs if j.get("name") == "Affected App Deploy — Website"]
+            if (len(website)!=1 or website[0].get("id") != job_id or
+                website[0].get("status") != "completed" or
+                website[0].get("conclusion") != "failure"):
+                return False
+            steps={s.get("name"):s for s in website[0].get("steps",[]) if isinstance(s,dict)}
+            if steps.get("Publish or reconcile exact application bytes",{}).get("conclusion")!="failure":
+                return False
+            if attempt>=2 and (steps.get("Restore existing immutable package on resumed attempts",{}).get("conclusion")!="success"
+                or steps.get("Compile application and produce ZIP",{}).get("conclusion")!="skipped"):
+                return False
+            log=_release_job_log(repository,job_id,token)
+            if "Deployment remains unverified at the deadline" not in log:
+                return False
+            if ("Submitting the verified immutable ZIP once." in log) != (attempt==1):
+                return False
+        original=api_get(repository,
+            f"actions/runs/{WEBSITE_MISSING_UPLOAD_RUN}/artifacts?per_page=100",token)
+        artifacts=original.get("artifacts")
+        if not isinstance(artifacts,list) or original.get("total_count")!=len(artifacts):
+            return False
+        expected_package="fast-track-package-"+WEBSITE_MISSING_UPLOAD_REVISION+"-website"
+        expected_intent="legend-release-operation-intent-364d3a708feee88353a4c3e1fe1ab5796fcffffc6b9a26280bd9f539766c9873"
+        matching={a.get("name"):a for a in artifacts if isinstance(a,dict)}
+        if (matching.get(expected_package,{}).get("expired") is not False or
+            matching.get(expected_intent,{}).get("expired") is not False or
+            any(a.get("name","").startswith("legend-release-operation-success-364d3a708feee88353a4c3e1fe1ab5796fcffffc6b9a26280bd9f539766c9873")
+                for a in artifacts)):
+            return False
+        diagnostic=api_get(repository,f"actions/runs/{WEBSITE_MISSING_UPLOAD_DIAGNOSTIC}",token)
+        if (diagnostic.get("id")!=WEBSITE_MISSING_UPLOAD_DIAGNOSTIC or
+            diagnostic.get("head_sha")!=WEBSITE_MISSING_UPLOAD_DIAGNOSTIC_SHA or
+            diagnostic.get("path")!=".github/workflows/legend-fast-track-website-diagnostic.yml" or
+            diagnostic.get("status")!="completed" or diagnostic.get("event")!="push" or
+            diagnostic.get("head_branch")!=FAST_TRACK_PR_BASE):
+            return False
+        detail=api_get(repository,
+            f"actions/runs/{WEBSITE_MISSING_UPLOAD_DIAGNOSTIC}/jobs?per_page=100",token)
+        rows=detail.get("jobs")
+        if not isinstance(rows,list) or detail.get("total_count")!=len(rows):
+            return False
+        evidence=[j for j in rows if j.get("id")==114988969145 and j.get("name")=="website-provider-evidence"]
+        if len(evidence)!=1:return False
+        executed={s.get("name"):s.get("conclusion") for s in evidence[0].get("steps",[]) if isinstance(s,dict)}
+        if any(executed.get(step)!="success" for step in (
+            "Read failed deployment and exact static site without writing",
+            "Forensic read of preserved Website upload with no provider mutation",
+            "Inspect nested Kudu deployment failure without changes")):
+            return False
+        log=_release_job_log(repository,114988969145,token)
+        observations={}
+        for line in log.splitlines():
+            for prefix in ("WEBSITE_ORIGINAL_UPLOAD_AZURE_HISTORY=",
+                           "WEBSITE_ORIGINAL_UPLOAD_RUNTIME_READBACK=",
+                           "WEBSITE_ORIGINAL_UPLOAD_APP_STATE="):
+                if prefix not in line or "print(" in line:continue
+                observations.setdefault(prefix,[]).append(json.loads(line.split(prefix,1)[1]))
+        if any(len(observations.get(p,[]))!=1 for p in (
+            "WEBSITE_ORIGINAL_UPLOAD_AZURE_HISTORY=",
+            "WEBSITE_ORIGINAL_UPLOAD_RUNTIME_READBACK=",
+            "WEBSITE_ORIGINAL_UPLOAD_APP_STATE=")):
+            return False
+        history=observations["WEBSITE_ORIGINAL_UPLOAD_AZURE_HISTORY="][0]
+        live=observations["WEBSITE_ORIGINAL_UPLOAD_RUNTIME_READBACK="][0]
+        state=observations["WEBSITE_ORIGINAL_UPLOAD_APP_STATE="][0]
+        return bool(history.get("candidate")==WEBSITE_MISSING_UPLOAD_REVISION
+            and history.get("providerRowsAfterIntent")==[]
+            and type(history.get("totalDeploymentRows")) is int and history["totalDeploymentRows"]>0
+            and live.get("revision")==WEBSITE_MISSING_UPLOAD_BASELINE
+            and live.get("matchesExactCandidate") is False and live.get("status")==200
+            and state.get("state")=="Running" and state.get("enabled") is True)
+    except (ValueError,KeyError,TypeError,RuntimeError,OSError,
+            ReleaseOperationHistoryUnproven,EvidenceLookupUnavailable):
+        return False
+
+
+def attested_website_only_recovery_scope(before, revision, changed):
+    """Restore only the never-published Website target; never reselect Protect."""
+    if before != WEBSITE_MISSING_UPLOAD_DIAGNOSTIC_SHA:
+        return False
+    changed=set(changed)
+    required={"scripts/validation-resume.py","scripts/deploy-approved-app.py",
+              "scripts/test-fast-track-release.py",".github/workflows/legend-fast-track-ui.yml"}
+    if not required <= changed or changed-required:
+        return False
+    if subprocess.run(["git","merge-base","--is-ancestor",before,revision],
+                      capture_output=True).returncode:
+        return False
+    return attested_website_one_deploy_nonentry(
+        os.environ["GITHUB_REPOSITORY"], os.environ.get("GH_TOKEN") or os.environ["GITHUB_TOKEN"])
+
+
+def website_only_recovery_scope(scope):
+    if scope["selected"] or scope["schema"] or scope["commerce"] or scope["routing"]:
+        raise RuntimeError("WEBSITE_RECOVERY_SCOPE_NOT_ISOLATED")
+    row=RELEASE_TARGETS["website"]
+    selected={"key":"website","target":"Website","project":row["project"],
+              "azure_app":row["releaseName"],"host":row["host"]}
+    return {**scope,"matrix":{"include":[selected]},"selected":True}
+
 def fast_track_effective_baseline(before, revision):
     """Carry unpublished app scope; this never authorizes SQL or publication replay."""
     repository = os.environ['GITHUB_REPOSITORY']

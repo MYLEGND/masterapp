@@ -120,6 +120,8 @@ jobs:
           else:
               raise SystemExit('Invalid fast-track event baseline')
           scope=authority.fast_track_scope(changed)
+          if authority.attested_website_only_recovery_scope(before,head,changed):
+              scope=authority.website_only_recovery_scope(scope)
           if authority.fast_track_pending_routing(before):
               scope.update(routing=True,commerce=True)
           with open(os.environ['GITHUB_OUTPUT'],'a') as stream:
