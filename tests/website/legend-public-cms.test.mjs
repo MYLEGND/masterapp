@@ -4100,6 +4100,61 @@ test('public mobile nav stays interactive after an authored Studio shell replace
   }finally{w.close();}
 });
 
+
+test('compiled publication retains the same DOM while applying authored mobile, tablet and desktop layouts',async()=>{
+  const doc=canonicalDocument({title:'Mobile and desktop are independent'});
+  const section=canonicalNodeById(doc,'home.section.1');
+  section.layout={mode:'grid',columns:3,gapPx:24};
+  section.breakpointLayouts={mobile:{mode:'stack',direction:'column',gapPx:14}};
+  const heading=canonicalNodeById(doc,'home.h1.node.1');
+  heading.style={widthPercent:45,color:'#1f2f48',fontSize:36};
+  heading.breakpointStyles={mobile:{widthPercent:100,color:'#b58c15',fontSize:22}};
+  const html=`<!doctype html><html><head></head><body>
+    <main><section data-cms-id="home.section.1" data-cms-composition-id="home.section.1"
+        data-cms-section="home.section.1" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px">
+      <h1 data-cms-id="home.h1.node.1" data-cms-composition-id="home.h1.node.1"
+          style="width:45%;color:rgb(31, 47, 72);font-size:36px">Desktop headline</h1>
+      <a data-cms-id="home.a.node.1" data-cms-composition-id="home.a.node.1" href="/contact">Contact</a>
+      <img data-cms-id="home.img.node.1" data-cms-composition-id="home.img.node.1" alt="Image">
+    </section></main>
+    <script id="legend-cms-published-document" type="application/json"></script></body></html>`;
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const w=dom.window;
+  const grid=w.document.querySelector('main section');
+  const h1=w.document.querySelector('main h1');
+  const contact=w.document.querySelector('main a');
+  w.innerWidth=390;
+  w.CSS={escape:value=>String(value)};
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'legend',document:doc,pageKey:'home',server:false,publishedMarkupReady:true,
+    runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.eval(source);
+  try{
+    assert.equal(w.document.querySelector('main section'),grid,'published section is not remounted');
+    assert.equal(w.document.querySelector('main h1'),h1,'published heading is not remounted');
+    assert.equal(w.document.querySelector('main a'),contact,'protected links retain their node identity');
+    assert.equal(grid.style.display,'flex','mobile uses the authored stack');
+    assert.equal(grid.style.flexDirection,'column');
+    assert.equal(grid.style.gap,'14px');
+    assert.equal(h1.style.width,'100%','mobile does not inherit desktop card width');
+    assert.equal(h1.style.fontSize,'22px','mobile font size is authoritative');
+    assert.equal(h1.style.color,'rgb(181, 140, 21)');
+    w.innerWidth=900;
+    w.dispatchEvent(new w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(grid.style.display,'grid');
+    assert.equal(grid.style.gridTemplateColumns,'repeat(2,minmax(0,1fr))','tablet gets tablet geometry');
+    w.innerWidth=1440;
+    w.dispatchEvent(new w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(grid.style.gridTemplateColumns,'repeat(3,minmax(0,1fr))','desktop restores authored columns');
+    assert.equal(h1.style.width,'45%','desktop width stays independent');
+    assert.equal(h1.style.fontSize,'36px');
+    assert.equal(w.document.querySelector('main h1'),h1);
+  }finally{w.close();}
+});
+
 test('compiled published mobile HTML keeps the first-render DOM during hydration',async()=>{
   const doc=canonicalDocument({title:'Published now'});
   const html='<!doctype html><html><head></head><body><header class="site-header"><button class="nav-toggle" data-public-nav-toggle aria-expanded="false">Menu</button><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main><h1>Published now</h1></main><script type="application/json" id="legend-cms-published-document"></script></body></html>';
