@@ -14,6 +14,7 @@ on:
       - fix/published-first-paint-20261012
       - fix/legend-server-rendered-first-paint-20261012
       - fix/legend-public-dns-proxy-canonical-20261012
+      - fix/router-only-fast-track-admission-20261012
     paths:
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py
