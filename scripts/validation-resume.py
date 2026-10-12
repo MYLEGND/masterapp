@@ -3978,8 +3978,8 @@ def attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, tok
         if not isinstance(h, list) or history.get('total_count') != len(h):
             return False
         router = [row for row in h if row.get('name') == 'Publish verified website routing']
-        if len(router) != 1 or router[0].get('id') != 114904843387 or
-            router[0].get('conclusion') != 'failure':
+        if (len(router) != 1 or router[0].get('id') != 114904843387 or
+            router[0].get('conclusion') != 'failure'):
             return False
         first_log = _release_job_log(repository, 114904843387, token)
         second_log = _release_job_log(repository, 114926219880, token)
@@ -3998,11 +3998,11 @@ def attested_fast_track_manual_dns_proxy_completion(repository, prior, jobs, tok
         diagnostic = api_get(repository,
             'actions/runs/38272435954/attempts/3/jobs?per_page=100', token)
         dj = diagnostic.get('jobs')
-        if not isinstance(dj, list) or diagnostic.get('total_count') != len(dj) or
+        if (not isinstance(dj, list) or diagnostic.get('total_count') != len(dj) or
             not any(row.get('id') == 114910241289 and
                 row.get('name') == 'Read live publication routes and proxied DNS without writes' and
                 row.get('status') == 'completed' and row.get('conclusion') == 'success'
-                for row in dj):
+                for row in dj)):
             return False
         log = _release_job_log(repository, 114910241289, token)
         pages, dns, routes = [], [], []
