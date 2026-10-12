@@ -108,6 +108,59 @@ public sealed class WebsitePublishingAuthorityTests
         fixture.Db.ChangeTracker.Clear();
     }
 
+    [Fact]
+    public async Task PublicLegendHtmlReadsOnlyActivePrecompiledPublication()
+    {
+        using var fixture = new Fixture();
+        var state = new Domain.Entities.WebsiteContentState
+        {
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SiteKey = WebsiteEditorSiteKeys.Legend
+        };
+        static string Page(string text) => JsonSerializer.Serialize(new
+        {
+            pages = new System.Collections.Generic.Dictionary<string, object>
+            {
+                ["/"] = new { html = "<!doctype html><main><h1>" + text + "</h1></main><a href='__LEGEND_CANONICAL_URL__'>Home</a>" }
+            }
+        });
+        var first = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 1, DocumentJson = "{}", CompiledPagesJson = Page("First")
+        };
+        var second = new Domain.Entities.WebsiteContentVersion
+        {
+            StateId = state.Id, Revision = 2, DocumentJson = "{}", CompiledPagesJson = Page("Second")
+        };
+        state.PublishedVersionId = first.Id;
+        fixture.Db.AddRange(state, first, second);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var controller = fixture.Controller;
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+        var firstPage = Assert.IsType<ContentResult>(await controller.LegendPage("/"));
+        Assert.Contains("<h1>First</h1>", firstPage.Content, StringComparison.Ordinal);
+        Assert.Contains("https://www.mylegnd.com/", firstPage.Content, StringComparison.Ordinal);
+        Assert.Equal(first.Id.ToString("D"),
+            controller.Response.Headers["X-Legend-Publication-Id"].ToString());
+
+        var active = await fixture.Db.Set<Domain.Entities.WebsiteContentState>().SingleAsync();
+        active.PublishedVersionId = second.Id;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var currentPage = Assert.IsType<ContentResult>(await controller.LegendPage("/"));
+        Assert.Contains("<h1>Second</h1>", currentPage.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("<h1>First</h1>", currentPage.Content, StringComparison.Ordinal);
+        Assert.Equal(second.Id.ToString("D"),
+            controller.Response.Headers["X-Legend-Publication-Id"].ToString());
+        Assert.IsType<NotFoundResult>(await controller.LegendPage("/absent"));
+    }
+
     private static WebsiteMutationOperation ReplaceTitle(
         WebsiteContentDocument document,
         string text)
