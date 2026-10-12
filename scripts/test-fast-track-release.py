@@ -727,8 +727,8 @@ class NoSqlBrandPreuploadRecoveryTests(unittest.TestCase):
             dict(name=name,expired=False,
                 workflow_run=dict(id=self.run['id'],head_sha=self.run['head_sha']))
             for name in self.names])
-        with patch.object(authority,'_release_history_source',return_value=self.source), \\
-             patch.object(authority,'api_get',return_value=inventory):
+        with (patch.object(authority,'_release_history_source',return_value=self.source),
+              patch.object(authority,'api_get',return_value=inventory)):
             return authority.attested_fast_track_no_sql_brand_preupload(
                 'owner/repo',self.run,self.jobs,'fixture')
     def test_bounded_preupload_failure_carries_only_unpublished_scope(self):
