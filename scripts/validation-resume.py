@@ -3739,6 +3739,79 @@ def fast_track_skipped_matrix(jobs):
         and owners[0].get('steps') == [])
 
 
+def attested_fast_track_no_sql_brand_preupload(repository, run, jobs, token):
+    """Carry unpublished app scope after a proven no-SQL, pre-upload brand-check failure.
+
+    This never grants upload or migration authority. Every selected deployment
+    must have stopped before publication, and the successful migration job must
+    prove the *no-SQL* path; any ambiguous job, artifact or entered write fails.
+    """
+    if (run.get('status') != 'completed' or run.get('conclusion') != 'failure'
+        or run.get('run_attempt') != 1 or
+        not re.fullmatch('[a-f0-9]{40}', str(run.get('head_sha', '')))):
+        return False
+    try:
+        source = _release_history_source(repository, run['head_sha'],
+            '.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW, token)
+        if hashlib.sha256(source.encode()).hexdigest() != '5ab1bab0315385c56838c2e0ffdc7cb78da00a34b734e716f25d0f26e5de6f51':
+            return False
+        names = ('Select exact affected applications',
+                 'Admit exact validated fast-track source',
+                 'Reconcile production schema before publication',
+                 'Publish verified website routing')
+        indexed = {}
+        for name in names:
+            matches = [job for job in jobs if job.get('name') == name]
+            if len(matches) != 1 or matches[0].get('status') != 'completed':
+                return False
+            indexed[name] = matches[0]
+        if any(indexed[name].get('conclusion') != 'success' for name in names[:3]):
+            return False
+        if indexed[names[3]].get('conclusion') != 'skipped':
+            return False
+        migration_steps = {step.get('name'): step for step in indexed[names[2]].get('steps', [])}
+        required = {'Check migration admission without entering a write step': 'success',
+                    'Apply or reconcile the exact rehearsed migration bundle': 'skipped',
+                    'Reconcile fresh already-ready schema without SQL bundle or mutation': 'success'}
+        if any(migration_steps.get(name, {}).get('conclusion') != status for name, status in required.items()):
+            return False
+        if any(step.get('conclusion') == 'failure' for step in indexed[names[2]].get('steps', [])):
+            return False
+        apps = [job for job in jobs if job.get('name', '').startswith('Affected App Deploy — ')]
+        permitted = {'Affected App Deploy — ' + value
+                     for value in ('AgentPortal', 'ClientApp', 'Protect', 'Parfait', 'Website')}
+        if not (1 <= len(apps) <= 5 and len(jobs) == len(apps) + len(names)
+            and len({job.get('name') for job in apps}) == len(apps)
+            and {job.get('name') for job in apps} <= permitted):
+            return False
+        for job in apps:
+            steps = job.get('steps', [])
+            failures = [step.get('name') for step in steps if step.get('conclusion') == 'failure']
+            uploads = [step for step in steps
+                       if step.get('name') == 'Publish or reconcile exact application bytes']
+            if (job.get('status') != 'completed' or job.get('conclusion') != 'failure'
+                or failures != ['Verify canonical brand registry and four-app identity']
+                or len(uploads) != 1 or uploads[0].get('conclusion') != 'skipped'):
+                return False
+        inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+        artifacts = inventory.get('artifacts')
+        if not isinstance(artifacts, list) or len(artifacts) != 3 or inventory.get('total_count') != 3:
+            return False
+        if any(artifact.get('expired') is not False or
+               artifact.get('workflow_run', {}).get('id') != run['id'] or
+               artifact.get('workflow_run', {}).get('head_sha') != run['head_sha']
+               for artifact in artifacts):
+            return False
+        artifact_names = [artifact.get('name', '') for artifact in artifacts]
+        return (sum(bool(re.fullmatch(r'legend-migration-observation-[a-f0-9]{64}', name))
+                    for name in artifact_names) == 1
+            and 'fast-track-database-recovery-' + str(run['id']) + '-1' in artifact_names
+            and 'fast-track-admission-' + str(run['id']) + '-1' in artifact_names)
+    except (ValueError, KeyError, TypeError, RuntimeError, EvidenceLookupUnavailable,
+            ReleaseOperationHistoryUnproven):
+        return False
+
+
 def fast_track_completed_sql_unpublished(repository, run, latest_jobs, token):
     """Carry app scope only; completed SQL remains owned by its durable journal."""
     if (run.get('status') != 'completed' or run.get('conclusion') != 'failure'
@@ -4235,9 +4308,12 @@ def fast_track_effective_baseline(before, revision):
             repository, prior, token) if prior.get('id') == 38178839491 else False)
         prewrite = (prior.get('run_attempt') == 1 and
                     (selection_stopped or admission_stopped or recovery_stopped)) or preflight_noentry
-        completed_sql = (not prewrite and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
+        no_sql_preupload = (not prewrite and attested_fast_track_no_sql_brand_preupload(
+            repository, prior, jobs, token))
+        completed_sql = (not prewrite and not no_sql_preupload
+            and len(admissions) == 1 and admissions[0].get('conclusion') == 'success'
             and fast_track_completed_sql_unpublished(repository, prior, jobs, token))
-        if len(writes) < 3 or not (prewrite or completed_sql):
+        if len(writes) < 3 or not (prewrite or no_sql_preupload or completed_sql):
             raise RuntimeError('FAST_TRACK_PREDECESSOR_REQUIRES_OPERATION_RECONCILIATION')
         pulls = api_get(repository, f'commits/{before}/pulls?per_page=100', token)
         merged = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == before
