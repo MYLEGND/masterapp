@@ -8744,11 +8744,42 @@
   });
   window.addEventListener('parfait-cart-updated', updateStoreCartCount);
 
+  // A published HTML snapshot is compiled for one desktop-sized DOM. That
+  // DOM must remain immutable, but its mobile/tablet presentation must not.
+  // Apply only the canonical authored breakpoint style/layout to existing
+  // nodes: no DOM replacement, text rewrite, protected binding, or event replay.
+  // Crucially, this runs on initial mobile load as well as width changes.
+  function refreshCompiledResponsivePresentation() {
+    const canonicalNodes=new Map();
+    for(const root of allCanonicalRootSets())
+      walkComposition(root.nodes,node=>canonicalNodes.set(node.id,node));
+    document.querySelectorAll('[data-cms-composition-id]').forEach(el=>{
+      const model=canonicalNodes.get(el.dataset.cmsCompositionId);
+      if(!model || el.dataset.cmsSignalOnly) return;
+      applyCanonicalResponsiveAttributes(el,model);
+      applyStyle(el,effectiveStyle(model,el));
+      applyLayout(el,effectiveLayout(model,el));
+    });
+    // These two native commerce actions share canonical responsive controls.
+    for(const kind of ['store','cart']){
+      const model=kind==='store' ? documentState.store?.storeNavigation : documentState.store?.cartNavigation;
+      const el=document.querySelector('[data-legend-store-nav="'+kind+'"]');
+      if(el && model){
+        applyStyle(el,effectiveStyle(model,el));
+        applyLayout(el,effectiveLayout(model,el));
+      }
+    }
+    refreshScaledElements();
+  }
+
   // The canonical compiler has already composed this immutable published
   // markup. Rebuilding it on the client interrupts touch scroll and remounts
   // menu buttons as visitors interact with the page.
   function hydrateCompiledPublication(payload) {
     documentState=normalizeDocument(payload.document || {});
+    // The compiler's HTML was emitted with a desktop-sized viewport. Apply
+    // the real visitor's breakpoint before running public interactions.
+    refreshCompiledResponsivePresentation();
     applyRuntimeActionContracts();
     ensureCanonicalPublicInquiry();
     updateStoreCartCount();
@@ -8782,7 +8813,10 @@
       responsiveFrameQueued=true;
       const update=()=>{
         responsiveFrameQueued=false;
-        refreshResponsiveComposition();
+        if(renderInput?.publishedMarkupReady===true && !editorMode && !materializeMode)
+          refreshCompiledResponsivePresentation();
+        else
+          refreshResponsiveComposition();
       };
       if(typeof window.requestAnimationFrame==='function')
         window.requestAnimationFrame(update);
