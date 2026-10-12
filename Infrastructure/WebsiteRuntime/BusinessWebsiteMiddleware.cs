@@ -158,30 +158,18 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             using var publishedDocument = JsonDocument.Parse(version.DocumentJson);
             var icon = publishedDocument.RootElement.TryGetProperty("faviconImageDataUrl", out var rawIcon) &&
                 rawIcon.ValueKind == JsonValueKind.String ? rawIcon.GetString() : null;
-            if (!string.IsNullOrWhiteSpace(icon))
+            var publishedFavicon = WebsiteFaviconParity.ResolvePublished(icon);
+            if (publishedFavicon?.RedirectUrl is { } url)
             {
-                if (Uri.TryCreate(icon, UriKind.Absolute, out var iconUri) && iconUri.Scheme == Uri.UriSchemeHttps)
-                {
-                    context.Response.Redirect(icon, permanent: false);
-                    return;
-                }
-                foreach (var mime in new[] { "image/png", "image/jpeg" })
-                {
-                    var prefix = "data:" + mime + ";base64,";
-                    if (!icon.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                    try
-                    {
-                        var encoded = icon[prefix.Length..];
-                        if (encoded.Length > 7_000_000) break;
-                        var bytes = Convert.FromBase64String(encoded);
-                        if (bytes.Length > 5_000_000) break;
-                        context.Response.ContentType = mime;
-                        if (!HttpMethods.IsHead(context.Request.Method))
-                            await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
-                        return;
-                    }
-                    catch (FormatException) { break; }
-                }
+                context.Response.Redirect(url, permanent: false);
+                return;
+            }
+            if (publishedFavicon?.Bytes is { } bytes)
+            {
+                context.Response.ContentType = publishedFavicon.ContentType!;
+                if (!HttpMethods.IsHead(context.Request.Method))
+                    await context.Response.Body.WriteAsync(bytes, context.RequestAborted);
+                return;
             }
             var faviconPath = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", "favicon.jpg");
             if (!File.Exists(faviconPath)) { await Unavailable(context, bridged, "favicon"); return; }

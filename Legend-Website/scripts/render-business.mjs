@@ -175,7 +175,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     // that URL against this exact immutable published document, never a draft.
     let favicon=doc.querySelector('link[rel~="icon"]');
     if(!favicon){ favicon=doc.createElement('link'); favicon.setAttribute('rel','icon'); doc.head.appendChild(favicon); }
-    favicon.setAttribute('href','/favicon.jpg');
+    favicon.setAttribute('href',company ? publicApiBase + '/api/website-content/public/legend/favicon' : '/favicon.jpg');
     favicon.removeAttribute('type');
     favicon.removeAttribute('sizes');
     // A single organization identity belongs to the published business, not to

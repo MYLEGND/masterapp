@@ -53,7 +53,8 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
 
         Assert.Contains("WebsiteFaviconParity.PublicUrl", portal, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", portal, StringComparison.Ordinal);
-        Assert.Contains("faviconTrackingProfile?.Slug", portal, StringComparison.Ordinal);
+        Assert.DoesNotContain("faviconTrackingProfile?.Slug", portal, StringComparison.Ordinal);
+        Assert.Contains("WebsiteEditorSiteKeys.Protect);", portal, StringComparison.Ordinal);
         Assert.Contains("agentSlug=", faviconParity, StringComparison.Ordinal);
         Assert.Contains("WebsiteFaviconParity.PublicUrl", workspace, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", workspace, StringComparison.Ordinal);
@@ -64,6 +65,11 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
         Assert.DoesNotContain("~/images/favicon/legend-favicon.svg", client, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"public/{siteKey}/favicon\")]", controller, StringComparison.Ordinal);
         Assert.Contains("LoadAsync(ownerKey, siteKey", controller, StringComparison.Ordinal);
+        Assert.Contains("WebsiteFaviconParity.ResolvePublished", controller, StringComparison.Ordinal);
+        Assert.Contains("[HttpHead(\"public/{siteKey}/favicon\")]", controller, StringComparison.Ordinal);
+        var businessMiddleware = File.ReadAllText(Source("Infrastructure", "WebsiteRuntime", "BusinessWebsiteMiddleware.cs"));
+        Assert.Contains("WebsiteFaviconParity.ResolvePublished", businessMiddleware, StringComparison.Ordinal);
+        Assert.Contains("\"image/webp\"", faviconParity, StringComparison.Ordinal);
     }
 
     private static string Source(params string[] segments)
