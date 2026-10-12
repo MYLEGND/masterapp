@@ -1154,8 +1154,8 @@ test('desktop preserves authored geometry while mobile uses conversion-first sem
   }finally{desktop.close();}
   assert.match(publicCss,/\[data-legend-content-role="action"\][\s\S]*min-inline-size:min\(100%,var\(--public-action-min\)\)/);
   // Published mobile must preserve the page's authored order, not semantic sorting.
-  assert.doesNotMatch(publicCss, /\\[data-legend-responsive-flow="true"\\]>\\[data-legend-content-role="heading"\\]\\{order:/);
-  assert.doesNotMatch(publicCss, /\\[data-legend-responsive-flow="true"\\]>\\[data-legend-content-role="media"\\]\\{order:/);
+  assert.equal(publicCss.includes('main [data-legend-responsive-flow="true"]>[data-legend-content-role="heading"]{order:'),false);
+  assert.equal(publicCss.includes('main [data-legend-responsive-flow="true"]>[data-legend-content-role="media"]{order:'),false);
 });
 
 test('business banner and shell typography derive from shared tokens and server shell authority',()=>{
