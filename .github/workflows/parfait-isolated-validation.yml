@@ -12,6 +12,7 @@ on:
       - isolation/parfait-live-cutover-20261011
       - isolation/business-scoped-payments-20261011
       - fix/published-first-paint-20261012
+      - fix/legend-server-rendered-first-paint-20261012
     paths:
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py

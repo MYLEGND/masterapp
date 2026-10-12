@@ -67,9 +67,13 @@ def company_render_ready(authority):
         headers={'Accept': 'text/html', 'Cache-Control': 'no-cache'})
     with urllib.request.urlopen(request, timeout=45) as response:
         body = response.read(4 * 1024 * 1024)
-        if (response.status != 200 or 'text/html' not in response.headers.get('Content-Type', '')
-            or b'legend-cms-published-document' not in body or b'<main' not in body.lower()):
-            raise RuntimeError('Published company renderer unproven; routing remains unchanged')
+        if (response.status != 200 or 'text/html' not in response.headers.get('Content-Type', '').lower()
+            or not response.headers.get('X-Legend-Publication-Id')
+            or b'legend-cms-published-document' not in body or b'<main' not in body.lower()
+            or b'data-legend-canonical-pending=' in body
+            or b'Loading the latest published website' in body
+            or b'<h1' not in body.lower()):
+            raise RuntimeError('Canonical published first paint unproven; routing remains unchanged')
     print('FAST_TRACK_COMPANY_RENDERER:VERIFIED_BEFORE_ROUTING')
 
 
@@ -112,6 +116,21 @@ def fast_track():
     print('FAST_TRACK_ROUTER:' + result)
     os.environ['ROUTING_PASS_THROUGH_HOSTS'] = json.dumps(['mylegnd.com', 'www.mylegnd.com', 'protect.mylegnd.com', 'portal.mylegnd.com', 'client.mylegnd.com'])
     load('release-auxiliary').first_party_router_proof()
+    # Read back both public hostnames, not only the code deployed to Cloudflare.
+    for hostname in ('mylegnd.com', 'www.mylegnd.com'):
+        request = urllib.request.Request('https://' + hostname + '/',
+            headers={'Accept': 'text/html', 'Cache-Control': 'no-cache',
+                     'User-Agent': 'LEGEND-publication-route-readback/1.0'})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read(4 * 1024 * 1024)
+            if (response.status != 200 or
+                not response.headers.get('X-Legend-Publication-Id') or
+                b'legend-cms-published-document' not in body or
+                b'data-legend-canonical-pending=' in body or
+                b'Loading the latest published website' in body or
+                b'<h1' not in body.lower()):
+                raise RuntimeError('LIVE_PUBLICATION_FIRST_PAINT_UNPROVEN:' + hostname)
+        print('LIVE_PUBLICATION_FIRST_PAINT_VERIFIED:' + hostname)
 
 
 if __name__ == '__main__':
