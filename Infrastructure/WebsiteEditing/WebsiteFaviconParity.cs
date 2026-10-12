@@ -19,6 +19,34 @@ public static class WebsiteFaviconParity
         return url;
     }
 
+    // One public image-resolution rule for both the company/app favicon endpoint
+    // and business custom-domain favicon responses. The document is selected by
+    // each caller's immutable published-version lookup, never by its draft.
+    public sealed record PublishedFavicon(byte[]? Bytes, string? ContentType, string? RedirectUrl);
+
+    public static PublishedFavicon? ResolvePublished(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return null;
+        foreach (var mime in new[] { "image/png", "image/jpeg", "image/webp" })
+        {
+            var prefix = "data:" + mime + ";base64,";
+            if (!reference.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                var encoded = reference[prefix.Length..];
+                if (encoded.Length > 7_000_000) return null;
+                var bytes = Convert.FromBase64String(encoded);
+                if (bytes.Length > 5_000_000) return null;
+                return new PublishedFavicon(bytes, mime, null);
+            }
+            catch (FormatException) { return null; }
+        }
+        return Uri.TryCreate(reference, UriKind.Absolute, out var uri) &&
+               uri.Scheme == Uri.UriSchemeHttps
+            ? new PublishedFavicon(null, null, reference)
+            : null;
+    }
+
     public static string FallbackUrl(IConfiguration configuration) =>
         ApiBase(configuration) + "/images/favicon/legend-favicon.jpg";
 

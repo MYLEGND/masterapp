@@ -49,6 +49,10 @@ test('Protect emits Website Studio published SEO metadata and favicon on initial
 test('Published CMS hydration preserves the initial favicon URL', () => {
   assert.match(cms, /const href = editorMode && value \? mediaUrl\(value\) : originalFaviconHref/);
 });
+test('Published LEGEND HTML uses the same studio icon authority as ClientApp and the static LEGEND homepage', () => {
+  assert.match(business, /company \? publicApiBase \+ '\/api\/website-content\/public\/legend\/favicon' : '\/favicon\.jpg'/);
+});
+
 test('Business compilation uses one crawlable icon URL and structured data', () => {
   assert.match(business, /structured\.setAttribute\('type','application\/ld\+json'\)/);
   assert.match(business, /favicon\.setAttribute\('href','\/favicon\.jpg'\)/);
