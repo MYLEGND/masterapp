@@ -2353,7 +2353,7 @@ public class WebsitePlatformController : ControllerBase
         {
             // Compile before the published pointer is committed, as scoped
             // business sites already do. Readers never see an incomplete version.
-            var compiler = HttpContext.RequestServices?
+            var compiler = ControllerContext.HttpContext?.RequestServices?
                 .GetService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
             if (compiler is null && _db.Database.IsRelational())
                 throw new InvalidOperationException("website_compiler_not_configured");
