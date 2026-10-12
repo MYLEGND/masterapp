@@ -4791,7 +4791,7 @@
       warning.hidden = false;
       warning.textContent = text;
     }
-    document.documentElement.hidden = false;
+    revealPublishedWebsite();
     return text;
   }
 
@@ -4829,18 +4829,36 @@
     }
     host.querySelector('p').textContent = message + ' Continue through the normal Agent Portal sign-in/approval flow; the portal will mint a new scoped editor ticket.';
     host.querySelector('[data-legend-editor-reauthorize]').href = href;
-    document.documentElement.hidden = false;
+    revealPublishedWebsite();
     return true;
   }
 
+  // One canonical first-visible-paint boundary for Founder, Protect and business pages.
+  // Never make the built-in template visible after a failed publication read.
+  function revealPublishedWebsite() {
+    document.documentElement.removeAttribute('data-legend-canonical-pending');
+    document.documentElement.hidden = false;
+  }
+
   function unavailable(error) {
-    if (SITE_KEY === 'business') {
+    if (!editorMode && !materializeMode) {
       document.body.replaceChildren();
       const main = document.createElement('main');
-      main.textContent = error.message || 'This website is unavailable.';
+      main.className = 'legend-canonical-unavailable';
+      main.setAttribute('role', 'alert');
+      const heading = document.createElement('h1');
+      heading.textContent = 'Website temporarily unavailable';
+      const explanation = document.createElement('p');
+      explanation.textContent = 'The latest published website could not be verified. An older version will not be shown.';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Retry website';
+      retry.addEventListener('click', () => location.reload());
+      main.append(heading, explanation, retry);
       document.body.appendChild(main);
+      console.error('[legend-publication]', error);
     }
-    document.documentElement.hidden = false;
+    revealPublishedWebsite();
   }
 
   let publicRuntimeStarted = false;
@@ -5174,12 +5192,11 @@
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) {
-        if (SITE_KEY === 'business') throw new Error('This business website is unavailable.');
-        document.documentElement.hidden = false;
-        return;
-      }
+      if (!response.ok)
+        throw new Error('The published website is unavailable (' + response.status + ').');
       const payload = await response.json();
+      if (!payload?.document || typeof payload.document !== 'object')
+        throw new Error('The canonical publication response was invalid.');
       storeContext = payload.store || null;
       legacyMigration = payload.legacyMigration || null;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : ctaCatalog;
@@ -5195,10 +5212,10 @@
       if (SITE_KEY === 'protect' && window.__legendTrackingInitialized === true)
         installPublishedSignalBindings();
       preservePreviewNavigation();
-      document.documentElement.hidden = false;
+      revealPublishedWebsite();
     } catch (error) {
-      unavailable(error);
-      // Public content remains fully usable from canonical defaults.
+      // The single caller owns the fail-closed first paint, not a silent template fallback.
+      throw error;
     }
   }
 
@@ -8533,7 +8550,7 @@
       if(materializeMode){
         const snapshot=currentMaterializedPage();
         window.parent?.postMessage({type:'legend-site-materialized-page',...snapshot},location.origin);
-        document.documentElement.hidden=false;
+        revealPublishedWebsite();
         return;
       }
 
@@ -8545,7 +8562,7 @@
           revision,
           results
         },location.origin);
-        document.documentElement.hidden=false;
+        revealPublishedWebsite();
         return;
       }
 
@@ -8561,7 +8578,7 @@
       installPageSelector();
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
-      document.documentElement.hidden = false;
+      revealPublishedWebsite();
     } catch (error) {
       unavailable(error);
       console.error('[legend-cms]', error);
@@ -8584,7 +8601,7 @@
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
-    document.documentElement.hidden = false;
+    revealPublishedWebsite();
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
