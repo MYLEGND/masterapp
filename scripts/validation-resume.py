@@ -2456,7 +2456,8 @@ def fast_track_scope(paths):
         'Infrastructure/Businesses/BusinessWorkspaceAccess.cs', 'ParfaitApp/Program.cs', 'Protect-Website/Program.cs',
         'Protect-Website/ProtectWebsite.csproj'} for path in paths)
     return dict(matrix={'include': matrix}, selected=bool(matrix), commerce=backend,
-                schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') for p in paths), impacts=impacts)
+                schema=schema, routing=any(p.startswith('Legend-Cloudflare/src/website-routing/') or
+                    p == 'scripts/release-router.py' for p in paths), impacts=impacts)
 
 
 LIFECYCLE_AUTHORITY_PATHS = (

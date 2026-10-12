@@ -21,6 +21,7 @@ def load(name):
 authority = load('validation-resume')
 probe = load('migration-probe-package')
 router = load('release-router')
+cloudflare = load('cloudflare-routing-authority')
 migration = load('release-migration')
 deploy = load('deploy-approved-app')
 
@@ -91,6 +92,59 @@ class RouterConfigurationTests(unittest.TestCase):
                 router.require_disabled_cutover([dict(binding,name='LEGEND_COMMERCE_CUTOVER_ENABLED')])
         router.require_disabled_cutover([])
         router.require_disabled_cutover([dict(name='LEGEND_COMMERCE_CUTOVER_ENABLED',type='plain_text',text='false')])
+
+
+
+
+class WebsiteDnsProxyTests(unittest.TestCase):
+    def test_existing_proxy_is_verified_without_writes_and_mx_is_not_touched(self):
+        records={
+            'mylegnd.com':[
+                {'id':'a','name':'mylegnd.com','type':'A','proxied':True},
+                {'id':'b','name':'mylegnd.com','type':'A','proxied':True},
+                {'id':'mail','name':'mylegnd.com','type':'MX','proxied':False}],
+            'www.mylegnd.com':[{'id':'c','name':'www.mylegnd.com','type':'CNAME','proxied':True}]}
+        def api(method,url,token,body=None):
+            self.assertEqual(method,'GET')
+            if '?' in url:
+                host='www.mylegnd.com' if 'www.mylegnd.com' in url else 'mylegnd.com'
+                return {'result':records[host],'result_info':{'total_pages':1}}
+            key=url.split('/')[-1]
+            return {'result':next(r for rows in records.values() for r in rows if r['id']==key)}
+        with patch.object(cloudflare,'api_request',side_effect=api):
+            cloudflare.reconcile_public_web_proxy('token','zone')
+
+    def test_only_unproxied_company_address_records_change_once(self):
+        records={'mylegnd.com':[{'id':'a','name':'mylegnd.com','type':'A','proxied':False}],
+                 'www.mylegnd.com':[{'id':'c','name':'www.mylegnd.com','type':'CNAME','proxied':False}]}
+        writes=[]
+        def api(method,url,token,body=None):
+            if '?' in url:
+                host='www.mylegnd.com' if 'www.mylegnd.com' in url else 'mylegnd.com'
+                return {'result':records[host],'result_info':{'total_pages':1}}
+            record=next(r for rows in records.values() for r in rows if r['id']==url.split('/')[-1])
+            if method=='PATCH':
+                self.assertEqual(body,{'proxied':True})
+                writes.append(record['id']);record['proxied']=True
+            return {'result':record}
+        with patch.object(cloudflare,'api_request',side_effect=api):
+            cloudflare.reconcile_public_web_proxy('token','zone')
+            cloudflare.reconcile_public_web_proxy('token','zone')
+        self.assertEqual(writes,['a','c'])
+
+    def test_mixed_www_addresses_stop_before_any_dns_edit(self):
+        records={'mylegnd.com':[{'id':'a','name':'mylegnd.com','type':'A','proxied':False}],
+                 'www.mylegnd.com':[{'id':'c','name':'www.mylegnd.com','type':'CNAME','proxied':False},
+                                     {'id':'d','name':'www.mylegnd.com','type':'AAAA','proxied':False}]}
+        writes=[]
+        def api(method,url,token,body=None):
+            if method!='GET':writes.append(url)
+            host='www.mylegnd.com' if 'www.mylegnd.com' in url else 'mylegnd.com'
+            return {'result':records[host],'result_info':{'total_pages':1}}
+        with patch.object(cloudflare,'api_request',side_effect=api):
+            with self.assertRaisesRegex(cloudflare.CloudflareError,'inventory differs'):
+                cloudflare.reconcile_public_web_proxy('token','zone')
+        self.assertEqual(writes,[])
 
 
 class CompanyRendererAdmissionTests(unittest.TestCase):

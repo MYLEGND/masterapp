@@ -305,6 +305,57 @@ def reconcile_bic() -> None:
     print("Cloudflare Browser Integrity Check remains enabled by zone policy and is disabled only on customer custom hostnames.")
 
 
+def reconcile_public_web_proxy(token: str, zone: str) -> None:
+    """Activate only LEGEND's two company web hostnames on the existing Worker.
+
+    Website owner/domain data stays in MasterApp; mail, TXT and all other hosts
+    are read-only. Each DNS record is read before and after a single idempotent
+    proxy-bit write. Confirmed records are never written again.
+    """
+    import urllib.parse
+    hosts = (("mylegnd.com", "A"), ("www.mylegnd.com", "CNAME"))
+    for hostname, required_type in hosts:
+        query = urllib.parse.urlencode({"name": hostname, "per_page": 100})
+        envelope = api_request("GET", f"{API}/zones/{zone}/dns_records?{query}", token)
+        if envelope.get("result_info", {}).get("total_pages", 1) != 1:
+            raise CloudflareError("Website DNS inventory is incomplete: " + hostname)
+        records = envelope.get("result")
+        if not isinstance(records, list):
+            raise CloudflareError("Website DNS inventory is unavailable: " + hostname)
+        address = [row for row in records if row.get("name") == hostname and
+                   row.get("type") in {"A", "AAAA", "CNAME"}]
+        if not address or len(address) > 4 or any(row.get("type") != required_type for row in address):
+            raise CloudflareError("Website DNS address inventory differs; no proxy changes: " + hostname)
+        if required_type == "CNAME" and len(address) != 1:
+            raise CloudflareError("Website www requires exactly one CNAME; no proxy changes")
+        # Read and validate the complete inventory before the first mutation.
+        if hostname == hosts[0][0]:
+            pending = [(hostname, address)]
+        else:
+            pending.append((hostname, address))
+    for hostname, rows in pending:
+        for row in rows:
+            record_id = row.get("id")
+            if not isinstance(record_id, str) or not record_id or row.get("proxied") not in (True, False):
+                raise CloudflareError("Website DNS record identity/proxy state is unproven")
+            endpoint = f"{API}/zones/{zone}/dns_records/{record_id}"
+            if row["proxied"] is False:
+                try:
+                    changed = api_request("PATCH", endpoint, token, {"proxied": True})
+                    if changed.get("result", {}).get("proxied") is not True:
+                        raise CloudflareError("Website proxy write was not acknowledged: " + hostname)
+                except CloudflareError:
+                    # A lost write acknowledgment must be reconciled by a read;
+                    # never replay an ambiguous DNS mutation.
+                    observation = api_request("GET", endpoint, token).get("result", {})
+                    if observation.get("proxied") is not True:
+                        raise CloudflareError("Website DNS proxy requires DNS Edit authority or recovery: " + hostname)
+            verify = api_request("GET", endpoint, token).get("result", {})
+            if verify.get("proxied") is not True or verify.get("name") != hostname or verify.get("type") != row["type"]:
+                raise CloudflareError("Website DNS proxy readback failed: " + hostname)
+        print("LEGEND_WEBSITE_DNS_PROXY_VERIFIED:" + hostname, flush=True)
+
+
 def challenge_events(host: str) -> None:
     token = required_env("CLOUDFLARE_API_TOKEN")
     zone = required_env("CLOUDFLARE_ZONE_ID")
