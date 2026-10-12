@@ -171,3 +171,75 @@ jobs:
               raise SystemExit('PROTECT_ROBOTS_CONTRACT_INVALID')
           print('PROTECT_POSTRELEASE_SITEMAP_AND_ROBOTS_VERIFIED='+str(len(locations)))
           PYPROOF
+
+  published-first-render-evidence:
+    name: Read live publication routes and proxied DNS without writes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+    steps:
+      - name: Inspect public HTML responses and exact Worker routing status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYROUTE'
+          import hashlib,json,re,urllib.request,urllib.error
+          def get(url, headers=None, timeout=25):
+              request=urllib.request.Request(url,headers=headers or {})
+              try:
+                  with urllib.request.urlopen(request,timeout=timeout) as r:
+                      return r.status,r.geturl(),r.headers,r.read(1500000)
+              except urllib.error.HTTPError as r:
+                  return r.code,r.geturl(),r.headers,r.read(2000)
+              except Exception as e:
+                  print('PUBLIC_ROUTE_TRANSPORT='+json.dumps({'url':url,'error':type(e).__name__}),flush=True)
+                  return None,url,{},b''
+          for url in ('https://mylegnd.com/','https://www.mylegnd.com/',
+                      'https://masterapp-protect.azurewebsites.net/api/website-content/public/legend/page?path=/'):
+              status,final,headers,body=get(url,{'User-Agent':'LegendPublicRouteReadOnlyDiagnostic/1.0',
+                  'Accept':'text/html','Cache-Control':'no-cache'})
+              observed={
+                  'url':url,'final':final,'status':status,'contentType':headers.get('Content-Type'),
+                  'publicationId':headers.get('X-Legend-Publication-Id'),
+                  'cfCache':headers.get('CF-Cache-Status'),'server':headers.get('Server'),
+                  'cfRayPresent':bool(headers.get('CF-RAY')),'bytes':len(body),
+                  'containsPublishedDocument':b'legend-cms-published-document' in body,
+                  'containsLoadingMarker':b'data-legend-canonical-pending=' in body,
+                  'containsLoadingText':b'Loading the latest published website' in body,
+                  'mainHasHeading':bool(re.search(rb'<main\\b[^>]*>[\\s\\S]*?<h1\\b',body,re.I)),
+                  'bodySha256':hashlib.sha256(body).hexdigest() if body else None
+              }
+              print('PUBLIC_ROUTE_DIAGNOSTIC='+json.dumps(observed,sort_keys=True),flush=True)
+          import os
+          token=os.environ.get('CLOUDFLARE_API_TOKEN','').strip()
+          if not token:
+              print('CLOUDFLARE_ROUTE_READ=TOKEN_UNAVAILABLE')
+              raise SystemExit(0)
+          api='https://api.cloudflare.com/client/v4'
+          def cloudflare(path):
+              status,final,headers,body=get(api+path,{'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try: payload=json.loads(body)
+              except ValueError:payload={}
+              if status!=200 or payload.get('success') is not True:
+                  print('CLOUDFLARE_ROUTE_READ_ERROR='+json.dumps({'path':path,'status':status,
+                    'codes':[error.get('code') for error in payload.get('errors',[]) if isinstance(error,dict)]}))
+                  return None
+              return payload.get('result')
+          zones=cloudflare('/zones?name=mylegnd.com&per_page=20')
+          if not isinstance(zones,list) or len(zones)!=1:
+              print('CLOUDFLARE_ROUTE_READ=ZONE_UNRESOLVED')
+              raise SystemExit(0)
+          zone=zones[0]['id']
+          records=cloudflare('/zones/'+zone+'/dns_records?per_page=100')
+          if isinstance(records,list):
+              print('CLOUDFLARE_PUBLIC_DNS='+json.dumps([{'name':r.get('name'),'type':r.get('type'),
+               'proxied':r.get('proxied')} for r in records if r.get('name') in
+               {'mylegnd.com','www.mylegnd.com'}],sort_keys=True))
+          routes=cloudflare('/zones/'+zone+'/workers/routes')
+          if isinstance(routes,list):
+              print('CLOUDFLARE_WORKER_ROUTES='+json.dumps([{'pattern':r.get('pattern'),
+               'script':r.get('script')} for r in routes if r.get('pattern') in
+               {'*/*','mylegnd.com/*','www.mylegnd.com/*','mylegnd.com/store*',
+                'www.mylegnd.com/store*'}],sort_keys=True))
+          PYROUTE
