@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import {parseHTML} from 'linkedom';
 import {businessPages} from '../src/business-content.mjs';
 import {pages as legendPages} from '../src/content.mjs';
-import {publicApiBase,publicRuntimeAssets,editorAuthorizationBase} from '../src/runtime-config.mjs';
+import {publicApiBase,publicRuntimeAssets,editorAuthorizationBase,publishedLegendFaviconUrl} from '../src/runtime-config.mjs';
 
 export async function compileBusiness(input, root=resolve(import.meta.dirname,'..')) {
   if (!input?.business?.id || !input.business.displayName || !input.document) throw new Error('A business and document are required.');
@@ -175,7 +175,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     // that URL against this exact immutable published document, never a draft.
     let favicon=doc.querySelector('link[rel~="icon"]');
     if(!favicon){ favicon=doc.createElement('link'); favicon.setAttribute('rel','icon'); doc.head.appendChild(favicon); }
-    favicon.setAttribute('href',company ? publicApiBase + '/api/website-content/public/legend/favicon' : '/favicon.jpg');
+    favicon.setAttribute('href',company ? publishedLegendFaviconUrl : '/favicon.jpg');
     favicon.removeAttribute('type');
     favicon.removeAttribute('sizes');
     // A single organization identity belongs to the published business, not to
