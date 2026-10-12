@@ -6037,6 +6037,39 @@
 
   let pendingPublicationKey = null;
   let pendingPublication = null;
+  let publicationRecoveryMode = 'unchecked';
+  function syncPublicationRecoveryUi() {
+    const panel=document.getElementById('legend-cms-publication-recovery');
+    const check=document.getElementById('legend-cms-publication-check');
+    const resume=document.getElementById('legend-cms-publication-resume');
+    const detail=document.getElementById('legend-cms-publication-detail');
+    const pending=!!pendingPublication;
+    const canPublish=managementPayload?.capabilities?.canPublish !== false;
+    for(const id of ['legend-cms-publish','legend-cms-publish-now']) {
+      const button=document.getElementById(id);
+      if(button && canPublish) button.textContent=pending?'Check publication':'Publish';
+    }
+    if(!panel) return;
+    panel.hidden=!pending;
+    if(!pending) return;
+    if(detail) detail.textContent='Original request '+pendingPublication.requestId+
+      ' · '+(publicationRecoveryMode==='not_found'
+        ? 'No saved version found. Resume the original request only.'
+        : publicationRecoveryMode==='conflict'
+        ? 'The draft revision changed. Review the current site before any further publication.'
+        : publicationRecoveryMode==='checking'
+        ? 'Checking the original publication without a new write…'
+        : 'Confirmation pending. Check the existing request before publishing again.');
+    if(check){
+      check.disabled=saving;
+      check.textContent=saving?'Checking…':'Retry confirmation';
+    }
+    if(resume){
+      resume.hidden=publicationRecoveryMode!=='not_found';
+      resume.disabled=saving || !canPublish || dirty || sourceEditorDirty ||
+        revision!==pendingPublication.expectedRevision;
+    }
+  }
   function restorePublication() {
     // Management resolves the business/agent scope after initial bootstrap.
     const key = 'legend-publication:' + SITE_KEY + ':' + BUSINESS_ID + ':' + AGENT_SLUG;
@@ -6045,15 +6078,20 @@
     pendingPublication = null;
     try {
       const stored = JSON.parse(sessionStorage.getItem(key) || 'null');
-      if (stored && typeof stored.requestId === 'string' && Number.isSafeInteger(stored.expectedRevision)) pendingPublication = stored;
+      if(stored && typeof stored.requestId==='string' &&
+          /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(stored.requestId) &&
+          Number.isSafeInteger(stored.expectedRevision))
+        pendingPublication={requestId:stored.requestId,expectedRevision:stored.expectedRevision};
     } catch {}
   }
   function rememberPublication(value) {
     pendingPublication = value;
+    publicationRecoveryMode='unchecked';
     try {
       if (value) sessionStorage.setItem(pendingPublicationKey, JSON.stringify(value));
       else sessionStorage.removeItem(pendingPublicationKey);
     } catch {}
+    syncPublicationRecoveryUi();
   }
   async function publicationRequest(url, options = {}) {
     const controller = new AbortController();
@@ -6084,10 +6122,82 @@
   }
 
   let saving = false;
-  async function save(publish = false, namedDraft = null) {
+  async function retryPublicationConfirmation() {
+    if(saving) return false;
+    restorePublication();
+    if(!pendingPublication) return false;
+    const request={...pendingPublication};
+    const status=document.getElementById('legend-cms-status');
+    saving=true;
+    publicationRecoveryMode='checking';
+    syncPublicationRecoveryUi();
+    if(status) status.textContent='Checking original publication '+request.requestId+'…';
+    try {
+      const url=new URL(API_BASE+'/api/website-content/manage/publication-status');
+      url.searchParams.set('ticket',editorTicket);
+      url.searchParams.set('requestId',request.requestId);
+      // Deliberately GET-only: confirmation must never issue a fresh publish.
+      const outcome=await publicationRequest(url);
+      if(!pendingPublication || pendingPublication.requestId!==request.requestId)
+        throw new Error('The pending publication changed while checking its status.');
+      if(outcome.found){
+        const published=outcome.publication;
+        if(published?.versionId!==request.requestId ||
+           !Number.isSafeInteger(published?.publishedRevision) ||
+           !Number.isSafeInteger(outcome.revision))
+          throw new Error('The server returned an invalid publication receipt.');
+        rememberPublication(null);
+        if(outcome.isCurrent!==true || outcome.revision!==published.publishedRevision){
+          if(status) status.textContent='Original publication confirmed, but a newer revision is active. Review the current website before publishing again.';
+          return true;
+        }
+        revision=outcome.revision;
+        if(status) status.textContent='Original publication confirmed; checking the public page…';
+        const verified=await verifyPublishedPage(published.versionId);
+        if(status) status.textContent=verified
+          ? 'Published — public version verified'
+          : 'Publication confirmed in the database; public page verification pending.';
+        return true;
+      }
+      if(outcome.revision===request.expectedRevision){
+        publicationRecoveryMode='not_found';
+        if(status) status.textContent='The original request has not been committed. Choose Resume original publication to use the SAME request ID.';
+      }else{
+        publicationRecoveryMode='conflict';
+        if(status) status.textContent='The website draft revision changed. The original request remains protected; review the current website before publishing.';
+      }
+    }catch(error){
+      publicationRecoveryMode='error';
+      if((error?.status===401 || error?.status===403) &&
+         showEditorAuthorizationRecovery('Website Studio authorization expired while checking the publication.')){
+        // Keep the session-scoped request identity for authorized recovery.
+      }
+      if(status) status.textContent='Could not check request '+request.requestId+
+        '. Retry confirmation; no new publication was submitted. '+(error?.message || '');
+    }finally{
+      saving=false;
+      syncPublicationRecoveryUi();
+    }
+    return false;
+  }
+  async function save(publish = false, namedDraft = null, resumePending = false) {
     if (saving) return false;
     clearTimeout(autoSaveTimer);
     const status=document.getElementById('legend-cms-status');
+    restorePublication();
+    if(publish && pendingPublication && !resumePending) return retryPublicationConfirmation();
+    if(publish && pendingPublication && resumePending &&
+       (publicationRecoveryMode!=='not_found' || dirty || sourceEditorDirty ||
+        revision!==pendingPublication.expectedRevision)){
+      if(status) status.textContent='Check the original request and resolve unsaved changes before resuming its publication.';
+      syncPublicationRecoveryUi();
+      return false;
+    }
+    if(!publish && pendingPublication){
+      if(status) status.textContent='First confirm the outstanding publication. Unsaved canvas edits remain locally available.';
+      syncPublicationRecoveryUi();
+      return false;
+    }
 
     if (publish && sourceEditorDirty) {
       if(status) status.textContent='Apply or discard your Selected Source changes before publishing. Nothing was published.';
@@ -6120,8 +6230,8 @@
           if (outcome.found) {
             payload = {...outcome.publication, revision:outcome.revision, alreadyPublished:true, isCurrent:outcome.isCurrent};
           } else if (outcome.revision !== pendingPublication.expectedRevision) {
-            rememberPublication(null);
-            throw new Error('The website changed while publication was being confirmed. Reload Website Studio before publishing again.');
+            publicationRecoveryMode='conflict';
+            throw new Error('The website changed while publication was being confirmed. The original request is preserved; review current website revisions.');
           }
         }
         if (!payload) {
@@ -6224,10 +6334,11 @@
       if(payload.canonicalProtectionViolation===true)
         showCanonicalProtectionViolation(payload.message || error.message,payload.correction);
       if(status) status.textContent=publish && pendingPublication && !error?.status
-        ? 'Publication could not be confirmed. Retry to reconcile request '+pendingPublication.requestId+' before any new publication.'
+        ? 'Publication could not be confirmed for request '+pendingPublication.requestId+'. Use Retry confirmation below; the request ID is preserved.'
         : payload.message || error?.message || 'Save failed';
     } finally {
       saving=false;
+      syncPublicationRecoveryUi();
       if(saved && dirty){
         clearTimeout(autoSaveTimer);
         autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
@@ -8140,6 +8251,12 @@
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 0;background:#081a3a;color:#fff;border-bottom:1px solid #344766;margin:0 0 12px;position:sticky;top:-20px;z-index:2}
       .legend-cms-bar button{min-height:38px;border-radius:8px;padding:8px 12px;border:1px solid #50617e;background:#142c50;color:#fff;font-weight:650}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
+      .legend-cms-publication-recovery{flex:1 0 100%;min-width:0;padding:11px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f9f7f0}
+      .legend-cms-publication-recovery strong{display:block;font-size:13px;color:#f0cf78;margin-bottom:5px}
+      .legend-cms-publication-recovery p{margin:0 0 10px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;color:#fff}
+      .legend-cms-publication-actions{display:flex;flex-wrap:wrap;gap:8px}
+      .legend-cms-publication-actions button{min-height:44px;white-space:normal;text-align:center;border-color:#d4ad45;background:#d4ad45;color:#081a3a;font-weight:800}
+      .legend-cms-publication-actions button:disabled{opacity:.55;cursor:wait}
       .legend-cms-panel{position:fixed;z-index:2147483000;top:0;right:0;width:min(24rem,92vw);min-width:20rem;min-height:0;height:100dvh;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom));box-shadow:-18px 0 42px #0005}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
@@ -8415,6 +8532,14 @@
     bar.innerHTML = `
       <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
       <span id="legend-cms-status" role="status" aria-live="polite">Draft editor</span>
+      <div id="legend-cms-publication-recovery" class="legend-cms-publication-recovery" role="group" aria-label="Pending publication recovery" hidden>
+        <strong>Publication confirmation pending</strong>
+        <p id="legend-cms-publication-detail"></p>
+        <div class="legend-cms-publication-actions">
+          <button id="legend-cms-publication-check" type="button">Retry confirmation</button>
+          <button id="legend-cms-publication-resume" type="button" hidden>Resume original publication</button>
+        </div>
+      </div>
       <input id="legend-cms-image-upload" type="file" accept="image/*,.heic,.heif,.avif" hidden>
       <button id="legend-cms-up">Section ↑</button>
       <button id="legend-cms-down">Section ↓</button>
@@ -8505,7 +8630,9 @@
     });
 
     document.getElementById('legend-cms-save')?.addEventListener('click', chooseDraft);
-    document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
+    document.getElementById('legend-cms-publish')?.addEventListener('click', () => void save(true));
+    document.getElementById('legend-cms-publication-check')?.addEventListener('click', () => void retryPublicationConfirmation());
+    document.getElementById('legend-cms-publication-resume')?.addEventListener('click', () => void save(true,null,true));
     document.getElementById('legend-cms-image-upload')?.addEventListener('change', async e => { await addImage(e.target.files?.[0]); e.target.value=''; });
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
@@ -8592,6 +8719,12 @@
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
       buildEditor();
+      restorePublication();
+      if(pendingPublication){
+        const status=document.getElementById('legend-cms-status');
+        if(status) status.textContent='Publication confirmation pending. Retry the original request below before any new publication.';
+      }
+      syncPublicationRecoveryUi();
       installCreativeAgentWorkspaceApi();
       installPageSelector();
       renderSignalControls();

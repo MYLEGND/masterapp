@@ -4147,3 +4147,24 @@ test('publish allows bounded immutable compilation before client cancellation wh
   assert.match(source,/url\.searchParams\.set\('requestId', pendingPublication\.requestId\)/);
   assert.match(source,/if \(!pendingPublication\) rememberPublication\(\{requestId:crypto\.randomUUID\(\), expectedRevision:revision\}\)/);
 });
+
+test('Website Studio exposes original-request publication recovery with read-only confirmation',()=>{
+  assert.match(source,/id="legend-cms-publication-recovery"/);
+  assert.match(source,/id="legend-cms-publication-check"/);
+  assert.match(source,/id="legend-cms-publication-resume"/);
+  assert.match(source,/async function retryPublicationConfirmation\(\)/);
+  const checking=source.split('async function retryPublicationConfirmation()')[1]
+    .split('async function save(')[0];
+  assert.match(checking,/url\.searchParams\.set\('requestId',request\.requestId\)/);
+  assert.match(checking,/const outcome=await publicationRequest\(url\)/);
+  assert.doesNotMatch(checking,/method:\s*'POST'/);
+  assert.doesNotMatch(checking,/crypto\.randomUUID\(/);
+  assert.match(checking,/outcome\.revision===request\.expectedRevision/);
+  assert.match(source,/publicationRecoveryMode!=='not_found' \|\| dirty \|\| sourceEditorDirty/);
+  assert.match(source,/\(publish && pendingPublication && !resumePending\) return retryPublicationConfirmation\(\)/);
+  assert.match(source,/\(pendingPublication && resumePending/);
+  assert.match(source,/publicationRecoveryMode='conflict';\s*throw new Error\('The website changed while publication/);
+  assert.match(source,/document\.getElementById\('legend-cms-publication-check'\)\?\.addEventListener/);
+  assert.match(source,/document\.getElementById\('legend-cms-publication-resume'\)\?\.addEventListener/);
+  assert.match(source,/buildEditor\(\);\s*restorePublication\(\);/);
+});
