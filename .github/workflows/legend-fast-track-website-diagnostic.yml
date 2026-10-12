@@ -60,6 +60,58 @@ jobs:
                   print('HTTP_READBACK='+json.dumps({'host':host,'path':path,'status':'network_unavailable'}))
           PY
 
+      - name: Forensic read of preserved Website upload with no provider mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYWEBSITE'
+          import datetime,json,subprocess,time,urllib.request
+          revision='631258bdcdd8c42a64570baef0db49b05e1ea829'
+          submitted=datetime.datetime.fromisoformat('2026-10-12T19:38:11+00:00')
+          resource='masterapp-website'
+          def read_az(args):
+              try:
+                  result=subprocess.run(['az',*args,'--only-show-errors','-o','json'],
+                                        capture_output=True,text=True,timeout=35)
+                  return json.loads(result.stdout) if result.returncode==0 else None
+              except (OSError,subprocess.TimeoutExpired,ValueError):
+                  return None
+          rows=read_az(['webapp','log','deployment','list','-g','masterapp-rg','-n',resource])
+          if not isinstance(rows,list):
+              print('WEBSITE_ORIGINAL_UPLOAD_AZURE_HISTORY=UNAVAILABLE')
+          else:
+              recent=[]
+              for row in rows:
+                  try:
+                      stamp=datetime.datetime.fromisoformat(str(row.get('received_time','')).replace('Z','+00:00'))
+                  except ValueError: continue
+                  if stamp>=submitted:
+                      recent.append({'id':str(row.get('id',''))[:80],
+                                     'status':row.get('status'),
+                                     'received':row.get('received_time'),
+                                     'completed':row.get('end_time')})
+              print('WEBSITE_ORIGINAL_UPLOAD_AZURE_HISTORY='+json.dumps({
+                  'candidate':revision,'providerRowsAfterIntent':recent[:12],
+                  'totalDeploymentRows':len(rows)},sort_keys=True),flush=True)
+          state=read_az(['webapp','show','-g','masterapp-rg','-n',resource,
+                          '--query','{state:state,availabilityState:availabilityState,enabled:enabled}'])
+          print('WEBSITE_ORIGINAL_UPLOAD_APP_STATE='+json.dumps(state if isinstance(state,dict)
+                else {'read':'unavailable'},sort_keys=True),flush=True)
+          url='https://masterapp-website.azurewebsites.net/_deployment-provenance.txt'
+          req=urllib.request.Request(url+'?expected='+revision+'&readback='+str(time.time_ns()),
+                  headers={'Cache-Control':'no-cache','Pragma':'no-cache'})
+          started=time.monotonic()
+          try:
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  body=response.read(256).decode('ascii','replace').strip()
+                  observation={'status':response.status,'contentType':response.headers.get('Content-Type'),
+                      'revision':body if len(body)==40 and all(c in '0123456789abcdef' for c in body) else None,
+                      'matchesExactCandidate':body==revision}
+          except Exception as exc:
+              observation={'errorType':type(exc).__name__,'matchesExactCandidate':False}
+          observation['elapsedMs']=round((time.monotonic()-started)*1000)
+          print('WEBSITE_ORIGINAL_UPLOAD_RUNTIME_READBACK='+json.dumps(observation,sort_keys=True),flush=True)
+          PYWEBSITE
       - name: Inspect nested Kudu deployment failure without changes
         shell: bash
         run: |
