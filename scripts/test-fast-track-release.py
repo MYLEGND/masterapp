@@ -720,7 +720,7 @@ class NoSqlBrandPreuploadRecoveryTests(unittest.TestCase):
                     'fast-track-database-recovery-38318950445-1',
                     'fast-track-admission-38318950445-1']
         self.source=authority.subprocess.check_output(
-            ['git','show','39fc10572cb8ffc7de812d3b50eb26992367c2d1:.github/workflows/legend-fast-track-ui.yml'],
+            ['git','show','bdc87f64cb9150bfeac26b26044c826b835cbb13:.github/workflows/legend-fast-track-ui.yml'],
             text=True)
     def prove(self):
         inventory=dict(total_count=len(self.names),artifacts=[
