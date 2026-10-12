@@ -3,21 +3,11 @@ name: Parfait commerce isolated build and contracts
 on:
   push:
     branches:
-      - isolation/parfait-canonical-commerce-20261010
-      - isolation/canonical-scoped-commerce-internal-20261010
-      - repair/fast-track-already-ready-no-sql-20261011
-      - repair/fast-track-map-no-sql-regression-20261011
-      - repair/fast-track-no-sql-activity-fence-20261011
-      - repair/fast-track-attested-preflight-two-attempt-20261011
-      - isolation/parfait-live-cutover-20261011
-      - isolation/business-scoped-payments-20261011
-      - fix/published-first-paint-20261012
-      - fix/legend-server-rendered-first-paint-20261012
-      - fix/legend-public-dns-proxy-canonical-20261012
-      - fix/router-only-fast-track-admission-20261012
-      - fix/legend-immutable-first-byte-20261012
-      - fix/canonical-mobile-navigation-scroll-hydration-20261012
-      - repair/fast-track-manual-dns-proof-20261012
+      # Every isolated repair class receives the same prepublication contract
+      # checks. Exact source+successful receipt are still required by admission.
+      - 'fix/**'
+      - 'repair/**'
+      - 'isolation/**'
     paths:
       - .github/workflows/legend-fast-track-ui.yml
       - scripts/deploy-approved-app.py
