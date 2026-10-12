@@ -304,3 +304,18 @@ test('untrusted business facts remain text and unsafe page routes reject publica
   }
   await assert.rejects(compileBusiness({business:{},document:document()}),/business and document/);
 });
+
+
+test('compiled immutable pages contain the single authoritative DOM hydration contract',async()=>{
+  const document={version:3,pages:{'/':{title:'Ready',composition:[{
+    id:'home.heading',type:'heading',tag:'h1',text:'Immediately visible',
+    style:{},breakpointStyles:{},layout:{mode:'free',direction:'column'},
+    breakpointLayouts:{},animations:[],signals:[],children:[]
+  }]}}};
+  const compiled=await compileBusiness({business,document});
+  const page=parseHTML(compiled.pages['/'].html).document;
+  const input=JSON.parse(page.querySelector('#legend-cms-published-document').textContent);
+  assert.equal(input.publishedMarkupReady,true);
+  assert.equal(input.server,false);
+  assert.ok(page.querySelector('main h1'));
+});

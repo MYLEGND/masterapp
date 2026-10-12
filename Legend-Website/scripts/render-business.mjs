@@ -218,7 +218,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
-      pageKey:renderPageKey,pageCatalog,server:false,
+      pageKey:renderPageKey,pageCatalog,server:false,publishedMarkupReady:true,
       runtime:{apiBase:publicApiBase,...(company?{editorAuthorizationUrl:editorAuthorizationBase+'/Account/EditLegendWebsite'}:{}),trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
