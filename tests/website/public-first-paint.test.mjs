@@ -7,6 +7,7 @@ const build = read('Legend-Website/scripts/build.mjs');
 const protect = read('Protect-Website/Views/Shared/_Layout.cshtml');
 const cms = read('SHARED/WebsitePlatform/legend-public-cms.js');
 const business = read('Legend-Website/scripts/render-business.mjs');
+const runtimeConfig = read('Legend-Website/src/runtime-config.mjs');
 const layoutPaths = [
   'AgentPortal/Views/Shared/_Layout.cshtml',
   'ClientApp/Views/Shared/_Layout.cshtml',
@@ -50,10 +51,12 @@ test('Published CMS hydration preserves the initial favicon URL', () => {
   assert.match(cms, /const href = editorMode && value \? mediaUrl\(value\) : originalFaviconHref/);
 });
 test('Published LEGEND HTML uses the same studio icon authority as ClientApp and the static LEGEND homepage', () => {
-  assert.match(business, /company \? publicApiBase \+ '\/api\/website-content\/public\/legend\/favicon' : '\/favicon\.jpg'/);
+  assert.match(runtimeConfig, /export const publishedLegendFaviconUrl = publicApiBase \+ '\/api\/website-content\/public\/legend\/favicon'/);
+  assert.match(build, /businessMode\?'\/favicon\.jpg':publishedLegendFaviconUrl/);
+  assert.match(business, /company \? publishedLegendFaviconUrl : '\/favicon\.jpg'/);
 });
 
 test('Business compilation uses one crawlable icon URL and structured data', () => {
   assert.match(business, /structured\.setAttribute\('type','application\/ld\+json'\)/);
-  assert.match(business, /company \? publicApiBase \+ '\/api\/website-content\/public\/legend\/favicon' : '\/favicon\.jpg'/);
+  assert.match(business, /company \? publishedLegendFaviconUrl : '\/favicon\.jpg'/);
 });

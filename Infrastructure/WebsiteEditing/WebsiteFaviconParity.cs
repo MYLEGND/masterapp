@@ -27,6 +27,9 @@ public static class WebsiteFaviconParity
     public static PublishedFavicon? ResolvePublished(string? reference)
     {
         if (string.IsNullOrWhiteSpace(reference)) return null;
+        // Historical published references may contain whitespace; normalize the
+        // read without changing or republishing the immutable stored document.
+        reference = reference.Trim();
         foreach (var mime in new[] { "image/png", "image/jpeg", "image/webp" })
         {
             var prefix = "data:" + mime + ";base64,";

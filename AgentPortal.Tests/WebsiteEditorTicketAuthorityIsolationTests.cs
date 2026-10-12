@@ -70,6 +70,7 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
         var businessMiddleware = File.ReadAllText(Source("Infrastructure", "WebsiteRuntime", "BusinessWebsiteMiddleware.cs"));
         Assert.Contains("WebsiteFaviconParity.ResolvePublished", businessMiddleware, StringComparison.Ordinal);
         Assert.Contains("\"image/webp\"", faviconParity, StringComparison.Ordinal);
+        Assert.Contains("reference = reference.Trim();", faviconParity, StringComparison.Ordinal);
     }
 
     private static string Source(params string[] segments)
