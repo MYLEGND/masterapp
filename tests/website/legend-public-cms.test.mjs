@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.css', import.meta.url), 'utf8');
+const publicWebSource = readFileSync(new URL('../../SHARED/WebsitePlatform/legend-public-web.js', import.meta.url), 'utf8');
 const foundationCss = readFileSync(new URL('../../Legend-Design/legend-web-foundation.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
@@ -1465,6 +1466,7 @@ test('canonical v3 runtime inherits base style and switches breakpoint style and
     assert.equal(section.style.gap,'12px');
     f.w.innerWidth=1400;
     f.w.dispatchEvent(new f.w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,15));
     assert.equal(heading.style.width,'60%');
     assert.equal(section.style.display,'grid');
     assert.equal(section.style.gridTemplateColumns,'repeat(3,minmax(0,1fr))');
@@ -1884,7 +1886,7 @@ test('custom code blocks use opaque data frames instead of weakening the page sc
 test('shared public mobile navigation uses the compact dropdown contract',()=>{
   assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
   assert.ok(publicCss.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
-  assert.ok(publicCss.includes('white-space:nowrap;overflow:hidden;text-overflow:ellipsis'));
+  assert.ok(publicCss.includes('white-space:normal;overflow-wrap:anywhere'));
   assert.ok(publicCss.includes('box-shadow:0 18px 44px rgba(0,0,0,.34)'));
   assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
@@ -2562,9 +2564,9 @@ test('mobile runtime contains canonical moved geometry without creating horizont
     assert.equal(heading.style.maxWidth,'100%');
     assert.equal(heading.style.left,'0%');
     assert.equal(heading.dataset.legendContentRole,'heading');
-    assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
+    assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:clip\}/);
     assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
-    assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
+    assert.doesNotMatch(source,/body\{touch-action:pan-y pinch-zoom\}/);
   }finally{f.close();}
 });
 
@@ -3973,7 +3975,7 @@ test('public mobile navigation is one compact viewport-safe dropdown instead of 
   assert.match(publicCss,/@media\(max-width:980px\)[\s\S]*?\.nav\{[^}]*top:calc\(100% \+ 6px\)[^}]*left:max\(12px,env\(safe-area-inset-left\)\)[^}]*right:max\(12px,env\(safe-area-inset-right\)\)/);
   assert.match(publicCss,/\.nav\{[^}]*max-height:min\(68dvh,520px\)/);
   assert.match(publicCss,/\.nav\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:nowrap/);
+  assert.match(publicCss,/\.nav a,\.nav button\{[^}]*width:100%[^}]*text-align:center[^}]*justify-content:center[^}]*white-space:normal/);
   assert.match(publicCss,/\.business-brand-banner strong\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
 });
 
@@ -4066,4 +4068,74 @@ test('HTTP success without the requested publication identity stays unconfirmed'
     f.click('#legend-cms-publish');await new Promise(resolve=>setTimeout(resolve,20));
     assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/could not be confirmed/);
   }finally{f.close();}
+});
+
+
+test('public mobile nav stays interactive after an authored Studio shell replacement',()=>{
+  const html='<!doctype html><html><body><header class="site-header"><button class="nav-toggle" type="button" data-public-nav-toggle aria-expanded="false">Menu</button><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main></main></body></html>';
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const w=dom.window;
+  try {
+    w.eval(publicWebSource);
+    const original=w.document.querySelector('[data-public-nav-toggle]');
+    original.click();
+    assert.equal(original.getAttribute('aria-expanded'),'true');
+    const oldHeader=w.document.querySelector('.site-header');
+    oldHeader.replaceWith(oldHeader.cloneNode(true));
+    const toggle=w.document.querySelector('[data-public-nav-toggle]');
+    const nav=w.document.querySelector('[data-public-nav]');
+    assert.notEqual(original,toggle);
+    toggle.click();
+    assert.equal(toggle.getAttribute('aria-expanded'),'false');
+    toggle.click();
+    assert.equal(toggle.getAttribute('aria-expanded'),'true');
+    nav.querySelector('a').click();
+    assert.equal(nav.dataset.open,'false');
+    toggle.click();
+    w.document.querySelector('main').click();
+    assert.equal(nav.dataset.open,'false');
+    toggle.click();
+    w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  }finally{w.close();}
+});
+
+test('compiled published mobile HTML keeps the first-render DOM during hydration',async()=>{
+  const doc=canonicalDocument({title:'Published now'});
+  const html='<!doctype html><html><head></head><body><header class="site-header"><button class="nav-toggle" data-public-nav-toggle aria-expanded="false">Menu</button><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main><h1>Published now</h1></main><script type="application/json" id="legend-cms-published-document"></script></body></html>';
+  const dom=new JSDOM(html,{url:'https://www.mylegnd.com/',runScripts:'outside-only'});
+  const w=dom.window;
+  const heading=w.document.querySelector('main h1'),header=w.document.querySelector('.site-header');
+  w.document.querySelector('#legend-cms-published-document').textContent=JSON.stringify({
+    siteKey:'legend',document:doc,pageKey:'home',server:false,publishedMarkupReady:true,
+    pageCatalog:[{route:'/',label:'Home'}],runtime:{apiBase:'https://protect.example.test'}
+  });
+  w.CSS={escape:v=>String(v)};
+  w.eval(source);
+  await new Promise(resolve=>setTimeout(resolve,12));
+  try {
+    assert.equal(w.document.querySelector('main h1'),heading);
+    assert.equal(w.document.querySelector('.site-header'),header);
+    assert.equal(w.document.querySelectorAll('style').length,0);
+    assert.match(source,/installResponsiveResize\(\)/);
+    assert.match(foundationCss,/html\{scroll-behavior:auto\}/);
+  }finally{w.close();}
+});
+
+
+test('new Website Studio page edits cannot remove a protected native header when shell content is absent',async()=>{
+  const doc=canonicalDocument({title:'Updated page'});
+  const html='<!doctype html><html><head></head><body><header class="site-header"><a class="brand" href="/">Brand</a><nav id="primary-nav" class="nav" data-public-nav data-open="false"><a href="/about">About</a></nav></header><main><h1>Original</h1></main><footer class="site-footer">Protected footer</footer></body></html>';
+  const f=await domFixture({siteKey:'legend',doc,search:'',html});
+  try{
+    const header=f.w.document.querySelector('.site-header');
+    const footer=f.w.document.querySelector('.site-footer');
+    assert.ok(header);
+    assert.equal(f.w.document.querySelectorAll('.site-header').length,1);
+    assert.ok(header.querySelector('[data-public-nav]'));
+    assert.ok(header.querySelector('[data-public-nav-toggle]'));
+    assert.equal(header.querySelector('[data-public-nav-toggle]').getAttribute('aria-expanded'),'false');
+    assert.equal(footer.textContent,'Protected footer');
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Updated page');
+  } finally {f.close();}
 });
