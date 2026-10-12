@@ -96,14 +96,22 @@ class RouterConfigurationTests(unittest.TestCase):
 class CompanyRendererAdmissionTests(unittest.TestCase):
     def test_http_success_without_published_html_is_not_renderer_readiness(self):
         from unittest.mock import MagicMock
-        for body, succeeds in [(b'<main>stale static page</main>',False),
-                (b'<main>Published</main><script id="legend-cms-published-document">{}</script>',True)]:
+        current=(b'<html><body><main><h1>Published now</h1></main>'
+                 b'<script id="legend-cms-published-document">{}</script></body></html>')
+        for body, headers, succeeds in [
+            (b'<main>stale static page</main>',{'Content-Type':'text/html'},False),
+            (current,{'Content-Type':'text/html'},False),  # No immutable publication identity.
+            (current.replace(b'<html>',b'<html data-legend-canonical-pending="true">'),
+             {'Content-Type':'text/html','X-Legend-Publication-Id':'version-1'},False),
+            (current,{'Content-Type':'text/html','X-Legend-Publication-Id':'version-1'},True),
+        ]:
             response=MagicMock();response.__enter__.return_value=response
-            response.status=200;response.headers={'Content-Type':'text/html'};response.read.return_value=body
-            with patch.object(router.urllib.request,'urlopen',return_value=response):
-                if succeeds:router.company_render_ready(authority)
+            response.status=200;response.headers=headers;response.read.return_value=body
+            with self.subTest(succeeds=succeeds,headers=headers,body=body[:80]), \
+                 patch.object(router.urllib.request,'urlopen',return_value=response):
+                if succeeds: router.company_render_ready(authority)
                 else:
-                    with self.assertRaises(RuntimeError):router.company_render_ready(authority)
+                    with self.assertRaises(RuntimeError): router.company_render_ready(authority)
 
 
 class SuccessfulSiblingTests(unittest.TestCase):
