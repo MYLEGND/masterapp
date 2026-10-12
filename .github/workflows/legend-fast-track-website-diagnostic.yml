@@ -208,7 +208,13 @@ jobs:
                   'containsLoadingMarker':b'data-legend-canonical-pending=' in body,
                   'containsLoadingText':b'Loading the latest published website' in body,
                   'mainHasHeading':bool(re.search(rb'<main\\b[^>]*>[\\s\\S]*?<h1\\b',body,re.I)),
-                  'bodySha256':hashlib.sha256(body).hexdigest() if body else None
+                  'bodySha256':hashlib.sha256(body).hexdigest() if body else None,
+                  'h1Tags':len(re.findall(rb'<h1\\b',body,re.I)),
+                  'mainTagPresent':bool(re.search(rb'<main\\b',body,re.I)),
+                  'mainBytes':len((re.search(rb'<main\\b[^>]*>([\\s\\S]*?)</main\\s*>',body,re.I) or [None,b''])[1]),
+                  'firstMainTagTypes':[tag.decode('ascii','ignore') for tag in re.findall(
+                       rb'<([a-z][a-z0-9-]*)\\b',((re.search(
+                       rb'<main\\b[^>]*>([\\s\\S]*?)</main\\s*>',body,re.I) or [None,b''])[1])[:2000],re.I)[:14]]
               }
               print('PUBLIC_ROUTE_DIAGNOSTIC='+json.dumps(observed,sort_keys=True),flush=True)
           import os
