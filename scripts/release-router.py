@@ -114,6 +114,11 @@ def fast_track():
                         '--keep-vars', '--tag', identity], cwd='Legend-Cloudflare', check=True, timeout=600)
     result = reconcile_tagged_router(journal, observe, publish)
     print('FAST_TRACK_ROUTER:' + result)
+    # The previous Worker upload is retained. DNS-only web hostnames cannot
+    # run Worker routes until the exact apex and www address records are proxied.
+    # Reuse the single Cloudflare control-plane authority; never touch MX/TXT.
+    dns_authority = load('cloudflare-routing-authority')
+    dns_authority.reconcile_public_web_proxy(os.environ['CLOUDFLARE_API_TOKEN'], zone)
     os.environ['ROUTING_PASS_THROUGH_HOSTS'] = json.dumps(['mylegnd.com', 'www.mylegnd.com', 'protect.mylegnd.com', 'portal.mylegnd.com', 'client.mylegnd.com'])
     load('release-auxiliary').first_party_router_proof()
     # Read back both public hostnames, not only the code deployed to Cloudflare.
@@ -121,15 +126,25 @@ def fast_track():
         request = urllib.request.Request('https://' + hostname + '/',
             headers={'Accept': 'text/html', 'Cache-Control': 'no-cache',
                      'User-Agent': 'LEGEND-publication-route-readback/1.0'})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            body = response.read(4 * 1024 * 1024)
-            if (response.status != 200 or
-                not response.headers.get('X-Legend-Publication-Id') or
-                b'legend-cms-published-document' not in body or
-                b'data-legend-canonical-pending=' in body or
-                b'Loading the latest published website' in body or
-                b'<h1' not in body.lower()):
-                raise RuntimeError('LIVE_PUBLICATION_FIRST_PAINT_UNPROVEN:' + hostname)
+        verified = False
+        for attempt in range(18):
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    body = response.read(4 * 1024 * 1024)
+                    verified = (response.status == 200 and
+                        bool(response.headers.get('X-Legend-Publication-Id')) and
+                        b'legend-cms-published-document' in body and
+                        b'data-legend-canonical-pending=' not in body and
+                        b'Loading the latest published website' not in body and
+                        b'<h1' in body.lower())
+            except (OSError, ValueError):
+                verified = False
+            if verified:
+                break
+            if attempt < 17:
+                time.sleep(10)
+        if not verified:
+            raise RuntimeError('LIVE_PUBLICATION_FIRST_PAINT_UNPROVEN:' + hostname)
         print('LIVE_PUBLICATION_FIRST_PAINT_VERIFIED:' + hostname)
 
 
