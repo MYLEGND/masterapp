@@ -24,35 +24,28 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         var access = await _households.ResolveActiveAccessAsync(
             request.ClientProfileId,
             cancellationToken);
-        if (!access.HasActiveMembership || !access.SubscriptionOwnerClientProfileId.HasValue)
+        if (!CanEvaluateSubscription(access))
         {
-            // Access resolution deliberately closes shared data whenever the
-            // paid household subscription is inactive. Still evaluate that
-            // one owner subscription here so existing billing reason codes
-            // (grace, suspended, past due, cancellation boundary) remain the
-            // single entitlement authority for both members.
-            var ownerProfileId = access.SubscriptionOwnerClientProfileId ?? request.ClientProfileId;
-            var inactiveSubscription = await _db.ClientSubscriptions
-                .AsNoTracking()
-                .Where(x => x.ClientProfileId == ownerProfileId)
-                .OrderByDescending(x => x.UpdatedUtc)
-                .ThenByDescending(x => x.CreatedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            return BuildEvaluation(
-                inactiveSubscription,
-                request.EntitlementKey,
-                request.EvaluatedUtc);
+            return new BillingEntitlementEvaluationResult(
+                ClientEntitlementStatus.NotGranted,
+                null,
+                null,
+                null,
+                access.ReasonCode ?? "HOUSEHOLD_MEMBERSHIP_REQUIRED",
+                ClientEntitlementSourceType.Subscription,
+                string.Empty,
+                $"{request.EntitlementKey}: household access is not eligible.");
         }
 
+        var ownerProfileId = access.SubscriptionOwnerClientProfileId ?? request.ClientProfileId;
         var subscription = await _db.ClientSubscriptions
             .AsNoTracking()
-            .Where(x => x.ClientProfileId == access.SubscriptionOwnerClientProfileId.Value)
+            .Where(x => x.ClientProfileId == ownerProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return BuildEvaluation(subscription, request.EntitlementKey, request.EvaluatedUtc);
+        return BillingStateMapper.EvaluateSubscription(subscription, request.EntitlementKey, request.EvaluatedUtc);
     }
 
     public async Task<ClientEntitlement> RefreshAsync(Guid clientProfileId, string entitlementKey, string? reasonCode = null, CancellationToken cancellationToken = default)
@@ -62,10 +55,13 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             cancellationToken);
 
         var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
-        // A paid owner whose subscription has just lapsed still needs its one
-        // existing entitlement projection updated to the terminal state. The
-        // partner never reaches this branch with a copied entitlement because
-        // only a direct subscription owner can be the fallback.
+        if (!CanEvaluateSubscription(access))
+            throw new InvalidOperationException("Eligible household access is required before entitlement can be refreshed.");
+
+        // Subscription inactivity still refreshes the paid owner's one
+        // projection. Explicit membership/household denials cannot enter this
+        // writer, and a client with no membership can fall back only to its
+        // own subscription.
         var entitlementOwnerProfileId = access.SubscriptionOwnerClientProfileId ?? clientProfileId;
         var isDirectSubscriptionOwner = await _db.ClientSubscriptions
             .AsNoTracking()
@@ -104,103 +100,15 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         return entitlement;
     }
 
-    private static BillingEntitlementEvaluationResult BuildEvaluation(
-        ClientSubscription? subscription,
-        string entitlementKey,
-        DateTime evaluatedUtc)
+    private static bool CanEvaluateSubscription(HouseholdAccessResolution access)
     {
-        if (subscription is null)
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.NotGranted,
-                null,
-                null,
-                null,
-                "NO_SUBSCRIPTION",
-                ClientEntitlementSourceType.Subscription,
-                string.Empty,
-                $"{entitlementKey}: no subscription found.");
-        }
-
-        var sourceId = subscription.Id.ToString();
-
-        if (subscription.CancelAtPeriodEnd &&
-            subscription.CurrentPeriodEndUtc.HasValue &&
-            subscription.CurrentPeriodEndUtc.Value <= evaluatedUtc)
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.NotGranted,
-                subscription.ActivatedUtc ?? subscription.CreatedUtc,
-                subscription.CurrentPeriodEndUtc,
-                null,
-                "SUBSCRIPTION_ENDED_AT_PERIOD_END",
-                ClientEntitlementSourceType.Subscription,
-                sourceId,
-                $"{entitlementKey}: scheduled cancellation reached its period boundary.");
-        }
-
-        if (subscription.Status == ClientSubscriptionStatus.Active)
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.Active,
-                subscription.ActivatedUtc ?? subscription.CreatedUtc,
-                subscription.CurrentPeriodEndUtc,
-                subscription.GracePeriodEndsUtc,
-                null,
-                ClientEntitlementSourceType.Subscription,
-                sourceId,
-                $"{entitlementKey}: subscription is active.");
-        }
-
-        if (subscription.Status == ClientSubscriptionStatus.GracePeriod ||
-            (subscription.GracePeriodEndsUtc.HasValue && subscription.GracePeriodEndsUtc.Value > evaluatedUtc))
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.GracePeriod,
-                subscription.ActivatedUtc ?? subscription.CreatedUtc,
-                subscription.CurrentPeriodEndUtc,
-                subscription.GracePeriodEndsUtc,
-                "SUBSCRIPTION_GRACE_PERIOD",
-                ClientEntitlementSourceType.Subscription,
-                sourceId,
-                $"{entitlementKey}: subscription is in grace period.");
-        }
-
-        if (subscription.Status is ClientSubscriptionStatus.Suspended or ClientSubscriptionStatus.Paused)
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.Suspended,
-                subscription.ActivatedUtc ?? subscription.CreatedUtc,
-                subscription.CurrentPeriodEndUtc,
-                subscription.GracePeriodEndsUtc,
-                "SUBSCRIPTION_SUSPENDED",
-                ClientEntitlementSourceType.Subscription,
-                sourceId,
-                $"{entitlementKey}: subscription is suspended.");
-        }
-
-        if (subscription.Status == ClientSubscriptionStatus.PastDue)
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.Restricted,
-                subscription.ActivatedUtc ?? subscription.CreatedUtc,
-                subscription.CurrentPeriodEndUtc,
-                subscription.GracePeriodEndsUtc,
-                "SUBSCRIPTION_PAST_DUE",
-                ClientEntitlementSourceType.Subscription,
-                sourceId,
-                $"{entitlementKey}: subscription is past due.");
-        }
-
-        return new BillingEntitlementEvaluationResult(
-            ClientEntitlementStatus.NotGranted,
-            subscription.ActivatedUtc ?? subscription.CreatedUtc,
-            subscription.CurrentPeriodEndUtc,
-            subscription.GracePeriodEndsUtc,
-            $"SUBSCRIPTION_{subscription.Status.ToString().ToUpperInvariant()}",
-            ClientEntitlementSourceType.Subscription,
-            sourceId,
-            $"{entitlementKey}: subscription is not eligible for access.");
+        // Only subscription inactivity may fall back to the resolved owner.
+        // A missing membership may evaluate only the requesting client's own
+        // subscription; explicit membership/household denials stay closed.
+        return (access.SubscriptionOwnerClientProfileId.HasValue &&
+                (access.HasActiveMembership || access.ReasonCode == "HOUSEHOLD_SUBSCRIPTION_INACTIVE")) ||
+               (access.ReasonCode == "HOUSEHOLD_MEMBERSHIP_REQUIRED" &&
+                !access.HouseholdAccountId.HasValue &&
+                !access.SubscriptionOwnerClientProfileId.HasValue);
     }
-
 }

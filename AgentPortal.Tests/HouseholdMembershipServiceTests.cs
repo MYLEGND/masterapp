@@ -100,6 +100,13 @@ public sealed class HouseholdMembershipServiceTests
         Assert.False(access.HasActiveMembership);
         Assert.Equal("HOUSEHOLD_MEMBERSHIP_REQUIRED", access.ReasonCode);
         Assert.Null(access.SubscriptionOwnerClientProfileId);
+        var entitlements = new BillingEntitlementService(db, service);
+        var evaluation = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
+            accepted.Profile.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+        Assert.Equal(ClientEntitlementStatus.NotGranted, evaluation.Status);
+        Assert.Equal("NO_SUBSCRIPTION", evaluation.ReasonCode);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => entitlements.RefreshAsync(
+            accepted.Profile.Id, BillingEntitlementKeys.ClientAppFullAccess));
     }
 
     [Fact]
@@ -241,6 +248,176 @@ public sealed class HouseholdMembershipServiceTests
         var primary = Assert.Single(db.HouseholdMemberships);
         Assert.Equal(HouseholdMemberRole.PrimaryOwner, primary.Role);
         Assert.Equal(HouseholdMembershipStatus.Active, primary.Status);
+    }
+
+    [Theory]
+    [InlineData(HouseholdMembershipStatus.Suspended, HouseholdAccountStatus.Active, "HOUSEHOLD_MEMBERSHIP_SUSPENDED")]
+    [InlineData(HouseholdMembershipStatus.Removed, HouseholdAccountStatus.Active, "HOUSEHOLD_MEMBERSHIP_REMOVED")]
+    [InlineData(HouseholdMembershipStatus.PendingInvitation, HouseholdAccountStatus.Active, "HOUSEHOLD_MEMBERSHIP_PENDINGINVITATION")]
+    [InlineData(HouseholdMembershipStatus.Active, HouseholdAccountStatus.Suspended, "HOUSEHOLD_SUSPENDED")]
+    [InlineData(HouseholdMembershipStatus.Active, HouseholdAccountStatus.Closed, "HOUSEHOLD_CLOSED")]
+    [InlineData(HouseholdMembershipStatus.Active, HouseholdAccountStatus.PendingActivation, "HOUSEHOLD_PENDINGACTIVATION")]
+    public async Task DeniedPartner_CannotUseActiveOwnerSubscriptionOrOverwriteOwnerEntitlement(
+        HouseholdMembershipStatus membershipStatus,
+        HouseholdAccountStatus householdStatus,
+        string reasonCode)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var invitation = await service.IssuePartnerInvitationAsync(new IssuePartnerInvitationCommand(
+            owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var accepted = await service.AcceptPartnerInvitationAsync(invitation.PlainTextToken,
+            new AcceptPartnerInvitationCommand("Partner", "One", "partner@example.com"));
+        var entitlements = new BillingEntitlementService(db, service);
+        var projection = await entitlements.RefreshAsync(owner.Id, BillingEntitlementKeys.ClientAppFullAccess);
+        var updatedUtc = projection.UpdatedUtc;
+        accepted.Membership.Status = membershipStatus;
+        accepted.Household.Status = householdStatus;
+        await db.SaveChangesAsync();
+
+        var result = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
+            accepted.Profile.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+
+        Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
+        Assert.Equal(reasonCode, result.ReasonCode);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => entitlements.RefreshAsync(
+            accepted.Profile.Id, BillingEntitlementKeys.ClientAppFullAccess));
+        Assert.Equal(ClientEntitlementStatus.Active, projection.Status);
+        Assert.Equal(updatedUtc, projection.UpdatedUtc);
+        Assert.Single(db.ClientEntitlements);
+        Assert.Equal(owner.Id, projection.ClientProfileId);
+    }
+
+    [Theory]
+    [InlineData(ClientSubscriptionStatus.GracePeriod, 60, true)]
+    [InlineData(ClientSubscriptionStatus.PastDue, 60, true)]
+    [InlineData(ClientSubscriptionStatus.GracePeriod, null, false)]
+    [InlineData(ClientSubscriptionStatus.GracePeriod, 0, false)]
+    [InlineData(ClientSubscriptionStatus.GracePeriod, -60, false)]
+    [InlineData(ClientSubscriptionStatus.Canceled, 60, false)]
+    [InlineData(ClientSubscriptionStatus.Suspended, 60, false)]
+    [InlineData(ClientSubscriptionStatus.Paused, 60, false)]
+    public async Task PartnerAccessAndInvitations_UseTheSameSubscriptionDeadline(
+        ClientSubscriptionStatus status, int? graceMinutes, bool expectedAccess)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var invitation = await service.IssuePartnerInvitationAsync(new IssuePartnerInvitationCommand(
+            owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var accepted = await service.AcceptPartnerInvitationAsync(invitation.PlainTextToken,
+            new AcceptPartnerInvitationCommand("Partner", "One", "partner@example.com"));
+        var subscription = db.ClientSubscriptions.Single();
+        var evaluatedUtc = DateTime.UtcNow;
+        subscription.Status = status;
+        subscription.GracePeriodEndsUtc = graceMinutes.HasValue ? evaluatedUtc.AddMinutes(graceMinutes.Value) : null;
+        await db.SaveChangesAsync();
+
+        var access = await service.ResolveActiveAccessAsync(accepted.Profile.Id);
+        var evaluation = await new BillingEntitlementService(db, service).EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(accepted.Profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess, evaluatedUtc));
+        Assert.Equal(expectedAccess, access.HasActiveMembership);
+        Assert.Equal(expectedAccess, evaluation.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod);
+        Assert.Equal(status, subscription.Status);
+
+        if (!expectedAccess)
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.IssuePartnerInvitationAsync(
+                new IssuePartnerInvitationCommand(owner.Id, "New", "Partner", "new@example.com", "agent-1")));
+            Assert.Equal("A partner invitation can be issued only after the primary subscription is active.", exception.Message);
+            Assert.Equal("HOUSEHOLD_SUBSCRIPTION_INACTIVE", access.ReasonCode);
+        }
+    }
+
+    [Theory]
+    [InlineData(ClientSubscriptionStatus.Active)]
+    [InlineData(ClientSubscriptionStatus.GracePeriod)]
+    [InlineData(ClientSubscriptionStatus.PastDue)]
+    public async Task EligibleOwner_CanIssuePartnerInvitationDuringActiveOrUnexpiredGrace(
+        ClientSubscriptionStatus status)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var subscription = db.ClientSubscriptions.Single();
+        subscription.Status = status;
+        subscription.GracePeriodEndsUtc = DateTime.UtcNow.AddHours(1);
+        await db.SaveChangesAsync();
+
+        var invitation = await service.IssuePartnerInvitationAsync(new IssuePartnerInvitationCommand(
+            owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+
+        Assert.Equal(HouseholdInvitationStatus.Pending, invitation.Invitation.Status);
+        Assert.Equal(HouseholdMembershipStatus.PendingInvitation, invitation.Membership.Status);
+        Assert.Equal(HouseholdAccountStatus.Active, Assert.Single(db.HouseholdAccounts).Status);
+    }
+
+    [Fact]
+    public async Task InactiveHouseholdOwner_CannotBypassHouseholdDenialWithActiveSubscription()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var household = await service.EnsurePrimaryHouseholdActiveAsync(owner.Id);
+        household.Status = HouseholdAccountStatus.Suspended;
+        await db.SaveChangesAsync();
+
+        var evaluation = await new BillingEntitlementService(db, service).EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(owner.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+
+        Assert.Equal(ClientEntitlementStatus.NotGranted, evaluation.Status);
+        Assert.Equal("HOUSEHOLD_SUSPENDED", evaluation.ReasonCode);
+        Assert.Equal(HouseholdAccountStatus.Suspended, household.Status);
+    }
+
+    [Theory]
+    [InlineData(HouseholdAccountStatus.Suspended, "HOUSEHOLD_SUSPENDED")]
+    [InlineData(HouseholdAccountStatus.Closed, "HOUSEHOLD_CLOSED")]
+    [InlineData(HouseholdAccountStatus.PendingActivation, "HOUSEHOLD_PENDINGACTIVATION")]
+    public async Task InactiveHouseholdOwner_MissingPrimaryMembershipDoesNotReactivateHousehold(
+        HouseholdAccountStatus status, string reasonCode)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var household = new HouseholdAccount { SubscriptionOwnerClientProfileId = owner.Id, Status = status };
+        db.HouseholdAccounts.Add(household);
+        await db.SaveChangesAsync();
+
+        var evaluation = await new BillingEntitlementService(db, service).EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(owner.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+
+        Assert.Equal(ClientEntitlementStatus.NotGranted, evaluation.Status);
+        Assert.Equal(reasonCode, evaluation.ReasonCode);
+        Assert.Equal(status, household.Status);
+        Assert.Empty(db.HouseholdMemberships);
+    }
+
+    [Fact]
+    public async Task LegacyActiveOwner_StillHydratesOnePrimaryHouseholdAndMembership()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        var service = BuildService(db, "partner-entra-id");
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var entitlements = new BillingEntitlementService(db, service);
+
+        var first = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
+            owner.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+        var second = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
+            owner.Id, BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+
+        Assert.Equal(ClientEntitlementStatus.Active, first.Status);
+        Assert.Equal(first.SourceId, second.SourceId);
+        Assert.Equal(HouseholdAccountStatus.Active, Assert.Single(db.HouseholdAccounts).Status);
+        Assert.Equal(HouseholdMembershipStatus.Active, Assert.Single(db.HouseholdMemberships).Status);
     }
 
     private static HouseholdMembershipService BuildService(MasterAppDbContext db, string partnerObjectId)

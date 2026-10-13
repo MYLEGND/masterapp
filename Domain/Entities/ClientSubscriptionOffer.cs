@@ -22,4 +22,9 @@ public sealed class ClientSubscriptionOffer
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    public bool IsEligibleForActivation(DateTime evaluatedUtc) =>
+        Status == ClientSubscriptionOfferStatus.Offered &&
+        (!EffectiveUtc.HasValue || EffectiveUtc.Value <= evaluatedUtc) &&
+        (!ExpiresUtc.HasValue || ExpiresUtc.Value > evaluatedUtc);
 }

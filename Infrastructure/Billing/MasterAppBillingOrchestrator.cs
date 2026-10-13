@@ -364,6 +364,26 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
 
         var subscription = await GetExistingReusableSubscriptionAsync(command.ClientProfileId, command.ClientSubscriptionOfferId, cancellationToken);
+        if (subscription?.Status == ClientSubscriptionStatus.Active)
+        {
+            var alreadyActive = new ClientSubscriptionLifecycleResult(
+                false,
+                subscription.Status.ToString(),
+                "ACTIVE_SUBSCRIPTION_EXISTS",
+                "An active subscription already exists for this client.",
+                null,
+                false);
+            return new ActivateClientSubscriptionResult(false, alreadyActive.SafeErrorCode, alreadyActive.SanitizedSummary, null, false, subscription, null, alreadyActive);
+        }
+
+        if (!offer.IsEligibleForActivation(nowUtc))
+        {
+            var unavailable = new ClientSubscriptionLifecycleResult(false, offer.Status.ToString(),
+                "OFFER_NOT_AVAILABLE", "This subscription offer is not available for activation.", null, false);
+            return new ActivateClientSubscriptionResult(false, unavailable.SafeErrorCode, unavailable.SanitizedSummary,
+                null, false, subscription, null, unavailable);
+        }
+
         if (subscription is null)
         {
             var blockingSubscription = await FindBlockingSubscriptionAsync(command.ClientProfileId, command.ClientSubscriptionOfferId, cancellationToken);
@@ -396,23 +416,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             AddAuditEntry("ClientSubscription", subscription.Id, "created", null, subscription.Status.ToString(), BillingActorType.Agent, command.OwnerAgentUserId, "billing_orchestrator", null, command.CorrelationId);
             await _db.SaveChangesAsync(cancellationToken);
         }
-        else if (subscription.Status == ClientSubscriptionStatus.Active)
-        {
-            var alreadyActive = new ClientSubscriptionLifecycleResult(
-                false,
-                subscription.Status.ToString(),
-                "ACTIVE_SUBSCRIPTION_EXISTS",
-                "An active subscription already exists for this client.",
-                null,
-                false);
-            return new ActivateClientSubscriptionResult(false, alreadyActive.SafeErrorCode, alreadyActive.SanitizedSummary, null, false, subscription, null, alreadyActive);
-        }
-
         var pendingActivationAttempt = await _db.SubscriptionPayments
             .AnyAsync(x =>
                 x.ClientSubscriptionId == subscription.Id &&
                 x.Kind == SubscriptionPaymentKind.InitialActivation &&
-                (x.Status == SubscriptionPaymentStatus.Pending || x.Status == SubscriptionPaymentStatus.Processing),
+                x.Status != SubscriptionPaymentStatus.Failed && x.Status != SubscriptionPaymentStatus.Canceled,
                 cancellationToken);
         if (pendingActivationAttempt)
         {
@@ -595,6 +603,14 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             UpdatedUtc = nowUtc
         };
 
+        // Persist ownership and reconciliation state with the attempt before
+        // submitting a charge. A lost/cancelled response must remain eligible
+        // for the existing worker without permitting another charge.
+        subscription.IsPlatformManaged = true;
+        subscription.PlatformManagedSinceUtc ??= nowUtc;
+        subscription.Status = ClientSubscriptionStatus.ReconciliationRequired;
+        subscription.PaymentStanding = ClientSubscriptionPaymentStanding.RequiresAction;
+        subscription.UpdatedUtc = nowUtc;
         _db.SubscriptionPayments.Add(initialPaymentRecord);
         AddAuditEntry("SubscriptionPayment", initialPaymentRecord.Id, "created", null, initialPaymentRecord.Status.ToString(), BillingActorType.Client, null, "billing_orchestrator", null, correlationId);
         await _db.SaveChangesAsync(cancellationToken);
@@ -643,14 +659,29 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         initialPaymentRecord.ProviderRequestId = initialPaymentResult.ProviderRequestId;
         initialPaymentRecord.ProviderOccurredUtc = initialPaymentResult.ProviderOccurredUtc;
         initialPaymentRecord.Status = BillingStateMapper.MapPaymentStatus(initialPaymentResult.NormalizedStatus);
-        initialPaymentRecord.SafeFailureCode = initialPaymentResult.SafeErrorCode;
+        var initialPaymentCompleted = initialPaymentResult.Success &&
+            initialPaymentRecord.Status == SubscriptionPaymentStatus.Completed &&
+            !string.IsNullOrWhiteSpace(initialPaymentRecord.ProviderPaymentId);
+        var initialPaymentRejected = !initialPaymentResult.Retryable &&
+            ((initialPaymentRecord.Status is SubscriptionPaymentStatus.Failed or SubscriptionPaymentStatus.Canceled) ||
+             (!initialPaymentResult.Success &&
+              BillingStateMapper.Normalize(initialPaymentResult.NormalizedStatus) == "HTTP_400" &&
+              BillingStateMapper.Normalize(initialPaymentResult.SafeErrorCode) == "CARD_DECLINED"));
+        if (initialPaymentRejected && initialPaymentRecord.Status != SubscriptionPaymentStatus.Canceled)
+            initialPaymentRecord.Status = SubscriptionPaymentStatus.Failed;
+        else if (!initialPaymentCompleted && !initialPaymentRejected &&
+                 (initialPaymentRecord.Status is SubscriptionPaymentStatus.Failed or SubscriptionPaymentStatus.Canceled or SubscriptionPaymentStatus.Completed))
+            initialPaymentRecord.Status = SubscriptionPaymentStatus.Processing;
+
+        initialPaymentRecord.SafeFailureCode = initialPaymentCompleted ? null :
+            initialPaymentResult.SafeErrorCode ?? (initialPaymentRejected ? "INITIAL_PAYMENT_NOT_COMPLETED" : "INITIAL_PAYMENT_OUTCOME_UNKNOWN");
         initialPaymentRecord.Retryable = false;
         initialPaymentRecord.UpdatedUtc = DateTime.UtcNow;
 
         AddAuditEntry(
             "SubscriptionPayment",
             initialPaymentRecord.Id,
-            initialPaymentResult.Success ? "completed" : "failed",
+            initialPaymentCompleted ? "completed" : initialPaymentRejected ? "failed" : "outcome_unknown",
             SubscriptionPaymentStatus.Pending.ToString(),
             initialPaymentRecord.Status.ToString(),
             BillingActorType.System,
@@ -660,25 +691,26 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             correlationId,
             initialPaymentResult.SanitizedSummary);
 
-        if (!initialPaymentResult.Success || initialPaymentRecord.Status != SubscriptionPaymentStatus.Completed)
+        if (!initialPaymentCompleted)
         {
-            subscription.Status = ClientSubscriptionStatus.ActivationFailed;
-            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
+            subscription.Status = initialPaymentRejected ? ClientSubscriptionStatus.ActivationFailed : ClientSubscriptionStatus.ReconciliationRequired;
+            subscription.PaymentStanding = initialPaymentRejected ? ClientSubscriptionPaymentStanding.Failed : ClientSubscriptionPaymentStanding.RequiresAction;
             subscription.ProviderCustomerId = customerResult.ProviderCustomerId;
             subscription.LastChargeAttemptUtc = nowUtc;
             subscription.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
 
-            var failureCode = initialPaymentResult.SafeErrorCode ?? "INITIAL_PAYMENT_NOT_COMPLETED";
-            var failedPaymentResult = new ClientSubscriptionLifecycleResult(false, subscription.Status.ToString(), failureCode, initialPaymentResult.SanitizedSummary ?? "The initial payment was not completed.", initialPaymentResult.ProviderRequestId, initialPaymentResult.Retryable, customerResult.ProviderCustomerId, attachmentResult.ProviderPaymentMethodId);
+            var failureCode = initialPaymentRecord.SafeFailureCode;
+            var summary = initialPaymentRejected
+                ? initialPaymentResult.SanitizedSummary ?? "The initial payment was not completed."
+                : "The initial payment is awaiting reconciliation. No additional charge was submitted.";
+            var failedPaymentResult = new ClientSubscriptionLifecycleResult(false, subscription.Status.ToString(), failureCode, summary, initialPaymentResult.ProviderRequestId, false, customerResult.ProviderCustomerId, attachmentResult.ProviderPaymentMethodId);
             return new ActivateClientSubscriptionResult(false, failedPaymentResult.SafeErrorCode, failedPaymentResult.SanitizedSummary, failedPaymentResult.ProviderRequestId, failedPaymentResult.Retryable, subscription, null, failedPaymentResult);
         }
 
         subscription.Status = ClientSubscriptionStatus.Active;
         subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
         subscription.ProviderCustomerId = customerResult.ProviderCustomerId;
-        subscription.IsPlatformManaged = true;
-        subscription.PlatformManagedSinceUtc ??= nowUtc;
         subscription.FirstChargeUtc = command.FirstChargeUtc;
         subscription.FirstRecurringRenewalUtc = command.FirstRecurringRenewalUtc;
         subscription.BillingTimeZoneId = string.IsNullOrWhiteSpace(command.BillingTimeZoneId) ? subscription.BillingTimeZoneId : command.BillingTimeZoneId.Trim();

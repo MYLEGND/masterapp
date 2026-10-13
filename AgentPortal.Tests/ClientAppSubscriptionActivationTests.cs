@@ -783,6 +783,46 @@ public class ClientAppSubscriptionActivationTests
         Assert.Equal(SubscriptionActivationAvailability.Unavailable, result.Availability);
     }
 
+    [Theory]
+    [InlineData(ClientSubscriptionOfferStatus.Superseded, null, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Draft, null, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Accepted, null, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Expired, null, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Revoked, null, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Offered, 60, null)]
+    [InlineData(ClientSubscriptionOfferStatus.Offered, null, 0)]
+    [InlineData(ClientSubscriptionOfferStatus.Offered, null, -60)]
+    public async Task OfferEligibility_ActivationContextAndSubmissionRejectUnavailableOffer(
+        ClientSubscriptionOfferStatus status, int? effectiveMinutes, int? expiresMinutes)
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        var nowUtc = DateTime.UtcNow;
+        offer.Status = status;
+        offer.EffectiveUtc = effectiveMinutes.HasValue ? nowUtc.AddMinutes(effectiveMinutes.Value) : null;
+        offer.ExpiresUtc = expiresMinutes.HasValue ? nowUtc.AddMinutes(expiresMinutes.Value) : null;
+        const string token = "unavailable-offer-token";
+        var invitation = await AddInvitationAsync(db, profile, offer, token,
+            SubscriptionActivationInvitationStatus.Pending, nowUtc.AddDays(7));
+        var orchestrator = new Mock<IBillingOrchestrator>(MockBehavior.Strict);
+        var policy = BuildActivationPolicyService();
+        var service = BuildActivationService(db, orchestrator, policy);
+
+        var context = await service.GetContextAsync(token);
+
+        Assert.Equal(SubscriptionActivationAvailability.Unavailable, context.Availability);
+        var submission = await service.ActivateAsync(token, BuildPaymentInput());
+        Assert.False(submission.Success);
+        Assert.Equal("ACTIVATION_UNAVAILABLE", submission.SafeErrorCode);
+        Assert.Equal(SubscriptionActivationInvitationStatus.Pending, invitation.Status);
+        Assert.Empty(db.ClientSubscriptions);
+        Assert.Empty(db.SubscriptionPayments);
+        Assert.Empty(db.ClientIdentityContinuations);
+        orchestrator.VerifyNoOtherCalls();
+        policy.Verify(x => x.ResolveActivationSchedule(It.IsAny<ClientSubscriptionOffer>(), It.IsAny<DateTime>()), Times.Never);
+    }
+
     [Fact]
     public async Task ActivateAsync_FailedActivation_DoesNotCreateContinuation()
     {
