@@ -27,7 +27,7 @@ jobs:
       - name: Inspect Azure site state, deployment history, and direct runtime endpoints
         shell: bash
         env:
-          EXPECTED_UI_SHA: 1cc15923309140a39cb72e472c8def0f6ad706b5
+          EXPECTED_UI_SHA: dba66284ff23e973dc28aa2572da6224c601ee65
         run: |
           set -euo pipefail
           python3 - <<'PY'
