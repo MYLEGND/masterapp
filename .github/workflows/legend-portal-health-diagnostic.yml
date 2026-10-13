@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -18,6 +19,12 @@ jobs:
     timeout-minutes: 10
     environment: Production
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fast-track-package-dba66284ff23e973dc28aa2572da6224c601ee65-portal
+          run-id: 38323933521
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/portal-retained
       - name: Sign in to existing read-only Azure observation
         uses: azure/login@v2
         with:
@@ -138,4 +145,99 @@ jobs:
                   print('HTTP_READBACK='+json.dumps({'host':host,'path':path,
                       'observation':probe(host+path)},sort_keys=True),flush=True)
           # No provider mutation, no Azure writes, and no inference requests.
+          PY
+      - name: Verify identical live Azure files against original immutable Portal ZIP (GET only)
+        shell: bash
+        env:
+          EXPECTED_UI_SHA: dba66284ff23e973dc28aa2572da6224c601ee65
+          PORTAL_PACKAGE_DIR: ${{ runner.temp }}/portal-retained
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,tempfile,urllib.error,urllib.request,zipfile
+          retained=pathlib.Path(os.environ['PORTAL_PACKAGE_DIR'])
+          package=retained/'deploy.zip'
+          sums=retained/'SHA256SUMS'
+          def report(**fields):
+              print('PORTAL_LIVE_PACKAGE_PARITY='+json.dumps(fields,sort_keys=True),flush=True)
+          if not package.is_file() or not sums.is_file():
+              report(verified=False,reason='RETAINED_PACKAGE_MISSING');raise SystemExit(0)
+          expected_hash_lines=[s.split() for s in sums.read_text().splitlines() if s.strip()]
+          expected_hash=[parts[0] for parts in expected_hash_lines
+              if len(parts)==2 and pathlib.Path(parts[1]).name=='deploy.zip']
+          digest=hashlib.file_digest(package.open('rb'),'sha256').hexdigest()
+          if expected_hash!=[digest]:
+              report(verified=False,reason='RETAINED_PACKAGE_DIGEST_MISMATCH');raise SystemExit(0)
+          revision=os.environ['EXPECTED_UI_SHA']
+          with zipfile.ZipFile(package) as immutable:
+              try:
+                  provenance=json.loads(immutable.read('wwwroot/_deployment-provenance.json'))
+              except (KeyError,ValueError):
+                  report(verified=False,reason='IMMUTABLE_PROVENANCE_UNAVAILABLE');raise SystemExit(0)
+              if provenance.get('releaseSha')!=revision:
+                  report(verified=False,reason='IMMUTABLE_REVISION_MISMATCH');raise SystemExit(0)
+          request=urllib.request.Request('https://masterapp-portal.azurewebsites.net/api/runtime-provenance?package_check=1',
+              headers={'Cache-Control':'no-cache','User-Agent':'Legend-Exact-Package-Readback'})
+          try:
+              with urllib.request.urlopen(request,timeout=20) as response:
+                  current=json.loads(response.read(10000)).get('sourceRevision') if response.status==200 else None
+          except (OSError,ValueError) as exc:
+              report(verified=False,reason='LIVE_REVISION_UNAVAILABLE');raise SystemExit(0)
+          if current!=revision:
+              report(verified=False,reason='LIVE_REVISION_MISMATCH');raise SystemExit(0)
+          # Authenticate Kudu using a short-lived Microsoft Entra token held in
+          # runner memory only. No publishing profile or password is requested.
+          auth=subprocess.run(['az','account','get-access-token','--query','accessToken','-o','tsv',
+              '--only-show-errors'],capture_output=True,text=True,timeout=25)
+          if auth.returncode or not auth.stdout.strip():
+              report(verified=False,reason='KUDU_READ_TOKEN_UNAVAILABLE');raise SystemExit(0)
+          kudu=urllib.request.Request('https://masterapp-portal.scm.azurewebsites.net/api/zip/site/wwwroot/',
+              headers={'Authorization':'Bearer '+auth.stdout.strip(),'Cache-Control':'no-cache',
+                       'User-Agent':'Legend-Exact-Package-Readback'},method='GET')
+          with tempfile.TemporaryDirectory(prefix='legend-portal-kudu-readonly-') as temp:
+              archive=pathlib.Path(temp)/'live-wwwroot.zip'
+              try:
+                  with urllib.request.urlopen(kudu,timeout=160) as response,archive.open('wb') as target:
+                      if response.status!=200:
+                          report(verified=False,reason='KUDU_ZIP_NOT_HTTP_200');raise SystemExit(0)
+                      total=0
+                      while True:
+                          block=response.read(1024*1024)
+                          if not block:break
+                          total+=len(block)
+                          if total>300_000_000:
+                              report(verified=False,reason='KUDU_ZIP_SIZE_LIMIT');raise SystemExit(0)
+                          target.write(block)
+              except (OSError,ValueError,urllib.error.HTTPError) as err:
+                  report(verified=False,reason='KUDU_ZIP_GET_UNAVAILABLE',
+                      httpStatus=err.code if isinstance(err,urllib.error.HTTPError) else None)
+                  raise SystemExit(0)
+              try:
+                  with zipfile.ZipFile(package) as immutable,zipfile.ZipFile(archive) as live:
+                      def inventory(z):
+                          files={}
+                          for entry in z.infolist():
+                              if entry.is_dir(): continue
+                              name=entry.filename.replace('\\','/').lstrip('/')
+                              if not name or name in files or '..' in pathlib.PurePosixPath(name).parts:
+                                  raise ValueError('Invalid or duplicate archive member')
+                              with z.open(entry) as stream:
+                                  h=hashlib.sha256()
+                                  while block:=stream.read(1024*1024):h.update(block)
+                              files[name]=(entry.file_size,h.hexdigest())
+                          return files
+                      expected=inventory(immutable)
+                      observed=inventory(live)
+                      matches=expected==observed
+                      report(verified=matches,
+                          expectedRevision=revision,
+                          retainedZipSha256=digest,
+                          expectedFiles=len(expected),
+                          liveFiles=len(observed),
+                          missingFiles=len(set(expected)-set(observed)),
+                          additionalFiles=len(set(observed)-set(expected)),
+                          mismatchedFiles=sum(expected[k]!=observed[k] for k in expected.keys()&observed.keys()),
+                          proofMethod='exact-sha256-per-file' if matches else 'content-not-identical')
+              except (OSError,ValueError,zipfile.BadZipFile,RuntimeError):
+                  report(verified=False,reason='KUDU_ZIP_OR_INVENTORY_INVALID')
           PY
