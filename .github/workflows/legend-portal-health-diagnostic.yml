@@ -121,8 +121,8 @@ jobs:
               if activity.get('available') and isinstance(activity.get('value'),list):
                   rows=activity['value']
                   activity={'available':True,'count':len(rows),
-                      'events':[{'operation':str((x.get('operationName') or {}).get('value') or '')[:100],
-                          'status':str((x.get('status') or {}).get('value') or '')[:50],
+                      'events':[{'operation':str(((x.get('operationName') or {}).get('value') if isinstance(x.get('operationName'),dict) else x.get('operationName')) or '')[:100],
+                          'status':str(((x.get('status') or {}).get('value') if isinstance(x.get('status'),dict) else x.get('status')) or '')[:50],
                           'time':str(x.get('eventTimestamp') or '')[:45]}
                           for x in rows if isinstance(x,dict)][:30]}
               print('PORTAL_AZURE_ACTIVITY='+json.dumps(activity,sort_keys=True),flush=True)
