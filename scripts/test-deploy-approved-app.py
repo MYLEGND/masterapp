@@ -434,6 +434,41 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'SHA256'):
                 deploy.verify_package(path, 'a' * 40)
 
+    def test_portal_submits_tracked_operation_without_second_upload_or_untrusted_success(self):
+        azure = deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = '{"deploymentId":"tracked-operation-123"}'
+            with patch('builtins.print') as output:
+                self.assertTrue(azure.submit())
+            command = run.call_args.args[0]
+            for flag, value in [('--async', 'false'), ('--track-status', 'true'),
+                                ('--enable-kudu-warmup', 'true'), ('--type', 'zip')]:
+                self.assertEqual(value, command[command.index(flag) + 1])
+            self.assertEqual(300, run.call_args.kwargs['timeout'])
+            self.assertEqual(1, run.call_count)
+            self.assertTrue(any('AZURE_TRACKED_DEPLOYMENT_REFERENCE:masterapp-portal:tracked-operation-123' in str(call.args)
+                                for call in output.call_args_list))
+
+    def test_tracked_portal_timeout_never_infers_deployment_success(self):
+        azure = deploy.Azure('masterapp-portal', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['az','webapp','deploy'],300)) as run:
+            self.assertFalse(azure.submit())
+            self.assertEqual(1, run.call_count)
+
+    def test_untracked_other_app_stays_asynchronous(self):
+        azure = deploy.Azure('masterapp-client', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
+        with patch.object(deploy.subprocess, 'run') as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = '{}'
+            self.assertTrue(azure.submit())
+            command = run.call_args.args[0]
+            for flag, value in [('--async', 'true'), ('--track-status', 'false'),
+                                ('--enable-kudu-warmup', 'false')]:
+                self.assertEqual(value, command[command.index(flag) + 1])
+            self.assertEqual(180, run.call_args.kwargs['timeout'])
+            self.assertEqual(1, run.call_count)
+
     def test_submission_has_no_synchronous_gateway_wait_or_internal_warmup_replay(self):
         azure = deploy.Azure('masterapp-protect', Path('/immutable.zip'), 'https://example.invalid', 'a' * 40)
         with patch.object(deploy.subprocess, 'run') as run:
