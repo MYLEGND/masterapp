@@ -159,6 +159,18 @@ jobs:
           package=retained/'deploy.zip'
           sums=retained/'SHA256SUMS'
           def report(**fields):
+              if fields.get('verified') is True:
+                  # Durable content-equivalence evidence, not an invented Azure
+                  # deployment-status receipt. Recorded only after 100% byte parity.
+                  certificate=dict(schemaVersion=1,
+                      evidenceType='installed-immutable-package-exact-byte-parity',
+                      sourceRevision='dba66284ff23e973dc28aa2572da6224c601ee65',
+                      originalReleaseRunId=38323933521,
+                      originalPackageArtifactId=11779734675,
+                      certifyingDiagnosticRun=int(os.environ['GITHUB_RUN_ID']),
+                      providerDeploymentId=None,**fields)
+                  (pathlib.Path(os.environ['RUNNER_TEMP'])/'portal-live-parity-proof.json').write_text(
+                      json.dumps(certificate,sort_keys=True)+'\\n')
               print('PORTAL_LIVE_PACKAGE_PARITY='+json.dumps(fields,sort_keys=True),flush=True)
           if not package.is_file() or not sums.is_file():
               report(verified=False,reason='RETAINED_PACKAGE_MISSING');raise SystemExit(0)
@@ -241,3 +253,11 @@ jobs:
               except (OSError,ValueError,zipfile.BadZipFile,RuntimeError):
                   report(verified=False,reason='KUDU_ZIP_OR_INVENTORY_INVALID')
           PY
+      - name: Preserve exact Azure installed-byte equivalence certificate
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-installed-byte-equivalence-dba66284ff23e973dc28aa2572da6224c601ee65
+          path: ${{ runner.temp }}/portal-live-parity-proof.json
+          retention-days: 30
+          if-no-files-found: warn
