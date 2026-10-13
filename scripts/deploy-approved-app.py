@@ -153,10 +153,13 @@ class Azure:
         # replaced by exact-revision checks below, not waived. Status preflight
         # already warmed SCM; disabling CLI warmup prevents its exception fallback
         # from replaying a POST. A subprocess timeout leaves Azure running untouched.
-        # Website OneDeploy requires a provider-acknowledged operation, not an
-        # untracked async CLI acceptance. The exact historical no-entry recovery
-        # is separately source-pinned and gated before this method can run.
-        tracked = self.static and self.app == "masterapp-website"
+        # Portal and Website must use provider-tracked publication. Historical
+        # Portal async uploads could make exact bytes live without producing the
+        # operation ID that the durable receipt gate requires. A synchronous
+        # tracked submit does not waive runtime or deployment-history checks.
+        # Other apps retain their existing async submission contract.
+        tracked = self.app == "masterapp-portal" or (
+            self.static and self.app == "masterapp-website")
         command = ['az', 'webapp', 'deploy', '-g', _RELEASE_AUTHORITY.RELEASE_RESOURCE_GROUP, '-n', self.app,
                    '--src-path', str(self.package), '--type', 'zip', '--clean', 'true',
                    '--restart', 'true', '--async', 'false' if tracked else 'true',
@@ -165,10 +168,26 @@ class Azure:
                    '--timeout', '120000',
                    '--enriched-errors', 'true', '--only-show-errors', '-o', 'json']
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+            # Allow the tracked provider operation to return without forcing a
+            # local timeout before Azure has completed its deployment. A
+            # timeout remains ambiguous and is NEVER replayed.
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=300 if tracked else 180)
             if result.returncode:
                 print('::warning::Upload response was unsuccessful; reconciling Azure without resubmission.', flush=True)
                 print(result.stderr[-4000:], flush=True)
+            if result.returncode == 0 and tracked:
+                # Preserve only a validated, sanitized provider operation ID in
+                # the immutable Actions log. Never emit raw CLI output, bearer
+                # tokens, publishing credentials, or speculative success.
+                try:
+                    payload = json.loads(result.stdout)
+                    reference = (payload.get('deploymentId') or payload.get('id')
+                                 if isinstance(payload, dict) else None)
+                    if isinstance(reference, str) and re.fullmatch(r'[a-zA-Z0-9_.:/-]{4,180}', reference):
+                        print('AZURE_TRACKED_DEPLOYMENT_REFERENCE:' + self.app + ':' + reference, flush=True)
+                except (ValueError, TypeError, AttributeError):
+                    pass
             return result.returncode == 0
         except subprocess.TimeoutExpired:
             print('::warning::Upload response timed out; Azure may still be working. No resubmission.', flush=True)
