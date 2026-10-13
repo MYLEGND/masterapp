@@ -75,6 +75,59 @@ jobs:
                       'activeCount':sum(x.get('status') in (0,1,2) for x in rows)}
               else: history={'available':False,'failure':'INVALID_HISTORY'}
           print('PORTAL_DEPLOYMENT_HISTORY='+json.dumps(history,sort_keys=True),flush=True)
+          # Azure exposes distinct GET-only views for OneDeploy and ARM deployment
+          # resources. Existing 'az webapp log deployment list' can miss an
+          # asynchronous OneDeploy operation, so inspect all three independently.
+          subscription=azure(['account','show','--query','id'])
+          sid=subscription.get('value')
+          if subscription.get('available') and isinstance(sid,str) and re.fullmatch(
+              r'[0-9a-fA-F-]{36}',sid):
+              base_url=('https://management.azure.com/subscriptions/'+sid+
+                  '/resourceGroups/masterapp-rg/providers/Microsoft.Web/sites/'+app)
+              def summarize_deployment(item):
+                  if not isinstance(item,dict): return {'valid':False}
+                  props=item.get('properties') if isinstance(item.get('properties'),dict) else {}
+                  return {'id':str(props.get('deploymentId') or item.get('name') or '')[:100],
+                      'status':str(props.get('status') or item.get('status') or '')[:60],
+                      'start':str(props.get('start_time') or props.get('startTime') or '')[:45],
+                      'end':str(props.get('end_time') or props.get('endTime') or '')[:45],
+                      'active':props.get('active'),
+                      'successfulInstances':props.get('numberOfInstancesSuccessful'),
+                      'failedInstances':props.get('numberOfInstancesFailed')}
+              for label,suffix in [
+                  ('PORTAL_ONEDEPLOY_GET','/extensions/onedeploy?api-version=2025-05-01'),
+                  ('PORTAL_ARM_DEPLOYMENTS','/deployments?api-version=2025-05-01')]:
+                  observed=azure(['rest','--method','get','--url',base_url+suffix],timeout=40)
+                  if observed.get('available'):
+                      value=observed['value']
+                      if label=='PORTAL_ARM_DEPLOYMENTS':
+                          rows=value.get('value') if isinstance(value,dict) else None
+                          observed={'available':isinstance(rows,list),
+                              'count':len(rows) if isinstance(rows,list) else None,
+                              'latest':[summarize_deployment(x) for x in (rows or [])[:12]],
+                              'hasNextPage':bool(value.get('nextLink')) if isinstance(value,dict) else None}
+                      else:
+                          observed={'available':True,'result':summarize_deployment(value),
+                              'propertyKeys':sorted((value.get('properties') or {}).keys())
+                                  if isinstance(value,dict) and isinstance(value.get('properties'),dict) else []}
+                  print(label+'='+json.dumps(observed,sort_keys=True),flush=True)
+              # Azure Activity Log is another independent, read-only operation
+              # history. Do not print actor identities, payloads or credentials.
+              activity=azure(['monitor','activity-log','list',
+                  '--resource-id',base_url.removeprefix('https://management.azure.com'),
+                  '--start-time','2026-10-12T23:45:00Z',
+                  '--end-time','2026-10-13T00:41:00Z',
+                  '--max-events','100'],timeout=50)
+              if activity.get('available') and isinstance(activity.get('value'),list):
+                  rows=activity['value']
+                  activity={'available':True,'count':len(rows),
+                      'events':[{'operation':str((x.get('operationName') or {}).get('value') or '')[:100],
+                          'status':str((x.get('status') or {}).get('value') or '')[:50],
+                          'time':str(x.get('eventTimestamp') or '')[:45]}
+                          for x in rows if isinstance(x,dict)][:30]}
+              print('PORTAL_AZURE_ACTIVITY='+json.dumps(activity,sort_keys=True),flush=True)
+          else:
+              print('PORTAL_ONEDEPLOY_GET={"available":false,"failure":"SUBSCRIPTION_UNAVAILABLE"}',flush=True)
           hosts=[
               'https://portal.mylegnd.com',
               'https://masterapp-portal.azurewebsites.net',
