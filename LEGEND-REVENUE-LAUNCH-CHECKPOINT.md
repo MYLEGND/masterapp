@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-13 (America/Phoenix). Business client identity and linked-owner managed-account repair: focused source verification complete; independent acceptance and remote identity recorded in the session handoff. Production release remains separately gated. Prior revenue/release evidence is preserved below.
+Updated: 2026-10-13 (America/Phoenix). Single-Founder governance: bounded fast-track architecture admission correction prepared and focused-tested; overall release independence remains PARTIAL. Exact independent acceptance and remote commit readback are recorded in the session handoff. Production governance, readiness integration and legacy retirement remain separately gated.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -491,3 +491,119 @@ no bypass actors and deletion/non-force safeguards. Its required architecture-va
 check remains the audited obsolete validation dependency, Code Owner binding/approval
 count still needs reconciliation, and Production still has no protection rules or branch
 policy. No settings were changed by this repair. Legacy retirement/release remains gated.
+
+## Single-Founder fast-track governance — bounded source correction
+
+Continuation: canonical session preflight passed on clean local/remote
+9108da3cc9bf98be0f30a179f3ceeda5ead0c556, preserving the accepted business-owner repair
+and every prior revenue checkpoint. Native Git authentication and normal push dry-run
+were available; dry-run is not a guarantee of subsequent real push. No new branch.
+
+Astra prescribed and independently reviewed this bounded correction; Codex implements
+and tests. Exact final acceptance/push identity belongs to Git history and the session
+handoff, not a self-referential SHA in this file. Changed canonical owners:
+masterapp-platform-architecture-validation.yml and validation-resume.py, their two
+existing test files, and this existing checkpoint. No application or provider changes.
+
+IMPLEMENTED: existing architecture workflow now accepts fast-track PRs and binds
+preflight/validation to the current fast-track base and exact PR candidate. Existing
+source-validation authority authenticates architecture alongside security and isolated
+validation; release admission requires all three exact workflow receipts. Unknown
+workflow names cannot borrow another receipt prefix. Old-lifecycle package/rehearsal
+jobs are excluded from fast-track PRs. Fast-track renderer failure cannot borrow the
+approved branch's unchanged-input exception. Static lifecycle safety tests remain;
+fast-track source tests do not require pinned live legacy-history attestations. Compatible
+preserved lifecycle gates exit before repeated work. Historical gate display names remain
+unchanged so receipt matching still identifies the actual step. This does not retire
+live writers or weaken historical no-replay checks in the migration/release owners.
+
+FOCUSED VALIDATION: 110 unique tests passed: all 92 test-fast-track-release.py tests,
+and 18 FastTrackSourceValidationTests/FastTrackExecutionIdentityTests/
+ApprovedHeadPreflightTests in test-validation-resume.py. After the review correction,
+the six affected architecture tests passed again, including executable shell failure/
+legacy-history isolation and preserved-work checks plus canonical step-name mapping.
+
+The broader validation-resume suite was attempted (282 tests) and was NOT green:
+two Step5ChildEvidenceTests failed, one HistoricalParallelVerifierTests case errored,
+and 18 network-evidence errors occurred in ReleaseAttemptNonentryTests subcases
+(DNS unavailable in this execution sandbox). The two failures and historical verifier
+error were reproduced using unchanged starting-HEAD authority/source, proving they
+precede this correction; they remain unresolved, not waived or repaired out of scope.
+Required GitHub integrity/security/architecture checks remain mandatory before merge.
+Local focused success is not evidence of a green GitHub run, admission or deployment.
+Temporary test logs are not durable recovery artifacts; committed regressions retain
+reproducers. No real SQL, payment, deployment or customer-data test was executed.
+
+AUTHENTICATED GOVERNANCE READBACK: ruleset24319290 remains active for exactly
+refs/heads/Legend/fast-track-release, bypass_actors=[], mandatory PR, merge method
+only, strict architecture-validation, deletion/non-force protections. Code Owner review
+is true, required human approval count is zero, stale approvals are dismissed and review
+threads must be resolved. No CODEOWNERS exists. MYLEGND is the only collaborator and
+PR author; no new identity was selected/invited/granted access. GitHub does not count
+an author's own approval; Astra technical acceptance is not a GitHub human approval.
+Production has protection_rules=[], deployment_branch_policy=null and admin bypass
+available. Repository is public and personal-owned. Authenticated user response did not
+expose a billing plan; actual plan name remains unverified. GitHub documents environment
+reviewers/branch policies for public repositories on current plans; do not fabricate a
+mandatory reviewer identity or promise one approval covers separate jobs/runs.
+
+EXACT SETTINGS PROPOSAL — NOT APPLIED, explicit Founder authorization required:
+1. In ruleset24319290 set only pull_request.require_code_owner_review from true to
+   false; retain mandatory PR, required_approving_review_count=0, all other existing
+   PR parameters, strict checks, exact branch, active enforcement, empty bypass actors,
+   deletion and non-fast-forward protection. No fictional CODEOWNERS or AI approval.
+2. Once corresponding checks demonstrably run for the exact candidate, require
+   architecture-validation, approved-release-security and build-and-focused-tests
+   together under strict_required_status_checks_policy=true. Retain architecture;
+   do not substitute a weaker single check merely to admit a merge. A future
+   fast-track-release-readiness check is NOT implemented/available by this correction;
+   do not require an unavailable context and recreate an admission deadlock.
+3. Production: proposed deployment_branch_policy={protected_branches:false,
+   custom_branch_policies:true}, with one branch policy name Legend/fast-track-release
+   and type branch. No tag or PR-ref wildcard, no new mandatory reviewer gate.
+   Preserve Azure OIDC/secret bindings. This policy must NOT be activated until existing
+   read-only readiness use and OIDC subject compatibility have a reviewed resolution;
+   otherwise it would block that producer. No setting or activation is authorized here.
+4. Founder explicitly authorizes the exact source candidate, intended merge/execution
+   identity and release scope before merging. Existing GitHub PR/check enforcement and
+   Production execution remain the authorities; no new approval registry/token. Changed
+   candidates require renewed authorization. MYLEGND alone performs the authorized merge;
+   after authorization, canonical gated execution/recovery remains autonomous.
+
+UNRESOLVED READINESS/TRUST BOUNDARY: the existing read-only observation/rehearsal
+producer and restore inventory are pinned to isolation/canonical-scoped-commerce-internal-
+20261010. Extending it to production-authenticated PR runs conflicts with fast-track-only
+Production policy and would broaden eligible production refs. Astra rejected treating
+refs/pull/*/merge as a same-repository/workflow ACL or adding repeated approvals while
+claiming single-authorization autonomy. No conditional PR production path was added.
+A bounded trusted-branch adaptation of this existing owner still needs architectural
+resolution; no second observer, journal, release engine or synthetic readiness success.
+Exact schema-ready evidence must avoid SQL replay; pending schema requires compatible
+exact bundle rehearsal and real observation. Migration/readiness must be proven before
+release; these requirements are not replaced by architecture/security success.
+
+LEGACY RETIREMENT: live lifecycle362222668 and direct publisher361187664 still active.
+Queued run37642351262 (head40c21d84cfe3c42ecfb48e7940615e603060c765) had jobs=[] and
+artifacts=[] at readback, not evidence permitting blind cancellation later. Latest
+lifecycle38520512959 still schedules. Direct38004841442 succeeded with release,
+migration, rollback, discovery and target-publication jobs skipped; its metadata/receipt
+is not proof of an application publication. Before separately authorized retirement,
+stop new admission, immediately reconcile changed/active/provider operations, then
+cancel that queue only if still proven unentered and disable the two obsolete writers.
+Keep historical branch/runs/artifacts, shared security372470990 and cross-release mutex.
+Stale registrations361007272/360915565/380110017/361195095 are not proven executable
+writers; any defensive disablement requires fresh source/obligation checks and approval.
+No workflow disable/cancel, ruleset/environment edit, merge, migration or deploy occurred.
+
+PRESERVED EVIDENCE AND LIMITS: prior checkpoint's migration-first, selective reuse,
+parallel target receipts, ambiguity reconciliation and 420-second/30-minute bounds
+remain unchanged. Prior skipped-success run is not end-to-end proof; the 10–15-minute
+safe normal path remains unproven. Read-only Azure metadata showed all five existing
+apps Running/HTTPS, server identities retained; Portal OpenAI model/key configuration
+presence, Entra/Graph/Data Protection names, Client Entra/Marketing Data Protection,
+Key Vault metadata and Azure/Cloudflare secret-name metadata remain present. Values
+were not disclosed or changed. Presence is not successful provider use, decryptability,
+SQL runtime compatibility, exact OIDC federation, live Cloudflare routing or LEGEND AI
+conversation/tool proof. Those live claims remain UNVERIFIED. Parfait stays operational
+under its existing authority; no cutover. Overall verdict PARTIAL: bounded source
+correction only; sole independent production release authority is NOT YET PROVEN.

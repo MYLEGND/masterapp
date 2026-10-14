@@ -1405,6 +1405,11 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             preflight.assert_called_once_with('owner/repo', self.sha, 'test-token', base_branch=m.FAST_TRACK_PR_BASE)
             return result
 
+    def test_architecture_pr_uses_exact_fast_track_scope_without_old_readiness(self):
+        self.args.workflow = 'masterapp-platform-architecture-validation.yml'
+        self.run['path'] = '.github/workflows/' + self.args.workflow
+        self.assertEqual(m.FAST_TRACK_PR_BASE, self.scope()['baseBranch'])
+
     def test_authenticated_isolated_push_uses_same_fast_track_source_authority(self):
         self.args.workflow='parfait-isolated-validation.yml';self.args.event='push';self.args.head_branch='isolation/task'
         self.run.update(event='push',path='.github/workflows/'+self.args.workflow,head_branch=self.args.head_branch)

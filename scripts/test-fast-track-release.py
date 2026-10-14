@@ -5,6 +5,8 @@ import importlib.util
 import os
 import json
 import tempfile
+import subprocess
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -396,6 +398,93 @@ class FastTrackHistoryTests(unittest.TestCase):
                 authority.release_child_first_write_proven('owner/repo','migrations','b'*64,'c'*64,11,1,'fixture')
 
 
+class FastTrackArchitectureAdmissionTests(unittest.TestCase):
+    def admission(self, architecture=True):
+        candidate, revision = 'a' * 40, 'b' * 40
+        pull = dict(number=580, merged_at='2026-10-13T00:00:00Z', merge_commit_sha=revision,
+            base=dict(ref=authority.FAST_TRACK_PR_BASE),
+            head=dict(sha=candidate, ref='isolation/task', repo=dict(full_name='owner/repo')))
+        workflows = [('approved-release-security-validation.yml', 'pull_request'),
+            ('parfait-isolated-validation.yml', 'push')]
+        if architecture:
+            workflows.append(('masterapp-platform-architecture-validation.yml', 'pull_request'))
+        rows = [dict(id=i+1, run_attempt=1, path='.github/workflows/'+workflow, event=event,
+            head_sha=candidate, head_branch='isolation/task', head_repository=dict(full_name='owner/repo'),
+            status='completed', conclusion='success') for i,(workflow,event) in enumerate(workflows)]
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY':'owner/repo','GH_TOKEN':'fixture'}), \
+             patch.object(authority, 'assert_fast_track_release_execution', return_value=dict(head_sha=revision)), \
+             patch.object(authority, 'api_get', side_effect=[[pull], dict(total_count=len(rows),workflow_runs=rows)]), \
+             patch.object(authority.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), \
+             patch.object(authority, 'fast_track_validation_receipt', return_value=81):
+            return authority.fast_track_source_admission()
+
+    def test_all_three_exact_source_workflows_are_mandatory(self):
+        self.assertEqual({'approved-release-security-validation.yml', 'parfait-isolated-validation.yml',
+            'masterapp-platform-architecture-validation.yml'}, set(self.admission()['validation']))
+
+    def test_security_and_isolated_success_cannot_replace_architecture(self):
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN:masterapp-platform'):
+            self.admission(False)
+
+    def test_architecture_workflow_uses_fast_track_base_without_old_release_jobs(self):
+        source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        self.assertIn('      - Legend/fast-track-release', source.split('  workflow_dispatch:',1)[0])
+        self.assertIn('--base-branch "${{ github.base_ref', source)
+        self.assertIn('--validation-base "${{ github.base_ref', source)
+        for gate in ('renderer-tests', 'lifecycle'):
+            step = authority.WORKFLOWS['masterapp-platform-architecture-validation.yml']['gates'][gate]['step']
+            self.assertIn('      - name: ' + step + '\n', source)
+        package = source.split('  validated-release-package-plan:',1)[1].split('    runs-on:',1)[0]
+        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", package)
+        rehearsal = source.split('  migration-rehearsal-prepare:',1)[1].split('    runs-on:',1)[0]
+        self.assertIn("github.event_name == 'pull_request' && github.base_ref == 'legend/approved-changes'", rehearsal)
+
+    def run_architecture_step(self, step, base, renderer_status=0, preserved=False):
+        source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
+        body = source.split('        id: ' + step + '\n', 1)[1].split('        run: |\n', 1)[1]
+        body = body.split('\n      - ', 1)[0]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'Legend-Website').mkdir()
+            log = root / 'calls'
+            for name, script in {
+                'python3': 'echo "python3 $*" >> "$CALL_LOG"\n'
+                    'if [ "$2" = preserved ]; then exit "$PRESERVED_STATUS"; fi\n'
+                    'if [ "$1" = - ]; then echo forbidden-live-history >> "$CALL_LOG"; exit 91; fi\n',
+                'npm': 'echo "npm $*" >> "$CALL_LOG"\n'
+                    'if [ "$2" = test:renderer ]; then exit "$RENDERER_STATUS"; fi\n',
+                'git': 'echo "git $*" >> "$CALL_LOG"\nexit 92\n',
+                'node': 'echo "node $*" >> "$CALL_LOG"\n'
+            }.items():
+                path = root / name
+                path.write_text('#!/bin/bash\n' + script)
+                path.chmod(0o700)
+            result = subprocess.run(['/bin/bash', '-e', '-c', textwrap.dedent(body)], cwd=root,
+                env=os.environ | dict(PATH=str(root) + ':' + os.environ['PATH'], CALL_LOG=str(log),
+                    RUNNER_TEMP=str(root), VALIDATION_BASE=base, RENDERER_STATUS=str(renderer_status),
+                    PRESERVED_STATUS='0' if preserved else '1'), capture_output=True, text=True)
+            return result.returncode, log.read_text() if log.exists() else ''
+
+    def test_fast_track_renderer_failure_is_not_excused_by_old_branch(self):
+        status, calls = self.run_architecture_step('gate_renderer_tests', authority.FAST_TRACK_PR_BASE, 7)
+        self.assertEqual(7, status)
+        self.assertNotIn('git ', calls)
+
+    def test_fast_track_static_safety_does_not_query_live_legacy_history(self):
+        status, calls = self.run_architecture_step('gate_lifecycle', authority.FAST_TRACK_PR_BASE)
+        self.assertEqual(0, status, calls)
+        self.assertNotIn('forbidden-live-history', calls)
+        self.assertNotIn('python3 scripts/release-migration-history-audit.py', calls)
+        self.assertIn('python3 scripts/test-release-migration-history-audit.py', calls)
+        self.assertIn('python3 scripts/test-release-retired-original-evidence.py', calls)
+        self.assertIn('python3 scripts/test-release-lifecycle.py', calls)
+
+    def test_preserved_lifecycle_gate_avoids_repeat_static_and_live_work(self):
+        status, calls = self.run_architecture_step('gate_lifecycle', authority.FAST_TRACK_PR_BASE, preserved=True)
+        self.assertEqual(0, status)
+        self.assertEqual(1, len(calls.splitlines()))
+
+
 class MergedSourceReceiptTests(unittest.TestCase):
     def setUp(self):
         self.run=dict(id=71,run_attempt=1,pull_requests=[])
@@ -412,6 +501,19 @@ class MergedSourceReceiptTests(unittest.TestCase):
         with patch.object(authority,'api_get',return_value=dict(total_count=1,artifacts=[self.artifact])), \
              patch.object(authority,'_download_run_artifact',side_effect=download):
             return authority.fast_track_validation_receipt('owner/repo',self.run,self.workflow,'a'*40,580,'fixture')
+    def test_architecture_receipt_has_its_own_exact_workflow_prefix(self):
+        self.workflow = 'masterapp-platform-architecture-validation.yml'
+        self.receipt['workflow'] = self.workflow
+        self.artifact['name'] = 'validation-resume-architecture-71-1'
+        self.assertEqual(81, self.verify())
+
+    def test_unknown_workflow_cannot_reuse_parfait_receipt(self):
+        self.workflow = 'unknown.yml'
+        self.receipt['workflow'] = self.workflow
+        self.artifact['name'] = 'validation-resume-parfait-71-1'
+        with self.assertRaisesRegex(RuntimeError, 'WORKFLOW_UNSUPPORTED'):
+            self.verify()
+
     def test_merge_cleared_pr_links_are_replaced_by_original_bound_receipt(self):
         self.assertEqual(81,self.verify())
     def test_wrong_pr_base_or_candidate_cannot_relabel_validation(self):

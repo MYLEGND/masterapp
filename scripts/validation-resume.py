@@ -3706,7 +3706,12 @@ def assert_release_execution():
 def fast_track_validation_receipt(repository, run, workflow, candidate, pr, token):
     """Use retained source scope: GitHub removes PR links after a PR is merged."""
     import tempfile
-    prefix = 'security' if workflow == 'approved-release-security-validation.yml' else 'parfait'
+    prefixes = {'approved-release-security-validation.yml': 'security',
+        'parfait-isolated-validation.yml': 'parfait',
+        'masterapp-platform-architecture-validation.yml': 'architecture'}
+    if workflow not in prefixes:
+        raise RuntimeError('FAST_TRACK_VALIDATION_WORKFLOW_UNSUPPORTED')
+    prefix = prefixes[workflow]
     name = f"validation-resume-{prefix}-{run['id']}-{run['run_attempt']}"
     inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
     rows = inventory.get('artifacts')
@@ -4341,7 +4346,8 @@ def fast_track_source_admission():
     rows = payload.get('workflow_runs')
     if not isinstance(rows, list) or payload.get('total_count') != len(rows):
         raise RuntimeError('FAST_TRACK_VALIDATION_INVENTORY_INCOMPLETE')
-    required = {'approved-release-security-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'push'}
+    required = {'approved-release-security-validation.yml': 'pull_request',
+        'masterapp-platform-architecture-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'push'}
     evidence = {}
     for workflow, event in required.items():
         matches = [r for r in rows if r.get('path') == '.github/workflows/' + workflow
@@ -6057,7 +6063,8 @@ def fast_track_source_validation_scope(args):
     No protected-branch source, baseline, or readiness producer is consulted.
     """
     if ((args.workflow, args.event) not in {('approved-release-security-validation.yml', 'pull_request'),
-        ('parfait-isolated-validation.yml', 'push')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
+        ('parfait-isolated-validation.yml', 'push'),
+        ('masterapp-platform-architecture-validation.yml', 'pull_request')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
     if not token:
