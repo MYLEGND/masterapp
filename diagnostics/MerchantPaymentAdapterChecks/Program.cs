@@ -24,6 +24,43 @@ var configuration=new ConfigurationBuilder().AddInMemoryCollection(new Dictionar
 }).Build();
 var factory=new TestFactory();var stripe=new StripeMerchantPaymentGateway(factory,configuration);var square=new SquareMerchantPaymentGateway(factory,configuration);var paypal=new PayPalMerchantPaymentGateway(factory,configuration);
 configuration["MerchantPayments:Square:Sandbox:WebhookSignatureKey"]=key;
+factory.Handler.Replies.Enqueue("""{"merchant":{"id":"merchant-a","status":"ACTIVE"}}""");
+factory.Handler.Replies.Enqueue("""{"locations":[{"id":"location-a","merchant_id":"merchant-a","status":"ACTIVE","currency":"USD","capabilities":["CREDIT_CARD_PROCESSING"]}]}""");
+var cardOnly=await square.GetReadinessAsync(new("Square","Sandbox","merchant-a","location-a",new("synthetic")),default);
+Check(cardOnly.PaymentsEnabled == true && (bool?)cardOnly.SettlementsEnabled is null,"Card processing does not prove settlement readiness");
+foreach (var (caps, payments, transfers) in new (string Caps, bool? Payments, bool? Transfers)[]
+{
+    ("[\"CREDIT_CARD_PROCESSING\"]", true, false),
+    ("[\"CREDIT_CARD_PROCESSING\",\"AUTOMATIC_TRANSFERS\"]", true, true),
+    ("[\"AUTOMATIC_TRANSFERS\"]", false, true), ("[]", false, false),
+    ("null", null, null), ("{}", null, null), ("[42]", null, null),
+    ("[\"CREDIT_CARD_PROCESSING\",null]", null, null)
+})
+{
+    factory.Handler.Replies.Enqueue("""{"merchant":{"id":"merchant-a","status":"ACTIVE"}}""");
+    factory.Handler.Replies.Enqueue("{\"locations\":[{\"id\":\"location-a\",\"merchant_id\":\"merchant-a\",\"status\":\"ACTIVE\",\"currency\":\"USD\",\"capabilities\":"+caps+"}]}");
+    var observed=await square.GetReadinessAsync(new("Square","Sandbox","merchant-a","location-a",new("synthetic")),default);
+    Check(observed.PaymentsEnabled==payments && observed.AutomaticTransfersEnabled==transfers,"Independent Square capability matrix: "+caps);
+    Check(observed.SettlementsEnabled is null && observed.CanAcceptPayments("Square")== (payments==true),"Capabilities never fabricate settlement or require automatic transfers: "+caps);
+}
+foreach(var payload in new[]{"{}", "{\"locations\":null}", "{\"locations\":{}}",
+    """{"locations":[{"id":"location-a","merchant_id":"merchant-a","status":"ACTIVE","currency":"USD"}]}""",
+    """{"locations":[{"id":"location-a","merchant_id":"merchant-a","status":42,"currency":"USD","capabilities":["CREDIT_CARD_PROCESSING"]}]}"""})
+{
+    factory.Handler.Replies.Enqueue("""{"merchant":{"id":"merchant-a","status":"ACTIVE"}}""");
+    factory.Handler.Replies.Enqueue(payload);
+    var unknown=await square.GetReadinessAsync(new("Square","Sandbox","merchant-a","location-a",new("synthetic")),default);
+    Check(unknown.PaymentsEnabled is null && unknown.SettlementsEnabled is null && !unknown.CanAcceptPayments("Square"),"Malformed or missing readiness is unknown and blocks checkout");
+}
+foreach(var identity in new[]{"merchant", "location"})
+{
+    factory.Handler.Replies.Enqueue(identity=="merchant" ? """{"merchant":{"id":"other","status":"ACTIVE"}}""" : """{"merchant":{"id":"merchant-a","status":"ACTIVE"}}""");
+    if(identity=="location")factory.Handler.Replies.Enqueue("""{"locations":[{"id":"location-a","merchant_id":"other","status":"ACTIVE","currency":"USD","capabilities":["CREDIT_CARD_PROCESSING"]}]}""");
+    try { await square.GetReadinessAsync(new("Square","Sandbox","merchant-a","location-a",new("synthetic")),default); throw new Exception("forged readiness accepted"); }
+    catch(MerchantPaymentException ex){Check(ex.Message=="MERCHANT_IDENTITY_MISMATCH","Readiness identity isolation: "+identity);}
+}
+Check(!new MerchantReadiness(true,null,["USD"],["card"],[]).CanAcceptPayments("Stripe"),"Other provider settlement gate retained");
+Check(new MerchantReadiness(true,true,["USD"],["card"],[]).CanAcceptPayments("Stripe"),"Other provider ready remains eligible");
 var refundEvent="""
 {"event_id":"synthetic-refund-event","merchant_id":"merchant-a","created_at":"2026-10-11T00:00:00Z","data":{"object":{"refund":{"order_id":"distinct-refund-order","payment_id":"original-payment"}}}}
 """;
@@ -78,10 +115,10 @@ Check(factory.Handler.Last!.Headers.Contains("PayPal-Auth-Assertion"),"PayPal re
 factory.Handler.Replies.Enqueue("{\"access_token\":\"synthetic-token\"}");
 factory.Handler.Replies.Enqueue("{\"merchant_id\":\"merchant-paypal\",\"payments_receivable\":true,\"primary_email_confirmed\":true,\"oauth_integrations\":[{\"integration_type\":\"OAUTH_THIRD_PARTY\",\"oauth_third_party\":[{\"partner_client_id\":\"synthetic\",\"scopes\":[\"https://uri.paypal.com/services/payments/payment/authcapture\"]}]}]}");
 var paypalReady=await paypal.GetReadinessAsync(new("PayPal","Sandbox","merchant-paypal",null,new("")),default);
-Check(paypalReady.PaymentsEnabled && paypalReady.Currencies.Contains("USD"),"PayPal documented readiness works without optional currency field");
+Check(paypalReady.PaymentsEnabled == true && paypalReady.Currencies.Contains("USD"),"PayPal documented readiness works without optional currency field");
 factory.Handler.Replies.Enqueue("{\"access_token\":\"synthetic-token\"}");
 factory.Handler.Replies.Enqueue("{\"merchant_id\":\"merchant-paypal\",\"payments_receivable\":true,\"primary_email_confirmed\":true,\"oauth_integrations\":[{\"oauth_third_party\":[{\"partner_client_id\":\"unrelated-partner\",\"scopes\":[\"https://uri.paypal.com/services/payments/payment/authcapture\"]}]}]}");
-Check(!(await paypal.GetReadinessAsync(new("PayPal","Sandbox","merchant-paypal",null,new("")),default)).PaymentsEnabled,"PayPal unrelated partner permission rejected");
+Check((await paypal.GetReadinessAsync(new("PayPal","Sandbox","merchant-paypal",null,new("")),default)).PaymentsEnabled != true,"PayPal unrelated partner permission rejected");
 factory.Handler.Replies.Enqueue("{\"access_token\":\"synthetic-token\"}");
 factory.Handler.Replies.Enqueue("{\"id\":\"refund_readback\",\"status\":\"COMPLETED\"}");
 factory.Handler.Replies.Enqueue("{\"access_token\":\"synthetic-token\"}");

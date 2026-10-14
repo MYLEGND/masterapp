@@ -26,7 +26,17 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
     }
     private IDataProtector CredentialProtector(Guid id, Guid business, string provider, string environment) =>
         protection.CreateProtector("Legend.Merchant.Credential.v1", id.ToString("N"), business.ToString("N"), provider, environment);
-    private static MerchantReadiness Readiness(CommerceMerchantConnection x) => JsonSerializer.Deserialize<MerchantReadiness>(x.ReadinessJson) ?? new(false, false, [], [], [], "Refresh connection");
+    private static MerchantReadiness Readiness(CommerceMerchantConnection x)
+    {
+        MerchantReadiness? result;
+        try { result = JsonSerializer.Deserialize<MerchantReadiness>(x.ReadinessJson); }
+        catch (JsonException) { result = null; }
+        if (result is null || result.Currencies is null || result.PaymentMethods is null || result.Locations is null)
+            return new(null, null, [], [], [], "Refresh connection readiness.");
+        // Historical Square snapshots conflated card processing and settlement readiness.
+        // Do not migrate rows or infer transfer capability from that obsolete assertion.
+        return x.Provider == "Square" ? result with { SettlementsEnabled = null } : result;
+    }
     public async Task<MerchantConnectionsView> ListAsync(Guid businessId, Guid profileId, string actor, string? email, string environment, CancellationToken ct)
     {
         await Authorize(businessId, profileId, actor, email, ct);
@@ -137,7 +147,7 @@ public sealed class MerchantConnectionService(MasterAppDbContext db, IDataProtec
         CheckRevision(row,expectedRevision);
         if (row.State != "Active") throw new MerchantPaymentException("connection_not_active");
         var readiness=await Gateway(row.Provider).GetReadinessAsync(Account(row),ct);
-        if (!readiness.PaymentsEnabled || !readiness.SettlementsEnabled || !Gateway(row.Provider).Capabilities.HasFlag(MerchantCapabilities.Checkout)) throw new MerchantPaymentException("merchant_not_ready");
+        if (!readiness.CanAcceptPayments(row.Provider) || !Gateway(row.Provider).Capabilities.HasFlag(MerchantCapabilities.Checkout)) throw new MerchantPaymentException("merchant_not_ready");
         var configuration=await db.CommerceMerchantConfigurations.SingleOrDefaultAsync(x=>x.CommerceBusinessId==businessId && x.Environment==row.Environment,ct);
         if (configuration is null) { configuration=new() { Id=Guid.NewGuid(),CommerceBusinessId=businessId,Environment=row.Environment }; db.CommerceMerchantConfigurations.Add(configuration); }
         configuration.DefaultConnectionId=row.Id; configuration.Version++;

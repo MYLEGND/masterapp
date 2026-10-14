@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-14 (UTC). Work Item 04C: canonical analytics and advertising conversion reconciliation; PARTIAL with local source acceptance and external verification outstanding.
+Updated: 2026-10-13 (America/Phoenix). Work Item 05B: Square readiness and Payments authorization source repairs; local verification complete, independent acceptance recorded with the committed revision; external merchant launch proof remains outstanding.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -63,7 +63,7 @@ PARTIAL means implementation/evidence exists but full functional and canonical a
 | Protected website tracking | AnalyticsEventCatalog, shared tracking.js, WebsiteTrackingProxyAuthority/UnifiedAnalyticsWriter, canonical eligibility/projection and existing reporting queries. | PARTIAL: WI04A repairs false acknowledgments, site/origin fallthrough and nested-metadata reporting authority; 160 focused tests passed. Live runtime/SQL, provider acknowledgment/corrections (04C) and historical gap reconciliation remain open; focused inquiry lifecycle proof is recorded in 04B below. |
 | Inquiry delivery | WebsiteInquiryAuthority/WebsiteLeadSubmission, CommerceWebsiteInquiry, WebsiteLifeLeadCaptureService, existing email/app workers, recipient resolver and template; unchanged canonical conversion writer. | PARTIAL: WI04B direct owner/recovery/completion/receipt repairs and 115 focused checks passed. Text-form/CRM/conversion and local notification state verified; live SQL/runtime/inbox/device delivery, public media and authorized SMS remain open. |
 | Advertising measurement and reconciliation | CanonicalAdvertisingEventProjection/CanonicalMarketingEligibility, existing owner-bound connections, provider dispatchers, MetaSendAuthority, MarketingMeasurementEvidenceService and canonical outcome/reporting projections. | PARTIAL: WI04C repairs and 161 unique focused checks below. OpenAI and Meta external configuration read-only evidence exists; MasterApp owner binding, event-specific live receipts, downstream attribution, SQL Server and commerce refund/provider-correction proof remain open. |
-| Merchant Square connections | CommerceCore/CommerceServiceRegistration.cs calls AddMerchantPayments and registers MerchantCheckoutService, MerchantPaymentCompletionService and reconciliation worker from shared payment infrastructure. PR 581 merged; 38124421310 focused payment/commerce/package checks passed. | BLOCKED for launch acceptance: latest durable Oct 11 checkpoint records zero original-tenant canonical merchant connections, missing shared provider configuration, outstanding signed webhook/provider isolation/checkout proof. Callback change is recorded, not freshly provider-verified. Need safe current configuration/connection readback and sandbox OAuth/checkout/refund proof. Stripe/PayPal remain Coming soon per implemented scope. |
+| Merchant Square connections | CommerceCore/CommerceServiceRegistration.cs calls AddMerchantPayments and registers MerchantCheckoutService, MerchantPaymentCompletionService and reconciliation worker from shared payment infrastructure. PR 581 merged; 38124421310 focused payment/commerce/package checks passed. | PARTIAL source readiness; launch acceptance remains BLOCKED. WI05A observed all six production Square configuration names as enabled Key Vault metadata; effective loading/provider registration and current business connections remain unverified. WI05B corrects capability/settlement reporting and canonical Payments navigation. Sandbox OAuth, signed webhook/isolation/checkout/refund proof and production verification remain open. Stripe/PayPal remain Coming soon. |
 | Shared commerce | CommerceCore shared registration/catalog/order/automation/management runtime; permanent CommerceBusiness identity. Payment integration ancestry proven. | PARTIAL: shared implementation and prior focused CI exist; current two-tenant management/auth/order/refund/automation and production routing proof incomplete. Preserve required legacy compatibility until dependencies are proven migrated. |
 | Parfait cutover | Existing docs/parfait-canonical-transition/canonical-internal-ownership-and-cutover.md is the detailed domain transition evidence source, not a new implementation. Original tenant retained; durable Oct 11 checkpoint records full no-overwrite 31-file/28,981,133-byte staging readback. | BLOCKED: runtime storage/cutover recorded disabled; merchant readiness, final mutable-state reconciliation, designed publication, www binding, visual/auth/payment proof, duplicate-draft resolution and retirement dependency proof outstanding. Preserve legacy host and current customer draft. Do not redo staged copy or SQL. |
 
@@ -229,10 +229,95 @@ Remaining WI04C release proof: authenticated read-only MasterApp owner/site/acco
 
 All previous gates remain open exactly as recorded: WI01 Square sandbox/signed webhooks/live subscription and SQL concurrency; WI02 live Entra/ClientApp/Studio identity and SQL tenant isolation; WI03 browser desktop/mobile save/publication/version and SQL proof; WI04A deployed ingestion/reporting; WI04B live scoped inquiry/SQL-FK/backlog review/owner inbox and workspace receipts. Public inquiry media storage/linkage and authorized SMS remain explicit launch-scope decisions, not completed capabilities. No fake production conversion, live ad/account change, customer-data mutation, charge, migration, merge, deployment, DNS change or Parfait cutover occurred.
 
-## Next assignment (recommendation only; stop here)
-Work Item 05: Square merchant connection readiness per permanent business. Begin with authenticated read-only configuration/connection evidence, then the existing sandbox OAuth and tenant-isolation path under a bounded assignment. Preserve all WI01–WI04C accepted source and unresolved gates. Shared storefront/two-tenant commerce, current-net refund reconciliation, customer journey, selective release/live acceptance and Parfait cutover remain subsequent separately gated work. Do not implement them as an extension of WI04C.
+## Work Item 05A — accepted read-only merchant readiness audit
 
-## Risks and exact boundary
+Resumed continuity checkpoint `3640de5bd9b75c7a6276a66024f8ed8afeaa1e0b` without
+changing source, running tests, migrations or provider actions. Astra identified two
+bounded defects: Square card-processing readiness was reused as settlement readiness;
+Payments navigation duplicated canonical settings roles and omitted `account`.
+
+Existing owners/evidence were retained: shared CommerceCore merchant OAuth, scoped
+credential protection, hosted checkout, signed webhook routing, immutable payment and
+refund identities, completion/reconciliation, PR581 and prior migration/test receipts.
+Founder application authorization does not connect independent sellers. Platform
+subscriptions remain separate. Parfait retains its gated legacy checkout and credentials.
+
+Fresh presence-only Azure evidence: Key Vault `masterapp-kv-1221` has enabled metadata
+for all six `MerchantPayments--Square--Production` entries: ApplicationId,
+ApplicationSecret, CallbackUrl, Enabled, WebhookSignatureKey and WebhookUrl. No secret
+values were read. This supersedes the old claim that production configuration is missing;
+it does not prove effective loading, Enabled's value, registration match or validity.
+No sandbox entries were observed in the inspected inventories. Protect has configured
+DataProtection BlobUri/KeyVaultKeyId; Parfait retains its separate Square settings.
+Different application isolation names do not prove cross-host credential decryptability.
+No current authenticated business inventory was available: historical zero connections
+must not be reported as a current count. Management/preview webhook and cutover-worker
+registration gates remain intentional, not defects to bypass.
+
+## Work Item 05B — Square readiness and Payments authorization
+
+Starting accepted checkpoint: `3640de5bd9b75c7a6276a66024f8ed8afeaa1e0b` on the same
+isolated revenue branch. All prior accepted ancestry is preserved. Canonical preflight
+passed with exact local/remote equality, clean worktree and native Git transport.
+
+Codex repaired only the two accepted source defects and necessary consumers:
+- Existing MerchantReadiness now represents unknown payment/settlement observations
+  with nullable fields and independent automatic-transfer capability. Square evaluates
+  card processing and automatic transfers separately for the verified selected location.
+  Capabilities never establish a completed payout; Square settlement status stays unknown.
+  A card-capable merchant without automatic transfers can remain eligible for payments.
+- Existing readiness contract owns the shared eligibility predicate used by default
+  selection, checkout and UI. Unknown card readiness fails closed; merchant identity,
+  environment, currency, selected-location and provider availability checks remain.
+  Other adapters retain their existing payment/settlement eligibility requirements.
+- Existing cached-read boundary normalizes historical Square settlement assertions to
+  unknown without modifying stored rows; new explicit transfer evidence is retained.
+  Missing/malformed cached readiness is displayed as unverified, not success or zero.
+- Existing BusinessWorkspaceAccess owns the reused capability evaluator. Controller
+  navigation no longer has a separate owner-role decision; account/owner/platform-owner
+  settings access and separately permitted team access use the same evaluator as routes.
+  Ticket, actor, active membership, business and lifecycle boundaries are preserved.
+
+Focused Codex evidence: 174 unique checks passed (70 synthetic adapter checks; 104 core
+payment/authorization/Parfait compatibility cases). The smallest pre-change adapter
+reproducer failed on fabricated Square settlement readiness. Existing focused core
+project compiled the actual Infrastructure and LegendCommerce owners. Compatible passed
+checks were retained while only failed/new or fixture-affected checks were rerun.
+Synthetic controller fixtures required valid business owner keys, canonical documents,
+GET requests and MVC TempData; their setup failures were not production defects.
+The actual shared Payments Razor view compiled separately with zero warnings/errors.
+No solution-wide build, application-wide test suite or previously completed migration ran.
+
+Temporary execution receipts: `/private/tmp/wi05b-adapters.log`,
+`/private/tmp/wi05b-results/wi05b-core.trx`, `wi05b-targeted.trx`,
+`wi05b-navigation-final.trx`, `wi05b-navigation-accepted.trx`, `wi05b-denial-final.trx`, and
+`/private/tmp/wi05b-razor.log`. Latest outcomes by exact test name give 104 distinct core
+passes, zero remaining failures/skips; repeated attempts are not additional checks.
+Committed regression tests and this result record persist with this checkpoint; temporary
+log paths are not claimed as durable backups or live provider evidence.
+
+Astra prescribed the bounded design and independently reviewed the source diff, cleanup
+and focused evidence; no implementation or tests were delegated to Astra. Exact commit
+acceptance and remote readback are attached to the commit in the session handoff; obtain
+the checkpoint SHA from Git history and actual remote HEAD rather than a self-reference.
+No new gateway, authorization engine, credential writer, payout processor, schema,
+migration, configuration, platform billing path or Parfait checkout authority was added.
+
+Remaining external Square proof is unchanged: effective production/sandbox configuration;
+authorized per-business seller scopes/location/default connections; real sandbox OAuth,
+checkout, signed/replayed webhook, two-tenant isolation, refresh/refund/interruption tests;
+deployed provenance, durable key-ring recovery and SQL constraints/concurrency; actual
+settlement/payout evidence and separately authorized Parfait migration/cutover acceptance.
+These are configuration, provider authorization, sandbox validation and production
+verification gates—not completed capabilities or inferred source defects.
+
+## Next assignment (recommendation only; stop here)
+Consolidated revenue-baseline release readiness: separate mandatory prepublication safety
+gates from controlled postdeployment acceptance tests. Preserve all WI01–WI05B evidence
+and open external gates. Do not merge, deploy, charge, migrate or initiate Parfait cutover
+without the separately authorized existing release process.
+
+## Preserved WI04C risks and exact boundary (historical)
 WI04C changes 17 existing production/contract/UI files and 17 test files; its single implementation commit and this checkpoint preserve earlier work. Nullable reporting values and consolidated receipt ownership require coordinated release validation through the existing release authority; no current deployment is claimed. Stop after this checkpoint and return control to the Founder.
 Overall launch readiness PARTIAL, with merchant/cutover acceptance BLOCKED as recorded above. Setup PASS at af5384537623b84055cea245a83b35f5b5bd1f7d. WI01 changed nine affected source/test files; WI02 changed four canonical production files and one focused regression file; WI03 changes only the existing shared editor and its existing regression file. WI04A changes five existing production owners and five existing test files; no schema or event catalog definitions changed. WI04B changes four existing production files and five focused test files; no schema, tracker, provider bridge, public upload engine or new queue. All update this single checkpoint. WI03 makes no backend, merchant onboarding, Parfait, production data, migration, merge, deployment or domain changes. WI04A adds no tracker, writer, queue, provider, migration or live-data operation.
 The old local worktree has a missing gitdir; Work Item 01 used a fresh clone of the exact isolated checkpoint and preserved branch ancestry. No repeated repository-wide audit or production workflow. Historical evidence above remains dated and cannot establish current provider configuration.

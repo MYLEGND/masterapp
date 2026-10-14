@@ -1117,14 +1117,12 @@ public sealed class CommerceManagementController(
                     x.ClientProfileId == actor.ActorClientProfileId.Value && x.Status == "Active", ct);
             if (member is null) return null;
 
-            var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-                member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
-            ViewData["CommerceCanCatalog"] = member.CanManageStorefront && member.CanManageCatalog;
-            ViewData["CommerceCanOrders"] = member.CanManageStorefront && member.CanManageOrders;
-            ViewData["CommerceCanAutomations"] = member.CanManageStorefront && member.CanManageOrders;
-            ViewData["CommerceCanAnalytics"] = member.CanManageAnalytics;
-            ViewData["CommerceCanSettings"] = owner;
-            ViewData["CommerceCanTeam"] = owner && member.CanManageTeam;
+            ViewData["CommerceCanCatalog"] = BusinessWorkspaceAccess.Allows(member, "catalog");
+            ViewData["CommerceCanOrders"] = BusinessWorkspaceAccess.Allows(member, "orders");
+            ViewData["CommerceCanAutomations"] = BusinessWorkspaceAccess.Allows(member, "automations");
+            ViewData["CommerceCanAnalytics"] = BusinessWorkspaceAccess.Allows(member, "analytics");
+            ViewData["CommerceCanSettings"] = BusinessWorkspaceAccess.Allows(member, "settings");
+            ViewData["CommerceCanTeam"] = BusinessWorkspaceAccess.Allows(member, "team");
         }
 
         return store;

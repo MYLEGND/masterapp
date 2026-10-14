@@ -14,10 +14,16 @@ public static class BusinessWorkspaceAccess
         var member = await db.CommerceBusinessMembers.AsNoTracking().SingleOrDefaultAsync(x =>
             x.CommerceBusinessId == businessId && x.ClientProfileId == profileId && x.Status == "Active", ct);
         if (member is null) return null;
+        return Allows(member, capability) ? await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId, ct) : null;
+    }
+    // Shared by route authorization and navigation after actor/business resolution.
+    public static bool Allows(CommerceBusinessMember member, string capability)
+    {
+        if (member.Status != "Active") return false;
         var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
             member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
             member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase);
-        var allowed = capability switch
+        return capability switch
         {
             "website" => member.CanManageStorefront,
             "catalog" => member.CanManageStorefront && member.CanManageCatalog,
@@ -29,6 +35,6 @@ public static class BusinessWorkspaceAccess
             "crm" => member.CanManageOrders || owner,
             _ => false
         };
-        return allowed ? await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == businessId, ct) : null;
     }
+
 }

@@ -7,7 +7,12 @@ public sealed record MerchantAccount(string Provider, string Environment, string
 public sealed record MerchantConnectionRequest(Guid BusinessId, string Environment, string State, string CallbackUrl, string? ExistingAccountId = null);
 public sealed record MerchantAuthorization(string RedirectUrl, string? AccountId = null);
 public sealed record MerchantConnectionResult(string AccountId, MerchantCredential Credential, string[] GrantedScopes);
-public sealed record MerchantReadiness(bool PaymentsEnabled, bool SettlementsEnabled, string[] Currencies, string[] PaymentMethods, string[] Locations, string? RequiredAction = null);
+// Capabilities are provider observations, never receipts for completed bank payouts.
+public sealed record MerchantReadiness(bool? PaymentsEnabled, bool? SettlementsEnabled, string[] Currencies, string[] PaymentMethods, string[] Locations, string? RequiredAction = null, bool? AutomaticTransfersEnabled = null)
+{
+    public bool CanAcceptPayments(string provider) => PaymentsEnabled == true &&
+        (provider == "Square" || SettlementsEnabled == true);
+}
 public sealed record MerchantCheckoutRequest(Guid AttemptId, string IdempotencyKey, long AmountMinor, string Currency, string OrderReference, string ReturnUrl, string? SourceToken = null);
 public sealed record MerchantPaymentEvidence(string AccountId, string Environment, string Reference, string? PaymentReference, string State, long AmountMinor, string Currency, long RefundedMinor = 0, string? CheckoutUrl = null, string? DisputeState = null);
 public sealed record MerchantWebhook(string EventId, string AccountId, string Environment, string Reference, DateTime OccurredUtc, Guid? AttemptId = null);
