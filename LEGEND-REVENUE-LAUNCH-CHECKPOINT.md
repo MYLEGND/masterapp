@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-13 (America/Phoenix). Single-Founder governance: bounded fast-track architecture admission correction prepared and focused-tested; overall release independence remains PARTIAL. Exact independent acceptance and remote commit readback are recorded in the session handoff. Production governance, readiness integration and legacy retirement remain separately gated.
+Updated: 2026-10-14 (America/Phoenix). Isolated push/PR validation contract repair: focused source verification complete; exact Astra acceptance and remote identity recorded in the session handoff. Full release readiness remains separately gated. Prior evidence and commits are preserved below.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -607,3 +607,56 @@ SQL runtime compatibility, exact OIDC federation, live Cloudflare routing or LEG
 conversation/tool proof. Those live claims remain UNVERIFIED. Parfait stays operational
 under its existing authority; no cutover. Overall verdict PARTIAL: bounded source
 correction only; sole independent production release authority is NOT YET PROVEN.
+
+## Isolated validation event repair — 2026-10-14 (America/Phoenix)
+
+Canonical preflight passed clean local/remote at
+777a100f3ba2efc21506e358de6786fd1874ac0b with native authenticated Git transport.
+Recorded failure38525547888/build-and-focused-tests/Plan exact validation resume:
+FAST_TRACK_SOURCE_VALIDATION_PR_UNPROVEN. The isolated workflow accepted development
+pushes but its owner demanded an open fast-track PR for every event. No release audit
+or completed implementation was restarted. No GitHub settings write occurred in the
+interrupted approval task or this repair; current instruction forbids settings changes.
+
+Astra designed/reviewed; Codex implemented/tested only the existing isolated workflow,
+validation-resume.py, its two direct test files and this checkpoint. Authenticated
+fix/repair/isolation pushes now produce developmentValidationScope, explicitly
+non-admissible, without inventing a PR or querying obsolete readiness. The same workflow
+now accepts fast-track PRs: checkout, planning and disposable SQL contract use exact PR
+head (not synthetic merge SHA). Untrusted branch names pass through quoted environment
+variables. Genuine PR validation still requires an authenticated run/attempt, exact head,
+same-repository open PR and current fast-track base. Missing, stale or forged source
+identity fails closed; workflow_dispatch remains unsupported, not a new admission path.
+
+Release admission now requires isolated pull_request evidence alongside architecture
+and security PR receipts. Push producers cannot pass receipt verification even with a
+forged source envelope; development/malformed/missing source evidence is rejected.
+Development success never supplies production authorization or readiness.
+
+Reuse extends the existing prior-evidence owner only: a new PR with no prior trusted PR
+run may consume the latest completed same-candidate/same-branch push's authenticated,
+unique retained artifact and actual executed child receipts. No all-gates-success
+inference from a green push; no arbitrary ancestral development producer. Existing
+execution/dependency compatibility and runtime materialization gates still apply.
+Original producer identities remain. Missing or unproven children run; malformed artifact
+content may stop planning with an evidence error and never supplies success. A latest failed
+child cannot be overwritten by an older successful PR through historical overlay.
+Already preserved chains are not expanded into new cross-event proof in this repair.
+Concurrent push/PR runs may still do work if the push has not completed; this change
+reuses completed proof and does not add scheduling/waiting or a second planner.
+
+FOCUSED EVIDENCE:145 unique tests passed (95 existing fast-track/admission tests,
+50 selected validation-resume tests including8 exact development-reuse cases).
+Two new reproductions against unchanged starting authority confirmed the original
+push PR_UNPROVEN and unsupported genuine-PR errors. Review corrections were tested at
+the full planner boundary, including rejection of older-success masking. YAML syntax
+and diff whitespace checks passed. No broad build, production SQL, migration, payment
+or provider mutation was run. Prior broader-suite failures remain recorded above;
+focused local passes do not assert that GitHub's complete application checks are green.
+
+Accepted correction is preserved only on the existing isolation branch through the
+canonical non-force finish/readback procedure; exact SHA is in Git history/session
+handoff. NEXT: prove architecture/security/isolated exact-candidate checks on a governed
+PR, resolve the existing readiness producer/Production boundary and OIDC proof, then
+complete separately authorized governance and safe legacy retirement. No ruleset or
+Production edits, live workflow retirement, merge, deployment or credential changes.

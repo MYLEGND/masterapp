@@ -64,6 +64,9 @@ on:
       - Domain/Entities/WebsiteContentState.cs
       - Domain/Entities/Commerce*.cs
       - Infrastructure/Data/Configurations/CommercePaymentModel.cs
+  pull_request:
+    branches:
+      - Legend/fast-track-release
   workflow_dispatch:
 
 permissions:
@@ -81,17 +84,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Plan exact validation resume
         id: resume
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VALIDATION_HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           python3 scripts/validation-resume.py plan \
             --workflow parfait-isolated-validation.yml --validation-base Legend/fast-track-release \
-            --current-sha "$GITHUB_SHA" --current-run-id "$GITHUB_RUN_ID" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" --head-branch "${{ github.ref_name }}" \
+            --current-sha "${{ github.event.pull_request.head.sha || github.sha }}" --current-run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --head-branch "$VALIDATION_HEAD_BRANCH" \
             --event "$GITHUB_EVENT_NAME" --repository "$GITHUB_REPOSITORY" \
             --output "$RUNNER_TEMP/validation-resume.json"
           python3 - <<'PYPLAN'
@@ -150,7 +155,7 @@ jobs:
         id: gate_migration_contract
         if: ${{ fromJSON(steps.resume.outputs.plan).gates['migration-contract'].run }}
         run: |
-          python3 scripts/test-validation-resume.py ParfaitValidationResumeTests FastTrackExecutionIdentityTests FastTrackImpactTests FastTrackSourceValidationTests ApprovedHeadPreflightTests
+          python3 scripts/test-validation-resume.py ParfaitValidationResumeTests FastTrackExecutionIdentityTests FastTrackImpactTests FastTrackSourceValidationTests IsolatedDevelopmentReuseTests ApprovedHeadPreflightTests
           python3 scripts/test-parfait-readonly-workflow.py
           python3 scripts/test-migration-probe-package.py
           python3 scripts/test-release-migration-probe-retry.py
@@ -167,7 +172,7 @@ jobs:
         if: ${{ fromJSON(steps.resume.outputs.plan).gates['sql-contract'].run }}
         run: |
           python3 scripts/migration-probe-package.py test-contract \
-            --tool-revision "${{ github.sha }}" --application-revision "${{ github.sha }}" \
+            --tool-revision "${{ github.event.pull_request.head.sha || github.sha }}" --application-revision "${{ github.event.pull_request.head.sha || github.sha }}" \
             --directory "$RUNNER_TEMP/payment-sql-contract"
 
       - name: Publish and inspect exact Parfait + Protect packages without deployment

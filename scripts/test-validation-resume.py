@@ -1390,8 +1390,8 @@ class FastTrackSourceValidationTests(unittest.TestCase):
     def setUp(self):
         self.sha = 'b' * 40
         self.args = SimpleNamespace(workflow='approved-release-security-validation.yml',
-            event='pull_request', repository='owner/repo', current_run_id=91, current_sha=self.sha)
-        self.run = dict(id=91, event='pull_request', path='.github/workflows/' + self.args.workflow,
+            event='pull_request', repository='owner/repo', current_run_id=91, current_sha=self.sha, run_attempt=1)
+        self.run = dict(id=91, run_attempt=1, event='pull_request', path='.github/workflows/' + self.args.workflow,
             head_sha=self.sha, head_repository=dict(full_name='owner/repo'), status='in_progress',
             pull_requests=[dict(number=580, base=dict(ref=m.FAST_TRACK_PR_BASE), head=dict(sha=self.sha))])
         self.pr = dict(number=580, state='open', base=dict(ref=m.FAST_TRACK_PR_BASE),
@@ -1410,10 +1410,81 @@ class FastTrackSourceValidationTests(unittest.TestCase):
         self.run['path'] = '.github/workflows/' + self.args.workflow
         self.assertEqual(m.FAST_TRACK_PR_BASE, self.scope()['baseBranch'])
 
-    def test_authenticated_isolated_push_uses_same_fast_track_source_authority(self):
-        self.args.workflow='parfait-isolated-validation.yml';self.args.event='push';self.args.head_branch='isolation/task'
-        self.run.update(event='push',path='.github/workflows/'+self.args.workflow,head_branch=self.args.head_branch)
-        self.assertFalse(self.scope()['releaseAdmission'])
+    def development(self):
+        self.args.workflow = 'parfait-isolated-validation.yml'
+        self.args.event = 'push'
+        self.args.head_branch = 'isolation/task'
+        self.run.update(event='push', path='.github/workflows/' + self.args.workflow,
+            head_branch=self.args.head_branch, pull_requests=[])
+
+    def test_push_without_pr_is_development_only_and_never_queries_pr_or_base(self):
+        self.development()
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
+             patch.object(m, 'api_get', return_value=self.run) as api, \
+             patch.object(m, 'approved_head_preflight') as preflight:
+            scope = m.fast_track_source_validation_scope(self.args)
+        self.assertEqual('development-validation-only', scope['phase'])
+        self.assertFalse(scope['releaseAdmission'])
+        self.assertNotIn('pullRequest', scope)
+        api.assert_called_once()
+        preflight.assert_not_called()
+
+    def test_genuine_isolated_pr_uses_strict_source_contract(self):
+        self.args.workflow = 'parfait-isolated-validation.yml'
+        self.run['path'] = '.github/workflows/' + self.args.workflow
+        self.assertEqual('source-validation-only', self.scope()['phase'])
+
+    def test_wrong_attempt_is_rejected(self):
+        self.run['run_attempt'] = 2
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+            self.scope()
+
+    def test_stale_run_candidate_is_rejected(self):
+        self.run['head_sha'] = 'c' * 40
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+            self.scope()
+
+    def test_changed_current_base_is_rejected(self):
+        with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
+             patch.object(m, 'api_get', side_effect=[self.run,self.pr]), \
+             patch.object(m, 'approved_head_preflight', return_value={'current':False}), \
+             self.assertRaisesRegex(ValueError, 'FAST_TRACK_BASE_CHANGED'):
+            m.fast_track_source_validation_scope(self.args)
+
+    def test_development_branch_and_repository_cannot_be_forged(self):
+        self.development()
+        for branch, repository in [('Legend/fast-track-release','owner/repo'), ('isolation/task','fork/repo')]:
+            self.args.head_branch = branch
+            self.run.update(head_branch=branch, head_repository=dict(full_name=repository))
+            with self.subTest(branch=branch, repository=repository), \
+                 patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
+                 patch.object(m, 'api_get', return_value=self.run), self.assertRaises(ValueError):
+                m.fast_track_source_validation_scope(self.args)
+
+    def test_development_plan_has_no_source_admission_envelope(self):
+        self.development()
+        with tempfile.TemporaryDirectory() as directory:
+            self.args.validation_base = m.FAST_TRACK_PR_BASE
+            self.args.output = str(Path(directory) / 'plan.json')
+            with patch.dict(m.os.environ, {'GITHUB_ACTIONS':'true','GITHUB_TOKEN':'test-token'}), \
+                 patch.object(m, 'api_get', return_value=self.run), \
+                 patch.object(m, '_compute_validation_plan_once', return_value={'sourceValidationScope':{'forged':True}}), \
+                 patch.object(m, 'require_readiness') as readiness:
+                m.cmd_plan(self.args)
+            plan = json.loads(Path(self.args.output).read_text())
+            self.assertNotIn('sourceValidationScope', plan)
+            self.assertFalse(plan['developmentValidationScope']['releaseAdmission'])
+            readiness.assert_not_called()
+
+    def test_workflow_binds_pr_head_in_checkout_plan_and_sql_contract(self):
+        source = (ROOT / '.github/workflows/parfait-isolated-validation.yml').read_text()
+        self.assertIn('  pull_request:\n    branches:\n      - Legend/fast-track-release', source)
+        candidate = '${{ github.event.pull_request.head.sha || github.sha }}'
+        for prefix in ('ref: ', '--current-sha "', '--tool-revision "', '--application-revision "'):
+            self.assertIn(prefix + candidate, source)
+        self.assertIn('VALIDATION_HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}', source)
+        self.assertIn('--head-branch "$VALIDATION_HEAD_BRANCH"', source)
+        self.assertNotIn('--head-branch "${{', source)
 
     def test_authenticated_fast_track_source_proof_is_not_release_admission(self):
         result = self.scope()
@@ -1464,6 +1535,117 @@ class FastTrackSourceValidationTests(unittest.TestCase):
             self.assertFalse(m._trusted_lineage_run('owner/repo', dict(self.run,
                 pull_requests=[dict(base=dict(ref=m.TRUSTED_PR_BASE))]), self.run['path'], self.sha))
         self.assertEqual(m.TRUSTED_PR_BASE, m._VALIDATION_PR_BASE.get())
+
+
+class IsolatedDevelopmentReuseTests(unittest.TestCase):
+    def setUp(self):
+        self.workflow = 'parfait-isolated-validation.yml'
+        self.sha = 'b' * 40
+        self.args = SimpleNamespace(workflow=self.workflow,event='pull_request',repository='owner/repo',
+            current_run_id=91,current_sha=self.sha,run_attempt=1,head_branch='isolation/task')
+        self.run = dict(id=81,run_attempt=1,event='push',path='.github/workflows/'+self.workflow,
+            head_sha=self.sha,head_branch='isolation/task',head_repository=dict(full_name='owner/repo'),
+            status='completed',conclusion='success')
+        self.runs = [self.run]
+        self.artifact = dict(id=101,name='validation-resume-parfait-81-1',expired=False,workflow_run=dict(id=81))
+        self.artifacts = [self.artifact]
+        self.step = m.WORKFLOWS[self.workflow]['gates']['routing']['step']
+        self.receipt = dict(producingRunId=81,reused=False,producerJobId=201,recordingJobId=201,
+            producerStepNumber=8,stepNumber=8,result='success')
+        self.stored = dict(workflow=self.workflow,currentSha=self.sha,validationBase=m.FAST_TRACK_PR_BASE,
+            developmentValidationScope=dict(phase='development-validation-only',releaseAdmission=False,
+                candidate=self.sha,branch='isolation/task',runId=81,runAttempt=1),
+            receiptSchemaVersion=1,recordingRunId=81,
+            gates={'routing':dict(step=self.step,run=True,receipt=self.receipt)})
+
+    def prior(self):
+        def api(repo,path,token):
+            if 'event=pull_request' in path:
+                return dict(total_count=0,workflow_runs=[])
+            if 'event=push' in path:
+                return dict(total_count=len(self.runs),workflow_runs=self.runs)
+            if path == 'actions/runs/81/artifacts?per_page=100':
+                return dict(total_count=len(self.artifacts),artifacts=self.artifacts)
+            raise AssertionError(path)
+        def download(repo,run,name,path,**kwargs):
+            self.assertEqual(101,kwargs['artifact_id'])
+            (path/'validation-resume.json').write_text(json.dumps(self.stored))
+        with patch.dict(m.os.environ, {'GITHUB_TOKEN':'fixture'}), \
+             patch.object(m,'api_get',side_effect=api), \
+             patch.object(m,'_download_run_artifact',side_effect=download):
+            return m.prior_evidence(self.args)
+
+    def test_exact_push_child_reused_through_existing_dependency_authority(self):
+        prior, steps, source = self.prior()
+        self.assertEqual('exact_development_child_receipts', source)
+        self.assertEqual(81, steps.producers[self.step]['runId'])
+        identities = {key:{'contentIdentity':'a'*64} for key in m.WORKFLOWS[self.workflow]['gates']}
+        with patch.object(m,'git_changed',return_value=[]), \
+             patch.object(m,'gate_dependency_manifests',return_value=identities), \
+             patch.object(m,'_historical_workflow_definition',return_value=m.WORKFLOWS[self.workflow]):
+            plan = m._plan_against_prior(self.workflow,self.sha,prior,steps,source)
+        self.assertFalse(plan['gates']['routing']['run'])
+        self.assertTrue(plan['gates']['payments']['run'])
+        self.assertEqual(81,plan['gates']['routing']['producerReceipt']['runId'])
+
+    def test_green_push_without_actual_child_receipt_is_not_reused(self):
+        self.stored['gates']['routing'].pop('receipt')
+        self.assertIsNone(self.prior()[0])
+
+    def test_latest_failed_child_cannot_borrow_older_green_push(self):
+        self.runs.append(dict(self.run,id=71))
+        self.run['conclusion'] = 'failure'
+        self.receipt['result'] = 'failure'
+        prior,steps,source = self.prior()
+        self.assertEqual(81,prior['id'])
+        self.assertEqual('failure',steps[self.step])
+        plan = m.compute_plan(self.workflow,self.sha,prior,steps,[],source)
+        self.assertTrue(plan['gates']['routing']['run'])
+
+    def test_full_planner_does_not_mask_latest_development_failure_with_old_pr(self):
+        self.run['conclusion'] = 'failure'
+        self.receipt['result'] = 'failure'
+        prior = self.prior()
+        with patch.object(m,'_cached_success_evidence',return_value=None), \
+             patch.object(m,'prior_evidence',return_value=prior), \
+             patch.object(m,'git_changed',return_value=[]), \
+             patch.object(m,'gate_dependency_manifests',return_value={}), \
+             patch.object(m,'_apply_content_equivalent_evidence') as overlay:
+            plan=m._compute_validation_plan_once(self.args)
+        self.assertTrue(plan['gates']['routing']['run'])
+        self.assertTrue(plan['gates']['payments']['run'])
+        overlay.assert_not_called()
+
+    def test_other_candidate_branch_repository_or_event_is_not_reused(self):
+        for key,value in [('head_sha','c'*40),('head_branch','isolation/other'),
+                          ('head_repository',dict(full_name='fork/repo')),('event','workflow_dispatch')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key):self.assertIsNone(self.prior()[0])
+            self.run[key]=old
+
+    def test_missing_expired_duplicate_or_unbound_artifact_is_not_reused(self):
+        for rows in ([],[dict(self.artifact,expired=True)], [self.artifact,self.artifact],
+                     [dict(self.artifact,workflow_run=dict(id=71))]):
+            self.artifacts=rows
+            with self.subTest(rows=rows):self.assertIsNone(self.prior()[0])
+
+    def test_changed_or_forged_development_envelope_is_not_reused(self):
+        original=dict(self.stored['developmentValidationScope'])
+        for key,value in [('candidate','c'*40),('runId',71),('runAttempt',2),('releaseAdmission',True)]:
+            self.stored['developmentValidationScope']=original | {key:value}
+            with self.subTest(key=key):self.assertIsNone(self.prior()[0])
+        self.stored['developmentValidationScope']=original
+        self.stored['sourceValidationScope']={'phase':'source-validation-only'}
+        self.assertIsNone(self.prior()[0])
+
+    def test_changed_dependency_identity_invalidates_push_child(self):
+        prior,steps,source=self.prior()
+        ids=lambda value:{key:{'contentIdentity':value*64} for key in m.WORKFLOWS[self.workflow]['gates']}
+        with patch.object(m,'git_changed',return_value=[]), \
+             patch.object(m,'gate_dependency_manifests',side_effect=[ids('a'),ids('b')]), \
+             patch.object(m,'_historical_workflow_definition',return_value=m.WORKFLOWS[self.workflow]):
+            plan=m._plan_against_prior(self.workflow,self.sha,prior,steps,source)
+        self.assertTrue(plan['gates']['routing']['run'])
 
 
 class GitHubEvidenceTransportTests(unittest.TestCase):

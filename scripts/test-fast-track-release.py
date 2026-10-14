@@ -399,13 +399,13 @@ class FastTrackHistoryTests(unittest.TestCase):
 
 
 class FastTrackArchitectureAdmissionTests(unittest.TestCase):
-    def admission(self, architecture=True):
+    def admission(self, architecture=True, isolated_event="pull_request"):
         candidate, revision = 'a' * 40, 'b' * 40
         pull = dict(number=580, merged_at='2026-10-13T00:00:00Z', merge_commit_sha=revision,
             base=dict(ref=authority.FAST_TRACK_PR_BASE),
             head=dict(sha=candidate, ref='isolation/task', repo=dict(full_name='owner/repo')))
         workflows = [('approved-release-security-validation.yml', 'pull_request'),
-            ('parfait-isolated-validation.yml', 'push')]
+            ('parfait-isolated-validation.yml', isolated_event)]
         if architecture:
             workflows.append(('masterapp-platform-architecture-validation.yml', 'pull_request'))
         rows = [dict(id=i+1, run_attempt=1, path='.github/workflows/'+workflow, event=event,
@@ -425,6 +425,10 @@ class FastTrackArchitectureAdmissionTests(unittest.TestCase):
     def test_security_and_isolated_success_cannot_replace_architecture(self):
         with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN:masterapp-platform'):
             self.admission(False)
+
+    def test_push_only_isolated_validation_cannot_admit_release(self):
+        with self.assertRaisesRegex(RuntimeError, 'REQUIRED_VALIDATION_UNPROVEN:parfait-isolated'):
+            self.admission(isolated_event='push')
 
     def test_architecture_workflow_uses_fast_track_base_without_old_release_jobs(self):
         source = Path('.github/workflows/masterapp-platform-architecture-validation.yml').read_text()
@@ -487,7 +491,7 @@ class FastTrackArchitectureAdmissionTests(unittest.TestCase):
 
 class MergedSourceReceiptTests(unittest.TestCase):
     def setUp(self):
-        self.run=dict(id=71,run_attempt=1,pull_requests=[])
+        self.run=dict(id=71,run_attempt=1,event="pull_request",pull_requests=[])
         self.workflow='approved-release-security-validation.yml'
         self.name='validation-resume-security-71-1'
         self.artifact=dict(id=81,name=self.name,expired=False,workflow_run=dict(id=71))
@@ -501,6 +505,21 @@ class MergedSourceReceiptTests(unittest.TestCase):
         with patch.object(authority,'api_get',return_value=dict(total_count=1,artifacts=[self.artifact])), \
              patch.object(authority,'_download_run_artifact',side_effect=download):
             return authority.fast_track_validation_receipt('owner/repo',self.run,self.workflow,'a'*40,580,'fixture')
+    def test_push_producer_cannot_forge_pr_source_scope(self):
+        self.run['event'] = 'push'
+        with self.assertRaisesRegex(RuntimeError, 'PR_EVENT_REQUIRED'):
+            self.verify()
+
+    def test_development_or_malformed_source_envelope_is_not_admission(self):
+        self.receipt['developmentValidationScope'] = {'releaseAdmission':False}
+        with self.assertRaisesRegex(RuntimeError, 'SOURCE_SCOPE_UNPROVEN'):
+            self.verify()
+        del self.receipt['developmentValidationScope']
+        for scope in (None, {}, [], {'phase':'development-validation-only'}):
+            self.receipt['sourceValidationScope'] = scope
+            with self.subTest(scope=scope), self.assertRaisesRegex(RuntimeError, 'SOURCE_SCOPE_UNPROVEN'):
+                self.verify()
+
     def test_architecture_receipt_has_its_own_exact_workflow_prefix(self):
         self.workflow = 'masterapp-platform-architecture-validation.yml'
         self.receipt['workflow'] = self.workflow

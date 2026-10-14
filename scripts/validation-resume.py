@@ -3711,6 +3711,8 @@ def fast_track_validation_receipt(repository, run, workflow, candidate, pr, toke
         'masterapp-platform-architecture-validation.yml': 'architecture'}
     if workflow not in prefixes:
         raise RuntimeError('FAST_TRACK_VALIDATION_WORKFLOW_UNSUPPORTED')
+    if run.get('event') != 'pull_request':
+        raise RuntimeError('FAST_TRACK_VALIDATION_PR_EVENT_REQUIRED')
     prefix = prefixes[workflow]
     name = f"validation-resume-{prefix}-{run['id']}-{run['run_attempt']}"
     inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
@@ -3727,7 +3729,8 @@ def fast_track_validation_receipt(repository, run, workflow, candidate, pr, toke
             raise RuntimeError('FAST_TRACK_VALIDATION_RECEIPT_OVERSIZED')
         receipt = json.loads(path.read_text())
     scope = receipt.get('sourceValidationScope', {})
-    if (receipt.get('workflow') != workflow or receipt.get('currentSha') != candidate
+    if (not isinstance(scope, dict) or 'developmentValidationScope' in receipt
+        or receipt.get('workflow') != workflow or receipt.get('currentSha') != candidate
         or receipt.get('validationBase') != FAST_TRACK_PR_BASE
         or scope.get('phase') != 'source-validation-only' or scope.get('releaseAdmission') is not False
         or scope.get('baseBranch') != FAST_TRACK_PR_BASE or scope.get('candidate') != candidate
@@ -4347,7 +4350,7 @@ def fast_track_source_admission():
     if not isinstance(rows, list) or payload.get('total_count') != len(rows):
         raise RuntimeError('FAST_TRACK_VALIDATION_INVENTORY_INCOMPLETE')
     required = {'approved-release-security-validation.yml': 'pull_request',
-        'masterapp-platform-architecture-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'push'}
+        'masterapp-platform-architecture-validation.yml': 'pull_request', 'parfait-isolated-validation.yml': 'pull_request'}
     evidence = {}
     for workflow, event in required.items():
         matches = [r for r in rows if r.get('path') == '.github/workflows/' + workflow
@@ -4547,6 +4550,25 @@ def prior_evidence(args):
                 continue
         runs.append(run)
     if not runs:
+        # A new isolated PR can reuse exact executed development checks, never
+        # their admission scope. Do not search past a newer PR or push failure.
+        if args.workflow == 'parfait-isolated-validation.yml' and args.event == 'pull_request':
+            payload = api_get(args.repository,
+                f'actions/workflows/{workflow}/runs?branch={branch}&event=push&head_sha={args.current_sha}&status=completed&per_page=100', token)
+            candidates = payload.get('workflow_runs')
+            if not isinstance(candidates, list) or payload.get('total_count') != len(candidates):
+                return None, {}, 'development_history_incomplete'
+            matches = [run for run in candidates if run.get('event') == 'push'
+                and run.get('path') == WORKFLOW_PATHS[args.workflow]
+                and run.get('head_repository', {}).get('full_name') == args.repository
+                and run.get('head_sha') == args.current_sha and run.get('head_branch') == args.head_branch
+                and run.get('status') == 'completed' and type(run.get('id')) is int
+                and run['id'] > 0 and type(run.get('run_attempt')) is int and run['run_attempt'] > 0]
+            if matches:
+                prior = max(matches, key=lambda run: run['id'])
+                steps = _historical_plan_steps(args, prior, token, development=True)
+                if steps:
+                    return prior, steps, 'exact_development_child_receipts'
         return None, {}, "no_prior_completed_run"
 
     ordered = sorted(
@@ -4759,7 +4781,7 @@ def _parfait_unconditional_validation_generation(workflow, revision):
     return blob == '20b242ae2b01d1091c746801f6f0144428912cda'
 
 
-def _historical_plan_steps(args, run, token):
+def _historical_plan_steps(args, run, token, *, development=False):
     """Recover gate proof from the durable validation-plan artifact.
 
     Successful parent completion proves gates the plan actually executed.
@@ -4770,7 +4792,17 @@ def _historical_plan_steps(args, run, token):
     if artifact is None:
         return None
     run_id = int(run.get("id") or 0)
-    if artifact not in _run_artifact_names(args.repository, run_id, token):
+    artifact_id = None
+    if development:
+        inventory = api_get(args.repository, f'actions/runs/{run_id}/artifacts?per_page=100', token)
+        rows = inventory.get('artifacts')
+        if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+            return None
+        matches = [row for row in rows if row.get('name') == artifact and row.get('expired') is False]
+        if len(matches) != 1 or matches[0].get('workflow_run', {}).get('id') != run_id:
+            return None
+        artifact_id = matches[0]['id']
+    elif artifact not in _run_artifact_names(args.repository, run_id, token):
         if (run.get('path') == WORKFLOW_PATHS.get(args.workflow)
             and run.get('head_repository', {}).get('full_name') == args.repository
             and run.get('event') == 'push' and run.get('head_branch') == args.head_branch
@@ -4784,7 +4816,10 @@ def _historical_plan_steps(args, run, token):
     import tempfile
     with tempfile.TemporaryDirectory(prefix="validation-plan-") as temporary:
         directory = Path(temporary)
-        _download_run_artifact(args.repository, run_id, artifact, directory)
+        if development:
+            _download_run_artifact(args.repository, run_id, artifact, directory, artifact_id=artifact_id)
+        else:
+            _download_run_artifact(args.repository, run_id, artifact, directory)
         candidates = list(directory.rglob("validation-resume.json"))
         if len(candidates) != 1:
             return None
@@ -4792,6 +4827,13 @@ def _historical_plan_steps(args, run, token):
 
     if stored.get("workflow") != args.workflow:
         return None
+    if development:
+        scope = stored.get('developmentValidationScope')
+        if (not isinstance(scope, dict) or 'sourceValidationScope' in stored
+            or stored.get('currentSha') != args.current_sha or stored.get('validationBase') != FAST_TRACK_PR_BASE
+            or scope != dict(phase='development-validation-only', releaseAdmission=False,
+                candidate=args.current_sha, branch=args.head_branch, runId=run_id, runAttempt=run['run_attempt'])):
+            return None
     gates = stored.get("gates")
     if not isinstance(gates, dict):
         return None
@@ -4828,7 +4870,7 @@ def _historical_plan_steps(args, run, token):
                     "artifact": artifact,
                 }
                 continue
-            if not parent_success:
+            if development or not parent_success:
                 continue
             steps[step] = "success"
             steps.producers[step] = {
@@ -4840,6 +4882,9 @@ def _historical_plan_steps(args, run, token):
             }
             continue
 
+        if development:
+            # Cross-event reuse is limited to observed execution in this producer.
+            continue
         producer = gate.get("receipt") or gate.get("producerReceipt") or {}
         if producer.get("result") != "success":
             continue
@@ -5576,7 +5621,10 @@ def _compute_validation_plan_once(args):
                 [],
                 source,
             )
-        plan = _apply_content_equivalent_evidence(args, plan)
+        # A latest exact development failure must not be replaced by older PR
+        # success. Missing children remain runnable rather than inferred green.
+        if source != 'exact_development_child_receipts':
+            plan = _apply_content_equivalent_evidence(args, plan)
     plan["schemaVersion"] = 2
     plan["dependencyManifests"] = gate_dependency_manifests(args.workflow, args.current_sha)
     return plan
@@ -6056,7 +6104,7 @@ def require_readiness(repository, candidate, *, event=None, clock=time.monotonic
 
 
 def fast_track_source_validation_scope(args):
-    """Bind credential-free security validation to its live fast-track PR.
+    """Separate development pushes from authenticated fast-track PR validation.
 
     Source validation is not production readiness or mutation admission. The
     fast-track release must separately require those proofs before publication.
@@ -6064,17 +6112,26 @@ def fast_track_source_validation_scope(args):
     """
     if ((args.workflow, args.event) not in {('approved-release-security-validation.yml', 'pull_request'),
         ('parfait-isolated-validation.yml', 'push'),
+        ('parfait-isolated-validation.yml', 'pull_request'),
         ('masterapp-platform-architecture-validation.yml', 'pull_request')} or os.environ.get('GITHUB_ACTIONS') != 'true'):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_CONTEXT_INVALID')
     token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
     if not token:
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISSING')
     run = api_get(args.repository, f'actions/runs/{args.current_run_id}', token)
-    if (run.get('id') != args.current_run_id or run.get('event') != args.event or
+    if (not re.fullmatch('[a-f0-9]{40}', args.current_sha or '')
+        or run.get('id') != args.current_run_id or run.get('run_attempt') != args.run_attempt or
+        type(args.run_attempt) is not int or args.run_attempt < 1 or run.get('event') != args.event or
         (args.event == 'push' and run.get('head_branch') != args.head_branch) or run.get('path') != '.github/workflows/' + args.workflow or run.get('head_sha') != args.current_sha or
         run.get('head_repository', {}).get('full_name') != args.repository or
         run.get('status') != 'in_progress'):
         raise ValueError('FAST_TRACK_SOURCE_VALIDATION_IDENTITY_MISMATCH')
+    if args.event == 'push':
+        if not re.fullmatch(r'(?:fix|repair|isolation)/[^\s]+', args.head_branch or ''):
+            raise ValueError('FAST_TRACK_DEVELOPMENT_BRANCH_UNAUTHORIZED')
+        return dict(phase='development-validation-only', releaseAdmission=False,
+            candidate=args.current_sha, branch=args.head_branch,
+            runId=args.current_run_id, runAttempt=args.run_attempt)
     pulls = [pr for pr in run.get('pull_requests', []) if
         pr.get('base', {}).get('ref') == FAST_TRACK_PR_BASE and pr.get('head', {}).get('sha') == args.current_sha]
     if len(pulls) != 1:
@@ -6147,7 +6204,11 @@ def _cmd_plan(args, *, source_scope=None):
 
     plan["validationBase"] = _VALIDATION_PR_BASE.get()
     if source_scope is not None:
-        plan["sourceValidationScope"] = source_scope
+        plan.pop("sourceValidationScope", None)
+        plan.pop("developmentValidationScope", None)
+        key = ("developmentValidationScope" if source_scope['phase'] == 'development-validation-only'
+               else "sourceValidationScope")
+        plan[key] = source_scope
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
