@@ -322,7 +322,7 @@ function fixtureApplyMutations(document,operations,ctaCatalog=[]) {
   }
 }
 
-function fixtureMutationResponse(before,after,serverRevision) {
+function fixtureMutationResponse(before,after,serverRevision,integerRevisions=false) {
   const removedPages=Object.keys(before.pages || {}).filter(path=>!Object.hasOwn(after.pages || {},path));
   const removedComponents=Object.keys(before.reusableComponents || {}).filter(id=>!Object.hasOwn(after.reusableComponents || {},id));
   const changedScopes=[...new Set([
@@ -331,7 +331,7 @@ function fixtureMutationResponse(before,after,serverRevision) {
     ...removedComponents.map(id=>'@component/'+id)
   ])];
   return {
-    source:'canonical_v3_mutation',revision:'r'+serverRevision,changedScopes,fingerprints:{},
+    source:'canonical_v3_mutation',revision:integerRevisions?serverRevision:'r'+serverRevision,changedScopes,fingerprints:{},
     changes:{
       pages:structuredClone(after.pages || {}),removedPages,
       theme:structuredClone(after.theme || {}),breakpoints:structuredClone(after.breakpoints || []),
@@ -343,7 +343,7 @@ function fixtureMutationResponse(before,after,serverRevision) {
   };
 }
 
-async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,denied=false,search='?legendEdit=ticket',pathname='/',origin='https://site.example',apiBase='',business=null,pages=[],agentSlug='',pagePrefix='',editorAuthorizationUrl='',ctaCatalog=[],signalCatalog=null,agentContract=null,dataCatalog=null,dataCollections=null,qualityPayload=null,mediaPayload=null,mediaUploadPayload=null,mutationSequence=null,capabilities=null,legacyMigration=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,modelContext=null,integerRevisions=false,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:origin+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -352,7 +352,8 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase,businessId: business?.id || '',pages,agentSlug,pagePrefix,editorAuthorizationUrl};
   if(modelContext) Object.defineProperty(w.document,'modelContext',{value:modelContext,configurable:true});
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
-  const alerts=[]; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1;
+  const alerts=[]; let mutationCall=0; let serverDoc=structuredClone(doc); let serverRevision=1; let publishedDoc=null;
+  const revisionValue=()=>integerRevisions?serverRevision:'r'+serverRevision;
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=value=>alerts.push(String(value)); w.confirm=()=>true;
   w.fetch=async(url,init={})=> {
     calls.push({url:String(url),...init});
@@ -366,10 +367,10 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       const id=parsed.searchParams.get('id');
       const found=fixtureFindNodeLocation(serverDoc,id);
       if(!found) return {ok:false,status:404,json:async()=>({error:'website_node_not_found'})};
-      return {ok:true,status:200,json:async()=>({schema:'legend-node-source/v1',revision:'r'+serverRevision,fingerprint:'fp-'+serverRevision+'-'+id,location:{scope:found.scope,pagePath:found.pagePath,reusableComponentId:found.reusableComponentId,parentId:found.parentId,index:found.index},node:sourceProjectionNode(found.node)})};
+      return {ok:true,status:200,json:async()=>({schema:'legend-node-source/v1',revision:revisionValue(),fingerprint:'fp-'+serverRevision+'-'+id,location:{scope:found.scope,pagePath:found.pagePath,reusableComponentId:found.reusableComponentId,parentId:found.parentId,index:found.index},node:sourceProjectionNode(found.node)})};
     }
     if(parsed.pathname.endsWith('/manage/agent/summary') && method==='GET')
-      return {ok:true,status:200,json:async()=>({schema:'legend-creative-workspace/v1',siteKey,revision:'r'+serverRevision,pages:Object.keys(serverDoc.pages || {}).map(path=>({path})),capabilities:{capabilities:[]}})};
+      return {ok:true,status:200,json:async()=>({schema:'legend-creative-workspace/v1',siteKey,revision:revisionValue(),pages:Object.keys(serverDoc.pages || {}).map(path=>({path})),capabilities:{capabilities:[]}})};
     if(parsed.pathname.endsWith('/manage/agent/recipes') && method==='GET')
       return {ok:true,status:200,json:async()=>({schema:'legend-website-recipes/v1',recipes:[],artDirections:['roadster-precision'],capabilities:{capabilities:[]}})};
     if(parsed.pathname.endsWith('/manage/agent/contract') && method==='GET')
@@ -377,14 +378,14 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     if(parsed.pathname.endsWith('/manage/agent/design-quality') && method==='GET')
       return {ok:true,status:200,json:async()=>({
         schema:'legend-design-quality/v1',
-        revision:qualityPayload?.revision ?? ('r'+serverRevision),
+        revision:qualityPayload?.revision ?? (revisionValue()),
         structural:{checks:qualityPayload?.checks || []},
         design:{checks:qualityPayload?.designChecks || [],conversionPaths:qualityPayload?.conversionPaths || []}
       })};
     if(parsed.pathname.endsWith('/manage/agent/conversion-readiness') && method==='GET')
       return {ok:true,status:200,json:async()=>({
         schema:'legend-conversion-readiness/v2',
-        revision:'r'+serverRevision,
+        revision:revisionValue(),
         publishedRevision:null,
         publishedVersionId:null,
         currentDraftIsPublished:false,
@@ -408,7 +409,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       return {ok:true,status:200,json:async()=>({
         schema:'legend-conversion-trace/v1',
         source:'canonical_analytics_event_lineage',
-        revision:'r'+serverRevision,
+        revision:revisionValue(),
         publishedVersionId:null,
         currentDraftIsPublished:false,
         windowDays:30,
@@ -445,21 +446,23 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       return {ok:true,status:200,json:async()=>mediaUploadPayload || {id,name:file?.name || 'upload',url:'https://site.example/api/website-content/media/'+id,contentType:file?.type || 'image/png',sizeBytes:file?.size || 1024,createdUtc:'2026-09-28T00:00:00Z'}};
     }
     if(parsed.pathname.endsWith('/manage/mutations') && method==='POST'){
+      if(integerRevisions && body?.expectedRevision!==serverRevision)
+        return {ok:false,status:409,json:async()=>({error:'scope_revision_conflict',revision:serverRevision})};
       const step=Array.isArray(mutationSequence) && mutationSequence.length ? mutationSequence[Math.min(mutationCall++,mutationSequence.length-1)] : null;
       if(step?.status && (step.status<200 || step.status>=300))
-        return {ok:false,status:step.status,json:async()=>step.payload || {error:'scope_revision_conflict',revision:'r'+serverRevision}};
+        return {ok:false,status:step.status,json:async()=>step.payload || {error:'scope_revision_conflict',revision:revisionValue()}};
       const before=structuredClone(serverDoc);
       fixtureApplyMutations(serverDoc,body?.operations || [],ctaCatalog);
       serverRevision++;
-      return {ok:true,status:200,json:async()=>step?.payload || fixtureMutationResponse(before,serverDoc,serverRevision)};
+      return {ok:true,status:200,json:async()=>step?.payload || fixtureMutationResponse(before,serverDoc,serverRevision,integerRevisions)};
     }
     if(parsed.pathname.endsWith('/manage/design-plan') && method==='POST'){
       serverRevision++;
-      return {ok:true,status:200,json:async()=>fixtureMutationResponse(serverDoc,serverDoc,serverRevision)};
+      return {ok:true,status:200,json:async()=>fixtureMutationResponse(serverDoc,serverDoc,serverRevision,integerRevisions)};
     }
     if(parsed.pathname.endsWith('/manage/source') && method==='GET'){
       const projected=sourceProjectionDocument(serverDoc);
-      return {ok:true,status:200,json:async()=>({source:'legend_site_source',revision:'r'+serverRevision,requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})};
+      return {ok:true,status:200,json:async()=>({source:'legend_site_source',revision:revisionValue(),requiresMaterialization:false,schema:'legend-site-source/v1',text:JSON.stringify(projected,null,2),sourceMap:{}})};
     }
     if(parsed.pathname.endsWith('/manage/signals') && method==='POST'){
       const target=canonicalNodeById(serverDoc,body?.elementId,body?.pagePath || '/');
@@ -470,7 +473,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
       serverRevision++;
       return {ok:true,status:200,json:async()=>({
         source:'website_signal_configuration',
-        revision:'r'+serverRevision,
+        revision:revisionValue(),
         pagePath:body.pagePath || '/',
         elementId:body.elementId,
         fieldKey,
@@ -484,18 +487,21 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
     if(parsed.pathname.endsWith('/manage/signals/health'))
       return {ok:true,status:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}};
     if(parsed.pathname.endsWith('/manage/collaboration') && method==='GET')
-      return {ok:true,status:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r'+serverRevision,role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}};
+      return {ok:true,status:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:revisionValue(),role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}};
     if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status'))
       return {ok:true,status:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}};
     if(parsed.pathname.endsWith('/manage/publish') && method==='POST'){
+      if(integerRevisions && body?.expectedRevision!==serverRevision)
+        return {ok:false,status:409,json:async()=>({error:'scope_revision_conflict',revision:serverRevision})};
+      publishedDoc=structuredClone(serverDoc);
       serverRevision++;
-      return {ok:true,status:200,json:async()=>({revision:'r'+serverRevision,publishedRevision:serverRevision,document:structuredClone(serverDoc)})};
+      return {ok:true,status:200,json:async()=>({revision:revisionValue(),publishedRevision:serverRevision,...(integerRevisions?{versionId:body.requestId}:{}),document:structuredClone(publishedDoc)})};
     }
     if(parsed.pathname.endsWith('/manage') && method==='POST' && body?.document){
       serverDoc=structuredClone(body.document); serverRevision++;
-      return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+      return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:revisionValue(),document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
     }
-    return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:'r'+serverRevision,document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
+    return {ok:true,status:200,json:async()=>({siteKey,business,store,revision:revisionValue(),document:structuredClone(serverDoc),legacyMigration:legacyMigration || undefined,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined,agentContract:agentContract || undefined,capabilities:capabilities || undefined,drafts:[]})};
   };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
@@ -505,7 +511,7 @@ async function domFixture({siteKey='legend',doc=canonicalDocument(),store=null,d
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));return structuredClone(serverDoc);};
-  return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),close:()=>w.close()};
+  return {w,calls,animations,alerts,click,input,change,editSelected,save,serverDocument:()=>structuredClone(serverDoc),publishedDocument:()=>structuredClone(publishedDoc),serverRevision:revisionValue,close:()=>w.close()};
 }
 
 test('canonical startup fills navigation and image accessibility defaults and prevents routine width overflow',()=>{
@@ -1062,7 +1068,7 @@ test('published mobile presentation preserves explicit free-canvas geometry with
     assert.equal(img.style.height,'760px');
     assert.equal(img.style.maxWidth,'900px');
 
-    f.click('[data-editor-viewport="base"]');
+    f.change('#legend-cms-breakpoint','base');
     await new Promise(resolve=>setTimeout(resolve,0));
     assert.equal(h.style.width,'70%');
     assert.equal(h.style.left,'4%');
@@ -1092,8 +1098,14 @@ test('Desktop and Mobile viewport buttons write to separate presentation layers'
     assert.equal(mobileHeading.breakpointStyles.mobile.backgroundColor,'#333333');
     assert.doesNotMatch(source,/data-color-hex/);
 
-    f.click('[data-editor-viewport="base"]');
-    assert.equal(f.w.document.querySelector('[data-editor-viewport="base"]').getAttribute('aria-pressed'),'true');
+    f.click('[data-editor-viewport="desktop"]');
+    assert.equal(f.w.document.querySelector('[data-editor-viewport="desktop"]').getAttribute('aria-pressed'),'true');
+    f.input('#legend-cms-width','72');
+    const desktopSaved=await f.save();
+    const desktopHeading=canonicalNodeById(desktopSaved,'home.h1.node.1');
+    assert.equal(desktopHeading.style.widthPercent,80);
+    assert.equal(desktopHeading.breakpointStyles.desktop.widthPercent,72);
+    assert.equal(desktopHeading.breakpointStyles.mobile.widthPercent,44);
     assert.equal(f.w.document.querySelector('[data-editor-viewport="mobile"]').getAttribute('aria-pressed'),'false');
   }finally{f.close();}
 });
@@ -4278,7 +4290,7 @@ test('publish allows bounded immutable compilation before client cancellation wh
   assert.match(source,/const method=String\(options\.method \|\| 'GET'\)\.toUpperCase\(\)/);
   assert.match(source,/const deadlineMs=method==='POST' \? 70000 : 20000/);
   assert.match(source,/url\.searchParams\.set\('requestId', pendingPublication\.requestId\)/);
-  assert.match(source,/if \(!pendingPublication\) rememberPublication\(\{requestId:crypto\.randomUUID\(\), expectedRevision:revision\}\)/);
+  assert.match(source,/if \(!pendingPublication\) rememberPublication\(\{requestId:crypto\.randomUUID\(\), expectedRevision:submittedRevision\}\)/);
 });
 
 test('Website Studio exposes original-request publication recovery with read-only confirmation',()=>{
@@ -4301,3 +4313,222 @@ test('Website Studio exposes original-request publication recovery with read-onl
   assert.match(source,/document\.getElementById\('legend-cms-publication-resume'\)\?\.addEventListener/);
   assert.match(source,/buildEditor\(\);\s*restorePublication\(\);/);
 });
+
+test('WI03 regression: Desktop shortcut isolates styling and reports every breakpoint truthfully',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  try {
+    const desktop=f.w.document.querySelector('[data-editor-viewport="desktop"]');
+    const mobile=f.w.document.querySelector('[data-editor-viewport="mobile"]');
+    assert.ok(desktop); assert.equal(desktop.getAttribute('aria-pressed'),'false');
+    assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').value,'base');
+    f.click('main h1'); f.click('[data-open="layout"]');
+    desktop.click(); assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').value,'desktop');
+    f.input('#legend-cms-width','70');
+    mobile.click(); f.input('#legend-cms-width','90');
+    f.change('#legend-cms-breakpoint','tablet');
+    assert.equal(desktop.getAttribute('aria-pressed'),'false'); assert.equal(mobile.getAttribute('aria-pressed'),'false');
+    f.input('#legend-cms-breakpoint-key','custom-wide'); f.input('#legend-cms-breakpoint-label','Custom wide');
+    f.input('#legend-cms-breakpoint-min','1500'); f.input('#legend-cms-breakpoint-max','1800');
+    f.click('#legend-cms-breakpoint-add');
+    assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').value,'custom-wide');
+    assert.equal(desktop.getAttribute('aria-pressed'),'false'); assert.equal(mobile.getAttribute('aria-pressed'),'false');
+    f.change('#legend-cms-breakpoint','base'); f.input('[data-style-key="fontSize"]','32');
+    assert.equal(desktop.getAttribute('aria-pressed'),'false'); assert.equal(mobile.getAttribute('aria-pressed'),'false');
+    f.editSelected('Shared at all sizes');
+    const saved=await f.save(); const heading=canonicalNodeById(saved,'home.h1.node.1');
+    assert.equal(heading.breakpointStyles.desktop.widthPercent,70); assert.equal(heading.breakpointStyles.mobile.widthPercent,90);
+    assert.equal(heading.style.widthPercent,undefined); assert.equal(heading.text,'Shared at all sizes');
+    desktop.click(); assert.equal(desktop.getAttribute('aria-pressed'),'true'); assert.equal(mobile.getAttribute('aria-pressed'),'false');
+    mobile.click(); assert.equal(desktop.getAttribute('aria-pressed'),'false'); assert.equal(mobile.getAttribute('aria-pressed'),'true');
+  } finally {f.close();}
+});
+
+for(const includeDocument of [true,false]) {
+  test(`WI03 regression: delayed publication ${includeDocument?'with':'without'} document preserves newer responsive and shared draft`,async()=>{
+    const f=await domFixture({integerRevisions:true});
+    try {
+      const original=f.w.fetch; let finish; let requestId; let posts=0; let receipt;
+      f.w.fetch=async(url,options={})=>{
+        if(String(url).endsWith('/manage/publish')) {
+          posts++; requestId=JSON.parse(options.body).requestId;
+          const response=await original(url,options); receipt=await response.json();
+          if(!includeDocument) delete receipt.document;
+          return new Promise(resolve=>{finish=()=>resolve({ok:true,json:async()=>receipt});});
+        }
+        if(options.method==='HEAD') return {ok:true,headers:{get:()=>requestId}};
+        return original(url,options);
+      };
+      f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0)); assert.ok(finish);
+      f.click('#legend-cms-publish'); assert.equal(posts,1);
+      const published=f.publishedDocument(); assert.equal(canonicalNodeById(published,'home.h1.node.1').text,'Template title');
+      f.click('main h1'); f.click('[data-open="layout"]');
+      f.click('[data-editor-viewport="desktop"]'); f.input('#legend-cms-width','70');
+      f.click('[data-editor-viewport="mobile"]'); f.input('#legend-cms-width','90');
+      f.editSelected('Newer shared draft');
+      finish(); await new Promise(resolve=>setTimeout(resolve,20));
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Newer shared draft');
+      assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/newer edits remain unsaved/);
+      const event=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(event); assert.equal(event.defaultPrevented,true);
+      assert.deepEqual(f.publishedDocument(),published);
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      const mutation=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage/mutations'));
+      assert.ok(mutation); assert.equal(JSON.parse(mutation.body).expectedRevision,receipt.publishedRevision);
+      const next=canonicalNodeById(f.serverDocument(),'home.h1.node.1');
+      assert.equal(next.text,'Newer shared draft'); assert.equal(next.breakpointStyles.desktop.widthPercent,70);
+      assert.equal(next.breakpointStyles.mobile.widthPercent,90); assert.equal(next.style.widthPercent,undefined);
+      assert.deepEqual(f.publishedDocument(),published); assert.equal(posts,1);
+      const clean=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(clean); assert.equal(clean.defaultPrevented,false);
+    } finally {f.close();}
+  });
+}
+
+test('WI03 regression: unapplied Selected Source prevents browser unload',async()=>{
+  const f=await domFixture();
+  try {
+    f.click('main h1'); f.click('[data-open="source"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const input=f.w.document.querySelector('#legend-cms-site-source');
+    const value=JSON.parse(input.value); value.text='Unapplied source';
+    input.value=JSON.stringify(value); input.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    const event=new f.w.Event('beforeunload',{cancelable:true});
+    f.w.dispatchEvent(event);
+    assert.equal(event.defaultPrevented,true);
+  } finally {f.close();}
+});
+
+for(const status of [500,409]) {
+  test(`WI03 regression: failed publication ${status} preserves prior snapshot and newer local edits`,async()=>{
+    const f=await domFixture({integerRevisions:true});
+    try {
+      f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,20));
+      const published=f.publishedDocument(); assert.ok(published);
+      f.click('main h1'); f.editSelected('Saved draft before failed publication'); await f.save();
+      const original=f.w.fetch; let finish; let requestId; let posts=0;
+      f.w.fetch=async(url,options={})=>{
+        if(String(url).endsWith('/manage/publish')) {
+          posts++; requestId=JSON.parse(options.body).requestId;
+          return new Promise(resolve=>{finish=()=>resolve({ok:false,status,json:async()=>({message:'Fixture publication refused'})});});
+        }
+        return original(url,options);
+      };
+      const mutationsBefore=f.calls.filter(call=>call.url.endsWith('/manage/mutations')).length;
+      f.click('#legend-cms-publish'); assert.ok(finish);
+      f.click('main h1'); f.editSelected('Newer edit during failed publication');
+      f.click('#legend-cms-publish'); assert.equal(posts,1);
+      finish(); await new Promise(resolve=>setTimeout(resolve,20));
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Newer edit during failed publication');
+      assert.deepEqual(f.publishedDocument(),published);
+      const event=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(event); assert.equal(event.defaultPrevented,true);
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/mutations')).length,mutationsBefore);
+      assert.ok([...Array(f.w.sessionStorage.length).keys()].some(index=>f.w.sessionStorage.getItem(f.w.sessionStorage.key(index)).includes(requestId)));
+      assert.deepEqual(f.publishedDocument(),published);
+    } finally {f.close();}
+  });
+}
+
+test('WI03 regression: current original-request confirmation resumes expired draft timer without republishing',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  try {
+    const original=f.w.fetch; let lose; let requestId; let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')) {
+        posts++; requestId=JSON.parse(options.body).requestId;
+        await original(url,options);
+        return new Promise((resolve,reject)=>{lose=()=>reject(new Error('Committed response lost'));});
+      }
+      if(String(url).includes('/manage/publication-status')) {
+        assert.equal(new URL(url).searchParams.get('requestId'),requestId);
+        return {ok:true,json:async()=>({found:true,isCurrent:true,revision:f.serverRevision(),publication:{versionId:requestId,publishedRevision:2}})};
+      }
+      if(options.method==='HEAD') return {ok:true,headers:{get:()=>requestId}};
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0)); assert.ok(lose);
+    const published=f.publishedDocument();
+    f.click('main h1'); f.editSelected('Draft after uncertain publication'); lose();
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    assert.equal(f.calls.some(call=>call.url.endsWith('/manage/mutations')),false);
+    assert.deepEqual(f.publishedDocument(),published);
+    f.click('#legend-cms-publication-check'); await new Promise(resolve=>setTimeout(resolve,20));
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/newer edits remain unsaved/);
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    const mutation=f.calls.find(call=>call.url.endsWith('/manage/mutations'));
+    assert.ok(mutation); assert.equal(JSON.parse(mutation.body).expectedRevision,2);
+    assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Draft after uncertain publication');
+    assert.deepEqual(f.publishedDocument(),published); assert.equal(posts,1);
+  } finally {f.close();}
+});
+
+for(const outcome of ['not_found','conflict','error','noncurrent']) {
+  test(`WI03 regression: ${outcome} publication recovery does not autosave newer draft`,async()=>{
+    const f=await domFixture({integerRevisions:true});
+    try {
+      const original=f.w.fetch; let requestId; let posts=0;
+      f.w.fetch=async(url,options={})=>{
+        if(String(url).endsWith('/manage/publish')) { posts++; requestId=JSON.parse(options.body).requestId; throw new Error('Uncertain publication'); }
+        if(String(url).includes('/manage/publication-status')) {
+          assert.equal(new URL(url).searchParams.get('requestId'),requestId);
+          if(outcome==='error') throw new Error('Status unavailable');
+          return {ok:true,json:async()=>outcome==='noncurrent'
+            ? {found:true,isCurrent:false,revision:3,publication:{versionId:requestId,publishedRevision:2}}
+            : {found:false,revision:outcome==='conflict'?2:1}};
+        }
+        return original(url,options);
+      };
+      f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0));
+      f.click('main h1'); f.editSelected('Unsaved guarded recovery draft');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      f.click('#legend-cms-publication-check'); await new Promise(resolve=>setTimeout(resolve,1000));
+      assert.equal(f.calls.some(call=>call.url.endsWith('/manage/mutations')),false);
+      assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Template title');
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Unsaved guarded recovery draft');
+      assert.equal(f.publishedDocument(),null); assert.equal(posts,1);
+    } finally {f.close();}
+  });
+}
+
+test('WI03 regression: uncommitted publication resumes the same request identity exactly once',async()=>{
+  const f=await domFixture({integerRevisions:true});
+  try {
+    const original=f.w.fetch; let requestId; let posts=0;
+    f.w.fetch=async(url,options={})=>{
+      if(String(url).endsWith('/manage/publish')) {
+        const id=JSON.parse(options.body).requestId; posts++;
+        if(posts===1){requestId=id;throw new Error('Request interrupted before commit');}
+        assert.equal(id,requestId); return original(url,options);
+      }
+      if(String(url).includes('/manage/publication-status')) {
+        assert.equal(new URL(url).searchParams.get('requestId'),requestId);
+        return {ok:true,json:async()=>({found:false,revision:1})};
+      }
+      if(options.method==='HEAD') return {ok:true,headers:{get:()=>requestId}};
+      return original(url,options);
+    };
+    f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,0));
+    f.click('#legend-cms-publication-check'); await new Promise(resolve=>setTimeout(resolve,0));
+    const resume=f.w.document.querySelector('#legend-cms-publication-resume'); assert.equal(resume.disabled,false);
+    resume.click(); await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(posts,2); assert.equal(f.serverRevision(),2); assert.ok(f.publishedDocument());
+    assert.match(f.w.document.querySelector('#legend-cms-status').textContent,/public version verified/);
+  } finally {f.close();}
+});
+
+for(const status of [409,500]) {
+  test(`WI03 regression: next draft mutation ${status} cannot change confirmed publication or local edits`,async()=>{
+    const f=await domFixture({integerRevisions:true,mutationSequence:[{status,payload:{message:'Fixture draft mutation refused',revision:2}}]});
+    try {
+      f.click('#legend-cms-publish'); await new Promise(resolve=>setTimeout(resolve,20));
+      const published=f.publishedDocument(); assert.ok(published);
+      f.click('main h1'); f.editSelected('Uncommitted next draft');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      const mutation=f.calls.find(call=>call.url.endsWith('/manage/mutations'));
+      assert.ok(mutation); assert.equal(JSON.parse(mutation.body).expectedRevision,2);
+      assert.equal(f.w.document.querySelector('main h1').textContent,'Uncommitted next draft');
+      assert.equal(canonicalNodeById(f.serverDocument(),'home.h1.node.1').text,'Template title');
+      assert.deepEqual(f.publishedDocument(),published);
+      assert.equal(f.calls.filter(call=>call.url.endsWith('/manage/publish')).length,1);
+      const event=new f.w.Event('beforeunload',{cancelable:true}); f.w.dispatchEvent(event); assert.equal(event.defaultPrevented,true);
+    } finally {f.close();}
+  });
+}

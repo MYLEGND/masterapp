@@ -1288,7 +1288,7 @@
     select.value=editorBreakpointKey;
     document.querySelectorAll('[data-editor-viewport]').forEach(button=>{
       const target=button.dataset.editorViewport;
-      const pressed=target === (editorBreakpointKey==='mobile' ? 'mobile' : 'base');
+      const pressed=target===editorBreakpointKey;
       button.setAttribute('aria-pressed',pressed?'true':'false');
       button.classList.toggle('primary',pressed);
     });
@@ -5241,6 +5241,11 @@
     return el?.closest?.('.card-grid > article.card') || null;
   }
 
+  function scheduleDraftSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
+  }
+
   function markDirty() {
     dirty = true;
     refreshHistoryControls();
@@ -5248,8 +5253,7 @@
     if (status) status.textContent = 'Saving changes…';
     if (activeEditorPanel === 'source' && !sourceEditorDirty) void refreshSiteSourceEditor();
     if (editorMode) {
-      clearTimeout(autoSaveTimer);
-      autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
+      scheduleDraftSave();
     }
   }
 
@@ -6128,6 +6132,7 @@
     if(!pendingPublication) return false;
     const request={...pendingPublication};
     const status=document.getElementById('legend-cms-status');
+    let confirmedCurrent=false;
     saving=true;
     publicationRecoveryMode='checking';
     syncPublicationRecoveryUi();
@@ -6152,11 +6157,13 @@
           return true;
         }
         revision=outcome.revision;
+        confirmedCurrent=true;
         if(status) status.textContent='Original publication confirmed; checking the public page…';
         const verified=await verifyPublishedPage(published.versionId);
         if(status) status.textContent=verified
           ? 'Published — public version verified'
           : 'Publication confirmed in the database; public page verification pending.';
+        if(status && dirty) status.textContent+=' — newer edits remain unsaved';
         return true;
       }
       if(outcome.revision===request.expectedRevision){
@@ -6177,6 +6184,7 @@
     }finally{
       saving=false;
       syncPublicationRecoveryUi();
+      if(confirmedCurrent && dirty) scheduleDraftSave();
     }
     return false;
   }
@@ -6221,6 +6229,9 @@
       if(publish) {
         restorePublication();
         if(status) status.textContent='Publishing…';
+        const submittedState=normalizeDocument(cloneCanonicalValue(documentState));
+        const submitted=JSON.stringify(submittedState);
+        const submittedRevision=revision;
         let payload;
         if (pendingPublication) {
           const url = new URL(API_BASE+'/api/website-content/manage/publication-status');
@@ -6235,7 +6246,7 @@
           }
         }
         if (!payload) {
-          if (!pendingPublication) rememberPublication({requestId:crypto.randomUUID(), expectedRevision:revision});
+          if (!pendingPublication) rememberPublication({requestId:crypto.randomUUID(), expectedRevision:submittedRevision});
           payload=await publicationRequest(API_BASE+'/api/website-content/manage/publish',{
             method:'POST', headers:{'Content-Type':'application/json'},
             body:JSON.stringify({ticket:editorTicket,...pendingPublication})
@@ -6249,16 +6260,19 @@
           return false;
         }
         revision=payload.revision ?? revision;
-        if(payload.document){
-          documentState=normalizeDocument(payload.document);
-          persistedDocumentState=cloneCanonicalValue(documentState);
+        const serverState=normalizeDocument(payload.document || submittedState);
+        const changedDuringPublish=JSON.stringify(normalizeDocument(cloneCanonicalValue(documentState)))!==submitted;
+        persistedDocumentState=cloneCanonicalValue(serverState);
+        if(!changedDuringPublish && payload.document){
+          documentState=serverState;
           applyDocument(documentState);
         }
-        dirty=false;
+        dirty=changedDuringPublish;
         saved=true;
         if(status) status.textContent='Publication saved; checking the public page…';
         const verified=await verifyPublishedPage(payload.versionId);
-        if(status) status.textContent=verified ? 'Published — public version verified' : 'Publication saved — public page verification pending';
+        if(status) status.textContent=(verified ? 'Published — public version verified' : 'Publication saved — public page verification pending')+
+          (dirty?' — newer edits remain unsaved':'');
         return true;
       }
 
@@ -6340,8 +6354,7 @@
       saving=false;
       syncPublicationRecoveryUi();
       if(saved && dirty){
-        clearTimeout(autoSaveTimer);
-        autoSaveTimer=setTimeout(()=>{if(dirty&&!saving) void save(false);},900);
+        scheduleDraftSave();
       }
     }
     return saved;
@@ -7887,7 +7900,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="base" aria-pressed="true">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Mobile edits are stored only in the mobile breakpoint and never write into Desktop/Base.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-device-switch" role="group" aria-label="Editing viewport"><button type="button" data-editor-viewport="desktop" aria-pressed="false">Desktop</button><button type="button" data-editor-viewport="mobile" aria-pressed="false">Mobile</button></div><small class="legend-cms-device-note">Desktop and Mobile styling stay separate; content is shared. Base applies styling to all sizes.</small><div class="legend-cms-tabs legend-cms-primary-tabs"><button type="button" data-open="gpt" data-agent-action="open-workspace">GPT Workspace</button><button type="button" data-open="source" data-agent-action="open-source">Source</button><button type="button" data-open="media" data-agent-action="open-media">Media</button><button type="button" data-open="publish" data-agent-action="open-publish">Publish</button><button type="button" data-open="advanced">Advanced</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="form">Inquiry form</button><button data-add="experience">Interactive experience</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -8044,7 +8057,7 @@
     document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void runWholeSitePreflightAndRender().catch(()=>{}));
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     panel.querySelectorAll('[data-editor-viewport]').forEach(button=>button.addEventListener('click',()=>{
-      editorBreakpointKey=button.dataset.editorViewport==='mobile' ? 'mobile' : 'base';
+      editorBreakpointKey=button.dataset.editorViewport;
       applyBreakpointPreview();
       syncBreakpointControls();
     }));
@@ -8522,7 +8535,7 @@
     sheetHandle?.addEventListener('pointercancel',finishSheetDrag);
     syncSheetHandle();
     window.addEventListener('beforeunload', event => {
-      if (!dirty) return;
+      if (!dirty && !sourceEditorDirty) return;
       event.preventDefault();
       event.returnValue = '';
     });
