@@ -15,6 +15,43 @@ Remove superseded implementations, dead code, conflicting registrations and redu
 Verify frontend/backend/persistence/published-runtime ownership without competing writers. Codex supplies focused diff and tests; Astra independently reviews ownership, removed duplication, consumers and regression coverage. COMPLETE requires functional verification AND canonical cleanliness. Unsafe consolidation is BLOCKED with exact reason, never accepted as a temporary override.
 Reuse services, commits and compatible evidence; do not repeat successful gates. No broad audits/builds, speculative improvements or parallel overlapping investigation. Accumulate accepted work on this branch; no production-branch edits, merge, deploy, cutover or destructive operations without subsequent authorization. Every assignment reports PASS/PARTIAL/BLOCKED, reused/changed work, exact SHA, validation, risks and next assignment. Maintain this one checkpoint.
 
+## Engineering continuity repair — 2026-10-13 (America/Phoenix)
+
+Resumed the exact durable WI04C checkpoint
+`4e90281da5ffd73e0054d4daa55559e4f60db3c2` on the existing isolated revenue branch.
+That checkpoint and WI01–WI04C implementations/evidence remain ancestors. This assignment
+changes only AGENTS.md, the existing Git synchronization utility and its focused tests,
+and this checkpoint. No application business logic, WI05, release pipeline, merge or
+deployment is included. Obtain this continuity revision's exact SHA from Git history and
+actual remote branch readback; this file is not a second mutable HEAD registry.
+
+The existing utility now supplies explicit session preflight/recovery/completion and
+full-bundle verification using native Git. AGENTS.md documents the command contract,
+acceptance boundaries and storage limitations. New conversations resume the actual
+GitHub branch after ancestry verification; unpublished work must be preserved first.
+Native macOS/Linux Git and Python 3.9+ are required; GitHub CLI is not required. No
+privileged dependencies or credentials are installed.
+
+Focused verification: 56 disposable-repository tests passed on macOS, including all 34
+existing launcher/native tests and 22 continuity tests. Coverage includes fresh remote,
+unpublished/dirty work, missing authentication and no GitHub CLI dependency, advanced
+remote and divergence, failed/ambiguous push, exact authorized push readback, full
+bundle export/restore and checksum, invalid/missing/incremental/wrong-ref bundles,
+rejected temporary storage, dirty restoration, remote movement, branch-switch races and implicit tag/submodule push suppression.
+No application tests or prior accepted WI validations were repeated. Linux is supported
+by the native Git/Python/fcntl interfaces but was not executed in this Mac session.
+
+Astra independently reviewed the diff, found a recovery branch-switch race, and reviewed
+its correction plus stronger real bundle recovery tests and explicit push-scope flags. No remaining blocking source
+findings were reported. Astra also ran the earlier 48-test utility suite and a disposable
+race reproducer before noting the existing Codex-only test-execution role; final focused
+evidence is Codex's run. Storage durability still requires genuine operator confirmation
+and external readback; local verification cannot prove cloud retention or cross-machine
+access. Session modes require an isolation branch and exclusive checkout use. Native
+transport operations time out safely; large/slow repositories may need explicit follow-up.
+Required integrity/security/release gates remain mandatory before any future merge.
+Prior release gates and historical evidence below remain unchanged.
+
 ## Readiness map
 PARTIAL means implementation/evidence exists but full functional and canonical acceptance is not established. BLOCKED means recorded prerequisites prevent acceptance; historical configuration observations require fresh read-only verification, not assumed current state.
 

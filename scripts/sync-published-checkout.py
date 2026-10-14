@@ -2,6 +2,7 @@
 """Conservative launcher sync and read-only native checkout verification."""
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -254,7 +255,271 @@ def sync_status(repo, native=False, process_probe=None):
                 'reason': str(error), 'remoteFreshness': 'not_checked'}
 
 
+# Session continuity uses native Git and the existing conservative transport wrapper.
+# It is not a release authority; acceptance and storage durability are external facts.
+CANONICAL_REMOTES = {
+    'https://github.com/MYLEGND/masterapp.git', 'https://github.com/MYLEGND/masterapp',
+    'git@github.com:MYLEGND/masterapp.git', 'ssh://git@github.com/MYLEGND/masterapp.git',
+}
+
+
+def session_identity(repo, branch):
+    git(repo, 'check-ref-format', 'refs/heads/' + branch)
+    if not branch.startswith('isolation/'):
+        raise SyncSkipped('Session continuity requires an explicitly authorized isolation branch.')
+    for direction in ((), ('--push',)):
+        urls = git(repo, 'remote', 'get-url', *direction, '--all', 'origin').splitlines()
+        if len(urls) != 1 or urls[0] not in CANONICAL_REMOTES:
+            raise SyncSkipped('Origin must have one credential-free canonical MYLEGND/masterapp fetch/push destination.')
+    if git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD') != branch:
+        raise SyncSkipped('Wrong working branch; select the authorized existing branch without discarding work.')
+    if git(repo, 'rev-parse', '--is-shallow-repository') != 'false':
+        raise SyncSkipped('Full ancestry is required; shallow history cannot establish preservation.')
+    directory = Path(git(repo, 'rev-parse', '--absolute-git-dir'))
+    if any((directory / name).exists() for name in
+           ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-apply', 'rebase-merge', 'index.lock')):
+        raise SyncSkipped('A Git operation is in progress; preserve the workspace and finish it explicitly.')
+
+
+def exact_commit(repo, value):
+    if not re.fullmatch(r'[0-9a-f]{40}', value or ''):
+        raise SyncSkipped('An exact full accepted commit SHA is required.')
+    if git(repo, 'rev-parse', '--verify', value + '^{commit}') != value:
+        raise SyncSkipped('Accepted commit is unavailable.')
+    return value
+
+
+def ancestor(repo, older, newer):
+    return git(repo, 'merge-base', '--is-ancestor', older, newer, missing_ok=True) is not None
+
+
+def remote_head(repo, branch):
+    lines = git(repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/' + branch).splitlines()
+    if len(lines) != 1 or lines[0].split()[1] != 'refs/heads/' + branch:
+        raise SyncSkipped('The exact existing remote branch could not be identified.')
+    return lines[0].split()[0]
+
+
+def session_snapshot(repo, branch, base):
+    session_identity(repo, branch)
+    head = git(repo, 'rev-parse', 'HEAD')
+    remote = remote_head(repo, branch)
+    # Fetch original objects only; do not rewrite local or tracking branches.
+    git(repo, 'fetch', '--no-tags', '--no-recurse-submodules', 'origin', 'refs/heads/' + branch)
+    if git(repo, 'rev-parse', 'FETCH_HEAD') != remote or remote_head(repo, branch) != remote:
+        raise SyncSkipped('Remote moved during inspection; repeat preflight.')
+    exact_commit(repo, base)
+    if not ancestor(repo, base, head) or not ancestor(repo, base, remote):
+        raise SyncSkipped('Accepted prior ancestry is missing from local or remote history; preserve both and investigate.')
+    local_only = git(repo, 'rev-list', remote + '..' + head).splitlines()
+    remote_only = git(repo, 'rev-list', head + '..' + remote).splitlines()
+    dirty = git(repo, 'status', '--porcelain=v1', '--untracked-files=all')
+    state = 'diverged' if local_only and remote_only else 'ahead' if local_only else 'behind' if remote_only else 'current'
+    result = dict(head=head, remote=remote, state=state, localOnly=local_only,
+                  remoteOnly=remote_only, uncommitted=bool(dirty))
+    print(json.dumps(result, sort_keys=True))
+    session_identity(repo, branch)
+    if git(repo, 'rev-parse', 'HEAD') != head:
+        raise SyncSkipped('Local HEAD changed during inspection.')
+    if state == 'diverged':
+        raise SyncSkipped('Diverged history: exact local-only and remote-only SHAs reported above. No automatic reconciliation.')
+    return result
+
+
+def bundle_digest(path):
+    with Path(path).open('rb') as source:
+        digest = hashlib.sha256()
+        for block in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def verify_bundle(repo, path, digest, branch, head, base):
+    if not Path(path).is_file() or bundle_digest(path) != digest:
+        raise SyncSkipped('Bundle missing or SHA-256 mismatch; no restoration attempted.')
+    git(repo, 'bundle', 'verify', str(path))
+    if git(repo, 'bundle', 'list-heads', str(path)) != head + ' refs/heads/' + branch:
+        raise SyncSkipped('Bundle must contain the exact accepted branch identity only.')
+    # A full bundle must restore into an empty repository, without local prerequisites.
+    with tempfile.TemporaryDirectory(prefix='legend-bundle-verify-') as scratch:
+        git(scratch, 'init', '--bare')
+        git(scratch, 'fetch', '--no-tags', str(Path(path).resolve()), 'refs/heads/' + branch)
+        exact_commit(scratch, head)
+        exact_commit(scratch, base)
+        if not ancestor(scratch, base, head):
+            raise SyncSkipped('Bundle does not preserve accepted ancestry.')
+        git(scratch, 'fsck', '--strict', '--no-reflogs', '--no-dangling', head)
+
+
+def export_session(repo, branch, head, base, destination, external_confirmed):
+    if destination is None:
+        raise SyncSkipped('BLOCKED: no persistent recovery storage supplied. Preserve the original workspace.')
+    destination = Path(destination).resolve()
+    root = Path(git(repo, 'rev-parse', '--show-toplevel')).resolve()
+    temporary_roots = (Path('/tmp').resolve(), Path('/private/tmp'), Path(tempfile.gettempdir()).resolve())
+    if destination == root or root in destination.parents or any(p == destination or p in destination.parents for p in temporary_roots):
+        raise SyncSkipped('BLOCKED: recovery destination is inside the workspace or temporary storage.')
+    if not external_confirmed or not destination.is_dir():
+        raise SyncSkipped('BLOCKED: require an existing externally accessible persistent directory and explicit storage confirmation.')
+    if git(repo, 'rev-parse', 'refs/heads/' + branch) != head:
+        raise SyncSkipped('Branch moved before recovery export.')
+    # A fresh subdirectory prevents overwriting an existing recovery artifact.
+    output = Path(tempfile.mkdtemp(prefix='legend-recovery-', dir=destination)) / 'LEGEND.bundle'
+    git(repo, 'bundle', 'create', str(output), 'refs/heads/' + branch)
+    digest = bundle_digest(output)
+    verify_bundle(repo, output, digest, branch, head, base)
+    with output.open('rb') as artifact:
+        os.fsync(artifact.fileno())
+    with output.with_suffix('.bundle.sha256').open('w') as checksum:
+        checksum.write(digest + '  LEGEND.bundle\n')
+        checksum.flush()
+        os.fsync(checksum.fileno())
+    for directory in (output.parent, destination):
+        descriptor = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    print(json.dumps(dict(recoveryBundle=str(output), sha256=digest, head=head,
+                         storage='operator-confirmed persistent external storage; full restore verified',
+                         coverage='committed branch only; excludes uncommitted, ignored and editor-buffer work')))
+    return output
+
+
+def session_fast_forward(repo, branch, expected, target):
+    if active_build_or_app():
+        raise SyncSkipped('Close active apps/builds before explicit fast-forward recovery.')
+    session_identity(repo, branch)
+    if git(repo, 'rev-parse', 'HEAD') != expected or git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
+        raise SyncSkipped('Checkout changed before fast-forward; preserve work and repeat preflight.')
+    git(repo, 'merge', '--ff-only', '--no-autostash', '--no-overwrite-ignore', target)
+    session_identity(repo, branch)
+    if git(repo, 'rev-parse', 'HEAD') != target:
+        raise SyncSkipped('Checkout changed during recovery; inspect exact identities before proceeding.')
+
+
+def validate_completion(repo, args):
+    if not args.review_accepted or not args.authorize_push:
+        raise SyncSkipped('Completion requires independent acceptance and explicit push authorization; never infer either from tests.')
+    head = exact_commit(repo, args.accepted)
+    base = exact_commit(repo, args.base)
+    if head != git(repo, 'rev-parse', 'HEAD') or not ancestor(repo, base, head) or not ancestor(repo, exact_commit(repo, args.implementation), head):
+        raise SyncSkipped('Reviewed implementation/checkpoint identity or prior ancestry mismatch.')
+    if git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
+        raise SyncSkipped('Uncommitted work exists; preserve it explicitly before completion.')
+    changed = set(git(repo, 'diff', '--name-only', '--no-renames', base, head).splitlines())
+    if not args.scope or changed != set(args.scope):
+        raise SyncSkipped('Affected files do not exactly match the explicitly reviewed --scope paths.')
+    return head
+
+
+def session_command(repo, args):
+    branch, base = args.branch, args.base
+    session_identity(repo, branch)
+    if args.session == 'restore':
+        exact_commit(repo, base)
+        verify_bundle(repo, args.bundle or '', args.sha256, branch, args.accepted, base)
+        # Import only original objects. FETCH_HEAD keeps recovered work reachable;
+        # retain the verified external bundle until remote readback succeeds.
+        git(repo, 'fetch', '--no-tags', str(Path(args.bundle).resolve()), 'refs/heads/' + branch)
+        current = git(repo, 'rev-parse', 'HEAD')
+        if not ancestor(repo, current, args.accepted):
+            print(json.dumps(dict(localOnly=git(repo, 'rev-list', args.accepted + '..' + current).splitlines(),
+                                  recoveredOnly=git(repo, 'rev-list', current + '..' + args.accepted).splitlines())))
+            raise SyncSkipped('Recovered objects imported; local branch preserved. Explicit reconciliation required; retain bundle.')
+        session_fast_forward(repo, branch, current, args.accepted)
+        print('Restored exact original commits; run remote preflight before implementation.')
+        return
+    if args.session == 'export':
+        head = exact_commit(repo, args.accepted)
+        export_session(repo, branch, head, base, args.recovery_dir, args.external_storage_confirmed)
+        return
+    if args.session == 'finish':
+        accepted = validate_completion(repo, args)
+        try:
+            snapshot = session_snapshot(repo, branch, base)
+        except SyncSkipped:
+            export_session(repo, branch, accepted, base, args.recovery_dir, args.external_storage_confirmed)
+            raise
+    else:
+        snapshot = session_snapshot(repo, branch, base)
+    head = snapshot['head']
+    if snapshot['uncommitted']:
+        raise SyncSkipped('Uncommitted work exists; preserve/review it explicitly. A Git bundle cannot preserve uncommitted or ignored files.')
+    if args.session == 'recover':
+        if snapshot['state'] == 'behind':
+            session_fast_forward(repo, branch, head, snapshot['remote'])
+            print('Fast-forwarded to observed remote checkpoint; rerun preflight.')
+            return
+    if snapshot['state'] == 'behind':
+        raise SyncSkipped('Remote is ahead; use explicit --session recover with a clean idle workspace, then repeat preflight.')
+    if args.session != 'finish':
+        if snapshot['localOnly']:
+            export_session(repo, branch, head, base, args.recovery_dir, args.external_storage_confirmed)
+        git(repo, 'push', '--no-follow-tags', '--recurse-submodules=no', '--dry-run', 'origin', head + ':refs/heads/' + branch)
+        print('Preflight PASS: native Git transport available. Dry-run is not proof of future push success or branch-policy acceptance.')
+        return
+    validate_completion(repo, args)
+    session_identity(repo, branch)
+    if git(repo, 'rev-parse', 'HEAD') != head:
+        raise SyncSkipped('Local HEAD changed before push; repeat review/preflight.')
+    try:
+        if remote_head(repo, branch) != snapshot['remote']:
+            raise SyncSkipped('Remote HEAD changed before push; repeat review/preflight.')
+    except SyncSkipped:
+        export_session(repo, branch, head, base, args.recovery_dir, args.external_storage_confirmed)
+        raise
+    push_failed = False
+    try:
+        git(repo, 'push', '--no-follow-tags', '--recurse-submodules=no', 'origin', head + ':refs/heads/' + branch)
+    except SyncSkipped:
+        push_failed = True
+    # Always reconcile an ambiguous write before considering recovery; never retry.
+    try:
+        published = remote_head(repo, branch)
+    except SyncSkipped:
+        published = None
+    if published != head:
+        export_session(repo, branch, head, base, args.recovery_dir, args.external_storage_confirmed)
+        raise SyncSkipped('BLOCKED: push/readback did not establish exact remote HEAD. Verified recovery exported; no retry performed.')
+    print('PRESERVED: exact GitHub remote HEAD=' + head + (' (ambiguous push reconciled).' if push_failed else '.'))
+
+
+def session_main(argv):
+    parser = argparse.ArgumentParser(description='Explicit engineering continuity through native Git; no deployment or acceptance authority.')
+    parser.add_argument('--session', required=True, choices=('preflight', 'recover', 'restore', 'export', 'finish'))
+    parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument('--branch', required=True)
+    parser.add_argument('--base', required=True, help='Previously accepted durable checkpoint SHA')
+    parser.add_argument('--accepted', help='Exact accepted completion or recovered SHA')
+    parser.add_argument('--implementation', help='Exact reviewed implementation SHA')
+    parser.add_argument('--scope', action='append', help='One exact reviewed affected file; repeat for every path')
+    parser.add_argument('--review-accepted', action='store_true', help='Attest acceptance by the authorized independent reviewer')
+    parser.add_argument('--authorize-push', action='store_true', help='Attest explicit Founder authorization for this exact push')
+    parser.add_argument('--bundle', type=Path)
+    parser.add_argument('--sha256')
+    parser.add_argument('--recovery-dir', type=Path)
+    parser.add_argument('--external-storage-confirmed', action='store_true', help='Operator attests directory persists outside this execution environment and is accessible from the host/account')
+    args = parser.parse_args(argv)
+    try:
+        directory = Path(git(args.repo, 'rev-parse', '--absolute-git-dir'))
+        with (directory / 'legend-published-sync.lock').open('a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise SyncSkipped('Another continuity/sync operation is running.') from error
+            session_command(args.repo, args)
+        return 0
+    except (SyncSkipped, OSError, subprocess.TimeoutExpired) as error:
+        message = str(error) if isinstance(error, SyncSkipped) else 'Filesystem/transport verification failed; preserve original workspace.'
+        print('BLOCKED: ' + message, file=sys.stderr)
+        return 1
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if '--session' in argv or any(arg.startswith('--session=') for arg in argv):
+        return session_main(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
