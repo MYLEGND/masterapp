@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Infrastructure.Data;
 using Shared.Analytics;
 
 namespace Infrastructure.Analytics;
@@ -22,10 +23,10 @@ internal static class AnalyticsScopeQueryExtensions
             // canonical UPN authority. A requested site dimension narrows the same
             // Founder dataset without changing owner/CRM authority.
             query = query.Where(x => x.CommerceBusinessId == null);
-            var founderSiteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
-            return founderSiteMarker is null
+            var founderSite = string.IsNullOrWhiteSpace(scope.SiteKey) ? null : scope.SiteKey.Trim();
+            return founderSite is null
                 ? query
-                : query.Where(x => x.MetadataJson != null && x.MetadataJson.Contains(founderSiteMarker));
+                : query.Where(x => x.MetadataJson != null && MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == founderSite);
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
@@ -33,29 +34,29 @@ internal static class AnalyticsScopeQueryExtensions
         if (scope.ScopeType == ScopeType.Agent)
             query = query.Where(x => x.CommerceBusinessId == null);
 
-        var siteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
-        var ownerMarker = BuildJsonMarker("reportingOwner", scope.ReportingOwner);
+        var site = string.IsNullOrWhiteSpace(scope.SiteKey) ? null : scope.SiteKey.Trim();
+        var owner = string.IsNullOrWhiteSpace(scope.ReportingOwner) ? null : scope.ReportingOwner.Trim();
 
-        if (siteMarker is null && ownerMarker is null)
+        if (site is null && owner is null)
             return query;
 
-        if (siteMarker is not null && ownerMarker is not null)
+        if (site is not null && owner is not null)
         {
             return query.Where(x =>
                 x.MetadataJson != null &&
-                (x.MetadataJson.Contains(siteMarker) || x.MetadataJson.Contains(ownerMarker)));
+                (MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == site || MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.reportingOwner") == owner));
         }
 
-        if (siteMarker is not null)
+        if (site is not null)
         {
             return query.Where(x =>
                 x.MetadataJson != null &&
-                x.MetadataJson.Contains(siteMarker));
+                MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == site);
         }
 
         return query.Where(x =>
             x.MetadataJson != null &&
-            x.MetadataJson.Contains(ownerMarker!));
+            MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.reportingOwner") == owner);
     }
 
     public static IQueryable<MetaSignalEvent> ApplySiteScope(
@@ -75,10 +76,10 @@ internal static class AnalyticsScopeQueryExtensions
             // canonical UPN authority. A requested site dimension narrows the same
             // Founder dataset without changing owner/CRM authority.
             query = query.Where(x => x.CommerceBusinessId == null);
-            var founderSiteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
-            return founderSiteMarker is null
+            var founderSite = string.IsNullOrWhiteSpace(scope.SiteKey) ? null : scope.SiteKey.Trim();
+            return founderSite is null
                 ? query
-                : query.Where(x => x.MetadataJson != null && x.MetadataJson.Contains(founderSiteMarker));
+                : query.Where(x => x.MetadataJson != null && MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == founderSite);
         }
         if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
             (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
@@ -86,36 +87,28 @@ internal static class AnalyticsScopeQueryExtensions
         if (scope.ScopeType == ScopeType.Agent)
             query = query.Where(x => x.CommerceBusinessId == null);
 
-        var siteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
-        var ownerMarker = BuildJsonMarker("reportingOwner", scope.ReportingOwner);
+        var site = string.IsNullOrWhiteSpace(scope.SiteKey) ? null : scope.SiteKey.Trim();
+        var owner = string.IsNullOrWhiteSpace(scope.ReportingOwner) ? null : scope.ReportingOwner.Trim();
 
-        if (siteMarker is null && ownerMarker is null)
+        if (site is null && owner is null)
             return query;
 
-        if (siteMarker is not null && ownerMarker is not null)
+        if (site is not null && owner is not null)
         {
             return query.Where(x =>
                 x.MetadataJson != null &&
-                (x.MetadataJson.Contains(siteMarker) || x.MetadataJson.Contains(ownerMarker)));
+                (MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == site || MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.reportingOwner") == owner));
         }
 
-        if (siteMarker is not null)
+        if (site is not null)
         {
             return query.Where(x =>
                 x.MetadataJson != null &&
-                x.MetadataJson.Contains(siteMarker));
+                MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.siteKey") == site);
         }
 
         return query.Where(x =>
             x.MetadataJson != null &&
-            x.MetadataJson.Contains(ownerMarker!));
-    }
-
-    private static string? BuildJsonMarker(string propertyName, string? propertyValue)
-    {
-        if (string.IsNullOrWhiteSpace(propertyName) || string.IsNullOrWhiteSpace(propertyValue))
-            return null;
-
-        return $"\"{propertyName}\":\"{propertyValue.Trim()}\"";
+            MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.reportingOwner") == owner);
     }
 }

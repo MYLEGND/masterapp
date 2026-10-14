@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../../SHARED/WebsitePlatform/tracking.js', import.meta.url), 'utf8');
 const key = 'legend_tracking_event_queue_v1:audit';
 const pause = () => new Promise(resolve => setTimeout(resolve, 0));
-const receipt = eligible => ({ok:true,status:200,json:async()=>({marketingEligibility:{eligible,score:eligible?95:0}})});
+const receipt = (eligible,eventId) => ({ok:true,status:200,json:async()=>({status:'ok',eventId,marketingEligibility:{eligible,score:eligible?95:0}})});
 function fixture() {
   const dom = new JSDOM('<body data-page-key="home"></body>', {url:'https://example.test/',runScripts:'outside-only',pretendToBeVisual:true});
   dom.window.LEGEND_ANALYTICS_CONFIG={attributionScope:'audit',allowedBrowserEvents:['page_view','cta_click'],criticalBrowserEvents:[]};
@@ -16,7 +16,7 @@ function item(id) { return {body:{ClientEventId:id,EventType:'cta_click',Session
 test('successful sendBeacon retains the exact event until acknowledged fetch replay',async()=>{
   const dom=fixture(), w=dom.window;
   try {
-    w.fetch=async()=>receipt(false); w.eval(source); await pause();
+    w.fetch=async(_,options)=>receipt(false,JSON.parse(options.body).ClientEventId); w.eval(source); await pause();
     const original=item('10000000-0000-4000-8000-000000000001');
     w.localStorage.setItem(key,JSON.stringify([original]));
     let beacons=0; w.navigator.sendBeacon=()=>{beacons++;return true;};
@@ -36,10 +36,10 @@ test('an acknowledged flush does not erase an event queued while its fetch was p
     w.localStorage.setItem(key,JSON.stringify([old]));
     let acknowledge;
     w.fetch=async(_,options)=>JSON.parse(options.body).ClientEventId===old.body.ClientEventId
-      ? await new Promise(resolve=>{acknowledge=resolve;}) : receipt(false);
+      ? await new Promise(resolve=>{acknowledge=resolve;}) : receipt(false,JSON.parse(options.body).ClientEventId);
     w.eval(source); await pause(); assert.equal(typeof acknowledge,'function');
     w.localStorage.setItem(key,JSON.stringify([old,added]));
-    acknowledge(receipt(false)); await pause();
+    acknowledge(receipt(false,old.body.ClientEventId)); await pause();
     assert.deepEqual(JSON.parse(w.localStorage.getItem(key)).map(x=>x.body.ClientEventId),[added.body.ClientEventId]);
   } finally {w.close();}
 });
@@ -47,7 +47,7 @@ test('an acknowledged flush does not erase an event queued while its fetch was p
 test('only the server eligibility receipt promotes accepted facts to optional destinations',async()=>{
   const dom=fixture(),w=dom.window;
   try {
-    let eligible=false; w.fetch=async()=>receipt(eligible); w.eval(source); await pause();
+    let eligible=false; w.fetch=async(_,options)=>receipt(eligible,JSON.parse(options.body).ClientEventId); w.eval(source); await pause();
     const received=[]; w.LegendAnalytics.subscribe('audit',e=>{if(e.MarketingEligibility?.eligible)received.push(e);});
     assert.equal(received.length,0);
     await w.LegendAnalytics.track({EventType:'cta_click',MarketingEligibility:{eligible:true}});
@@ -61,7 +61,7 @@ test('only the server eligibility receipt promotes accepted facts to optional de
 test('synthetic pointer, touch and mouse events cannot create human interaction evidence',async()=>{
   const dom=fixture(),w=dom.window; const sent=[];
   try {
-    w.fetch=async(_,options)=>{sent.push(JSON.parse(options.body));return receipt(false);};w.eval(source);await pause();
+    w.fetch=async(_,options)=>{sent.push(JSON.parse(options.body));return receipt(false,sent.at(-1).ClientEventId);};w.eval(source);await pause();
     for (const name of ['mousemove','pointerdown','touchstart','click'])
       w.document.dispatchEvent(new w.Event(name,{bubbles:true}));
     await w.LegendAnalytics.track({EventType:'cta_click'});
@@ -74,7 +74,7 @@ test('consent changes are persisted in the canonical stream and override payload
   const dom=fixture(),w=dom.window,sent=[];
   try {
     w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('measurement_consent_changed');
-    w.fetch=async(_,options)=>{sent.push(JSON.parse(options.body));return receipt(false);};
+    w.fetch=async(_,options)=>{sent.push(JSON.parse(options.body));return receipt(false,sent.at(-1).ClientEventId);};
     w.eval(source);await pause();
     w.LegendAnalytics.measurementConsent.set(false);await pause();
     const change=sent.find(e=>e.EventType==='measurement_consent_changed');
@@ -88,7 +88,7 @@ test('a later consent grant never replays a fact captured under denied consent',
   const dom=fixture(),w=dom.window;
   try {
     w.LEGEND_ANALYTICS_CONFIG.measurementConsent=false;
-    let eligible=false; w.fetch=async()=>receipt(eligible);w.eval(source);await pause();
+    let eligible=false; w.fetch=async(_,options)=>receipt(eligible,JSON.parse(options.body).ClientEventId);w.eval(source);await pause();
     const projected=[];w.LegendAnalytics.subscribe('audit',e=>{if(e.MarketingEligibility?.eligible)projected.push(e);});
     w.LegendAnalytics.measurementConsent.set(true);eligible=true;
     await w.LegendAnalytics.track({EventType:'cta_click'});
@@ -103,13 +103,13 @@ test('critical capture is durable before fetch starts and clears only after ackn
     w.LEGEND_ANALYTICS_CONFIG.criticalBrowserEvents=['cta_click'];
     let acknowledge;
     w.fetch=async(_,options)=>JSON.parse(options.body).EventType==='cta_click'
-      ? await new Promise(resolve=>{acknowledge=resolve;}) : receipt(false);
+      ? await new Promise(resolve=>{acknowledge=resolve;}) : receipt(false,JSON.parse(options.body).ClientEventId);
     w.eval(source);await pause();
     const pending=w.LegendAnalytics.track({EventType:'cta_click'});
     const queued=JSON.parse(w.localStorage.getItem(key));
     assert.equal(queued.length,1);assert.equal(queued[0].queueReason,'awaiting_acknowledgement');
     assert.equal(typeof acknowledge,'function');
-    acknowledge(receipt(false));assert.equal(await pending,true);
+    acknowledge(receipt(false,queued[0].body.ClientEventId));assert.equal(await pending,true);
     assert.equal(w.localStorage.getItem(key),null);
   } finally {w.close();}
 });

@@ -878,6 +878,14 @@
 
       let receipt = null;
       try { receipt = await response.json(); } catch {}
+      const receiptEventId = receipt?.eventId;
+      const acknowledged = (receipt?.status === 'ok' || receipt?.status === 'duplicate_ignored') &&
+        typeof receiptEventId === 'string' &&
+        /^(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})$/.test(receiptEventId) &&
+        canonicalEventId(receiptEventId) === body.ClientEventId;
+      if (!acknowledged) {
+        return { ok: false, statusCode: response.status, errorMessage: 'invalid_ingest_receipt' };
+      }
       body.MarketingEligibility = receipt?.marketingEligibility || { eligible: false, reason: 'eligibility_receipt_unavailable' };
       writeQueuedEvents(readQueuedEvents().filter(item => item.body?.ClientEventId !== body.ClientEventId));
       return {

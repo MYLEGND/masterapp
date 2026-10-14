@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using Domain.Billing;
 using Domain.Entities;
 using Domain.Entities.FinancialIntelligence;
@@ -19,6 +20,43 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendLanguageDerivationConvergence> LegendLanguageDerivationConvergences => Set<LegendLanguageDerivationConvergence>();
 
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
+
+    // SQL Server scalar JSON functions have CLR bodies for local query providers.
+    // Authority predicates pass root paths and guard malformed historical JSON first.
+    public static int? IsJson(string? json)
+    {
+        if (json is null) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = int.MaxValue });
+            return document.RootElement.ValueKind is JsonValueKind.Object or JsonValueKind.Array ? 1 : 0;
+        }
+        catch (JsonException) { return 0; }
+    }
+
+    public static string? JsonValue(string? json, string? path)
+    {
+        if (json is null || string.IsNullOrEmpty(path) || !path.StartsWith("$.", StringComparison.Ordinal)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = int.MaxValue });
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            // JSON_VALUE uses the first matching, case-sensitive root property.
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!property.NameEquals(path[2..])) continue;
+                var value = property.Value.ValueKind switch
+                {
+                    JsonValueKind.String => property.Value.GetString(),
+                    JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => property.Value.GetRawText(),
+                    _ => null
+                };
+                return value is { Length: <= 4000 } ? value : null;
+            }
+            return null;
+        }
+        catch (JsonException) { return null; }
+    }
 
     public DbSet<ClientProfile> ClientProfiles => Set<ClientProfile>();
     public DbSet<AccountLifecycleRecord> AccountLifecycleRecords => Set<AccountLifecycleRecord>();
@@ -198,6 +236,10 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(IsJson))!)
+            .HasName("ISJSON").IsBuiltIn();
+        modelBuilder.HasDbFunction(typeof(MasterAppDbContext).GetMethod(nameof(JsonValue))!)
+            .HasName("JSON_VALUE").IsBuiltIn();
         modelBuilder.ApplyConfiguration(new MarketingConnectionConfiguration());
         modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
         {

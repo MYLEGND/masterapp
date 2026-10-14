@@ -39,13 +39,14 @@ function fixture() {
   const { window } = dom;
   const events = [];
   window.LEGEND_ANALYTICS_CONFIG = {allowedBrowserEvents:['page_view','form_start','cta_click'],criticalBrowserEvents:[]};
-  window.fetch = async (url, options) => { events.push(JSON.parse(options.body)); return {ok:true,status:200}; };
+  window.fetch = async (url, options) => { const body=JSON.parse(options.body); events.push(body); return {ok:true,status:200,json:async()=>({status:'ok',eventId:body.ClientEventId})}; };
   return {dom, window, events};
 }
 
-test('Website Studio is a zero-production-signal environment across analytics and provider runtimes',async()=>{
+for(const studio of [{label:'legendEdit',search:'?legendEdit=ticket'},{label:'legendMaterialize',search:'?legendMaterialize=1'},{label:'explicit Studio flag',search:'',flag:true}]) {
+  test(`Website Studio is a zero-production-signal environment across analytics and provider runtimes: ${studio.label}`,async()=>{
   const dom=new JSDOM('<body data-page-key="home"><form data-form-key="inquiry"><input name="FirstName"><button type="submit">Send</button></form></body>',{
-    url:'https://protect.example.test/a/agent/contact?legendEdit=ticket',
+    url:'https://protect.example.test/a/agent/contact'+studio.search,
     runScripts:'outside-only',
     pretendToBeVisual:true
   });
@@ -53,7 +54,13 @@ test('Website Studio is a zero-production-signal environment across analytics an
   const requests=[];
   const pixels=[];
   const openai=[];
+  const listeners=[];
+  for(const [target,name] of [[w,'window'],[w.document,'document']]) {
+    const add=target.addEventListener.bind(target);
+    target.addEventListener=(event,...args)=>{listeners.push({target:name,event});return add(event,...args);};
+  }
   try{
+    if(studio.flag) w.LEGEND_WEBSITE_STUDIO_MODE=true;
     w.LEGEND_ANALYTICS_CONFIG={allowedBrowserEvents:['page_view','form_start','cta_click'],criticalBrowserEvents:[]};
     w.fetch=async(...args)=>{requests.push(args);return {ok:true,status:200};};
     w.fbq=(...args)=>pixels.push(args);
@@ -73,8 +80,12 @@ test('Website Studio is a zero-production-signal environment across analytics an
     assert.equal(requests.length,0);
     assert.equal(pixels.length,0);
     assert.equal(openai.length,0);
+    assert.equal(w.localStorage.length,0);assert.equal(w.sessionStorage.length,0);
+    const productionEvents=new Set(['click','mousemove','pointerdown','touchstart','scroll','visibilitychange','pagehide','beforeunload','focusin','input','submit','change','online']);
+    assert.equal(listeners.filter(value=>productionEvents.has(value.event)).length,0);
   }finally{dom.window.close();}
 });
+}
 
 test('Protect layout never bootstraps production measurement or lead runtime in Website Studio mode',()=>{
   assert.match(layout,/websiteStudioMode\s*=\s*[\s\S]*ContainsKey\("legendEdit"\)[\s\S]*ContainsKey\("legendMaterialize"\)/);
@@ -172,7 +183,7 @@ test('late provider projections share one accepted page event and unique signals
   const f=fixture();
   try {
     const w=f.window, pixels=[], openai=[];
-    w.fetch=async(url,options)=>{f.events.push(JSON.parse(options.body));return {ok:true,status:200,json:async()=>({marketingEligibility:{eligible:true,score:95,bucket:'real_human_traffic'}})};};
+    w.fetch=async(url,options)=>{const body=JSON.parse(options.body);f.events.push(body);return {ok:true,status:200,json:async()=>({status:'ok',eventId:body.ClientEventId,marketingEligibility:{eligible:true,score:95,bucket:'real_human_traffic'}})};};
     w.LEGEND_ANALYTICS_CONFIG.allowedBrowserEvents.push('PhoneFieldCompleted','meta_browser_event_success');
     w.LEGEND_ANALYTICS_CONFIG.signalAliases={page_view:'ViewContent',form_start:'LeadFormStart',PhoneFieldCompleted:'PhoneFieldCompleted'};
     w.eval(source);
@@ -405,5 +416,123 @@ test('late CMS-rendered native forms join the same canonical tracker without dup
     assert.equal(f.events.filter(event=>event.EventType==='form_start' && event.FormKey==='experience:late').length,1);
     assert.equal(f.events.filter(event=>event.EventType==='form_field_focus' && event.FormKey==='experience:late').length,1);
     assert.equal(f.events.filter(event=>event.EventType==='form_field_complete' && event.FormKey==='experience:late').length,1);
+  }finally{f.dom.window.close();}
+});
+
+test('WI04A regression: HTTP success without canonical receipt remains queued and unprojected',async()=>{
+  const f=fixture();
+  try {
+    const w=f.window,projected=[];
+    w.LEGEND_ANALYTICS_CONFIG={attributionScope:'receipt-proof',allowedBrowserEvents:['cta_click'],criticalBrowserEvents:['cta_click'],measurementConsent:true};
+    w.fetch=async(_url,options)=>{f.events.push(JSON.parse(options.body));return {ok:true,status:200,json:async()=>({marketingEligibility:{eligible:true}})};};
+    const originalTimeout=w.setTimeout.bind(w);w.setTimeout=(fn,delay,...args)=>originalTimeout(fn,[800,1600].includes(delay)?0:delay,...args);
+    w.eval(source);w.LegendAnalytics.subscribe('receipt-proof',body=>projected.push(body));
+    const id='12345678-1234-4234-8234-123456789abc';
+    const accepted=await w.LegendAnalytics.track({EventType:'cta_click',ClientEventId:id});
+    assert.equal(accepted,false);
+    const queue=JSON.parse(w.localStorage.getItem('legend_tracking_event_queue_v1:receipt-proof'));
+    assert.equal(queue.length,1);assert.equal(queue[0].body.ClientEventId,id);
+    assert.equal(projected.length,0);
+  }finally{f.dom.window.close();}
+});
+
+async function receiptFixture(reply) {
+  const f=fixture(),w=f.window,projected=[],meta=[],openai=[];
+  w.LEGEND_ANALYTICS_CONFIG={attributionScope:'receipt-proof',allowedBrowserEvents:['page_view'],criticalBrowserEvents:['page_view'],measurementConsent:false,signalAliases:{page_view:'ViewContent'}};
+  let bootstrapId=null;
+  w.fetch=async(_url,options)=>{const body=JSON.parse(options.body);
+    if(!bootstrapId){bootstrapId=body.ClientEventId;return acknowledgedResponse(body,'ok','dashed',{eligible:false});}
+    f.events.push(body);return reply(body);};
+  const timeout=w.setTimeout.bind(w);w.setTimeout=(fn,delay,...args)=>timeout(fn,[800,1600].includes(delay)?0:delay,...args);
+  w.eval(source);await new Promise(resolve=>setTimeout(resolve,0));
+  w.LegendAnalytics.measurementConsent.set(true);
+  w.LegendAnalytics.subscribe('receipt-proof',body=>{if(body.ClientEventId!==bootstrapId)projected.push(body);});
+  w.fbq=(...args)=>meta.push(args);w.oaiq=(...args)=>openai.push(args);
+  w.eval(metaSource);
+  w.metaSignalIntelligence.createLandingSession({enabled:true,sendBrowserEvents:true,sendServerEvents:true,persistEvents:true,pixelId:'receipt-meta',siteKey:'protect',pageKey:'home',browserEventNames:['ViewContent'],browserSignalEventNames:['ViewContent']});
+  w.eval(openAiSource);await w.LegendOpenAiMeasurement.configure({pixelId:'receipt-openai'});
+  return {...f,w,projected,meta,openai,queue:()=>JSON.parse(w.localStorage.getItem('legend_tracking_event_queue_v1:receipt-proof') || '[]'),
+    isControlledEvent:body=>body.ClientEventId!==bootstrapId,providerPublications:()=>meta.filter(args=>args[0]==='trackSingle').length+openai.filter(args=>args[0]==='measureSingle').length};
+}
+
+const acknowledgedResponse=(body,status='ok',format='dashed',eligibility={eligible:true})=>({ok:true,status:200,json:async()=>({status,eventId:format==='compact'?body.ClientEventId.replaceAll('-','').toUpperCase():body.ClientEventId.toUpperCase(),...(eligibility?{marketingEligibility:eligibility}:{})})});
+
+for(const status of ['ok','duplicate_ignored']) for(const format of ['dashed','compact']) {
+  test(`WI04A receipt: valid ${status} ${format} GUID releases critical event and projects once`,async()=>{
+    const f=await receiptFixture(body=>acknowledgedResponse(body,status,format));
+    try {
+      const id='12345678-1234-4234-8234-123456789abc';
+      assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:id}),true);
+      assert.equal(f.queue().length,0);assert.equal(f.events.length,1);assert.equal(f.projected.length,1);
+      assert.equal(f.projected[0].ClientEventId,id);assert.equal(f.providerPublications(),2);
+      assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:id}),true);
+      assert.equal(f.providerPublications(),2);
+    }finally{f.dom.window.close();}
+  });
+}
+
+const invalidReceipts=[
+  ['missing receipt',()=>null],
+  ['missing status',body=>({eventId:body.ClientEventId,marketingEligibility:{eligible:true}})],
+  ['missing event identity',()=>({status:'ok',marketingEligibility:{eligible:true}})],
+  ['mismatched GUID',()=>({status:'ok',eventId:'87654321-4321-4321-8321-cba987654321',marketingEligibility:{eligible:true}})],
+  ['malformed GUID',()=>({status:'ok',eventId:'not-a-guid',marketingEligibility:{eligible:true}})],
+  ['malformed GUID hyphens',body=>({status:'ok',eventId:'-'+body.ClientEventId.replaceAll('-',''),marketingEligibility:{eligible:true}})],
+  ['unknown status',body=>({status:'accepted',eventId:body.ClientEventId,marketingEligibility:{eligible:true}})],
+  ['wrong status casing',body=>({status:'OK',eventId:body.ClientEventId,marketingEligibility:{eligible:true}})],
+  ['nonstring identity',()=>({status:'ok',eventId:123,marketingEligibility:{eligible:true}})],
+  ['primitive receipt',()=>true]
+];
+for(const [name,makeReceipt] of invalidReceipts) {
+  test(`WI04A receipt: ${name} HTTP200 stays queued without canonical or provider publication`,async()=>{
+    const f=await receiptFixture(body=>({ok:true,status:200,json:async()=>makeReceipt(body)}));
+    try {
+      const id='12345678-1234-4234-8234-123456789abc';
+      assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:id}),false);
+      assert.equal(f.events.length,3);assert.ok(f.events.every(body=>body.ClientEventId===id));
+      assert.equal(f.queue().length,1);assert.equal(f.queue()[0].body.ClientEventId,id);
+      assert.equal(f.queue()[0].lastErrorMessage,'invalid_ingest_receipt');
+      assert.equal(f.projected.length,0);assert.equal(f.providerPublications(),0);
+      const replay=[];f.w.LegendAnalytics.subscribe('late-receipt-proof',body=>{if(f.isControlledEvent(body))replay.push(body);});assert.equal(replay.length,0);
+    }finally{f.dom.window.close();}
+  });
+}
+
+for(const malformed of ['malformed JSON','absent JSON reader']) {
+  test(`WI04A receipt: ${malformed} HTTP200 never acknowledges`,async()=>{
+    const f=await receiptFixture(()=>({ok:true,status:200,...(malformed==='malformed JSON'?{json:async()=>{throw new SyntaxError('Fixture invalid JSON');}}:{})}));
+    try {
+      assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view'}),false);
+      assert.equal(f.queue().length,1);assert.equal(f.events.length,3);
+      assert.equal(f.projected.length,0);assert.equal(f.providerPublications(),0);
+    }finally{f.dom.window.close();}
+  });
+}
+
+test('WI04A receipt: accepted storage without eligibility stays fail closed for providers',async()=>{
+  const f=await receiptFixture(body=>acknowledgedResponse(body,'ok','dashed',null));
+  try {
+    assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view'}),true);assert.equal(f.queue().length,0);
+    assert.equal(f.providerPublications(),0);
+    const replay=[];f.w.LegendAnalytics.subscribe('late-no-eligibility',body=>{if(f.isControlledEvent(body))replay.push(body);});assert.equal(replay.length,1);
+    assert.equal(replay[0].MarketingEligibility.eligible,false);assert.equal(replay[0].MarketingEligibility.reason,'eligibility_receipt_unavailable');
+  }finally{f.dom.window.close();}
+});
+
+test('WI04A receipt: later valid retry uses same identity and distinct events are not suppressed',async()=>{
+  let valid=false;
+  const f=await receiptFixture(body=>valid?acknowledgedResponse(body,'duplicate_ignored','compact'):{ok:true,status:200,json:async()=>({status:'ok',eventId:'87654321-4321-4321-8321-cba987654321',marketingEligibility:{eligible:true}})});
+  try {
+    const first='12345678-1234-4234-8234-123456789abc',second='12345678-1234-4234-8234-123456789abd';
+    assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:first}),false);assert.equal(f.queue().length,1);
+    valid=true;assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:first}),true);
+    assert.equal(f.queue().length,0);assert.equal(f.events[3].ClientEventId,first);assert.equal(f.providerPublications(),2);
+    assert.equal(await f.w.LegendAnalytics.track({EventType:'page_view',ClientEventId:second}),true);
+    assert.equal(f.queue().length,0);assert.equal(f.providerPublications(),4);
+    assert.equal(new Set(f.projected.map(body=>body.ClientEventId)).size,2);
+    assert.equal(f.meta.filter(args=>args[0]==='trackSingle' && args.at(-1).eventID===first).length,1);
+    assert.equal(f.meta.filter(args=>args[0]==='trackSingle' && args.at(-1).eventID===second).length,1);
+    assert.equal(f.openai.filter(args=>args[0]==='measureSingle' && args.at(-1).event_id===first).length,1);
+    assert.equal(f.openai.filter(args=>args[0]==='measureSingle' && args.at(-1).event_id===second).length,1);
   }finally{f.dom.window.close();}
 });

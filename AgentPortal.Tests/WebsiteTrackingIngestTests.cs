@@ -5,11 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
-using AgentPortal.Controllers.Api;
 using AgentPortal.Models;
-using AgentPortal.Security;
-using AgentPortal.Services.Tracking;
 using Infrastructure.Data;
+using Infrastructure.Analytics;
+using Infrastructure.WebsiteEditing;
+using Domain.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -23,7 +23,7 @@ namespace AgentPortal.Tests;
 
 public class WebsiteTrackingIngestTests
 {
-    internal static TrackingProxyController BuildController(MasterAppDbContext db)
+    internal static TrackingProxyController BuildController(MasterAppDbContext db, bool runtimeScopes = false)
     {
         if (!db.AgentTrackingProfiles.Any())
         {
@@ -38,12 +38,20 @@ public class WebsiteTrackingIngestTests
             { ["Founder:Upn"] = "founder@example.test" }).Build();
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         services.AddSingleton(db);
+        var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
+        services.AddSingleton(resolver);
+        if (runtimeScopes)
+        {
+            var domains = new WebsiteDomainService(db, Moq.Mock.Of<System.Net.Http.IHttpClientFactory>(), config);
+            services.AddSingleton(new PublicWebsiteRuntimeScopeResolver(db, domains, config));
+        }
         var controller = new TrackingProxyController(Moq.Mock.Of<System.Net.Http.IHttpClientFactory>(), config,
             NullLogger<TrackingProxyController>.Instance,
-            new Infrastructure.Analytics.AgentTrackingResolver(db, NullLogger<Infrastructure.Analytics.AgentTrackingResolver>.Instance));
+            resolver);
         controller.ControllerContext = new ControllerContext
             { HttpContext = new DefaultHttpContext { RequestServices = services.BuildServiceProvider() } };
         controller.Request.Host = new HostString("protect.example.test");
+        controller.Request.Method = "POST";
         return controller;
     }
 
@@ -250,4 +258,161 @@ public class WebsiteTrackingIngestTests
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Equal("ok", ReadStatus(ok.Value));
     }
+    [Theory]
+    [InlineData("unknown", 400)]
+    [InlineData(" commerce-other ", 400)]
+    [InlineData("LeGeNd", 503)]
+    [InlineData(" BUSINESS ", 503)]
+    public async Task SuppliedSiteContractCannotFallThroughToProtect(string site, int status)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db);
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = site, Path = "/" }, default);
+        if (status == 400) Assert.IsType<BadRequestObjectResult>(result);
+        else Assert.Equal(status, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Empty(db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData("protect", "https://foreign.example.test")]
+    [InlineData(null, "https://www.mylegnd.com")]
+    public async Task ProtectWithExplicitOriginRequiresRuntimeScopeResolver(string? site, string origin)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db);
+        controller.Request.Headers.Origin = origin;
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = site, Path = "/" }, default);
+        Assert.Equal(503, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Empty(db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("protect")]
+    [InlineData(" PROTECT ")]
+    public async Task NoOriginLegacyProtectKeepsCanonicalWriter(string? site)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = site, Path = "/" }, default);
+        Assert.IsType<OkObjectResult>(result); Assert.Single(db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData("https://www.mylegnd.com")]
+    [InlineData("https://foreign.example.test")]
+    [InlineData("https://unknown.example.test")]
+    [InlineData("http://protect.mylegnd.com")]
+    [InlineData("not-an-origin")]
+    [InlineData("")]
+    [InlineData("https://protect.mylegnd.com, https://foreign.example.test")]
+    public async Task ActualRuntimeResolverRejectsForeignUnknownAndInvalidProtectOrigins(string origin)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        controller.Request.Headers.Origin = origin;
+        Assert.True(controller.Request.Headers.ContainsKey("Origin"));
+        var result = await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = "protect", Path = "/" }, default);
+        Assert.IsType<BadRequestObjectResult>(result); Assert.Empty(db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("protect")]
+    [InlineData(" ProTeCt ")]
+    public async Task ActualProtectOriginUsesResolvedOwnerAndIgnoresPayloadOwner(string? site)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        var owner = db.AgentTrackingProfiles.Single(); controller.Request.Headers.Origin = "https://protect.mylegnd.com";
+        var request = new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = site, Path = "/", AgentTrackingProfileId = Guid.NewGuid(), AgentSlug = "spoofed" };
+        Assert.IsType<OkObjectResult>(await controller.Ingest(request, default));
+        var row = Assert.Single(db.AnalyticsEvents); Assert.Equal(owner.Id, row.AgentTrackingProfileId);
+        Assert.Equal(request.ClientEventId, row.EventId);
+    }
+
+    [Theory]
+    [InlineData("legend")]
+    [InlineData(" LEGEND ")]
+    public async Task ActualLegendScopeNeverWritesProtectOwner(string site)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        controller.Request.Headers.Origin = "https://www.mylegnd.com";
+        Assert.IsType<OkObjectResult>(await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = "page_view", SiteKey = site, Path = "/", AgentTrackingProfileId = db.AgentTrackingProfiles.Single().Id }, default));
+        var row = Assert.Single(db.AnalyticsEvents); Assert.Null(row.AgentTrackingProfileId); Assert.Null(row.CommerceBusinessId);
+        using var metadata = JsonDocument.Parse(row.MetadataJson!); Assert.Equal("legend", metadata.RootElement.GetProperty("siteKey").GetString());
+    }
+
+    [Fact]
+    public async Task TwoPublishedBusinessesKeepOriginScopeAndRejectCrossOwnerReplay()
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        var first = await SeedPublishedBusinessAsync(db, "first.example.test");
+        var second = await SeedPublishedBusinessAsync(db, "second.example.test");
+        var firstEvent = Guid.NewGuid(); var secondEvent = Guid.NewGuid();
+        TrackingProxyController.AnalyticsEventRequest Request(Guid id) => new()
+            { ClientEventId = id, EventType = "page_view", SiteKey = " BuSiNeSs ", Path = "/", AgentTrackingProfileId = db.AgentTrackingProfiles.Single().Id, AgentSlug = "spoofed-owner", SessionId = "shared-session", VisitorId = "shared-visitor" };
+        controller.Request.Headers.Origin = "https://first.example.test";
+        Assert.IsType<OkObjectResult>(await controller.Ingest(Request(firstEvent), default));
+        var duplicate = Assert.IsType<OkObjectResult>(await controller.Ingest(Request(firstEvent), default));
+        Assert.Equal("duplicate_ignored", ReadStatus(duplicate.Value));
+        controller.Request.Headers.Origin = "https://second.example.test";
+        Assert.IsType<ConflictObjectResult>(await controller.Ingest(Request(firstEvent), default));
+        Assert.IsType<OkObjectResult>(await controller.Ingest(Request(secondEvent), default));
+        var rows = db.AnalyticsEvents.ToList(); Assert.Equal(2, rows.Count);
+        Assert.Equal(first.Id, rows.Single(row => row.ClientEventId == firstEvent).CommerceBusinessId);
+        Assert.Equal(second.Id, rows.Single(row => row.ClientEventId == secondEvent).CommerceBusinessId);
+        Assert.All(rows, row => Assert.Null(row.AgentTrackingProfileId));
+    }
+
+    private static async Task<CommerceBusiness> SeedPublishedBusinessAsync(MasterAppDbContext db, string host)
+    {
+        var business = new CommerceBusiness { Key = host.Split('.')[0], DisplayName = host };
+        var state = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id), CommerceBusinessId = business.Id, Revision = 1 };
+        var document = new WebsiteContentDocument { Pages = new(StringComparer.Ordinal) { ["/"] = new WebsitePageDocument { Title = host } } };
+        var version = new WebsiteContentVersion { StateId = state.Id, Revision = 1,
+            DocumentJson = JsonSerializer.Serialize(document, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            CompiledPagesJson = "{\"version\":2,\"pages\":{\"/\":{\"html\":\"<main>Published fixture</main>\"}}}" };
+        state.PublishedVersionId = version.Id;
+        db.Add(business); db.Add(state); db.Add(version);
+        db.Add(new WebsiteDomainBinding { CommerceBusinessId = business.Id, Hostname = host,
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await db.SaveChangesAsync(); return business;
+    }
+
+    public static IEnumerable<object[]> ServerOnlyPublicEvents() => AnalyticsEventCatalog.Definitions
+        .Where(definition => definition.AllowServer && !definition.AllowBrowser).Select(definition => new object[] { definition.Name })
+        .Concat(new[] { "Lead", "AppointmentBooked", "AddToCart", "InitiateCheckout", "Purchase", "PolicyPaid" }.Select(name => new object[] { name }))
+        .DistinctBy(row => row[0]);
+
+    [Theory]
+    [MemberData(nameof(ServerOnlyPublicEvents))]
+    public async Task PublicIngestCannotForgeServerConfirmedOutcomes(string eventType)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        controller.Request.Headers.Origin = "https://protect.mylegnd.com";
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = Guid.NewGuid(), EventType = eventType, SiteKey = "protect", Path = "/" }, default));
+        Assert.Empty(db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData("mismatched_id")]
+    [InlineData("malformed_id")]
+    [InlineData("mismatched_name")]
+    public async Task PublicIngestRejectsMalformedSignalIdentityPair(string kind)
+    {
+        using var db = ControllerTestHelpers.BuildDb(); var controller = BuildController(db, true);
+        var id = Guid.NewGuid();
+        var signal = new MetaSignalIngestRequest { EventId = kind == "malformed_id" ? "invalid-guid" : (kind == "mismatched_id" ? Guid.NewGuid() : id).ToString("N"),
+            EventName = kind == "mismatched_name" ? "cta_click" : "page_view" };
+        Assert.IsType<BadRequestObjectResult>(await controller.Ingest(new TrackingProxyController.AnalyticsEventRequest
+            { ClientEventId = id, EventType = "page_view", SiteKey = "protect", Path = "/", MetaSignal = signal }, default));
+        Assert.Empty(db.AnalyticsEvents);
+    }
+
 }

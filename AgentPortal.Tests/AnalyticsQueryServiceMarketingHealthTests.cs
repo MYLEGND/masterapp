@@ -4,7 +4,11 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
-using AgentPortal.Services.Analytics;
+using Infrastructure.Analytics;
+using Shared.Analytics;
+using System.Linq.Expressions;
+using System.Reflection;
+using Microsoft.EntityFrameworkCore;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
@@ -268,4 +272,190 @@ public class AnalyticsQueryServiceMarketingHealthTests
         Assert.Null(detail.Recovered);
         Assert.Equal("Inspect browser console and server ingest logs", detail.SuggestedAction);
     }
+
+    [Theory]
+    [InlineData("{\"siteKey\":\"protect\",\"analyticsMetadata\":{\"siteKey\":\"legend\"}}", false)]
+    [InlineData("{ \"siteKey\" : \"legend\", \"analyticsMetadata\" : { \"siteKey\" : \"protect\" } }", true)]
+    public async Task ReportingSiteQueriesUseOnlyCanonicalRootValues(string metadata, bool matches)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        db.AnalyticsEvents.Add(new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "page_view", MetadataJson = metadata });
+        db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = Guid.NewGuid().ToString("N"), EventName = "page_view", MetadataJson = metadata });
+        await db.SaveChangesAsync();
+        var scope = new ScopeContext { ScopeType = ScopeType.Global, SiteKey = "legend" };
+        Assert.Equal(matches ? 1 : 0, await SiteScoped(db.AnalyticsEvents.AsQueryable(), scope).CountAsync());
+        Assert.Equal(matches ? 1 : 0, await SiteScoped(db.MetaSignalEvents.AsQueryable(), scope).CountAsync());
+    }
+
+    [Theory]
+    [InlineData("{\"siteKey\":\"protect\",\"reportingOwner\":\"agent\",\"browserMetadata\":{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}}", false)]
+    [InlineData("{ \"reportingOwner\" : \"founder\", \"siteKey\" : \"legend\" }", true)]
+    public async Task FounderOwnerQueriesDoNotTrustNestedBrowserMarkers(string metadata, bool matches)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var scope = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = Guid.NewGuid() };
+        db.AnalyticsEvents.Add(new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "page_view", MetadataJson = metadata });
+        db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = Guid.NewGuid().ToString("N"), EventName = "page_view", MetadataJson = metadata });
+        await db.SaveChangesAsync();
+        Assert.Equal(matches ? 1 : 0, await db.AnalyticsEvents.Where(OwnerPredicate<AnalyticsEvent>("ScopePredicateEvents", scope)).CountAsync());
+        Assert.Equal(matches ? 1 : 0, await db.MetaSignalEvents.Where(OwnerPredicate<MetaSignalEvent>("ScopePredicateMetaEvents", scope)).CountAsync());
+    }
+
+    [Theory]
+    [InlineData("{\"SiteKey\":\"protect\",\"ReportingOwner\":\"agent\",\"analyticsMetadata\":{\"SiteKey\":\"legend\",\"ReportingOwner\":\"founder\"}}", false)]
+    [InlineData("{ \"ReportingOwner\" : \"founder\", \"SiteKey\" : \"legend\" }", true)]
+    public async Task FounderLeadQueriesUseOnlyLegacyCanonicalRootKeys(string metadata, bool matches)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        db.WebsiteLeads.Add(new WebsiteLead { LeadId = Guid.NewGuid(), FirstName = "Fixture", Email = "fixture@example.test", MetadataJson = metadata });
+        await db.SaveChangesAsync();
+        var scope = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = Guid.NewGuid(), SiteKey = "legend" };
+        Assert.Equal(matches ? 1 : 0, await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", scope)).CountAsync());
+    }
+
+    public static IEnumerable<object?[]> RootMetadataCases()
+    {
+        yield return new object?[] { null, false };
+        yield return new object?[] { "", false };
+        yield return new object?[] { "{broken", false };
+        yield return new object?[] { "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"} trailing", false };
+        yield return new object?[] { "[]", false };
+        yield return new object?[] { "[{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}]", false };
+        yield return new object?[] { "\"legend\"", false };
+        yield return new object?[] { "{}", false };
+        yield return new object?[] { "{\"SITEKEY\":\"legend\",\"REPORTINGOWNER\":\"founder\"}", false };
+        yield return new object?[] { "{\"siteKey\":null,\"reportingOwner\":null}", false };
+        yield return new object?[] { "{\"siteKey\":{\"value\":\"legend\"},\"reportingOwner\":[\"founder\"]}", false };
+        yield return new object?[] { "{\"siteKey\":\"protect\",\"siteKey\":\"legend\",\"reportingOwner\":\"agent\",\"reportingOwner\":\"founder\"}", false };
+        yield return new object?[] { "{\"siteKey\":\"legend\",\"siteKey\":\"protect\",\"reportingOwner\":\"founder\",\"reportingOwner\":\"agent\"}", true };
+        yield return new object?[] { "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\",\"extra\":{\"siteKey\":\"protect\"}}", true };
+        yield return new object?[] { "{ \"extra\" : {}, \"reportingOwner\" : \"founder\", \"siteKey\" : \"legend\" }", true };
+    }
+
+    [Theory]
+    [MemberData(nameof(RootMetadataCases))]
+    public async Task CanonicalRootQueriesHandleHistoricalJsonWithoutNestedOrLaterKeyAuthority(string? metadata, bool matches)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        db.AnalyticsEvents.Add(new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "page_view", MetadataJson = metadata });
+        db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = Guid.NewGuid().ToString("N"), EventName = "page_view", MetadataJson = metadata });
+        // WebsiteLead's persisted contract uses uppercase root keys.
+        var leadMetadata = metadata?.Replace("\"siteKey\"", "\"SiteKey\"", StringComparison.Ordinal)
+            .Replace("\"reportingOwner\"", "\"ReportingOwner\"", StringComparison.Ordinal);
+        db.WebsiteLeads.Add(new WebsiteLead { LeadId = Guid.NewGuid(), FirstName = "Fixture", Email = "fixture@example.test", MetadataJson = leadMetadata });
+        await db.SaveChangesAsync();
+        var founder = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = Guid.NewGuid(), SiteKey = "legend" };
+        var site = new ScopeContext { ScopeType = ScopeType.Global, SiteKey = "legend" };
+        var owner = new ScopeContext { ScopeType = ScopeType.Global, ReportingOwner = "founder" };
+        var expected = matches ? 1 : 0;
+        Assert.Equal(expected, await SiteScoped(db.AnalyticsEvents.AsQueryable(), site).CountAsync());
+        Assert.Equal(expected, await SiteScoped(db.MetaSignalEvents.AsQueryable(), site).CountAsync());
+        Assert.Equal(expected, await SiteScoped(db.AnalyticsEvents.AsQueryable(), owner).CountAsync());
+        Assert.Equal(expected, await SiteScoped(db.MetaSignalEvents.AsQueryable(), owner).CountAsync());
+        Assert.Equal(expected, await db.AnalyticsEvents.Where(OwnerPredicate<AnalyticsEvent>("ScopePredicateEvents", founder)).CountAsync());
+        Assert.Equal(expected, await db.MetaSignalEvents.Where(OwnerPredicate<MetaSignalEvent>("ScopePredicateMetaEvents", founder)).CountAsync());
+        Assert.Equal(expected, await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", founder)).CountAsync());
+    }
+
+    [Fact]
+    public async Task SiteSwitchingPreservesTypedOwnerAliasesBusinessIsolationAndBroadLegacyScopes()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var selected = Guid.NewGuid();
+        var alias = Guid.NewGuid();
+        var foreign = Guid.NewGuid();
+        var business = Guid.NewGuid();
+        var rows = new (Guid? Agent, Guid? Business, string? Site, string? Metadata)[]
+        {
+            (selected, null, "legend", "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}"),
+            (alias, null, "protect", "{\"siteKey\":\"protect\",\"reportingOwner\":\"founder\"}"),
+            (foreign, null, "legend", "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}"),
+            (null, business, "legend", "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}"),
+            (selected, business, "legend", "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}"),
+            (selected, null, null, null),
+            (null, null, "legend", "{\"siteKey\":\"legend\",\"reportingOwner\":\"founder\"}")
+        };
+        foreach (var row in rows)
+        {
+            db.AnalyticsEvents.Add(new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "page_view", AgentTrackingProfileId = row.Agent, CommerceBusinessId = row.Business, MetadataJson = row.Metadata });
+            db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = Guid.NewGuid().ToString("N"), EventName = "page_view", AgentTrackingProfileId = row.Agent, CommerceBusinessId = row.Business, MetadataJson = row.Metadata });
+            db.WebsiteLeads.Add(new WebsiteLead { LeadId = Guid.NewGuid(), FirstName = "Fixture", Email = "fixture@example.test", AgentTrackingProfileId = row.Agent, CommerceBusinessId = row.Business,
+                MetadataJson = row.Metadata?.Replace("\"siteKey\"", "\"SiteKey\"").Replace("\"reportingOwner\"", "\"ReportingOwner\"") });
+        }
+        await db.SaveChangesAsync();
+        var ids = new[] { selected, alias };
+        foreach (var (site, expected) in new (string?, int)[] { ("legend", 2), ("protect", 1), (null, 4) })
+        {
+            var scope = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = selected, SiteKey = site };
+            var events = await SiteScoped(db.AnalyticsEvents.Where(OwnerPredicate<AnalyticsEvent>("ScopePredicateEvents", scope, ids)), scope).ToListAsync();
+            var signals = await SiteScoped(db.MetaSignalEvents.Where(OwnerPredicate<MetaSignalEvent>("ScopePredicateMetaEvents", scope, ids)), scope).ToListAsync();
+            var leads = await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", scope, ids)).ToListAsync();
+            Assert.Equal(expected, events.Count);
+            Assert.Equal(expected, signals.Count);
+            Assert.Equal(expected, leads.Count);
+            Assert.All(events, row => { Assert.Null(row.CommerceBusinessId); Assert.True(row.AgentTrackingProfileId == null || ids.Contains(row.AgentTrackingProfileId.Value)); });
+            Assert.All(signals, row => { Assert.Null(row.CommerceBusinessId); Assert.True(row.AgentTrackingProfileId == null || ids.Contains(row.AgentTrackingProfileId.Value)); });
+            Assert.All(leads, row => { Assert.Null(row.CommerceBusinessId); Assert.True(row.AgentTrackingProfileId == null || ids.Contains(row.AgentTrackingProfileId.Value)); });
+        }
+        var businessScope = new ScopeContext { ScopeType = ScopeType.Business, CommerceBusinessId = business };
+        Assert.Single(await SiteScoped(db.AnalyticsEvents.Where(OwnerPredicate<AnalyticsEvent>("ScopePredicateEvents", businessScope)), businessScope).ToListAsync());
+        Assert.Single(await SiteScoped(db.MetaSignalEvents.Where(OwnerPredicate<MetaSignalEvent>("ScopePredicateMetaEvents", businessScope)), businessScope).ToListAsync());
+        Assert.Single(await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", businessScope)).ToListAsync());
+        var mixed = new ScopeContext { ScopeType = ScopeType.Business, CommerceBusinessId = business, AgentTrackingProfileId = selected };
+        Assert.Empty(await SiteScoped(db.AnalyticsEvents.AsQueryable(), mixed).ToListAsync());
+        Assert.Empty(await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", mixed)).ToListAsync());
+        Assert.Equal(rows.Length, await SiteScoped(db.AnalyticsEvents.AsQueryable(), ScopeContext.Global).CountAsync());
+        Assert.Equal(rows.Length, await db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", ScopeContext.Global)).CountAsync());
+        // Global site+owner retains the established OR contract, reading only root values.
+        var union = new ScopeContext { ScopeType = ScopeType.Global, SiteKey = "missing", ReportingOwner = "founder" };
+        Assert.Equal(6, await SiteScoped(db.AnalyticsEvents.AsQueryable(), union).CountAsync());
+        Assert.Equal(6, await SiteScoped(db.MetaSignalEvents.AsQueryable(), union).CountAsync());
+        Assert.Equal(2, await db.AnalyticsEvents.CountAsync(row => row.CommerceBusinessId == business));
+        Assert.Equal(2, await db.WebsiteLeads.CountAsync(row => row.CommerceBusinessId == business));
+    }
+
+    [Fact]
+    public void ActualScopedQueriesTranslateGuardedRootReadsForSqlServer()
+    {
+        using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer("Server=(local);Database=translation_only;Integrated Security=true;TrustServerCertificate=true").Options);
+        var founder = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = Guid.NewGuid(), SiteKey = "legend" };
+        var global = new ScopeContext { ScopeType = ScopeType.Global, SiteKey = "legend", ReportingOwner = "founder" };
+        var queries = new Dictionary<string, string>
+        {
+            ["analytics-site"] = SiteScoped(db.AnalyticsEvents.AsQueryable(), global).ToQueryString(),
+            ["meta-site"] = SiteScoped(db.MetaSignalEvents.AsQueryable(), global).ToQueryString(),
+            ["analytics-founder"] = SiteScoped(db.AnalyticsEvents.Where(OwnerPredicate<AnalyticsEvent>("ScopePredicateEvents", founder)), founder).ToQueryString(),
+            ["meta-founder"] = SiteScoped(db.MetaSignalEvents.Where(OwnerPredicate<MetaSignalEvent>("ScopePredicateMetaEvents", founder)), founder).ToQueryString(),
+            ["lead-founder"] = db.WebsiteLeads.Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", founder)).ToQueryString()
+        };
+        foreach (var (name, sql) in queries)
+        {
+            Assert.Matches(@"JSON_VALUE\(\s*CASE\s+WHEN ISJSON\(", sql);
+            Assert.Contains("= 1 THEN", sql);
+            Assert.Contains("ELSE N'{}'", sql);
+            Assert.DoesNotContain("CHARINDEX", sql);
+            Assert.DoesNotContain(" LIKE ", sql);
+            Assert.Contains(name == "lead-founder" ? "'$.SiteKey'" : "'$.siteKey'", sql);
+            Assert.Contains(name == "lead-founder" ? "'$.ReportingOwner'" : "'$.reportingOwner'", sql);
+            if (name.Contains("founder"))
+            {
+                Assert.Contains("[CommerceBusinessId] IS NULL", sql);
+                Assert.Contains("[AgentTrackingProfileId]", sql);
+            }
+            Console.WriteLine($"SQL translation only: {name}\n{sql}");
+        }
+    }
+
+    private static IQueryable<T> SiteScoped<T>(IQueryable<T> query, ScopeContext scope)
+    {
+        var owner = typeof(AnalyticsQueryService).Assembly.GetType("Infrastructure.Analytics.AnalyticsScopeQueryExtensions")!;
+        var method = owner.GetMethods(BindingFlags.Public | BindingFlags.Static).Single(candidate => candidate.Name == "ApplySiteScope" &&
+            candidate.GetParameters()[0].ParameterType == typeof(IQueryable<T>));
+        return (IQueryable<T>)method.Invoke(null, new object[] { query, scope })!;
+    }
+
+    private static Expression<Func<T, bool>> OwnerPredicate<T>(string name, ScopeContext scope, Guid[]? ids = null) =>
+        (Expression<Func<T, bool>>)typeof(AnalyticsQueryService).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!
+            .Invoke(null, new object?[] { scope, ids })!;
 }
