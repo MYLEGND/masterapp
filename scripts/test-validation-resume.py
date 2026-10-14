@@ -1274,6 +1274,12 @@ class ParfaitValidationResumeTests(unittest.TestCase):
 
 class FastTrackExecutionIdentityTests(unittest.TestCase):
     def setUp(self):
+        self.policy = m._fast_track_policy()
+        self.request = {'releaseMode':'approved-only','requestId':'synthetic-normal-release'}
+        request_patch = patch.object(self.policy,'read_request',side_effect=lambda sha:self.request)
+        request_patch.start();self.addCleanup(request_patch.stop)
+        policy_patch = patch.object(m,'_fast_track_policy',return_value=self.policy)
+        policy_patch.start();self.addCleanup(policy_patch.stop)
         self.env=dict(GITHUB_ACTIONS='true',GITHUB_EVENT_NAME='push',
             GITHUB_REF='refs/heads/Legend/fast-track-release',GITHUB_REPOSITORY='owner/repo',
             GITHUB_TOKEN='test-token',GITHUB_SHA='a'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='2',
@@ -1327,6 +1333,11 @@ class FastTrackExecutionIdentityTests(unittest.TestCase):
     def test_advanced_release_head_stops_stale_execution(self):
         with self.assertRaisesRegex(RuntimeError,'HEAD_CHANGED'):
             self.invoke(head='b'*40)
+
+    def test_active_promotion_hold_cannot_enter_mutation_execution(self):
+        self.request['trustedToolPromotion'] = {'schemaVersion':1}
+        with self.assertRaisesRegex(RuntimeError,'TRUSTED_TOOL_PROMOTION_NONPUBLISHING'):
+            self.invoke()
 
 
 class FastTrackImpactTests(unittest.TestCase):
@@ -1862,7 +1873,11 @@ class ValidationResumePlannerTests(unittest.TestCase):
                 event="pull_request",
                 resume_cache=str(cache),
             )
-            with patch.object(m, "prior_evidence") as remote:
+            # This fixture has no additional historical receipts. Exercise the
+            # actual local child cache and dependency checks without querying a
+            # synthetic owner/repo; the adjacent test owns historical backfill.
+            with patch.object(m, "prior_evidence") as remote, \
+                 patch.object(m, "_apply_content_equivalent_evidence", side_effect=lambda args, plan: plan):
                 m.cmd_plan(args)
             remote.assert_not_called()
             plan = m.json.loads(Path(args.output).read_text())

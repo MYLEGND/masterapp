@@ -1235,4 +1235,78 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
             scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
         self.assertTrue(scope['schema'])
 
+class TrustedToolPromotionAdmissionTests(unittest.TestCase):
+    def test_promotion_never_enters_recovery_or_provider(self):
+        policy=Mock();policy.tool_promotion_requested.return_value=True
+        policy.trusted_tool_promotion.return_value={'productionEligible':False}
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}) as proof,patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')),patch.object(authority,'fast_track_pending_routing',side_effect=AssertionError('routing')),patch.object(authority.subprocess,'check_output',side_effect=AssertionError('git diff')):
+            result=authority.fast_track_selection('a'*40,'b'*40)
+        proof.assert_called_once_with(allow_nonpublishing=True)
+        self.assertFalse(result['productionEligible'])
+        self.assertFalse(any(result[key] for key in ('selected','commerce','schema','routing')))
+        self.assertEqual({'include':[]},result['matrix'])
+
+    def test_bad_marker_never_falls_back_to_application_release(self):
+        policy=Mock();policy.tool_promotion_requested.return_value=True
+        policy.trusted_tool_promotion.side_effect=ValueError('bad marker')
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',side_effect=AssertionError('recovery')):
+            with self.assertRaisesRegex(ValueError,'bad marker'):authority.fast_track_selection('a'*40,'b'*40)
+
+    def history(self, mutate=None, carry=False):
+        before,head='a'*40,'b'*40
+        run=dict(id=77,run_attempt=1,head_sha=head,status='completed',conclusion='success')
+        proof={'phase':'trusted-tool-promotion','baseRevision':before}
+        jobs=[dict(name=name,conclusion='success' if index==0 else 'skipped',run_id=77,run_attempt=1,head_sha=head) for index,name in enumerate(('Select exact affected applications','Admit exact validated fast-track source','Reconcile production schema before publication','Publish verified website routing','Affected App Deploy'))]
+        artifact=dict(id=99,name='fast-track-admission-77-1',expired=False,workflow_run={'id':77})
+        receipt=dict(proof,producingRun=77,producingAttempt=1)
+        if mutate:mutate(run,jobs,artifact,receipt)
+        policy=Mock();policy.tool_promotion_requested.side_effect=lambda sha:sha==head
+        policy.read_request.return_value={'trustedToolPromotion':{'baseRevision':before}}
+        policy.trusted_tool_promotion.return_value=proof
+        def api(repo,path,token):
+            if '/artifacts?' in path:return {'total_count':1,'artifacts':[artifact]}
+            if '/jobs?' in path:return {'total_count':len(jobs),'jobs':jobs}
+            if 'head_sha='+head in path:return {'total_count':1,'workflow_runs':[run]}
+            if 'head_sha='+before in path:return {'total_count':0,'workflow_runs':[]}
+            raise AssertionError(path)
+        def download(repo,runid,name,root,**kwargs):
+            self.assertEqual(99,kwargs['artifact_id']);(root/'fast-track-admission.json').write_text(json.dumps(receipt))
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'is_fast_track_producer',return_value=True),patch.object(authority,'fast_track_merged_source_proof',return_value={}),patch.object(authority,'api_get',side_effect=api),patch.object(authority,'_download_run_artifact',side_effect=download),patch.object(authority,'fast_track_untriggered_repair_parent',return_value=None),patch.object(authority.subprocess,'run',return_value=SimpleNamespace(returncode=0)),patch.dict(os.environ,{'GITHUB_REPOSITORY':'MYLEGND/masterapp','GH_TOKEN':'fixture'}):
+            return authority.fast_track_effective_baseline(head,'c'*40) if carry else authority.fast_track_promotion_parent('MYLEGND/masterapp',run,'fixture')
+
+    def test_successful_nonpublishing_promotion_preserves_original_recovery_baseline(self):
+        self.assertEqual('a'*40,self.history(carry=True))
+
+    def test_historical_receipt_and_job_identities_fail_closed(self):
+        mutations=[lambda r,j,a,p:a.update(id=0),lambda r,j,a,p:a.update(workflow_run={'id':78}),
+            lambda r,j,a,p:j[0].update(run_id=78),lambda r,j,a,p:j[0].update(run_attempt=2),
+            lambda r,j,a,p:j[0].update(head_sha='c'*40),lambda r,j,a,p:j.append(dict(name='unexpected')),
+            lambda r,j,a,p:j[-1].update(conclusion='success'),lambda r,j,a,p:p.update(producingAttempt=2)]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):self.history(mutation)
+
+    def test_normal_infrastructure_keeps_application_and_schema_scope(self):
+        scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        self.assertTrue(scope['schema']);self.assertTrue(scope['commerce']);self.assertTrue(scope['selected'])
+        self.assertEqual(4,len(scope['matrix']['include']))
+
+    def test_following_release_selects_recovered_application_and_routing(self):
+        policy=Mock();policy.tool_promotion_requested.side_effect=lambda sha:sha=='b'*40
+        normal=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        policy.release_after_tool_promotion.return_value={'targets':[r['azure_app'] for r in normal['matrix']['include']],'cloudflareWebsiteRouting':True}
+        with patch.object(authority,'_fast_track_policy',return_value=policy),patch.object(authority,'fast_track_source_admission',return_value={}),patch.object(authority,'fast_track_effective_baseline',return_value='a'*40),patch.object(authority.subprocess,'check_output',return_value='Infrastructure/Infrastructure.csproj\n'),patch.object(authority,'attested_website_only_recovery_scope',return_value=False),patch.object(authority,'fast_track_pending_routing',return_value=True) as routing:
+            result=authority.fast_track_selection('b'*40,'c'*40)
+        routing.assert_called_once_with('a'*40)
+        self.assertTrue(result['productionEligible']);self.assertTrue(result['routing']);self.assertTrue(result['schema'])
+    def test_every_production_job_requires_positive_eligibility_and_selector_has_no_oidc(self):
+        text=Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        selector=text.split('  select-targets:',1)[1].split('  commerce-gates:',1)[0]
+        self.assertNotIn('id-token: write',selector)
+        self.assertNotIn('id-token: write',text.split('jobs:',1)[0])
+        for job in ('commerce-gates','migrations','deploy-ui','routing-cloudflare'):
+            block=text.split('  '+job+':',1)[1]
+            condition=next(line for line in block.splitlines() if line.startswith('    if:'))
+            self.assertIn("needs.select-targets.outputs.production-eligible == 'true'",condition)
+
+
 if __name__ == '__main__':unittest.main()

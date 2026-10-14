@@ -3666,7 +3666,103 @@ def assert_protected_release_execution():
     return run
 
 
-def assert_fast_track_release_execution():
+def _fast_track_policy():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('fast_track_release_policy', Path(__file__).with_name('release_policy.py'))
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    return owner
+
+
+def fast_track_selection(before, head):
+    """Own promotion admission before inherited application/routing recovery."""
+    if not re.fullmatch('[a-f0-9]{40}', head) or not re.fullmatch('[a-f0-9]{40}', before):
+        raise ValueError('FAST_TRACK_SELECTION_IDENTITY_UNPROVEN')
+    policy = _fast_track_policy()
+    promotion = policy.tool_promotion_requested(head)
+    transition = None
+    if promotion:
+        if before == '0' * 40:
+            raise ValueError('TRUSTED_TOOL_PROMOTION_BASE_UNPROVEN')
+        admission = fast_track_source_admission(allow_nonpublishing=True)
+        proof = policy.trusted_tool_promotion(before, head, admission)
+        return dict(matrix={'include': []}, selected=False, commerce=False, schema=False,
+            routing=False, impacts={}, baseline=before, productionEligible=False, promotion=proof)
+    if before != '0' * 40 and policy.tool_promotion_requested(before):
+        admission = fast_track_source_admission()
+        transition = policy.release_after_tool_promotion(before, head, admission)
+    if before == '0' * 40:
+        changed = subprocess.check_output(['git', 'diff-tree', '--root', '--no-commit-id', '--name-only', '-r', head], text=True).splitlines()
+    else:
+        before = fast_track_effective_baseline(before, head)
+        changed = subprocess.check_output(['git', 'diff', '--name-only', before, head], text=True).splitlines()
+    # The existing request is an authorization/control input, never an app file.
+    scope = fast_track_scope(changed)
+    if attested_website_only_recovery_scope(before, head, changed):
+        scope = website_only_recovery_scope(scope)
+    if fast_track_pending_routing(before):
+        scope.update(routing=True, commerce=True)
+    if transition is not None:
+        expected = [row['azure_app'] for row in scope['matrix']['include']]
+        if (len(set(transition['targets'])) != len(transition['targets'])
+            or set(transition['targets']) != set(expected)
+            or transition['cloudflareWebsiteRouting'] != scope['routing']):
+            raise ValueError('TRUSTED_TOOL_PROMOTION_RELEASE_SCOPE_CHANGED')
+    return dict(scope, baseline=before, productionEligible=True, promotion=None)
+
+
+def fast_track_promotion_parent(repository, run, token):
+    """A successful no-publish promotion is never a shipped recovery boundary."""
+    import tempfile
+    revision = run.get('head_sha', '')
+    policy = _fast_track_policy()
+    if not policy.tool_promotion_requested(revision):
+        return None
+    if (not is_fast_track_producer(repository, run) or run.get('status') != 'completed'
+        or run.get('conclusion') != 'success' or type(run.get('run_attempt')) is not int or run['run_attempt'] < 1):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_HISTORY_UNPROVEN')
+    request = policy.read_request(revision)
+    before = request.get('trustedToolPromotion', {}).get('baseRevision')
+    admission = fast_track_merged_source_proof(repository, revision, token)
+    expected = policy.trusted_tool_promotion(before, revision, admission)
+    name = f"fast-track-admission-{run['id']}-{run['run_attempt']}"
+    inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
+    rows = inventory.get('artifacts')
+    if not isinstance(rows, list) or inventory.get('total_count') != len(rows):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_ARTIFACT_HISTORY_INCOMPLETE')
+    selected = [r for r in rows if r.get('name') == name and r.get('expired') is False]
+    if (len(selected) != 1 or type(selected[0].get('id')) is not int or selected[0]['id'] < 1
+        or selected[0].get('workflow_run', {}).get('id') != run['id']):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_UNPROVEN')
+    inventory = api_get(repository, f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100", token)
+    jobs = inventory.get('jobs')
+    if not isinstance(jobs, list) or inventory.get('total_count') != len(jobs):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_JOBS_INCOMPLETE')
+    if any(j.get('run_id') != run['id'] or j.get('run_attempt') != run['run_attempt']
+           or j.get('head_sha') != revision for j in jobs):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_JOB_IDENTITY_CHANGED')
+    selectors = [j for j in jobs if j.get('name') == 'Select exact affected applications']
+    names = {'Admit exact validated fast-track source', 'Reconcile production schema before publication',
+             'Publish verified website routing'}
+    downstream = [j for j in jobs if j.get('name') in names or j.get('name', '').startswith('Affected App Deploy')]
+    if (len(selectors) != 1 or selectors[0].get('conclusion') != 'success'
+        or len(downstream) < 4 or {j.get('name') for j in downstream} & names != names
+        or any(j.get('conclusion') != 'skipped' for j in downstream)
+        or len(jobs) != 1 + len(downstream)):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_NONENTRY_UNPROVEN')
+    with tempfile.TemporaryDirectory(prefix='legend-tool-promotion-') as temporary:
+        root = Path(temporary)
+        _download_run_artifact(repository, run['id'], name, root, artifact_id=selected[0]['id'])
+        receipt = root / 'fast-track-admission.json'
+        if receipt.is_symlink() or receipt.stat().st_size > 4 * 1024 * 1024:
+            raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_UNPROVEN')
+        value = json.loads(receipt.read_text())
+    if value != dict(expected, producingRun=run['id'], producingAttempt=run['run_attempt']):
+        raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_IDENTITY_CHANGED')
+    return before
+
+
+def assert_fast_track_release_execution(*, allow_nonpublishing=False):
     """Authenticate the existing fast-track producer, without granting admission.
 
     The caller must still prove package, schema, history and operation admission.
@@ -3715,6 +3811,8 @@ def assert_fast_track_release_execution():
                     ('AgentPortal','ClientApp','Protect','Parfait','Website')})]
         if len(active) != 1:
             raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+    if not allow_nonpublishing and _fast_track_policy().tool_promotion_requested(revision):
+        raise RuntimeError('FAST_TRACK_TRUSTED_TOOL_PROMOTION_NONPUBLISHING')
     current = api_get(repository, 'git/ref/heads/' + FAST_TRACK_PR_BASE, token)
     if current.get('object', {}).get('sha') != revision:
         raise RuntimeError('FAST_TRACK_RELEASE_HEAD_CHANGED')
@@ -4301,6 +4399,12 @@ def fast_track_effective_baseline(before, revision):
             before = repair_parent
             continue
         if prior.get('conclusion') == 'success':
+            if prior.get('head_sha') != before:
+                raise ValueError('FAST_TRACK_RECOVERY_RUN_IDENTITY_CHANGED')
+            promotion_parent = fast_track_promotion_parent(repository, prior, token)
+            if promotion_parent is not None:
+                before = promotion_parent
+                continue
             return before
         if prior.get('status') != 'completed':
             raise RuntimeError('FAST_TRACK_PREDECESSOR_ACTIVE')
@@ -4355,12 +4459,17 @@ def fast_track_effective_baseline(before, revision):
     raise RuntimeError('FAST_TRACK_PREDECESSOR_CHAIN_UNPROVEN')
 
 
-def fast_track_source_admission():
+def fast_track_source_admission(*, allow_nonpublishing=False):
     """Require the merged exact source's existing checks before production access."""
-    run = assert_fast_track_release_execution()
+    run = (assert_fast_track_release_execution(allow_nonpublishing=True) if allow_nonpublishing
+           else assert_fast_track_release_execution())
     repository = os.environ['GITHUB_REPOSITORY']
     token = os.environ.get('GH_TOKEN') or os.environ['GITHUB_TOKEN']
-    revision = run['head_sha']
+    return fast_track_merged_source_proof(repository, run['head_sha'], token)
+
+
+def fast_track_merged_source_proof(repository, revision, token):
+    """Existing merged-tree/three-receipt authority shared by exact promotion history."""
     pulls = api_get(repository, f'commits/{revision}/pulls?per_page=100', token)
     candidates = [p for p in pulls if p.get('merged_at') and p.get('merge_commit_sha') == revision
         and p.get('base', {}).get('ref') == FAST_TRACK_PR_BASE
