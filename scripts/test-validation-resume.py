@@ -4471,6 +4471,9 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
         if untrusted:
             prior['head_repository']['full_name'] = 'other/repo'
         def api(repository, path, token):
+            # Legacy-only fixtures still prove a complete empty fast-track inventory.
+            if path == 'actions/runs?branch=Legend%2Ffast-track-release&event=push&per_page=100&page=1':
+                return {'workflow_runs': [], 'total_count': 0}
             if path.startswith('actions/artifacts?'):
                 return {'artifacts': [], 'total_count': 0}
             if '/attempts/' in path:
@@ -4492,7 +4495,8 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
         targets = {next(iter(m.RELEASE_TARGETS)): 'c' * 64}
         identity = {'candidateRevision': revision, 'packageDigests': dict(sorted(targets.items()))}
         plan_id = m.hashlib.sha256(m.json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-        with patch.object(m, '_release_history_api', side_effect=api), \
+        with patch.object(m, 'api_get', side_effect=api), \
+             patch.object(m, '_release_history_api', side_effect=api), \
              patch.object(m, '_release_history_runs', return_value=[prior]), \
              patch.object(m, '_release_history_source', return_value=self.source), \
              patch.object(m, '_release_attempt_package_revision', return_value=revision), \
