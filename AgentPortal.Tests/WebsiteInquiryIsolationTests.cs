@@ -1,4 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
+using Infrastructure.Security;
+using System.Text;
+using System.Text.Json;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -989,6 +995,121 @@ public sealed class WebsiteInquiryIsolationTests
         var rejected = await controller.Ingest(request, CancellationToken.None);
         Assert.IsType<BadRequestObjectResult>(rejected);
         Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task DistinctSubmissionsSameEmailKeepDistinctInquiryIntakeAndConversionWhileCrmContactMerges()
+    {
+        using var f = new Fixture(); await f.SeedPublishedAsync();
+        var request = f.Request();
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request with { SubmissionId = Guid.NewGuid(), Message = "A separate inquiry" }, default));
+        Assert.Equal(2, await f.Db.Set<CommerceWebsiteInquiry>().CountAsync());
+        Assert.Equal(2, await f.Db.WebsiteLeads.CountAsync());
+        Assert.Equal(2, await f.Db.WebsiteLeadIntakeLinks.CountAsync());
+        Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        var events = await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync();
+        Assert.Equal(2, events.Count); Assert.Equal(2, events.Select(x => x.EventId).Distinct().Count());
+        Assert.Equal(2, events.Select(x => x.ClientEventId).Distinct().Count());
+        Assert.Equal(2, events.Select(x => CanonicalAdvertisingEventProjection.ReadString(x.MetadataJson, "canonicalOutcomeEventId")).Distinct().Count());
+        Assert.All(events, row => Assert.Equal(f.BusinessId, row.CommerceBusinessId));
+    }
+
+    [Fact]
+    public async Task RetryKeepsCanonicalEventIdentityAndOriginalEventTime()
+    {
+        using var f = new Fixture(); await f.SeedPublishedAsync();
+        var request = f.Request(); Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        var initial = Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        var identity = (initial.EventId, initial.ClientEventId, initial.EventUtc, initial.ReceivedUtc,
+            CanonicalAdvertisingEventProjection.ReadString(initial.MetadataJson, "canonicalOutcomeEventId"));
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(lead.LeadId, initial.ClientEventId);
+        Assert.Equal(CanonicalLeadEventIdentity.Resolve(lead), identity.Item5);
+        Assert.Equal(lead.LeadId.ToString(), CanonicalAdvertisingEventProjection.ReadString(initial.MetadataJson, "WebsiteLeadId"));
+        Assert.Equal(lead.CreatedUtc, initial.EventUtc);
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        var replay = Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(identity, (replay.EventId, replay.ClientEventId, replay.EventUtc, replay.ReceivedUtc,
+            CanonicalAdvertisingEventProjection.ReadString(replay.MetadataJson, "canonicalOutcomeEventId")));
+    }
+
+    [Theory]
+    [InlineData("email")]
+    [InlineData("consent")]
+    [InlineData("phone")]
+    [InlineData("name")]
+    public async Task InvalidInputCreatesNoLeadCrmIntakeOrConversion(string invalid)
+    {
+        using var f = new Fixture(); await f.SeedPublishedAsync(); var request = f.Request();
+        request = invalid switch { "email" => request with { Email = "not-an-email" }, "consent" => request with { Consent = false },
+            "phone" => request with { Phone = "123" }, _ => request with { FirstName = "" } };
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Submit(request, default));
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync()); Assert.Empty(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Empty(await f.Db.WorkstationLeadProfiles.ToListAsync()); Assert.Empty(await f.Db.WebsiteLeadIntakeLinks.ToListAsync());
+        Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BusinessSenderFailureLeavesDurableCrmAndDueRetryUsesCurrentRecipient(bool throws)
+    {
+        using var f = new Fixture(); await f.SeedPublishedAsync();
+        var business = await f.Db.CommerceBusinesses.SingleAsync(x => x.Id == f.BusinessId); business.OwnerEmail = "old-owner@example.org";
+        await f.Db.SaveChangesAsync();
+        var send = f.EmailSender.Setup(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()));
+        if (throws) send.ThrowsAsync(new InvalidOperationException("Fixture transport failure")); else send.ReturnsAsync(false);
+        var request = f.Request(); Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        Assert.Equal("RetryPending", inquiry.NotificationStatus); Assert.Null(inquiry.NotificationSentUtc); Assert.Equal(1, inquiry.NotificationAttempts);
+        Assert.Single(await f.Db.WebsiteLeads.ToListAsync()); Assert.Single(await f.Db.WorkstationLeadProfiles.ToListAsync());
+        Assert.Single(await f.Db.WebsiteLeadIntakeLinks.ToListAsync()); Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default)); Assert.Equal(1, inquiry.NotificationAttempts);
+        business.OwnerEmail = "current-owner@example.org"; inquiry.NotificationNextAttemptUtc = DateTime.UtcNow.AddMinutes(-1);
+        await f.Db.SaveChangesAsync(); send.ReturnsAsync(true);
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        Assert.Equal("Sent", inquiry.NotificationStatus); Assert.Equal(2, inquiry.NotificationAttempts);
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, default));
+        f.EmailSender.Verify(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        f.EmailSender.Verify(x => x.TrySendAsync("current-owner@example.org", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), request.Email, It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Single(await f.Db.WebsiteLeads.ToListAsync()); Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+    }
+
+    [Fact]
+    public async Task LocalMvcJsonRouteAcceptsCanonicalBodyAndRejectsMalformedOrWrongContentType()
+    {
+        using var f = new Fixture(); await f.SeedPublishedAsync();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddControllers().AddApplicationPart(typeof(WebsiteInquiriesController).Assembly).AddControllersAsServices();
+        builder.Services.AddSingleton(f.Controller);
+        builder.Services.AddRateLimiter(PlatformRateLimiting.ConfigurePolicies);
+        await using var app = builder.Build();
+        app.UseRouting(); app.UseRateLimiter(); app.MapControllers();
+        await app.StartAsync();
+        try
+        {
+            using var client = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(app.Urls.Single()) };
+            async Task<HttpResponseMessage> Post(string body, string contentType)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/website-inquiries/public");
+                request.Headers.Add("Origin", "https://business.example");
+                request.Content = new StringContent(body, Encoding.UTF8, contentType);
+                return await client.SendAsync(request);
+            }
+            var json = JsonSerializer.Serialize(f.Request(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            using var accepted = await Post(json, "application/json");
+            Assert.Equal(System.Net.HttpStatusCode.OK, accepted.StatusCode);
+            using var receipt = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync());
+            Assert.True(receipt.RootElement.GetProperty("accepted").GetBoolean());
+            using var malformed = await Post("{", "application/json"); Assert.Equal(System.Net.HttpStatusCode.BadRequest, malformed.StatusCode);
+            using var empty = await Post("null", "application/json"); Assert.Equal(System.Net.HttpStatusCode.BadRequest, empty.StatusCode);
+            using var wrongType = await Post(json, "text/plain"); Assert.Equal(System.Net.HttpStatusCode.UnsupportedMediaType, wrongType.StatusCode);
+            Assert.Single(await f.Db.WebsiteLeads.ToListAsync()); Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+            Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        }
+        finally { await app.StopAsync(); }
     }
 
     private sealed class Fixture : IDisposable

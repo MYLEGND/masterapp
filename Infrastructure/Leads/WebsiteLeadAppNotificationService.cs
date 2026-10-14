@@ -3,6 +3,7 @@ using System.Text;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Infrastructure.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,57 +26,81 @@ public sealed class WebsiteLeadAppNotificationService(
 {
     public async Task DeliverPendingAsync(CancellationToken ct)
     {
-        var cutoff = DateTime.UtcNow.AddDays(-2);
-        var leads = await db.WebsiteLeads.AsNoTracking()
-            .Where(x => !x.IsDeleted && x.CreatedUtc >= cutoff)
-            .OrderBy(x => x.CreatedUtc)
-            .Take(100)
-            .ToListAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        var maxId = await db.WebsiteLeads.AsNoTracking().Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.Id).Select(x => (long?)x.Id).FirstOrDefaultAsync(ct);
+        if (maxId is null) return;
 
-        foreach (var snapshot in leads)
+        long? afterId = null;
+        var projected = 0;
+        while (projected < 100)
         {
-            var notificationId = NotificationId(snapshot.LeadId);
-            if (await db.MobileActivityNotifications.AsNoTracking().AnyAsync(x => x.Id == notificationId, ct))
-                continue;
+            ct.ThrowIfCancellationRequested();
+            var leads = await PendingBatch(db, afterId, maxId.Value).ToListAsync(ct);
+            if (leads.Count == 0) return;
+            afterId = leads[^1].Id;
+            var ids = leads.Select(x => NotificationId(x.LeadId)).ToArray();
+            var committed = (await db.MobileActivityNotifications.AsNoTracking()
+                .Where(x => ids.Contains(x.Id)).Select(x => x.Id).ToListAsync(ct)).ToHashSet();
 
-            var actor = await ResolveRecipientAsync(snapshot, ct);
-            if (actor is null)
+            foreach (var snapshot in leads)
             {
-                logger.LogWarning("Website lead app notification has no scoped LEGEND actor. lead={LeadId}", snapshot.LeadId);
-                continue;
-            }
+                ct.ThrowIfCancellationRequested();
+                if (projected >= 100) return;
+                var notificationId = NotificationId(snapshot.LeadId);
+                if (committed.Contains(notificationId) || WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(snapshot))
+                    continue;
 
-            var title = WebsiteLeadEmailTemplate.SubjectFor(snapshot);
-            var name = $"{snapshot.FirstName} {snapshot.LastName}".Trim();
-            var detail = string.IsNullOrWhiteSpace(name)
-                ? "A new website lead is ready in CRM."
-                : $"New website lead from {name}. Open CRM to follow up.";
+                var actor = await ResolveRecipientAsync(snapshot, ct);
+                if (actor is null)
+                {
+                    logger.LogWarning("Website lead app notification has no scoped LEGEND actor. lead={LeadId}", snapshot.LeadId);
+                    continue;
+                }
 
-            await notifications.StageAsync(new MobileActivityNotification
-            {
-                Id = notificationId,
-                RecipientUserId = actor.UserId,
-                RecipientParticipantType = actor.ParticipantType,
-                Kind = "WebsiteLead",
-                Title = title,
-                Detail = detail,
-                OccurredUtc = snapshot.CreatedUtc
-            }, ct);
+                var title = WebsiteLeadEmailTemplate.SubjectFor(snapshot);
+                var name = $"{snapshot.FirstName} {snapshot.LastName}".Trim();
+                var detail = string.IsNullOrWhiteSpace(name)
+                    ? "A new website lead is ready in CRM."
+                    : $"New website lead from {name}. Open CRM to follow up.";
 
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                notifications.NotifyCommittedMessages();
-            }
-            catch (DbUpdateException)
-            {
-                db.ChangeTracker.Clear();
+                await notifications.StageAsync(new MobileActivityNotification
+                {
+                    Id = notificationId,
+                    RecipientUserId = actor.UserId,
+                    RecipientParticipantType = actor.ParticipantType,
+                    Kind = "WebsiteLead",
+                    Title = title,
+                    Detail = detail,
+                    OccurredUtc = snapshot.CreatedUtc
+                }, ct);
+
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    projected++;
+                    notifications.NotifyCommittedMessages();
+                }
+                catch (DbUpdateException)
+                {
+                    db.ChangeTracker.Clear();
+                }
             }
         }
     }
 
+    private static IQueryable<WebsiteLead> PendingBatch(MasterAppDbContext db, long? afterId, long maxId)
+    {
+        var query = db.WebsiteLeads.AsNoTracking().Where(x => !x.IsDeleted && x.Id <= maxId);
+        if (afterId.HasValue) query = query.Where(x => x.Id > afterId.Value);
+        return query.OrderBy(x => x.Id).Take(100);
+    }
+
     private async Task<MessagingActor?> ResolveRecipientAsync(WebsiteLead lead, CancellationToken ct)
     {
+        if (lead.AgentTrackingProfileId == Guid.Empty || lead.CommerceBusinessId == Guid.Empty ||
+            (lead.AgentTrackingProfileId.HasValue && lead.CommerceBusinessId.HasValue)) return null;
+
         if (lead.AgentTrackingProfileId is Guid trackingId && trackingId != Guid.Empty)
         {
             var userId = await db.AgentTrackingProfiles.AsNoTracking()
@@ -87,25 +112,32 @@ public sealed class WebsiteLeadAppNotificationService(
 
         if (lead.CommerceBusinessId is Guid businessId && businessId != Guid.Empty)
         {
-            var ownerEmail = await db.CommerceBusinesses.AsNoTracking()
-                .Where(x => x.Id == businessId && x.IsActive && x.Status == "Active")
-                .Select(x => x.OwnerEmail)
-                .SingleOrDefaultAsync(ct);
-            if (string.IsNullOrWhiteSpace(ownerEmail)) return null;
+            var business = await db.CommerceBusinesses.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct);
+            if (business is null) return null;
 
-            var normalized = ownerEmail.Trim().ToLowerInvariant();
-            var clientUserId = await db.ClientProfiles.AsNoTracking()
-                .Where(x => x.Email.ToLower() == normalized)
-                .Select(x => x.ClientUserId)
-                .FirstOrDefaultAsync(ct);
-            var client = Actor(clientUserId, MessagingParticipantTypes.Client);
-            if (client is not null) return client;
+            var primaryMembers = await db.CommerceBusinessMembers.AsNoTracking()
+                .Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" &&
+                    (x.RoleKey.ToLower() == "owner" || x.RoleKey.ToLower() == "account" || x.RoleKey.ToLower() == "platform-owner"))
+                .ToListAsync(ct);
+            if (primaryMembers.Count > 1)
+            {
+                // OwnerEmail may select an existing primary membership; it cannot establish ownership.
+                var ownerEmail = business.OwnerEmail?.Trim().ToLowerInvariant();
+                if (string.IsNullOrWhiteSpace(ownerEmail)) return null;
+                primaryMembers = primaryMembers.Where(x =>
+                    string.Equals(x.NormalizedEmail?.Trim(), ownerEmail, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(x.Email?.Trim(), ownerEmail, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            if (primaryMembers.Count != 1 || primaryMembers[0].ClientProfileId is not Guid profileId || profileId == Guid.Empty)
+                return null;
 
-            var agentUserId = await db.AgentProfiles.AsNoTracking()
-                .Where(x => x.IsActive && (x.NormalizedEmail == normalized || x.AgentUpn.ToLower() == normalized))
-                .Select(x => x.AgentUserId)
-                .FirstOrDefaultAsync(ct);
-            return Actor(agentUserId, MessagingParticipantTypes.Agent);
+            var profile = await db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == profileId, ct);
+            var actor = Actor(profile?.ClientUserId, MessagingParticipantTypes.Client);
+            if (profile is null || actor is null) return null;
+            return await BusinessWorkspaceAccess.ResolveAsync(db, businessId, profileId, actor.UserId, profile.Email, "crm", ct) is null
+                ? null
+                : actor;
         }
 
         // Founder-owned mylegnd.com leads intentionally have no agent tracking ID.

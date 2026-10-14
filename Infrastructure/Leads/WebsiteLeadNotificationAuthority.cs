@@ -82,7 +82,7 @@ public static class WebsiteLeadNotificationAuthority
 
 
 /// <summary>
-/// Retries failed WebsiteLead notifications from the canonical persisted lead row.
+/// Recovers unsent WebsiteLead notifications from the canonical persisted lead row.
 /// Published business inquiries that have a CommerceWebsiteInquiry remain owned by
 /// BusinessInquiryNotificationService; business-owned app inquiries use this same lead lease.
 /// </summary>
@@ -97,69 +97,7 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
         {
             try
             {
-                using var scope = scopes.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-                var recipients = scope.ServiceProvider.GetRequiredService<WebsiteIntakeRecipientResolver>();
-                var sender = scope.ServiceProvider.GetRequiredService<IWebsiteInquiryEmailSender>();
-                var retryCutoff = WebsiteLeadSubmission.NotificationRetryCutoff(DateTime.UtcNow);
-
-                var ids = await db.WebsiteLeads.AsNoTracking()
-                    .Where(x =>
-                        x.NotificationSentUtc == null &&
-                        x.Status == "NotificationFailed" &&
-                        x.NotificationAttemptUtc != null &&
-                        x.NotificationAttemptUtc <= retryCutoff)
-                    .OrderBy(x => x.NotificationAttemptUtc)
-                    .ThenBy(x => x.CreatedUtc)
-                    .Select(x => x.Id)
-                    .Take(25)
-                    .ToListAsync(stoppingToken);
-
-                foreach (var id in ids)
-                {
-                    var lead = await db.WebsiteLeads.SingleOrDefaultAsync(x => x.Id == id, stoppingToken);
-                    if (lead is null || lead.NotificationSentUtc.HasValue)
-                        continue;
-
-                    if (lead.CommerceBusinessId is { } businessId &&
-                        await db.Set<CommerceWebsiteInquiry>().AsNoTracking()
-                            .AnyAsync(x => x.WebsiteLeadId == lead.LeadId, stoppingToken))
-                        continue;
-
-                    var owner = lead.CommerceBusinessId is { } scopedBusinessId && scopedBusinessId != Guid.Empty
-                        ? MarketingOwnerScope.Business(scopedBusinessId)
-                        : lead.AgentTrackingProfileId is { } agentId && agentId != Guid.Empty
-                            ? MarketingOwnerScope.Agent(agentId)
-                            : MarketingOwnerScope.Founder;
-                    var recipient = await recipients.ResolveAsync(owner, stoppingToken);
-                    if (string.IsNullOrWhiteSpace(recipient))
-                    {
-                        logger.LogWarning(
-                            "Website lead notification recovery has no current scoped recipient for lead {LeadId}.",
-                            lead.LeadId);
-                        continue;
-                    }
-
-                    var result = await WebsiteLeadNotificationAuthority.DeliverAsync(
-                        db,
-                        lead,
-                        recipient,
-                        ct => sender.TrySendAsync(
-                            recipient,
-                            WebsiteLeadEmailTemplate.SubjectFor(lead),
-                            WebsiteLeadEmailTemplate.Build(WebsiteLeadEmailTemplate.SubjectFor(lead), lead),
-                            replyToEmail: string.IsNullOrWhiteSpace(lead.Email) ? null : lead.Email,
-                            saveToSentItems: true,
-                            cancellationToken: ct),
-                        stoppingToken);
-
-                    if (!result.Sent)
-                    {
-                        logger.LogWarning(
-                            "Website lead notification recovery remains pending for lead {LeadId}.",
-                            lead.LeadId);
-                    }
-                }
+                await RecoverPendingAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -171,5 +109,87 @@ public sealed class WebsiteLeadNotificationRecoveryWorker(
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    public async Task RecoverPendingAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var recipients = scope.ServiceProvider.GetRequiredService<WebsiteIntakeRecipientResolver>();
+        var sender = scope.ServiceProvider.GetRequiredService<IWebsiteInquiryEmailSender>();
+        var retryCutoff = WebsiteLeadSubmission.NotificationRetryCutoff(DateTime.UtcNow);
+        var maxId = await db.WebsiteLeads.AsNoTracking().Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.Id).Select(x => (long?)x.Id).FirstOrDefaultAsync(cancellationToken);
+        if (maxId is null) return;
+
+        long? afterId = null;
+        var claimed = 0;
+        while (claimed < 25)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var ids = await PendingRecoveryBatch(db, afterId, maxId.Value, retryCutoff)
+                .Select(x => x.Id).ToListAsync(cancellationToken);
+            if (ids.Count == 0) return;
+            afterId = ids[^1];
+            foreach (var id in ids)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (claimed >= 25) return;
+                var lead = await db.WebsiteLeads.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+                if (lead is null || lead.IsDeleted || lead.NotificationSentUtc.HasValue ||
+                    WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(lead) ||
+                    lead.CommerceBusinessId == Guid.Empty || lead.AgentTrackingProfileId == Guid.Empty ||
+                    (lead.CommerceBusinessId.HasValue && lead.AgentTrackingProfileId.HasValue))
+                    continue;
+
+                var owner = lead.CommerceBusinessId is { } scopedBusinessId && scopedBusinessId != Guid.Empty
+                    ? MarketingOwnerScope.Business(scopedBusinessId)
+                    : lead.AgentTrackingProfileId is { } agentId && agentId != Guid.Empty
+                        ? MarketingOwnerScope.Agent(agentId)
+                        : MarketingOwnerScope.Founder;
+                var recipient = await recipients.ResolveAsync(owner, cancellationToken);
+                if (string.IsNullOrWhiteSpace(recipient))
+                {
+                    logger.LogWarning(
+                        "Website lead notification recovery has no current scoped recipient for lead {LeadId}.",
+                        lead.LeadId);
+                    continue;
+                }
+
+                var result = await WebsiteLeadNotificationAuthority.DeliverAsync(
+                    db,
+                    lead,
+                    recipient,
+                    ct => sender.TrySendAsync(
+                        recipient,
+                        WebsiteLeadEmailTemplate.SubjectFor(lead),
+                        WebsiteLeadEmailTemplate.Build(WebsiteLeadEmailTemplate.SubjectFor(lead), lead),
+                        replyToEmail: string.IsNullOrWhiteSpace(lead.Email) ? null : lead.Email,
+                        saveToSentItems: true,
+                        cancellationToken: ct),
+                    cancellationToken);
+
+                if (result.Claimed) claimed++;
+                if (!result.Sent)
+                {
+                    logger.LogWarning(
+                        "Website lead notification recovery remains pending for lead {LeadId}.",
+                        lead.LeadId);
+                }
+            }
+        }
+    }
+
+    private static IQueryable<WebsiteLead> PendingRecoveryBatch(MasterAppDbContext db, long? afterId, long maxId, DateTime retryCutoff)
+    {
+        var query = db.WebsiteLeads.AsNoTracking().Where(x => !x.IsDeleted && !x.IsInternal &&
+            x.Id <= maxId && x.NotificationSentUtc == null &&
+            ((x.NotificationAttemptUtc != null && x.NotificationAttemptUtc <= retryCutoff) ||
+             (x.NotificationAttemptUtc == null && (x.InterestType == "LegendInquiry" ||
+                 x.InterestType == "ProtectionInquiry" || x.InterestType == "BusinessInquiry"))) &&
+            !db.Set<CommerceWebsiteInquiry>().Any(inquiry => inquiry.WebsiteLeadId == x.LeadId));
+        if (afterId.HasValue) query = query.Where(x => x.Id > afterId.Value);
+        return query.OrderBy(x => x.Id).Take(25);
     }
 }
