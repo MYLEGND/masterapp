@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-14 (America/Phoenix). Exact CI compilation recovery: actual AgentPortal.Tests build passed with zero errors; all 98 affected tests passed. Exact Astra acceptance and verified remote identity are recorded in the session handoff. Full current-candidate GitHub CI and release readiness remain separately gated.
+Updated: 2026-10-14 (America/Phoenix). Six-failure CI recovery: three stale test/fixture contracts corrected; actual test-project compilation and 112 unique affected/dependent cases passed. Exact Astra acceptance, remote identity and current-candidate GitHub CI outcome are recorded in the session handoff. Production release remains separately gated.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -689,3 +689,53 @@ candidate must report success on GitHub. Prior readiness, governed PR evidence,
 Production/OIDC compatibility and legacy retirement requirements remain unchanged.
 No ruleset, environment, Azure/LEGEND AI binding, migration, merge, deploy or production
 mutation occurred. Stop after focused repair and exact remote preservation.
+
+## Six failures / three canonical-contract groups — 2026-10-14
+
+Canonical preflight verified clean local/remote a66799652ef5bc2fe90eff1149a1649e909b7b38.
+Authenticated run38564596470 had614passed/6failed/0skipped after successful planning,
+application builds and test-project compilation. Astra diagnosed each group once and
+prescribed test-only corrections; Codex changed three existing test files and this
+checkpoint. No production defect was proven, and no production owner was changed.
+
+1. AnalyticsPageRoutingTruthTests retained obsolete AnyAsync and tracked-attempt
+   assignment literals. Canonical recovery now excludes linked inquiries in the database
+   query before pagination and delegates claim/completion to WebsiteLeadSubmission.
+   Replaced obsolete literals with canonical claim/completion delegation assertions;
+   retained all other ownership/registration checks. Existing recovery behavioral and
+   SQL-translation tests prove linked-queue exclusion, lease/backoff and CRM preservation.
+2. WebsiteInquiryIsolationTests forged Protect SiteKey on a verified business host;
+   canonical host/scope validation correctly rejects this earlier with BadRequest and
+   published_website_scope_required. Assert that exact rejection and unchanged original
+   event. Added a second genuinely published business/verified domain to exercise real
+   cross-owner replay: Conflict/event_id_owner_conflict with original owner/event/count
+   preserved. Invalid route/origin checks remain. No accepted forged event is permitted.
+3. CanonicalOpenAiProjectionTests mocked IMetaConversionsApiService and incorrectly
+   expected that mock to complete a durable Meta receipt. Real MetaConversionsApiService
+   and MetaSendAuthority own claim/completion; dispatcher reads untracked state and must
+   not fabricate sent status. Fixture now uses those real owners on existing SQLite,
+   with a local HttpMessageHandler returning synthetic events_received=1. It verifies
+   Purchase/pixel/event identity, persisted sent/ack/attempt count and cleared lease,
+   unchanged OpenAI retryable receipt/owner/event and canonical source, and no second HTTP
+   call on repeat Meta dispatch. Provider connections are synthetic; no ads event sent.
+
+VERIFICATION: actual AgentPortal.Tests project compiled after final source changes;
+only the previously recorded unrelated CS8620 nullable warning remains.112unique cases
+passed:19 affected cases retained,92 direct dependent cases, then the final routing
+case alone. Dependencies include actual Meta CAPI/identity/lease/dispatcher contracts,
+website tenant isolation and two recovery batch/SQL-translation checks. Separately reuse
+prior accepted98-test evidence for unchanged recovery stale-claim/CRM/backoff behavior;
+do not double-count it. The initial local routing case hit repository-path discovery
+before its assertion; using its existing GITHUB_WORKSPACE environment resolved that
+harness issue without source changes. Authenticated CI supplied the original AnyAsync
+failure. The next targeted run exposed the second obsolete literal; only that remaining
+case reran after correction. Assertions were not weakened to manufacture sent receipts.
+
+Prior614 CI successes remain available to canonical compatibility planning; no new
+cache, validator or workflow was added. Local passes are not a current-candidate CI-green
+claim. After accepted normal isolation push, observe exact-candidate GitHub CI and record
+its real outcome in the handoff; additional failures remain blockers rather than silently
+waived gates. Exact accepted SHA/readback is in Git history/session handoff. No merge,
+deploy, ruleset/Production edit, migration, production-data/provider write or legacy
+workflow retirement. Governed fast-track PR checks and the existing readiness/OIDC,
+governance and retirement boundaries remain outstanding after this CI recovery.

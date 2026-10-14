@@ -317,8 +317,6 @@ public sealed class AnalyticsPageRoutingTruthTests
 
         var notificationAuthority = File.ReadAllText(Path.Combine(
             root, "Infrastructure", "Leads", "WebsiteLeadNotificationAuthority.cs"));
-        var submission = File.ReadAllText(Path.Combine(
-            root, "Infrastructure", "Leads", "WebsiteLeadSubmission.cs"));
         var program = File.ReadAllText(Path.Combine(root, "Protect-Website", "Program.cs"));
 
         Assert.Contains("WebsiteLeadNotificationRecoveryWorker", notificationAuthority, StringComparison.Ordinal);
@@ -326,8 +324,10 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("WebsiteIntakeRecipientResolver", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(scopedBusinessId)", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("CommerceWebsiteInquiry", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("AnyAsync(x => x.WebsiteLeadId == lead.LeadId", notificationAuthority, StringComparison.Ordinal);
-        Assert.Contains("lead.NotificationAttemptUtc = accepted ? lead.NotificationAttemptUtc : DateTime.UtcNow", submission, StringComparison.Ordinal);
+        // WebsiteLeadNotificationRecoveryTests exercises linked-inquiry exclusion
+        // before pagination, SQL translation, stale claims, CRM state and backoff.
+        Assert.Contains("WebsiteLeadSubmission.TryClaimNotificationAsync", notificationAuthority, StringComparison.Ordinal);
+        Assert.Contains("WebsiteLeadSubmission.CompleteNotificationAsync", notificationAuthority, StringComparison.Ordinal);
         Assert.Contains("WebsiteLeadSubmission.NotificationRetryCutoff", notificationAuthority, StringComparison.Ordinal);
         var portal = File.ReadAllText(Path.Combine(root, "AgentPortal", "Program.cs"));
         var leadRegistration = File.ReadAllText(Path.Combine(root, "Infrastructure", "Leads", "WebsiteLeadServiceRegistration.cs"));

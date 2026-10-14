@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text.Json;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -178,10 +181,12 @@ public sealed class CanonicalOpenAiProjectionTests
         {
             // Reciprocal independence: OpenAI has failed twice; the same accepted source still reaches Meta.
             Assert.True(await MetaSignalAnalyticsBridge.PersistAsync(db, source));
-            var metaCapi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
-            metaCapi.Setup(x => x.SendEventAsync(It.Is<MetaConversionsApiEventRequest>(request =>
-                request.EventName == "Purchase" && request.PixelId == "meta-pixel"), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new MetaConversionsApiResult { Attempted = true, Sent = true, Status = "sent", EventsReceived = 1 });
+            var metaEventId = Assert.Single(await db.MetaSignalEvents.AsNoTracking().ToListAsync()).EventId;
+            var openAiProviderReceipt = receipt.ProviderReceiptJson;
+            using var handler = new MetaAcknowledgementHandler();
+            using var http = new HttpClient(handler);
+            var metaCapi = new MetaConversionsApiService(http, Options.Create(new MetaOptions()),
+                new MetaSendAuthority(db, NullLogger<MetaSendAuthority>.Instance), NullLogger<MetaConversionsApiService>.Instance);
             var pixels = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
             pixels.Setup(x => x.ResolveForOwnerAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(new ResolvedMetaPixelContext
             {
@@ -189,15 +194,29 @@ public sealed class CanonicalOpenAiProjectionTests
                 PixelOwnerType = ownerType == "business" ? MetaPixelOwnerTypes.Business : ownerType == "founder" ? MetaPixelOwnerTypes.Agency : MetaPixelOwnerTypes.Agent
             });
             var metaServices = new ServiceCollection().AddSingleton(db).AddSingleton<IConfiguration>(Config())
-                .AddSingleton(metaCapi.Object).AddSingleton(pixels.Object).BuildServiceProvider();
+                .AddSingleton<IMetaConversionsApiService>(metaCapi).AddSingleton(pixels.Object).BuildServiceProvider();
             var metaDispatcher = new MetaSignalOutcomeDispatcherHostedService(metaServices.GetRequiredService<IServiceScopeFactory>(),
                 Options.Create(new MetaSignalIntelligenceOptions { Enabled = true, SendServerEvents = true }), NullLogger<MetaSignalOutcomeDispatcherHostedService>.Instance);
-            await (Task)typeof(MetaSignalOutcomeDispatcherHostedService).GetMethod("DispatchBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            async Task DispatchMeta() => await (Task)typeof(MetaSignalOutcomeDispatcherHostedService)
+                .GetMethod("DispatchBatchAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(metaDispatcher, new object[] { CancellationToken.None })!;
-            Assert.True(Assert.Single(await db.MetaSignalEvents.ToListAsync()).MetaServerSent);
+            await DispatchMeta();
+            var persistedMeta = Assert.Single(await db.MetaSignalEvents.AsNoTracking().ToListAsync());
+            Assert.True(persistedMeta.MetaServerSent);
+            Assert.Null(persistedMeta.MetaDispatchClaimToken);
+            Assert.Null(persistedMeta.MetaDispatchClaimExpiresUtc);
+            Assert.Equal("sent", CanonicalAdvertisingEventProjection.ReadString(persistedMeta.MetadataJson, "metaServerStatus"));
+            Assert.Equal(1, CanonicalAdvertisingEventProjection.ReadInt64(persistedMeta.MetadataJson, "metaServerEventsReceived"));
+            Assert.Equal(1, CanonicalAdvertisingEventProjection.ReadInt64(persistedMeta.MetadataJson, "metaServerAttemptCount"));
+            Assert.Equal(metaEventId, Assert.Single(handler.EventIds));
+            await db.Entry(receipt).ReloadAsync();
             Assert.Equal("retryable", receipt.Status);
-            Assert.Single(await db.AnalyticsEvents.ToListAsync());
-            metaCapi.VerifyAll();
+            Assert.Equal(owner.Key, receipt.OwnerKey);
+            Assert.Equal(converted.Id, receipt.CanonicalEventId);
+            Assert.Equal(openAiProviderReceipt, receipt.ProviderReceiptJson);
+            Assert.Equal(originalId, Assert.Single(await db.AnalyticsEvents.AsNoTracking().ToListAsync()).EventId);
+            await DispatchMeta();
+            Assert.Single(handler.EventIds);
             pixels.VerifyAll();
         }
     }
@@ -256,6 +275,26 @@ public sealed class CanonicalOpenAiProjectionTests
         connections.Setup(x => x.GetSecretsAsync(owner, It.IsAny<CancellationToken>())).ReturnsAsync(new OpenAiAdsConnectionSecrets());
         using var http = new System.Net.Http.HttpClient();
         Assert.Equal("data_source_not_configured", (await new OpenAiMeasurementHealthService(db, connections.Object, http).GetAsync(owner)).Status);
+    }
+
+    private sealed class MetaAcknowledgementHandler : HttpMessageHandler
+    {
+        public List<string> EventIds { get; } = new();
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.EndsWith("/meta-pixel/events", request.RequestUri!.AbsolutePath);
+            var form = (await request.Content!.ReadAsStringAsync(cancellationToken)).Split('&')
+                .Select(part => part.Split('=', 2)).ToDictionary(part => part[0],
+                    part => Uri.UnescapeDataString(part[1].Replace("+", " ")));
+            using var data = JsonDocument.Parse(form["data"]);
+            var outbound = Assert.Single(data.RootElement.EnumerateArray());
+            Assert.Equal("Purchase", outbound.GetProperty("event_name").GetString());
+            EventIds.Add(outbound.GetProperty("event_id").GetString()!);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"events_received\":1}")
+            };
+        }
     }
 
     private static IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Founder:Upn"] = "founder@example.com" }).Build();

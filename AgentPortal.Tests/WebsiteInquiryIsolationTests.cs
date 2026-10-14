@@ -639,10 +639,37 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(request.VisitorId, row.VisitorId);
         Assert.NotEqual(row.VisitorId, row.SessionId);
         Assert.DoesNotContain("Insurance", row.MetadataJson);
-        // A reused event ID cannot move from a business to the root Protect owner.
+        var originalEventId = row.EventId;
+        // Forged site ownership is rejected before event deduplication.
         request.SiteKey = WebsiteEditorSiteKeys.Protect;
-        Assert.IsType<ConflictObjectResult>(await controller.Ingest(request, default));
+        var forgedSite = Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
+        Assert.Equal("published_website_scope_required", JsonSerializer.SerializeToElement(forgedSite.Value).GetProperty("error").GetString());
+        var unchanged = Assert.Single(await f.Db.AnalyticsEvents.AsNoTracking().ToListAsync());
+        Assert.Equal(f.BusinessId, unchanged.CommerceBusinessId);
+        Assert.Equal(originalEventId, unchanged.EventId);
+
+        // A second legitimate published owner must still reject replay of the first owner's event.
+        var otherBusinessId = Guid.NewGuid();
+        var otherVersionId = Guid.NewGuid();
+        f.Db.Add(new CommerceBusiness { Id = otherBusinessId, Key = "other-business", DisplayName = "Other Business" });
+        f.Db.Add(new CommerceBusinessStorefrontSettings { CommerceBusinessId = otherBusinessId });
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = otherBusinessId, Hostname = "other-business.example",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        var otherState = new WebsiteContentState { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(otherBusinessId),
+            SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = otherVersionId };
+        f.Db.Add(otherState);
+        f.Db.Add(new WebsiteContentVersion { Id = otherVersionId, StateId = otherState.Id, CompiledPagesJson = version.CompiledPagesJson });
+        await f.Db.SaveChangesAsync();
         request.SiteKey = WebsiteEditorSiteKeys.Business;
+        controller.Request.Host = new HostString("other-business.example");
+        controller.Request.Headers.Origin = "https://other-business.example";
+        var replay = Assert.IsType<ConflictObjectResult>(await controller.Ingest(request, default));
+        Assert.Equal("event_id_owner_conflict", JsonSerializer.SerializeToElement(replay.Value).GetProperty("error").GetString());
+        unchanged = Assert.Single(await f.Db.AnalyticsEvents.AsNoTracking().ToListAsync());
+        Assert.Equal(f.BusinessId, unchanged.CommerceBusinessId);
+        Assert.Equal(originalEventId, unchanged.EventId);
+        controller.Request.Host = new HostString("business.example");
+        controller.Request.Headers.Origin = "https://business.example";
         request.ClientEventId = Guid.NewGuid();
         request.Path = "/unpublished";
         Assert.IsType<BadRequestObjectResult>(await controller.Ingest(request, default));
