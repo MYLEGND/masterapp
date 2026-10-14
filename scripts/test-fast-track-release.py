@@ -89,7 +89,7 @@ class ObserverCompatibilityTests(unittest.TestCase):
     def compatible(self, changed=False, runtime=False, body=False):
         def source(ref, path):
             suffix = 'return 2' if body and ref == 'new' else 'return 1'
-            return '\n'.join('def '+name+'():\n    '+suffix for name in ['rehearse','rehearse_fast_track','isolated_sql'])
+            return '\n'.join('def '+name+'():\n    '+suffix for name in ['rehearse','rehearse_fast_track','isolated_sql','trusted_fast_track_run','fast_track_observation_source','verified_fast_track_observation','fast_track_baseline','manifest'])
         with patch.object(probe.subprocess, 'run', return_value=SimpleNamespace(returncode=int(changed))), \
              patch.object(probe.AUTHORITY, 'migration_probe_identity', side_effect=lambda r,*args: {'runtimeIdentity':r if runtime else 'same'}), \
              patch.object(probe.AUTHORITY, 'git_show_file', side_effect=source):
@@ -1183,5 +1183,56 @@ class FastTrackNoSqlInputInventoryTests(unittest.TestCase):
         self.assertFalse(scope['commerce'])
         self.assertFalse(scope['schema'])
 
+
+
+class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
+    def test_all_seventeen_rejected_paths_preserve_real_dependencies(self):
+        shared = (
+            'Domain/Entities/ClientSubscriptionOffer.cs',
+            'Infrastructure/Billing/BillingEntitlementService.cs',
+            'Infrastructure/Billing/BillingStateMapper.cs',
+            'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+            'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
+            'Infrastructure/Households/HouseholdMembershipService.cs',
+            'Infrastructure/Infrastructure.csproj',
+            'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+            'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
+            'Infrastructure/Leads/WebsiteLeadSubmission.cs',
+            'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
+            'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
+            'SHARED/Analytics/MarketingManagerContracts.cs')
+        controls = ('LEGEND-REVENUE-LAUNCH-CHECKPOINT.md',
+            'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
+            'scripts/sync-published-checkout.py','scripts/test-sync-published-checkout.py')
+        for path in shared:
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual(set(scope['impacts'][path]),{'portal','client','protect','parfait'})
+                self.assertTrue(scope['commerce'])
+                self.assertFalse(scope['routing'])
+                self.assertEqual(scope['schema'],path=='Infrastructure/Infrastructure.csproj')
+        for path in controls:
+            with self.subTest(path=path):
+                scope=authority.fast_track_scope([path])
+                self.assertEqual(scope['impacts'][path],[])
+                self.assertFalse(scope['selected'])
+                self.assertFalse(scope['commerce'])
+        combined=authority.fast_track_scope([*shared,*controls,
+            'Legend-Cloudflare/src/website-routing/index.ts',
+            'Infrastructure/Migrations/20261011064911_AddBusinessScopedMerchantPayments.cs'])
+        self.assertTrue(combined['routing']);self.assertTrue(combined['schema'])
+        self.assertEqual({r['key'] for r in combined['matrix']['include']},{'portal','client','protect','parfait'})
+
+    def test_unknown_adjacent_sources_still_fail_closed(self):
+        for path in ('Infrastructure/Billing/Unreviewed.cs','Domain/Entities/Unreviewed.cs',
+                     'SHARED/Analytics/Unreviewed.cs','scripts/unreviewed.py'):
+            with self.subTest(path=path),self.assertRaisesRegex(ValueError,'Unmapped'):
+                authority.fast_track_scope([path])
+
+    def test_scope_is_zero_write_planning(self):
+        with patch.object(authority.subprocess,'run',side_effect=AssertionError('No command in scope planning')), \
+             patch.object(authority,'api_get',side_effect=AssertionError('No remote call in scope planning')):
+            scope=authority.fast_track_scope(['Infrastructure/Infrastructure.csproj'])
+        self.assertTrue(scope['schema'])
 
 if __name__ == '__main__':unittest.main()

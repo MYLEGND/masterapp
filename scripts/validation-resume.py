@@ -2366,6 +2366,24 @@ def fast_track_scope(paths):
     paths = tuple(dict.fromkeys(paths))
     dotnet = {key for key, row in RELEASE_TARGETS.items() if not row['static']}
     commerce = {'protect', 'parfait'}
+    # These canonical shared server sources reach every managed app through
+    # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
+    # ownership: an unknown sibling is not silently admitted.
+    shared_server = {
+        'Domain/Entities/ClientSubscriptionOffer.cs',
+        'Infrastructure/Billing/BillingEntitlementService.cs',
+        'Infrastructure/Billing/BillingStateMapper.cs',
+        'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+        'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
+        'Infrastructure/Households/HouseholdMembershipService.cs',
+        'Infrastructure/Infrastructure.csproj',
+        'Infrastructure/Leads/WebsiteLeadAppNotificationService.cs',
+        'Infrastructure/Leads/WebsiteLeadNotificationAuthority.cs',
+        'Infrastructure/Leads/WebsiteLeadSubmission.cs',
+        'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
+        'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
+        'SHARED/Analytics/MarketingManagerContracts.cs',
+    }
     linked = {}
     for key, row in RELEASE_TARGETS.items():
         if row['static']:
@@ -2387,6 +2405,8 @@ def fast_track_scope(paths):
         expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
         return re.fullmatch(expression, path) is not None
     def owners(path):
+        if path in shared_server:
+            return set(dotnet)
         if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
             return set(commerce)
         if path.startswith('Infrastructure/WebsiteRuntime/'):
@@ -2451,8 +2471,9 @@ def fast_track_scope(paths):
     matrix = [dict(key=key, target=names[key], project=row['project'], azure_app=row['releaseName'], host=row['host'])
               for key, row in RELEASE_TARGETS.items() if key in selected]
     schema = any(path.startswith('Infrastructure/Migrations/') or path in {
+        'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs'} for path in paths)
-    backend = schema or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
+    backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',
         'Infrastructure/Analytics/', 'Infrastructure/WebsitePublishing/', 'Infrastructure/WebsiteEditing/',
         'Domain/Entities/Commerce', 'Legend-Cloudflare/src/website-routing/')) or path in {
         'Domain/Entities/WebsiteContentState.cs', 'Infrastructure/WebsiteEditing/WebsiteEventMapQuery.cs',
@@ -2524,6 +2545,10 @@ RELEASE_EXECUTION_CONTROL_INPUTS = (
 # Application identity excludes release/test/control-only edits. This authority is
 # shared by release baseline resolution and package-canary preservation.
 RELEASE_CONTROL_ONLY_EXACT = frozenset({
+    "LEGEND-REVENUE-LAUNCH-CHECKPOINT.md",
+    "scripts/sync-published-checkout.py",
+    "scripts/test-sync-published-checkout.py",
+    "scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj",
     "Docs/releases/branch-lifecycle.md",
     "Docs/releases/recovery-correction-20261008.md",
     "AGENTS.md",
