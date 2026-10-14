@@ -1,6 +1,7 @@
 name: LEGEND Fast Track — Affected Web Apps
 
-# One affected-app fast track. Backend publication requires exact source checks,
+# One affected-app fast track. Every publication requires exact source checks.
+# Backend publication additionally requires
 # an authenticated rehearsal, fresh database/recovery evidence and the canonical
 # durable migration and upload journals. Routing follows verified app publication.
 # Migration admission retains terminal zero-job attempts as proven non-entry.
@@ -140,7 +141,7 @@ jobs:
   commerce-gates:
     name: Admit exact validated fast-track source
     needs: select-targets
-    if: ${{ needs.select-targets.outputs.commerce == 'true' }}
+    if: ${{ needs.select-targets.outputs.selected == 'true' || needs.select-targets.outputs.routing == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     outputs:
@@ -263,9 +264,9 @@ jobs:
   deploy-ui:
     name: Affected App Deploy — ${{ matrix.target }}
     needs: [select-targets, commerce-gates, migrations]
-    if: ${{ !cancelled() && needs.select-targets.outputs.selected == 'true' && (needs.commerce-gates.result == 'success' || needs.commerce-gates.result == 'skipped') && (needs.migrations.result == 'success' || needs.migrations.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.select-targets.outputs.selected == 'true' && needs.commerce-gates.result == 'success' && (needs.migrations.result == 'success' || needs.migrations.result == 'skipped') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     environment: Production
     env:
       GITHUB_TOKEN: ${{ github.token }}

@@ -31,8 +31,6 @@ on:
       - tests/website/**
       - ParfaitApp/**
       - AgentPortal.Tests/**
-      - Domain/Entities/CommerceMerchant*.cs
-      - Domain/Entities/CommercePayment*.cs
       - Domain/Models/Commerce/**
       - Infrastructure/Data/MasterAppDbContext.cs
       - Infrastructure/Migrations/**
@@ -47,6 +45,25 @@ on:
       - diagnostics/MerchantPaymentCoreTests/**
       - diagnostics/MerchantPaymentAdapterChecks/**
       - .github/workflows/parfait-isolated-validation.yml
+      # Every fast-track publication can obtain the existing exact source receipt.
+      - scripts/release-artifacts/**
+      - SHARED/Branding/**
+      - SHARED/Shared.csproj
+      - SHARED/Views/**
+      - scripts/test-public-brand-canonical.mjs
+      - AgentPortal/Views/**
+      - AgentPortal/wwwroot/**
+      - ClientApp/Views/**
+      - ClientApp/wwwroot/**
+      - SHARED/wwwroot/**
+      - tests/layout/finance-startup-canonical.test.mjs
+      - Legend-Design/**
+      - Infrastructure/Analytics/**
+      - Infrastructure/WebsitePublishing/**
+      - Infrastructure/WebsiteEditing/**
+      - Domain/Entities/WebsiteContentState.cs
+      - Domain/Entities/Commerce*.cs
+      - Infrastructure/Data/Configurations/CommercePaymentModel.cs
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-13 (America/Phoenix). Work Item 05B: Square readiness and Payments authorization source repairs; local verification complete, independent acceptance recorded with the committed revision; external merchant launch proof remains outstanding.
+Updated: 2026-10-13 (America/Phoenix). Fast-track independence and autonomy gate: bounded isolated admission repair verified; production readiness BLOCKED pending Founder-approved governance and retirement. WI01–WI05B and external merchant proof requirements remain preserved below.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -322,3 +322,99 @@ WI04C changes 17 existing production/contract/UI files and 17 test files; its si
 Overall launch readiness PARTIAL, with merchant/cutover acceptance BLOCKED as recorded above. Setup PASS at af5384537623b84055cea245a83b35f5b5bd1f7d. WI01 changed nine affected source/test files; WI02 changed four canonical production files and one focused regression file; WI03 changes only the existing shared editor and its existing regression file. WI04A changes five existing production owners and five existing test files; no schema or event catalog definitions changed. WI04B changes four existing production files and five focused test files; no schema, tracker, provider bridge, public upload engine or new queue. All update this single checkpoint. WI03 makes no backend, merchant onboarding, Parfait, production data, migration, merge, deployment or domain changes. WI04A adds no tracker, writer, queue, provider, migration or live-data operation.
 The old local worktree has a missing gitdir; Work Item 01 used a fresh clone of the exact isolated checkpoint and preserved branch ancestry. No repeated repository-wide audit or production workflow. Historical evidence above remains dated and cannot establish current provider configuration.
 Evidence links: https://github.com/MYLEGND/masterapp/pull/581 ; https://github.com/MYLEGND/masterapp/pull/624 ; https://github.com/MYLEGND/masterapp/pull/625 ; https://github.com/MYLEGND/masterapp/actions/runs/38124421310 ; https://github.com/MYLEGND/masterapp/actions/runs/38323933521 ; https://github.com/MYLEGND/masterapp/actions/runs/38329876334 .
+
+## Fast-track independence and autonomy gate (2026-10-13; isolated repair)
+
+Verdict: NOT independently production-governed; release remains BLOCKED pending
+Founder-approved governance and retirement. Canonical preflight verified clean local
+and remote revenue HEAD dad91d6ec7de0dd8462b7a2c291bc05e2bb5f329, native Git
+transport and preserved prior ancestry. Observed release HEAD was
+dc10c7aabbba6cd5b516071c9e16d32dafeba9a6; obsolete/default branch HEAD was
+5fcc93fb4279ec7c875f9c3fb27bc3a31a1cca96. No release branch or production write
+was performed. A push dry-run is not proof a later push succeeds.
+
+PROVEN SOURCE: fast-track owns exact-source admission and physical-schema/journal
+migration reconciliation before app publication. Shared security validation is
+base-aware. Historical approved-lane receipts remain necessary compatible evidence;
+they do not grant execution authority. The old-named legend-approved-release mutex
+remains necessary collision protection while competing writers coexist.
+
+Confirmed bounded correction: every selected app or routing publication now requires
+the existing exact-source admission, closing the UI-only bypass. The existing
+publisher repeats that admission before provider access. Only backend scope requires
+the existing migration gate. Existing isolated validation covers all fast-track source
+trigger paths. Publisher outer timeout is 30 minutes; the canonical reconciliation
+budget remains 420 seconds. No new validator, planner, writer or journal was added.
+
+REAL LIVE CONFIGURATION GAPS (authenticated read-only GitHub evidence): fast-track
+classic protection returned Branch not protected; the sole active ruleset24319290
+protects only legend/approved-changes. No tracked CODEOWNERS establishes the requested
+review binding. Production has no protection rules or deployment branch policy.
+Old lifecycle362222668 still schedules mutation-capable orchestration; direct release
+361187664 remains a runnable competing writer. Queued old run37642351262 requires
+intent/provider reconciliation before retirement. Four active legacy registrations
+361007272,360915565,380110017,361195095 have no workflow file on either observed
+default or fast-track tree: stale registrations, not proven runnable source paths.
+Shared security372470990 and historical evidence must remain.
+
+REUSE/RECOVERY: dependency fingerprints and authenticated executed-child observations
+can preserve compatible successful child evidence even from failed parents. Schema
+readiness separately observes physical state; app success separately requires provider
+operation, live SHA and durable receipt. Exact immutable packages prohibit rebuild
+after possible upload. Failed-jobs reruns preserve successful siblings; rerun-all
+reconciles prior writes. General automatic successful-target pruning across a fresh
+parent/new candidate is NOT established; ambiguous predecessors fail closed. No
+additional recovery engine or blind replay is authorized. Owned migration denial
+codes retain precise reasons and stage/run context; unknown provider failures still
+require read-only investigation.
+
+DATED EXECUTION EVIDENCE: run38323933521 retained successful schema reconciliation
+with SQL write skipped, successful Client/Protect/Website jobs, and Portal immutable
+package restoration without compilation; Portal reconciliation then failed. Its
+full multi-attempt span was52m02s; reconciliation step437s includes overhead around
+the420s budget. Runs38312609525 and38309478217 show concurrent two-app publication
+and totals10m03s/12m18s, but source admission and migration were skipped. Thus the
+fully secured normal-path10–15m goal remains UNVERIFIED. Latest successful
+run38330781086 took16s with all publication/admission stages skipped: no deploy proof.
+Artifact metadata for38323933521 shows retained packages/intents/receipts, not fresh
+validation of their payload or runtime state. Historical Portal evidence in
+38329876334 remains ambiguous without a provider deployment identity.
+
+CONTINUITY: read-only Azure metadata shows five apps running with HTTPS-only; four
+server apps have managed identities. Portal AI key/model, Entra/Graph and Data
+Protection binding names are present; Client Entra/Marketing Data Protection names
+and enabled Key Vault SQL/Entra secret metadata remain present. Existing Square
+presence evidence remains dated. No values were read or changed. Presence does not
+prove exact OIDC federation, AI tools/conversation persistence, key decryptability,
+live SQL readiness, payments, Cloudflare routing or functional business journeys.
+These remain pre/post-publication verification gates; Parfait cutover remains barred.
+
+FOCUSED CODEX VALIDATION:216 unique tests passed:84 fast-track,7 ready/no-SQL and
+125 publisher methods. Twenty publisher methods initially hit the existing
+hashlib.file_digest dependency on macOS Python3.9; only those failed methods were
+rerun successfully on installed Python3.13, retaining other compatible passes.
+Five added tests cover UI denial before provider access, admitted UI without invented
+SQL gates, backend schema enforcement, workflow bounds/admission, and trigger
+coverage. No broad build, provider mutation or real SQL ran. Temporary logs under
+/private/tmp are not durable backups; committed tests and this checkpoint preserve
+the result record. Required CI is NOT replaced by these tests: candidate run
+38518181088 stopped at FAST_TRACK_SOURCE_VALIDATION_PR_UNPROVEN before build/tests.
+Astra identifies this as expected fail-closed missing/ambiguous exact fast-track PR
+binding, not a proven source defect; rerun alone is not guaranteed to supply binding.
+
+FOUNDER DECISIONS REQUIRED BEFORE ACTIVATION: integrate the accepted bounded patch
+through exact-candidate approved-release-security-validation.yml (PR) and
+parfait-isolated-validation.yml (push) gates (release-branch push can
+automatically publish); establish fast-track protection, applicable valid Code Owner
+review and Production reviewers/branch restrictions using approved identities and
+actual emitted checks; verify exact OIDC trust; reconcile queued/ambiguous legacy
+operations before disabling the two confirmed writers and optionally stale Actions
+registrations. Retain shared security, historical artifacts and collision protection
+until writers are disabled. Do not transplant obsolete architecture-validation
+requirements, delete branches or change the default branch automatically.
+
+Astra independently reviews the five-file isolated diff and focused evidence; exact
+acceptance and remote identity belong to the session handoff/Git history, avoiding
+a self-referential checkpoint SHA. No merge, deployment, workflow disablement,
+credential/configuration change, migration or production-affecting retirement is
+part of this isolated repair. Stop for Founder approval before those actions.

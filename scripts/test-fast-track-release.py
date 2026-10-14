@@ -26,6 +26,63 @@ migration = load('release-migration')
 deploy = load('deploy-approved-app')
 
 
+class UniversalFastTrackAdmissionTests(unittest.TestCase):
+    def invoke(self, paths, admission_error=None, migration_error=None):
+        run = {'id': 123, 'head_sha': 'b' * 40, 'run_attempt': 1}
+        with patch.dict(os.environ, {'BEFORE': 'a' * 40}), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'assert_fast_track_release_execution', return_value=run), \
+             patch.object(deploy.subprocess, 'check_output', return_value=paths), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'attested_website_only_recovery_scope', return_value=None), \
+             patch.object(deploy._RELEASE_AUTHORITY, 'fast_track_source_admission', side_effect=admission_error) as admission, \
+             patch.object(deploy, 'fast_track_migration_gate', side_effect=migration_error) as schema, \
+             patch.object(deploy, 'verify_package', return_value='digest'), \
+             patch.object(deploy, 'target_azure', side_effect=RuntimeError('PROVIDER_BOUNDARY')) as azure:
+            key = 'protect' if paths.startswith('Infrastructure/') else 'website'
+            with self.assertRaisesRegex(Exception, admission_error.args[0] if admission_error else migration_error.args[0] if migration_error else 'PROVIDER_BOUNDARY'):
+                deploy.fast_track_deploy(key, Path('/synthetic-package'))
+            admission.assert_called_once_with()
+            if admission_error:
+                schema.assert_not_called(); azure.assert_not_called()
+            elif paths.startswith('Infrastructure/'):
+                schema.assert_called_once_with(run)
+                if migration_error: azure.assert_not_called()
+            else:
+                schema.assert_not_called(); azure.assert_called_once()
+
+    def test_ui_only_source_denial_precedes_any_provider_access(self):
+        self.invoke('Legend-Design/legend-web-foundation.css', ValueError('FAST_TRACK_SOURCE_DENIED'))
+
+    def test_ui_only_accepted_source_does_not_invent_sql_gate(self):
+        self.invoke('Legend-Design/legend-web-foundation.css')
+
+    def test_backend_still_requires_successful_schema_after_source(self):
+        self.invoke('Infrastructure/Commerce/Payments/MerchantCheckoutService.cs', migration_error=ValueError('FAST_TRACK_SCHEMA_RELEASE_GATE_UNPROVEN'))
+
+
+    def test_workflow_admits_all_publications_and_bounds_publisher(self):
+        workflow = Path('.github/workflows/legend-fast-track-ui.yml').read_text()
+        gates = workflow.split('  commerce-gates:', 1)[1].split('  migrations:', 1)[0]
+        self.assertIn("needs.select-targets.outputs.selected == 'true' || needs.select-targets.outputs.routing == 'true'", gates)
+        publisher = workflow.split('  deploy-ui:', 1)[1].split('  routing-cloudflare:', 1)[0]
+        condition = next(line for line in publisher.splitlines() if line.strip().startswith('if:'))
+        self.assertIn("needs.commerce-gates.result == 'success'", condition)
+        self.assertNotIn("needs.commerce-gates.result == 'skipped'", condition)
+        self.assertIn('timeout-minutes: 30', publisher)
+        self.assertIn('group: legend-approved-release', workflow)
+        self.assertEqual(420, deploy.PUBLICATION_RECONCILE_TIMEOUT_SECONDS)
+
+    def test_existing_isolated_validation_covers_every_fast_track_trigger(self):
+        import fnmatch, re
+        def paths(file):
+            text = Path('.github/workflows', file).read_text().split('    paths:', 1)[1]
+            text = text.split('  workflow_dispatch:', 1)[0].split('\npermissions:', 1)[0]
+            return re.findall(r'^      - (.+)$', text, re.M)
+        validation = paths('parfait-isolated-validation.yml')
+        for trigger in paths('legend-fast-track-ui.yml'):
+            with self.subTest(trigger=trigger):
+                self.assertTrue(any(fnmatch.fnmatchcase(trigger, covered) for covered in validation), trigger)
+
+
 class ObserverCompatibilityTests(unittest.TestCase):
     def compatible(self, changed=False, runtime=False, body=False):
         def source(ref, path):
