@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-14 (America/Phoenix). Six-failure CI recovery: three stale test/fixture contracts corrected; actual test-project compilation and 112 unique affected/dependent cases passed. Exact Astra acceptance, remote identity and current-candidate GitHub CI outcome are recorded in the session handoff. Production release remains separately gated.
+Updated: 2026-10-14 (America/Phoenix). PR 626 crypto dependency repair locally validated; Astra accepted the exact four-project implementation. Canonical native preservation and current-candidate governed checks remain outstanding; exact final identities/results belong in Git history and the session handoff.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -739,3 +739,21 @@ waived gates. Exact accepted SHA/readback is in Git history/session handoff. No 
 deploy, ruleset/Production edit, migration, production-data/provider write or legacy
 workflow retirement. Governed fast-track PR checks and the existing readiness/OIDC,
 governance and retirement boundaries remain outstanding after this CI recovery.
+
+## PR 626 crypto dependency repair - 2026-10-14
+
+Resumed isolation/legend-revenue-launch-20261013 in its existing authenticated Codespace. Canonical native Git preflight passed at clean local/remote f7b1cf87f65ecbc0e7d4208e983c706dfc19fbb3 with no local-only or remote-only commits. Release target remains Legend/fast-track-release. No new implementation branch or implementation restart.
+
+Security run 38575265563/job 115890894460 and architecture run 38575265638/job 115892317589 exposed vulnerable cryptography packages. Codex authored the surgical edits and focused validation commands; Astra operated the existing Codespace terminal because the delegated browser could not access that authenticated tab. Astra independently reviewed and accepted the four-project implementation and resulting evidence before commit. This checkpoint is reviewed separately as part of the exact final five-file scope.
+
+Infrastructure declares System.Security.Cryptography.Pkcs 10.0.13 through its existing normal package graph. Direct System.Security.Cryptography.Xml references in DomainReleaseRefresh, AgentPortal.Tests and MerchantPaymentCoreTests move from 10.0.10 to 10.0.13. Microsoft identifies these patched versions for GHSA-2fmv-rv2c-59x7, GHSA-846f-f764-76mx, GHSA-7hqp-7c5m-4vq6, GHSA-c399-9853-6jmj and GHSA-r955-8q5j-3h83. No audit suppression, new dependency authority, business logic or production binding change.
+
+Focused validation used SDK 10.0.401. Restores and transitive vulnerability audits passed for AgentPortal, DomainReleaseRefresh, AgentPortal.Tests and MerchantPaymentCoreTests; all four audits reported no vulnerable packages for current sources. Every generated project.assets.json was inspected: all Pkcs/Xml identities are 10.0.13 across Infrastructure, AgentPortal, ClientApp, LegendCommerce, ParfaitApp, ProtectWebsite and the three affected tool/test projects. Domain and Shared have no such package entries.
+
+All four affected project builds passed. AgentPortal and DomainReleaseRefresh used warnings-as-errors and finished with zero warnings/errors. AgentPortal.Tests used existing normal architecture compilation flags and retained only the previously known CS8620 warning in LegendFounderAiContractTests.cs:718, with zero errors. MerchantPaymentCoreTests finished with zero warnings/errors. Initial AgentPortal compilation was externally terminated with csc exit143/MSB6006 in Infrastructure; the terminating source was not established. Resource diagnostics showed no cgroup OOM events or disk exhaustion. Exactly one unchanged bounded incremental retry passed; the original failure was retained, not hidden or treated as a source defect. No successful test suites were replayed.
+
+git diff --check passed. Final pre-checkpoint status contained exactly the four intended project files; generated build assets did not change tracked source. This existing checkpoint is the sole additional file. Prior development CI run 38572753660 retains its historical 620 commerce and 129 payment passes. Changed dependency inputs require canonical compatibility assessment; earlier success does not replace newer failure or exact-candidate PR evidence.
+
+Canonical finish/non-force push and exact remote readback follow independent acceptance of the final five-file scope. Obtain final commit identities and current governed-check results from Git history and the session handoff. Previously recorded lifecycle diagnostic favicon failures, migration/readiness evidence, single-Founder ruleset admission, trusted Production/OIDC requirements and obsolete release-writer retirement conditions remain separate unresolved gates. Local build/audit success is not release admission, deployment or live-runtime proof.
+
+No merge, auto-merge, deployment, migration execution, GitHub governance change, legacy-workflow disabling, credential change or production-data mutation occurred. Azure, Entra, Key Vault, SQL, Cloudflare, LEGEND AI, Square and Parfait production bindings are preserved.

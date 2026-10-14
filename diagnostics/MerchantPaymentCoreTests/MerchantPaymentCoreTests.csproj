@@ -8,7 +8,7 @@
   </PropertyGroup>
   <Import Project="$(MSBuildProjectExtensionsPath)$(MSBuildProjectFile).nuget.g.props" Condition="Exists('$(MSBuildProjectExtensionsPath)$(MSBuildProjectFile).nuget.g.props')" />
   <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.7" />
     <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
