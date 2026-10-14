@@ -21,17 +21,17 @@
         string.Equals(layoutController, "Profile", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Dashboard", StringComparison.OrdinalIgnoreCase);
     var messagingClientContext = await ClientContextService.ResolveAsync(User, Context.Request.Cookies);
-    var messagingActorId = messagingClientContext is { IsAgentView: false } &&
+    var messagingActorId = messagingClientContext is { IsManagedView: false } &&
         !string.IsNullOrWhiteSpace(messagingClientContext.ClientUserId)
             ? messagingClientContext.ClientUserId.Trim()
             : "";
-    var messagingServiceContactName = messagingClientContext is { IsAgentView: false }
+    var messagingServiceContactName = messagingClientContext is { IsManagedView: false }
         ? messagingClientContext.AgentDisplayName?.Trim()
         : null;
-    var messagingServiceContactPhone = messagingClientContext is { IsAgentView: false }
+    var messagingServiceContactPhone = messagingClientContext is { IsManagedView: false }
         ? messagingClientContext.AgentPhone?.Trim()
         : null;
-    var messagingServiceContactEmail = messagingClientContext is { IsAgentView: false }
+    var messagingServiceContactEmail = messagingClientContext is { IsManagedView: false }
         ? messagingClientContext.AgentEmail?.Trim()
         : null;
     var portalShellIdentity = await PortalShellIdentityResolver.ResolveAsync(User, Context, Context.RequestAborted);
@@ -105,6 +105,8 @@
                             var currentReturnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
                             var stopManagedViewUrl = $"/support/stop-view-as-client?returnUrl={System.Uri.EscapeDataString(currentReturnUrl)}";
                             var isAgentView = ctx?.IsAgentView == true;
+                            var isBusinessOwnerView = ctx?.IsBusinessOwnerView == true;
+                            if (isBusinessOwnerView) stopManagedViewUrl = "/support/stop-view-as-client?clearSelf=true&returnUrl=%2Fprofile";
                             var managedClientProfileId = ctx?.ClientProfileId.ToString() ?? "";
                             if (ctx?.Profile != null)
                             {
@@ -136,11 +138,11 @@
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
-                    @if (isAgentView)
+                    @if (isAgentView || isBusinessOwnerView)
                     {
                         <div class="nav-context-row">
                             <span class="nav-context-pill">Managing <strong>@managedClientName</strong></span>
-                            <a class="nav-context-exit" href="@stopManagedViewUrl">Exit View</a>
+                            <a class="nav-context-exit" href="@stopManagedViewUrl">@(isBusinessOwnerView ? "Return to personal profile" : "Exit View")</a>
                         </div>
                     }
                 </div>
@@ -207,9 +209,9 @@
         <div id="exploreList" class="explore-list">
             @if (messagingClientContext is not null)
             {
-                var businessLinks = await BusinessWorkspace.NavigationAsync(messagingClientContext.Profile.Id,
-                    User.GetCanonicalUserId(), messagingClientContext.IsAgentView ? messagingClientContext.AgentEmail : messagingClientContext.Profile.Email,
-                    Context.RequestAborted);
+                var businessLinks = await BusinessWorkspace.NavigationAsync(messagingClientContext.BusinessActorProfileId,
+                    User.GetCanonicalUserId(), messagingClientContext.BusinessActorEmail,
+                    Context.RequestAborted, messagingClientContext.ManagedBusinessId);
                 @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", businessLinks)
             }
             <a class="explore-item" data-tone="protection" asp-controller="ProtectionSnapshot" asp-action="Index">

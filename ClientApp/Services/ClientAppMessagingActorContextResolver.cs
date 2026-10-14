@@ -19,7 +19,7 @@ public sealed class ClientAppMessagingActorContextResolver : IMessagingActorCont
             httpContext.User,
             httpContext.Request.Cookies,
             allowRelink: false);
-        if (context is null || context.IsAgentView || string.IsNullOrWhiteSpace(context.ClientUserId))
+        if (context is null || context.IsManagedView || string.IsNullOrWhiteSpace(context.ClientUserId))
             return null;
 
         return (context.ClientUserId, "Client");

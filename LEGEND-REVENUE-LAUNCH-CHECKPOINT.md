@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-13 (America/Phoenix). Fast-track independence and autonomy gate: bounded isolated admission repair verified; production readiness BLOCKED pending Founder-approved governance and retirement. WI01–WI05B and external merchant proof requirements remain preserved below.
+Updated: 2026-10-13 (America/Phoenix). Business client identity and linked-owner managed-account repair: focused source verification complete; independent acceptance and remote identity recorded in the session handoff. Production release remains separately gated. Prior revenue/release evidence is preserved below.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -418,3 +418,76 @@ acceptance and remote identity belong to the session handoff/Git history, avoidi
 a self-referential checkpoint SHA. No merge, deployment, workflow disablement,
 credential/configuration change, migration or production-affecting retirement is
 part of this isolated repair. Stop for Founder approval before those actions.
+
+## Business client identity and owner account management repair
+
+Founder scope: separate business entity name/email from linked personal owner identity,
+current personal email and ownership percentage; enable the full existing managed business
+client account from an owner's personal profile. Existing isolation branch continued from
+fb139911b43ed0de3c269d67f852f6e11d73e804 after canonical preflight verified clean
+local/remote equality and native authenticated transport. No release activation authorized.
+
+Confirmed source defects and canonical replacements:
+- CommerceBusinessProvisioningService now accepts only canonical personal Client profiles
+  as linked owners, rejecting BusinessClient/Lead without inferring ownership from email.
+  Exact profile-ID/email matching, ownership shares, agent scope and membership remain.
+- Profile owner editing reads current personal name/email from the persisted linked
+  ClientProfile ID; entity email comes separately from its unique business account profile.
+  Malformed/unavailable historical links remain unavailable; no automatic reassignment or
+  fabricated recovery. Existing membership shares and immutable identities are preserved.
+- Existing create model/controller, shared native form contract and browser requiredness
+  no longer require business contact first/last names as the entity identity. Entity name,
+  business email and linked owners retain their validations. Contact update uses persisted
+  classification; personal/lead first-name and length validation remain. The one-line lead
+  adapter preserves the shared DTO's existing lead contract. Profile business contact
+  names are optional without relaxing personal profile validation.
+- BusinessWorkspaceAccess resolves authenticated personal actor -> explicit active owner
+  membership -> active business -> unique active account membership -> business profile.
+  It checks both existing app and external identity lifecycle records, role/capabilities
+  and ambiguity. No email grant, replacement identity, new service or membership writer.
+- Existing Support entry and selfClientProfileId selection now support that owner scope.
+  EffectiveClientContextService revalidates it each request, hydrates the business subject
+  and its existing household/agent metadata, and separately carries the real owner actor.
+  Revoked, inactive, missing or ambiguous access fails closed rather than falling back to
+  a personal write. Existing agent access rules remain separate.
+- Existing business route/handoff/navigation adapters use the owner's capabilities and
+  fence writes to the selected business. Business financial state uses only the business's
+  existing household scope; it never borrows the personal owner's scope. Explicit entity
+  management/return links identify the current account. Existing self-only messaging,
+  billing/lifecycle mutations, restricted finance and Journey operations retain their
+  managed-view restrictions; owner access does not impersonate an agent or message sender.
+  Protection Snapshot reflects that existing read-only restriction in UI and server.
+
+Focused evidence: 57 unique checks passed, including existing personal profile, agent
+shared/self-managed access and mobile CRM regressions. Initial three-case reproducer
+failed precisely because a BusinessClient could be selected as a personal owner. Added
+coverage includes valid switch/exit, actual actor preservation, revocation/inactivity,
+capability loss, cross-tenant and same-email denial, missing/duplicate account membership,
+app-vs-external identity pauses, selected-business-only finance and owner mutations,
+current email projection, malformed historical links, optional business contacts,
+creation/native form parity, entitlement without agent bypass and managed snapshot UI.
+AgentPortal and ClientApp plus affected shared dependencies/Razor compiled through a
+focused temporary test project linking committed tests and existing repository helpers.
+Compatible successes were retained; only failed/new/affected cases reran. One malformed
+fixture initially tried to mutate an EF key and was corrected to seed malformed historical
+state instead. No production data/provider calls were used. JS syntax and diff whitespace
+checks passed. Temporary /private/tmp/business-owner-*.log receipts are not durable backup;
+committed tests and this checkpoint retain the result record. Normal repository test
+entry: AgentPortal.Tests filtered to BusinessOwnerIdentityTests, ClientProfileControllerTests,
+ClientAccountManagementTests and MobileCrmManagementTests.
+
+Astra owns diagnosis/design and independently reviews the exact diff and focused evidence;
+Codex alone implemented and executed tests. Exact acceptance/commit/readback is recorded
+in the session handoff, not as a self-referential commit inside this file. Affected apps:
+AgentPortal and ClientApp, with their existing Infrastructure dependency. No schema,
+migration, credential, business-data, release-workflow or deployment changes. Existing bad
+owner data is not guessed or rewritten; eligible owners must be explicitly selected through
+the repaired flow. Required release validation and live create/update/switch journey proof
+remain outstanding until an authorized deployment. All prior accepted commits remain.
+
+Release audit addendum: Founder moved active ruleset24319290 to
+refs/heads/Legend/fast-track-release; authenticated readback confirmed protection, PRs,
+no bypass actors and deletion/non-force safeguards. Its required architecture-validation
+check remains the audited obsolete validation dependency, Code Owner binding/approval
+count still needs reconciliation, and Production still has no protection rules or branch
+policy. No settings were changed by this repair. Legacy retirement/release remains gated.

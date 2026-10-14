@@ -99,7 +99,7 @@ namespace ClientApp.Controllers
         public async Task<IActionResult> Intelligence(CancellationToken cancellationToken)
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            if (context == null || context.IsAgentView)
+            if (context == null || context.IsManagedView)
                 return Forbid();
 
             if (!context.FinancialScopeOwnerClientProfileId.HasValue)
@@ -122,7 +122,7 @@ namespace ClientApp.Controllers
         public async Task<IActionResult> EvaluateIntelligence(CancellationToken cancellationToken)
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            if (context == null || context.IsAgentView)
+            if (context == null || context.IsManagedView)
                 return Forbid();
 
             if (!context.FinancialScopeOwnerClientProfileId.HasValue)
@@ -147,7 +147,7 @@ namespace ClientApp.Controllers
             CancellationToken cancellationToken)
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            if (context == null || context.IsAgentView)
+            if (context == null || context.IsManagedView)
                 return Forbid();
 
             if (!context.FinancialScopeOwnerClientProfileId.HasValue)

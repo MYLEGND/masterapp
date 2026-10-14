@@ -23,6 +23,7 @@
     var accountLifecycleState = ViewBag.AccountLifecycleState as string ?? "Active";
     var canResumeAccount = ViewBag.CanResumeAccount is bool canResume && canResume;
     var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
+    var isBusinessOwnerView = ViewBag.IsBusinessOwnerView is true;
     var isBusinessClient = ViewBag.IsBusinessClient is bool businessClient && businessClient;
     var businessWebsites = ViewBag.BusinessWebsites as IReadOnlyList<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>
         ?? Array.Empty<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>();
@@ -42,6 +43,18 @@
             </div>
 
             <div class="client-create-body">
+                    @if (isBusinessOwnerView)
+                    {
+                        <p class="client-edit-note">Managing @managedClientName</p>
+                        <a href="/support/stop-view-as-client?clearSelf=true&amp;returnUrl=%2Fprofile">Return to personal profile</a>
+                    }
+                    @if (ViewBag.ManagedBusinessAccounts is IReadOnlyDictionary<Guid, string> managedAccounts)
+                    {
+                        foreach (var account in managedAccounts)
+                        {
+                            <a class="client-create-button client-create-button-secondary" href="/support/view-as-client/@account.Key?returnUrl=%2Fprofile">Manage @account.Value</a>
+                        }
+                    }
                     @if (ViewBag.ProfileSaveNotice is string notice)
                     {
                         <div class="client-edit-section client-edit-section-compact"><p class="client-edit-note">@notice</p></div>
@@ -140,14 +153,22 @@
                         <div class="client-create-section client-create-section-shell">
                             <div class="client-create-section-head">
                                 <div>
-                                    <div class="client-create-section-title">@(isBusinessClient ? "Owner contact details" : "Primary Profile")</div>
+                                    <div class="client-create-section-title">@(isBusinessClient ? "Business account contact details" : "Primary Profile")</div>
                                     <p class="client-create-section-copy">Keep your contact details up to date for your @Shared.Branding.LegendBrand.RegisteredUpper guide.</p>
                                 </div>
                             </div>
                             <div class="client-create-grid">
+                                @if (isBusinessClient)
+                                {
+                                    <div><label for="FirstName" class="client-create-label">Business contact first name (optional)</label><input id="FirstName" name="FirstName" value="@Model.FirstName" class="client-create-input" autocomplete="given-name" /></div>
+                                    <div><label for="LastName" class="client-create-label">Business contact last name (optional)</label><input id="LastName" name="LastName" value="@Model.LastName" class="client-create-input" autocomplete="family-name" /></div>
+                                }
+                                else
+                                {
                                 <div><label asp-for="FirstName" class="client-create-label is-required"></label><input asp-for="FirstName" class="client-create-input" autocomplete="given-name" /><span asp-validation-for="FirstName" class="client-create-validation"></span></div>
                                 <div><label asp-for="LastName" class="client-create-label is-required"></label><input asp-for="LastName" class="client-create-input" autocomplete="family-name" /><span asp-validation-for="LastName" class="client-create-validation"></span></div>
-                                <div><label asp-for="Email" class="client-create-label is-required"></label><input asp-for="Email" class="client-create-input" autocomplete="email" inputmode="email" /><span asp-validation-for="Email" class="client-create-validation"></span></div>
+                                }
+                                <div><label asp-for="Email" class="client-create-label is-required">@(isBusinessClient ? "Business account email" : "Email")</label><input asp-for="Email" class="client-create-input" autocomplete="email" inputmode="email" /><span asp-validation-for="Email" class="client-create-validation"></span></div>
                                 <div><label asp-for="Phone" class="client-create-label is-required"></label><input asp-for="Phone" class="client-create-input" autocomplete="tel" inputmode="tel" /><span asp-validation-for="Phone" class="client-create-validation"></span></div>
                                 <div>
                                     <label asp-for="MaritalStatus" class="client-create-label is-required">Marital Status</label>
@@ -165,7 +186,7 @@
                             </div>
                         </div>
 
-                        @if (!isAgentView)
+                        @if (!isAgentView && !isBusinessOwnerView)
                         {
                             <div class="client-create-section client-create-section-shell client-edit-section-spaced">
                                 <div class="client-create-section-head">
@@ -267,7 +288,7 @@
                         </section>
                     }
 
-                    @if (!isAgentView)
+                    @if (!isAgentView && !isBusinessOwnerView)
                     {
                         <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="account-access-heading">
                             <div class="client-edit-section-head">

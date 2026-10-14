@@ -369,7 +369,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var candidates = await _db.ClientProfiles.Where(x => x.Email.ToLower() == normalizedEmail &&
             (!clientProfileId.HasValue || x.Id == clientProfileId.Value)).Take(2).ToListAsync(ct);
         if (candidates.Count != 1 || string.IsNullOrWhiteSpace(candidates[0].ClientUserId) ||
-            ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) == ClientRecordClassification.Lead)
+            ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) != ClientRecordClassification.Client)
             return null;
 
         var profile = candidates[0];

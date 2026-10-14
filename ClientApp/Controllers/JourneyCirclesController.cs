@@ -100,7 +100,7 @@ public sealed class JourneyCirclesController : Controller
     private async Task<EffectiveClientContext?> CurrentAsync()
     {
         var client = await _context.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        return client is { IsAgentView: false } ? client : null;
+        return client is { IsManagedView: false } ? client : null;
     }
 
     private void SetResult(JourneyCircleOperationResult result)

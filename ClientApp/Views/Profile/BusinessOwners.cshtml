@@ -1,7 +1,8 @@
 @model List<Domain.Entities.CommerceBusinessMember>
 @{
     ViewData["Title"] = "Business owners";
-    var ownerNames = ViewBag.OwnerNames as IReadOnlyDictionary<Guid, string[]> ?? new Dictionary<Guid, string[]>();
+    var ownerAccounts = ViewBag.OwnerAccounts as IReadOnlyDictionary<Guid, Infrastructure.Businesses.BusinessOwnerAccount>
+        ?? new Dictionary<Guid, Infrastructure.Businesses.BusinessOwnerAccount>();
     var businessProfileEmail = ViewBag.BusinessProfileEmail as string ?? string.Empty;
     var ownerLookupUrl = $"/profile/business/{ViewBag.BusinessId}/owner-lookup";
 }
@@ -39,18 +40,17 @@
     @for (var i = 0; i < Model.Count; i++)
     {
         var profileId = Model[i].ClientProfileId;
-        var names = profileId.HasValue && ownerNames.TryGetValue(profileId.Value, out var resolvedNames)
-            ? resolvedNames
-            : new[] { string.Empty, string.Empty };
+        var owner = profileId.HasValue && ownerAccounts.TryGetValue(profileId.Value, out var resolvedOwner)
+            ? resolvedOwner : null;
         <fieldset class="client-edit-child-card" data-business-owner><legend class="client-edit-child-title">Owner @(i + 1)</legend>
             <div class="client-create-grid">
             <input type="hidden" name="owners[@i].ClientProfileId" value="@profileId" data-owner-field="ClientProfileId" />
-            <div><label class="client-create-label" for="ownerEmail-@i">Personal account email</label><input class="client-create-input" id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@Model[i].Email" required data-owner-field="Email" data-owner-email /></div>
-            <div><label class="client-create-label" for="ownerFirstName-@i">First name</label><input class="client-create-input" id="ownerFirstName-@i" type="text" value="@names[0]" readonly aria-readonly="true" data-owner-first-name /></div>
-            <div><label class="client-create-label" for="ownerLastName-@i">Last name</label><input class="client-create-input" id="ownerLastName-@i" type="text" value="@names[1]" readonly aria-readonly="true" data-owner-last-name /></div>
+            <div><label class="client-create-label" for="ownerEmail-@i">Personal account email</label><input class="client-create-input" id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@(owner?.Email ?? string.Empty)" required data-owner-field="Email" data-owner-email /></div>
+            <div><label class="client-create-label" for="ownerFirstName-@i">First name</label><input class="client-create-input" id="ownerFirstName-@i" type="text" value="@(owner?.FirstName ?? string.Empty)" readonly aria-readonly="true" data-owner-first-name /></div>
+            <div><label class="client-create-label" for="ownerLastName-@i">Last name</label><input class="client-create-input" id="ownerLastName-@i" type="text" value="@(owner?.LastName ?? string.Empty)" readonly aria-readonly="true" data-owner-last-name /></div>
             <div><label class="client-create-label" for="ownerShare-@i">Ownership (%)</label><input class="client-create-input" id="ownerShare-@i" name="owners[@i].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model[i].OwnershipPercentage" required data-owner-field="Percentage" /></div>
             </div>
-            <p class="client-edit-note" data-owner-status aria-live="polite">Linked client verified.</p>
+            <p class="client-edit-note" data-owner-status aria-live="polite">@(owner == null ? "Linked personal account unavailable. Select an eligible personal account." : "Linked client verified.")</p>
             <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" data-remove-owner>Remove owner</button></div>
         </fieldset>
     }

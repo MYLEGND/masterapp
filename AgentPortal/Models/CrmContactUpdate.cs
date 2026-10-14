@@ -3,7 +3,7 @@ namespace AgentPortal.Models;
 
 public sealed class CrmContactUpdate
 {
-    [Required, StringLength(100)] public string FirstName { get; set; } = "";
+    [StringLength(100)] public string? FirstName { get; set; } = "";
     [StringLength(100)] public string LastName { get; set; } = "";
     private string? email;
     [EmailAddress, StringLength(254)] public string? Email

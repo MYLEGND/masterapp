@@ -68,9 +68,10 @@ public sealed class BusinessBookingController(
         if (context is null) return Forbid();
 
         var actor = User.GetCanonicalUserId();
-        var actorEmail = context.IsAgentView ? context.AgentEmail : context.Profile.Email;
+        if (context.ManagedBusinessId.HasValue && context.ManagedBusinessId != businessId) return Forbid();
+        var actorEmail = context.BusinessActorEmail;
         var business = await BusinessWorkspaceAccess.ResolveAsync(
-            db, businessId, context.Profile.Id, actor, actorEmail, "crm", ct);
+            db, businessId, context.BusinessActorProfileId, actor, actorEmail, "crm", ct);
         if (business is null) return Forbid();
 
         AgentProfile? agent = null;

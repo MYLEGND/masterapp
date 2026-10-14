@@ -154,7 +154,7 @@ public class FinanceToolStatesController : ControllerBase
         if (string.IsNullOrWhiteSpace(normalizedToolId))
             return BadRequest("ToolId required.");
 
-        if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
+        if (context.IsManagedView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
         if (!context.HouseholdAccountId.HasValue || !context.FinancialScopeOwnerClientProfileId.HasValue)
@@ -215,7 +215,7 @@ public class FinanceToolStatesController : ControllerBase
         if (string.IsNullOrWhiteSpace(normalizedToolId))
             return BadRequest("ToolId required.");
 
-        if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
+        if (context.IsManagedView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
         if (!context.HouseholdAccountId.HasValue)

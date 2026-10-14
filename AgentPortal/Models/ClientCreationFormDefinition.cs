@@ -27,6 +27,7 @@ public sealed record ClientCreationFormDefinition(
         var portalRecordTypes = new[] { "Client", "BusinessClient" };
         var householdStatuses = new[] { "Married", "Domestic Partnership" };
         var portalCondition = new ClientCreationFieldCondition("RecordType", portalRecordTypes);
+        var personalCondition = new ClientCreationFieldCondition("RecordType", new[] { "Client" });
         var householdCondition = new ClientCreationFieldCondition("MaritalStatus", householdStatuses);
         var customSubscriptionCondition = new ClientCreationFieldCondition(
             "SubscriptionPriceType", new[] { "Custom" });
@@ -81,8 +82,8 @@ public sealed record ClientCreationFormDefinition(
                 Array.Empty<ClientCreationFieldCondition>(),
                 new[]
                 {
-                    Text("FirstName", "First Name", model.FirstName, "text", requiredWhen: new[] { portalCondition }, autocomplete: "given-name"),
-                    Text("LastName", "Last Name", model.LastName, "text", requiredWhen: new[] { portalCondition }, autocomplete: "family-name"),
+                    Text("FirstName", "First Name", model.FirstName, "text", requiredWhen: new[] { personalCondition }, autocomplete: "given-name"),
+                    Text("LastName", "Last Name", model.LastName, "text", requiredWhen: new[] { personalCondition }, autocomplete: "family-name"),
                     Text("Email", "Email", model.Email, "email", requiredWhen: new[] { portalCondition }, autocomplete: "email"),
                     Text("Phone", "Phone", model.Phone, "phone", autocomplete: "tel"),
                     Text("DOB", "Date of Birth", Date(model.DOB), "date"),

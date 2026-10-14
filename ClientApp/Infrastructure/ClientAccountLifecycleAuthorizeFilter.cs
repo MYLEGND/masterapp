@@ -46,7 +46,7 @@ public sealed class ClientAccountLifecycleAuthorizeFilter : IAsyncAuthorizationF
         if (client is null || client.IsAgentView)
             return;
 
-        var userId = context.HttpContext.User.GetCanonicalUserId();
+        var userId = client.IsBusinessOwnerView ? client.LifecycleSubjectUserId : context.HttpContext.User.GetCanonicalUserId();
         if (string.IsNullOrWhiteSpace(userId))
             return;
 

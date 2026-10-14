@@ -96,12 +96,12 @@ namespace AgentPortal.Models
                         "Choose Shared Account or Self Managed for this client.",
                         new[] { nameof(AccountManagementMode) });
 
-                if (string.IsNullOrWhiteSpace(FirstName))
+                if (recordType.Equals("Client", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(FirstName))
                     yield return new ValidationResult(
                         "First name is required for a client.",
                         new[] { nameof(FirstName) });
 
-                if (string.IsNullOrWhiteSpace(LastName))
+                if (recordType.Equals("Client", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(LastName))
                     yield return new ValidationResult(
                         "Last name is required for a client.",
                         new[] { nameof(LastName) });

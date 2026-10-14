@@ -89,7 +89,7 @@ public sealed class SubscriptionController : Controller
                 .Take(24)
                 .ToListAsync(HttpContext.RequestAborted);
 
-        var paymentMethods = !context.IsAgentView && latestSubscription is not null
+        var paymentMethods = !context.IsManagedView && latestSubscription is not null
             ? await _paymentMethodService.ListAsync(context.ClientProfileId, HttpContext.RequestAborted)
             : await _db.ClientPaymentMethods
                 .AsNoTracking()
@@ -133,12 +133,12 @@ public sealed class SubscriptionController : Controller
                         : "Active",
             PaymentRepairInstructions = BuildRepairInstructions(latestSubscription, entitlement.Status, entitlement.ReasonCode),
             HasSubscription = latestSubscription is not null,
-            CanCancelSubscription = !context.IsAgentView &&
+            CanCancelSubscription = !context.IsManagedView &&
                 latestSubscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod,
-            CanManagePaymentMethods = !context.IsAgentView &&
+            CanManagePaymentMethods = !context.IsManagedView &&
                 latestSubscription is { IsPlatformManaged: true } &&
                 latestSubscription.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod,
-            CanRetryPayment = !context.IsAgentView &&
+            CanRetryPayment = !context.IsManagedView &&
                 latestSubscription is { IsPlatformManaged: true, Status: ClientSubscriptionStatus.GracePeriod } &&
                 latestSubscription.GracePeriodEndsUtc > DateTime.UtcNow,
             HasPaymentMethod = paymentMethod is not null,
@@ -287,7 +287,7 @@ public sealed class SubscriptionController : Controller
             });
         }
 
-        if (context.IsAgentView)
+        if (context.IsManagedView)
             return Forbid();
 
         var entitlement = await _entitlementService.EvaluateAsync(
@@ -456,7 +456,7 @@ public sealed class SubscriptionController : Controller
     private async Task<EffectiveClientContext?> ResolveSelfServiceContextAsync()
     {
         var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        return context is { IsAgentView: false } ? context : null;
+        return context is { IsManagedView: false } ? context : null;
     }
 
     private Task<ClientSubscription?> GetCurrentSubscriptionAsync(Guid clientProfileId)
