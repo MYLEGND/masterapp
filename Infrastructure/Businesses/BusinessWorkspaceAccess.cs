@@ -15,7 +15,8 @@ public static class BusinessWorkspaceAccess
             x.CommerceBusinessId == businessId && x.ClientProfileId == profileId && x.Status == "Active", ct);
         if (member is null) return null;
         var owner = member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase);
+            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
+            member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase);
         var allowed = capability switch
         {
             "website" => member.CanManageStorefront,

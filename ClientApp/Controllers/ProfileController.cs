@@ -18,7 +18,6 @@ using Shared.Auth;
 namespace ClientApp.Controllers;
 
 [Authorize]
-[BypassClientSubscriptionRequirement]
 public class ProfileController : Controller
 {
     private readonly MasterAppDbContext _db;
@@ -294,6 +293,7 @@ public class ProfileController : Controller
     }
 
     [HttpGet("/profile")]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> MyProfile()
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
@@ -306,6 +306,7 @@ public class ProfileController : Controller
 
     [HttpPost("/profile")]
     [ValidateAntiForgeryToken]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> Save(EditClientViewModel model)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
@@ -428,6 +429,7 @@ public class ProfileController : Controller
 
     [HttpPost("/profile/account-access")]
     [ValidateAntiForgeryToken]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> AccountAccess(string operation, string? confirmation)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
@@ -493,36 +495,38 @@ public class ProfileController : Controller
         if (string.IsNullOrWhiteSpace(email))
             return Forbid();
 
-        var existing = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, context.Profile.Id)
-            .AnyAsync(HttpContext.RequestAborted);
-
-        if (existing)
+        try
         {
-            TempData["BusinessWebsiteNotice"] = "Your business website scope is already active.";
-            return RedirectToAction(nameof(MyProfile));
+            await _businessProvisioning.CreateAsync(
+                new CommerceBusinessProvisioningRequest(
+                    DisplayName: businessName,
+                    LegalName: legalName,
+                    BusinessType: "BusinessClient",
+                    OwnerEmail: email,
+                    OwnerDisplayName: businessName,
+                    OwnerRoleKey: "account",
+                    CanManageStorefront: true,
+                    CanManageCatalog: false,
+                    CanManageOrders: false,
+                    CanManageAnalytics: true,
+                    CanManageTeam: true,
+                    Storefront: new CommerceBusinessStorefrontProvisioning(
+                        businessName,
+                        $"{businessName} business website.",
+                        "Draft"),
+                    OwnerClientProfileId: context.Profile.Id),
+                HttpContext.RequestAborted);
+
+            TempData["BusinessWebsiteNotice"] = "Your business website scope is ready to preview and edit.";
         }
-
-        await _businessProvisioning.CreateAsync(
-            new CommerceBusinessProvisioningRequest(
-                DisplayName: businessName,
-                LegalName: legalName,
-                BusinessType: "BusinessClient",
-                OwnerEmail: email,
-                OwnerDisplayName: businessName,
-                OwnerRoleKey: "account",
-                CanManageStorefront: true,
-                CanManageCatalog: false,
-                CanManageOrders: false,
-                CanManageAnalytics: true,
-                CanManageTeam: true,
-                Storefront: new CommerceBusinessStorefrontProvisioning(
-                    businessName,
-                    $"{businessName} business website.",
-                    "Draft"),
-                OwnerClientProfileId: context.Profile.Id),
-            HttpContext.RequestAborted);
-
-        TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
+        catch (DbUpdateConcurrencyException)
+        {
+            TempData["BusinessWebsiteWarning"] = "Business setup changed in another session. Reload and try again.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["BusinessWebsiteWarning"] = ex.Message;
+        }
         return RedirectToAction(nameof(MyProfile));
     }
 
@@ -641,6 +645,7 @@ public class ProfileController : Controller
     }
 
     [HttpGet("/profile/{clientUserId}")]
+    [BypassClientSubscriptionRequirement]
     public async Task<IActionResult> ClientProfile(string clientUserId)
     {
         var clientId = Norm(clientUserId);

@@ -12,8 +12,8 @@ namespace ClientApp.Infrastructure;
 
 /// <summary>
 /// Enforces the server-owned pause and closure state before the normal client
-/// workspace can run. A paused client may reach only the profile route, which
-/// contains the resume control. Agent view-as-client sessions are excluded:
+/// workspace can run. A paused client may reach only recovery and profile actions, which
+/// contain the resume control. Agent view-as-client sessions are excluded:
 /// they are an agent authority, not a second client session.
 /// </summary>
 public sealed class ClientAccountLifecycleAuthorizeFilter : IAsyncAuthorizationFilter
@@ -72,7 +72,10 @@ public sealed class ClientAccountLifecycleAuthorizeFilter : IAsyncAuthorizationF
         string.Equals(
             context.RouteData.Values["controller"]?.ToString(),
             "Profile",
-            StringComparison.OrdinalIgnoreCase);
+            StringComparison.OrdinalIgnoreCase) &&
+        context.RouteData.Values["action"]?.ToString() is { } action &&
+        new[] { "MyProfile", "Save", "AccountAccess", "ClientProfile" }
+            .Contains(action, StringComparer.OrdinalIgnoreCase);
 
     private static bool IsApiRequest(HttpRequest request) =>
         request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase) ||
