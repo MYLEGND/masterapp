@@ -334,7 +334,7 @@ def bundle_digest(path):
     return digest.hexdigest()
 
 
-def verify_bundle(repo, path, digest, branch, head, base):
+def verify_bundle(repo, path, digest, branch, head, base, *, implementation=None, required_commits=()):
     if not Path(path).is_file() or bundle_digest(path) != digest:
         raise SyncSkipped('Bundle missing or SHA-256 mismatch; no restoration attempted.')
     git(repo, 'bundle', 'verify', str(path))
@@ -348,6 +348,14 @@ def verify_bundle(repo, path, digest, branch, head, base):
         exact_commit(scratch, base)
         if not ancestor(scratch, base, head):
             raise SyncSkipped('Bundle does not preserve accepted ancestry.')
+        if implementation is not None:
+            exact_commit(scratch, implementation)
+            if not ancestor(scratch, implementation, head):
+                raise SyncSkipped('Bundle does not preserve accepted implementation ancestry.')
+        for required in required_commits:
+            exact_commit(scratch, required)
+            if not ancestor(scratch, required, head):
+                raise SyncSkipped('Bundle does not preserve required checkpoint ancestry.')
         git(scratch, 'fsck', '--strict', '--no-reflogs', '--no-dangling', head)
 
 
@@ -386,6 +394,149 @@ def export_session(repo, branch, head, base, destination, external_confirmed):
     return output
 
 
+def stage_local_session(repo, args):
+    """Transport preparation only: never satisfy a durable-recovery gate."""
+    head, base = exact_commit(repo, args.accepted), exact_commit(repo, args.base)
+    implementation = exact_commit(repo, args.implementation)
+    required = [exact_commit(repo, value) for value in args.required_commit]
+    if not required or len(set(required)) != len(required):
+        raise SyncSkipped('Exact distinct previously accepted checkpoint commits required.')
+    if (git(repo, 'rev-parse', 'HEAD') != head
+        or git(repo, 'status', '--porcelain=v1', '--untracked-files=all')
+        or not ancestor(repo, base, head) or not ancestor(repo, implementation, head)
+        or any(not ancestor(repo, value, head) for value in required)):
+        raise SyncSkipped('Staging requires clean exact HEAD and accepted base/implementation ancestry.')
+    codespace = os.environ.get('CODESPACE_NAME', '')
+    if os.environ.get('CODESPACES') != 'true' or not re.fullmatch(r'[a-z0-9-]+', codespace):
+        raise SyncSkipped('Staged transfer requires the authenticated existing Codespace identity.')
+    directory = Path(tempfile.mkdtemp(prefix='STAGED_LOCAL_NOT_DURABLE-'))
+    output = directory / 'LEGEND.bundle'
+    git(repo, 'bundle', 'create', str(output), 'refs/heads/' + args.branch)
+    digest = bundle_digest(output)
+    verify_bundle(repo, output, digest, args.branch, head, base, implementation=implementation, required_commits=required)
+    script = directory / 'sync-published-checkout.py'
+    script.write_bytes(Path(__file__).read_bytes())
+    (directory / 'LEGEND.bundle.sha256').write_text(digest + '  LEGEND.bundle\n')
+    if git(repo, 'rev-parse', 'HEAD') != head or git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
+        raise SyncSkipped('Checkout changed while staging; retain workspace and repeat exact review.')
+    result = dict(state='STAGED_LOCAL_NOT_DURABLE', durable=False, continuationAllowed=False,
+        recoveryOnly=True, remotePreserved=False, codespace=codespace, stagedDirectory=str(directory),
+        recoveryBundle=str(output), sha256=digest, verifierSha256=bundle_digest(script),
+        branch=args.branch, head=head, base=base, implementation=implementation, requiredCommits=required,
+        coverage='committed branch only; excludes uncommitted, ignored and editor-buffer work')
+    print(json.dumps(result, sort_keys=True))
+    return result
+
+
+def external_gh(*args):
+    """Capture authenticated transport output; never echo credentials/errors."""
+    try:
+        result = subprocess.run(['gh', *args], text=True, capture_output=True,
+            timeout=600, env={**os.environ, 'GH_HOST':'github.com', 'GH_PROMPT_DISABLED':'1'})
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise SyncSkipped('Authenticated external transfer unavailable; retain original Codespace.') from error
+    if result.returncode:
+        raise SyncSkipped('Authenticated external transfer failed; retain original Codespace.')
+    return result.stdout
+
+
+def verify_external_session(args):
+    """Independent Mac copy/restore verification, not remote Git preservation."""
+    if (sys.platform != 'darwin' or os.environ.get('CODESPACES') or os.environ.get('CODESPACE_NAME')
+        or os.environ.get('GITHUB_ACTIONS') == 'true'):
+        raise SyncSkipped('External verification requires the independent Mac outside Codespaces/Actions.')
+    if (not re.fullmatch(r'[a-z0-9-]+', args.codespace or '')
+        or not re.fullmatch(r'[a-f0-9]{64}', args.sha256 or '')
+        or not re.fullmatch(r'[a-f0-9]{64}', args.verifier_sha256 or '')
+        or any(not re.fullmatch(r'[a-f0-9]{40}', value or '') for value in
+            (args.accepted, args.base, args.implementation, *args.required_commit))
+        or not args.required_commit or len(set(args.required_commit)) != len(args.required_commit)):
+        raise SyncSkipped('Independent exact Codespace, bundle/script digests and commit identities required.')
+    git(Path.cwd(), 'check-ref-format', 'refs/heads/' + args.branch)
+    if not args.branch.startswith('isolation/'):
+        raise SyncSkipped('External recovery requires the exact authorized isolation branch.')
+    source = Path(args.staged_dir or '')
+    if (not source.is_absolute() or '..' in source.parts
+        or not re.fullmatch(r'STAGED_LOCAL_NOT_DURABLE-[A-Za-z0-9_-]+', source.name)):
+        raise SyncSkipped('Exact absolute staged transfer directory required.')
+    if bundle_digest(Path(__file__)) != args.verifier_sha256:
+        raise SyncSkipped('Canonical verifier script digest mismatch.')
+    if args.recovery_dir is None or not args.external_storage_confirmed:
+        raise SyncSkipped('Existing persistent Mac destination and explicit retention attestation required.')
+    supplied = Path(args.recovery_dir).expanduser()
+    destination = supplied.resolve()
+    temporary_roots = (Path('/tmp').resolve(), Path('/private/tmp'), Path(tempfile.gettempdir()).resolve())
+    if (supplied.is_symlink() or not destination.is_dir()
+        or any(p == destination or p in destination.parents for p in temporary_roots)
+        or Path('/workspaces') == destination or Path('/workspaces') in destination.parents):
+        raise SyncSkipped('External destination cannot be temporary, a symlink or a Codespace workspace.')
+    external_gh('auth', 'status', '--hostname', 'github.com')
+    try:
+        user = json.loads(external_gh('api', '--hostname', 'github.com', 'user'))
+        machine = json.loads(external_gh('api', '--hostname', 'github.com', 'user/codespaces/' + args.codespace))
+    except (ValueError, TypeError) as error:
+        raise SyncSkipped('Authenticated external transfer identity unavailable.') from error
+    if (not isinstance(user, dict) or not isinstance(machine, dict)
+        or not re.fullmatch(r'[A-Za-z0-9-]+', str(user.get('login', '')))
+        or not isinstance(machine.get('repository'), dict) or not isinstance(machine.get('owner'), dict)
+        or machine.get('name') != args.codespace or machine.get('state') != 'Available'
+        or machine.get('repository', {}).get('full_name') != 'MYLEGND/masterapp'
+        or machine.get('owner', {}).get('login') != user['login']):
+        raise SyncSkipped('Authenticated Codespace ownership/repository identity mismatch.')
+    output = Path(tempfile.mkdtemp(prefix='legend-external-recovery-', dir=destination))
+    bundle = output / 'LEGEND.bundle'
+    for filename in ('LEGEND.bundle', 'LEGEND.bundle.sha256'):
+        external_gh('codespace', 'cp', '-c', args.codespace,
+            'remote:' + str(source / filename), str(output / filename))
+    if (bundle.is_symlink() or not bundle.is_file()
+        or (output / 'LEGEND.bundle.sha256').is_symlink()
+        or (output / 'LEGEND.bundle.sha256').read_text() != args.sha256 + '  LEGEND.bundle\n'):
+        raise SyncSkipped('External copied bundle/checksum identity mismatch.')
+    # The verification repository is independent and initially contains no objects.
+    with tempfile.TemporaryDirectory(prefix='legend-external-empty-') as temporary:
+        git(temporary, 'init', '--bare')
+        verify_bundle(temporary, bundle, args.sha256, args.branch, args.accepted,
+            args.base, implementation=args.implementation, required_commits=args.required_commit)
+    (output / 'sync-published-checkout.py').write_bytes(Path(__file__).read_bytes())
+    receipt = dict(state='VERIFIED_EXTERNAL', recoveryOnly=True, remotePreserved=False,
+        automaticContinuationAllowed=False, codespace=args.codespace, authenticatedLogin=user['login'],
+        transfer='authenticated gh codespace cp from canonical MYLEGND/masterapp',
+        recoveryBundle=str(bundle), sha256=args.sha256, verifierSha256=args.verifier_sha256,
+        branch=args.branch, head=args.accepted, base=args.base, implementation=args.implementation,
+        requiredCommits=args.required_commit,
+        emptyRepositoryRestore=True, ancestryVerified=True,
+        storage='operator-attested persistent Mac directory; retention/replication not machine-proven',
+        coverage='committed branch only; excludes uncommitted, ignored and editor-buffer work')
+    for path in output.iterdir():
+        with path.open('rb') as stream:
+            os.fsync(stream.fileno())
+    for path in (output, destination):
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    pending = output / '.external-verification.pending'
+    final = output / 'external-verification.json'
+    try:
+        with pending.open('x') as stream:
+            stream.write(json.dumps(receipt, sort_keys=True) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(pending, final)
+        descriptor = os.open(output, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        pending.unlink(missing_ok=True)
+        final.unlink(missing_ok=True)
+        raise
+    print(json.dumps(receipt, sort_keys=True))
+    return receipt
+
+
 def session_fast_forward(repo, branch, expected, target):
     if active_build_or_app():
         raise SyncSkipped('Close active apps/builds before explicit fast-forward recovery.')
@@ -416,6 +567,9 @@ def validate_completion(repo, args):
 def session_command(repo, args):
     branch, base = args.branch, args.base
     session_identity(repo, branch)
+    if args.session == 'stage-local':
+        stage_local_session(repo, args)
+        return
     if args.session == 'restore':
         exact_commit(repo, base)
         verify_bundle(repo, args.bundle or '', args.sha256, branch, args.accepted, base)
@@ -487,7 +641,7 @@ def session_command(repo, args):
 
 def session_main(argv):
     parser = argparse.ArgumentParser(description='Explicit engineering continuity through native Git; no deployment or acceptance authority.')
-    parser.add_argument('--session', required=True, choices=('preflight', 'recover', 'restore', 'export', 'finish'))
+    parser.add_argument('--session', required=True, choices=('preflight', 'recover', 'restore', 'export', 'finish', 'stage-local', 'verify-external'))
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--branch', required=True)
     parser.add_argument('--base', required=True, help='Previously accepted durable checkpoint SHA')
@@ -500,8 +654,21 @@ def session_main(argv):
     parser.add_argument('--sha256')
     parser.add_argument('--recovery-dir', type=Path)
     parser.add_argument('--external-storage-confirmed', action='store_true', help='Operator attests directory persists outside this execution environment and is accessible from the host/account')
+    parser.add_argument('--required-commit', action='append', default=[], help='Exact prior checkpoint to preserve; repeat for each')
+    parser.add_argument('--codespace', help='Exact authenticated source Codespace name')
+    parser.add_argument('--staged-dir', help='Exact source staging directory reported by stage-local')
+    parser.add_argument('--verifier-sha256', help='Independently recorded canonical script SHA-256')
     args = parser.parse_args(argv)
+    if args.session in {'stage-local', 'verify-external'} and (args.authorize_push or args.review_accepted or args.scope or args.bundle is not None):
+        parser.error('Transfer modes cannot accept push/review/scope/restore flags')
+    if args.session == 'stage-local' and (args.external_storage_confirmed or args.recovery_dir is not None or args.sha256 or args.verifier_sha256 or args.codespace or args.staged_dir):
+        parser.error('Staging cannot claim external verification/storage authority')
+    if args.session == 'verify-external' and any(arg == '--repo' or arg.startswith('--repo=') for arg in argv):
+        parser.error('External verification does not use a repository checkout')
     try:
+        if args.session == 'verify-external':
+            verify_external_session(args)
+            return 0
         directory = Path(git(args.repo, 'rev-parse', '--absolute-git-dir'))
         with (directory / 'legend-published-sync.lock').open('a') as lock:
             try:

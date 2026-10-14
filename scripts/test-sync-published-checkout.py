@@ -686,5 +686,164 @@ class SessionContinuityTests(unittest.TestCase):
         self.assertIn('--recurse-submodules=no', pushes[0])
 
 
+class TwoPhaseRecoveryTests(unittest.TestCase):
+    git = PublishedCheckoutSyncTests.git
+    identity = PublishedCheckoutSyncTests.identity
+    commit = PublishedCheckoutSyncTests.commit
+    run_session = SessionContinuityTests.run_session
+
+    def setUp(self):
+        SessionContinuityTests.setUp(self)
+        self.commit(self.local, 'implementation.txt', 'accepted implementation')
+        self.implementation = self.git(self.local, 'rev-parse', 'HEAD')
+        self.commit(self.local, 'checkpoint.txt', 'accepted checkpoint')
+        self.head = self.git(self.local, 'rev-parse', 'HEAD')
+        self.codespace = 'bookish-fiesta-97pj77j5vpwj3pjv6'
+        self.stage_args = ['--accepted',self.head,'--implementation',self.implementation,
+                           '--required-commit',self.head]
+
+    def stage(self):
+        import shutil
+        output=io.StringIO()
+        with patch.dict(sync.os.environ, {'CODESPACES':'true','CODESPACE_NAME':self.codespace}),redirect_stdout(output):
+            self.assertEqual(0,self.run_session('stage-local',*self.stage_args))
+        result=json.loads(output.getvalue())
+        self.addCleanup(shutil.rmtree,result['stagedDirectory'])
+        return result
+
+    def external(self, staged, change=None, transport=None):
+        import shutil
+        storage=tempfile.TemporaryDirectory(prefix='.external-recovery-test-',dir=Path.home())
+        self.addCleanup(storage.cleanup)
+        self.external_storage=Path(storage.name)
+        args=['--session','verify-external','--branch',self.branch,'--base',self.base,
+            '--accepted',self.head,'--implementation',self.implementation,'--required-commit',self.head,
+            '--codespace',self.codespace,'--staged-dir',staged['stagedDirectory'],
+            '--sha256',staged['sha256'],'--verifier-sha256',staged['verifierSha256'],
+            '--recovery-dir',storage.name,'--external-storage-confirmed']
+        if change:change(args)
+        calls=[]
+        def gh(*command):
+            calls.append(command)
+            if transport:
+                intercepted=transport(command)
+                if intercepted is not None:return intercepted
+            if command==('auth','status','--hostname','github.com'):return ''
+            if command==('api','--hostname','github.com','user'):return json.dumps({'login':'Founder'})
+            if command==('api','--hostname','github.com','user/codespaces/'+self.codespace):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':{'full_name':'MYLEGND/masterapp'},'owner':{'login':'Founder'}})
+            self.assertEqual(('codespace','cp','-c',self.codespace),command[:4])
+            self.assertTrue(command[4].startswith('remote:'+staged['stagedDirectory']+'/'))
+            shutil.copyfile(command[4].removeprefix('remote:'),command[5])
+            return ''
+        output=io.StringIO()
+        with patch.object(sync.sys,'platform','darwin'),patch.dict(sync.os.environ,{},clear=True),patch.object(sync,'external_gh',side_effect=gh),redirect_stdout(output):
+            code=sync.session_main(args)
+        return code,output.getvalue(),calls
+
+    def test_real_stage_is_never_durable_or_preflight_admission(self):
+        result=self.stage()
+        self.assertEqual('STAGED_LOCAL_NOT_DURABLE',result['state'])
+        self.assertFalse(result['durable']);self.assertFalse(result['continuationAllowed']);self.assertFalse(result['remotePreserved'])
+        self.assertEqual(self.head,self.git(self.local,'rev-parse','HEAD'))
+        self.assertEqual(self.base,self.git(self.remote,'rev-parse','refs/heads/'+self.branch))
+        self.assertEqual(1,self.run_session())
+        with patch.object(sync,'remote_head',side_effect=sync.SyncSkipped('offline')):
+            self.assertEqual(1,self.run_session('finish','--accepted',self.head,'--implementation',self.implementation,
+                '--scope','implementation.txt','--scope','checkpoint.txt','--review-accepted','--authorize-push'))
+
+    def test_stage_rejects_dirty_stale_and_nonancestor_identities(self):
+        with patch.dict(sync.os.environ,{'CODESPACES':'true','CODESPACE_NAME':self.codespace}):
+            (self.local/'dirty.txt').write_text('uncommitted')
+            self.assertEqual(1,self.run_session('stage-local',*self.stage_args))
+            (self.local/'dirty.txt').unlink()
+            args=list(self.stage_args);args[1]=self.base
+            self.assertEqual(1,self.run_session('stage-local',*args))
+            tree=self.git(self.local,'rev-parse','HEAD^{tree}')
+            orphan=self.git(self.local,'commit-tree',tree,'-m','unrelated')
+            args=list(self.stage_args);args[-1]=orphan
+            self.assertEqual(1,self.run_session('stage-local',*args))
+            shallow=Path(self.git(self.local,'rev-parse','--absolute-git-dir'))/'shallow'
+            shallow.write_text(self.head+'\n')
+            self.assertEqual(1,self.run_session('stage-local',*self.stage_args))
+            shallow.unlink()
+
+    def test_mixed_staging_privilege_flags_are_rejected(self):
+        for extra in ('--authorize-push','--external-storage-confirmed','--review-accepted'):
+            with self.subTest(flag=extra),self.assertRaises(SystemExit):
+                self.run_session('stage-local',*self.stage_args,extra)
+
+    def test_real_independent_transfer_and_empty_restore_prove_all_commits(self):
+        staged=self.stage();code,output,calls=self.external(staged)
+        self.assertEqual(0,code)
+        receipt=json.loads(output)
+        self.assertEqual('VERIFIED_EXTERNAL',receipt['state'])
+        self.assertTrue(receipt['emptyRepositoryRestore']);self.assertTrue(receipt['ancestryVerified'])
+        self.assertTrue(receipt['recoveryOnly']);self.assertFalse(receipt['remotePreserved'])
+        self.assertEqual([self.head],receipt['requiredCommits'])
+        self.assertEqual(2,len([c for c in calls if c[:2]==('codespace','cp')]))
+        self.assertEqual(staged['sha256'],sync.bundle_digest(receipt['recoveryBundle']))
+        self.assertEqual(self.base,self.git(self.remote,'rev-parse','refs/heads/'+self.branch))
+
+    def test_external_wrong_digest_head_checkpoint_and_script_reject(self):
+        staged=self.stage()
+        for flag,value in (('--sha256','f'*64),('--accepted',self.base),('--required-commit','e'*40),('--verifier-sha256','f'*64)):
+            def change(args):args[args.index(flag)+1]=value
+            with self.subTest(flag=flag):
+                code,output,_=self.external(staged,change)
+                self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_authenticated_transfer_failure_or_wrong_origin_emits_no_success(self):
+        staged=self.stage()
+        def failure(command):
+            if command[:2]==('codespace','cp'):raise sync.SyncSkipped('fixture transfer failed')
+        def foreign(command):
+            if command[:3]==('api','--hostname','github.com') and command[-1].startswith('user/codespaces/'):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':{'full_name':'other/repo'},'owner':{'login':'Founder'}})
+        def malformed(command):
+            if command[:3]==('api','--hostname','github.com') and command[-1].startswith('user/codespaces/'):
+                return json.dumps({'name':self.codespace,'state':'Available','repository':[], 'owner':None})
+        for transport in (failure,foreign,malformed):
+            code,output,_=self.external(staged,transport=transport)
+            self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_partial_and_wrong_ref_bundles_cannot_be_external_receipts(self):
+        staged=self.stage();bundle=Path(staged['recoveryBundle'])
+        for ref,exclude in (('refs/heads/'+self.branch,['^'+self.base]),('refs/heads/legend/approved-changes',[])):
+            bundle.unlink()
+            self.git(self.local,'bundle','create',str(bundle),ref,*exclude)
+            staged['sha256']=sync.bundle_digest(bundle)
+            bundle.with_suffix('.bundle.sha256').write_text(staged['sha256']+'  LEGEND.bundle\n')
+            code,output,_=self.external(staged)
+            self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+
+    def test_external_untrusted_path_temp_destination_or_execution_host_reject(self):
+        staged=self.stage()
+        for flag,value in (('--staged-dir','/tmp/../unsafe'),('--codespace','bad;command'),('--recovery-dir',str(self.root))):
+            def change(args):args[args.index(flag)+1]=value
+            code,output,calls=self.external(staged,change)
+            self.assertEqual(1,code);self.assertEqual([],calls);self.assertNotIn('VERIFIED_EXTERNAL',output)
+        from types import SimpleNamespace
+        for platform,env in (('linux',{}),('darwin',{'CODESPACES':'true'}),('darwin',{'GITHUB_ACTIONS':'true'})):
+            with patch.object(sync.sys,'platform',platform),patch.dict(sync.os.environ,env,clear=True),self.assertRaises(sync.SyncSkipped):
+                sync.verify_external_session(SimpleNamespace())
+
+
+    def test_failed_receipt_persistence_never_leaves_success_marker(self):
+        staged=self.stage()
+        original_fsync=sync.os.fsync
+        def fsync(descriptor):
+            # Fail after the atomic receipt rename to exercise cleanup of the
+            # success marker, not merely an earlier artifact write.
+            if hasattr(self,'external_storage') and list(self.external_storage.glob('*/external-verification.json')):
+                raise OSError('fixture receipt directory sync failure')
+            return original_fsync(descriptor)
+        with patch.object(sync.os,'fsync',side_effect=fsync):
+            code,output,_=self.external(staged)
+        self.assertEqual(1,code);self.assertNotIn('VERIFIED_EXTERNAL',output)
+        self.assertEqual([],list(self.external_storage.glob('*/external-verification.json')))
+        self.assertEqual([],list(self.external_storage.glob('*/.external-verification.pending')))
+
+
 if __name__ == '__main__':
     unittest.main()

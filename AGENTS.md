@@ -234,7 +234,10 @@ compatible evidence and unresolved gates; do not reconstruct accepted implementa
    contain committed objects only. For a clean remote-ahead checkout, explicitly use
    `--session recover` with the same branch/base, then rerun preflight. It permits only
    a fast-forward and never resets, rebases, discards, force-pushes or creates a branch.
-   Local-ahead preflight requires a verified recovery export before more implementation.
+   Local-ahead preflight requires verified external recovery before more implementation.
+   A temporary staged transfer never satisfies that gate. A narrowly authorized correction
+   to this recovery owner may be completed in place to unblock the transfer; this is not
+   general permission to resume unrelated engineering while durable recovery is blocked.
 3. For recovery storage supply `--recovery-dir DIRECTORY --external-storage-confirmed`
    only after verifying the existing directory is persistent and accessible on the host
    or external account outside the disposable environment. This flag is an operator
@@ -251,6 +254,32 @@ compatible evidence and unresolved gates; do not reconstruct accepted implementa
    --bundle FILE --sha256 EXPECTED_SHA256`. Original objects are imported; only a clean
    fast-forward may update the existing branch. Retain the bundle until exact remote
    preservation is verified. Divergence requires explicit human reconciliation.
+   When the existing external-directory export is unavailable, the same owner supports
+   an explicit two-phase transfer. In the original Codespace run `--session stage-local
+   --branch BRANCH --base PRIOR_SHA --accepted EXACT_HEAD --implementation IMPLEMENTATION_SHA --required-commit CHECKPOINT_SHA`.
+   It creates a full bundle, checksum and exact verifier script in a fresh temporary
+   directory and reports `STAGED_LOCAL_NOT_DURABLE`, never durable preservation or
+   permission to continue. Retain the original Codespace; no preflight/finish gate is
+   waived, and the strict existing `--session export` storage checks remain unchanged.
+   On the independent Founder Mac, use authenticated `gh codespace cp -c CODESPACE
+   remote:STAGED_DIR/sync-published-checkout.py ./sync-published-checkout.py`, then verify
+   that file's SHA-256 against the independently recorded native `verifierSha256` BEFORE
+   executing it. Do not take expected identities from the copied artifact itself.
+   Run that exact script with `--session verify-external --codespace CODESPACE
+   --staged-dir STAGED_DIR --branch BRANCH --base PRIOR_SHA --accepted EXACT_HEAD
+   --implementation IMPLEMENTATION_SHA --required-commit CHECKPOINT_SHA
+   --sha256 EXPECTED_BUNDLE_SHA256
+   --verifier-sha256 EXPECTED_SCRIPT_SHA256 --recovery-dir PERSISTENT_MAC_DIRECTORY
+   --external-storage-confirmed`. No repository checkout is needed on the Mac.
+   The verifier requires Darwin outside Codespaces/Actions, authenticates github.com
+   account and canonical Codespace ownership, performs the bundle/checksum copies itself,
+   and restores into an independent empty repository to prove exact head, base,
+   implementation and every repeated `--required-commit` ancestry, and integrity. Only then does it emit `VERIFIED_EXTERNAL`
+   with `recoveryOnly=true` and `remotePreserved=false`. Persistent retention remains an
+   explicit operator attestation, not proof of replication. This receipt does not
+   authorize push or automatically unblock implementation/preflight/finish; review the
+   external evidence and outstanding restriction explicitly. No receipt is accepted as
+   exact remote preservation. Failed transfer/verification leaves recovery blocked.
 5. At completion, review the full diff from PRIOR_SHA, focused evidence and checkpoint.
    Record acceptance externally for the exact implementation/checkpoint and exact affected
    paths, then commit only that accepted scope on the authorized branch. Run:
