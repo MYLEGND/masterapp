@@ -127,7 +127,21 @@ internal static class CanonicalMarketingOutcomeProjection
                 .Select(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "AppointmentId") ??
                     "event:" + CanonicalAdvertisingEventProjection.ResolveEventId(e)).Distinct().LongCount(),
             CustomerCount(rows),
-            rows.Where(e => IsCustomer(e.EventType)).Sum(e => ReadMoney(e.MetadataJson)));
+            RecordedRevenue(rows));
+    }
+
+    // This is recorded USD outcome value, not refund-adjusted current net revenue.
+    public static decimal? RecordedRevenue(IEnumerable<AnalyticsEvent> events)
+    {
+        decimal total = 0;
+        foreach (var row in events.Where(e => IsCustomer(e.EventType)))
+        {
+            var value = CanonicalConversionValueProjection.Resolve(row.MetadataJson);
+            if (value is null || !string.Equals(value.Currency, "USD", StringComparison.OrdinalIgnoreCase))
+                return null;
+            total += value.AmountMinorUnits / 100m;
+        }
+        return total;
     }
 
     public static string? OutcomeName(AnalyticsEvent row) => CanonicalAdvertisingEventProjection.ResolveEventName(row);

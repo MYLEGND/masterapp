@@ -62,9 +62,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var metaPixelResolutionService = scope.ServiceProvider.GetRequiredService<IMetaPixelResolutionService>();
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
-        var candidates = db.MetaSignalEvents
+        var candidates = db.MetaSignalEvents.AsNoTracking()
             .Where(x =>
                 !x.MetaServerSent &&
+                (x.MetaDispatchClaimToken == null || x.MetaDispatchClaimExpiresUtc == null || x.MetaDispatchClaimExpiresUtc <= DateTime.UtcNow) &&
                 x.MetadataJson != null &&
                 (!x.MetadataJson.Contains("\"metaServerStatus\":") ||
                  x.MetadataJson.Contains("\"metaServerRetryable\":true")) &&
@@ -76,14 +77,15 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .AsAsyncEnumerable();
 
         var rows = new List<MetaSignalEvent>();
+        var rejected = new List<(MetaSignalEvent Row, MetaConversionsApiResult Decision)>();
         await foreach (var row in candidates.WithCancellation(cancellationToken))
         {
             if (row.CommerceBusinessId.HasValue && (row.CommerceBusinessId == Guid.Empty || row.AgentTrackingProfileId.HasValue || !string.IsNullOrWhiteSpace(row.AgentSlug)))
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                rejected.Add((row, new MetaConversionsApiResult
                 {
                     Status = "skipped_owner_conflict", Note = "business_and_agent_owner_conflict"
-                });
+                }));
                 continue;
             }
             if (IsBlockedAutomatedTraffic(row) ||
@@ -91,10 +93,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                   MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson) ||
                   MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(row.TrafficType, row.MetadataJson)))
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                rejected.Add((row, new MetaConversionsApiResult
                 {
                     Status = "skipped_traffic_or_producer", Note = "untrusted_or_automated"
-                });
+                }));
                 continue;
             }
             if (DateTime.TryParse(ReadMetadataString(row.MetadataJson, "metaServerNextAttemptUtc"),
@@ -103,7 +105,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             rows.Add(row);
             if (rows.Count == 25) break;
         }
-        await db.SaveChangesAsync(cancellationToken);
+
+        // Close the candidate reader before guarded writes (SQL Server need not enable MARS).
+        foreach (var item in rejected)
+            await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, item.Row, item.Decision, cancellationToken);
 
         var leadIds = rows
             .Where(x => x.LeadId.HasValue)
@@ -138,53 +143,49 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition))
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false,
                     Sent = false,
                     Status = "skipped_catalog_missing",
                     Note = "catalog_missing"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
 
             if (!definition.AllowServerForward)
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false,
                     Sent = false,
                     Status = "skipped_server_forward_not_allowed",
                     Note = "server_forward_not_allowed"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
 
             if (!MetaSignalEventCatalog.IsServerAuthorityEvent(row.EventName))
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false,
                     Sent = false,
                     Status = "skipped_not_server_authority_event",
                     Note = "not_server_authority_event"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
 
             if (!MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson))
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false,
                     Sent = false,
                     Status = "skipped_not_dispatch_eligible",
                     Note = "not_dispatch_eligible"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
 
@@ -216,11 +217,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             var humanEligibility = source is null ? null : await CanonicalMarketingEligibility.ResolveAsync(db, source, cancellationToken);
             if (humanEligibility?.Eligible != true)
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult {
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult {
                     Attempted = false, Sent = false, Retryable = true, Status = humanEligibility?.Reason.StartsWith("measurement_consent", StringComparison.Ordinal) == true ? "blocked_consent" : humanEligibility?.Reason.StartsWith("production_", StringComparison.Ordinal) == true ? "blocked_outcome_reconciliation" : "blocked_human_evidence",
                     Note = humanEligibility?.Reason ?? "canonical_source_missing"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
             CanonicalMarketingIdentity? canonicalIdentity = null;
@@ -284,11 +284,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
                 if (websiteLead is not null && websiteLead.CommerceBusinessId != row.CommerceBusinessId)
                 {
-                    row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                    await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                     {
                         Status = "skipped_owner_conflict", Note = "website_lead_owner_mismatch"
-                    });
-                    await db.SaveChangesAsync(cancellationToken);
+                    }, cancellationToken);
                     continue;
                 }
 
@@ -336,13 +335,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 string.IsNullOrWhiteSpace(websiteLead?.ClientUserAgent) &&
                 !hasBridgeAttribution)
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false,
                     Sent = false,
                     Status = "skipped",
                     Note = "No website attribution or CRM contact identity available for Meta CAPI."
-                });
+                }, cancellationToken);
 
                 _logger.LogWarning(
                     "MetaSignal outcome dispatcher skipped event={EventName} rowId={RowId}; no website attribution or CRM contact identity.",
@@ -360,11 +359,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 : null;
             if (owner is null)
             {
-                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                 {
                     Attempted = false, Sent = false, Status = "skipped_owner_unresolved", Note = "canonical_source_owner_unresolved"
-                });
-                await db.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
                 continue;
             }
 
@@ -379,12 +377,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 var destination = MarketingConversionDestinationCatalog.ResolveMeta(canonicalEventName);
                 if (destination is null)
                 {
-                    row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                    await MetaSendAuthority.PersistPreDispatchDecisionAsync(db, row, new MetaConversionsApiResult
                     {
                         Attempted = false, Sent = false, Status = "skipped_destination_mapping_missing",
                         Note = "canonical_meta_destination_mapping_missing"
-                    });
-                    await db.SaveChangesAsync(cancellationToken);
+                    }, cancellationToken);
                     continue;
                 }
                 providerEventName = destination.EventName;
@@ -442,12 +439,6 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
             var result = await capi.SendEventAsync(capiRequest, cancellationToken);
 
-            row.MetaServerSent = result.Sent;
-            row.FbclidPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid));
-            row.FbcPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbc, bridgeFbc));
-            row.FbpPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbp, bridgeFbp));
-            row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, result);
-
             _logger.LogInformation(
                 "MetaSignal outcome dispatcher event={EventName} rowId={RowId} leadId={LeadId} status={Status} sent={Sent}",
                 row.EventName,
@@ -457,9 +448,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 result.Sent);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
     }
-
 
     private sealed record CrmContactIdentity(
         string? Email,
@@ -741,43 +730,4 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         return bool.TryParse(raw, out var value) ? value : null;
     }
 
-    private static string MergeDispatchMetadata(string? existingJson, MetaConversionsApiResult result)
-    {
-        Dictionary<string, object?> metadata;
-
-        try
-        {
-            metadata = string.IsNullOrWhiteSpace(existingJson)
-                ? new Dictionary<string, object?>()
-                : JsonSerializer.Deserialize<Dictionary<string, object?>>(existingJson) ?? new Dictionary<string, object?>();
-        }
-        catch
-        {
-            metadata = new Dictionary<string, object?>
-            {
-                ["original_metadata_json"] = existingJson
-            };
-        }
-
-        var attempt = (int.TryParse(ReadMetadataString(existingJson, "metaServerAttemptCount"), out var prior) ? prior : 0) + (result.Attempted ? 1 : 0);
-        var retryable = result.Retryable && !result.Sent && attempt < 8;
-        metadata["metaServerAttemptCount"] = attempt;
-        metadata["metaServerRetryable"] = retryable;
-        metadata["metaServerRetryExhausted"] = result.Retryable && !result.Sent && !retryable;
-        metadata["metaServerHttpStatusCode"] = result.HttpStatusCode;
-        metadata["metaServerNextAttemptUtc"] = retryable
-            ? DateTime.UtcNow.AddSeconds(Math.Min(3600, 30 * Math.Pow(2, attempt - 1)))
-            : (DateTime?)null;
-        metadata["metaServerEventsReceived"] = result.EventsReceived;
-        metadata["metaServerTraceId"] = result.TraceId;
-        metadata["metaServerStatus"] = result.Status;
-        metadata["metaServerNote"] = result.Note;
-        metadata["metaServerAttempted"] = result.Attempted;
-        metadata["metaServerSent"] = result.Sent;
-        metadata["metaServerPixelId"] = result.PixelId;
-        metadata["metaServerPixelOwnerType"] = result.PixelOwnerType;
-        metadata["metaServerDispatchedUtc"] = DateTime.UtcNow;
-
-        return JsonSerializer.Serialize(metadata);
-    }
 }

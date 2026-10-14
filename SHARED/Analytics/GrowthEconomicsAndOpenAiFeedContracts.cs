@@ -5,7 +5,7 @@ public sealed record ChannelEconomicsRow(
     decimal? Spend,
     long CustomersAcquired,
     decimal? CostPerCustomer,
-    decimal Revenue,
+    decimal? Revenue,
     decimal? Roas,
     decimal PipelineValue,
     string AttributionBasis);
@@ -17,7 +17,7 @@ public sealed record BlendedGrowthEconomicsSnapshot(
     decimal? TotalMarketingSpend,
     long CustomersAcquired,
     decimal? CostPerCustomer,
-    decimal TotalRevenue,
+    decimal? TotalRevenue,
     decimal? BlendedRoas,
     decimal PipelineValue,
     IReadOnlyList<ChannelEconomicsRow> Channels,

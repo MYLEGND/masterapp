@@ -174,16 +174,15 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         eventRequest.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
         eventRequest.AuthorityReservationToken = authorityDecision.ReservationToken;
 
-        var sent = false;
+        MetaConversionsApiResult? result = null;
         try
         {
-            var result = await SendEventCoreAsync(eventRequest, cancellationToken);
-            sent = result.Sent;
+            result = await SendEventCoreAsync(eventRequest, cancellationToken);
             return result;
         }
         finally
         {
-            _metaSendAuthority.Complete(authorityDecision, sent);
+            _metaSendAuthority.Complete(authorityDecision, result, eventRequest);
         }
     }
 
@@ -202,16 +201,15 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         request.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
         request.AuthorityReservationToken = authorityDecision.ReservationToken;
 
-        var sent = false;
+        MetaConversionsApiResult? result = null;
         try
         {
-            var result = await SendEventCoreAsync(request, cancellationToken);
-            sent = result.Sent;
+            result = await SendEventCoreAsync(request, cancellationToken);
             return result;
         }
         finally
         {
-            _metaSendAuthority.Complete(authorityDecision, sent);
+            _metaSendAuthority.Complete(authorityDecision, result, request);
         }
     }
 

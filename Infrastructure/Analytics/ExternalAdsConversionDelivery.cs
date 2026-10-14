@@ -118,24 +118,7 @@ public sealed class ExternalAdsConversionApiService(
         return await SendProviderAsync(
             request,
             "google",
-            responseBody =>
-            {
-                if (string.IsNullOrWhiteSpace(responseBody))
-                    return null;
-                try
-                {
-                    using var json = JsonDocument.Parse(responseBody);
-                    if (json.RootElement.TryGetProperty("partialFailureError", out var partial) &&
-                        partial.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) &&
-                        partial.GetRawText() != "{}")
-                        return "google_partial_failure";
-                    return null;
-                }
-                catch (JsonException)
-                {
-                    return "google_invalid_response";
-                }
-            },
+            responseBody => MarketingDeliveryEvidencePolicy.GoogleResponseError(responseBody, mapping.DestinationId, click, source.EventUtc),
             ct);
     }
 
@@ -210,7 +193,7 @@ public sealed class ExternalAdsConversionApiService(
                 try
                 {
                     using var json = JsonDocument.Parse(responseBody);
-                    if (!json.RootElement.TryGetProperty("code", out var code))
+                    if (json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("code", out var code))
                         return "tiktok_response_code_missing";
                     var ok = code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var number)
                         ? number == 0
@@ -243,7 +226,8 @@ public sealed class ExternalAdsConversionApiService(
                 if (error is null)
                     return new(true, false, (int)response.StatusCode, "sent",
                         ProviderReceiptJson: receipt);
-                return new(false, false, (int)response.StatusCode, "permanent_failure",
+                var unverified = error is "google_response_unverified" or "google_invalid_response";
+                return new(false, unverified, (int)response.StatusCode, unverified ? "retryable_failure" : "permanent_failure",
                     error, error, receipt);
             }
 
@@ -355,6 +339,8 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
             .ExecuteUpdateAsync(update => update
                 .SetProperty(row => row.Status, "permanent_failure")
                 .SetProperty(row => row.ErrorCode, "event_delivery_window_expired")
+                .SetProperty(row => row.ClaimToken, (string?)null)
+                .SetProperty(row => row.ClaimExpiresUtc, (DateTime?)null)
                 .SetProperty(row => row.NextAttemptUtc, (DateTime?)null)
                 .SetProperty(row => row.UpdatedUtc, now), ct);
 
@@ -390,6 +376,8 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
             var canonicalId = CanonicalAdvertisingEventProjection.ResolveEventId(source);
             foreach (var provider in Providers)
             {
+                try
+                {
                 var measurement =
                     await connections.GetProviderMeasurementConfigurationAsync(owner, provider, ct);
                 if (!measurement.MappingReady)
@@ -462,7 +450,7 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
 
                 if (delivery.Status is "sent" or "permanent_failure")
                     continue;
-                if (delivery.NextAttemptUtc > now)
+                if (delivery.NextAttemptUtc > now || delivery.ClaimExpiresUtc > now)
                     continue;
 
                 if (!MatchesCurrentDestination(
@@ -506,9 +494,12 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
                 if (claimed != 1)
                     continue;
 
-                delivery = await db.MarketingDestinationDeliveries
-                    .SingleAsync(row => row.Id == delivery.Id && row.ClaimToken == claim, ct);
                 await db.Entry(delivery).ReloadAsync(ct);
+                if (delivery.ClaimToken != claim) continue;
+
+                delivery.AttemptCount++;
+                delivery.LastAttemptUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
 
                 ExternalAdsConversionApiResult result;
                 try
@@ -526,8 +517,6 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
                         "provider_exception", "Provider delivery failed.");
                 }
 
-                delivery.AttemptCount++;
-                delivery.LastAttemptUtc = DateTime.UtcNow;
                 delivery.LastHttpStatusCode = result.HttpStatusCode;
                 delivery.ProviderReceiptJson = result.ProviderReceiptJson;
                 delivery.ErrorCode = result.ErrorCode;
@@ -555,6 +544,12 @@ public sealed class ExternalAdsConversionDispatcherHostedService(
                 }
 
                 await db.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    // Another claim or expiry reconciliation owns the receipt now.
+                    foreach (var entry in ex.Entries) entry.State = EntityState.Detached;
+                }
             }
         }
     }

@@ -57,7 +57,7 @@ public sealed class MarketingManagerService(
             UnknownAttributedLeads = safeContext.MarketingHealth?.UnknownAttributedLeads ?? 0 };
         var gpt = safeContext.Channels.FirstOrDefault(x => x.Channel == MarketingChannels.ChatGptAds);
         var channel = new UnifiedChannelPerformanceSnapshot(owner, range.FromUtc, range.ToUtc, safeContext.GeneratedUtc,
-            [], new CanonicalOutcomeTotals(gpt?.Leads ?? 0, gpt?.QualifiedLeads ?? 0, gpt?.Appointments ?? 0, gpt?.Customers ?? 0, gpt?.Revenue ?? 0),
+            [], new CanonicalOutcomeTotals(gpt?.Leads ?? 0, gpt?.QualifiedLeads ?? 0, gpt?.Appointments ?? 0, gpt?.Customers ?? 0, gpt?.Revenue),
             safeContext.Channels.Select(x => new ChannelPerformanceRow(x.Channel, x.Spend, x.Impressions, x.Clicks,
                 x.Leads, x.QualifiedLeads, x.Appointments, x.Customers, x.Revenue, x.Roas, x.AttributionConfidence,
                 "Canonical outcomes; provider receipt does not assign campaign credit")).ToList(), safeContext.ChannelCoverageNotes);
@@ -201,9 +201,9 @@ public sealed class MarketingManagerService(
             .ToListAsync(ct);
 
         var totalPaidCustomers = safeContext.Channels.Sum(x => x.Customers);
-        var totalRevenue = safeContext.Channels.Sum(x => x.Revenue);
-        decimal? averagePaidValue = totalPaidCustomers > 0
-            ? Math.Round(totalRevenue / totalPaidCustomers, 2)
+        decimal? totalRevenue = safeContext.Channels.All(x => x.Revenue.HasValue) ? safeContext.Channels.Sum(x => x.Revenue) : null;
+        decimal? averagePaidValue = totalPaidCustomers > 0 && totalRevenue.HasValue
+            ? Math.Round(totalRevenue.Value / totalPaidCustomers, 2)
             : null;
         var now = DateTime.UtcNow;
 
@@ -440,7 +440,7 @@ public sealed class MarketingManagerService(
                 priority++,
                 "advertising",
                 $"Review {provider} budget allocation against downstream qualified leads, appointments, customers, revenue, and ROAS before increasing total spend.",
-                $"{provider} spend is {Money(paid.Spend)} with {paid.QualifiedLeads:N0} qualified leads, {paid.Appointments:N0} appointments, and {Money(paid.Revenue)} canonically attributed revenue.",
+                $"{provider} spend is {Money(paid.Spend)} with {paid.QualifiedLeads:N0} qualified leads, {paid.Appointments:N0} appointments, and {Money(paid.Revenue)} canonically attributed recorded revenue.",
                 "Directs budget toward channels producing business outcomes rather than clicks alone; campaign-level revenue is used only when explicitly proven.",
                 true,
                 paid.Channel,

@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Logging;
+using Shared.Analytics;
+using System.Text.Json;
+using Domain.Entities;
 using System.Collections.Concurrent;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +11,7 @@ namespace Infrastructure.Analytics;
 public interface IMetaSendAuthority
 {
     Task<MetaSendAuthorityDecision> TrySendAsync(MetaSendAuthorityRequest request, CancellationToken cancellationToken = default);
-    void Complete(MetaSendAuthorityDecision decision, bool sent);
+    void Complete(MetaSendAuthorityDecision decision, MetaConversionsApiResult? result, MetaConversionsApiEventRequest request);
 }
 
 public sealed class MetaSendAuthority : IMetaSendAuthority
@@ -50,7 +53,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
             var normalized = Normalize(request);
             PruneExpiredReservations(DateTime.UtcNow);
 
-            if (TryAllowNestedReservation(normalized, out var nestedDecision))
+            if (!string.Equals(normalized.Source, MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService, StringComparison.OrdinalIgnoreCase) &&
+                TryAllowNestedReservation(normalized, out var nestedDecision))
                 return nestedDecision;
 
             if (TryBlockOrReplaceActiveReservation(normalized, out var activeDecision))
@@ -84,7 +88,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                 token,
                 nowUtc,
                 cancellationToken);
-            if (persistedRowId == DurableClaimBlocked)
+            if (persistedRowId is DurableClaimBlocked or DurableClaimMissing)
             {
                 return new MetaSendAuthorityDecision(
                     Allowed: false,
@@ -94,7 +98,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                     DedupeKey: normalized.DedupeKey,
                     ReservationToken: null,
                     Status: "blocked_duplicate",
-                    Note: "durable_dispatch_claim_active");
+                    Note: persistedRowId == DurableClaimMissing ? "canonical_dispatch_signal_missing" : "durable_dispatch_claim_active");
             }
 
             Reservations[normalized.DedupeKey] = new AuthorityReservation(
@@ -163,71 +167,101 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         }
     }
 
-    public void Complete(MetaSendAuthorityDecision decision, bool sent)
+    public void Complete(MetaSendAuthorityDecision decision, MetaConversionsApiResult? result, MetaConversionsApiEventRequest request)
     {
-        if (!decision.Allowed ||
-            string.IsNullOrWhiteSpace(decision.DedupeKey) ||
-            string.IsNullOrWhiteSpace(decision.ReservationToken))
-        {
-            return;
-        }
-
-        if (!Reservations.TryGetValue(decision.DedupeKey, out var reservation) ||
-            !string.Equals(reservation.Token, decision.ReservationToken, StringComparison.Ordinal))
-        {
-            return;
-        }
-
+        // No response means interrupted transport. Keep the durable lease recoverable.
+        if (result is null || !decision.Allowed || string.IsNullOrWhiteSpace(decision.DedupeKey) ||
+            string.IsNullOrWhiteSpace(decision.ReservationToken) ||
+            !Reservations.TryGetValue(decision.DedupeKey, out var reservation) ||
+            !string.Equals(reservation.Token, decision.ReservationToken, StringComparison.Ordinal)) return;
         try
         {
-            if (reservation.RowId.HasValue)
+            if (reservation.RowId is { } rowId)
             {
-                var rowId = reservation.RowId.Value;
-                if (sent)
-                {
-                    _db.MetaSignalEvents
-                        .Where(x => x.Id == rowId && x.MetaDispatchClaimToken == reservation.Token)
-                        .ExecuteUpdate(setters => setters
-                            .SetProperty(x => x.MetaServerSent, true)
-                            .SetProperty(x => x.MetaDispatchClaimToken, (string?)null)
-                            .SetProperty(x => x.MetaDispatchClaimedUtc, (DateTime?)null)
-                            .SetProperty(x => x.MetaDispatchClaimExpiresUtc, (DateTime?)null));
-                }
-                else
-                {
-                    _db.MetaSignalEvents
-                        .Where(x => x.Id == rowId && x.MetaDispatchClaimToken == reservation.Token && !x.MetaServerSent)
-                        .ExecuteUpdate(setters => setters
-                            .SetProperty(x => x.MetaDispatchClaimToken, (string?)null)
-                            .SetProperty(x => x.MetaDispatchClaimedUtc, (DateTime?)null)
-                            .SetProperty(x => x.MetaDispatchClaimExpiresUtc, (DateTime?)null));
-                }
+                var current = _db.MetaSignalEvents.AsNoTracking().SingleOrDefault(row =>
+                    row.Id == rowId && row.MetaDispatchClaimToken == reservation.Token && !row.MetaServerSent);
+                if (current is null) return;
+                var metadata = MergeDispatchMetadata(current.MetadataJson, result);
+                var updated = _db.MetaSignalEvents.Where(row => row.Id == rowId &&
+                    row.MetaDispatchClaimToken == reservation.Token && !row.MetaServerSent && row.MetadataJson == current.MetadataJson)
+                    .ExecuteUpdate(setters => setters
+                        .SetProperty(row => row.MetaServerSent, result.Sent)
+                        .SetProperty(row => row.MetadataJson, metadata)
+                        .SetProperty(row => row.FbclidPresent, !string.IsNullOrWhiteSpace(request.Fbclid))
+                        .SetProperty(row => row.FbcPresent, !string.IsNullOrWhiteSpace(request.Fbc))
+                        .SetProperty(row => row.FbpPresent, !string.IsNullOrWhiteSpace(request.Fbp))
+                        .SetProperty(row => row.MetaDispatchClaimToken, (string?)null)
+                        .SetProperty(row => row.MetaDispatchClaimedUtc, (DateTime?)null)
+                        .SetProperty(row => row.MetaDispatchClaimExpiresUtc, (DateTime?)null));
+                if (updated != 1) return;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "MetaSendAuthority could not persist completion for event {EventType} row {RowId}. The durable lease remains fail-closed until expiry.",
-                decision.EventType,
-                reservation.RowId);
+            _logger.LogError(ex, "MetaSendAuthority could not persist completion for event {EventType} row {RowId}. The durable lease remains fail-closed until expiry.", decision.EventType, reservation.RowId);
+            return;
         }
+        if (result.Sent)
+            Reservations[decision.DedupeKey] = reservation with { Sent = true, ExpiresUtc = DateTime.UtcNow.AddHours(SentTtlHours) };
+        else
+            Reservations.TryRemove(decision.DedupeKey, out _);
+    }
 
-        if (sent)
+    internal static Task<int> PersistPreDispatchDecisionAsync(MasterAppDbContext db, MetaSignalEvent row,
+        MetaConversionsApiResult result, CancellationToken ct = default)
+    {
+        if (result.Attempted) throw new ArgumentException("Provider receipts require an owned dispatch claim.", nameof(result));
+        var now = DateTime.UtcNow;
+        var metadata = MergeDispatchMetadata(row.MetadataJson, result);
+        return db.MetaSignalEvents.Where(current => current.Id == row.Id && !current.MetaServerSent &&
+            current.MetadataJson == row.MetadataJson && (current.MetaDispatchClaimToken == null ||
+            current.MetaDispatchClaimExpiresUtc == null || current.MetaDispatchClaimExpiresUtc <= now))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(current => current.MetadataJson, metadata), ct);
+    }
+
+    internal static string MergeDispatchMetadata(string? existingJson, MetaConversionsApiResult result)
+    {
+        Dictionary<string, object?> metadata;
+
+        try
         {
-            Reservations[decision.DedupeKey] = reservation with
+            metadata = string.IsNullOrWhiteSpace(existingJson)
+                ? new Dictionary<string, object?>()
+                : JsonSerializer.Deserialize<Dictionary<string, object?>>(existingJson) ?? new Dictionary<string, object?>();
+        }
+        catch
+        {
+            metadata = new Dictionary<string, object?>
             {
-                Sent = true,
-                ExpiresUtc = DateTime.UtcNow.AddHours(SentTtlHours)
+                ["original_metadata_json"] = existingJson
             };
         }
-        else
-        {
-            Reservations.TryRemove(decision.DedupeKey, out _);
-        }
+
+        metadata.TryGetValue("metaServerAttemptCount", out var priorValue);
+        var attempt = (int.TryParse(priorValue?.ToString(), out var prior) ? prior : 0) + (result.Attempted ? 1 : 0);
+        var retryable = result.Retryable && !result.Sent && attempt < 8;
+        metadata["metaServerAttemptCount"] = attempt;
+        metadata["metaServerRetryable"] = retryable;
+        metadata["metaServerRetryExhausted"] = result.Retryable && !result.Sent && !retryable;
+        metadata["metaServerHttpStatusCode"] = result.HttpStatusCode;
+        metadata["metaServerNextAttemptUtc"] = retryable
+            ? DateTime.UtcNow.AddSeconds(Math.Min(3600, 30 * Math.Pow(2, attempt - 1)))
+            : (DateTime?)null;
+        metadata["metaServerEventsReceived"] = result.EventsReceived;
+        metadata["metaServerTraceId"] = result.TraceId;
+        metadata["metaServerStatus"] = result.Status;
+        metadata["metaServerNote"] = result.Note;
+        metadata["metaServerAttempted"] = result.Attempted;
+        metadata["metaServerSent"] = result.Sent;
+        metadata["metaServerPixelId"] = result.PixelId;
+        metadata["metaServerPixelOwnerType"] = result.PixelOwnerType;
+        metadata["metaServerDispatchedUtc"] = DateTime.UtcNow;
+
+        return JsonSerializer.Serialize(metadata);
     }
 
     private const long DurableClaimBlocked = -1;
+    private const long DurableClaimMissing = -2;
 
     private async Task<long> TryClaimPersistedSignalAsync(
         NormalizedAuthorityRequest request,
@@ -238,9 +272,10 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         if (!string.Equals(request.Source, MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService, StringComparison.OrdinalIgnoreCase))
             return 0;
 
+        var canonicalNames = CanonicalEventNames(request.EventType);
         var query = _db.MetaSignalEvents
             .AsNoTracking()
-            .Where(x => !x.MetaServerSent && x.EventName == request.EventType);
+            .Where(x => !x.MetaServerSent && canonicalNames.Contains(x.EventName));
 
         if (request.CommerceBusinessId.HasValue)
             query = query.Where(x => x.CommerceBusinessId == request.CommerceBusinessId && x.AgentTrackingProfileId == null);
@@ -254,7 +289,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         else if (!string.IsNullOrWhiteSpace(request.EventId))
             query = query.Where(x => x.EventId == request.EventId);
         else
-            return 0;
+            return DurableClaimMissing;
 
         var rowId = await query
             .OrderBy(x => x.CreatedUtc)
@@ -262,7 +297,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
             .FirstOrDefaultAsync(cancellationToken);
 
         if (!rowId.HasValue)
-            return 0;
+            return DurableClaimMissing;
 
         var expiresUtc = nowUtc.AddMinutes(ReservationTtlMinutes);
         var claimed = await _db.MetaSignalEvents
@@ -283,9 +318,10 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
 
     private async Task<bool> HasSentMatchAsync(NormalizedAuthorityRequest request, CancellationToken cancellationToken)
     {
+        var canonicalNames = CanonicalEventNames(request.EventType);
         var sentRows = _db.MetaSignalEvents
             .AsNoTracking()
-            .Where(x => x.MetaServerSent && x.EventName == request.EventType);
+            .Where(x => x.MetaServerSent && canonicalNames.Contains(x.EventName));
         if (request.CommerceBusinessId.HasValue)
             sentRows = sentRows.Where(x => x.CommerceBusinessId == request.CommerceBusinessId);
         else if (request.AgentTrackingProfileId.HasValue)
@@ -304,6 +340,10 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         {
             return true;
         }
+
+        // Stable identities distinguish legitimate conversions even within the same session/minute.
+        if (!string.IsNullOrWhiteSpace(request.EventId) || !string.IsNullOrWhiteSpace(request.ExplicitDedupeKey))
+            return false;
 
         var windowStartUtc = request.RoundedEventUtc.AddMinutes(-1);
         var windowEndUtc = request.RoundedEventUtc.AddMinutes(1);
@@ -327,6 +367,12 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         return false;
     }
 
+    private static string[] CanonicalEventNames(string providerEventName) =>
+        MarketingConversionDestinationCatalog.Definitions
+            .Where(definition => string.Equals(definition.Meta.EventName, providerEventName, StringComparison.OrdinalIgnoreCase))
+            .Select(definition => definition.CanonicalEventName)
+            .Append(providerEventName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
     private bool TryAllowNestedReservation(
         NormalizedAuthorityRequest request,
         out MetaSendAuthorityDecision decision)
@@ -339,7 +385,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         if (!Reservations.TryGetValue(request.DedupeKey, out var reservation))
             return false;
 
-        if (string.Equals(reservation.Token, request.ReservationToken, StringComparison.Ordinal))
+        if (!reservation.Sent && string.Equals(reservation.Token, request.ReservationToken, StringComparison.Ordinal))
         {
             _logger.LogDebug(
                 "MetaSendAuthority reused reservation event {EventType} source {Source}",
@@ -465,6 +511,9 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         if (!string.IsNullOrWhiteSpace(explicitDedupeKey))
             return ownerPrefix + explicitDedupeKey;
 
+        if (!string.IsNullOrWhiteSpace(eventId))
+            return ownerPrefix + eventType + ":" + eventId;
+
         if (leadId.HasValue && leadId.Value != Guid.Empty)
             return ownerPrefix + eventType + ":" + leadId.Value.ToString("N") + ":" + roundedMinute;
 
@@ -473,9 +522,6 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
 
         if (!string.IsNullOrWhiteSpace(visitorId))
             return ownerPrefix + eventType + ":" + visitorId + ":" + roundedMinute;
-
-        if (!string.IsNullOrWhiteSpace(eventId))
-            return ownerPrefix + eventType + ":" + eventId + ":" + roundedMinute;
 
         return ownerPrefix + eventType + ":anonymous:" + roundedMinute;
     }

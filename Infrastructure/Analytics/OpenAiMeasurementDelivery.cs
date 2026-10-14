@@ -343,7 +343,8 @@ public sealed class OpenAiConversionDispatcherHostedService(
             d.Channel == "server" && d.CanonicalSource == nameof(AnalyticsEvent) && d.Status != "sent" && d.Status != "permanent_failure" &&
             d.AnalyticsEventId.HasValue && db.AnalyticsEvents.Any(e => e.Id == d.AnalyticsEventId && e.EventUtc < cutoff))
             .ExecuteUpdateAsync(u => u.SetProperty(d => d.Status, "permanent_failure")
-                .SetProperty(d => d.ErrorCode, "event_delivery_window_expired").SetProperty(d => d.NextAttemptUtc, (DateTime?)null), ct);
+                .SetProperty(d => d.ErrorCode, "event_delivery_window_expired").SetProperty(d => d.NextAttemptUtc, (DateTime?)null)
+                .SetProperty(d => d.ClaimToken, (string?)null).SetProperty(d => d.ClaimExpiresUtc, (DateTime?)null), ct);
         var candidates = await db.AnalyticsEvents.AsNoTracking()
             .Where(row => row.Id > _scanAfterId && row.EventUtc >= cutoff && row.MetadataJson != null &&
                 (row.MetadataJson.Contains("measurementServerAuthorityEligible") || row.MetadataJson.Contains("metaServerAuthorityEligible")))
@@ -352,6 +353,8 @@ public sealed class OpenAiConversionDispatcherHostedService(
 
         foreach (var source in candidates)
         {
+            try
+            {
             if (!CanonicalAdvertisingEventProjection.CanProjectServer(source)) continue;
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
             if (owner is null) { await CanonicalMarketingEligibility.RecordBlockAsync(db, source, "openai", "owner_unresolved", ct); continue; }
@@ -405,7 +408,7 @@ public sealed class OpenAiConversionDispatcherHostedService(
 
             if (delivery?.Status == "sent") continue;
             if (delivery?.Status == "permanent_failure") continue;
-            if (delivery?.NextAttemptUtc > now) continue;
+            if (delivery?.NextAttemptUtc > now || delivery?.ClaimExpiresUtc > now) continue;
 
             if (delivery is null)
             {
@@ -488,9 +491,8 @@ public sealed class OpenAiConversionDispatcherHostedService(
                     .SetProperty(row => row.UpdatedUtc, now), ct);
             if (claimed != 1) continue;
 
-            delivery = await db.Set<MarketingDestinationDelivery>()
-                .SingleAsync(row => row.Id == delivery.Id && row.ClaimToken == claim, ct);
             await db.Entry(delivery).ReloadAsync(ct);
+            if (delivery.ClaimToken != claim) continue;
 
             var secrets = await connections.GetSecretsAsync(owner, ct);
             if (string.IsNullOrWhiteSpace(secrets.ConversionsApiKey))
@@ -504,6 +506,10 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 continue;
             }
 
+            delivery.AttemptCount++;
+            delivery.LastAttemptUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
             OpenAiConversionsApiResult result;
             try { result = await capi.SendAsync(connection.PixelId!, secrets.ConversionsApiKey!, conversion, false, ct); }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -511,8 +517,6 @@ public sealed class OpenAiConversionDispatcherHostedService(
                 logger.LogWarning(ex, "OpenAI delivery failed for canonical analytics event {AnalyticsEventId}", source.Id);
                 result = new(true, false, true, null, "retryable_failure", "provider_exception", "Provider delivery failed.");
             }
-            delivery.AttemptCount++;
-            delivery.LastAttemptUtc = DateTime.UtcNow;
             delivery.LastHttpStatusCode = result.HttpStatusCode;
             delivery.ProviderReceiptJson = result.ProviderReceiptJson;
             delivery.ErrorCode = result.ErrorCode;
@@ -539,6 +543,12 @@ public sealed class OpenAiConversionDispatcherHostedService(
             }
 
             await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                // Another claim or expiry reconciliation owns the receipt now.
+                foreach (var entry in ex.Entries) entry.State = EntityState.Detached;
+            }
         }
     }
 
@@ -614,11 +624,14 @@ public sealed class OpenAiMeasurementHealthService(
                     using var response = await httpClient.SendAsync(request, cancellationToken);
                     if (response.IsSuccessStatusCode)
                     {
-                        providerAvailable = true;
                         var json = await response.Content.ReadAsStringAsync(cancellationToken);
                         using var document = JsonDocument.Parse(json);
-                        if (document.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                        if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                            document.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                        {
                             recentProviderEvents = data.GetArrayLength();
+                            providerAvailable = true;
+                        }
                     }
                 }
                 catch (HttpRequestException) { }
@@ -634,7 +647,7 @@ public sealed class OpenAiMeasurementHealthService(
             : rows.Any(x => x.Status.StartsWith("blocked_", StringComparison.Ordinal)) ? "delivery_blocked"
             : rows.Any(x => x.Status == "permanent_failure") ? "delivery_failures"
             : rows.Any(x => x.Status == "retryable") ? "retrying"
-            : currentRows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "provider_accepted"
+            : currentRows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "transport_acknowledged"
             : "configured_no_delivery_evidence";
 
         return new(

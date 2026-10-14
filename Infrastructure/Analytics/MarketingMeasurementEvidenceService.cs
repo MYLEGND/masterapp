@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +9,7 @@ using Shared.Analytics;
 namespace Infrastructure.Analytics;
 
 public sealed record ProviderMeasurementEvidence(int Attempted, int Accepted, int Pending, int Retrying,
-    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence);
+    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence, int TransportAcknowledged = 0);
 public sealed record MarketingMeasurementEvidenceSnapshot(
     string OwnerKey,
     DateTime WindowFromUtc,
@@ -45,6 +47,46 @@ public static class MarketingDeliveryEvidencePolicy
             out var at)
             ? at
             : null;
+
+    public static bool GoogleProviderAccepted(MarketingDestinationDelivery row, AnalyticsEvent source) =>
+        HttpTransportAccepted(row) && GoogleResponseError(row.ProviderReceiptJson, row.ConversionDataSourceId,
+            PaidAdsClickReference.NormalizeGoogle(CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "gclid")),
+            source.EventUtc) is null;
+
+    // One click conversion is submitted per request. A result must echo that exact conversion;
+    // a successful HTTP exchange by itself does not prove provider acceptance.
+    public static string? GoogleResponseError(string? body, string? action, string? click, DateTime eventUtc)
+    {
+        if (string.IsNullOrWhiteSpace(body) || string.IsNullOrWhiteSpace(action) || string.IsNullOrWhiteSpace(click))
+            return "google_response_unverified";
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return "google_response_unverified";
+            if (HasError(root, "partialFailureError")) return "google_partial_failure";
+            if (HasError(root, "error")) return "google_provider_rejected";
+            if (!root.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array || results.GetArrayLength() != 1)
+                return "google_response_unverified";
+            var result = results[0];
+            var timestamp = result.ValueKind == JsonValueKind.Object ? Read(result, "conversionDateTime") : null;
+            if (result.ValueKind != JsonValueKind.Object ||
+                timestamp is null || !System.Text.RegularExpressions.Regex.IsMatch(timestamp, @"(?:Z|[+-]\d{2}:\d{2})$") ||
+                Read(result, "conversionAction") != action || Read(result, "gclid") != click ||
+                !DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var observed) ||
+                observed.ToUnixTimeSeconds() != new DateTimeOffset(DateTime.SpecifyKind(eventUtc, DateTimeKind.Utc)).ToUnixTimeSeconds())
+                return "google_response_unverified";
+            return null;
+        }
+        catch (JsonException) { return "google_invalid_response"; }
+
+        static string? Read(JsonElement item, string name) => item.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        static bool HasError(JsonElement root, string name) => root.TryGetProperty(name, out var error) &&
+            error.ValueKind != JsonValueKind.Null &&
+            !(error.ValueKind == JsonValueKind.Object && !error.EnumerateObject().Any());
+    }
 
     public static bool HttpTransportAccepted(MarketingDestinationDelivery row) =>
         row.Status == "sent" && row.LastHttpStatusCode is >= 200 and < 300;
@@ -94,8 +136,8 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         var tiktok = CurrentExternalReceipts(deliveries, sourceById, owner, tiktokConnection, tiktokMeasurement);
 
         var metaAccepted = meta.Count(MarketingDeliveryEvidencePolicy.MetaProviderAccepted);
-        var openAiAccepted = openAi.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
-        var googleAccepted = google.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
+        var openAiTransportAcknowledged = openAi.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
+        var googleAccepted = google.Count(row => MarketingDeliveryEvidencePolicy.GoogleProviderAccepted(row, sourceById[row.AnalyticsEventId!.Value]));
         var tiktokAccepted = tiktok.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
         return new(owner.Key, from, sources.Count > 0, sources.Select(e => (DateTime?)e.ReceivedUtc).Max(),
             new(meta.Count(MarketingDeliveryEvidencePolicy.MetaAttempted), metaAccepted,
@@ -108,12 +150,14 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
                 meta.Where(MarketingDeliveryEvidencePolicy.MetaProviderAccepted)
                     .Select(MarketingDeliveryEvidencePolicy.MetaDispatchedUtc).Max(),
                 metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed"),
-            new(openAi.Count(r => r.AttemptCount > 0), openAiAccepted,
+            // No verified provider-acceptance contract is available; HTTP evidence remains transport-only.
+            new(openAi.Count(r => r.AttemptCount > 0), 0,
                 openAi.Count(r => r.Status == "pending" || r.Status.StartsWith("blocked_", StringComparison.Ordinal)),
                 openAi.Count(r => r.Status == "retryable"), openAi.Count(r => r.Status == "permanent_failure"),
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
                 openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
-                openAiAccepted > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed"),
+                openAiTransportAcknowledged > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed",
+                TransportAcknowledged: openAiTransportAcknowledged),
             EvidenceForExternal(
                 google,
                 googleAccepted,
@@ -177,6 +221,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
             receipts.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted)
                 .Select(row => row.SentUtc).Max(),
             accepted > 0 ? acceptanceEvidence :
-                mappingReady ? "not_observed" : "conversion_mapping_not_ready");
+                mappingReady ? "not_observed" : "conversion_mapping_not_ready",
+            TransportAcknowledged: receipts.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted));
 
 }

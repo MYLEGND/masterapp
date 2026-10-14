@@ -5404,11 +5404,12 @@ function escapeHtml(value) {
       const row = document.getElementById(`marketing-setup-${provider}-evidence`);
       const values = { connected: connected ? 'Yes' : 'No', configured: configured ? 'Yes' : 'No',
         attempted: Number(item.attempted || 0).toLocaleString(),
-        accepted: Number(item.accepted || 0) > 0 ? Number(item.accepted).toLocaleString() : 'Not observed',
+        accepted: provider === 'openai' ? 'Unverified'
+          : Number(item.accepted || 0) > 0 ? Number(item.accepted).toLocaleString() : 'Not observed',
         attribution: item.attributionObserved ? 'Reference observed' : 'Not observed' };
       Object.entries(values).forEach(([key, value]) => { const cell = row?.querySelector(`[data-evidence="${key}"]`); if (cell) cell.textContent = value; });
       const detail = document.getElementById(`marketing-setup-${provider}-receipt-evidence`);
-      if (detail) detail.textContent = `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
+      if (detail) detail.textContent = (provider === 'openai' ? `Transport acknowledged: ${Number(item.transportAcknowledged || 0).toLocaleString()} · Provider acceptance unverified · ` : '') + `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
     }
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
@@ -5435,7 +5436,7 @@ function escapeHtml(value) {
       if (openAi.reviewStatus === 'in_review' || openAi.accountStatus !== 'active' ||
           openAiHealth.status === 'retrying' || !openAi.pixelConfigured || !openAi.conversionsApiConfigured ||
           Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0) return 'warn';
-      return Number(payload.evidence?.openAi?.accepted || 0) > 0 ? 'good' : 'neutral';
+      return Number(payload.evidence?.openAi?.transportAcknowledged || 0) > 0 ? 'good' : 'neutral';
     };
     const openAiStatus = document.getElementById('marketing-setup-openai-account');
     if (openAiStatus) {
@@ -5508,7 +5509,7 @@ function escapeHtml(value) {
         : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
         : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
         : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
-        : Number(evidence.openAi?.accepted || 0) > 0 ? 'Provider acceptance observed · attribution shown separately'
+        : Number(evidence.openAi?.transportAcknowledged || 0) > 0 ? 'Transport acknowledged · provider acceptance and downstream attribution unverified'
         : 'Configured connection · awaiting delivery evidence';
       applySeverity(openAiAction.closest('.marketing-setup-secure-row'), severityForOpenAi());
     }
@@ -6192,7 +6193,7 @@ function escapeHtml(value) {
         ['Spend', marketingManagerMoney(row.spend)],
         ['Customers', marketingManagerNumber(row.customersAcquired)],
         ['Cost / customer', marketingManagerMoney(row.costPerCustomer)],
-        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['Recorded revenue', marketingManagerMoney(row.revenue)],
         ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`],
         ['Pipeline', marketingManagerMoney(row.pipelineValue)]
       ]) {
@@ -6795,8 +6796,9 @@ function escapeHtml(value) {
   }
 
   function marketingManagerNumber(value) {
-    const n = Number(value || 0);
-    return Number.isFinite(n) ? n.toLocaleString() : '0';
+    if (value == null) return 'Unavailable';
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toLocaleString() : 'Unavailable';
   }
 
   function channelLabel(channel) {
@@ -6848,7 +6850,7 @@ function escapeHtml(value) {
         ['Qualified', marketingManagerNumber(row.qualifiedLeads)],
         ['Appointments', marketingManagerNumber(row.appointments)],
         ['Customers', marketingManagerNumber(row.customers)],
-        ['Revenue', marketingManagerMoney(row.revenue)],
+        ['Recorded revenue', marketingManagerMoney(row.revenue)],
         ['ROAS', row.roas == null ? 'Unavailable' : `${Number(row.roas).toFixed(2)}x`]
       ];
       for (const [label, value] of values) {

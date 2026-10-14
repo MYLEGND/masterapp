@@ -46,7 +46,7 @@ public sealed class LaunchAuditReliabilityTests
         });
         Assert.Equal(accepted, result.Sent);
         Assert.Equal(retryable, result.Retryable);
-        authority.Verify(x => x.Complete(It.IsAny<MetaSendAuthorityDecision>(), accepted), Times.Once);
+        authority.Verify(x => x.Complete(It.IsAny<MetaSendAuthorityDecision>(), It.Is<MetaConversionsApiResult>(result => result.Sent == accepted), It.IsAny<MetaConversionsApiEventRequest>()), Times.Once);
     }
 
     [Fact]

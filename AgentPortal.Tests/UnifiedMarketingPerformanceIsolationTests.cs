@@ -91,7 +91,7 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         Assert.Equal(125m, result.ChatGptAdsOutcomes.Revenue);
         foreach (var row in result.Channels.Where(x => x.Channel is MarketingChannels.ChatGptAds or MarketingChannels.MetaAds))
         {
-            Assert.Null(row.Spend); Assert.Null(row.Roas);
+            Assert.Null(row.Spend); Assert.Null(row.Roas); Assert.Null(row.Clicks); Assert.Null(row.Impressions);
         }
         var performance = new Mock<IUnifiedMarketingPerformanceService>();
         performance.Setup(x => x.GetAsync(owner, scope, range, It.IsAny<CancellationToken>())).ReturnsAsync(result);
@@ -100,7 +100,7 @@ public sealed class UnifiedMarketingPerformanceIsolationTests
         analytics.Verify(x => x.LoadAttributedEventsAsync(range, scope, TrafficType.All, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(1, economics.CustomersAcquired);
         Assert.Null(economics.TotalMarketingSpend); Assert.Null(economics.BlendedRoas); Assert.Null(economics.CostPerCustomer);
-        Assert.Equal(4, result.DataQualityNotes.Count);
+        Assert.Equal(5, result.DataQualityNotes.Count);
         Assert.Contains(result.DataQualityNotes, note =>
             note.Contains("ChatGPT Ads delivery metrics are temporarily unavailable", StringComparison.Ordinal));
         Assert.Contains(result.DataQualityNotes, note =>

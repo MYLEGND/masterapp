@@ -128,7 +128,7 @@ public sealed class ScopedMarketingMeasurementTests
                 sourceAnalyticsEventId = source.Id, metaServerAttempted = true, metaServerEventsReceived = 1, metaServerPixelId = "meta-" + owner.Key }) });
         await f.Db.SaveChangesAsync();
         var result = await service.GetAsync(owner);
-        Assert.False(result.ReceivingEvents); Assert.Equal(0, result.Meta.Accepted); Assert.Equal(0, result.OpenAi.Accepted);
+        Assert.False(result.ReceivingEvents); Assert.Equal(0, result.Meta.Accepted); Assert.Equal(0, result.OpenAi.Accepted); Assert.Equal(0, result.OpenAi.TransportAcknowledged);
         Assert.False(result.Meta.AttributionObserved); Assert.False(result.OpenAi.AttributionObserved);
     }
 
@@ -154,7 +154,7 @@ public sealed class ScopedMarketingMeasurementTests
                 metaServerDispatchedUtc = DateTime.UtcNow }) });
         await f.Db.SaveChangesAsync();
         var result = await new MarketingMeasurementEvidenceService(f.Db, f.Configuration, f.Meta, f.OpenAi).GetAsync(owner);
-        Assert.True(result.ReceivingEvents); Assert.Equal(1, result.Meta.Accepted); Assert.Equal(1, result.OpenAi.Accepted);
+        Assert.True(result.ReceivingEvents); Assert.Equal(1, result.Meta.Accepted); Assert.Equal(0, result.OpenAi.Accepted); Assert.Equal(1, result.OpenAi.TransportAcknowledged);
         Assert.Equal(paid, result.Meta.AttributionObserved); Assert.Equal(paid, result.OpenAi.AttributionObserved);
         Assert.Equal("events_received", result.Meta.AcceptanceEvidence);
         Assert.Equal("http_accepted", result.OpenAi.AcceptanceEvidence);
@@ -179,7 +179,8 @@ public sealed class ScopedMarketingMeasurementTests
                 metaServerPixelId = "meta-" + owner.Key }) });
         await f.Db.SaveChangesAsync();
         var evidence = new MarketingMeasurementEvidenceService(f.Db, f.Configuration, f.Meta, f.OpenAi);
-        Assert.Equal(1, (await evidence.GetAsync(owner)).OpenAi.Accepted);
+        Assert.Equal(0, (await evidence.GetAsync(owner)).OpenAi.Accepted);
+        Assert.Equal(1, (await evidence.GetAsync(owner)).OpenAi.TransportAcknowledged);
         Assert.Equal(1, (await evidence.GetAsync(owner)).Meta.Accepted);
         await f.Meta.SaveSettingsAsync(owner, "987654", null, null, (await f.Meta.GetStatusAsync(owner))!.Revision);
         var old = await f.OpenAi.GetAsync(owner);
@@ -190,7 +191,7 @@ public sealed class ScopedMarketingMeasurementTests
             Status = "permanent_failure", CreatedUtc = DateTime.UtcNow.AddDays(-60) });
         await f.Db.SaveChangesAsync();
         var current = await evidence.GetAsync(owner);
-        Assert.True(current.ReceivingEvents); Assert.Equal(0, current.Meta.Accepted); Assert.Equal(0, current.OpenAi.Accepted);
+        Assert.True(current.ReceivingEvents); Assert.Equal(0, current.Meta.Accepted); Assert.Equal(0, current.OpenAi.Accepted); Assert.Equal(0, current.OpenAi.TransportAcknowledged);
         using var client = new HttpClient(new UnavailableHandler());
         var health = await new OpenAiMeasurementHealthService(f.Db, f.OpenAi, client).GetAsync(owner);
         Assert.Equal("configured_no_delivery_evidence", health.Status);

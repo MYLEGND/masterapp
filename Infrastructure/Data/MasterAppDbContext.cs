@@ -1657,7 +1657,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ProviderReceiptJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
             e.Property(x => x.ErrorCode).HasMaxLength(120);
             e.Property(x => x.ErrorMessage).HasMaxLength(4000);
-            e.Property(x => x.ClaimToken).HasMaxLength(64);
+            e.Property(x => x.ClaimToken).HasMaxLength(64).IsConcurrencyToken();
             e.HasIndex(x => new { x.OwnerKey, x.Provider, x.Channel, x.CanonicalEventId, x.ProviderEventName }).IsUnique();
             e.HasIndex(x => new { x.Provider, x.Status, x.NextAttemptUtc });
             e.HasIndex(x => x.ClaimExpiresUtc);

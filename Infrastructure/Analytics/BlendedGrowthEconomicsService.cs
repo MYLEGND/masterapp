@@ -39,8 +39,7 @@ public sealed class BlendedGrowthEconomicsService(
                 g => new
                 {
                     Customers = CanonicalMarketingOutcomeProjection.CustomerCount(g.Select(x => x.Row)),
-                    Revenue = g.Where(x => CanonicalMarketingOutcomeProjection.IsCustomer(x.Row.EventType))
-                        .Sum(x => CanonicalMarketingOutcomeProjection.ReadMoney(x.Row.MetadataJson)),
+                    Revenue = CanonicalMarketingOutcomeProjection.RecordedRevenue(g.Select(x => x.Row)),
                     Pipeline = CanonicalMarketingOutcomeProjection.PipelineValue(g.Select(x => x.Row))
                 },
                 StringComparer.OrdinalIgnoreCase);
@@ -59,7 +58,7 @@ public sealed class BlendedGrowthEconomicsService(
 
             var spend = delivery?.Spend;
             var customers = outcome?.Customers ?? delivery?.Customers ?? 0;
-            var revenue = outcome?.Revenue ?? delivery?.Revenue ?? 0m;
+            var revenue = outcome is not null ? outcome.Revenue : delivery is not null ? delivery.Revenue : 0m;
             var pipeline = outcome?.Pipeline ?? 0m;
 
             rows.Add(new(
@@ -68,7 +67,7 @@ public sealed class BlendedGrowthEconomicsService(
                 customers,
                 customers > 0 && spend.HasValue ? Math.Round(spend.Value / customers, 2) : (decimal?)null,
                 revenue,
-                spend > 0 ? Math.Round(revenue / spend.Value, 2) : (decimal?)null,
+                spend > 0 && revenue.HasValue ? Math.Round(revenue.Value / spend.Value, 2) : (decimal?)null,
                 pipeline,
                 delivery?.AttributionBasis ?? "Canonical analytics + CRM outcome lineage"));
         }
@@ -81,7 +80,7 @@ public sealed class BlendedGrowthEconomicsService(
 
         decimal? totalSpend = rows.All(x => x.Spend.HasValue) ? rows.Sum(x => x.Spend) : null;
         var totalCustomers = CanonicalMarketingOutcomeProjection.CustomerCount(CanonicalMarketingOutcomeProjection.ConfirmedOutcomes(events));
-        var totalRevenue = rows.Sum(x => x.Revenue);
+        decimal? totalRevenue = rows.All(x => x.Revenue.HasValue) ? rows.Sum(x => x.Revenue) : null;
         var totalPipeline = rows.Sum(x => x.PipelineValue);
 
         var notes = new List<string>(unified.DataQualityNotes)
@@ -99,7 +98,7 @@ public sealed class BlendedGrowthEconomicsService(
             totalCustomers,
             totalCustomers > 0 && totalSpend.HasValue ? Math.Round(totalSpend.Value / totalCustomers, 2) : (decimal?)null,
             totalRevenue,
-            totalSpend > 0 ? Math.Round(totalRevenue / totalSpend.Value, 2) : (decimal?)null,
+            totalSpend > 0 && totalRevenue.HasValue ? Math.Round(totalRevenue.Value / totalSpend.Value, 2) : (decimal?)null,
             totalPipeline,
             rows,
             notes);

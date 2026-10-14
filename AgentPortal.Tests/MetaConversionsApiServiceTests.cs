@@ -41,7 +41,7 @@ public class MetaConversionsApiServiceTests
         Assert.Equal(retryable,result.Retryable);
         Assert.Equal("synthetic-pixel",result.PixelId);
         Assert.Contains("synthetic-pixel/events",handler.Uri);
-        authority.Verify(x=>x.Complete(It.IsAny<MetaSendAuthorityDecision>(),accepted),Times.Once);
+        authority.Verify(x=>x.Complete(It.IsAny<MetaSendAuthorityDecision>(), It.Is<MetaConversionsApiResult>(result => result.Sent == accepted), It.IsAny<MetaConversionsApiEventRequest>()),Times.Once);
     }
 
     private sealed class SyntheticResponseHandler(int status,string body) : HttpMessageHandler
