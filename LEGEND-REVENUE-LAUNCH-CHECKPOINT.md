@@ -1,5 +1,5 @@
 # LEGEND revenue-launch checkpoint
-Updated: 2026-10-14 (America/Phoenix). Isolated push/PR validation contract repair: focused source verification complete; exact Astra acceptance and remote identity recorded in the session handoff. Full release readiness remains separately gated. Prior evidence and commits are preserved below.
+Updated: 2026-10-14 (America/Phoenix). Exact CI compilation recovery: actual AgentPortal.Tests build passed with zero errors; all 98 affected tests passed. Exact Astra acceptance and verified remote identity are recorded in the session handoff. Full current-candidate GitHub CI and release readiness remain separately gated.
 
 ## Authority and continuation
 Repository: MYLEGND/masterapp. Release authority: Legend/fast-track-release.
@@ -660,3 +660,32 @@ handoff. NEXT: prove architecture/security/isolated exact-candidate checks on a 
 PR, resolve the existing readiness producer/Production boundary and OIDC proof, then
 complete separately authorized governance and safe legacy retirement. No ruleset or
 Production edits, live workflow retirement, merge, deployment or credential changes.
+
+## Exact CI compilation recovery — 2026-10-14 (America/Phoenix)
+
+Resumed clean local/remote8ce904ac4f9af07dac050ed87f9094ae1c7e5f97 through canonical
+preflight; authenticated Git transport available. Authenticated failed-run38527581037
+log confirmed CS0246 Task/Task<T>/Guid errors in the five named test files. The actual
+test project does not enable implicit usings. Astra verified the cause and prescribed
+file-local BCL imports; Codex added exactly23 using lines in BusinessInquiryNotificationTests,
+RecordedRevenueTruthTests, UnifiedMarketingAvailabilityTests, WebsiteLeadAppNotificationTests
+and WebsiteLeadNotificationRecoveryTests. No assertions, test logic, project configuration,
+production source or validation/release authority changed. This checkpoint is the only
+additional affected file. No further compiler errors required correction.
+
+Actual project verification (existing .NET SDK10.0.101):
+`dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -m:1 -nr:false -p:UseSharedCompilation=false`
+succeeded with0errors and1 existing nullable warning CS8620 in
+LegendFounderAiContractTests.cs:718. No project-wide import override or substitute test
+project was used. The actual compiled project then ran with --no-build --no-restore,
+filtered to the five affected classes:98passed,0failed,0skipped. Temporary build/TRX
+logs are execution evidence, not durable backup. Existing tests/assertions remain the
+committed reproducer; compatible prior validation remains available to its canonical owner.
+
+Astra independently reviews this exact six-file diff and compiler/test evidence before
+normal non-force isolation push. Obtain accepted commit and remote readback from Git
+history/session handoff. Local success does not declare GitHub CI green: the current
+candidate must report success on GitHub. Prior readiness, governed PR evidence,
+Production/OIDC compatibility and legacy retirement requirements remain unchanged.
+No ruleset, environment, Azure/LEGEND AI binding, migration, merge, deploy or production
+mutation occurred. Stop after focused repair and exact remote preservation.
