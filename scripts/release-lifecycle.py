@@ -602,6 +602,7 @@ def candidate_control_plane_integrity(api, pr, names):
         validation_tree = ast.parse(source['validation'])
         lifecycle_tree = ast.parse(source['lifecycle'])
         deployment_tree = ast.parse(source['deployment'])
+        migration_tree = ast.parse(source['migration'])
         renderer_tree = ast.parse(source['workflow_renderer'])
     except (RuntimeError, SyntaxError):
         return 'Candidate release-control authority cannot be parsed from exact head'
@@ -618,7 +619,54 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate changed the sole approved direct-release workflow authority'
     if assignments.get('READINESS_SCHEMA') != 1:
         return 'Candidate removed the activated early readiness authority'
-    for name in ('cmd_plan', 'cmd_package_canary_plan', 'cmd_step5_decision'):
+    # Accept only the reviewed router and its early legacy readiness gate.
+    expected_router = ast.parse("""def cmd_plan(args):
+    base = getattr(args, 'validation_base', TRUSTED_PR_BASE)
+    if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:
+        raise ValueError('Unsupported validation base')
+    scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None
+    with _validation_base_scope(base):
+        return _cmd_plan(args, source_scope=scope)
+""").body[0]
+    expected_worker = ast.parse("""def _cmd_plan(args, *, source_scope=None):
+    if source_scope is None:
+        require_readiness(args.repository, args.current_sha, event=getattr(args, 'event', None))
+""").body[0]
+    routers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'cmd_plan']
+    workers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == '_cmd_plan']
+    if len(routers) != 1 or ast.dump(routers[0]) != ast.dump(expected_router):
+        return 'Candidate bypassed early readiness through validation routing'
+    if (len(workers) != 1 or workers[0].decorator_list or
+        ast.dump(workers[0].args) != ast.dump(expected_worker.args) or
+        not workers[0].body or
+        ast.dump(workers[0].body[0]) != ast.dump(expected_worker.body[0])):
+        return 'Candidate bypassed early readiness before validation or package planning'
+    # The wrapper is the sole worker caller; the CLI must bind to the wrapper.
+    worker_refs = [node for node in ast.walk(validation_tree)
+                   if isinstance(node, ast.Name) and node.id == '_cmd_plan']
+    bindings = [node for node in ast.walk(validation_tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and
+                isinstance(node.func.value, ast.Name) and node.func.value.id == 'plan' and
+                node.func.attr == 'set_defaults']
+    expected_binding = ast.parse('plan.set_defaults(func=cmd_plan)').body[0].value
+    if (len(worker_refs) != 1 or len(bindings) != 1 or
+        ast.dump(bindings[0]) != ast.dump(expected_binding)):
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    parsers = [node for node in validation_tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'build_parser']
+    expected_parser = ast.parse("plan = sub.add_parser('plan')").body[0]
+    if len(parsers) != 1:
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    plan_assignments = [node for node in ast.walk(parsers[0])
+                        if isinstance(node, ast.Assign) and any(
+                            isinstance(target, ast.Name) and target.id == 'plan' for target in node.targets)]
+    if (len(plan_assignments) != 1 or ast.dump(plan_assignments[0]) != ast.dump(expected_parser) or
+        plan_assignments[0] not in parsers[0].body or
+        not any(isinstance(node, ast.Expr) and node.value is bindings[0] for node in parsers[0].body)):
+        return 'Candidate bypassed early readiness through validation entrypoint'
+    for name in ('cmd_package_canary_plan', 'cmd_step5_decision'):
         function = next((node for node in validation_tree.body
                          if isinstance(node, ast.FunctionDef) and node.name == name), None)
         statement = function.body[0] if function and function.body else None
@@ -815,10 +863,35 @@ def candidate_control_plane_integrity(api, pr, names):
     )):
         return 'Candidate weakened authenticated canonical release execution guard'
 
+    expected_dispatch = ast.parse("""def assert_release_execution():
+    if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:
+        return assert_fast_track_release_execution()
+    return assert_protected_release_execution()
+""").body[0]
+    dispatchers = [node for node in validation_tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name == 'assert_release_execution']
+    if len(dispatchers) != 1:
+        return 'Candidate weakened canonical release execution dispatcher'
+    dispatcher = dispatchers[0]
+    if (dispatcher.body and isinstance(dispatcher.body[0], ast.Expr) and
+        isinstance(dispatcher.body[0].value, ast.Constant) and
+        isinstance(dispatcher.body[0].value.value, str)):
+        dispatcher.body = dispatcher.body[1:]
+    if ast.dump(dispatcher) != ast.dump(expected_dispatch):
+        return 'Candidate weakened canonical release execution dispatcher'
+    main_test = ast.parse("__name__ == '__main__'", mode='eval').body
+    entrypoints = [node for node in migration_tree.body
+                   if isinstance(node, ast.If) and ast.dump(node.test) == ast.dump(main_test)]
+    migration_gate = ast.parse('release_authority().assert_release_execution()').body[0]
+    if (len(entrypoints) != 1 or not entrypoints[0].body or
+        not isinstance(entrypoints[0].body[0], ast.Try) or
+        not entrypoints[0].body[0].body or
+        ast.dump(entrypoints[0].body[0].body[0]) != ast.dump(migration_gate)):
+        return 'Candidate migration mutation authority lost protected release execution guard'
     guarded_sources = {
         'deployment': '_RELEASE_AUTHORITY.assert_protected_release_execution()',
         'prepublication': 'release_authority().assert_protected_release_execution()',
-        'migration': 'release_authority().assert_protected_release_execution()',
+        'migration': 'release_authority().assert_release_execution()',
         'founder_cloudflare': 'release_authority().assert_protected_release_execution()',
         'auxiliary': 'release_authority().assert_protected_release_execution()',
         'router': "load('validation-resume').assert_protected_release_execution()",
@@ -1063,10 +1136,14 @@ def candidate_control_plane_integrity(api, pr, names):
         return 'Candidate architecture validator allows package/probe work before approved-head preflight'
 
     security_trigger = source['security_workflow'].split('concurrency:', 1)[0]
-    if 'pull_request:' not in security_trigger or 'branches: [legend/approved-changes]' not in security_trigger:
-        return 'Candidate security validation no longer covers approved-branch pull requests'
     if '\n    paths:' in security_trigger or '\n    paths-ignore:' in security_trigger:
         return 'Candidate security validation can be skipped by release-control path filtering'
+    if not re.fullmatch(
+        r'name: [^\n]+\n+on:\n  pull_request:\n'
+        r'    branches: \[legend/approved-changes, Legend/fast-track-release\]\n\s*',
+        security_trigger,
+    ):
+        return 'Candidate security validation no longer covers approved and fast-track pull requests'
     return None
 
 

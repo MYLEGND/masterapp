@@ -414,6 +414,91 @@ class ReleaseControlIntegrityGuard(unittest.TestCase):
         self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
             Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
 
+    def test_validation_router_rejects_readiness_bypasses(self):
+        mutations = {
+            'wrong-base': ("base = getattr(args, 'validation_base', TRUSTED_PR_BASE)", "base = FAST_TRACK_PR_BASE"),
+            'missing-base-allowlist': ("if base not in {TRUSTED_PR_BASE, FAST_TRACK_PR_BASE}:", "if False:"),
+            'unvalidated-scope': ("scope = fast_track_source_validation_scope(args) if base == FAST_TRACK_PR_BASE else None", "scope = {}"),
+            'missing-context': ("with _validation_base_scope(base):", "if True:"),
+            'wrong-forwarded-scope': ("return _cmd_plan(args, source_scope=scope)", "return _cmd_plan(args, source_scope={})"),
+            'worker-default-bypass': ("def _cmd_plan(args, *, source_scope=None):", "def _cmd_plan(args, *, source_scope={}):"),
+            'inverted-readiness': ("    if source_scope is None:", "    if source_scope is not None:"),
+            'removed-readiness': ('        require_readiness(args.repository, args.current_sha, event=getattr(args, "event", None))', '        pass'),
+            'delayed-readiness': ("def _cmd_plan(args, *, source_scope=None):", "def _cmd_plan(args, *, source_scope=None):\n    plan = None"),
+            'direct-cli': ("plan.set_defaults(func=cmd_plan)", "plan.set_defaults(func=_cmd_plan)"),
+        }
+        original = Api().text('b' * 40, 'scripts/validation-resume.py')
+        for label, (old, new) in mutations.items():
+            with self.subTest(label=label):
+                self.assertEqual(1, original.count(old), 'Mutation must hit its exact target')
+                changed = original.replace(old, new)
+                class Drift(Api):
+                    def text(self, revision, path):
+                        return changed if path == 'scripts/validation-resume.py' else super().text(revision, path)
+                self.assertIn('bypassed early readiness', m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_validation_worker_cannot_gain_another_caller(self):
+        class Drift(Api):
+            def text(self, revision, path):
+                source = super().text(revision, path)
+                if path == 'scripts/validation-resume.py':
+                    source += "\ndef bypass(args):\n    return _cmd_plan(args, source_scope={})\n"
+                return source
+        self.assertIn('validation entrypoint', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_migration_entrypoint_and_dispatcher_reject_bypasses(self):
+        mutations = [
+            ('scripts/release-migration.py', '        release_authority().assert_release_execution()', '        pass'),
+            ('scripts/release-migration.py', '        release_authority().assert_release_execution()', '        import sys\n        release_authority().assert_release_execution()'),
+            ('scripts/validation-resume.py', "if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:", 'if True:'),
+            ('scripts/validation-resume.py', "if os.environ.get('GITHUB_REF') == 'refs/heads/' + FAST_TRACK_PR_BASE:", "if os.environ.get('GITHUB_REF') != 'refs/heads/' + FAST_TRACK_PR_BASE:"),
+            ('scripts/validation-resume.py', '    return assert_protected_release_execution()', '    return None'),
+        ]
+        for path, old, new in mutations:
+            with self.subTest(path=path, replacement=new):
+                original = Api().text('b' * 40, path)
+                self.assertEqual(1, original.count(old))
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return original.replace(old, new) if requested == path else super().text(revision, requested)
+                reason = m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, [path])
+                self.assertIn('release execution', reason)
+
+    def test_validation_cli_binding_cannot_be_an_unrelated_decoy(self):
+        original = Api().text('b' * 40, 'scripts/validation-resume.py')
+        old = '    plan.set_defaults(func=cmd_plan)'
+        self.assertEqual(1, original.count(old))
+        changed = original.replace(old, '    pass')
+        changed += "\ndef decoy():\n    plan.set_defaults(func=cmd_plan)\n"
+        class Drift(Api):
+            def text(self, revision, path):
+                return changed if path == 'scripts/validation-resume.py' else super().text(revision, path)
+        self.assertIn('validation entrypoint', m.candidate_control_plane_integrity(
+            Drift(), {'head': {'sha': 'b' * 40}}, ['scripts/validation-resume.py']))
+
+    def test_security_trigger_requires_both_release_branches_without_filters(self):
+        path = '.github/workflows/approved-release-security-validation.yml'
+        original = Api().text('b' * 40, path)
+        branches = '    branches: [legend/approved-changes, Legend/fast-track-release]'
+        self.assertEqual(1, original.count(branches))
+        mutations = [
+            original.replace(branches, '    branches: [Legend/fast-track-release]'),
+            original.replace(branches, '    branches: [legend/approved-changes]'),
+            original.replace('  pull_request:', '  pull_request_target:'),
+            original.replace(branches, branches + '\n    paths: [scripts/**]'),
+            original.replace(branches, branches + '\n    paths-ignore: [scripts/**]'),
+        ]
+        for changed in mutations:
+            with self.subTest(trigger=changed.split('concurrency:', 1)[0]):
+                class Drift(Api):
+                    def text(self, revision, requested):
+                        return changed if requested == path else super().text(revision, requested)
+                self.assertIn('Candidate security validation', m.candidate_control_plane_integrity(
+                    Drift(), {'head': {'sha': 'b' * 40}}, [path]))
+
     def test_activated_readiness_cannot_be_removed_to_reenter_bootstrap(self):
         class Drift(Api):
             def text(self, revision, path):
