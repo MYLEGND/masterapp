@@ -11,13 +11,15 @@ function implementation(name) {
 }
 function fixture({height=900,top=200,footerTop=1000,contentTop=220,viewport,impersonation,mobile=false}={}) {
   const values=new Map();let writes=0;const attributes={};
+  const sheetValues=new Map();
+  const sheets=[{style:{setProperty:(name,value)=>sheetValues.set(name,value)}}];
   const element=(rect)=>({getBoundingClientRect:()=>rect});
-  const context={window:{innerHeight:height,visualViewport:viewport,matchMedia:()=>({matches:mobile})},
-    document:{documentElement:{style:{getPropertyValue:name=>values.get(name),setProperty:(name,value)=>{values.set(name,value);writes++;}},setAttribute:(key,value)=>attributes[key]=value}},
+  const context={assert,window:{innerHeight:height,visualViewport:viewport,matchMedia:()=>({matches:mobile})},
+    document:{querySelectorAll:selector=>{assert.equal(selector,'[data-legend-mobile-sheet]');return sheets;},documentElement:{style:{getPropertyValue:name=>values.get(name),setProperty:(name,value)=>{values.set(name,value);writes++;}},setAttribute:(key,value)=>attributes[key]=value}},
     header:element({top:0,bottom:top,height:top}),footer:element({top:footerTop,bottom:footerTop+60,height:60}),content:element({top:contentTop}),impersonation:impersonation?element(impersonation):null};
   vm.createContext(context);
-  for(const name of ['writeVariable','syncViewportOffsets'])vm.runInContext(implementation(name),context);
-  return {context,values,attributes,writes:()=>writes,refresh:()=>context.syncViewportOffsets(),number:key=>parseFloat(values.get(key))};
+  for(const name of ['writeVariable','syncMobileSheetViewport','syncViewportOffsets'])vm.runInContext(implementation(name),context);
+  return {context,values,sheetValues,attributes,writes:()=>writes,refresh:()=>context.syncViewportOffsets(),number:key=>parseFloat(values.get(key))};
 }
 test('dialog region begins below banner/content and excludes visible footer',()=>{
   const f=fixture({footerTop:820});f.refresh();
@@ -25,6 +27,8 @@ test('dialog region begins below banner/content and excludes visible footer',()=
   assert.equal(f.number('--legend-modal-safe-height'),552);
   assert.equal(f.number('--legend-modal-area-end'),104);
   assert.equal(f.number('--legend-modal-safe-center'),520);
+  assert.equal(f.sheetValues.get('--legend-mobile-sheet-height'),'900px');
+  assert.equal(f.sheetValues.get('--legend-mobile-sheet-bottom'),'0px');
 });
 test('offscreen footer never wastes visible workspace and scrolled header clears',()=>{
   const f=fixture({top:0,contentTop:-600,footerTop:1400});f.refresh();
@@ -36,6 +40,8 @@ test('keyboard/visual viewport bounds clamp height without a 280px minimum',()=>
   assert.equal(f.number('--legend-modal-area-start'),310);
   assert.equal(f.number('--legend-modal-safe-height'),20);
   assert.equal(f.number('--legend-modal-area-end'),570);
+  assert.equal(f.sheetValues.get('--legend-mobile-sheet-height'),'240px');
+  assert.equal(f.sheetValues.get('--legend-mobile-sheet-bottom'),'560px');
 });
 test('banner filling short viewport yields zero available height rather than overflow',()=>{
   const f=fixture({height:300,top:500,contentTop:520,mobile:true});f.refresh();
@@ -495,9 +501,16 @@ test('mobile conversational composers own the visual viewport and stay compact a
 
   assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(button, \.btn, a\.btn\)/);
   assert.match(shared,/\.modal:not\(\.legend-founder-ai-modal\) :is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\), select, textarea\)/);
-  assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-command-center-grid \{[\s\S]*?minmax\(120px, 0\.24fr\)/);
-  assert.match(shared,/@media \(max-width: 600px\) \{[\s\S]*?\.messaging-send-form \{[\s\S]*?border-radius: 22px;/);
-  assert.match(shared,/\.messaging-send-form textarea \{[\s\S]*?min-height: 64px;[\s\S]*?max-height: min\(320px, 38dvh\);/);
+  const messagingStart=shared.indexOf('@media (max-width: 900px) {\n    .messaging-command-center-window.legend-conversation-shell');
+  assert(messagingStart>=0);
+  const messagingEnd=shared.indexOf('\n@media',messagingStart+1);
+  const messagingMobile=shared.slice(messagingStart,messagingEnd<0?undefined:messagingEnd);
+  assert.match(messagingMobile,/\.messaging-command-center-grid \{[^}]*position: relative;[^}]*display: block;[^}]*flex: 1 1 0;[^}]*height: auto;[^}]*overflow: hidden;/);
+  assert.match(messagingMobile,/\.messaging-command-center-sidebar \{[^}]*position: absolute;[^}]*transform: translateX\(-103%\);/);
+  assert.match(messagingMobile,/\.messaging-command-center-modal\.is-sidebar-open \.messaging-command-center-sidebar \{\s*transform: translateX\(0\);/);
+  assert.match(messagingMobile,/\.messaging-send-form \{[^}]*flex: 0 0 auto;[^}]*border-radius: 0;/);
+  assert.match(messagingMobile,/\.messaging-send-form textarea \{[^}]*min-height: 40px;[^}]*max-height: min\(112px,20dvh\);[^}]*overflow-y: auto;[^}]*border-radius: 22px;/);
+  assert.match(shared,/\.messaging-send-form textarea \{[^}]*min-height: 76px;[^}]*max-height: 180px;/);
   assert.match(messagingJs,/function resizeMessageComposer\(\)[\s\S]*?Math\.round\(viewportHeight \* 0\.38\)/);
   assert.match(messagingJs,/elements\.messageBody\.addEventListener\('input',[\s\S]*?resizeMessageComposer\(\)/);
   assert.match(messagingJs,/event\.key === 'Enter'[\s\S]{0,180}!event\.shiftKey[\s\S]{0,180}!window\.matchMedia\('\(max-width: 600px\)'\)\.matches/);
@@ -872,7 +885,7 @@ test('conversation modal content never inherits standalone quick-view centering 
   assert.match(desktop,/\[data-legend-mobile-sheet\]:not\(\.modal-content\)/);
   assert.doesNotMatch(desktop,/\[data-legend-mobile-sheet\](?:\.open)?\s*\{/);
   assert.doesNotMatch(css,/\[aria-label\^="Close" i\]/);
-  assert.match(css,/\[data-legend-mobile-sheet\]:not\(\.modal-content\) :is\(button/);
+  assert.match(css,/\[data-legend-mobile-sheet\]:not\(\.modal-content\):not\(\.legend-conversation-shell\) :is\(button/);
   assert.doesNotMatch(css,/\.legend-founder-ai-modal button/);
 });
 

@@ -1207,5 +1207,12 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'FIXTURE_SCOPE_UNPROVEN'):
             self.invoke(fixture_kw=dict(path=path))
 
+    def test_only_accepted_mobile_fixture_blob_is_admitted(self):
+        path='tests/layout/modal-content-region.test.mjs'
+        proof=self.invoke(fixture_kw=dict(path=path,blob='c21b130bda415433686f01ece3111afe52aa217a'))
+        self.assertFalse(proof['productionEligible']); self.assertFalse(proof['authorizesMutation'])
+        with self.assertRaisesRegex(ValueError,'MOBILE_FIXTURE_SCOPE_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path=path))
+
 if __name__ == '__main__':
     unittest.main()

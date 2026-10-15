@@ -50,6 +50,7 @@ TRUSTED_TOOL_PATHS = frozenset({
     'AgentPortal.Tests/AgentPortal.Tests.csproj',
     'scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj',
     'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs',
+    'tests/layout/modal-content-region.test.mjs',
     'scripts/deploy-approved-app.py',
     '.github/workflows/masterapp-platform-architecture-validation.yml',
     '.github/workflows/parfait-isolated-validation.yml',
@@ -153,6 +154,10 @@ def trusted_tool_promotion(before, revision, admission):
     fixture = 'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs'
     if fixture in files and files[fixture]['blob'] != 'a380649c2168e7e67b391be1147ecc40b55c0024':
         raise ValueError('TRUSTED_TOOL_PROMOTION_FIXTURE_SCOPE_UNPROVEN')
+    # Pin the accepted mobile harness correction; never admit arbitrary test changes.
+    mobile_fixture = 'tests/layout/modal-content-region.test.mjs'
+    if mobile_fixture in files and files[mobile_fixture]['blob'] != 'c21b130bda415433686f01ece3111afe52aa217a':
+        raise ValueError('TRUSTED_TOOL_PROMOTION_MOBILE_FIXTURE_SCOPE_UNPROVEN')
     request_entry = entry(revision, REQUEST)
     if request_entry['mode'] != entry(before, REQUEST)['mode']:
         raise ValueError('TRUSTED_TOOL_PROMOTION_REQUEST_MODE_CHANGED')
