@@ -132,6 +132,12 @@ public sealed class RuntimeDiagnosticsPublicWebsiteTests
         builder.Services.AddCors(options => options.AddPolicy("PublicWebsiteEditor", policy => policy
             .WithOrigins(origins).AllowAnyHeader().WithMethods("GET", "POST")));
         var app = builder.Build();
+        // Initialize the disposable store before exercising the bounded ingestion path.
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            await db.Database.EnsureCreatedAsync();
+        }
         app.UseRouting();
         app.UseWhen(context => context.Request.Path.StartsWithSegments(Endpoint),
             branch => branch.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
