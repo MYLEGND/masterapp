@@ -53,6 +53,125 @@ public sealed class LegendEngineeringControlPlaneTests : IAsyncDisposable
         Assert.Equal(100, LegendEngineeringPolicies.WeightedPriority(100, 100, 100, 100, 100, 100));
     }
 
+    [Fact]
+    public void AttestedFailedRelease_IsAnObservationAndNeverAnUndeployedLiveRepair()
+    {
+        var candidate = new string('a', 40);
+        var release = new FounderReleaseFailureEvidence(
+            37711890752, 523, candidate, new string('b', 40), "PREPUBLICATION");
+        var observedUtc = new DateTime(2026, 10, 8, 2, 0, 0, DateTimeKind.Utc);
+        var first = Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+            release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+            release.FailureStage, observedUtc);
+        var repeated = Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+            release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+            release.FailureStage, observedUtc);
+
+        Assert.Equal(first.DeduplicationKey, repeated.DeduplicationKey);
+        Assert.Equal(64, first.DeduplicationKey.Length);
+        Assert.Equal(candidate, first.GitCommitHash);
+        Assert.False(first.ReleaseVerified);
+        Assert.Null(first.SourceFilePath);
+        Assert.Equal("ReleaseObservation", first.Category);
+        Assert.Equal("RELEASE_PREPUBLICATION", first.ErrorName);
+        var decision = LegendEngineeringPolicies.Classify(first);
+        Assert.Equal(EngineeringRiskClass.TierC, decision.RiskClass);
+        Assert.False(decision.CodeRepairEligible);
+        Assert.Equal(EngineeringRole.HeadGpt, decision.AssignedRole);
+        // Tier C remains a security-review boundary; this is never an
+        // automatically repairable release-control source.
+        Assert.Throws<ArgumentException>(() =>
+            Infrastructure.Diagnostics.RuntimeDiagnosticStore.BuildAuthenticatedReleaseFailure(
+                release.RunId, release.SourcePullRequest, release.CandidateSha, release.AuthoritySha,
+                "PRIVATE_SECRET_PAYLOAD", observedUtc));
+    }
+
+    [Fact]
+    public void OnlyExactProtectedFailedReleaseMetadataPassesObservationAdmission()
+    {
+        var candidate = new string('a', 40);
+        var authority = new string('b', 40);
+        var valid = JsonSerializer.SerializeToElement(new
+        {
+            id = 37711890752L,
+            created_at = DateTimeOffset.UtcNow.ToString("O"),
+            @event = "workflow_dispatch",
+            status = "completed",
+            conclusion = "failure",
+            head_branch = "legend/approved-changes",
+            head_sha = authority,
+            head_repository = new { full_name = "MYLEGND/masterapp" },
+            path = ".github/workflows/all-intentional-direct-release-20260918.yml@refs/heads/legend/approved-changes",
+            display_title = $"LEGEND release pr=523 candidate={candidate} authority={authority}"
+        });
+        var accepted = FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            valid, "MYLEGND/masterapp", "legend/approved-changes");
+        Assert.NotNull(accepted);
+        Assert.Equal(candidate, accepted.CandidateSha);
+        Assert.Equal(523, accepted.SourcePullRequest);
+
+        foreach (var modified in new[]
+        {
+            "other-owner/masterapp",
+            "wrong-release-repository"
+        })
+        {
+            Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+                valid, modified, "legend/approved-changes"));
+        }
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            valid, "MYLEGND/masterapp", "production"));
+        using var forged = JsonDocument.Parse(JsonSerializer.Serialize(valid)
+            .Replace(authority, new string('c', 40), StringComparison.Ordinal)
+            .Replace($" authority={new string('c', 40)}", $" authority={authority}", StringComparison.Ordinal));
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            forged.RootElement, "MYLEGND/masterapp", "legend/approved-changes"));
+        var expired = JsonSerializer.SerializeToElement(new
+        {
+            id = 37711890752L, created_at = "2001-01-01T00:00:00Z",
+            @event = "workflow_dispatch", status = "completed", conclusion = "failure",
+            head_branch = "legend/approved-changes", head_sha = authority,
+            head_repository = new { full_name = "MYLEGND/masterapp" },
+            path = ".github/workflows/all-intentional-direct-release-20260918.yml",
+            display_title = $"LEGEND release pr=523 candidate={candidate} authority={authority}"
+        });
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            expired, "MYLEGND/masterapp", "legend/approved-changes"));
+        // Age validation does not permit missing timestamps either.
+        using var absent = JsonDocument.Parse(JsonSerializer.SerializeToElement(new
+        {
+            id = 37711890752L, @event = "workflow_dispatch",
+            status = "completed", conclusion = "failure",
+            head_branch = "legend/approved-changes", head_sha = authority,
+            head_repository = new { full_name = "MYLEGND/masterapp" },
+            path = ".github/workflows/all-intentional-direct-release-20260918.yml",
+            display_title = $"LEGEND release pr=523 candidate={candidate} authority={authority}"
+        }).ToString());
+        Assert.Null(FounderSoftwareRemediationService.ParseFailedRunMetadata(
+            absent.RootElement, "MYLEGND/masterapp", "legend/approved-changes"));
+    }
+
+    [Fact]
+    public void ReleaseStepClassification_UsesOnlyFixedKnownNames()
+    {
+        var observed = JsonSerializer.SerializeToElement(new
+        {
+            steps = new[]
+            {
+                new { name = "Synchronize canonical pre-publication resource lanes", conclusion = "failure" },
+                new { name = "Enforce complete direct deployment outcome", conclusion = "failure" }
+            }
+        });
+        Assert.Equal("PREPUBLICATION",
+            FounderSoftwareRemediationService.ClassifyReleaseStep(observed));
+        var providerControlled = JsonSerializer.SerializeToElement(new
+        {
+            steps = new[] { new { name = "PRIVATE PASSWORD=secret", conclusion = "failure" } }
+        });
+        Assert.Equal("UNCLASSIFIED",
+            FounderSoftwareRemediationService.ClassifyReleaseStep(providerControlled));
+    }
+
     [Theory]
     [InlineData("legend/approved-changes", true)]
     [InlineData(" production ", false)]
