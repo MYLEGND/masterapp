@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorization 2026-10-15: prepare, publish and validate the tool-only promotion PR. Separate Founder merge authorization remains required. No Production writes or deployment authorized.",
+  "authorization": "Founder authorization 2026-10-15: prepare, publish and validate the tool-only promotion with exact security package corrections and accepted fixture dependency. Separate Founder merge authorization remains required. No Production writes or deployment authorized.",
   "purpose": "Install candidate-aware trusted read-only observation and nonpublishing admission tools with required CI producer and source-admission dependencies. Preserve revenue PR 626 unchanged.",
-  "requestId": "founder-trusted-tools-pr626-20261015",
+  "requestId": "founder-trusted-tools-pr627-security-20261015",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -10,7 +10,7 @@
   "trustedToolPromotion": {
     "schemaVersion": 1,
     "baseRevision": "dc10c7aabbba6cd5b516071c9e16d32dafeba9a6",
-    "sourceRevision": "3d43d3c1896380f88ae9a0e3a93ab967ec210d1f",
+    "sourceRevision": "d94700b1baa781d7caff4a8ea891dbf81b9be4a7",
     "files": {
       ".github/workflows/legend-fast-track-ui.yml": {
         "mode": "100644",
@@ -32,9 +32,25 @@
         "mode": "100644",
         "blob": "1de34440baf7389dbb53aeba8331c17c392a8349"
       },
+      "AgentPortal.Tests/AgentPortal.Tests.csproj": {
+        "mode": "100644",
+        "blob": "792d290c5144b5eb8b6f115e21559b169ae8b042"
+      },
+      "AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs": {
+        "mode": "100644",
+        "blob": "a380649c2168e7e67b391be1147ecc40b55c0024"
+      },
+      "AgentPortal/AgentPortal.csproj": {
+        "mode": "100644",
+        "blob": "e0bc67e0ad169b34a35c284167c42503ec7b7585"
+      },
       "Infrastructure/Infrastructure.csproj": {
         "mode": "100644",
         "blob": "796a87b7dec3c09ae911d26e68a4c04866bcd9b6"
+      },
+      "scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj": {
+        "mode": "100644",
+        "blob": "399b89005fc2ded907effc5c8a48cc8ce23eda25"
       },
       "scripts/deploy-approved-app.py": {
         "mode": "100644",
@@ -50,7 +66,7 @@
       },
       "scripts/release_policy.py": {
         "mode": "100644",
-        "blob": "60261081bdf75c1ad14a60d5ea573b39af9a46c6"
+        "blob": "586e0a7066c0474d93da722b5bf09ed27ee50a1b"
       },
       "scripts/test-fast-track-release.py": {
         "mode": "100644",
@@ -70,7 +86,7 @@
       },
       "scripts/test-release-policy.py": {
         "mode": "100644",
-        "blob": "934b7578975dd2a92e29ec143064f8bab1a7a637"
+        "blob": "ccdaee1946dd8249ba92da66b98b1c9bfa53d765"
       },
       "scripts/test-validation-resume.py": {
         "mode": "100644",
