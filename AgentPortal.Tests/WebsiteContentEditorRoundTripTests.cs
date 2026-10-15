@@ -289,12 +289,13 @@ public sealed class WebsiteContentEditorRoundTripTests
             });
         await fixture.Db.SaveChangesAsync();
 
-        var document = new WebsiteContentDocument { FaviconImageDataUrl = first };
+        var document = CanonicalDocument();
+        document.FaviconImageDataUrl = first;
         var slug = siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null;
 
         await SeedCanonicalDraftAsync(fixture, ticket, document, revision: 1);
         var unpublished = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
-        Assert.EndsWith("/images/favicon/legend-favicon.svg", unpublished.Url, StringComparison.Ordinal);
+        Assert.EndsWith("/images/favicon/legend-favicon.jpg", unpublished.Url, StringComparison.Ordinal);
 
         Assert.IsType<OkObjectResult>(await fixture.Controller.Publish(new(ticket, 1)));
         fixture.Db.ChangeTracker.Clear();

@@ -1111,11 +1111,10 @@ class ReleasePolicy(unittest.TestCase):
 
 
 class TrustedToolPromotionPolicyTests(unittest.TestCase):
-    def fixture(self):
+    def fixture(self, path='Infrastructure/Infrastructure.csproj', prior=None, current=None, blob=None):
         import release_policy as owner
         base,head,source='a'*40,'b'*40,'c'*40
-        path='Infrastructure/Infrastructure.csproj'
-        blob='d'*40
+        blob=blob or 'd'*40
         marker=dict(schemaVersion=1,baseRevision=base,sourceRevision=source,
             files={path:dict(mode='100644',blob=blob)})
         request=dict(trustedToolPromotion=marker,releaseMode='validate-only',targets=[],
@@ -1129,14 +1128,16 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
             if command=='rev-list':out=' '.join((head,base,source))
             elif command=='diff':out='M\0'+path+'\0M\0'+owner.REQUEST+'\0'
             elif command=='ls-tree':out='100644 blob '+blob+'\t'+args[-1]+'\0'
+            elif command=='show' and prior is not None and current is not None:
+                out=prior if args[2].startswith(base) else current
             elif command=='show':
                 out='<Project>\n</Project>\n' if args[2].startswith(base) else '<Project>\n    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />\n</Project>\n'
             else:raise AssertionError(args)
             return SimpleNamespace(returncode=0,stdout=out)
         return owner,base,head,source,request,admission,git
 
-    def invoke(self, mutate=None, git_mutate=None):
-        owner,base,head,source,request,admission,git=self.fixture()
+    def invoke(self, mutate=None, git_mutate=None, fixture_kw=None):
+        owner,base,head,source,request,admission,git=self.fixture(**(fixture_kw or {}))
         previous={'requestId':'older'}
         if mutate:mutate(request,admission,previous)
         def run(args,**kw):
@@ -1171,6 +1172,40 @@ class TrustedToolPromotionPolicyTests(unittest.TestCase):
         for kind in ('missing','symlink','blob','chmod','rename','delete','dependency'):
             with self.subTest(kind=kind),self.assertRaises(ValueError):self.invoke(git_mutate=mutate(kind))
 
+
+    def test_security_pins_are_nonpublishing_and_reject_unrelated_project_changes(self):
+        cases = (
+            ('AgentPortal/AgentPortal.csproj', 'MessagePack', '3.1.7', '3.1.9'),
+            ('AgentPortal.Tests/AgentPortal.Tests.csproj', 'System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+            ('scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj', 'System.Security.Cryptography.Xml', '10.0.10', '10.0.13'),
+        )
+        for path, package, old, new in cases:
+            ref = f'<PackageReference Include="{package}" Version="{old}" />'
+            prior = '<Project>' + ref + '</Project>'
+            current = prior.replace(old, new)
+            with self.subTest(path=path):
+                proof = self.invoke(fixture_kw=dict(path=path, prior=prior, current=current))
+                self.assertFalse(proof['productionEligible'])
+                self.assertFalse(proof['authorizesMutation'])
+            for bad_prior, bad_current in (
+                (prior, prior),
+                (current, prior),
+                (prior, current.replace(new, '99.0.0')),
+                (prior, current.replace('/>', ' Condition="true" />')),
+                (prior, current.replace('</Project>', '<ProjectReference Include="other.csproj" /></Project>')),
+                (prior, current.replace('</Project>', ref.replace(old, new) + '</Project>')),
+                (prior, current + '<!-- unrelated change -->'),
+                (prior.replace('</Project>', ref + '</Project>'), current),
+            ):
+                with self.subTest(path=path, current=bad_current), self.assertRaisesRegex(ValueError, 'SECURITY_PACKAGE_SCOPE_UNPROVEN'):
+                    self.invoke(fixture_kw=dict(path=path, prior=bad_prior, current=bad_current))
+
+    def test_only_accepted_favicon_fixture_blob_is_admitted(self):
+        path = 'AgentPortal.Tests/WebsiteContentEditorRoundTripTests.cs'
+        proof = self.invoke(fixture_kw=dict(path=path, blob='a380649c2168e7e67b391be1147ecc40b55c0024'))
+        self.assertFalse(proof['productionEligible'])
+        with self.assertRaisesRegex(ValueError, 'FIXTURE_SCOPE_UNPROVEN'):
+            self.invoke(fixture_kw=dict(path=path))
 
 if __name__ == '__main__':
     unittest.main()
