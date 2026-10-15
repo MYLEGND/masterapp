@@ -13,10 +13,28 @@
   --web-border:rgba(16,43,98,.13);
   --web-radius-sm:12px;
   --web-radius-md:18px;
-  --web-radius-lg:28px;
-  --web-shadow:0 24px 70px rgba(8,26,58,.12);
+  --web-radius-lg:24px;
+  --web-shadow:0 18px 52px rgba(8,26,58,.10);
   --web-font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --web-page-pad:clamp(20px,6.5vw,108px);
+  --web-public-page-pad:clamp(24px,4.25vw,72px);
+  --web-public-section-y:clamp(52px,6vw,88px);
+  --web-public-reading-max:1040px;
+  --web-public-heading-max:1180px;
+  --web-public-body-weight:500;
+  --web-public-heading-weight:800;
+  --web-public-card-border:color-mix(in srgb,var(--web-gold) 58%,var(--web-navy) 16%);
+  --web-public-flow-gap:clamp(16px,2vw,28px);
+  --web-public-mobile-page-pad:clamp(18px,5vw,24px);
+  --web-public-mobile-section-y:clamp(44px,10vw,64px);
+  --web-public-mobile-media-max:560px;
+  --web-public-action-min:180px;
+  --web-public-banner-pad-block:10px;
+  --web-public-banner-pad-inline:14px;
+  --web-public-banner-title-size:clamp(21px,2.25vw,31px);
+  --web-public-banner-title-weight:800;
+  --web-public-banner-title-line:1;
+  --web-public-banner-title-tracking:-.025em;
   --web-header-height:88px;
   --navy:var(--web-navy);
   --navy-deep:var(--web-navy-deep);
@@ -35,6 +53,22 @@
   --font:var(--web-font);
   --page-pad:var(--web-page-pad);
   --header-height:var(--web-header-height);
+}
+
+/* Site-scoped default palettes live here, not in component CSS. User-authored
+   Website Studio theme values still override these through the canonical theme layer. */
+:root[data-legend-site="business"]{
+  --web-navy:#16233b;
+  --web-navy-deep:#0b1426;
+  --web-navy-royal:#263a60;
+  --web-gold:#caa85f;
+  --web-gold-strong:#efd69a;
+  --web-ink:#172033;
+  --web-muted:#626f84;
+  --web-surface:#f5f7fa;
+  --web-white:#ffffff;
+  --web-border:rgba(22,35,59,.12);
+  --web-shadow:0 18px 48px rgba(11,20,38,.10);
 }
 *{box-sizing:border-box;scrollbar-width:none;-ms-overflow-style:none}
 *::-webkit-scrollbar{display:none;width:0;height:0}

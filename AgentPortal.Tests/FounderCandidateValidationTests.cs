@@ -281,7 +281,7 @@ public sealed class FounderCandidateValidationTests
                 ["FounderSoftwareRemediation:Enabled"] = "true",
                 ["FounderSoftwareRemediation:RepositoryOwner"] = "MYLEGND",
                 ["FounderSoftwareRemediation:RepositoryName"] = "masterapp",
-                ["FounderSoftwareRemediation:BaseBranch"] = "production",
+                ["FounderSoftwareRemediation:BaseBranch"] = "legend/approved-changes",
                 ["FounderSoftwareRemediation:GitHubAppId"] = "1",
                 ["FounderSoftwareRemediation:GitHubInstallationId"] = "2",
                 ["FounderSoftwareRemediation:GitHubAppPrivateKeySecretUri"] = "https://fixture.vault.azure.net/secrets/app",
@@ -353,7 +353,7 @@ public sealed class FounderCandidateValidationTests
             {
                 number = 123, draft = true, state = "open",
                 head = new { sha = HeadSha, @ref = "hotfix/staging-batch", repo = new { full_name = PreflightScenario == "foreign_pr" ? "foreign/repo" : Repository } },
-                @base = new { @ref = "production", repo = new { full_name = Repository } }
+                @base = new { @ref = Branch, repo = new { full_name = Repository } }
             });
             if (path.StartsWith(Repo + "git/commits/", StringComparison.Ordinal))
             {

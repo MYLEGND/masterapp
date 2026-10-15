@@ -1,0 +1,73 @@
+{
+  "baselineSha": "df4bae6f9a175ecc04992235cfaf834a0095a7bf",
+  "baselineTrxSha256": "fc8d7991addb811084748c4dcdf1ef86cfc923de6f5a58a2caaa30033ec84fd2",
+  "fullRun": {
+    "passed": 3861,
+    "failed": 40,
+    "skipped": 5,
+    "total": 3906
+  },
+  "selectiveCorrections": {
+    "AgentPortal.Tests.MarketingScopeParityContractTests.FounderAgentAndBusiness_UseTypedMarketingOwnerScopes_NotHostOrDisplayNameInference": "Passed",
+    "AgentPortal.Tests.MarketingSetupCentralizationTests.WebsiteAnalytics_OwnsOneScopedMarketingSetupSurface": "Passed",
+    "AgentPortal.Tests.MarketingScopeParityContractTests.BusinessScope_HasExplicitMarketingRoutesBeforeGenericAnalyticsCatchAll": "Passed",
+    "AgentPortal.Tests.WebsiteAnalyticsScopeTests.Summary_TeamTrue_NonFounder_RemainsAgentScoped": "Passed"
+  },
+  "remainingFailures": [
+    "AgentPortal.Tests.LegendConnectBatchLanguageEndToEndContractTests.CombinedFoundation_PreservesOriginalAllocationCertificateControl",
+    "AgentPortal.Tests.LegendConnectBatchLanguageEndToEndContractTests.UnadmittedPriorityAndUniqueContactConstraints_CannotInheritHomogeneousFeasibility",
+    "AgentPortal.Tests.LegendConnectBatchLanguageEndToEndContractTests.UnseenWorkload_ProducesTheExactAllocationCertificateThroughReplyAsync",
+    "AgentPortal.Tests.LegendConnectCompositionalArithmeticAdmissionTests.AdmittedMeasurements_BindThreeInputsAndExecuteTwoArithmeticStepsNatively",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary(teachingKind: \"integer\", left: \"72\", right: \"29\", expected: \"43\")",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary(teachingKind: \"integer\", left: \"83\", right: \"35\", expected: \"48\")",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary(teachingKind: \"rational\", left: \"10/3\", right: \"1/4\", expected: \"37/12\")",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.CombinedFoundation_PreservesOriginalNumericRecombinationControl",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.OmittedSourceLanguage_IdentifiesAndComputesThroughNativeFounderReply",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"integer\", left: \"-19\", right: \"26\", expected: \"-45\")",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"integer\", left: \"147\", right: \"26\", expected: \"121\")",
+    "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"rational\", left: \"21/2\", right: \"7/3\", expected: \"49/6\")",
+    "AgentPortal.Tests.LegendConnectGovernedDiscourseOrdinalAmbiguityTests.HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(currentRequest: \"No, I meant the first option.\", hasGroundedCorrection: False)",
+    "AgentPortal.Tests.LegendConnectGovernedDiscourseOrdinalAmbiguityTests.HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(currentRequest: \"No, please use the first option instead.\", hasGroundedCorrection: True)",
+    "AgentPortal.Tests.LegendConnectNamedValueLanguageEndToEndTests.CombinedFoundation_PreservesOriginalNamedValueAndRecallControl",
+    "AgentPortal.Tests.LegendConnectNamedValueLanguageEndToEndTests.UnseenNameAndOpaqueDate_PreserveExactSpellingInReplyAndConversationRecall",
+    "AgentPortal.Tests.LegendConnectScheduleCertificatePropagationTests.NativeChatBoundaryCarriesActualStepsAndProofPath",
+    "AgentPortal.Tests.LegendFounderAiAutomaticLanguageComputationTests.UndeclaredLanguage_UnseenOperandsReachNativeComputationWithoutExternalClients(left: \"-19\", right: \"26\", expected: \"-45\")",
+    "AgentPortal.Tests.LegendFounderAiAutomaticLanguageComputationTests.UndeclaredLanguage_UnseenOperandsReachNativeComputationWithoutExternalClients(left: \"147\", right: \"26\", expected: \"121\")",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.AdmittedConflictingTransitions_DoNotEscalateWhileUnknownSourceRemainsEligible",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.AdmittedDeduction_RecombinesAHeldOutSubjectAndProducesAnOriginalNativeAnswer(prompt: \"Bird Wren.\")",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.AdmittedDeduction_RecombinesAHeldOutSubjectAndProducesAnOriginalNativeAnswer(prompt: \"Wren bird.\")",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeCalculator_UsesExactExecutorWithoutOrganizationalReads",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\", requiredAnswerElements: [\"template\", \"clerk\"])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\", requiredAnswerElements: [])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\", requiredAnswerElements: [\"Kestrel\", \"premise\"])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\", requiredAnswerElements: [\"25\", \"27\"])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\", requiredAnswerElements: [])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\", requiredAnswerElements: [\"nine\", \"two\", \"Devon\", \"Monday\"])",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.OrdinaryReasoningRemainsLocalAndExplicitTeacherIsAttributedExternally",
+    "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier",
+    "AgentPortal.Tests.LegendFounderAiNativeOnlyProviderIsolationTests.ReplyAsync_NativeOnly_AdmittedRequest_ServesSymbolicAnswerWithDormantModelAndNoExternalClient",
+    "AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.LegendDirectGreetingEndpointRegression",
+    "AgentPortal.Tests.MessagingServiceTests.MessageTranslation_ProviderFailureKeepsTheOriginalAndDoesNotCreateAFalseCache"
+  ],
+  "candidateOnlyFailures": [],
+  "baselineRecovered": [
+    "AgentPortal.Tests.LegendConnectOperationalProofTests.FounderShellAndInspectionSections_RemainBoundedAndDiscoverHistoricalCurriculum",
+    "AgentPortal.Tests.LegendFounderAiContractTests.ProductionDeploymentWorkflow_IsTheSinglePullRequestValidationMergeAndDeployPath",
+    "AgentPortal.Tests.MessagingServiceTests.FounderGovernanceResources_RequireCanonicalFounderAndSupportRevocation(resourceType: \"CommunityManagement\")",
+    "AgentPortal.Tests.MessagingServiceTests.FounderGovernanceResources_RequireCanonicalFounderAndSupportRevocation(resourceType: \"SocialContentPriority\")",
+    "AgentPortal.Tests.MessagingServiceTests.FounderResourceDirectory_ExcludesLeadsAndCollapsesDuplicateMemberProfiles",
+    "AgentPortal.Tests.MessagingServiceTests.LanguageTranslationAccess_AgentAndClientUseSameFounderControlledResource",
+    "AgentPortal.Tests.MessagingServiceTests.LanguageTranslationAccess_UsesTheExistingFounderReviewQueueAndDirectGrant",
+    "AgentPortal.Tests.MessagingServiceTests.ScriptureManagement_RequiresCanonicalFounderForDirectGrantAndSupportsRevocation",
+    "AgentPortal.Tests.MessagingServiceTests.VerificationRequest_UsesOnePrivateFounderReviewQueueAndResolvesTheProfile",
+    "AgentPortal.Tests.WebsiteStudioV2ContractTests.Sanitize_PreservesTypedResponsiveLayoutNavigationReuseAndBusinessFactBindings"
+  ],
+  "evidenceSha256": {
+    "final-full.trx": "560dfef3774456e551bbef515b061e9f3938a1c1e0cc395d736e29ef87ae7179",
+    "full-repaired.trx": "927ff4f91a75251cad6a0014b4ba4f1a5cdb23333f230ce69c5def978254f955",
+    "final-focused.trx": "4f3587b9141df86b20f2a12a80d8e54e714caa42b7fb8f54109aae2ec6dd5bdc",
+    "focused-repaired.trx": "9c5a930890cde787ca779c60fff4a1129e1af5caeda74b3d68f351d1e0b4072b"
+  }
+}

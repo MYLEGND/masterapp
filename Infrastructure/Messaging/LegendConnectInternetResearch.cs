@@ -187,7 +187,10 @@ Execute only the supplied bounded queries and return only the requested JSON.
         // Public research permission does not authorize external generation.
         // Preserve the request decision before reading credentials or creating
         // a client; pure page retrieval has its own distinct network boundary.
-        if (LegendConnectExternalProviderPolicy.Resolve(request.ProviderPolicy).ForbidsExternalAnswering)
+        var providerPolicy = LegendConnectExternalProviderPolicy.Resolve(request.ProviderPolicy);
+        if (providerPolicy.ForbidsOpenAiPayg)
+            return Failure("internet_research_openai_payg_forbidden", false);
+        if (providerPolicy.ForbidsExternalAnswering)
             return Failure("internet_research_external_generation_forbidden", false);
 
         if (!TryReadConfiguration(out var endpoint, out var apiKey, out var model, out settingsIdentity))
@@ -338,10 +341,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
         out string settingsIdentity)
     {
         var endpointValue = (_configuration["LegendConnect:InternetResearch:Endpoint"] ?? DefaultEndpoint).Trim();
-        apiKey = (_configuration["LegendConnect:InternetResearch:ApiKey"] ??
-                  _configuration["OpenAI:ApiKey"] ??
-                  Environment.GetEnvironmentVariable("OPENAI_API_KEY") ??
-                  Environment.GetEnvironmentVariable("OpenAI__ApiKey") ?? string.Empty).Trim();
+        apiKey = (_configuration["LegendConnect:InternetResearch:ApiKey"] ?? string.Empty).Trim();
         model = (_configuration["LegendConnect:InternetResearch:Model"] ??
                  _configuration["OpenAI:LegendFounderAiModel"] ??
                  _configuration["OpenAI:Model"] ?? "gpt-5").Trim();

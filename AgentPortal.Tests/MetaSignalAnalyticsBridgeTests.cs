@@ -276,10 +276,10 @@ public class MetaSignalAnalyticsBridgeTests
         AnalyticsEvent source)
     {
         var method = typeof(Infrastructure.Analytics.MetaSignalAnalyticsBridge)
-            .GetMethod("TryBuildBridgeRowAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            .GetMethod("TryBuildBridgeRowAsync", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(method);
 
-        var task = method!.Invoke(bridge, [db, source, CancellationToken.None]);
+        var task = method!.Invoke(null, [db, source, CancellationToken.None, null]);
         Assert.NotNull(task);
 
         var typedTask = Assert.IsAssignableFrom<Task>(task);

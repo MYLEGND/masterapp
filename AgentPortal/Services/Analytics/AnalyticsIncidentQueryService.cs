@@ -91,7 +91,25 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
     public async Task<AnalyticsIncidentMonitorDto> GetSystemMonitorAsync(CancellationToken ct = default)
     {
         var nowUtc = DateTime.UtcNow;
-        var metrics = await BuildSystemMetricsAsync(nowUtc, ct);
+        SystemMetricsSnapshot metrics;
+        try
+        {
+            metrics = await BuildSystemMetricsAsync(nowUtc, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Incident monitor canonical metrics could not be loaded.");
+            return new AnalyticsIncidentMonitorDto
+            {
+                IsAvailable = false,
+                ErrorCode = "incident_monitor_metrics_unavailable",
+                LastUpdatedUtc = nowUtc
+            };
+        }
 
         List<AnalyticsDriftAlert> activeAlerts;
         List<AnalyticsDriftAlert> timelineAlerts;
@@ -299,7 +317,8 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         var currentRange = BuildRange(currentWindowStartUtc, nowUtc);
         var previousRange = BuildRange(previousWindowStartUtc, currentWindowStartUtc);
 
-        var resolvedScope = await ResolveScopeAsync(null, false);
+        // Founder-only system monitor intentionally queries the global monitoring scope.
+        var resolvedScope = ScopeContext.Global;
         var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope).ToListAsync(ct);
         var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope).ToListAsync(ct);
 
@@ -541,17 +560,6 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         query = ApplyEnvironmentFilter(query);
         query = ApplyHostFilter(query);
         return query;
-    }
-
-    private static ValueTask<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team)
-    {
-        _ = requestedAgentId;
-        _ = team;
-
-        return ValueTask.FromResult(new ScopeContext
-        {
-            ScopeType = ScopeType.Global
-        });
     }
 
     private IQueryable<MetaSignalEvent> QueryMetaSignalEvents(DateTime fromUtc, DateTime toUtc)

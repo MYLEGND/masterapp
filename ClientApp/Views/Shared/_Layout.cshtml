@@ -5,12 +5,12 @@
 @using Domain.Entities
 @using System.IO
 @using Shared.Messaging
-@inject IHttpContextAccessor HttpContextAccessor
 @inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
+@inject Shared.PortalShell.IPortalShellIdentityResolver PortalShellIdentityResolver
 @{
     var layoutController =
         (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName
@@ -20,7 +20,7 @@
         string.Equals(layoutController, "Home", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Profile", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Dashboard", StringComparison.OrdinalIgnoreCase);
-    var messagingClientContext = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
+    var messagingClientContext = await ClientContextService.ResolveAsync(User, Context.Request.Cookies);
     var messagingActorId = messagingClientContext is { IsAgentView: false } &&
         !string.IsNullOrWhiteSpace(messagingClientContext.ClientUserId)
             ? messagingClientContext.ClientUserId.Trim()
@@ -34,6 +34,7 @@
     var messagingServiceContactEmail = messagingClientContext is { IsAgentView: false }
         ? messagingClientContext.AgentEmail?.Trim()
         : null;
+    var portalShellIdentity = await PortalShellIdentityResolver.ResolveAsync(User, Context, Context.RequestAborted);
     var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
         WebsiteConfiguration,
         Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend);
@@ -48,7 +49,6 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
     @if (loadSharedFinanceStyles)
@@ -58,6 +58,7 @@
     @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
     @RenderSection("Styles", required: false)
     <link rel="stylesheet" href="~/css/client-mobile.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
@@ -70,7 +71,7 @@
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-dark legend-global-nav" data-legend-global-nav>
-        <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
+        <div class="container-fluid legend-global-nav-shell">
 
             <a class="navbar-brand" asp-controller="Home" asp-action="Index">
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
@@ -141,132 +142,16 @@
             @await Html.PartialAsync("~/Views/Messaging/_LifeHacTrigger.cshtml")
 
             <div class="navbar-right">
-            @{
-                    var user = HttpContextAccessor.HttpContext?.User;
-                    var isAuthenticated = user?.Identity?.IsAuthenticated == true;
-                    string? CleanToken(string? s)
-                    {
-                        if (string.IsNullOrWhiteSpace(s)) return null;
-                        var t = s.Trim();
-                        if (t.Contains("@")) return null;
-                        if (t.Contains(".")) return null;
-                        var parts = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                        return parts.Length > 0 ? parts[0] : null;
-                    }
-                    string? Initial(string? s)
-                    {
-                        if (string.IsNullOrWhiteSpace(s)) return null;
-                        var t = s.Trim();
-                        return t.Length > 0 ? t.Substring(0, 1).ToUpperInvariant() : null;
-                    }
 
-                    var displayName = isAgentView ? "Agent" : "Member";
-                    string? first = null;
-                    string? last = null;
-                    string? avatarUrl = null;
-                    string? userId = null;
-
-                    if (isAuthenticated && user is not null)
-                    {
-                        if (!isAgentView && messagingClientContext?.Profile != null)
-                        {
-                            first = CleanToken(messagingClientContext.Profile.FirstName);
-                            last = CleanToken(messagingClientContext.Profile.LastName);
-
-                            displayName = messagingClientContext.AccountDisplayName;
-                            if (isBusinessClient)
-                            {
-                                first = displayName;
-                                last = null;
-                            }
-
-                            if (string.IsNullOrWhiteSpace(displayName))
-                            {
-                                displayName = "Member";
-                            }
-                        }
-                        else
-                        {
-                            first =
-                                CleanToken(user.FindFirst("given_name")?.Value)
-                                ?? CleanToken(user.FindFirst(ClaimTypes.GivenName)?.Value)
-                                ?? CleanToken(user.FindFirst("name")?.Value);
-
-                            last =
-                                CleanToken(user.FindFirst("family_name")?.Value)
-                                ?? CleanToken(user.FindFirst(ClaimTypes.Surname)?.Value);
-
-                            displayName =
-                                (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
-                                    ? string.Join(" ", new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)))
-                                    : user.FindFirst("name")?.Value
-                                      ?? user.FindFirst(ClaimTypes.Name)?.Value
-                                      ?? first
-                                      ?? (isAgentView ? "Agent" : "Member");
-                        }
-
-                        userId =
-                            user.FindFirst("oid")?.Value
-                            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                            ?? user.Identity?.Name;
-
-                        if (isAgentView && !string.IsNullOrWhiteSpace(messagingClientContext?.AgentDisplayName))
-                        {
-                            displayName = messagingClientContext.AgentDisplayName.Trim();
-                            var nameParts = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                            first = nameParts.Length > 0 ? nameParts[0] : first;
-                            last = nameParts.Length > 1 ? nameParts[^1] : last;
-                        }
-                    }
-
-                    var initials = (Initial(first) ?? "") + (Initial(last) ?? "");
-                    if (string.IsNullOrWhiteSpace(initials))
-                    {
-                        initials = Initial(displayName) ?? "A";
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(userId))
-                    {
-                        avatarUrl = Url.Action(isAgentView ? "AgentCurrent" : "Current", "Avatar");
-                    }
-                }
-
-                <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
+                <a class="nav-link" href="@portalShellIdentity.StoreUrl" target="_blank" rel="noopener">Store</a>
                 @if (!isAgentView && !string.IsNullOrWhiteSpace(messagingActorId))
                 {
                     @await Html.PartialAsync("~/Views/Messaging/_NavButton.cshtml")
                 }
 
-                @if (isAuthenticated)
+                @if (User.Identity?.IsAuthenticated == true)
                 {
-                    <div class="dropdown">
-                        <button class="profile-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="@displayName">
-                            <div class="profile-avatar">
-                                @if (!string.IsNullOrWhiteSpace(avatarUrl))
-                                {
-                                    <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <span>@initials</span>
-                                }
-                            </div>
-                            <div class="profile-meta">
-                                <span class="profile-name">@displayName</span>
-                                <span class="visually-hidden">Profile menu</span>
-                            </div>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
-                            <li><a class="dropdown-item" href="/profile">VIEW/EDIT PROFILE</a></li>
-                            <li><hr class="dropdown-divider" /></li>
-                            <li>
-                                <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="dropdown-item">Logout</button>
-                                </form>
-                            </li>
-                        </ul>
-                    </div>
+                    @await Html.PartialAsync("~/Views/Shared/_PortalProfileMenu.cshtml", portalShellIdentity)
                 }
             </div>
 
@@ -291,11 +176,16 @@
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
 
-<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
+<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel" aria-hidden="true">
     <div class="explore-card">
         <div class="explore-header">
             <div class="explore-title">EXPLORE</div>
             <div class="explore-pill">Quick Find</div>
+            <button type="button"
+                    class="explore-close"
+                    data-legend-explore-close
+                    aria-label="Close Explore"
+                    hidden></button>
         </div>
 
         <div class="explore-search">
@@ -435,56 +325,7 @@
         deleteCookie(launchCookieName);
     })();
 </script>
-<script>
-    (function () {
-        const trigger = document.getElementById('exploreTrigger');
-        const drawer = document.getElementById('exploreDrawer');
-        const overlay = document.getElementById('exploreOverlay');
-        const search = document.getElementById('exploreSearch');
-        const list = document.getElementById('exploreList');
 
-        if (!trigger || !drawer || !overlay || !search || !list) return;
-
-        function openDrawer() {
-            drawer.classList.add('open');
-            overlay.classList.add('open');
-            trigger.setAttribute('aria-expanded', 'true');
-            window.setTimeout(() => search.focus(), 80);
-        }
-
-        function closeDrawer() {
-            drawer.classList.remove('open');
-            overlay.classList.remove('open');
-            trigger.setAttribute('aria-expanded', 'false');
-        }
-
-        trigger.addEventListener('click', function () {
-            if (drawer.classList.contains('open')) closeDrawer();
-            else openDrawer();
-        });
-
-        overlay.addEventListener('click', closeDrawer);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') closeDrawer();
-        });
-
-        search.addEventListener('input', function () {
-            const q = (search.value || '').trim().toLowerCase();
-            list.querySelectorAll('.explore-item').forEach(function (item) {
-                const txt = item.textContent.toLowerCase();
-                item.style.display = txt.includes(q) ? '' : 'none';
-            });
-        });
-
-        // Close drawer when an explore link is selected
-        list.querySelectorAll('.explore-item').forEach(function (item) {
-            item.addEventListener('click', function () {
-                closeDrawer();
-            });
-        });
-    })();
-</script>
 
 <script src="~/_content/Shared/js/life-hac.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>

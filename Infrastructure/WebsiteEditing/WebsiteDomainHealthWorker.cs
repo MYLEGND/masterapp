@@ -20,9 +20,14 @@ public sealed class WebsiteDomainHealthWorker(IServiceScopeFactory scopes, ILogg
                 using var scope = scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
                 var service = scope.ServiceProvider.GetRequiredService<WebsiteDomainService>();
-                var cutoff = DateTime.UtcNow.AddHours(-1);
+                var activeCutoff = DateTime.UtcNow.AddHours(-1);
+                var pendingCutoff = DateTime.UtcNow.AddMinutes(-10);
                 var rows = await db.Set<WebsiteDomainBinding>().AsNoTracking()
-                    .Where(x => x.Status != "removing" && (x.LastCheckedUtc == null || x.LastCheckedUtc < cutoff))
+                    .Where(x => x.Status != "removing" &&
+                                (x.LastCheckedUtc == null ||
+                                 (x.Status == "active"
+                                     ? x.LastCheckedUtc < activeCutoff
+                                     : x.LastCheckedUtc < pendingCutoff)))
                     .OrderBy(x => x.LastCheckedUtc).Take(30).Select(x => new { x.Id, x.CommerceBusinessId }).ToListAsync(stoppingToken);
                 foreach (var row in rows)
                 {

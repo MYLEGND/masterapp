@@ -136,13 +136,13 @@
     function open() {
         hub.hidden = false;
         requestAnimationFrame(() => hub.classList.add('open'));
-        document.body.style.overflow = 'hidden';
+        
         loadLinks();
     }
 
     function close() {
         hub.classList.remove('open');
-        document.body.style.overflow = '';
+        
         hub.addEventListener('transitionend', () => { hub.hidden = true; }, { once: true });
     }
 

@@ -49,6 +49,7 @@
     {
         @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
     }
+    <link rel="stylesheet" href="~/css/public-inquiry-form.css" asp-append-version="true" />
 </head>
 
 <body class="d-flex flex-column min-vh-100 @bodyClass" data-commerce-business-key="@(commerce?.BusinessKey ?? "parfait")" style="@commerceStyle">
@@ -170,9 +171,6 @@
         cartPath = storeCart,
         checkoutPath = commerce?.CheckoutPath ?? "/store/checkout",
         successPath = commerce?.SuccessPath ?? "/store/success",
-        analyticsEndpoint = commerce?.IsParfait == false
-            ? $"/parfait-analytics/s/{Uri.EscapeDataString(commerce.BusinessKey)}/track"
-            : "/parfait-analytics/track",
         cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
         isParfait = commerce?.IsParfait ?? true
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>
@@ -213,6 +211,7 @@
 
     }());
 </script>
+<script type="module" src="~/js/public-inquiry-form.mjs" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required:false)
 <script>
     (() => {

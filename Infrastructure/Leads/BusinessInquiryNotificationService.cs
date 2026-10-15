@@ -49,8 +49,9 @@ public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
             return false;
         }
 
-        // Re-resolve the current scoped assignment for every attempt. A revoked or
-        // changed recipient is never reused from the original submission.
+        // Re-resolve the permanent scoped owner's current primary account email
+        // for every attempt. Submission payloads and legacy recipient preferences
+        // never control delivery.
         var recipient = await recipients.ResolveAsync(MarketingOwnerScope.Business(row.CommerceBusinessId), ct);
         var sent = false;
         try
@@ -63,8 +64,11 @@ public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
                 var phone = linkedLead?.Phone;
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(60));
+                var nameParts = (row.Name ?? string.Empty).Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                var firstName = nameParts.Length > 0 ? nameParts[0] : string.Empty;
+                var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
                 sent = await sender.TrySendAsync(recipient, "New website inquiry",
-                    $"<p>{WebUtility.HtmlEncode(row.Name)} · {WebUtility.HtmlEncode(row.Email)}{(string.IsNullOrWhiteSpace(phone) ? "" : " · " + WebUtility.HtmlEncode(phone))}</p><p>{WebUtility.HtmlEncode(row.Message).Replace("\n", "<br>")}</p><p>Page: {WebUtility.HtmlEncode(row.SourcePath)}</p>",
+                    WebsiteLeadEmailTemplate.Build("New website inquiry", firstName, lastName, row.Email, phone, row.Message, row.SourcePath),
                     replyToEmail: row.Email, cancellationToken: timeout.Token);
             }
         }

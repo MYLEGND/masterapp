@@ -66,13 +66,23 @@ window.ParfaitStorefront = (() => {
         emitCartUpdated();
     };
 
-    const addItem = item => {
+    const addItem = async item => {
+        const eventId = crypto.randomUUID();
+        const response = await fetch((context.storeRootPath || '/store') + '/cart/items', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({eventId,productId:item.id,size:item.size,quantity:item.quantity||1,
+                sessionId:window.LegendAnalytics?.ids?.getSessionId?.(), visitorId:window.LegendAnalytics?.ids?.getVisitorId?.(),
+                url:location.href,referrer:document.referrer})
+        });
+        if (!response.ok) throw new Error('Unable to add this item to your cart.');
+        const accepted = await response.json();
+        item = {...item,priceCents:accepted.priceCents};
         const cart = readCart();
-        const quantity = Math.max(1, Number(item.quantity || 1));
+        const quantity = accepted.quantity;
         const existing = cart.find(entry => entry.key === item.key);
 
         if (existing) {
-            existing.quantity = Math.max(1, Number(existing.quantity || 0) + quantity);
+            existing.quantity = quantity;
         } else {
             cart.push({
                 key: item.key,

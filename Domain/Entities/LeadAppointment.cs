@@ -18,6 +18,7 @@ public class LeadAppointment
 
     public string? WebsiteLeadId { get; set; }
     public string? ClientProfileId { get; set; }
+    public string? Oppref { get; set; }
 
     public LeadAppointmentStatus Status { get; set; } = LeadAppointmentStatus.Requested;
     public string? BookingProvider { get; set; }

@@ -1,76 +1,62 @@
-using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Shared.Analytics;
 
 namespace Infrastructure.Leads;
 
 public sealed record WebsiteLeadOwnerResolution(
     string RecipientEmail,
-    Guid? AgentProfileId,
+    Guid AgentProfileId,
     string? AgentSlug,
-    bool IsFounderPath,
-    bool ExplicitSlugInvalid);
+    bool IsFounderPath);
 
 /// <summary>
 /// Single source of truth for public Protect lead ownership and notification recipient resolution.
-/// Presentation labels never participate in ownership. Explicit slugs, middleware-resolved tracking
-/// profiles, and founder fallback are the only accepted routing inputs.
+/// Route/form/referrer precedence belongs exclusively to ProtectWebsiteOwnerResolver. Invalid explicit
+/// scope fails closed and never falls through to another owner.
 /// </summary>
 public static class WebsiteLeadOwnerAuthority
 {
     public static async Task<WebsiteLeadOwnerResolution> ResolveAsync(
         HttpContext? httpContext,
         AgentTrackingResolver resolver,
-        string founderRecipientEmail,
-        string? explicitAgentSlug = null,
+        WebsiteIntakeRecipientResolver recipients,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(recipients);
 
-        var founderRecipient = (founderRecipientEmail ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(founderRecipient))
-            throw new InvalidOperationException("A founder lead recipient is required.");
+        var founderUpn = httpContext?.RequestServices is { } services
+            ? services.GetService<IConfiguration>()?["Founder:Upn"]
+            : null;
+        if (string.IsNullOrWhiteSpace(founderUpn) &&
+            httpContext?.Items["TrackingProfile"] is Domain.Entities.AgentTrackingProfile profile &&
+            httpContext.Items["IsFounderPath"] as bool? == true)
+            founderUpn = profile.AgentUpn;
 
-        var explicitInvalid = false;
-        var slug = string.IsNullOrWhiteSpace(explicitAgentSlug) ? null : explicitAgentSlug.Trim();
-        if (!string.IsNullOrWhiteSpace(slug))
-        {
-            var bySlug = await resolver.ResolveBySlugAsync(slug, cancellationToken);
-            if (bySlug.Found && bySlug.Profile is not null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-            {
-                return new WebsiteLeadOwnerResolution(
-                    bySlug.Profile.AgentUpn.Trim(),
-                    bySlug.Profile.Id,
-                    bySlug.CanonicalSlug,
-                    IsFounderPath: false,
-                    ExplicitSlugInvalid: false);
-            }
+        var resolved = await ProtectWebsiteOwnerResolver.ResolveAsync(
+            httpContext,
+            resolver,
+            founderUpn,
+            ct: cancellationToken);
 
-            explicitInvalid = true;
-        }
+        if (resolved is null || resolved.Profile.Id == Guid.Empty)
+            throw new InvalidOperationException("The advisor link is no longer available.");
 
-        var isFounderPath = httpContext?.Items["IsFounderPath"] as bool? == true;
-        if (httpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObject) == true &&
-            trackingProfileObject is AgentTrackingProfile trackingProfile)
-        {
-            var trackingSlug = httpContext.Items["TrackingSlug"] as string;
-            var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
-                ? trackingProfile.AgentUpn.Trim()
-                : founderRecipient;
-
-            return new WebsiteLeadOwnerResolution(
-                isFounderPath ? founderRecipient : trackingRecipient,
-                trackingProfile.Id,
-                string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
-                isFounderPath,
-                explicitInvalid);
-        }
+        var owner = resolved.IsFounder
+            ? MarketingOwnerScope.Founder
+            : MarketingOwnerScope.Agent(resolved.Profile.Id);
+        var recipient = await recipients.ResolveAsync(owner, cancellationToken);
+        if (string.IsNullOrWhiteSpace(recipient))
+            throw new InvalidOperationException(
+                $"The primary email for scoped website owner '{owner.Key}' is unavailable.");
 
         return new WebsiteLeadOwnerResolution(
-            founderRecipient,
-            AgentProfileId: null,
-            AgentSlug: null,
-            isFounderPath,
-            explicitInvalid);
+            recipient.Trim(),
+            resolved.Profile.Id,
+            resolved.Slug,
+            resolved.IsFounder);
     }
 }

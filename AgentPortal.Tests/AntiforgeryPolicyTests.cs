@@ -207,7 +207,6 @@ public class AntiforgeryPolicyTests
 
         // Signed ingest endpoints (HMAC / shared-secret validated).
         Assert.True(TypeHasAnyBypass(Controller("LeadSubmitController")));
-        Assert.True(TypeHasAnyBypass(Controller("AnalyticsIngestController")));
     }
 
     [Fact]

@@ -65,6 +65,17 @@ public class CalendarControllerTests
             AgentUpn = "agent@example.test",
             BookingPageIdOrMailbox = "booking-business-1"
         });
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-1",
+            AgentUpn = "agent@example.test",
+            DisplayName = "Agent One",
+            Slug = "agent-1",
+            Status = "Active",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
         db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
         {
             Id = intakeId,

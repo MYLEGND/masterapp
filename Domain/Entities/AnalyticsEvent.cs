@@ -127,6 +127,9 @@ public class AnalyticsEvent
     /// <summary>Facebook click ID (fbclid) from the landing URL query string.</summary>
     public string? Fbclid { get; set; }
 
+    /// <summary>OpenAI Ads click reference preserved from first-touch landing attribution.</summary>
+    public string? Oppref { get; set; }
+
     /// <summary>Raw browser user-agent string.</summary>
     public string? UserAgent { get; set; }
 

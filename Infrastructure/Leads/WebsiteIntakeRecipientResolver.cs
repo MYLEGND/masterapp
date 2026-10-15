@@ -39,26 +39,72 @@ public sealed class WebsiteIntakeRecipientResolver(MasterAppDbContext db, IConfi
 
     public async Task<string?> ResolveAsync(MarketingOwnerScope owner, CancellationToken ct = default)
     {
-        if (owner.CommerceBusinessId is { } id)
+        if (owner.CommerceBusinessId is { } businessId)
         {
-            var options = await BusinessOptionsAsync(id, ct);
-            var settings = await db.CommerceBusinessStorefrontSettings.AsNoTracking().SingleOrDefaultAsync(x => x.CommerceBusinessId == id, ct);
-            var preferences = BusinessWorkspacePreferences.Read(settings?.WorkspacePreferencesJson);
-            var key = preferences.NotificationMemberId is { } member ? "member:" + member.ToString("D") :
-                preferences.NotificationAgentTrackingProfileId is { } agent ? "agent:" + agent.ToString("D") : null;
-            // A removed assignment must block delivery, not silently reroute it.
-            if (key is not null) return options.SingleOrDefault(x => x.Key == key)?.Email;
-            var business = await db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
-            if (business is null) return null;
-            return options.FirstOrDefault(x => x.Key.StartsWith("member:") && x.Email.Equals(business.OwnerEmail, StringComparison.OrdinalIgnoreCase))?.Email;
+            var businessEmail = await db.CommerceBusinesses.AsNoTracking()
+                .Where(x => x.Id == businessId && x.IsActive && x.Status == "Active")
+                .Select(x => x.OwnerEmail)
+                .SingleOrDefaultAsync(ct);
+            return ValidEmail(businessEmail) ? businessEmail!.Trim() : null;
         }
+
         if (owner.AgentTrackingProfileId is { } trackingId)
         {
-            var agent = await db.AgentTrackingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == trackingId && x.Status == "active", ct);
-            return ValidEmail(agent?.AgentUpn) ? agent!.AgentUpn.Trim() : null;
+            var tracking = await db.AgentTrackingProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == trackingId && x.Status == "active", ct);
+            return tracking is null ? null : await ResolveAgentPrimaryEmailAsync(tracking, ct);
         }
-        var founder = configuration["Contact:RecipientEmail"];
-        return ValidEmail(founder) ? founder!.Trim() : null;
+
+        if (owner != MarketingOwnerScope.Founder)
+            return null;
+
+        var founderEmail = FirstValidEmail(
+            configuration["Founder:Email"],
+            configuration["Founder:Upn"]);
+        if (founderEmail is null)
+            return null;
+
+        var normalizedFounder = founderEmail.ToLowerInvariant();
+        var founderTracking = await db.AgentTrackingProfiles.AsNoTracking()
+            .Where(x => x.Status == "active" && x.AgentUpn.ToLower() == normalizedFounder)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync(ct);
+        if (founderTracking is not null)
+            return await ResolveAgentPrimaryEmailAsync(founderTracking, ct);
+
+        var founderAccount = await db.AgentProfiles.AsNoTracking()
+            .Where(x => x.IsActive &&
+                (x.NormalizedEmail == normalizedFounder || x.AgentUpn.ToLower() == normalizedFounder))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .Select(x => new { x.NormalizedEmail, x.AgentUpn })
+            .FirstOrDefaultAsync(ct);
+
+        return FirstValidEmail(
+            founderAccount?.NormalizedEmail,
+            founderAccount?.AgentUpn,
+            founderEmail);
+    }
+
+    private async Task<string?> ResolveAgentPrimaryEmailAsync(AgentTrackingProfile tracking, CancellationToken ct)
+    {
+        var account = await db.AgentProfiles.AsNoTracking()
+            .Where(x => x.IsActive && x.AgentUserId == tracking.AgentUserId)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .Select(x => new { x.NormalizedEmail, x.AgentUpn })
+            .FirstOrDefaultAsync(ct);
+
+        return FirstValidEmail(
+            account?.NormalizedEmail,
+            account?.AgentUpn,
+            tracking.AgentUpn);
+    }
+
+    private static string? FirstValidEmail(params string?[] candidates)
+    {
+        foreach (var candidate in candidates)
+            if (ValidEmail(candidate))
+                return candidate!.Trim();
+        return null;
     }
 
     private static bool ValidEmail(string? value) => !string.IsNullOrWhiteSpace(value) &&

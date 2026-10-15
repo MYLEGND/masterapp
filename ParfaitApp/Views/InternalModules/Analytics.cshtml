@@ -836,10 +836,13 @@
   </div>
 </div>
 
+<partial name="_MarketingProviderSetup" />
+
 <form id="meta-disconnect-form" method="post" class="d-none">
     @Html.AntiForgeryToken()
 </form>
 
 @section Scripts {
     <script src="~/js/parfait-agentportal-analytics.js" asp-append-version="true"></script>
+    <script src="~/js/marketing-provider-setup.js" asp-append-version="true"></script>
 }

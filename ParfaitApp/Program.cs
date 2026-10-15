@@ -152,8 +152,6 @@ builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ParfaitStoragePaths>();
-builder.Services.AddScoped<ParfaitAnalyticsService>();
-builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
 builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
@@ -382,6 +380,19 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     context.Response.Headers["Content-Security-Policy"] = "upgrade-insecure-requests; block-all-mixed-content";
+
+    if (context.Request.Path.StartsWithSegments("/commerce/manage"))
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.Remove("X-Frame-Options");
+            context.Response.Headers["Content-Security-Policy"] =
+                "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://portal.mylegnd.com https://client.mylegnd.com https://masterapp-protect.azurewebsites.net; upgrade-insecure-requests; block-all-mixed-content";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            return Task.CompletedTask;
+        });
+    }
+
     await next();
 });
 

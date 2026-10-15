@@ -131,12 +131,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var founderId =
             "45e9f238-3a36-4f2e-9610-000000000001";
 
-        var previousFounderOidForDirectProof =
-            Environment.GetEnvironmentVariable("FOUNDER_OID");
-
-        Environment.SetEnvironmentVariable(
-            "FOUNDER_OID",
-            founderId);
+        using var founderEnvironment = new FounderEnvironmentScope(founderId);
 
         var founderEmail =
             "legend-direct-release@legend.local";
@@ -573,9 +568,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             0,
             factory.CreateClientCalls);
 
-        Environment.SetEnvironmentVariable(
-            "FOUNDER_OID",
-            previousFounderOidForDirectProof);
+    }
+
+    // Assertion failures must not leave this test's Founder identity behind for
+    // subsequent authorization tests in the same process.
+    private sealed class FounderEnvironmentScope : IDisposable
+    {
+        private readonly string? _previous = Environment.GetEnvironmentVariable("FOUNDER_OID");
+
+        public FounderEnvironmentScope(string founderId) =>
+            Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+
+        public void Dispose() => Environment.SetEnvironmentVariable("FOUNDER_OID", _previous);
     }
 
     /// <summary>
